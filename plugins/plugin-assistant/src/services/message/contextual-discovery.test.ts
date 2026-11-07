@@ -5,6 +5,7 @@ import {
   actionGateRejection,
   buildPlannerToolsFromActions,
   ContextRegistry,
+  HOOK_MODES,
   type IAgentRuntime,
   type Memory,
   promoteSubactionsToActions,
@@ -12,10 +13,18 @@ import {
 import { describe, expect, it } from "vitest";
 import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
+import {
+  briefAction,
+  briefDeliveredImpressionsAction,
+} from "../../../../plugin-personal-assistant/src/actions/brief.ts";
+import {
+  ownerAlarmsAction,
+  ownerRemindersAction,
+} from "../../../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
-import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import { promoteMessageActions } from "../../features/advanced-capabilities/actions/message.ts";
 import { postAction } from "../../features/advanced-capabilities/actions/post.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { runPlannerLoop } from "../../runtime/planner-loop.ts";
@@ -42,6 +51,164 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it("exposes the reviewed draft's recipient/body contract instead of direct-message target fields", () => {
+    const action = promoteMessageActions().find(
+      (action) => action.name === "MESSAGE_SEND_DRAFT",
+    );
+    if (!action) throw Error("Draft operation missing");
+    const tool = buildPlannerToolsFromActions([action])[0];
+    expect(tool.parameters?.properties?.to).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(tool.parameters?.properties?.body).toMatchObject({ type: "string" });
+    expect(tool.parameters?.properties).not.toHaveProperty("target");
+    expect(tool.parameters?.properties).not.toHaveProperty("channel");
+    expect(tool.parameters?.properties).not.toHaveProperty("platform");
+  });
+
+  it("discovers the reviewed Gmail draft operation when no direct-send connector is registered", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "Draft routing", bio: [] },
+      logLevel: "fatal",
+    });
+    const currentMessage = { content: { text: "Yes" } } as Memory;
+    const admitted = await collectV5PlannerCandidateActions({
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { values: {}, data: {}, text: "" },
+      actions: promoteMessageActions(),
+      selectedContexts: ["messaging"],
+      userRoles: ["OWNER"],
+    });
+    expect(admitted.some((action) => action.name === "MESSAGE_SEND")).toBe(
+      false,
+    );
+    const selected = retrieveContextualPlannerActions({
+      actions: admitted,
+      query: "send Gmail email message",
+      contexts: ["messaging"],
+    });
+    expect(selected.actions.map((action) => action.name)).toEqual([
+      "MESSAGE_SEND_DRAFT",
+    ]);
+    expect(selected.actions.map((action) => action.name)).not.toContain(
+      "MESSAGE_SEND",
+    );
+  });
+
+  it("keeps direct sends available when a connector actually supports them", async () => {
+    const connected = new AgentRuntime({
+      character: { name: "Connector routing", bio: [] },
+      logLevel: "fatal",
+    });
+    connected.registerMessageConnector({
+      source: "discord",
+      label: "Discord",
+      capabilities: ["send_message"],
+      supportedTargetKinds: [],
+      contexts: ["messaging"],
+      sendHandler: async () => {
+        throw Error("Discovery must not send");
+      },
+    });
+    const admitted = await collectV5PlannerCandidateActions({
+      runtime: connected,
+      message: { content: { text: "Send a message" } } as Memory,
+      state: { values: {}, data: {}, text: "" },
+      actions: promoteMessageActions(),
+      selectedContexts: ["messaging"],
+      userRoles: ["OWNER"],
+    });
+    expect(admitted.some((action) => action.name === "MESSAGE_SEND")).toBe(
+      true,
+    );
+  });
+
+  it("keeps every lifecycle hook out of the catalog and planner while retaining default and explicit PLANNER actions", async () => {
+    const currentRuntime = new AgentRuntime({
+      character: { name: "Hook visibility", bio: "Test" },
+      logLevel: "fatal",
+    });
+    const ordinary: Action = {
+      name: "DEFAULT_READ",
+      description: "Read records",
+      contexts: ["general"],
+      validate: async () => true,
+      handler: async () => ({ success: true }),
+    };
+    currentRuntime.actions.push(
+      ordinary,
+      { ...ordinary, name: "EXPLICIT_READ", mode: "PLANNER" },
+      ...HOOK_MODES.map((mode) => ({
+        ...ordinary,
+        name: `HOOK_${mode}`,
+        mode,
+      })),
+      briefDeliveredImpressionsAction,
+    );
+    const currentMessage = {
+      entityId: currentRuntime.agentId,
+      content: { text: "Read records", channelType: "DM" },
+    } as Memory;
+    const catalog = collectDiscoveryCatalogActions({
+      actions: currentRuntime.actions,
+      message: currentMessage,
+      selectedContexts: ["general"],
+      userRoles: ["OWNER"],
+    });
+    expect(catalog.map((action) => action.name)).toEqual([
+      "DEFAULT_READ",
+      "EXPLICIT_READ",
+    ]);
+    const candidates = await collectV5PlannerCandidateActions({
+      runtime: currentRuntime,
+      message: currentMessage,
+      state: { text: "", values: {}, data: {} },
+      discoverActions: true,
+      candidateActions: currentRuntime.actions.map((action) => action.name),
+      userRoles: ["OWNER"],
+    });
+    expect(candidates.map((action) => action.name)).toEqual([
+      "DEFAULT_READ",
+      "EXPLICIT_READ",
+    ]);
+  });
+
+  it.each(["briefing", "dossier"])(
+    "discovers the existing BRIEF composer through the registered %s domain",
+    async (domain) => {
+      const contexts = new ContextRegistry();
+      contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+      const actions: Action[] = [
+        briefAction,
+        {
+          name: "CONNECTOR_LIST",
+          contexts: ["connectors"],
+          description: "List configured connector accounts",
+        },
+      ];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        () => {},
+        async () => actions,
+      );
+      const result = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        {
+          parameters: {
+            query: `compose my daily ${domain}`,
+            contexts: [domain],
+          },
+        },
+      );
+      expect(result?.data?.loadedTools).toEqual(["BRIEF"]);
+    },
+  );
+
   it.each([
     ["workflow create", "OWNER", "automation", true],
     [
@@ -120,6 +287,12 @@ describe("contextual native discovery", () => {
     ["help with my messages", ["MESSAGE"]],
     ["Help with my messages.", ["MESSAGE"]],
     ["send a message", ["MESSAGE_SEND"]],
+    ["send email", ["MESSAGE_SEND_DRAFT"]],
+    ["send gmail", ["MESSAGE_SEND_DRAFT"]],
+    ["send an email", ["MESSAGE_SEND_DRAFT"]],
+    ["send that email", ["MESSAGE_SEND_DRAFT"]],
+    ["email Alice the notes", ["MESSAGE"]],
+    ["compose email", ["MESSAGE"]],
     ["search messages", ["MESSAGE_SEARCH"]],
     ["search my inbox", ["MESSAGE_SEARCH_INBOX"]],
     ["list inbox", ["MESSAGE_LIST_INBOX"]],
@@ -129,12 +302,13 @@ describe("contextual native discovery", () => {
     ['send "search and send draft" to Amy', ["MESSAGE_SEND"]],
     ["MESSAGE_SEND_DRAFT", ["MESSAGE_SEND_DRAFT"]],
     ["schedule draft send", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
-    ["check my inbox", ["MESSAGE_LIST_INBOX", "MESSAGE_SEARCH_INBOX"]],
+    // Generic checks keep the complete family contract; list/search need an explicit operation.
+    ["check my inbox", ["MESSAGE"]],
     ["triage messages", ["MESSAGE_TRIAGE"]],
   ])(
     "retrieves the requested messaging operation for %s",
     (query, expected) => {
-      const actions = promoteSubactionsToActions(messageAction);
+      const actions = promoteMessageActions();
       const result = retrieveContextualPlannerActions({
         actions,
         query,
@@ -158,7 +332,7 @@ describe("contextual native discovery", () => {
     ["search messages", "send a message"],
     ["send a message", "send draft"],
   ])("retains independent outcomes %s and %s", (first, second) => {
-    const actions = promoteSubactionsToActions(messageAction);
+    const actions = promoteMessageActions();
     const result = retrieveContextualPlannerActions({
       actions,
       query: `${first} and ${second}`,
@@ -179,7 +353,7 @@ describe("contextual native discovery", () => {
     ["social_posting", "send a public post", "POST_SEND"],
   ])("keeps %s operation ownership for %s", (context, query, expected) => {
     const actions = [
-      ...promoteSubactionsToActions(messageAction),
+      ...promoteMessageActions(),
       ...promoteSubactionsToActions(postAction),
     ];
     const result = retrieveContextualPlannerActions({
@@ -191,7 +365,7 @@ describe("contextual native discovery", () => {
   });
 
   it("does not substitute a metadata-only umbrella for executable children", () => {
-    const actions = promoteSubactionsToActions(messageAction).map((action) =>
+    const actions = promoteMessageActions().map((action) =>
       action.name === "MESSAGE" ? { ...action, handler: undefined } : action,
     );
     const result = retrieveContextualPlannerActions({
@@ -209,7 +383,7 @@ describe("contextual native discovery", () => {
   });
 
   it("never reconstructs a missing family parent and preserves exact child hints", () => {
-    const actions = promoteSubactionsToActions(messageAction);
+    const actions = promoteMessageActions();
     const child = actions.find(
       (action) => action.name === "MESSAGE_SEND_DRAFT",
     );
@@ -327,6 +501,31 @@ describe("contextual native discovery", () => {
     }).actions;
     expect(selected).toContain(codingAction);
   });
+
+  it.each([
+    ["change the stretch reminder to 5pm", "OWNER_REMINDERS_UPDATE"],
+    ["cancel my reminders", "OWNER_REMINDERS_CANCEL"],
+    ["change my alarm to 7am", "OWNER_ALARMS_UPDATE"],
+    ["delete my alarms", "OWNER_ALARMS_DELETE"],
+  ])(
+    "bootstraps general-routed work from the tasks domain its intent names: %s",
+    (intent, tool) => {
+      const registry = new ContextRegistry([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const selected = retrieveContextualPlannerActions({
+        actions: [
+          ...promoteSubactionsToActions(scheduledTaskAction),
+          ...promoteSubactionsToActions(ownerRemindersAction),
+          ...promoteSubactionsToActions(ownerAlarmsAction),
+        ],
+        query: intent,
+        intents: [intent],
+        contexts: ["general"],
+        contextAliases: (context) => registry.get(context)?.aliases,
+        deferUnscopedBootstrap: true,
+      }).actions;
+      expect(selected.map((action) => action.name)).toContain(tool);
+    },
+  );
 
   it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
     const actions: Action[] = [
@@ -1475,6 +1674,68 @@ describe("contextual native discovery", () => {
   );
 
   it.each([
+    {
+      query: "what did I write about ideas?",
+      intents: ["Query the note called ideas for its content"],
+    },
+    { query: "what did I write about ideas?", intents: [] },
+    { query: "which note did I save about a launch?", intents: [] },
+    { query: "what did I write about delete and send?", intents: [] },
+    { query: "read my note about how to write and delete", intents: [] },
+    {
+      query: "what did I write about ideas? Then add a new item to it.",
+      intents: ["Read the ideas note", "Append a new item to the note"],
+    },
+  ])(
+    "keeps actual Notes reads discoverable for retrospective/current query $query",
+    ({ query, intents }) => {
+      const actions = notesPlugin.actions ?? [];
+      const found = retrieveContextualPlannerActions({
+        actions,
+        query,
+        intents,
+        contexts: ["notes"],
+      }).actions;
+      expect(found.map((action) => action.name)).toEqual(
+        expect.arrayContaining(["NOTES_GET", "NOTES_LIST"]),
+      );
+      for (const action of found) expect(actions).toContain(action);
+    },
+  );
+
+  it.each([
+    {
+      query: "write a note called ideas",
+      expected: ["NOTES_CREATE", "NOTES_PATCH", "NOTES_UPDATE"],
+    },
+    {
+      query: "add eggs to my packing note",
+      expected: ["NOTES_PATCH", "NOTES_UPDATE"],
+    },
+    {
+      query: "read ideas then write a new note",
+      expected: ["NOTES_GET", "NOTES_LIST", "NOTES_CREATE"],
+    },
+    {
+      query: 'write a note whose body is "what did I delete yesterday?"',
+      expected: ["NOTES_CREATE"],
+    },
+    { query: "delete the ideas note", expected: ["NOTES_DELETE"] },
+  ])(
+    "preserves actual current Notes mutations for $query",
+    ({ query, expected }) => {
+      const found = retrieveContextualPlannerActions({
+        actions: notesPlugin.actions ?? [],
+        query,
+        contexts: ["notes"],
+      }).actions;
+      expect(found.map((action) => action.name)).toEqual(
+        expect.arrayContaining(expected),
+      );
+    },
+  );
+
+  it.each([
     ["list notes", ["NOTES_LIST"]],
     ["find notes", ["NOTES_LIST"]],
     ["read my notes", ["NOTES_GET", "NOTES_LIST"]],
@@ -1805,7 +2066,7 @@ describe("contextual native discovery", () => {
     expect(executions).toBe(0);
     expect(discovery.description).not.toContain("NOTES_LIST");
     const invalid = await discovery.handler?.(runtime, message, undefined, {
-      parameters: { query: "notes", names: [] },
+      parameters: { contexts: ["notes"], names: ["NOTES_LIST"] },
     });
     expect(invalid?.success).toBe(false);
     const denied = await discovery.handler?.(runtime, message, undefined, {

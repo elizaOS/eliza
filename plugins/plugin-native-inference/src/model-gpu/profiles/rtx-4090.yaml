@@ -84,7 +84,7 @@ verify_recipe:
   expected_kernels:
     - turbo3
     - turbo4
-    - turbo3_tcq                 # sm_89 has the tensor-core Q kernel
+    - turbo3_tcq # sm_89 has the tensor-core Q kernel
     - qjl_full
     - polarquant
     - mtp

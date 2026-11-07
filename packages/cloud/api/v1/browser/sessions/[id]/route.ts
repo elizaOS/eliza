@@ -1,25 +1,29 @@
 // Handles v1 cloud API v1 browser sessions id route traffic with route-local auth expectations.
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  deleteHostedBrowserSession,
+  getHostedBrowserSession,
+  logHostedBrowserFailure,
+} from "@elizaos/cloud-shared/lib/services/browser-tools";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  nextStyleParams,
-  type RouteContext,
-} from "@/lib/api/hono-next-style-params";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  deleteHostedBrowserSession,
-  getHostedBrowserSession,
-  logHostedBrowserFailure,
-} from "@/lib/services/browser-tools";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 async function handleGET(c: AppContext, context: RouteContext<{ id: string }>) {
   try {

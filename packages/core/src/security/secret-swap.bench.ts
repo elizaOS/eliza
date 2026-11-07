@@ -1,5 +1,5 @@
 /**
- * Throughput benchmarks for the secret-swap layer (#10469). Run with
+ * Throughput benchmarks for the secret-swap layer. Run with
  * `bunx vitest bench --run src/security/secret-swap.bench.ts`. These measure the
  * ingress (detect + substitute) and egress (restore) cost on realistic prompt
  * payloads so a future regex change that tanks performance is caught.

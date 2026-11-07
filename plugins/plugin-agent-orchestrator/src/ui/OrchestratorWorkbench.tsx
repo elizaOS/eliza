@@ -1,12 +1,14 @@
 /**
  * Coordinates the live orchestrator task list, timeline, and extracted detail panels.
  */
+import {
+  Button,
+  type CodingAgentTaskThreadDetail,
+  client,
+  useAgentElement,
+  useAppSelectorShallow,
+} from "@elizaos/ui";
 
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { CodingAgentTaskThreadDetail } from "@elizaos/ui/api/client-types-cloud";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,
   ArrowDownToLine,

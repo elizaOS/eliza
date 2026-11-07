@@ -12,13 +12,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  logger,
-  requireConfirmation,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   buildResolvedClient,
+  confirmPreviewedRequest,
   describeSelection,
   optionalStringArray,
   type ResolvedClient,
@@ -83,7 +80,13 @@ interface RepoParts {
  * router wraps it in `{ success: true, data }` and emits a callback message.
  */
 export type GitHubIssueOpResult =
-  | { op: "create"; number: number; url: string }
+  | {
+      op: "create";
+      number: number;
+      url: string;
+      /** Requested labels or assignees GitHub did not apply. */
+      notApplied?: { labels: string[]; assignees: string[] };
+    }
   | { op: "assign"; number: number; assignees: string[] }
   | { op: "close"; number: number; title: string }
   | { op: "reopen"; number: number; title: string }
@@ -92,173 +95,234 @@ export type GitHubIssueOpResult =
   | { requiresConfirmation: true; preview: string; awaitingUserInput: true }
   | { cancelled: true };
 
-async function runCreate(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
+/** One issue op with the fields that op cannot run without. */
+type IssueRequest =
+  | {
+      op: "create";
+      title: string;
+      body: string | null;
+      labels: string[] | undefined;
+      assignees: string[] | undefined;
+    }
+  | { op: "assign"; number: number; assignees: string[] }
+  | { op: "close" | "reopen"; number: number }
+  | { op: "comment"; number: number; body: string }
+  | { op: "label"; number: number; labels: string[] };
+
+/**
+ * Read the fields the op requires. The handler runs this before the
+ * confirmation prompt, so a call that cannot run never asks the user to
+ * confirm it.
+ */
+function parseRequest(
+  op: GitHubIssueOp,
   options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const title = requireString(options, "title");
-  const body = requireString(options, "body");
-  const labels = optionalStringArray(options, "labels");
-  const assignees = optionalStringArray(options, "assignees");
-  if (!title) {
-    const err = "GITHUB_ISSUE_OP create requires title";
-    await callback?.({ text: err });
-    return { success: false, error: err };
+): IssueRequest | { error: string } {
+  const number = requireNumber(options, "number");
+  switch (op) {
+    case "create": {
+      const title = requireString(options, "title");
+      if (!title) return { error: "GITHUB_ISSUE_OP create requires title" };
+      return {
+        op,
+        title,
+        body: requireString(options, "body"),
+        labels: optionalStringArray(options, "labels"),
+        assignees: optionalStringArray(options, "assignees"),
+      };
+    }
+    case "assign": {
+      const assignees = requireStringArray(options, "assignees");
+      if (!number || !assignees || assignees.length === 0) {
+        return {
+          error:
+            "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])",
+        };
+      }
+      return { op, number, assignees };
+    }
+    case "close":
+    case "reopen":
+      if (!number) {
+        return { error: `GITHUB_ISSUE_OP ${op} requires number (integer)` };
+      }
+      return { op, number };
+    case "comment": {
+      const body = requireString(options, "body");
+      if (!number || !body) {
+        return {
+          error: "GITHUB_ISSUE_OP comment requires number (integer) and body",
+        };
+      }
+      return { op, number, body };
+    }
+    case "label": {
+      const labels = requireStringArray(options, "labels");
+      if (!number || !labels || labels.length === 0) {
+        return {
+          error:
+            "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])",
+        };
+      }
+      return { op, number, labels };
+    }
   }
-  const resp = await resolved.client.issues.create({
-    owner: parts.owner,
-    repo: parts.name,
-    title,
-    body: body ?? undefined,
-    labels,
-    assignees,
-  });
-  await callback?.({
-    text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}`,
-  });
-  return {
-    success: true,
-    data: {
-      op: "create",
-      number: resp.data.number,
-      url: resp.data.html_url,
-    },
-  };
 }
 
-async function runAssign(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const assignees = requireStringArray(options, "assignees");
-  if (!number || !assignees || assignees.length === 0) {
-    const err =
-      "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.addAssignees({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    assignees,
-  });
-  const actual = (resp.data.assignees ?? [])
-    .map((a) => a?.login)
-    .filter((x): x is string => typeof x === "string");
-  await callback?.({
-    text: `Assigned [${actual.join(", ")}] to ${repo}#${number}`,
-  });
-  return {
-    success: true,
-    data: { op: "assign", number, assignees: actual },
-  };
+/**
+ * Requested names missing from GitHub's response. GitHub returns success and
+ * silently ignores labels and assignees the caller may not set.
+ */
+function missingNames(
+  requested: readonly string[] | undefined,
+  applied: ReadonlyArray<
+    string | { name?: string | null; login?: string | null } | null
+  >,
+): string[] {
+  const present = new Set(
+    applied
+      .map((item) =>
+        typeof item === "string" ? item : (item?.login ?? item?.name),
+      )
+      .filter((name): name is string => typeof name === "string")
+      .map((name) => name.toLowerCase()),
+  );
+  return (requested ?? []).filter((name) => !present.has(name.toLowerCase()));
 }
 
-async function runStateChange(
+async function runRequest(
   resolved: ResolvedClient,
   parts: RepoParts,
   repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-  target: "closed" | "open",
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  if (!number) {
-    const err = `GITHUB_ISSUE_OP ${target === "closed" ? "close" : "reopen"} requires number (integer)`;
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.update({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    state: target,
-  });
-  const verb = target === "closed" ? "Closed" : "Reopened";
-  await callback?.({ text: `${verb} ${repo}#${number}: ${resp.data.title}` });
-  return {
-    success: true,
-    data: {
-      op: target === "closed" ? "close" : "reopen",
-      number,
-      title: resp.data.title,
-    },
-  };
-}
-
-async function runComment(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
+  request: IssueRequest,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const body = requireString(options, "body");
-  if (!number || !body) {
-    const err = "GITHUB_ISSUE_OP comment requires number (integer) and body";
-    await callback?.({ text: err });
-    return { success: false, error: err };
+  switch (request.op) {
+    case "create": {
+      const resp = await resolved.client.issues.create({
+        owner: parts.owner,
+        repo: parts.name,
+        title: request.title,
+        body: request.body ?? undefined,
+        labels: request.labels,
+        assignees: request.assignees,
+      });
+      const labels = missingNames(request.labels, resp.data.labels ?? []);
+      const assignees = missingNames(
+        request.assignees,
+        resp.data.assignees ?? [],
+      );
+      const notApplied =
+        labels.length > 0 || assignees.length > 0
+          ? { labels, assignees }
+          : undefined;
+      const skipped = notApplied
+        ? ` GitHub did not apply ${[
+            labels.length > 0 ? `labels [${labels.join(", ")}]` : "",
+            assignees.length > 0 ? `assignees [${assignees.join(", ")}]` : "",
+          ]
+            .filter(Boolean)
+            .join(" or ")}; this account may lack push access.`
+        : "";
+      await callback?.({
+        text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}${skipped}`,
+      });
+      return {
+        success: true,
+        data: {
+          op: "create",
+          number: resp.data.number,
+          url: resp.data.html_url,
+          ...(notApplied ? { notApplied } : {}),
+        },
+      };
+    }
+    case "assign": {
+      const { number } = request;
+      const resp = await resolved.client.issues.addAssignees({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        assignees: request.assignees,
+      });
+      const actual = (resp.data.assignees ?? [])
+        .map((a) => a?.login)
+        .filter((x): x is string => typeof x === "string");
+      const notAssigned = missingNames(request.assignees, actual);
+      if (notAssigned.length > 0) {
+        const error = `GitHub did not assign [${notAssigned.join(", ")}] to ${repo}#${number}; this account may lack push access, or they cannot be assigned. Current assignees: [${actual.join(", ")}]`;
+        await callback?.({ text: error });
+        return { success: false, error };
+      }
+      await callback?.({
+        text: `Assigned [${actual.join(", ")}] to ${repo}#${number}`,
+      });
+      return {
+        success: true,
+        data: { op: "assign", number, assignees: actual },
+      };
+    }
+    case "close":
+    case "reopen": {
+      const { op, number } = request;
+      const resp = await resolved.client.issues.update({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        state: op === "close" ? "closed" : "open",
+      });
+      const verb = op === "close" ? "Closed" : "Reopened";
+      await callback?.({
+        text: `${verb} ${repo}#${number}: ${resp.data.title}`,
+      });
+      return {
+        success: true,
+        data: { op, number, title: resp.data.title },
+      };
+    }
+    case "comment": {
+      const { number } = request;
+      const resp = await resolved.client.issues.createComment({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        body: request.body,
+      });
+      await callback?.({
+        text: `Commented on ${repo}#${number}: ${resp.data.html_url}`,
+      });
+      return {
+        success: true,
+        data: {
+          op: "comment",
+          number,
+          commentId: resp.data.id,
+          url: resp.data.html_url,
+        },
+      };
+    }
+    case "label": {
+      const { number } = request;
+      const resp = await resolved.client.issues.addLabels({
+        owner: parts.owner,
+        repo: parts.name,
+        issue_number: number,
+        labels: request.labels,
+      });
+      const applied = (resp.data ?? [])
+        .map((label) =>
+          typeof label === "string" ? label : (label?.name ?? null),
+        )
+        .filter((x): x is string => typeof x === "string");
+      await callback?.({
+        text: `Applied labels [${applied.join(", ")}] to ${repo}#${number}`,
+      });
+      return {
+        success: true,
+        data: { op: "label", number, labels: applied },
+      };
+    }
   }
-  const resp = await resolved.client.issues.createComment({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    body,
-  });
-  await callback?.({
-    text: `Commented on ${repo}#${number}: ${resp.data.html_url}`,
-  });
-  return {
-    success: true,
-    data: {
-      op: "comment",
-      number,
-      commentId: resp.data.id,
-      url: resp.data.html_url,
-    },
-  };
-}
-
-async function runLabel(
-  resolved: ResolvedClient,
-  parts: RepoParts,
-  repo: string,
-  options: Record<string, unknown> | undefined,
-  callback: HandlerCallback | undefined,
-): Promise<GitHubActionResult<GitHubIssueOpResult>> {
-  const number = requireNumber(options, "number");
-  const labels = requireStringArray(options, "labels");
-  if (!number || !labels || labels.length === 0) {
-    const err =
-      "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-  const resp = await resolved.client.issues.addLabels({
-    owner: parts.owner,
-    repo: parts.name,
-    issue_number: number,
-    labels,
-  });
-  const applied = (resp.data ?? [])
-    .map((label) => (typeof label === "string" ? label : (label?.name ?? null)))
-    .filter((x): x is string => typeof x === "string");
-  await callback?.({
-    text: `Applied labels [${applied.join(", ")}] to ${repo}#${number}`,
-  });
-  return {
-    success: true,
-    data: { op: "label", number, labels: applied },
-  };
 }
 
 export function buildPreview(
@@ -277,7 +341,7 @@ export function buildPreview(
   const detail = (() => {
     switch (op) {
       case "create":
-        return ` issue: "${title ?? "(no title)"}"${labels ? ` [labels: ${labels.join(", ")}]` : ""}${assignees ? ` [assignees: ${assignees.join(", ")}]` : ""}`;
+        return ` issue: "${title ?? "(no title)"}"${body ? ` body: "${toWellFormedUnicode(body)}"` : ""}${labels ? ` [labels: ${labels.join(", ")}]` : ""}${assignees ? ` [assignees: ${assignees.join(", ")}]` : ""}`;
       case "assign":
         return ` with [${assignees?.join(", ") ?? ""}]`;
       case "label":
@@ -288,7 +352,7 @@ export function buildPreview(
         return "";
     }
   })();
-  return `${head}${target}${detail} as ${identity}. Re-invoke with confirmed: true to proceed.`;
+  return `${head}${target}${detail} as ${identity}.`;
 }
 
 export const issueOpAction: Action = {
@@ -313,7 +377,7 @@ export const issueOpAction: Action = {
     "MANAGE_ISSUES",
   ],
   description:
-    "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Requires confirmed:true.",
+    "Single router for GitHub issue ops: create, assign, close, reopen, comment, label. Each op asks the user to reply yes before it runs.",
   descriptionCompressed:
     "GitHub issue ops: create, assign, close, reopen, comment, label.",
   parameters: [
@@ -373,19 +437,15 @@ export const issueOpAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "confirmed",
-      description: "Must be true to perform the write operation.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
   ],
 
   validate: async (
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const r = buildResolvedClient(runtime, "agent");
+    const r = await buildResolvedClient(runtime, "agent", {
+      refresh: "on-miss",
+    });
     return !("error" in r);
   },
 
@@ -418,6 +478,17 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
+    const request = parseRequest(op, options);
+    if ("error" in request) {
+      await callback?.({ text: request.error });
+      return { success: false, error: request.error };
+    }
+    const resolved = await buildResolvedClient(runtime, selection);
+    if ("error" in resolved) {
+      await callback?.({ text: resolved.error });
+      return { success: false, error: resolved.error };
+    }
+
     const preview = buildPreview(
       op,
       repo,
@@ -425,15 +496,16 @@ export const issueOpAction: Action = {
       options,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
-    const decision = await requireConfirmation({
+    const decision = await confirmPreviewedRequest({
       runtime,
       message,
       actionName: "GITHUB_ISSUE_OP",
       pendingKey: `${op}:${repo}`,
       prompt,
       callback,
+      request: { repo, request, selection },
     });
-    if (decision.status === "pending") {
+    if (decision === "pending") {
       return {
         success: false,
         requiresConfirmation: true,
@@ -445,47 +517,14 @@ export const issueOpAction: Action = {
         data: { requiresConfirmation: true, preview, awaitingUserInput: true },
       };
     }
-    if (decision.status === "cancelled") {
+    if (decision === "cancelled") {
       const cancelMessage = "GitHub issue operation cancelled.";
       await callback?.({ text: cancelMessage });
       return { success: false, error: cancelMessage };
     }
 
-    const resolved = buildResolvedClient(runtime, selection);
-    if ("error" in resolved) {
-      await callback?.({ text: resolved.error });
-      return { success: false, error: resolved.error };
-    }
-
     try {
-      switch (op) {
-        case "create":
-          return await runCreate(resolved, parts, repo, options, callback);
-        case "assign":
-          return await runAssign(resolved, parts, repo, options, callback);
-        case "close":
-          return await runStateChange(
-            resolved,
-            parts,
-            repo,
-            options,
-            callback,
-            "closed",
-          );
-        case "reopen":
-          return await runStateChange(
-            resolved,
-            parts,
-            repo,
-            options,
-            callback,
-            "open",
-          );
-        case "comment":
-          return await runComment(resolved, parts, repo, options, callback);
-        case "label":
-          return await runLabel(resolved, parts, repo, options, callback);
-      }
+      return await runRequest(resolved, parts, repo, request, callback);
     } catch (err) {
       const rl = inspectRateLimit(err);
       const message = rl.isRateLimited

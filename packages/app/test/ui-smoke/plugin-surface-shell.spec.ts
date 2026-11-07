@@ -10,6 +10,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 for (const viewport of [
   { width: 1440, height: 1000 },
@@ -62,6 +63,7 @@ for (const viewport of [
           }),
         );
       }
+      await openAppPath(page, "/views");
       await openAppPath(page, routePath);
       await expect(page.getByTestId(view.root)).toBeVisible({
         timeout: 60_000,
@@ -93,6 +95,12 @@ for (const viewport of [
         await expect(page.getByTestId("settings-shell")).toBeVisible();
         await expect(page.getByTestId(view.root)).toHaveCount(0);
       }
+      await openAppPath(page, "/views");
+      await openAppPath(page, routePath);
+      await assertHeaderlessViewChrome(page);
+      await page.goBack();
+      await expect(page).toHaveURL(/\/views(?:[?#]|$)/);
+      await expect(page.getByTestId(view.root)).toHaveCount(0);
     });
   }
 }
@@ -107,8 +115,19 @@ test("Calendar landscape scrolling exposes an event for opening", async ({
   await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible();
   const event = page.getByRole("button", { name: /Design sync/ }).first();
   await expect(event).toBeAttached();
-  await event.scrollIntoViewIfNeeded();
-  await expect(event).toBeInViewport();
+  const beforeScroll = await event.boundingBox();
+  if (!beforeScroll)
+    throw new Error("Calendar event must have laid-out geometry");
+  await page.mouse.move(400, 260);
+  // Bring the 9 AM event toward the middle of this short screen. A fixed
+  // 500px wheel delta overshoots it into the afternoon after header removal.
+  await page.mouse.wheel(0, Math.max(40, beforeScroll.y - 170));
+  await expect
+    .poll(
+      async () => (await event.boundingBox())?.y ?? Number.POSITIVE_INFINITY,
+    )
+    .toBeLessThan(beforeScroll.y);
+  await expect(event).toBeInViewport({ ratio: 1 });
   await event.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   const cancel = page.getByRole("button", {
@@ -153,3 +172,182 @@ test("Messages landscape keeps status separate and composer reachable", async ({
     page.getByRole("button", { name: "Send SMS", exact: true }),
   ).toBeEnabled();
 });
+
+for (const width of [1440, 390]) {
+  test(`plugin transport and account stay textual and port stays numeric at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await page.route("**/api/plugins", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          plugins: [
+            {
+              id: "review-config",
+              name: "Connection settings",
+              description: "Transport and port configuration",
+              enabled: true,
+              configured: true,
+              envKey: null,
+              category: "feature",
+              source: "bundled",
+              validationErrors: [],
+              validationWarnings: [],
+              parameters: [
+                {
+                  key: "IMESSAGE_TRANSPORT",
+                  type: "string",
+                  description: "Transport: native or blooio",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "HEDERA_ACCOUNT_ID",
+                  type: "string",
+                  description: "Account identifier",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "SERVER_PORT",
+                  type: "string",
+                  description: "Server listener port",
+                  required: false,
+                  sensitive: false,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    await openAppPath(page, "/apps/plugins");
+    await page.locator('li[data-plugin-id="review-config"]').click();
+    const transport = page
+      .locator("#field-review-config-IMESSAGE_TRANSPORT")
+      .getByRole("textbox");
+    await expect(transport).toHaveAttribute("type", "text");
+    await transport.fill("blooio");
+    await expect(transport).toHaveValue("blooio");
+    await expect(transport).not.toHaveAttribute("min", "1");
+    await expect(transport).not.toHaveAttribute("max", "65535");
+    const account = page
+      .locator("#field-review-config-HEDERA_ACCOUNT_ID")
+      .getByRole("textbox");
+    await expect(account).toHaveAttribute("type", "text");
+    await account.fill("0.0.12345");
+    await expect(account).toHaveValue("0.0.12345");
+    await expect(account).not.toHaveAttribute("min", "0");
+    const port = page.getByRole("dialog").getByRole("spinbutton");
+    await expect(port).toHaveAttribute("min", "1");
+    await expect(port).toHaveAttribute("max", "65535");
+    await port.fill("8080");
+    await expect(port).toHaveValue("8080");
+    await page.screenshot({
+      path: testInfo.outputPath(`plugin-port-${width}.jpg`),
+      type: "jpeg",
+      fullPage: true,
+    });
+  });
+}
+
+for (const width of [1440, 390]) {
+  test(`plugin timezone accepts an IANA name and duration labels preserve units at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await page.route("**/api/plugins", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          plugins: [
+            {
+              id: "review-time",
+              name: "Scheduling settings",
+              description: "Timezone and interval configuration",
+              enabled: true,
+              configured: true,
+              envKey: null,
+              category: "feature",
+              source: "bundled",
+              validationErrors: [],
+              validationWarnings: [],
+              parameters: [
+                {
+                  key: "DEFAULT_TIMEZONE",
+                  type: "string",
+                  description: "Default timezone",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "RSS_CHECK_INTERVAL_MINUTES",
+                  type: "string",
+                  description: "Feed interval",
+                  required: false,
+                  sensitive: false,
+                },
+                {
+                  key: "COPILOT_PROXY_TIMEOUT_SECONDS",
+                  type: "string",
+                  description: "Request timeout",
+                  required: false,
+                  sensitive: false,
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route("**/api/plugins/review-time", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      }),
+    );
+    await openAppPath(page, "/apps/plugins");
+    await page.locator('li[data-plugin-id="review-time"]').click();
+    const zone = page
+      .locator("#field-review-time-DEFAULT_TIMEZONE")
+      .getByRole("textbox");
+    await zone.fill("America/New_York");
+    await expect(zone).toHaveValue("America/New_York");
+    await expect(
+      page.locator("#field-review-time-RSS_CHECK_INTERVAL_MINUTES"),
+    ).toContainText("min");
+    await expect(
+      page.locator("#field-review-time-COPILOT_PROXY_TIMEOUT_SECONDS"),
+    ).toContainText("s");
+    await expect(
+      page.getByRole("dialog").getByText("ms", { exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`plugin-timezone-${width}.jpg`),
+      type: "jpeg",
+      fullPage: true,
+    });
+    const saved = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        request.url().endsWith("/api/plugins/review-time"),
+    );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Save settings", exact: true })
+      .click();
+    expect((await saved).postDataJSON()).toEqual({
+      config: { DEFAULT_TIMEZONE: "America/New_York" },
+    });
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Save settings", exact: true }),
+    ).toContainText("Saved");
+  });
+}

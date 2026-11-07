@@ -52,11 +52,8 @@ function encodeStringContent(value: string, quote: string) {
   return quote === "`" ? escaped.replaceAll("${", "\\${") : escaped;
 }
 
-export async function rewriteModuleSpecifiers(
-  source: string,
-  filePath: string,
-  resolveSpecifier: (specifier: string) => string | Promise<string>,
-) {
+/** Enumerate only syntax-owned literal specifiers, retaining source offsets. */
+export function findModuleSpecifiers(source: string, filePath: string) {
   const scriptKind = /\.tsx?$/.test(filePath)
     ? filePath.endsWith(".tsx")
       ? ts.ScriptKind.TSX
@@ -84,6 +81,16 @@ export async function rewriteModuleSpecifiers(
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
+
+  return ranges;
+}
+
+export async function rewriteModuleSpecifiers(
+  source: string,
+  filePath: string,
+  resolveSpecifier: (specifier: string) => string | Promise<string>,
+) {
+  const ranges = findModuleSpecifiers(source, filePath);
 
   let output = source;
   let changed = false;

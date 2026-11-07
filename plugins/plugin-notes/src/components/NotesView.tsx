@@ -1,26 +1,81 @@
 /**
- * Connects the production Notes transport to the reusable presentation surface.
- * Mutations stay in chat so the planner and visible collection share one path.
+ * Connects the signed app view to the same editor used by embedded hosts.
  */
+import {
+  client,
+  consumeNavigateViewPayload,
+  getActiveAgentAuthority,
+  NAVIGATE_VIEW_EVENT,
+  useActiveAgentAuthority,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
 
-import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
-import { useEffect, useState } from "react";
-import { NotesSurface } from "./NotesSurface.js";
-import { useNotesState } from "./useNotesState.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createNotesClient } from "../client/notes-api.js";
+import { NotesWorkspace } from "./NotesWorkspace.js";
+import { NOTES_STATE_UPDATED_EVENT, NOTES_UPDATED_EVENT } from "./notesData.js";
 
 export type { NotesSurfaceProps } from "./NotesSurface.js";
 export { NotesSurface } from "./NotesSurface.js";
 
-export interface NotesViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
+const notesClient = createNotesClient(client);
 
-export function NotesView({ standalone = false }: NotesViewProps = {}) {
-  const { snapshot, loading, error, refresh } = useNotesState();
+export function NotesView({ active = true }: { active?: boolean } = {}) {
   const authority = useActiveAgentAuthority();
+  const authorityRef = useRef(authority);
+  authorityRef.current = authority;
+  const listeners = useRef(new Set<(revision?: number) => void>());
+  const visible = useRef(active);
+  visible.current = active;
+  const invalidated = useRef(false);
+  const notify = useCallback(() => {
+    if (!visible.current) {
+      invalidated.current = true;
+      return;
+    }
+    invalidated.current = false;
+    for (const listener of listeners.current) listener();
+  }, []);
+  useEffect(() => {
+    if (active && invalidated.current) notify();
+  }, [active, notify]);
+  const events = useMemo(
+    () => ({
+      subscribeInvalidation(listener: (revision?: number) => void) {
+        listeners.current.add(listener);
+        return () => {
+          listeners.current.delete(listener);
+        };
+      },
+    }),
+    [],
+  );
+  const binding = useMemo(
+    () => ({
+      key: authority,
+      current: () =>
+        authorityRef.current === authority &&
+        getActiveAgentAuthority() === authority,
+    }),
+    [authority],
+  );
+  useViewEvent(NOTES_STATE_UPDATED_EVENT, notify, [notify]);
+  useViewEvent(NOTES_UPDATED_EVENT, notify, [notify]);
+  useViewEvent(VIEW_EVENTS.VIEW_REFRESH, notify, [notify]);
+  useEffect(() => {
+    const visible = () => {
+      if (document.visibilityState === "visible") notify();
+    };
+    const off = client.onWsEvent("ws-reconnected", notify);
+    window.addEventListener("online", notify);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      off();
+      window.removeEventListener("online", notify);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [notify]);
   const [target, setTarget] = useState<{
     id: string;
     sequence: number;
@@ -85,12 +140,11 @@ export function NotesView({ standalone = false }: NotesViewProps = {}) {
     };
   }, [authority]);
   return (
-    <NotesSurface
-      snapshot={snapshot}
-      loading={loading}
-      error={error}
-      refresh={refresh}
-      standalone={standalone}
+    <NotesWorkspace
+      active={active}
+      client={notesClient}
+      binding={binding}
+      events={events}
       sourceNoteTarget={target?.authority === authority ? target : null}
     />
   );

@@ -5,8 +5,8 @@
  * so Telegram retries cannot duplicate a reply.
  */
 
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
 // Epoch 1 omitted the connector account from both routing boundaries. Epoch 2
@@ -346,7 +346,14 @@ export class PersonalTelegramDelivery {
         ) {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          // error-policy:J3 malformed requests are rejected explicitly instead
+          // of falling through to the 502 transport failure below.
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
         if (!isDeliveryRequest(body)) {
           return Response.json(
             { error: "Invalid Telegram delivery operation" },

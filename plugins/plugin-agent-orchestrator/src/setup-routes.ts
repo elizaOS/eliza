@@ -5,16 +5,16 @@
  * through `Plugin.routes` with `rawPath: true`.
  */
 import type http from "node:http";
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type LegacyRouteHandler,
-  type HttpPlugin as Plugin,
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  LegacyRouteHandler,
+  HttpPlugin as Plugin,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
 import { getAcpService } from "./actions/common.js";
-import { type RouteContext } from "./api/route-utils.js";
+import type { RouteContext } from "./api/route-utils.js";
 import { handleCodingAgentRoutes } from "./api/routes.js";
 import { getCodingWorkspaceService } from "./services/workspace-service.js";
 

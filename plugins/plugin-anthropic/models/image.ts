@@ -16,8 +16,14 @@ import { resolveAnthropicMaxOutputTokens } from "./text";
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Analyze this image and respond with:\nTitle: <short title>\nDescription: <detailed description>";
 
+// A title line counts only at the start of the reply, where the prompt asks
+// for it. An unanchored search lets a mid-description mention of "title:"
+// (a poster, sign, or book in the image) hijack the title and cut that text
+// out of the description; the OpenAI image parser anchors for this reason.
+const LEADING_TITLE_RE = /^\s*title[:\s]+(.+?)(?:\n|$)/i;
+
 function parseTitle(content: string): string {
-  const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
+  const titleMatch = content.match(LEADING_TITLE_RE);
   if (titleMatch?.[1]) {
     return titleMatch[1].trim();
   }
@@ -31,7 +37,7 @@ function parseTitle(content: string): string {
 }
 
 function parseDescription(content: string): string {
-  const withoutTitle = content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
+  const withoutTitle = content.replace(LEADING_TITLE_RE, "").trim();
   const withoutDescriptionLabel = withoutTitle.replace(/^description[:\s]+/i, "").trim();
   return withoutDescriptionLabel.length > 0 ? withoutDescriptionLabel : content.trim();
 }
@@ -48,6 +54,8 @@ export async function handleImageDescription(
       ? DEFAULT_IMAGE_DESCRIPTION_PROMPT
       : (params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT);
   const operationName = `${ModelType.IMAGE_DESCRIPTION} request using ${modelName}`;
+  // The caller's cancellation ends the provider request and is never retried.
+  const signal = typeof params === "string" ? undefined : params.signal;
 
   if (!imageUrl || imageUrl.trim().length === 0) {
     throw new Error("[Anthropic] IMAGE_DESCRIPTION requires a valid image URL.");
@@ -55,37 +63,51 @@ export async function handleImageDescription(
 
   logger.log(`[Anthropic] Using ${ModelType.IMAGE_DESCRIPTION} model: ${modelName}`);
 
+  const maxOutputTokens = resolveAnthropicMaxOutputTokens(runtime, modelName);
+
   try {
-    const response = await executeWithRetry(operationName, () =>
-      generateText({
-        model: anthropic(modelName),
-        messages: [
-          {
-            role: "user" as const,
-            content: [
-              { type: "text" as const, text: promptText },
-              { type: "image" as const, image: imageUrl },
-            ],
-          },
-        ],
-        maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
-      })
+    const response = await executeWithRetry(
+      operationName,
+      () =>
+        generateText({
+          model: anthropic(modelName),
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: promptText },
+                { type: "image" as const, image: imageUrl },
+              ],
+            },
+          ],
+          maxOutputTokens,
+          ...(signal ? { abortSignal: signal } : {}),
+        }),
+      undefined,
+      signal
     );
+
+    const usage = response.usage
+      ? emitModelUsageEvent(
+          runtime,
+          ModelType.IMAGE_DESCRIPTION,
+          promptText,
+          response.usage,
+          modelName
+        )
+      : undefined;
+
+    // Billed tokens are reported before an incomplete output is rejected,
+    // and the rejection carries the usage and the output cap as evidence.
+    // The text path in this plugin and the Eliza Cloud image handler use
+    // the same order; asserting first dropped the billed usage entirely.
     assertModelOutputComplete({
       finishReason: response.finishReason,
       provider: "anthropic",
       model: modelName,
+      maxTokens: maxOutputTokens,
+      usage,
     });
-
-    if (response.usage) {
-      emitModelUsageEvent(
-        runtime,
-        ModelType.IMAGE_DESCRIPTION,
-        promptText,
-        response.usage,
-        modelName
-      );
-    }
 
     return {
       title: parseTitle(response.text),

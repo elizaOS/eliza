@@ -98,6 +98,11 @@ function parseFenceLine(line: string): OpenFence | null {
 	}
 	const indent = match[1] ?? "";
 	const marker = match[2] ?? "";
+	// A backtick fence's info string may not contain a backtick (CommonMark);
+	// a line like "```alpha`beta```" is inline code, not a fence.
+	if (marker[0] === "`" && (match[3] ?? "").includes("`")) {
+		return null;
+	}
 	return {
 		indent,
 		markerChar: marker[0] ?? "`",
@@ -108,6 +113,27 @@ function parseFenceLine(line: string): OpenFence | null {
 
 function closeFenceLine(openFence: OpenFence): string {
 	return `${openFence.indent}${openFence.markerChar.repeat(openFence.markerLen)}`;
+}
+
+/**
+ * A fence opened on the buffer's last line has no content in it; closing it
+ * there would send an empty code block. Returns the buffer without that
+ * opener, or undefined when the buffer does not end with one.
+ */
+function withoutTrailingOpener(
+	text: string,
+	openFence: OpenFence | null,
+): string | undefined {
+	if (!openFence || !text.endsWith(openFence.openLine)) {
+		return undefined;
+	}
+	const contentEnd = text.length - openFence.openLine.length;
+	if (contentEnd === 0) {
+		return "";
+	}
+	return text[contentEnd - 1] === "\n"
+		? text.slice(0, contentEnd - 1)
+		: undefined;
 }
 
 function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
@@ -124,19 +150,52 @@ function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
 	return `${text}${closeLine}`;
 }
 
-// truncateWellFormed(remaining, limit) returns "" only when `limit` can't
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "grapheme" },
+		) => { segment(text: string): Iterable<{ segment: string }> };
+	}
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+	granularity: "grapheme",
+});
+
+/**
+ * `truncateWellFormed` that also never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two Discord messages. When a
+ * single cluster alone exceeds `maxLength`, fall back to the surrogate-safe
+ * cut; it is the only case with no clean boundary.
+ */
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = 0;
+	for (const { segment } of graphemeSegmenter.segment(text)) {
+		if (end + segment.length > maxLength) break;
+		end += segment.length;
+	}
+	if (end > 0) return text.slice(0, end);
+	return truncateWellFormed(text, maxLength);
+}
+
+// truncateGraphemeSafe(remaining, limit) returns "" only when `limit` can't
 // hold even one well-formed unit of `remaining` (e.g. limit === 1 and
 // `remaining` opens with a surrogate pair: the pair needs 2 code units and
-// truncateWellFormed refuses to split it). An empty chunk would make zero
-// progress, turning the caller's while-loop infinite -- and silently
-// widening past `limit` would violate the maxChars contract instead, so
-// this fails closed.
+// the surrogate-safe fallback refuses to split it). An empty chunk would
+// make zero progress, turning the caller's while-loop infinite -- and
+// silently widening past `limit` would violate the maxChars contract
+// instead, so this fails closed.
 function takeWellFormedChunkOrThrow(
 	text: string,
 	limit: number,
 	requestedMaxChars: number,
 ): string {
-	const chunk = truncateWellFormed(text, limit);
+	const chunk = truncateGraphemeSafe(text, limit);
 	if (chunk.length === 0) {
 		chunkLimitTooSmall(
 			"chunkDiscordText (splitLongLine)",
@@ -168,8 +227,8 @@ function splitLongLine(
 		if (opts.preserveWhitespace) {
 			// A plain `.slice(0, limit)` can land inside a surrogate pair (e.g. an
 			// emoji), splitting one character across two chunks as a lone high
-			// surrogate + lone low surrogate. truncateWellFormed backs the cut off
-			// by one unit instead.
+			// surrogate + lone low surrogate. takeWellFormedChunkOrThrow backs the
+			// cut off to a grapheme boundary instead.
 			const chunk = takeWellFormedChunkOrThrow(
 				remaining,
 				limit,
@@ -300,17 +359,22 @@ export function chunkDiscordText(
 	let current = "";
 	let currentLines = 0;
 	let openFence: OpenFence | null = null;
+	let reopenedFence = false;
 
 	const flush = () => {
 		if (!current) {
 			return;
 		}
-		const payload = closeFenceIfNeeded(current, openFence);
+		// The opener is re-emitted at the start of the next chunk below.
+		const payload =
+			withoutTrailingOpener(current, openFence) ??
+			closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
 		}
 		current = "";
 		currentLines = 0;
+		reopenedFence = openFence !== null;
 		if (openFence) {
 			current = openFence.openLine;
 			currentLines = 1;
@@ -327,10 +391,30 @@ export function chunkDiscordText(
 				nextOpenFence = fenceInfo;
 			} else if (
 				openFence.markerChar === fenceInfo.markerChar &&
-				fenceInfo.markerLen >= openFence.markerLen
+				fenceInfo.markerLen >= openFence.markerLen &&
+				// A closing fence may be followed only by spaces/tabs (CommonMark);
+				// a line like "```js" inside an open fence is content, not a closer.
+				/^[ \t]*$/.test(
+					originalLine.slice(fenceInfo.indent.length + fenceInfo.markerLen),
+				)
 			) {
 				nextOpenFence = null;
 			}
+		}
+
+		// Only whitespace follows the reopened opener; sending it with the
+		// original closer would be an empty code block, so drop both.
+		if (
+			openFence &&
+			nextOpenFence === null &&
+			reopenedFence &&
+			current.slice(openFence.openLine.length).trim() === ""
+		) {
+			current = "";
+			currentLines = 0;
+			reopenedFence = false;
+			openFence = null;
+			continue;
 		}
 
 		const reserveChars = nextOpenFence
@@ -400,6 +484,15 @@ export function chunkDiscordText(
 			if ((wouldExceedChars || wouldExceedLines) && current.length > 0) {
 				flush();
 				flushedForThisSegment = true;
+				// The flushed chunk already ends with the synthetic closer, so the
+				// original closing line is redundant; appending it would reopen an
+				// empty code block.
+				if (wasInsideFence && nextOpenFence === null) {
+					current = "";
+					currentLines = 0;
+					reopenedFence = false;
+					break;
+				}
 			}
 
 			// A flush can repopulate `current` with a reopened fence's opening
@@ -426,10 +519,19 @@ export function chunkDiscordText(
 		}
 
 		openFence = nextOpenFence;
+		if (!openFence) {
+			reopenedFence = false;
+		}
 	}
 
-	if (current.length) {
-		const payload = closeFenceIfNeeded(current, openFence);
+	const onlyReopenedFence =
+		openFence !== null &&
+		reopenedFence &&
+		current.slice(openFence.openLine.length).trim() === "";
+	if (current.length && !onlyReopenedFence) {
+		const payload =
+			withoutTrailingOpener(current, openFence) ??
+			closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
 		}

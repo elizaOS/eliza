@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop errors ts behavior for app shell integration. */
 import type { JsonValue } from "@elizaos/core";
 
 export type DynamicViewErrorCode =

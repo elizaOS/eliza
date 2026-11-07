@@ -6,8 +6,8 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import type { HandlerCallback, Media, Memory, UUID } from "@elizaos/core";
 import { ChannelType, ContentType, EventType, ModelType } from "@elizaos/core";
+import { describeLive } from "@elizaos/testing/live";
 import { describe, expect, it } from "vitest";
-import { describeLive } from "../../../../../packages/app/test/helpers/live-agent-test.ts";
 import { readAttachmentAction } from "./readAttachmentAction.ts";
 
 if (process.env.ELIZA_LIVE_TEST !== "1") {

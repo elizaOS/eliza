@@ -25,13 +25,13 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Telegraf } from "telegraf";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   createSensitiveRequestDispatchRegistry,
   type DispatchSensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
-} from "../../../packages/core/src/sensitive-requests/dispatch-registry";
+} from "@elizaos/core";
+import { Telegraf } from "telegraf";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { telegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 
 // A benign token — the local server accepts anything; only the URL path shape

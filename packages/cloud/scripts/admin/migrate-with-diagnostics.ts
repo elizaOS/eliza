@@ -20,6 +20,7 @@ import {
   createdAtValue,
   loadCanonicalMigrations,
   type Migration,
+  MigrationLedgerValidationError,
   validateAppliedMigrationLedger,
 } from "./canonical-migration-ledger";
 import {
@@ -52,7 +53,7 @@ const { Client } = pg;
 
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";
-const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
+export const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
 const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_BASE_MS = 250;
@@ -317,7 +318,9 @@ function parseConcurrentIndexStatement(
   };
 }
 
-function planMigrationExecution(migration: Migration): MigrationExecutionPlan {
+export function planMigrationExecution(
+  migration: Migration,
+): MigrationExecutionPlan {
   const directiveLines = migration.statements.flatMap((statement) =>
     statement
       .split(/\r?\n/)
@@ -361,6 +364,19 @@ function planMigrationExecution(migration: Migration): MigrationExecutionPlan {
 
 const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
 const POSTGRES_POSITION_PATTERN = /^[1-9][0-9]{0,9}$/;
+const PUBLIC_LEDGER_FAILURE_REASONS = new Set([
+  "too_many_rows",
+  "duplicate_journal_time",
+  "missing_checkpoint",
+  "invalid_ledger_time",
+  "duplicate_ledger_time",
+  "unmatched_ledger_time",
+  "hash_mismatch",
+  "out_of_order",
+  "historical_after_checkpoint",
+  "missing_journal_index",
+  "missing_required_entry",
+]);
 
 function allowlistedDatabaseField(
   value: unknown,
@@ -370,7 +386,7 @@ function allowlistedDatabaseField(
 }
 
 /**
- * Format only bounded PostgreSQL metadata that cannot contain row values.
+ * Format only bounded PostgreSQL metadata and fixed ledger failure categories.
  *
  * PostgreSQL's `message`, `detail`, and `hint` fields are deliberately absent:
  * JSON parse failures copy the offending legacy token into `detail`, while
@@ -381,6 +397,7 @@ function allowlistedDatabaseField(
 function formatDatabaseError(error: unknown): string {
   let sqlState: string | undefined;
   let position: string | undefined;
+  let ledgerReason: string | undefined;
   try {
     const databaseError =
       error instanceof Error ? (error as DatabaseError) : null;
@@ -392,6 +409,10 @@ function formatDatabaseError(error: unknown): string {
       databaseError?.position,
       POSTGRES_POSITION_PATTERN,
     );
+    if (error instanceof MigrationLedgerValidationError) {
+      const reason = error.reason;
+      if (PUBLIC_LEDGER_FAILURE_REASONS.has(reason)) ledgerReason = reason;
+    }
   } catch {
     // error-policy:J3 hostile error accessors yield the static diagnostic.
   }
@@ -399,6 +420,7 @@ function formatDatabaseError(error: unknown): string {
     "code=DATABASE_OPERATION_FAILED",
     sqlState ? `database_code=${sqlState}` : null,
     position ? `position=${position}` : null,
+    ledgerReason ? `ledger_reason=${ledgerReason}` : null,
   ].filter(Boolean);
 
   return details.join(" ");
@@ -1388,17 +1410,22 @@ export async function runMigrations(
         );
         await reportIdentityResult?.(identityConfig, identityResult);
       }
+      console.log("[db:migrate] ensuring migration ledger table");
       await ensureMigrationsTable(client);
 
+      console.log("[db:migrate] reading migration ledger");
       const applied = await getAppliedMigrations(client);
       if (applied.length === 0) {
+        console.log("[db:migrate] checking empty-ledger database is fresh");
         await assertEmptyLedgerDatabaseIsFresh(client);
       }
+      console.log("[db:migrate] validating canonical migration ledger");
       const validatedLedger = validateAppliedMigrationLedger(
         applied,
         migrations,
       );
       if (client.backend === "postgres" && applied.length > 0) {
+        console.log("[db:migrate] checking canonical database relations");
         await assertAppliedLedgerHasCanonicalRelations(client);
       }
       const lastApplied = applied.at(-1);

@@ -61,6 +61,10 @@ export async function handleReaction(
 			service.runtime.logger.warn("Invalid reaction or user");
 			return;
 		}
+		// Other bots mark messages with status reactions. They are not dialogue.
+		if (user.bot) {
+			return;
+		}
 
 		// Get emoji info
 		let emoji = reaction.emoji.name;
@@ -113,24 +117,30 @@ export async function handleReaction(
 
 		// Process message content
 		const messageContent = reaction.message.content || "";
-		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: \\"${messageContent}\\"*`;
+		const reactionMessage = `*${actionText} <${emoji}> ${preposition}: "${messageContent}"*`;
 
-		// Get user info from the reacting user (not the message author)
-		const reactionMessageAuthor = reaction.message.author;
-		const userName =
-			("username" in user && (user as User).username) ||
-			reactionMessageAuthor?.username ||
-			"unknown";
-		const name =
-			("globalName" in user && typeof user.globalName === "string"
-				? user.globalName
-				: undefined) ||
-			(reactionMessageAuthor &&
-			"displayName" in reactionMessageAuthor &&
-			typeof reactionMessageAuthor.displayName === "string"
-				? reactionMessageAuthor.displayName
-				: undefined) ||
-			userName;
+		// Names come only from the reacting user. The reacted-to message's
+		// author is someone else: their name would be saved onto the
+		// reactor's entity as a permanent alias.
+		let reactor: User | PartialUser = user;
+		if (reactor.partial) {
+			try {
+				reactor = await reactor.fetch();
+			} catch (error) {
+				// error-policy:J7 an unfetched reactor still records the reaction,
+				// with no name rather than a wrong one.
+				service.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: service.runtime.agentId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Failed to fetch partial reaction user",
+				);
+			}
+		}
+		const userName = reactor.username ?? undefined;
+		const name = reactor.globalName ?? userName;
 
 		// Get channel type once and reuse
 		const channelType = await service.getChannelType(

@@ -1,0 +1,21 @@
+{
+  "sqlcipher": {
+    "version": "4.19.0 community",
+    "commit": "c4b275a47932888216bade83aff2bbc73df0ff85",
+    "url": "https://codeload.github.com/sqlcipher/sqlcipher/tar.gz/refs/tags/v4.19.0",
+    "sha256": "7075f96cbabe45b4ecfc2e6b1745a625f856f695b0827a5506ce9ed85b906aa0",
+    "directory": "sqlcipher-4.19.0",
+    "license": "BSD-3-Clause; retain LICENSE.md"
+  },
+  "openssl": {
+    "version": "3.5.9",
+    "url": "https://www.openssl.org/source/openssl-3.5.9.tar.gz",
+    "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+    "directory": "openssl-3.5.9",
+    "license": "Apache-2.0; retain LICENSE.txt and NOTICE.txt"
+  },
+  "nodeHeaders": {
+    "version": "24.15.0",
+    "napiVersion": 8
+  }
+}

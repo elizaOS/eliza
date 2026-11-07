@@ -118,7 +118,7 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
       return c.json(
         {
           error: "Insufficient credits",
-          topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+          topUpUrl: "https://cloud.eliza.app/cloud/billing",
         },
         402,
       );

@@ -3,8 +3,8 @@
  * between subscription, API-keys, and Eliza Cloud provider modes and renders the
  * matching credential inputs.
  */
-import { Button, SettingsControls } from "@elizaos/ui";
-import { useAppSelector } from "@elizaos/ui/state";
+import { Button, SettingsControls, useAppSelector } from "@elizaos/ui";
+
 import {
   AlertTriangle,
   CheckCircle2,

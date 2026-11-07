@@ -1,3 +1,12 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
+import { SHARED_RUNTIME_TURN_DEADLINE_MS } from "./coordinator-fetch";
+import type { VerifiedNetworkAdmission } from "./network-shared-admission";
+import {
+  createOwnerBoundSharedGooglePort,
+  isPersonalGooglePrivateAudience,
+} from "./shared-google-owner-binding";
+import type { OwnerModelCapture } from "./shared-owner-model-capture";
+import { matchesTypedPublicReadQaPolicy } from "./shared-public-read-qa";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -25,6 +34,11 @@ import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
+import {
+  networkVoiceApp,
+  serviceNetworkStoreFactory,
+  sharedNetworkExecution,
+} from "../../network/member-store";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
@@ -46,7 +60,7 @@ import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
 import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { generationsService } from "../generations";
 import {
   executeImageGeneration,
@@ -55,12 +69,11 @@ import {
 } from "../image-generation";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
 import {
-  getInferenceAdmissionSnapshotCacheOnly,
-  InferenceAdmissionSnapshotCacheWarmingError,
+  getInferenceAdmissionSnapshotCacheFirst,
   inferenceRateLimitConfig,
 } from "../inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
-import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "../inference-billing-fast-path";
 import {
   isKnownPreDispatchProviderConfigurationError,
   isKnownUnacceptedProviderError,
@@ -70,6 +83,11 @@ import {
   InferenceAdmissionUnavailableError,
 } from "../organization-inference-admission";
 import { hydrationSettledWithin, SHARED_TURN_HYDRATION_WAIT_MS } from "./bounded-hydration";
+import {
+  formatNetworkSharedTurnForModel,
+  type NetworkSharedTurnObservation,
+  networkSharedTurnMatches,
+} from "./network-shared-context";
 import {
   formatPersonalSharedFallbackAccountContext,
   type PersonalSharedFallbackAccountState,
@@ -96,19 +114,19 @@ import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { buildSharedFactsContext, sharedFactsEnabled } from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
-import {
-  buildSharedRecallContext,
-  embedTextsViaSidecar,
-  embedTextViaSidecar,
-  SHARED_RECALL_EMBEDDING_MODEL,
-} from "./shared-recall";
+import { buildSharedRecallContext, SHARED_RECALL_EMBEDDING_MODEL } from "./shared-recall";
+import { embedSharedRecallTexts, sharedRecallEnabled } from "./shared-recall-embeddings";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import {
+  isUnacceptedSharedModelFailure,
+  SharedRuntimeCacheWarmingError,
+  SharedTurnConflictError,
+} from "./shared-runtime-errors";
 import {
   parseSharedReminderActionProvenance,
   sharedRuntimeModelHistoryMessages,
 } from "./shared-runtime-history-policy";
-import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+import { sharedRuntimeRoomKey, stableUuid } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
   type SharedProviderTimingReceipt,
@@ -147,7 +165,6 @@ export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
-const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
@@ -278,7 +295,11 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
-  context: { agentId: string; originalIntent: string; clientMessageId?: string },
+  context: {
+    agentId: string;
+    originalIntent: string;
+    clientMessageId?: string;
+  },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
   if (turn.capabilityWall) {
@@ -301,6 +322,7 @@ function isProviderFreeTurn(
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
 export interface SharedTurnTerminalResult {
   text: string;
+  acknowledgementReaction?: string;
   responded?: boolean;
   messageId: string;
   userMessageId: string;
@@ -340,6 +362,10 @@ export interface SharedTurnClaimStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  /** Canonical ingress capability, reverified by the server at each process boundary. */
+  trustedNetworkAdmission?: VerifiedNetworkAdmission;
+  /** Server-only capability reserved by the owning Personal Shared DO. */
+  ownerCapture?: OwnerModelCapture;
   /** Standard request trace propagated through the conversation coordinator. */
   traceId?: string;
   abortSignal?: AbortSignal;
@@ -364,6 +390,10 @@ export interface SharedRuntimeChatOptions {
    * agent-scoped facts that converge with Dedicated memory.
    */
   trustedAccountState?: PersonalSharedFallbackAccountState;
+  /** Server-resolved Network observation; RPC params cannot supply it. */
+  trustedNetworkContext?: NetworkSharedTurnObservation;
+  /** Authenticated Network service admission from the server coordinator. */
+  trustedNetworkTurn?: unknown;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -402,6 +432,7 @@ function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -432,7 +463,12 @@ function personalSharedMediaPort(
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
+        // A Worker turn counts in the Durable Object strict window that the
+        // generative HTTP routes use, as completions do below.
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+        });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -586,7 +622,7 @@ function personalSharedMediaPort(
   };
 }
 
-function sharedElizaRuntimeExecution(
+export function sharedElizaRuntimeExecution(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
@@ -595,14 +631,46 @@ function sharedElizaRuntimeExecution(
   executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
+  trustedNetworkTurn?: unknown,
+  trustedNetworkAdmission?: VerifiedNetworkAdmission,
+  /** Server-derived lifecycle/account context, never caller RPC parameters. */
+  trustedTurn?: { messageRole: "user" | "system"; fallback: boolean; transient: boolean },
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
   const runtimeChannel = channel ?? {
     type: ChannelType.DM,
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
+  const typedPublicReadReplies =
+    trustedTurn?.messageRole === "user" &&
+    trustedTurn.fallback === false &&
+    trustedTurn.transient === false &&
+    personalShared &&
+    runtimeChannel.type === ChannelType.DM &&
+    runtimeChannel.source === "blooio" &&
+    roomId === sharedRuntimeRoomKey(agent.id, agent.id) &&
+    matchesTypedPublicReadQaPolicy(getCloudAwareEnv().SHARED_TYPED_PUBLIC_READ_QA_POLICY, {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      agentId: agent.id,
+      roomKey: roomId,
+      channelSource: "blooio",
+    });
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const media = personalShared
+    ? personalSharedMediaPort(agent, roomId, turnKey, executionCtx)
+    : undefined;
+  const network = sharedNetworkExecution(
+    agent,
+    personalShared,
+    runtimeChannel.type !== ChannelType.DM || roomId !== sharedRuntimeRoomKey(agent.id, agent.id),
+    serviceNetworkStoreFactory(
+      personalShared ? (trustedNetworkAdmission ?? trustedNetworkTurn) : undefined,
+    ),
+    undefined,
+    personalShared ? networkVoiceApp(trustedNetworkAdmission ?? trustedNetworkTurn) : undefined,
+    personalShared ? trustedNetworkAdmission : undefined,
+  );
   return {
     agentKey: agent.id,
     roomKey: roomId,
@@ -610,6 +678,17 @@ function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(typedPublicReadReplies ? { typedPublicReadReplies: true as const } : {}),
+    ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
+      ? { participantName: agent.owner_name }
+      : {}),
+    ...(personalShared &&
+    isPersonalGooglePrivateAudience(agent, runtimeChannel, params) &&
+    roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+      ? {
+          google: () => createOwnerBoundSharedGooglePort(agent, runtimeChannel, params),
+        }
+      : {}),
     todos: {
       scope: sharedTodoStorageScope({
         sourceAgentId: agent.id,
@@ -633,6 +712,9 @@ function sharedElizaRuntimeExecution(
       : {}),
     ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
     ...(media ? { media } : {}),
+    // Only a service-admitted Network turn in the canonical Personal room
+    // receives the per-turn service store.
+    ...(network ? { network } : {}),
   };
 }
 
@@ -644,15 +726,12 @@ function sharedElizaRuntimeExecution(
  * projected identities.
  */
 function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
-  const embed =
-    sharedRecallEnabled() && embedBase
-      ? {
-          embedTexts: (texts: string[]) =>
-            embedTextsViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, texts),
-          model: SHARED_RECALL_EMBEDDING_MODEL,
-        }
-      : undefined;
+  const embed = sharedRecallEnabled()
+    ? {
+        embedTexts: embedSharedRecallTexts,
+        model: SHARED_RECALL_EMBEDDING_MODEL,
+      }
+    : undefined;
   return createSharedMemoryStore(
     {
       organizationId: agent.organization_id,
@@ -669,23 +748,12 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
 }
 
 /**
- * P3 rollout gate: semantic recall exists only while this is exactly "true"
- * AND the sidecar base URL is configured. Off (the default) leaves every turn
- * byte-identical to the pre-recall path.
- */
-function sharedRecallEnabled(): boolean {
-  return (
-    process.env.SHARED_RECALL_ENABLED === "true" && Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
-  );
-}
-
-/**
  * Compose the recall block for one turn, or undefined when recall contributes
  * nothing. Recall is an enhancement: a typed embed/search failure is warned
  * and the turn proceeds without it rather than failing a healthy reply.
  * `hadKeywordHit` is pinned false for the rollout phase — the lexical-salience
  * signal is not yet surfaced from the history store, so flag-on turns pay one
- * sidecar embed each; the short-circuit lands when that signal is plumbed.
+ * embedding request each; the short-circuit lands when that signal is plumbed.
  */
 async function sharedTurnRecallContext(
   store: SharedMemoryStore | null,
@@ -693,15 +761,13 @@ async function sharedTurnRecallContext(
   history: SharedTurnMessage[],
 ): Promise<string | undefined> {
   if (!store || !sharedRecallEnabled()) return undefined;
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
-  if (!embedBase) return undefined;
   try {
     const block = await buildSharedRecallContext({
       flagEnabled: true,
       hadKeywordHit: false,
       queryText,
       history,
-      embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
+      embed: async (text) => (await embedSharedRecallTexts([text]))[0],
       storeSearch: async (vector) => {
         // This is relevance retrieval, not prompt shortening: the durable transcript
         // is already supplied in full. Ask the repository for its complete supported
@@ -775,14 +841,6 @@ function combinedTurnContext(
   return parts.length ? parts.join("\n\n") : undefined;
 }
 
-function stableUuid(raw: string): string {
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
-    return raw;
-  }
-  const hash = crypto.createHash("sha256").update(raw).digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
-
 /** Content identity for conflict detection: same key + different text is rejected. */
 function sharedTurnPayloadHash(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
@@ -824,18 +882,11 @@ function turnMessageIds(
   };
 }
 
-export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
-  const room = roomId.trim() || "default";
-  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
-}
-
-export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
-
-/** Storage-safe runtime room key derived from the coordinator's canonical room label. */
-export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
-  const room = normalizeSharedRuntimeRoom(roomId, userId);
-  return sharedRuntimeChannelId(agentId, room);
-}
+export {
+  normalizeSharedRuntimeRoom,
+  sharedRuntimeChannelId,
+  sharedRuntimeRoomKey,
+} from "./shared-runtime-room-identity";
 
 function isTurn(value: unknown): value is SharedTurnMessage {
   const candidate = record(value);
@@ -978,6 +1029,25 @@ async function characterFor(
   return projectSharedAgentCharacter(agent, linked);
 }
 
+/** Adds the complete approved self-context only to its account/app/room character. */
+function networkContextCharacter(
+  agent: SharedRuntimeAgent,
+  params: Record<string, unknown>,
+  character: SharedAgentCharacter,
+  network: SharedRuntimeChatOptions["trustedNetworkContext"],
+): SharedAgentCharacter {
+  if (!network) return character;
+  if (!networkSharedTurnMatches(agent, params.roomId, network)) {
+    throw new ElizaError("Network self-context does not match this Shared turn scope", {
+      code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+    });
+  }
+  return {
+    ...character,
+    system: [character.system, formatNetworkSharedTurnForModel(network)].join("\n\n"),
+  };
+}
+
 function billingPrompt(
   character: SharedAgentCharacter,
   history: SharedTurnMessage[],
@@ -1064,25 +1134,12 @@ async function admitTurn(
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   if (executionCtx && funding === "organization-credits") {
-    try {
-      admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-        agent.organization_id,
-        executionCtx,
-        { awaitHydrationMs: SHARED_TURN_HYDRATION_WAIT_MS },
-      );
-    } catch (error) {
-      // error-policy:J1 a combined policy miss remains a retryable warmup and
-      // cannot fall through to synchronous balance or tier reads.
-      if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-        throw new SharedRuntimeCacheWarmingError(
-          "Inference admission cache is warming. Retry shortly.",
-        );
-      }
-      throw error;
-    }
+    // Cache-first: a cold organization projection is filled inline.
+    admissionSnapshot = await getInferenceAdmissionSnapshotCacheFirst(agent.organization_id);
   }
   try {
     rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
+      userId: agent.user_id,
       cacheOnly: Boolean(executionCtx),
       executionCtx,
       config:
@@ -1130,7 +1187,7 @@ async function admitTurn(
     // runtime's retryable cache-warming signal.
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       throw new SharedRuntimeCacheWarmingError("Billing authorization is warming. Retry shortly.");
     }
@@ -1288,7 +1345,9 @@ function isProvablyZeroProviderFailure(error: unknown): boolean {
     providerBoundaryAdmissionFailure(error) !== null ||
     isInferenceAdmissionDispatchMarkError(error) ||
     isKnownPreDispatchProviderConfigurationError(error) ||
-    isKnownUnacceptedProviderError(error)
+    isKnownUnacceptedProviderError(error) ||
+    // The runtime wraps the SDK error; its diagnostic keeps the status.
+    isUnacceptedSharedModelFailure(error)
   );
 }
 
@@ -1316,7 +1375,7 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
-  constructor(private readonly streamTerminalDeadlineMs = SHARED_STREAM_TERMINAL_DEADLINE_MS) {}
+  constructor(private readonly streamTerminalDeadlineMs = SHARED_RUNTIME_TURN_DEADLINE_MS) {}
 
   async recordLifecycleEvent(
     agentId: string,
@@ -1377,7 +1436,25 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -1392,13 +1469,19 @@ export class SharedRuntimeChatService {
         };
       }
     }
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     let billing: BillingTurn | null;
     try {
@@ -1443,6 +1526,8 @@ export class SharedRuntimeChatService {
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        ownerCapture: options.ownerCapture,
+        abortSignal: options.abortSignal,
         character,
         history,
         message: text,
@@ -1466,6 +1551,13 @@ export class SharedRuntimeChatService {
           options.executionCtx,
           options.mobilePushDispatch,
           options.channel,
+          options.trustedNetworkTurn,
+          options.trustedNetworkAdmission,
+          {
+            messageRole,
+            fallback: options.trustedAccountState !== undefined,
+            transient: options.transientInput === true,
+          },
         ),
       });
     } catch (error) {
@@ -1526,8 +1618,13 @@ export class SharedRuntimeChatService {
         originalIntent: text,
         ...(claimKey ? { clientMessageId: claimKey } : {}),
       });
+      const acknowledgementReaction =
+        turn.responded === false && !turn.reply && !actionResults?.length
+          ? parseImessageReaction(turn.acknowledgementReaction)
+          : undefined;
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
+        ...(acknowledgementReaction !== undefined ? { acknowledgementReaction } : {}),
         ...(turn.responded === false ? { responded: false } : {}),
         messageId: messageIds.assistant,
         userMessageId: messageIds.user,
@@ -1601,7 +1698,25 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
+    if (
+      isCanonicalPersonalSharedAgent(agent) &&
+      options.channel &&
+      options.channel.type !== ChannelType.DM &&
+      roomId === sharedRuntimeRoomKey(agent.id, agent.id)
+    ) {
+      throw new ElizaError("Canonical Personal history requires a private DM audience", {
+        code: "SHARED_PRIVATE_PERSONAL_ROOM_REQUIRED",
+      });
+    }
     const messageRole = options.trustedMessageRole ?? "user";
+    if (
+      options.trustedNetworkContext &&
+      !networkSharedTurnMatches(agent, params.roomId, options.trustedNetworkContext)
+    ) {
+      throw new ElizaError("Network context does not match this Personal conversation", {
+        code: "NETWORK_SHARED_CONTEXT_SCOPE_INVALID",
+      });
+    }
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
@@ -1633,13 +1748,19 @@ export class SharedRuntimeChatService {
       }
     }
     const hydrateStartedAt = performance.now();
-    const [character, loadedHistory] = await Promise.all([
+    const [loadedCharacter, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const character = networkContextCharacter(
+      agent,
+      params,
+      loadedCharacter,
+      options.trustedNetworkContext,
+    );
     const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
@@ -1764,6 +1885,13 @@ export class SharedRuntimeChatService {
             options.executionCtx,
             options.mobilePushDispatch,
             options.channel,
+            options.trustedNetworkTurn,
+            options.trustedNetworkAdmission,
+            {
+              messageRole,
+              fallback: options.trustedAccountState !== undefined,
+              transient: options.transientInput === true,
+            },
           ),
         }),
       );
@@ -1894,7 +2022,14 @@ export class SharedRuntimeChatService {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = options.transientInput
         ? []
-        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
+        : [
+            {
+              id: messageIds.user,
+              role: messageRole,
+              content: text,
+              createdAt: sentAt,
+            },
+          ];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -2222,7 +2357,11 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
+              encoder.encode(
+                chatSseFrame("error", {
+                  message: "Shared runtime stream failed",
+                }),
+              ),
             );
           }
         } finally {

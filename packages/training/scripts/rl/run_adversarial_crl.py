@@ -19,13 +19,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib.util
 import json
 import logging
 import os
 import random
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,58 +31,16 @@ import httpx
 import torch
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
     require_complete_generation,
 )
 
-# Import only the specific modules we need, bypassing the heavy __init__.py
-
-def _import_module(name: str, filepath: str):
-    spec = importlib.util.spec_from_file_location(name, filepath)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-# Try multiple paths for the training source
-_script_dir = Path(__file__).resolve().parent
-sys.path.insert(0, str(_script_dir.parent))
-
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-
-for _candidate in [
-    _script_dir.parent / "src",                    # local: scripts/../src
-    _script_dir / "src",                            # if script is next to src/
-    Path("/home/trainer/src"),                       # Nebius VM path
-    Path(os.environ.get("TRAINING_SRC", "/home/trainer/src")),
-]:
-    if (_candidate / "training" / "turboquant.py").exists():
-        _src = _candidate
-        break
-else:
-    _src = Path("/home/trainer/src")  # fallback
-
-# Load turboquant first (dependency of continuous_rl)
-_tq = _import_module("training.turboquant", str(_src / "training" / "turboquant.py"))
-
-# Stub out simulation_bridge (not needed for adversarial)
-import types
-_sb = types.ModuleType("training.simulation_bridge")
-_sb.ActionOutcome = type("ActionOutcome", (), {})
-_sb.Scenario = type("Scenario", (), {"to_prompt_context": lambda self: ""})
-_sb.SimulationBridge = type("SimulationBridge", (), {})
-sys.modules["training.simulation_bridge"] = _sb
-
-# Now load continuous_rl
-_crl = _import_module("training.continuous_rl", str(_src / "training" / "continuous_rl.py"))
-ContinuousRLAgent = _crl.ContinuousRLAgent
-ContinuousRLConfig = _crl.ContinuousRLConfig
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
+from eliza_training.rl.continuous_rl import ContinuousRLAgent, ContinuousRLConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -241,7 +197,7 @@ async def run_episode(
             source="adversarial_crl.attacker",
         )
 
-        from training.turboquant import build_generation_cache
+        from eliza_training.rl.turboquant import build_generation_cache
         past_kv = None
         if agent.turboquant_settings is not None:
             past_kv = build_generation_cache(agent.model.config, cache_implementation="turboquant", turboquant_settings=agent.turboquant_settings)

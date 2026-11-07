@@ -19,7 +19,13 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
 
@@ -77,7 +83,7 @@ async function createSession(handle: string, appPassword: string): Promise<BskyS
       }),
     async (response) => {
       const json = (await response.json()) as BskySession & { error?: string; message?: string };
-      if (json.error) throw new Error(json.message || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.message || json.error);
       return json;
     },
     { platform: "bluesky", maxRetries: 2 },
@@ -89,6 +95,7 @@ async function bskyApiRequest<T>(
   endpoint: string,
   accessJwt: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
@@ -102,10 +109,10 @@ async function bskyApiRequest<T>(
       }),
     async (response) => {
       const json = (await response.json()) as T & { error?: string; message?: string };
-      if (json.error) throw new Error(json.message || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.message || json.error);
       return json;
     },
-    { platform: "bluesky", maxRetries: 3 },
+    { platform: "bluesky", maxRetries: 3, ...retry },
   );
   return data;
 }
@@ -138,17 +145,45 @@ async function uploadBlob(
   return response.json();
 }
 
-function detectFacets(text: string): BskyFacet[] {
+async function resolveHandle(handle: string, accessJwt: string): Promise<string | null> {
+  const response = await blueskyFetch(
+    `${BLUESKY_SERVICE}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
+    { headers: { Authorization: `Bearer ${accessJwt}` } },
+  );
+  // The PDS answers 400 for a handle that does not exist: that mention stays
+  // plain text. Any other failure fails the post so it can be retried.
+  if (response.status === 400) {
+    await response.body?.cancel();
+    logger.warn("[Bluesky] Mention handle does not resolve", { handle });
+    return null;
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Bluesky handle lookup failed: ${response.status}`);
+  }
+  const { did } = (await response.json()) as { did?: unknown };
+  if (typeof did !== "string" || !did.startsWith("did:")) {
+    throw new Error("Bluesky handle lookup returned an invalid DID");
+  }
+  return did;
+}
+
+// Mentions follow https://docs.bsky.app/docs/advanced-guides/post-richtext: they
+// start at the beginning of the text, after whitespace or after "(", and a
+// mention facet needs the DID the handle resolves to.
+async function detectFacets(text: string, accessJwt: string): Promise<BskyFacet[]> {
   const facets: BskyFacet[] = [];
   const encoder = new TextEncoder();
-  const _textBytes = encoder.encode(text);
+  const byteOffset = (charIndex: number) => encoder.encode(text.slice(0, charIndex)).length;
 
   // Detect URLs
   const urlRegex = /https?:\/\/[^\s]+/g;
+  const linkRanges: Array<{ byteStart: number; byteEnd: number }> = [];
   let match;
   while ((match = urlRegex.exec(text)) !== null) {
-    const byteStart = encoder.encode(text.slice(0, match.index)).length;
+    const byteStart = byteOffset(match.index);
     const byteEnd = byteStart + encoder.encode(match[0]).length;
+    linkRanges.push({ byteStart, byteEnd });
     facets.push({
       index: { byteStart, byteEnd },
       features: [{ $type: "app.bsky.richtext.facet#link", uri: match[0] }],
@@ -156,21 +191,41 @@ function detectFacets(text: string): BskyFacet[] {
   }
 
   // Detect mentions
-  const mentionRegex = /@([a-zA-Z0-9._-]+)/g;
+  const mentionRegex = /(^|\s|\()(@)([a-zA-Z0-9.-]+)(\b)/g;
+  const mentions: Array<{ handle: string; byteStart: number; byteEnd: number }> = [];
   while ((match = mentionRegex.exec(text)) !== null) {
-    const byteStart = encoder.encode(text.slice(0, match.index)).length;
-    const byteEnd = byteStart + encoder.encode(match[0]).length;
+    const handle = match[3];
+    if (!handle.includes(".")) continue;
+    const byteStart = byteOffset(match.index + match[1].length);
+    const byteEnd = byteStart + encoder.encode(`@${handle}`).length;
+    if (linkRanges.some((link) => byteStart < link.byteEnd && link.byteStart < byteEnd)) {
+      continue;
+    }
+    mentions.push({ handle, byteStart, byteEnd });
+  }
+  const handles = [...new Set(mentions.map((m) => m.handle))];
+  const dids = new Map(
+    await Promise.all(
+      handles.map(async (handle) => [handle, await resolveHandle(handle, accessJwt)] as const),
+    ),
+  );
+  for (const { handle, byteStart, byteEnd } of mentions) {
+    const did = dids.get(handle);
+    if (!did) continue;
     facets.push({
       index: { byteStart, byteEnd },
-      features: [{ $type: "app.bsky.richtext.facet#mention", did: match[1] }],
+      features: [{ $type: "app.bsky.richtext.facet#mention", did }],
     });
   }
 
-  // Detect hashtags
+  // Detect hashtags; a "#fragment" inside a link is part of the link, not a tag.
   const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
   while ((match = hashtagRegex.exec(text)) !== null) {
-    const byteStart = encoder.encode(text.slice(0, match.index)).length;
+    const byteStart = byteOffset(match.index);
     const byteEnd = byteStart + encoder.encode(match[0]).length;
+    if (linkRanges.some((link) => byteStart < link.byteEnd && link.byteStart < byteEnd)) {
+      continue;
+    }
     facets.push({
       index: { byteStart, byteEnd },
       features: [{ $type: "app.bsky.richtext.facet#tag", tag: match[1] }],
@@ -259,7 +314,7 @@ export const blueskyProvider: SocialMediaProvider = {
       };
 
       // Add facets (links, mentions, hashtags)
-      const facets = detectFacets(content.text);
+      const facets = await detectFacets(content.text, session.accessJwt);
       if (facets.length > 0) {
         record.facets = facets;
       }
@@ -334,15 +389,27 @@ export const blueskyProvider: SocialMediaProvider = {
             record,
           }),
         },
+        { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created record URI is not a publication
+      // receipt: Bluesky may have published, so the outcome stays unknown
+      // and the credit is held instead of refunded (the slack/telegram rule).
+      const uri = response?.uri;
+      if (typeof uri !== "string" || !uri.trim()) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
+
       // Extract rkey from URI for URL
-      const rkey = response.uri.split("/").pop();
+      const rkey = uri.split("/").pop();
 
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: uri,
         postUrl: `https://bsky.app/profile/${session.handle}/post/${rkey}`,
         metadata: { cid: response.cid },
       };
@@ -350,11 +417,7 @@ export const blueskyProvider: SocialMediaProvider = {
       // error-policy:J1 boundary translation of the Bluesky post call into the typed
       // PostResult failure the caller renders; a failure, not a fabricated success.
       logger.error("[Bluesky] Post failed", { error });
-      return {
-        platform: "bluesky",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("bluesky", error);
     }
   },
 
@@ -498,18 +561,26 @@ export const blueskyProvider: SocialMediaProvider = {
         session.accessJwt,
       );
 
-      await bskyApiRequest("com.atproto.repo.createRecord", session.accessJwt, {
-        method: "POST",
-        body: JSON.stringify({
-          repo: session.did,
-          collection: "app.bsky.feed.like",
-          record: {
-            $type: "app.bsky.feed.like",
-            subject: { uri: postId, cid: postResponse.thread.post.cid },
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
+      await bskyApiRequest(
+        "com.atproto.repo.createRecord",
+        session.accessJwt,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            repo: session.did,
+            collection: "app.bsky.feed.like",
+            record: {
+              $type: "app.bsky.feed.like",
+              subject: { uri: postId, cid: postResponse.thread.post.cid },
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+        // A replay after a timeout writes a second like record under a
+        // fresh key (the create and repost calls in this file pass the
+        // same flag).
+        { replayUnknownOutcome: false },
+      );
 
       return { success: true };
     } catch (error) {
@@ -557,21 +628,30 @@ export const blueskyProvider: SocialMediaProvider = {
             },
           }),
         },
+        { replayUnknownOutcome: false },
       );
+
+      // A 2xx body without the created record uri is not a publication
+      // receipt: the repost may exist, so the outcome stays unknown
+      // instead of reporting a success with no post id (the rule the
+      // create path in this file follows).
+      const repostUri = response?.uri;
+      if (typeof repostUri !== "string" || !repostUri) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: repostUri,
       };
     } catch (error) {
       // error-policy:J1 boundary translation of the Bluesky repost call into the typed
       // PostResult failure the caller renders; a failure, not a fabricated success.
-      return {
-        platform: "bluesky",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("bluesky", error);
     }
   },
 };

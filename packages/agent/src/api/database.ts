@@ -16,26 +16,31 @@ import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
+import type { DatabaseProviderType } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   type ColumnInfo,
   type ConnectionTestResult,
-  type DatabaseConfig,
-  type DatabaseProviderType,
   type DatabaseStatus,
   isLoopbackHost,
   logger,
   normalizeHostLike,
   normalizeIpForPolicy,
-  type PostgresCredentials,
   parseClampedInteger,
-  readJsonBody as parseJsonBody,
   type QueryResult,
-  resolveApiBindHost,
-  sendJson,
-  sendJsonError,
   type TableInfo,
 } from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/host";
+import {
+  type DatabaseConfig,
+  type ElizaConfig,
+  type PostgresCredentials,
+  resolveApiBindHost,
+} from "@elizaos/host/protocol";
 
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
@@ -47,6 +52,13 @@ export {
   stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
+import {
+  parseRequestedSchema,
+  qualifiedTable,
+  quoteIdent,
+  resolveTableSchema,
+} from "../shared/database-table.ts";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -57,13 +69,6 @@ async function readJsonBody<T = Record<string, unknown>>(
   return parseJsonBody(req, res, {
     maxBytes: 2 * 1024 * 1024,
   });
-}
-/**
- * Safely quote a SQL identifier (table or column name).
- * Postgres uses double-quote escaping: embedded " becomes "".
- */
-function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
 }
 /**
  * Build a Postgres connection string from individual credential fields.
@@ -168,49 +173,64 @@ function isApiLoopbackOnly(): boolean {
   return isLoopbackHost(bind);
 }
 /**
+ * Result of host extraction. A malformed connection string is its own
+ * outcome: reporting it as "no hosts" would claim the credentials carry no
+ * host even though the operator supplied a full (but unparseable) DSN.
+ */
+type HostExtraction =
+  | { hosts: string[]; error: null }
+  | { hosts: null; error: string };
+/**
  * Extract all potential hosts from a Postgres connection string or credentials object.
  * Includes query params like ?host= and ?hostaddr= which Postgres clients honor.
- * Returns empty array if no host can be determined.
+ * Returns an error when the connection string cannot be parsed as a URL, and an
+ * empty host list when no host can be determined.
  */
-function extractHosts(creds: PostgresCredentials): string[] {
+function extractHosts(creds: PostgresCredentials): HostExtraction {
   if (creds.connectionString) {
+    let url: URL;
     try {
-      const url = new URL(creds.connectionString);
-      const hosts: string[] = [];
-      // PostgreSQL connection strings can have ?host= param that overrides URI hostname
-      const hostParam = url.searchParams.get("host");
-      if (hostParam) {
-        hosts.push(
-          ...hostParam
-            .split(",")
-            .map((h) => normalizeHostLike(h))
-            .filter(Boolean),
-        );
-      }
-      // Also check hostaddr param
-      const hostAddrParam = url.searchParams.get("hostaddr");
-      if (hostAddrParam) {
-        hosts.push(
-          ...hostAddrParam
-            .split(",")
-            .map((h) => normalizeHostLike(h))
-            .filter(Boolean),
-        );
-      }
-      // Include URI hostname
-      if (url.hostname) {
-        hosts.push(normalizeHostLike(url.hostname));
-      }
-      return [...new Set(hosts)];
+      url = new URL(creds.connectionString);
     } catch {
-      return []; // Unparseable — will be rejected
+      return {
+        hosts: null,
+        error:
+          "Invalid PostgreSQL connection string: expected a postgres:// or " +
+          "postgresql:// URL. Check the value for a missing scheme or stray characters.",
+      };
     }
+    const hosts: string[] = [];
+    // PostgreSQL connection strings can have ?host= param that overrides URI hostname
+    const hostParam = url.searchParams.get("host");
+    if (hostParam) {
+      hosts.push(
+        ...hostParam
+          .split(",")
+          .map((h) => normalizeHostLike(h))
+          .filter(Boolean),
+      );
+    }
+    // Also check hostaddr param
+    const hostAddrParam = url.searchParams.get("hostaddr");
+    if (hostAddrParam) {
+      hosts.push(
+        ...hostAddrParam
+          .split(",")
+          .map((h) => normalizeHostLike(h))
+          .filter(Boolean),
+      );
+    }
+    // Include URI hostname
+    if (url.hostname) {
+      hosts.push(normalizeHostLike(url.hostname));
+    }
+    return { hosts: [...new Set(hosts)], error: null };
   }
   if (creds.host) {
     const host = normalizeHostLike(creds.host);
-    return host ? [host] : [];
+    return { hosts: host ? [host] : [], error: null };
   }
-  return [];
+  return { hosts: [], error: null };
 }
 /**
  * Check whether an IP address falls in a blocked range.
@@ -244,7 +264,11 @@ async function validateDbHost(
   error: string | null;
   pinnedHost: string | null;
 }> {
-  const hosts = extractHosts(creds);
+  const extracted = extractHosts(creds);
+  if (extracted.hosts === null) {
+    return { error: extracted.error, pinnedHost: null };
+  }
+  const hosts = extracted.hosts;
   if (hosts.length === 0) {
     return {
       error: "Could not determine target host from the provided credentials.",
@@ -391,21 +415,31 @@ async function executeRawSql(
 function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
-/** Verify a table name refers to a real user table. */
-async function assertTableExists(
+async function requireTableSchema(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
   runtime: AgentRuntime,
   tableName: string,
-): Promise<boolean> {
-  const safe = tableName.replace(/'/g, "''");
-  const { rows } = await executeRawSql(
-    runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
-       AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+): Promise<string | null> {
+  const url = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
   );
-  return rows.length > 0;
+  const parsed = parseRequestedSchema(url.searchParams.get("schema"));
+  if (!parsed.ok) {
+    sendJsonError(res, "schema must name a non-system database schema", 400);
+    return null;
+  }
+  const schema = await resolveTableSchema(
+    (query) => executeRawSql(runtime, query),
+    tableName,
+    parsed.schema,
+  );
+  if (!schema) {
+    sendJsonError(res, `Table "${tableName}" not found`, 404);
+    return null;
+  }
+  return schema;
 }
 // ---------------------------------------------------------------------------
 // Route handlers
@@ -506,6 +540,7 @@ function handleGetConfig(
 async function handlePutConfig(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  liveConfig?: Pick<ElizaConfig, "database">,
 ): Promise<void> {
   const body = await readJsonBody<DatabaseConfig>(req, res);
   if (!body) return;
@@ -565,6 +600,9 @@ async function handlePutConfig(
   }
   config.database = merged;
   saveElizaConfig(config);
+  // Mirror into the live server config so a later full save of it does not
+  // write the previous database settings back to disk.
+  if (liveConfig) liveConfig.database = merged;
   logger.info(
     { src: "database-api", provider: merged.provider },
     "Database configuration saved",
@@ -698,7 +736,7 @@ async function handleGetTables(
   // Group columns by table
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const row of columnsResult.rows) {
-    const key = `${String(row.schema)}.${String(row.table_name)}`;
+    const key = JSON.stringify([row.schema, row.table_name]);
     const cols = columnsByTable.get(key) ?? [];
     cols.push({
       name: String(row.name),
@@ -711,7 +749,7 @@ async function handleGetTables(
     columnsByTable.set(key, cols);
   }
   const tables: TableInfo[] = tablesResult.rows.map((row) => {
-    const key = `${String(row.schema)}.${String(row.name)}`;
+    const key = JSON.stringify([row.schema, row.name]);
     return {
       name: String(row.name),
       schema: String(row.schema),
@@ -793,18 +831,30 @@ async function handleGetRows(
   const sortCol = url.searchParams.get("sort") ?? "";
   const sortOrder = parsedOrder.order;
   const search = url.searchParams.get("search") ?? "";
-  if (!(await assertTableExists(runtime, tableName))) {
+  const parsedSchema = parseRequestedSchema(url.searchParams.get("schema"));
+  if (!parsedSchema.ok) {
+    sendJsonError(res, "schema must name a non-system database schema", 400);
+    return;
+  }
+  const schema = await resolveTableSchema(
+    (query) => executeRawSql(runtime, query),
+    tableName,
+    parsedSchema.schema,
+  );
+  if (!schema) {
     sendJsonError(res, `Table "${tableName}" not found`, 404);
     return;
   }
+  const relation = qualifiedTable(schema, tableName);
   // Get column names for this table (for search and sort validation)
   const safeTableName = tableName.replace(/'/g, "''");
+  const safeSchema = schema.replace(/'/g, "''");
   const colResult = await executeRawSql(
     runtime,
     `SELECT column_name, data_type
      FROM information_schema.columns
      WHERE table_name = '${safeTableName}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND table_schema = '${safeSchema}'
      ORDER BY ordinal_position`,
   );
   const columnNames = colResult.rows.map((r) => String(r.column_name));
@@ -849,16 +899,42 @@ async function handleGetRows(
   // Count total (with search filter)
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)} ${whereClause}`,
+    `SELECT count(*) AS total FROM ${relation} ${whereClause}`,
   );
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
   );
+  // OFFSET pages are separate queries, so the order must be total: a sort
+  // column with ties (or no ORDER BY at all) lets rows trade places between
+  // pages and be shown twice or never. The primary key breaks ties; a table
+  // without one falls back to its physical row id. ctid can move after an
+  // UPDATE or VACUUM FULL, so that fallback is stable only inside one query.
+  // The probe must use the same relation an unqualified FROM resolves: a
+  // same-named table in another schema would otherwise add columns the read
+  // does not have, and the page query would fail.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safeTableName}'
+       AND tc.table_schema = '${safeSchema}'
+     ORDER BY kcu.ordinal_position`,
+  );
+  const tieBreak = pkResult.rows.length
+    ? pkResult.rows.map((r) => quoteIdent(String(r.column_name)))
+    : ["tableoid", "ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortOrder}`);
   // Fetch rows
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortOrder}`
-    : "";
-  const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
+  const query = `SELECT * FROM ${relation} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
   const result = await executeRawSql(runtime, query);
   sendJson(res, {
     table: tableName,
@@ -891,17 +967,15 @@ async function handleInsertRow(
     sendJsonError(res, "Request body must include a non-empty 'data' object.");
     return;
   }
-  if (!(await assertTableExists(runtime, tableName))) {
-    sendJsonError(res, `Table "${tableName}" not found`, 404);
-    return;
-  }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const columns = Object.keys(body.data);
   const values = Object.values(body.data);
   const colList = columns.map((c) => quoteIdent(c)).join(", ");
   const valList = values.map(sqlLiteral).join(", ");
   const result = await executeRawSql(
     runtime,
-    `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
+    `INSERT INTO ${qualifiedTable(schema, tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
   );
   sendJson(res, { inserted: true, row: result.rows[0] ?? null }, 201);
 }
@@ -934,6 +1008,8 @@ async function handleUpdateRow(
     );
     return;
   }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const setClauses = Object.entries(body.data).map(([col, val]) =>
     sqlAssign(col, val),
   );
@@ -942,7 +1018,7 @@ async function handleUpdateRow(
   );
   const result = await executeRawSql(
     runtime,
-    `UPDATE ${quoteIdent(tableName)}
+    `UPDATE ${qualifiedTable(schema, tableName)}
         SET ${setClauses.join(", ")}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
@@ -974,12 +1050,14 @@ async function handleDeleteRow(
     );
     return;
   }
+  const schema = await requireTableSchema(req, res, runtime, tableName);
+  if (!schema) return;
   const whereClauses = Object.entries(body.where).map(([col, val]) =>
     sqlPredicate(col, val),
   );
   const result = await executeRawSql(
     runtime,
-    `DELETE FROM ${quoteIdent(tableName)}
+    `DELETE FROM ${qualifiedTable(schema, tableName)}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
   );
@@ -1225,6 +1303,7 @@ export async function handleDatabaseRoute(
   res: http.ServerResponse,
   runtime: AgentRuntime | null,
   pathname: string,
+  liveConfig?: Pick<ElizaConfig, "database">,
 ): Promise<boolean> {
   const method = req.method ?? "GET";
   // ── GET /api/database/status ──────────────────────────────────────────
@@ -1239,7 +1318,7 @@ export async function handleDatabaseRoute(
   }
   // ── PUT /api/database/config ──────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/database/config") {
-    await handlePutConfig(req, res);
+    await handlePutConfig(req, res, liveConfig);
     return true;
   }
   // ── POST /api/database/test ───────────────────────────────────────────

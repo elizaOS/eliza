@@ -50,14 +50,17 @@
  * per-agent gateway serves that host, so there is no chicken-and-egg.
  */
 
-import { Hono } from "hono";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { getElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
 import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
@@ -66,19 +69,23 @@ import {
   isCodingContainerImageAllowed,
   type RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerRequestSchema,
-} from "@/lib/services/coding-containers";
+} from "@elizaos/cloud-shared/lib/services/coding-containers";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { getOrgImageNamespaces } from "@/lib/services/org-image-namespaces";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { getOrgImageNamespaces } from "@elizaos/cloud-shared/lib/services/org-image-namespaces";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv, AuthedUser } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

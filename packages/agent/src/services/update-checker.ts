@@ -3,7 +3,8 @@
  * configured release channel (stable/beta/nightly).
  */
 
-import type { ReleaseChannel, UpdateConfig } from "@elizaos/core";
+import type { ReleaseChannel } from "@elizaos/contracts";
+import type { UpdateConfig } from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { VERSION } from "../runtime/version.ts";
 import { compareSemver } from "./version-compat.ts";
@@ -27,6 +28,12 @@ export interface UpdateCheckResult {
   distTag: string;
   /** True when the result came from the interval cache, not a live fetch. */
   cached: boolean;
+  /**
+   * When the registry last answered a check: this check's time when it ran
+   * live, otherwise the persisted `lastCheckAt` (a failed check does not move
+   * it).
+   */
+  checkedAt: string | null;
   error: string | null;
 }
 
@@ -95,6 +102,7 @@ export async function checkForUpdate(options?: {
       channel,
       distTag,
       cached: true,
+      checkedAt: updateCfg?.lastCheckAt ?? null,
       error: null,
     };
   }
@@ -109,6 +117,7 @@ export async function checkForUpdate(options?: {
       channel,
       distTag,
       cached: false,
+      checkedAt: updateCfg?.lastCheckAt ?? null,
       error: "Unable to reach the npm registry. Check your network connection.",
     };
   }
@@ -123,12 +132,14 @@ export async function checkForUpdate(options?: {
       channel,
       distTag,
       cached: false,
+      checkedAt: updateCfg?.lastCheckAt ?? null,
       error: `No version found for dist-tag "${distTag}". The "${channel}" channel may not have any published releases yet.`,
     };
   }
 
   const cmp = compareSemver(VERSION, latestVersion);
   const updateAvailable = cmp !== null && cmp < 0;
+  const checkedAt = new Date().toISOString();
 
   try {
     // The registry request yields to config writers. Merge cache metadata into
@@ -138,7 +149,7 @@ export async function checkForUpdate(options?: {
       ...currentConfig,
       update: {
         ...currentConfig.update,
-        lastCheckAt: new Date().toISOString(),
+        lastCheckAt: checkedAt,
         lastCheckVersion: latestVersion,
         lastCheckChannel: channel,
       },
@@ -159,6 +170,7 @@ export async function checkForUpdate(options?: {
     channel,
     distTag,
     cached: false,
+    checkedAt,
     error: null,
   };
 }

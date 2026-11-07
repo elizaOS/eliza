@@ -9,6 +9,7 @@
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
 
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
 import {
   type EventPayload,
   EventType,
@@ -19,19 +20,22 @@ import {
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
+  ServiceType,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
 import type {
   IPermissionsRegistry,
   PermissionState,
   Platform,
   Prober,
-} from "@elizaos/core/contracts/permissions";
-import { registerCalendarTimeZoneResolver } from "@elizaos/core/lifeops-normalize/calendar-time-zone";
+} from "@elizaos/core/protocol";
 import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingTranscriptFinalizedPayload,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
+import {
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 import {
   getDefaultTriageService,
   messagingTriageActions,
@@ -68,10 +72,14 @@ import {
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
-import { briefAction } from "./actions/brief.js";
+import {
+  briefAction,
+  briefDeliveredImpressionsAction,
+} from "./actions/brief.js";
 import {
   calendarAction,
   calendarActionPromotionOptions,
+  registerPersonalAssistantCalendarHost,
 } from "./actions/calendar.js";
 import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
@@ -216,7 +224,10 @@ import {
   registerFamilyRegistry,
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
-import { createOwnerReminderDirectRoutingRule } from "./lifeops/reminders/direct-routing.js";
+import {
+  ownerReminderChoiceRoutingEvaluator,
+  registerOwnerReminderDirectRouting,
+} from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
   createResourceCapacityAction,
@@ -467,7 +478,7 @@ async function importGoogleConnectorPluginModule(): Promise<
   Record<string, unknown>
 > {
   try {
-    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+    return (await import("@elizaos/plugin-google-workspace")) as Record<
       string,
       unknown
     >;
@@ -510,9 +521,9 @@ export async function ensureLifeOpsGooglePluginRegistered(
  * to) is available. The calendar plugin is a hard LifeOps dependency, so a
  * static import is sufficient.
  *
- * PA composes its own CALENDAR and CONFLICT_DETECT actions with LifeOps deps
- * (travel buffers, approval gateway, host adapter), so only those two names
- * are withheld from the standalone plugin. Every other calendar action — the
+ * PA composes CALENDAR, its promoted child actions, and CONFLICT_DETECT with
+ * LifeOps deps (travel buffers, approval gateway, host adapter). Withhold that
+ * entire family from the standalone plugin. Other calendar actions — the
  * typed CALENDAR_SOURCES source-administration surface in particular — must
  * stay reachable: this init runs before PA's own actions register, so passing
  * a colliding action here would silently win first-wins and shadow the
@@ -525,12 +536,16 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   // composed here, so PA's hasLifeOpsAccess gate reaches it through the
   // runtime-keyed host adapter — bound before the already-registered early
   // return so the substitution holds either way.
+  registerPersonalAssistantCalendarHost(runtime);
   registerPersonalAssistantCalendarSourcesHost(runtime);
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
   }
   const composedByPersonalAssistant = new Set([
-    calendarAction.name,
+    ...promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ).map((action) => action.name),
     conflictDetectAction.name,
   ]);
   await runtime.registerPlugin({
@@ -550,6 +565,16 @@ export async function ensureLifeOpsCalendarPluginRegistered(
 export async function ensureLifeOpsPdfPluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
+  // Desktop PDF rendering depends on native canvas. Preserve any native host
+  // PDF adapter, but do not register the absent desktop module on mobile.
+  if (isMobilePlatform()) {
+    if (!runtime.getService(ServiceType.PDF)) {
+      runtime.logger.info(
+        "[lifeops] PDF processing is unavailable on this host; PDF operations require a native PDF service",
+      );
+    }
+    return;
+  }
   if (runtime.plugins.some((plugin) => plugin.name === pdfPlugin.name)) {
     return;
   }
@@ -631,32 +656,13 @@ export async function ensureLifeOpsHealthPluginRegistered(
     createDefaultCircadianInsightContract(),
   );
 }
-const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
-  "eliza:lifeops:plugin:init-failures";
-async function recordTaskInitFailure(
-  runtime: IAgentRuntime,
-  label: string,
-  message: string,
-): Promise<void> {
-  try {
-    const existing =
-      (await runtime.getCache<Record<string, string>>(
-        LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY,
-      )) ?? {};
-    existing[label] = message;
-    await runtime.setCache(LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY, existing);
-  } catch {
-    // Cache not available; the logger.error is the primary signal.
-  }
-}
 /**
  * Kick off task registration AFTER `runtime.initPromise` resolves — this step
  * cannot be awaited inside `init()` because `init()` runs before the runtime
  * itself has finished initializing. That means failures here are NOT fatal
  * to plugin load; the plugin reports as "loaded" and the specific task
- * subsystem reports as "unavailable". The failure is surfaced via the
- * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
- * via logger.error so ops tooling can alert on it.
+ * subsystem reports as "unavailable". The failure is surfaced via
+ * `runtime.reportError` so the owner and ops tooling can see it.
  */
 // Darwin-only action surface: the native activity tracker, the only
 // SCREEN_TIME data source the planner can reason about end-to-end, is
@@ -672,12 +678,11 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 }): void {
   PersonalAssistantStartupService.forRuntime(args.runtime).runAfterInit(
     () => ensureTaskWithRetries(args),
-    async (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      args.runtime.logger.error(
-        `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
-      );
-      await recordTaskInitFailure(args.runtime, args.label, message);
+    (error) => {
+      args.runtime.reportError("LifeOps.taskInit", error, {
+        label: args.label,
+        recovery: "restart",
+      });
     },
   );
 }
@@ -739,6 +744,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ownerAgreementKnowledgeAction,
     ...promoteSubactionsToActions(creativeDraftAction),
     ...promoteSubactionsToActions(briefAction),
+    briefDeliveredImpressionsAction,
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),
     // INBOX (+ its INBOX_* virtuals) registers via @elizaos/plugin-inbox,
@@ -803,6 +809,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // there is exactly one runner service per runtime.
   ],
   responseHandlerEvaluators: [
+    ownerReminderChoiceRoutingEvaluator,
     deferredOwnerTodoRoutingEvaluator,
     ownerProfileExtractionEvaluator,
   ],
@@ -941,10 +948,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createTrackedWorkRecapDirectRoutingRule(),
     );
-    registerDirectActionRoutingRule(
-      runtime,
-      createOwnerReminderDirectRoutingRule(),
-    );
+    registerOwnerReminderDirectRouting(runtime);
     registerDirectActionRoutingRule(
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),
@@ -974,9 +978,9 @@ const rawPersonalAssistantPlugin: Plugin = {
     startup.runAfterInit(
       () => registerLifeOpsCalendarGate(runtime),
       (error) => {
-        logger.error(
-          `[lifeops] failed to register calendar host gate: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        runtime.reportError("LifeOps.calendarGate", error, {
+          recovery: "restart",
+        });
       },
     );
     // Expired, revoked, and already-consumed private card files are a separate
@@ -1129,7 +1133,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // core default adapters so MESSAGE triage operations operate on real
     // connected data.
     const triage = getDefaultTriageService();
-    triage.register(new GoogleGmailAdapter());
+    if (!triage.getAdapter("gmail")) triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and

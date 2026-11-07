@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.realm import solvers
+from benchmarks.suites.realm import solvers
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
  * wallet capability snapshot onto that generic status contract.
  */
 import type { AgentRuntime, PluginDiagnosticDescriptor } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type { PluginEntry } from "./server-types.ts";
 import { resolveWalletCapabilityStatus } from "./wallet-capability.ts";
 

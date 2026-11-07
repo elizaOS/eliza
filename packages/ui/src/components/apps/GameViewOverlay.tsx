@@ -8,9 +8,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRafCoalescer } from "../../gestures";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 import {
   buildViewerSessionKey,

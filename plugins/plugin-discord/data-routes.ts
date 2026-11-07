@@ -18,7 +18,7 @@ import type {
 	Route,
 	RouteRequest,
 	RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { DISCORD_LOCAL_SERVICE_NAME } from "./discord-local-service";
 import { isValidSnowflake } from "./types";
 

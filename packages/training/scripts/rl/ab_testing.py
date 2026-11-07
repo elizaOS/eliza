@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     require_complete_generation,
 )

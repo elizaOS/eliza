@@ -95,10 +95,10 @@ test("registers and signs in with a browser passkey and rejects consumed challen
     const { startEmbeddedLogin } = await import("../../src/server/embedded");
     login = await startEmbeddedLogin({ port: 0 });
     const { _seedEmailGrantForTests } = await import(
-      "../../src/server/api/src/routes/auth"
+      "../../src/server/api/services/auth-lifecycle"
     );
     const { defaultAuthTenantId } = await import(
-      "../../src/server/api/src/services/default-auth-tenant"
+      "../../src/server/api/services/default-auth-tenant"
     );
     const grant = randomBytes(32).toString("base64url");
     const email = "passkey-browser@example.test";
@@ -200,4 +200,4 @@ test("registers and signs in with a browser passkey and rejects consumed challen
     }
     await rm(directory, { recursive: true, force: true });
   }
-}, 180_000);
+}, 300_000);

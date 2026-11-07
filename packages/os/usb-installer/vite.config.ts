@@ -1,4 +1,3 @@
-// Configures the USB installer build, server, and tests.
 import { defaultClientConditions, defineConfig } from "vite";
 
 export default defineConfig({

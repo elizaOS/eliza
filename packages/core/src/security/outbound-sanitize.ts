@@ -1,45 +1,4 @@
-/**
- * Shared outbound text sanitizer: strips model reasoning/thinking tags
- * (`<thinking>`, `<reasoning>`, …), end-of-turn sentinels (`<|im_end|>`,
- * `<STOP/>`, …), and native model tool-call syntax (`<tool_call>`,
- * `<function_call>`) from agent-generated text before it leaves the runtime
- * toward any connector, while preserving fenced code blocks and inline code
- * spans.
- *
- * A model that drifts out of the eliza response grammar mid-turn emits its
- * native machine syntax as visible prose (observed live on a cerebras
- * zai-glm-4.7 planner turn: "…Let me try the weather action.<tool_call>
- * get_weather" delivered verbatim — #15812). Sanitizing per-connector left
- * every surface except Discord exposed, so the sanitizer lives at the shared
- * post-model, pre-channel boundaries instead (#15888): the per-turn visible
- * callback wrap in `services/message.ts`, the mandatory
- * `outgoing_before_deliver` pipeline phase, and `sendMessageToTarget` — every
- * text connector receives sanitized prose without carrying its own copy.
- *
- * The behavior is the Discord sanitizer's, moved verbatim except for four
- * deliberate deltas fixed at the promotion moment (each carried the same bug
- * byte-for-byte in the original, and each is covered by a dedicated test):
- *   1. the quick pre-filter recognizes `eot_id`, so a lone `<|eot_id|>` /
- *      `<eot_id>` sentinel no longer bypasses sanitization;
- *   2. code-block restoration uses a function replacement, so `$$`/`$&`-style
- *      replacement patterns inside saved code are restored literally instead
- *      of being interpreted (the original corrupted `kill -9 $$` and could
- *      leak a raw sentinel via `$&`);
- *   3. the cosmetic `\n{3,}` collapse runs BEFORE code blocks are restored,
- *      so intentional blank-line spacing inside fences survives;
- *   4. inline single/multi-backtick code spans are protected like fences, so
- *      a coding answer such as "the `<tool_call>` tag …" is no longer
- *      truncated at the span.
- * Known pass-through shared with the original and left as-is: `<|im_start|>`
- * framing tokens are not stripped.
- *
- * This is a delivery-boundary catch-all, distinct from the model-output parse
- * helpers (`stripReasoningBlocks` in `./fallback-reply.ts`,
- * `stripReasoningArtifacts` in `../../runtime/planner-loop.ts`) that clean
- * specific model calls. Structured planner tool calls are never routed through
- * here — the planner consumes `GenerateTextResult.toolCalls` directly, so
- * sanitizing delivered prose cannot delete a valid machine action.
- */
+/** Sanitizes reasoning tags, end-of-turn sentinels, and model tool syntax at text-delivery boundaries. Fenced and inline code retain literal bytes and spacing. Structured tool calls are handled separately; im_start framing passes through. */
 import {
 	REASONING_TAG_NAMES,
 	stripPairedTagBlocks,
@@ -79,8 +38,23 @@ const INLINE_CODE_RE = /(`+)[^`\n]+?\1(?!`)/g;
 // saved code re-inserts the matched sentinel itself, delivering a raw
 // NUL-marker on the wire.
 const CODE_SENTINEL_PREFIX = "\x00CB";
+const CODE_SENTINEL_NAMESPACE_RE = new RegExp(
+	`${CODE_SENTINEL_PREFIX}(\\d+):`,
+	"g",
+);
+// A model must not assemble its own control tag across a quoted-data boundary.
+const CONTROL_TAG_RE = new RegExp(
+	`</?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final)\\b[^>]*(?:>|$)`,
+	"gi",
+);
 
-const PSEUDO_LINK_START_RE = /\[LINK:/gi;
+// No `g` flag: this backs only the cheap pre-filter, and a global regex carries
+// `lastIndex` across calls. A scan that abandons a marker mid-text (an
+// unterminated `[LINK:<url>` with no `]`) leaves that offset set, so the next,
+// unrelated message would test from inside its own text, miss its markers, and
+// take the early return with the raw `[LINK:` syntax intact. The scanning copy
+// in `degradePseudoLinks` is call-local for the same reason.
+const PSEUDO_LINK_START_RE = /\[LINK:/i;
 
 function isValidPseudoLinkUrl(url: string): boolean {
 	if (/\s/.test(url)) return false;
@@ -129,14 +103,11 @@ function formatPseudoLink(url: string, label: string | undefined): string {
 function degradePseudoLinks(text: string): string {
 	let output = "";
 	let cursor = 0;
-	PSEUDO_LINK_START_RE.lastIndex = 0;
-	for (
-		let match = PSEUDO_LINK_START_RE.exec(text);
-		match;
-		match = PSEUDO_LINK_START_RE.exec(text)
-	) {
+	// Call-local: no scan offset can survive this function, whichever path exits.
+	const markerRe = /\[LINK:/gi;
+	for (let match = markerRe.exec(text); match; match = markerRe.exec(text)) {
 		const markerStart = match.index;
-		const urlStart = PSEUDO_LINK_START_RE.lastIndex;
+		const urlStart = markerStart + match[0].length;
 		const urlEnd = text.indexOf("]", urlStart);
 		if (urlEnd < 0) break;
 		const url = text.slice(urlStart, urlEnd);
@@ -154,9 +125,14 @@ function degradePseudoLinks(text: string): string {
 		output += text.slice(cursor, markerStart);
 		output += formatPseudoLink(url, label);
 		cursor = markerEnd;
-		PSEUDO_LINK_START_RE.lastIndex = markerEnd;
+		markerRe.lastIndex = markerEnd;
 	}
 	return cursor === 0 ? text : output + text.slice(cursor);
+}
+
+export interface OutboundLiteralSpan {
+	start: number;
+	end: number;
 }
 
 /**
@@ -166,14 +142,10 @@ function degradePseudoLinks(text: string): string {
  * fenced ``` blocks and inline `code` spans pass through untouched so
  * documentation examples of the syntax survive. Idempotent — sanitizing
  * already-sanitized text is a no-op.
+ *
+ * Literal ranges are supplied by trusted structured renderers, never inferred
+ * from serialized message metadata. Cosmetic cleanup cannot rewrite their bytes.
  */
-export interface OutboundLiteralSpan {
-	start: number;
-	end: number;
-}
-
-/** Literal ranges are supplied by trusted structured renderers, never inferred
- * from serialized message metadata. Cosmetic cleanup cannot rewrite their bytes. */
 export function sanitizeOutboundTextWithLiterals(
 	text: string,
 	literalSpans: readonly OutboundLiteralSpan[],
@@ -190,12 +162,7 @@ export function sanitizeOutboundTextWithLiterals(
 			throw new TypeError("Invalid outbound literal range");
 		previousEnd = span.end;
 	}
-	// A model must not assemble its own control tag across a quoted-data boundary.
-	const controls = new RegExp(
-		`</?(?:${MACHINE_SYNTAX_TAG_ALTERNATION}|final)\\b[^>]*(?:>|$)`,
-		"gi",
-	);
-	for (const match of text.matchAll(controls)) {
+	for (const match of text.matchAll(CONTROL_TAG_RE)) {
 		const start = match.index;
 		const end = start + match[0].length;
 		if (
@@ -211,12 +178,9 @@ export function sanitizeOutboundTextWithLiterals(
 	if (!text || (!QUICK_TAG_RE.test(text) && !PSEUDO_LINK_START_RE.test(text))) {
 		return { text, literalSpans: literalSpans.map((span) => ({ ...span })) };
 	}
-	PSEUDO_LINK_START_RE.lastIndex = 0;
 
 	const namespaces = new Set(
-		[...text.matchAll(new RegExp(`${CODE_SENTINEL_PREFIX}(\\d+):`, "g"))].map(
-			(match) => match[1],
-		),
+		[...text.matchAll(CODE_SENTINEL_NAMESPACE_RE)].map((match) => match[1]),
 	);
 	let namespace = 0;
 	while (namespaces.has(String(namespace))) namespace++;

@@ -264,7 +264,7 @@ export const taskCoordinatorPlugin: Plugin = {
     {
       id: "orchestrator",
       viewKind: "developer",
-      developerOnly: true,
+
       label: "Orchestrator",
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",
@@ -292,7 +292,7 @@ export const taskCoordinatorPlugin: Plugin = {
     {
       id: "cockpit",
       viewKind: "developer",
-      developerOnly: true,
+
       label: "Cockpit",
       description: "Mobile-first coding cockpit — your agents on one screen",
       icon: "TerminalSquare",

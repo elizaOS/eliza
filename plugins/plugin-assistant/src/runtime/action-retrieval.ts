@@ -5,12 +5,13 @@
  * fusion into a complete relevance-ranked catalog.
  */
 
-import { logger, matchActionWildcardParts } from "@elizaos/core";
 import {
   collectPreparedKeywordTermMatches,
+  logger,
+  matchActionWildcardParts,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching";
+} from "@elizaos/core";
 import {
   type ActionCatalog,
   type ActionCatalogParent,
@@ -805,18 +806,63 @@ export function preferredOperationNames(
     list: ["list", "enumerate", "count"],
     search: ["search", "find", "lookup"],
     create: ["create", "add", "write", "save"],
-    update: ["update", "edit", "change", "modify", "replace"],
+    update: [
+      "update",
+      "edit",
+      "change",
+      "modify",
+      "replace",
+      "rename",
+      "append",
+      "prepend",
+    ],
+    rename: ["rename"],
     delete: ["delete", "remove", "erase"],
-    get: ["get", "read", "retrieve"],
+    get: ["get", "read", "retrieve", "query"],
     next: ["next", "upcoming"],
     open: ["open", "navigate"],
     close: ["close"],
     send: ["send"],
   };
   const wanted = new Set<string>();
+  // A retrospective operation is evidence being asked about, not necessarily
+  // a new command to repeat it ("what did I write ..."). Keep observation
+  // operations alongside lexical matches. This is only retrieval: it grants
+  // no write authority and never removes a compound request's mutation tools.
+  if (
+    /\bdid\s+(?:i|we|you|they|he|she)\s+(?:(?:ever|already|previously)\s+)?(?:create|add|write|save|update|edit|change|modify|replace|rename|append|prepend|delete|remove|erase|send)\b/iu.test(
+      query,
+    )
+  ) {
+    wanted.add("get");
+    wanted.add("read");
+    wanted.add("list");
+    wanted.add("search");
+  }
+  // An imperative scheduling outcome creates a record. A schedule mentioned
+  // as data ("read my schedule") and rescheduling retain their own operations.
+  if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))
+    wanted.add("create");
+  // "Set a reminder" names creation; setting an existing record's fields or
+  // configuration does not. Unknown/ambiguous wording keeps full discovery.
+  if (
+    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new|[\p{L}\p{N}-]+[- ](?:minute|hour|day|week)s?)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|here|there|tomorrow|today|next|every)\b|[\s.!?]*$)/iu.test(
+      query,
+    )
+  )
+    wanted.add("create");
   for (const [operation, terms] of Object.entries(operationTerms)) {
     if (!terms.some((term) => words.has(term))) continue;
     wanted.add(operation);
+    // Add/write/save can change an existing record's fields as well as create
+    // a record. Keep both discoverable; only the planner interprets the target.
+    if (
+      operation === "create" &&
+      ["add", "write", "save"].some((term) => words.has(term))
+    ) {
+      wanted.add("update");
+      wanted.add("patch");
+    }
     if (operation === "search") wanted.add("list");
     if (operation === "update") wanted.add("patch");
     if (operation === "get") {
@@ -825,11 +871,30 @@ export function preferredOperationNames(
     }
     if (operation === "open") wanted.add("show");
   }
-  return new Set(
-    names.filter((name) =>
-      tokenizeActionSearchText(name).some((term) => wanted.has(term)),
-    ),
+  const preferred = names.filter((name) =>
+    tokenizeActionSearchText(name).some((term) => wanted.has(term)),
   );
+  // Deleting a record and setting it again is an edit. Stage 1 split "actually
+  // make it 30 minutes" into "delete pending 20 minute stretch reminder" + "set
+  // stretch reminder for 30 minutes from now" (live tj-d24d0ef3e2f2ed); offered
+  // only TRIGGER_DELETE, the planner deleted the reminder and could not set it
+  // again. A delete that comes with a new value keeps its own update sibling
+  // (TRIGGER_DELETE -> TRIGGER_UPDATE), not every update in the family.
+  if (
+    wanted.has("delete") &&
+    (wanted.has("create") ||
+      ["set", "make", "schedule"].some((term) => words.has(term)))
+  ) {
+    const key = (name: string) => tokenizeActionSearchText(name).join(" ");
+    const byKey = new Map(names.map((name) => [key(name), name]));
+    for (const name of [...preferred]) {
+      const update = byKey.get(
+        key(name).replace(/(^| )delete(?= |$)/u, "$1update"),
+      );
+      if (update) preferred.push(update);
+    }
+  }
+  return new Set(preferred);
 }
 
 function scoreExactHints(

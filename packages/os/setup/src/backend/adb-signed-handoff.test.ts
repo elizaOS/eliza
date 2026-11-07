@@ -16,7 +16,7 @@ vi.mock("node:child_process", () => ({
       command === "node" ? "{}" : args.includes("getprop") ? "0\n" : "device\n",
   })),
 }));
-vi.mock("../dependencies/host-tools", () => ({
+vi.mock("./host-tools", () => ({
   findHostTool: (name: string) => `/fixture/tools/${name}`,
 }));
 vi.mock("./signed-install", async (importOriginal) => ({

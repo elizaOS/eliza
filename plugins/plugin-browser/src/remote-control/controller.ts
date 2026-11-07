@@ -5,7 +5,6 @@
  * verified command results.
  */
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   copyRemoteCommandBinding,
@@ -24,7 +23,8 @@ import {
   type SignedRemoteCommand,
   type SignedRemoteCommandResult,
   type SignedRemoteCommandStartReceipt,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   digestRemotePayload,
   openRemoteControlMessage,

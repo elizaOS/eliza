@@ -18,14 +18,14 @@ import {
   Trash2,
 } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type {
   VoiceProfile,
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import { cn } from "../../utils/cn";
+import { downloadAttachment } from "../../utils/download-share";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -93,15 +93,30 @@ const COMMON_RELATIONSHIPS = [
   "roommate",
 ];
 
+/**
+ * Calendar day of a voice sample in the viewer's zone. `toISOString()` is the
+ * UTC day, so a recording at 20:30 in Los Angeles was labeled as the next day.
+ */
+export function voiceSampleRecordedDate(
+  recordedAt: string,
+  timeZone?: string,
+): string | null {
+  const recorded = Date.parse(recordedAt);
+  if (!Number.isFinite(recorded)) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(recorded));
+}
+
 function sampleLabel(
   sample: VoiceProfile["samples"][number],
   index: number,
 ): string {
   const durationSeconds = Math.max(0, sample.durationMs / 1000).toFixed(1);
-  const recorded = Date.parse(sample.recordedAt);
-  const recordedLabel = Number.isFinite(recorded)
-    ? new Date(recorded).toISOString().slice(0, 10)
-    : null;
+  const recordedLabel = voiceSampleRecordedDate(sample.recordedAt);
   return recordedLabel
     ? `Sample ${index + 1} · ${durationSeconds}s · ${recordedLabel}`
     : `Sample ${index + 1} · ${durationSeconds}s`;
@@ -843,26 +858,23 @@ export function VoiceProfileSection({
     setError(null);
     setNotice(null);
     try {
-      const { downloadUrl } = await profilesClient.exportAll();
-      // The downloadUrl is a wire value — a non-http(s) target fails closed
-      // and surfaces the export error state instead of opening.
-      if (downloadUrl) {
-        if (!isSafeNavigationUrl(downloadUrl)) {
-          setError(
-            t("voiceprofile.error.invalidExportUrl", {
-              defaultValue:
-                "The export link returned by the server is not a valid URL.",
-            }),
-          );
-          return;
-        }
-        if (typeof window !== "undefined") {
-          window.open(downloadUrl, "_blank", "noopener,noreferrer");
-        }
+      const exported = await profilesClient.exportAll();
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(exported, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      try {
+        await downloadAttachment(
+          url,
+          `voice-profiles-${exported.exportedAt.slice(0, 10)}.json`,
+        );
+      } finally {
+        URL.revokeObjectURL(url);
       }
       setNotice(
         t("voiceprofile.notice.exported", {
-          defaultValue: "Voice profile export opened.",
+          defaultValue: "Voice profile export ready.",
         }),
       );
     } catch (err) {

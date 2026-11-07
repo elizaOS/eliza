@@ -44,7 +44,7 @@ import { readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { type ChildProcessByStdio } from "node:child_process";
 import { type Readable } from "node:stream";
-import { validateAsrWordTimings } from "@elizaos/core/transcripts";
+import { validateAsrWordTimings } from "@elizaos/core/protocol";
 import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

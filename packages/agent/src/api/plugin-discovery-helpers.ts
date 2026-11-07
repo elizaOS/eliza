@@ -8,10 +8,15 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
+import {
+  logger,
+  type PluginParamDef,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   type PluginParamInfo,
   validatePluginConfig,
@@ -73,7 +78,7 @@ function findPluginsManifestRoot(startDir: string): string {
 
   for (let i = 0; i < 16; i += 1) {
     if (fs.existsSync(path.join(dir, "plugins.json"))) {
-      // Keep walking so wrapper wrapper repos can override the nested
+      // Keep walking so wrapper repos can override the nested
       // upstream eliza checkout's package root with the outer workspace manifest.
       manifestRoot = dir;
     }
@@ -88,22 +93,16 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export type {
-  AgentLogEntry as LogEntry,
-  AgentStreamEventType as StreamEventType,
-  SkillEntry,
-  StreamEventEnvelope,
-} from "@elizaos/core";
-export type { PluginEntry, PluginParamDef } from "./server-types.ts";
-
-import type { PluginEntry, PluginParamDef } from "./server-types.ts";
+import type { PluginEntry } from "./server-types.ts";
 
 export function getReleaseBundledPluginIds(): Set<string> {
   const packageRoot = findOwnPackageRoot(import.meta.dirname);
   const packageJsonPath = path.join(packageRoot, "package.json");
 
   try {
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
+    const pkg = JSON.parse(
+      fs.readFileSync(packageJsonPath, "utf-8").replace(/^\uFEFF/, ""),
+    ) as {
       dependencies?: Record<string, string>;
     };
     return new Set(
@@ -354,7 +353,9 @@ function extractPluginPackageMetadata(
 
 function readJsonFile<T>(filePath: string): T | null {
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+    return JSON.parse(
+      fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, ""),
+    ) as T;
   } catch {
     return null;
   }
@@ -877,7 +878,9 @@ export function discoverInstalledPlugins(
       for (const pkgPath of candidates) {
         try {
           if (fs.existsSync(pkgPath)) {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+            const pkg = JSON.parse(
+              fs.readFileSync(pkgPath, "utf-8").replace(/^\uFEFF/, ""),
+            ) as {
               name?: string;
               description?: string;
               homepage?: string;
@@ -1463,9 +1466,8 @@ export function readBundledPluginPackageMetadata(
     seen.add(pkgPath);
 
     try {
-      const pkg = JSON.parse(
-        fs.readFileSync(pkgPath, "utf-8"),
-      ) as PackageJsonLike;
+      const pkg = readJsonFile<PackageJsonLike>(pkgPath);
+      if (!pkg) continue;
       const extracted = extractPluginPackageMetadata(pkg, { dirName, npmName });
 
       if (!metadata.description && extracted.description) {

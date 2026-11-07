@@ -19,8 +19,6 @@ import {
 	resolveOutboundAttachmentBytes,
 	summarizeOutboundAttachmentUrl,
 	toWellFormedUnicode,
-	trimTokens,
-	truncateWellFormed,
 } from "@elizaos/core";
 
 export { normalizeDiscordMessageText } from "./discord-structured-text";
@@ -37,6 +35,7 @@ import {
 	type TextChannel,
 	ThreadChannel,
 } from "discord.js";
+import { chunkDiscordText } from "./messaging";
 import type {
 	DiscordActionRow,
 	DiscordComponentOptions,
@@ -180,21 +179,34 @@ export function cleanUrl(url: string): string {
 		}
 	}
 
-	let prev = "";
-	while (prev !== clean) {
-		prev = clean;
-		clean = clean.replace(/[)\]>.,;!*_]+$/, "");
-		clean = clean.replace(
-			/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
-			"",
-		);
+	// Track the last retained character once: unmatched closers and punctuation
+	// are trimmed only at the end, without rescanning long closing suffixes.
+	let depth = 0;
+	let end = 0;
+	for (let i = 0; i < clean.length; i++) {
+		const char = clean[i];
+		if (char === "(") depth++;
+		else if (char === ")") {
+			if (depth === 0) continue;
+			depth--;
+		} else if (
+			/[\]>.,;!*_（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]/.test(
+				char,
+			)
+		)
+			continue;
+		end = i + 1;
 	}
+	clean = clean.slice(0, end);
 
 	return clean;
 }
 
 export function extractUrls(text: string, runtime?: IAgentRuntime): string[] {
-	const urlRegex = /(https?:\/\/[^\s]+)/g;
+	// Exclude closing quotes, angle brackets and backticks: they are prose
+	// punctuation around a link, not part of it. Apostrophes stay allowed
+	// (e.g. Schindler's_List) and %22 stays intact.
+	const urlRegex = /(https?:\/\/[^\s"<>`]+)/g;
 	const rawUrls = text.match(urlRegex) || [];
 
 	return rawUrls
@@ -227,18 +239,28 @@ export function getAttachmentFileName(media: Media): string {
 	if (media.url && media.url.slice(0, 5).toLowerCase() !== "data:") {
 		try {
 			const urlPath = new URL(media.url).pathname;
-			const urlExtension = urlPath.substring(urlPath.lastIndexOf("."));
-			if (urlExtension && urlExtension.length > 1 && urlExtension.length <= 5) {
-				extension = urlExtension;
+			// lastIndexOf returns -1 when the path has no dot. substring treats
+			// a negative start as 0, so a short path such as "/img" becomes the
+			// extension and the file is named "photo/img".
+			const dot = urlPath.lastIndexOf(".");
+			if (dot > urlPath.lastIndexOf("/")) {
+				const urlExtension = urlPath.slice(dot);
+				if (urlExtension.length > 1 && urlExtension.length <= 5) {
+					extension = urlExtension;
+				}
 			}
 		} catch {
-			const lastDot = media.url.lastIndexOf(".");
-			const queryStart = media.url.indexOf("?", lastDot);
-			if (lastDot > 0 && (queryStart === -1 || queryStart > lastDot + 1)) {
-				const potentialExt = media.url.substring(
-					lastDot,
-					queryStart > -1 ? queryStart : undefined,
-				);
+			const relativePath = media.url.split(/[?#]/, 1)[0] ?? "";
+			const lastDot = relativePath.lastIndexOf(".");
+			if (
+				lastDot >
+				Math.max(
+					0,
+					relativePath.lastIndexOf("/"),
+					relativePath.lastIndexOf("\\"),
+				)
+			) {
+				const potentialExt = relativePath.slice(lastDot);
 				if (potentialExt.length > 1 && potentialExt.length <= 5) {
 					extension = potentialExt;
 				}
@@ -337,14 +359,7 @@ export async function generateSummary(
 	runtime: IAgentRuntime,
 	text: string,
 ): Promise<{ title: string; description: string }> {
-	text = await trimTokens(text, 100000, runtime);
-
-	if (!text) {
-		return {
-			title: "",
-			description: "",
-		};
-	}
+	if (!text) throw new Error("Summary text is required");
 
 	if (text.length < 1000) {
 		return {
@@ -843,43 +858,12 @@ export function splitMessage(
 		});
 	}
 
-	let remaining = content;
-	if (!remaining) {
-		return [];
-	}
-	if (remaining.length <= maxLength) {
-		return [remaining];
-	}
-
-	const messages: string[] = [];
-	while (remaining.length > 0) {
-		if (remaining.length <= maxLength) {
-			messages.push(remaining);
-			break;
-		}
-
-		const window = truncateWellFormed(remaining, maxLength);
-		if (window.length === 0) {
-			throw new ElizaError(
-				"Discord message chunk limit cannot hold the next Unicode character",
-				{
-					code: "DISCORD_CHUNK_LIMIT_TOO_SMALL",
-					context: { maxLength },
-					severity: "fatal",
-				},
-			);
-		}
-
-		const boundary = Math.max(
-			window.lastIndexOf("\n"),
-			window.lastIndexOf(" "),
-		);
-		const cut = boundary > 0 ? boundary + 1 : window.length;
-		messages.push(remaining.slice(0, cut));
-		remaining = remaining.slice(cut);
-	}
-
-	return messages;
+	// Character-limited only (no line cap), with fenced code blocks closed and
+	// reopened at a cut, as on the DM path.
+	return chunkDiscordText(content, {
+		maxChars: maxLength,
+		maxLines: Number.POSITIVE_INFINITY,
+	});
 }
 
 export interface CanSendMessageResult {

@@ -1,12 +1,18 @@
 {
-  "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2024",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "lib": ["ES2024"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "jsx": "react-jsx",
-    "baseUrl": "."
+    "types": ["node"]
   },
-  "exclude": ["**/node_modules/**", "**/dist/**", "**/build/**"]
+  "include": ["contracts/**/*.ts", "trust/**/*.ts"]
 }

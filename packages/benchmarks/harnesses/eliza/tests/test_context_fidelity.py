@@ -8,7 +8,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "suites" / "adhdbench"))
-from benchmarks.mind2web.types import (
+from benchmarks.suites.mind2web.types import (
     Mind2WebActionStep,
     Mind2WebConfig,
     Mind2WebElement,
@@ -16,9 +16,9 @@ from benchmarks.mind2web.types import (
     Mind2WebRankerMode,
     Mind2WebTask,
 )
-from benchmarks.mint.executor import PythonExecutor
-from benchmarks.mint.types import MINTSubtask, MINTTask
-from benchmarks.realm.types import RealmProblem, REALMTask
+from benchmarks.suites.mint.executor import PythonExecutor
+from benchmarks.suites.mint.types import MINTSubtask, MINTTask
+from benchmarks.suites.realm.types import RealmProblem, REALMTask
 from eliza_adapter import adhdbench, mind2web, mint, realm
 
 

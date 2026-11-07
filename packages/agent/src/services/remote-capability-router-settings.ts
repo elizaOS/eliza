@@ -7,8 +7,7 @@
  * dropped allowlist or trust requirement silently widens what remote plugins
  * may load.
  */
-import { ElizaError } from "@elizaos/core";
-import { trimEndCharacters } from "../utils/string-boundaries.ts";
+import { ElizaError, trimEndCharacters } from "@elizaos/core";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 
 export const CAPABILITY_ROUTER_URLS_SETTING = "ELIZA_CAPABILITY_ROUTER_URLS";

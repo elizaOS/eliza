@@ -25,6 +25,8 @@ import {
   validateTraceKeysResponse,
 } from "./cloudflare-inference-trace-evidence.ts";
 
+const STAGING_WORKER = "eliza-cloud-api-staging";
+const PRODUCTION_WORKER = "eliza-cloud-api-prod";
 const SHA = "a".repeat(40);
 const TRACE_A = "1".repeat(32);
 const TRACE_B = "2".repeat(32);
@@ -313,11 +315,11 @@ test("request builders use only official ad-hoc telemetry query fields", () => {
     keyNeedle: { value: "$metadata.", isRegex: false, matchCase: true },
     limit: 1_000,
   });
-  const roots = buildRootTraceQuery(timeframe, references);
+  const roots = buildRootTraceQuery(timeframe, references, STAGING_WORKER);
   assert.equal(roots.view, "traces");
   assert.equal(roots.dry, true);
   assert.equal(roots.parameters.filters[1].filters.length, 22);
-  const events = buildTraceEventsQuery(timeframe, TRACE_A);
+  const events = buildTraceEventsQuery(timeframe, TRACE_A, STAGING_WORKER);
   assert.equal(events.view, "events");
   assert.deepEqual(events.parameters.filters[1], {
     kind: "filter",
@@ -335,7 +337,30 @@ test("key discovery validates every filter and sanitizer field before querying",
   );
   assert.throws(
     () => validateTraceKeysResponse(keysEnvelope(REQUIRED_KEYS.slice(1))),
-    /key contract changed/,
+    /key contract changed for \$metadata\.duration: expected number, observed absent; catalog \$metadata\.parentSpanId:string,/,
+  );
+  // A key reported under two types is a changed contract, and the
+  // diagnostic names both instead of keeping whichever came last.
+  assert.throws(
+    () =>
+      validateTraceKeysResponse(
+        keysEnvelope([...REQUIRED_KEYS, ["$metadata.parentSpanId", "number"]]),
+      ),
+    /parentSpanId: expected string, observed number\|string; catalog /,
+  );
+  const filler = Array.from({ length: 1_000 }, (_, index) => [
+    `$metadata.extra${index}`,
+    "string",
+  ]);
+  assert.throws(
+    () =>
+      validateTraceKeysResponse(
+        keysEnvelope([
+          ...filler,
+          ...REQUIRED_KEYS.filter(([key]) => key !== "$metadata.parentSpanId"),
+        ]),
+      ),
+    /parentSpanId: expected string, observed absent; listing filled its 1000-key page/,
   );
   assert.throws(
     () =>
@@ -353,13 +378,19 @@ test("key discovery validates every filter and sanitizer field before querying",
 
 test("query parsers distinguish incomplete runs, zero samples, and multiple samples", () => {
   assert.deepEqual(
-    parseRootTraceResponse(queryEnvelope("traces", [], "STARTED")),
+    parseRootTraceResponse(
+      queryEnvelope("traces", [], "STARTED"),
+      STAGING_WORKER,
+    ),
     { completed: false, traceIds: [] },
   );
-  assert.deepEqual(parseRootTraceResponse(queryEnvelope("traces", [])), {
-    completed: true,
-    traceIds: [],
-  });
+  assert.deepEqual(
+    parseRootTraceResponse(queryEnvelope("traces", []), STAGING_WORKER),
+    {
+      completed: true,
+      traceIds: [],
+    },
+  );
   assert.deepEqual(
     parseRootTraceResponse(
       queryEnvelope(
@@ -375,6 +406,7 @@ test("query parsers distinguish incomplete runs, zero samples, and multiple samp
           traceId,
         })),
       ),
+      STAGING_WORKER,
     ),
     { completed: true, traceIds: [TRACE_A, TRACE_B] },
   );
@@ -401,6 +433,7 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
   const sample = sanitizeTraceEvents(
     completeTraceEvents({ privateValue }),
     references,
+    STAGING_WORKER,
   );
   assert.deepEqual(sample, {
     sample: 1,
@@ -452,7 +485,7 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
     (value) => value.$metadata.id === "rate-subrequest",
   ).$metadata.url = "https://inference-admission.internal/unreviewed-operation";
   assert.throws(
-    () => sanitizeTraceEvents(unknown, references),
+    () => sanitizeTraceEvents(unknown, references, STAGING_WORKER),
     /unknown phase/,
   );
   assert.equal(
@@ -461,13 +494,17 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
         (value) => value.$metadata.id !== "billing-root",
       ),
       references,
+      STAGING_WORKER,
     ),
     null,
   );
   const missingUrl = completeTraceEvents();
   delete missingUrl.find((value) => value.$metadata.id === "rate-subrequest")
     .$metadata.url;
-  assert.equal(sanitizeTraceEvents(missingUrl, references), null);
+  assert.equal(
+    sanitizeTraceEvents(missingUrl, references, STAGING_WORKER),
+    null,
+  );
 });
 
 test("collector reports zero sampled traces explicitly and removes no privacy fields", async () => {
@@ -475,6 +512,7 @@ test("collector reports zero sampled traces explicitly and removes no privacy fi
   const calls = [];
   try {
     const evidence = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -524,100 +562,119 @@ test("collector reports zero sampled traces explicitly and removes no privacy fi
   }
 });
 
-test("collector sanitizes one complete sampled trace and polls STARTED runs", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
-  const rootCallsBySlice = new Map();
-  let eventCalls = 0;
-  let sleeps = 0;
-  try {
-    const evidence = await collectInferenceTraceEvidence({
-      pairedRecords: pairedRecords(),
-      deploySha: SHA,
-      accountId: "private-account-id",
-      apiToken: "private-api-token",
-      privateDirectory: directory,
-      sleepImpl: async () => {
-        sleeps++;
-      },
-      fetchImpl: async (url, init) => {
-        if (url.endsWith("/keys")) return new Response(keysEnvelope());
-        const body = JSON.parse(init.body);
-        if (body.view === "events") {
-          eventCalls++;
-          const events = completeTraceEvents();
-          const sweepRound = Math.floor((eventCalls - 1) / 8) + 1;
-          const isFollowingSlice =
-            body.timeframe.from > 1_780_000_000_000 &&
-            body.timeframe.from - 1_780_000_000_000 <= 10_000;
-          const sliceEvents = containsFirstGatewayRequest(body.timeframe)
-            ? events.slice(0, 4)
-            : isFollowingSlice
-              ? [events[2], ...events.slice(4)]
-              : [];
+for (const environment of ["staging", "production"]) {
+  test(`collector sanitizes ${environment} sampled traces and polls STARTED runs`, async () => {
+    const worker =
+      environment === "production" ? PRODUCTION_WORKER : STAGING_WORKER;
+    const targetFixture = (value) =>
+      JSON.parse(
+        JSON.stringify(value).replaceAll("eliza-cloud-api-staging", worker),
+      );
+    const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
+    const rootCallsBySlice = new Map();
+    let eventCalls = 0;
+    let sleeps = 0;
+    try {
+      const evidence = await collectInferenceTraceEvidence({
+        environment,
+        worker,
+        pairedRecords: pairedRecords(),
+        deploySha: SHA,
+        accountId: "private-account-id",
+        apiToken: "private-api-token",
+        privateDirectory: directory,
+        sleepImpl: async () => {
+          sleeps++;
+        },
+        fetchImpl: async (url, init) => {
+          if (url.endsWith("/keys")) return new Response(keysEnvelope());
+          const body = JSON.parse(init.body);
+          assert.ok(JSON.stringify(body.parameters.filters).includes(worker));
+          if (environment === "production")
+            assert.ok(
+              !JSON.stringify(body).includes("eliza-cloud-api-staging"),
+            );
+          if (body.view === "events") {
+            eventCalls++;
+            const events = targetFixture(completeTraceEvents());
+            const sweepRound = Math.floor((eventCalls - 1) / 8) + 1;
+            const isFollowingSlice =
+              body.timeframe.from > 1_780_000_000_000 &&
+              body.timeframe.from - 1_780_000_000_000 <= 10_000;
+            const sliceEvents = containsFirstGatewayRequest(body.timeframe)
+              ? events.slice(0, 4)
+              : isFollowingSlice
+                ? [events[2], ...events.slice(4)]
+                : [];
+            return new Response(
+              queryEnvelope(
+                "events",
+                sweepRound === 1
+                  ? sliceEvents.filter(
+                      (value) => value.$metadata.id !== "billing-root",
+                    )
+                  : sliceEvents,
+              ),
+            );
+          }
+          const sliceKey = `${body.timeframe.from}:${body.timeframe.to}`;
+          const sliceCalls = (rootCallsBySlice.get(sliceKey) ?? 0) + 1;
+          rootCallsBySlice.set(sliceKey, sliceCalls);
+          if (containsFirstGatewayRequest(body.timeframe) && sliceCalls === 1) {
+            return new Response(queryEnvelope("traces", [], "STARTED"));
+          }
+          const isPriorBoundarySlice =
+            body.timeframe.to < 1_780_000_000_000 &&
+            1_780_000_000_000 - body.timeframe.to <= 10_000;
+          const traceIsVisible =
+            (containsFirstGatewayRequest(body.timeframe) && sliceCalls >= 3) ||
+            (isPriorBoundarySlice && sliceCalls >= 2);
           return new Response(
             queryEnvelope(
-              "events",
-              sweepRound === 1
-                ? sliceEvents.filter(
-                    (value) => value.$metadata.id !== "billing-root",
-                  )
-                : sliceEvents,
+              "traces",
+              traceIsVisible ? [targetFixture(traceSummary())] : [],
             ),
           );
-        }
-        const sliceKey = `${body.timeframe.from}:${body.timeframe.to}`;
-        const sliceCalls = (rootCallsBySlice.get(sliceKey) ?? 0) + 1;
-        rootCallsBySlice.set(sliceKey, sliceCalls);
-        if (containsFirstGatewayRequest(body.timeframe) && sliceCalls === 1) {
-          return new Response(queryEnvelope("traces", [], "STARTED"));
-        }
-        const isPriorBoundarySlice =
-          body.timeframe.to < 1_780_000_000_000 &&
-          1_780_000_000_000 - body.timeframe.to <= 10_000;
-        const traceIsVisible =
-          (containsFirstGatewayRequest(body.timeframe) && sliceCalls >= 3) ||
-          (isPriorBoundarySlice && sliceCalls >= 2);
-        return new Response(
-          queryEnvelope("traces", traceIsVisible ? [traceSummary()] : []),
-        );
-      },
-    });
-    assert.equal(evidence.status, "observed");
-    assert.equal(evidence.reason, null);
-    assert.equal(evidence.samples.length, 1);
-    assert.equal(evidence.coverage.sampledTraces, 1);
-    assert.equal(evidence.coverage.completeTraces, 1);
-    assert.equal(evidence.coverage.incompleteTraces, 0);
-    assert.equal(eventCalls, 16);
-    assert.equal(evidence.coverage.eventSweeps.length, 1);
-    assert.equal(evidence.coverage.eventSweeps[0].settleRounds, 2);
-    assert.equal(evidence.coverage.eventSweeps[0].slices.length, 8);
-    assert.ok(
-      evidence.coverage.eventSweeps[0].slices.every(
-        (slice) =>
-          typeof slice.fromUtc === "string" &&
-          typeof slice.toUtc === "string" &&
-          Number.isSafeInteger(slice.eventCount),
-      ),
-    );
-    assert.deepEqual(
-      evidence.coverage.eventSweeps[0].slices
-        .map((slice) => slice.eventCount)
-        .filter((count) => count > 0),
-      [4, 5],
-    );
-    assert.equal(JSON.stringify(evidence).includes(TRACE_A), false);
-    assert.equal(
-      evidence.coverage.discoverySlices.filter(
-        (slice) => slice.sampledTraces === 1,
-      ).length,
-      2,
-    );
-    assert.equal(sleeps, 9);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+        },
+      });
+      assert.equal(evidence.environment, environment);
+      assert.equal(evidence.status, "observed");
+      assert.equal(evidence.reason, null);
+      assert.equal(evidence.samples.length, 1);
+      assert.equal(evidence.coverage.sampledTraces, 1);
+      assert.equal(evidence.coverage.completeTraces, 1);
+      assert.equal(evidence.coverage.incompleteTraces, 0);
+      assert.equal(eventCalls, 16);
+      assert.equal(evidence.coverage.eventSweeps.length, 1);
+      assert.equal(evidence.coverage.eventSweeps[0].settleRounds, 2);
+      assert.equal(evidence.coverage.eventSweeps[0].slices.length, 8);
+      assert.ok(
+        evidence.coverage.eventSweeps[0].slices.every(
+          (slice) =>
+            typeof slice.fromUtc === "string" &&
+            typeof slice.toUtc === "string" &&
+            Number.isSafeInteger(slice.eventCount),
+        ),
+      );
+      assert.deepEqual(
+        evidence.coverage.eventSweeps[0].slices
+          .map((slice) => slice.eventCount)
+          .filter((count) => count > 0),
+        [4, 5],
+      );
+      assert.equal(JSON.stringify(evidence).includes(TRACE_A), false);
+      assert.equal(
+        evidence.coverage.discoverySlices.filter(
+          (slice) => slice.sampledTraces === 1,
+        ).length,
+        2,
+      );
+      assert.equal(sleeps, 9);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test("collector reports a sampled trace with an unclassifiable URL as inconclusive", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
@@ -627,6 +684,7 @@ test("collector reports a sampled trace with an unclassifiable URL as inconclusi
   let eventCalls = 0;
   try {
     const evidence = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -668,6 +726,7 @@ test("API failures never copy private response content into errors", async () =>
   const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
   try {
     const error = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -792,6 +851,7 @@ test("collector preserves sanitized keys and query denials without accepting pri
       try {
         await assert.rejects(
           collectInferenceTraceEvidence({
+            worker: STAGING_WORKER,
             pairedRecords: pairedRecords(),
             deploySha: SHA,
             accountId: "private-account-id",
@@ -857,11 +917,11 @@ test("trace placement uses the Worker span rather than the ingress Ray colo", ()
   const { references } = pairedGatewayTraceWindow(pairedRecords());
   const events = completeTraceEvents();
   events[0].$metadata.region = "SJC";
-  const sample = sanitizeTraceEvents(events, references);
+  const sample = sanitizeTraceEvents(events, references, STAGING_WORKER);
   assert.equal(sample.ingressColo, "ORD");
   assert.equal(sample.workerColo, "SJC");
   delete events[0].$metadata.region;
-  assert.equal(sanitizeTraceEvents(events, references), null);
+  assert.equal(sanitizeTraceEvents(events, references, STAGING_WORKER), null);
 });
 
 test("collector follows event cursors and rejects incomplete, repeated, or conflicting pages", async () => {
@@ -885,6 +945,7 @@ test("collector follows event cursors and rejects incomplete, repeated, or confl
     let targetEventPage = 0;
     try {
       const capture = collectInferenceTraceEvidence({
+        worker: STAGING_WORKER,
         pairedRecords: pairedRecords(),
         deploySha: SHA,
         accountId: "private-account",
@@ -947,4 +1008,24 @@ test("collector follows event cursors and rejects incomplete, repeated, or confl
       await rm(directory, { recursive: true, force: true });
     }
   }
+});
+
+test("trace sanitization rejects evidence from the other environment", () => {
+  const { references } = pairedGatewayTraceWindow(pairedRecords());
+  assert.throws(
+    () =>
+      sanitizeTraceEvents(completeTraceEvents(), references, PRODUCTION_WORKER),
+    /metadata schema/,
+  );
+  const production = JSON.parse(
+    JSON.stringify(completeTraceEvents()).replaceAll(
+      "eliza-cloud-api-staging",
+      PRODUCTION_WORKER,
+    ),
+  );
+  assert.throws(
+    () => sanitizeTraceEvents(production, references, STAGING_WORKER),
+    /metadata schema/,
+  );
+  assert.ok(sanitizeTraceEvents(production, references, PRODUCTION_WORKER));
 });

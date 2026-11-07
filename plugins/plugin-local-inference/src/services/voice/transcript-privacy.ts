@@ -13,7 +13,7 @@ import {
 	type Transcript,
 	type TranscriptCaptureSharingState,
 	transcriptCapturePrivacyState,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import type { TranscriptServiceRuntime } from "./transcript-service.js";
 import { TranscriptStore } from "./transcript-store.js";
 

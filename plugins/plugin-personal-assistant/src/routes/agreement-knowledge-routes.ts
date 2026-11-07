@@ -5,9 +5,9 @@
  * service rather than request-provided role headers.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/core/api/http-helpers";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { readRequestBodyBuffer } from "@elizaos/host";
 import {
   AgreementKnowledgeError,
   getAgreementKnowledgeService,
@@ -25,7 +25,7 @@ import {
   commitAgreementUpload,
   readAgreementUpload,
 } from "../lifeops/household/agreement-upload-session.js";
-import { type LifeOpsRouteContext } from "./lifeops-routes.js";
+import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 type JsonObject = Record<string, unknown>;
 function record(value: unknown): JsonObject {

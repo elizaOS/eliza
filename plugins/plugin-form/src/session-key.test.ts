@@ -266,4 +266,18 @@ describe("form session component keying (issue #22272)", () => {
     );
     expect(sessionComponents).toHaveLength(1);
   });
+
+  it("keeps a component created at epoch when the session is saved again", async () => {
+    const runtime = makeRuntime();
+    await saveSession(runtime, makeSession("epoch"));
+    const type = sessionType(roomId, "epoch");
+    const created = await runtime.getComponent(entityId, type);
+    if (!created) throw new Error("session component missing");
+    await runtime.updateComponent({ ...created, createdAt: 0 });
+
+    await saveSession(runtime, makeSession("epoch", { status: "stashed" }));
+
+    const updated = await runtime.getComponent(entityId, type);
+    expect(updated?.createdAt).toBe(0);
+  });
 });

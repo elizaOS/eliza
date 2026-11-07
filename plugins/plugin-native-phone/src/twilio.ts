@@ -30,6 +30,11 @@ export interface TwilioDeliveryResult {
   ok: boolean;
   status: number | null;
   sid?: string;
+  /**
+   * Every accepted message sid, in send order. A body over the Twilio limit
+   * goes out as several messages; `sid` stays the first one.
+   */
+  sids?: string[];
   error?: string;
   retryCount?: number;
   billing?: TwilioSmsBillingBreakdown;
@@ -44,6 +49,38 @@ const TWILIO_SMS_MARKUP_RATE = 0.2;
 const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075;
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1_000;
+/** Twilio rejects a longer Body with error 21617. */
+const TWILIO_BODY_MAX_LENGTH = 1600;
+
+/**
+ * Splits a body into parts of at most `TWILIO_BODY_MAX_LENGTH` characters.
+ * Each part is its own SMS: a part ends after the last whitespace in its
+ * window when there is one, and never between the two halves of a surrogate
+ * pair. Every character is kept, except that a part holding only whitespace
+ * (for example a long body that ends with a space) is not sent: it would reach
+ * the recipient as a blank, billed message.
+ */
+function splitSmsBody(body: string): string[] {
+  const parts: string[] = [];
+  let rest = body;
+  while (rest.length > TWILIO_BODY_MAX_LENGTH) {
+    const window = rest.slice(0, TWILIO_BODY_MAX_LENGTH);
+    let end = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n")) + 1;
+    // A break at index 0 would send a part that is only whitespace.
+    if (end <= 1) {
+      end = TWILIO_BODY_MAX_LENGTH;
+      const last = rest.charCodeAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    }
+    parts.push(rest.slice(0, end));
+    rest = rest.slice(end);
+  }
+  parts.push(rest);
+  if (parts.length === 1) return parts;
+  // The caller has checked that the body has visible text, so at least one
+  // part remains.
+  return parts.filter((part) => part.trim().length > 0);
+}
 
 function createTwilioTelemetrySpan(): TwilioTelemetrySpan {
   return {
@@ -57,10 +94,14 @@ function roundCurrency(value: number): number {
 }
 
 function calculateTwilioSmsBilling(
-  body: string,
+  parts: readonly string[],
   costPerSegmentUsd: number,
 ): TwilioSmsBillingBreakdown {
-  const segments = Math.max(1, Math.ceil(body.length / 160));
+  // Twilio bills each sent message on its own segments.
+  const segments = parts.reduce(
+    (total, part) => total + Math.max(1, Math.ceil(part.length / 160)),
+    0,
+  );
   const rawCost = roundCurrency(segments * costPerSegmentUsd);
   const markup = roundCurrency(rawCost * TWILIO_SMS_MARKUP_RATE);
   return {
@@ -308,23 +349,53 @@ export async function sendTwilioSms(args: {
   });
   if (validationError) return validationFailure(validationError);
 
-  const result = await sendTwilioRequest({
-    credentials,
-    path: "/Messages.json",
-    payload: new URLSearchParams({
-      To: to,
-      From: credentials.fromPhoneNumber,
-      Body: body,
-    }),
-  });
-
-  if (!result.ok) {
-    return result;
+  // One Body holds at most 1600 characters, so a longer body goes out as
+  // several messages in order.
+  const parts = splitSmsBody(body);
+  const sids: string[] = [];
+  let lastResult: TwilioDeliveryResult | null = null;
+  for (const part of parts) {
+    const result = await sendTwilioRequest({
+      credentials,
+      path: "/Messages.json",
+      payload: new URLSearchParams({
+        To: to,
+        From: credentials.fromPhoneNumber,
+        Body: part,
+      }),
+    });
+    if (!result.ok) {
+      if (sids.length === 0) return result;
+      // An earlier part already reached the recipient. Reporting a known
+      // rejection would let a caller send those parts again.
+      logger.error(
+        {
+          boundary: "plugin-native-phone",
+          integration: "twilio",
+          operation: "twilio_sms",
+          part: sids.length + 1,
+          parts: parts.length,
+          providerStatus: result.status,
+        },
+        "[phone] Twilio rejected a later part after earlier parts were sent",
+      );
+      return {
+        ...result,
+        status: null,
+        sid: sids[0],
+        sids,
+        error: `Twilio failed part ${sids.length + 1} of ${parts.length} after earlier parts were accepted: ${result.error ?? `status ${result.status}`}`,
+      };
+    }
+    if (result.sid) sids.push(result.sid);
+    lastResult = result;
   }
 
   return {
-    ...result,
-    billing: calculateTwilioSmsBilling(body, resolveSmsCostPerSegment()),
+    ...(lastResult as TwilioDeliveryResult),
+    sid: sids[0],
+    sids,
+    billing: calculateTwilioSmsBilling(parts, resolveSmsCostPerSegment()),
   };
 }
 

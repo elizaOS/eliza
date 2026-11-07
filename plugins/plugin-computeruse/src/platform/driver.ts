@@ -25,6 +25,7 @@ import {
   desktopScroll,
   desktopType,
   legacyGetCursorPosition,
+  legacySupportsModifier,
   win32TrySetValueByPattern,
 } from "./desktop.js";
 import {
@@ -47,6 +48,7 @@ import {
   nutMouseUp,
   nutRightClick,
   nutScroll,
+  nutSupportsModifier,
   nutType,
 } from "./nut-driver.js";
 import { captureScreenshot as legacyCaptureScreenshot } from "./screenshot.js";
@@ -96,6 +98,17 @@ export async function driverClickWithModifiers(
   if (selectedDriver() === "nutjs")
     return nutClickWithModifiers(x, y, modifiers);
   desktopClickWithModifiers(x, y, modifiers);
+}
+
+/**
+ * Whether the selected driver can hold `modifier` during
+ * `driverClickWithModifiers`. The service checks this before the approval gate
+ * so an unsupported name is not sent for approval and then rejected.
+ */
+export function driverSupportsModifier(modifier: string): boolean {
+  return selectedDriver() === "nutjs"
+    ? nutSupportsModifier(modifier)
+    : legacySupportsModifier(modifier);
 }
 
 export async function driverDoubleClick(x: number, y: number): Promise<void> {

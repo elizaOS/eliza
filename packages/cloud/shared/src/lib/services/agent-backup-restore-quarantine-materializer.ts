@@ -16,8 +16,8 @@ import {
   type AgentBackupRestoreV3SourceAuthority,
   AgentBackupRestoreV3StageRecordReceiptSchema,
   canonicalizeAgentBackupRestoreV3MaterializerReceipt,
-  ElizaError,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput,
   type ReserveAgentBackupRestoreTargetAndStartReplacementIntentResult,

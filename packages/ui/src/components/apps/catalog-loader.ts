@@ -6,7 +6,9 @@
  * an empty slice rather than failing the whole load. `AppsView` uses the sibling
  * `load-apps-catalog.ts` instead.
  */
-import { client, type RegistryAppInfo } from "../../api";
+
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { client } from "../../api/client";
 import {
   getAllOverlayApps,
   getAvailableOverlayApps,

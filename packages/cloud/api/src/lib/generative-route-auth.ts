@@ -4,32 +4,30 @@
  * cache read and never join database authorization to provider dispatch.
  */
 
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import type {
   BillingContext,
   FlatBillingCost,
-} from "@/lib/services/ai-billing";
-import type { PricingCacheReadOptions } from "@/lib/services/ai-pricing/cache";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { GenerativeOperationContext } from "@/lib/services/generative-operation";
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import type { PricingCacheReadOptions } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { GenerativeOperationContext } from "@elizaos/cloud-shared/lib/services/generative-operation";
 import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
-} from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
-} from "@/lib/services/inference-credential-revocation";
-import type { EndpointType } from "@/lib/services/org-rate-limits";
-import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { isInferenceTraceId } from "@elizaos/core/protocol";
 
 export interface GenerativeRouteCaller {
   user: {
@@ -39,7 +37,7 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Strong proof that the next paid admission must consume atomically. */
+  /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
   appScopeId: string | null;
 }
@@ -244,8 +242,8 @@ export async function requireGenerativeKnownIdentity(
   identity: { userId: string; organizationId: string },
 ): Promise<GenerativeRouteCaller> {
   const [{ usersRepository }, { adminService }] = await Promise.all([
-    import("@/db/repositories/users"),
-    import("@/lib/services/admin"),
+    import("@elizaos/cloud-shared/db/repositories/users"),
+    import("@elizaos/cloud-shared/lib/services/admin"),
   ]);
   const user = await usersRepository.findWithOrganization(identity.userId);
   const reason = !user
@@ -281,16 +279,15 @@ export async function requireGenerativeKnownIdentity(
 
   const executionCtx = getGenerativeExecutionContext(c);
   const admissionSnapshot = executionCtx
-    ? await import("@/lib/services/inference-admission-snapshot").then(
-        (module) =>
-          module.getInferenceAdmissionSnapshotCacheOnly(
-            identity.organizationId,
-            executionCtx,
-          ),
+    ? await import(
+        "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+      ).then((module) =>
+        module.getInferenceAdmissionSnapshotCacheFirst(identity.organizationId),
       )
-    : await import("@/lib/services/inference-admission-snapshot").then(
-        (module) =>
-          module.loadInferenceAdmissionSnapshot(identity.organizationId),
+    : await import(
+        "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+      ).then((module) =>
+        module.loadInferenceAdmissionSnapshot(identity.organizationId),
       );
 
   return {
@@ -321,16 +318,15 @@ export function asGenerativeCacheApiError(
     );
   }
   if (
-    error instanceof AiPricingCacheWarmingError ||
     error instanceof AiPricingCacheUnavailableError ||
     (error instanceof Error &&
       error.name.startsWith("Inference") &&
-      (error.name.includes("Warming") || error.name.includes("Unavailable")))
+      error.name.includes("Unavailable"))
   ) {
     return new ApiError(
       503,
       "service_unavailable",
-      "Generative admission cache is warming; retry shortly",
+      "Generative admission is unavailable; retry shortly",
       { retryable: true, retryAfterSeconds: 1 },
     );
   }
@@ -363,7 +359,7 @@ export async function admitFlatGenerativeOperation(params: {
   };
   if (!executionCtx) {
     const { reserveFlatUsageCredits } = await import(
-      "@/lib/services/ai-billing"
+      "@elizaos/cloud-shared/lib/services/ai-billing"
     );
     const reservation = await reserveFlatUsageCredits(
       context,
@@ -388,7 +384,7 @@ export async function admitFlatGenerativeOperation(params: {
   }
   try {
     const { admitOrganizationInference } = await import(
-      "@/lib/services/organization-inference-admission"
+      "@elizaos/cloud-shared/lib/services/organization-inference-admission"
     );
     return await admitOrganizationInference({
       context,
@@ -406,12 +402,12 @@ export async function admitFlatGenerativeOperation(params: {
     if (
       error instanceof Error &&
       error.name.startsWith("Inference") &&
-      (error.name.includes("Warming") || error.name.includes("Unavailable"))
+      error.name.includes("Unavailable")
     ) {
       throw new ApiError(
         503,
         "service_unavailable",
-        "Billing cache is warming; retry shortly",
+        "Billing is unavailable; retry shortly",
         { retryable: true, retryAfterSeconds: 1 },
       );
     }
@@ -419,12 +415,79 @@ export async function admitFlatGenerativeOperation(params: {
   }
 }
 
+const SPEECH_PHASES = [
+  "upload_read",
+  "multipart_decode",
+  "audio_buffer",
+  "audio_sniff",
+  "audio_metadata",
+  "json_decode",
+  "auth_module_load",
+  "auth_resolution",
+  "limiter_module_load",
+  "org_limiter",
+] as const;
+
+/** Optional diagnostics cannot change request results or disclose caller data. */
+export async function timeSpeechPhase<T>(
+  c: AppContext,
+  phase: (typeof SPEECH_PHASES)[number],
+  run: () => Promise<T>,
+): Promise<T> {
+  let route: "stt" | "tts" | "speech-consent" | "speech-session" | undefined;
+  let traceId = "unavailable";
+  let enabled = false;
+  try {
+    const path = new URL(c.req.url).pathname;
+    route =
+      path === "/api/v1/voice/stt"
+        ? "stt"
+        : path === "/api/v1/voice/tts"
+          ? "tts"
+          : path === "/api/v1/voice/speech/consent"
+            ? "speech-consent"
+            : path === "/api/v1/voice/speech/session"
+              ? "speech-session"
+              : undefined;
+    enabled = Boolean(route) && SPEECH_PHASES.includes(phase);
+    const candidate = c.get("traceId") ?? c.get("requestId");
+    if (isInferenceTraceId(candidate)) traceId = candidate;
+  } catch {
+    // Optional diagnostic context failure must not alter the actual operation.
+  }
+  if (!enabled) return run();
+  const start = performance.now();
+  let outcome: "returned" | "threw" = "returned";
+  try {
+    return await run();
+  } catch (error) {
+    outcome = "threw";
+    throw error;
+  } finally {
+    try {
+      const durationMs = Math.round((performance.now() - start) * 10) / 10;
+      if (Number.isFinite(durationMs) && durationMs >= 0) {
+        logger.audit("[CloudSpeech] phase timing", {
+          schema: "cloud_speech_phase_v1",
+          traceId,
+          route,
+          phase,
+          durationMs,
+          outcome,
+        });
+      }
+    } catch {
+      // Best-effort telemetry: preserve the operation's result or original error.
+    }
+  }
+}
+
 /**
- * Cache misses consume the already-coalesced authoritative continuation under
- * one bounded deadline. The continuation does not re-read the combined cache;
- * it returns the origin decision directly. The route invokes the real limiter
- * once after authorization. Wallet proof remains on the compatibility path
- * because replay-protected signatures cannot be cached.
+ * Worker callers are decided by one combined-cache read and never query
+ * Postgres when warm; a cache miss is decided by the primary once and its
+ * projection is written under `waitUntil`. The route invokes the real limiter once after
+ * authorization. Wallet proof remains on the compatibility path because
+ * replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -434,20 +497,17 @@ export async function requireGenerativeRouteCaller(
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
     /**
-     * Override the default bounded wait for the one-shot origin continuation.
-     * Zero preserves an immediate retryable warming response.
-     */
-    awaitWarmingMs?: number;
-    /**
      * This route has a mandatory paid admission before provider dispatch and
      * will thread the returned credential into that admission consumer.
      */
     deferStrongCredentialCheck?: boolean;
+    /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
+    includeVerifiedCredential?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
   const executionCtx = getGenerativeExecutionContext(c);
-  if (!executionCtx) {
+  if (!executionCtx && options.includeVerifiedCredential !== true) {
     if (options.compatibility === "raw") {
       const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
       return {
@@ -458,7 +518,7 @@ export async function requireGenerativeRouteCaller(
       };
     }
     const { requireUserOrApiKeyWithOrg } = await import(
-      "@/lib/auth/workers-hono-auth"
+      "@elizaos/cloud-shared/auth"
     );
     const user = await requireUserOrApiKeyWithOrg(c);
     return {
@@ -468,20 +528,25 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { resolveInferenceAuthContext } = await import(
-    "@/lib/services/inference-auth-context"
+  const { resolveInferenceAuthContext } = await timeSpeechPhase(
+    c,
+    "auth_module_load",
+    () => import("@elizaos/cloud-shared/lib/services/inference-auth-context"),
   );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(request, {
       traceId: c.get("traceId") ?? c.get("requestId"),
-      cacheOnly: Boolean(executionCtx),
       executionCtx,
-      inlineContinuationDeadlineMs: options.awaitWarmingMs,
+      includeVerifiedCredential: options.includeVerifiedCredential === true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),
     });
-  const resolution = await resolveCallerAuth();
+  const resolution = await timeSpeechPhase(
+    c,
+    "auth_resolution",
+    resolveCallerAuth,
+  );
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -494,28 +559,56 @@ export async function requireGenerativeRouteCaller(
       if (resolution.ctx.apiKeyId) {
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
-      if (options.rateLimitEndpoint) {
-        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await Promise.all([
-            import("@/lib/middleware/rate-limit"),
-            import("@/lib/services/inference-admission-snapshot"),
-          ]);
-        const limited = await enforceOrgRateLimit(
-          resolution.ctx.orgId,
-          options.rateLimitEndpoint,
+      const rateLimitEndpoint = options.rateLimitEndpoint;
+      if (rateLimitEndpoint) {
+        const [
           {
-            // The combined decision carries the rate policy only when the hot
-            // cache is enabled. Development and integration Workers still have
-            // an execution context, but their authoritative origin decision has
-            // no snapshot and must retain the compatibility limiter path.
-            cacheOnly: Boolean(resolution.ctx.admission),
+            enforceOrgRateLimit,
+            inferenceRatePolicyProof,
+            OrgRateLimitCacheNotReadyError,
+          },
+          { inferenceRateLimitConfig },
+        ] = await timeSpeechPhase(c, "limiter_module_load", () =>
+          Promise.all([
+            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+            import(
+              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+            ),
+          ]),
+        );
+        const limited = await timeSpeechPhase(c, "org_limiter", () =>
+          enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
+            // Same limiter as chat completions: a shared policy lock and one
+            // Durable Object decision. Without a snapshot the locked primary
+            // policy supplies the limit. The compatibility path took the
+            // exclusive policy lock across Redis REST round trips that fail
+            // open, and every origin-authorized key had no snapshot.
+            cacheOnly: true,
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
-              options.rateLimitEndpoint,
+              rateLimitEndpoint,
             ),
+            admissionSnapshot: resolution.ctx.admission,
             apiKeyId: resolution.ctx.apiKeyId,
-          },
+            apiKeyRateLimit:
+              "apiKeyRateLimit" in resolution.ctx
+                ? resolution.ctx.apiKeyRateLimit
+                : undefined,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
+                : undefined,
+          }).catch((error: unknown) => {
+            if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+            throw new ApiError(
+              503,
+              "service_unavailable",
+              "Rate limiter is unavailable",
+              { retryable: true, retryAfterSeconds: 1 },
+            );
+          }),
         );
         if (limited) {
           throw new ApiError(
@@ -528,7 +621,15 @@ export async function requireGenerativeRouteCaller(
               : "Rate limiter is unavailable",
             limited.status === 503
               ? { retryable: true, retryAfterSeconds: 1 }
-              : undefined,
+              : {
+                  retryAfterSeconds: Math.max(
+                    1,
+                    Number.parseInt(
+                      limited.headers.get("Retry-After") ?? "",
+                      10,
+                    ) || 60,
+                  ),
+                },
           );
         }
       }
@@ -555,14 +656,6 @@ export async function requireGenerativeRouteCaller(
     };
   }
 
-  if (resolution.kind === "warming") {
-    throw new ApiError(
-      503,
-      "service_unavailable",
-      "Authorization cache is warming; retry shortly",
-      { retryable: true, retryAfterSeconds: 1 },
-    );
-  }
   if (resolution.kind === "suspended") {
     const denial = resolveInferenceAuthStandingDenial(resolution, {
       route: "generative",
@@ -598,7 +691,7 @@ export async function requireGenerativeRouteCaller(
     };
   }
   const { requireUserOrApiKeyWithOrg } = await import(
-    "@/lib/auth/workers-hono-auth"
+    "@elizaos/cloud-shared/auth"
   );
   const user = await requireUserOrApiKeyWithOrg(c);
   return {

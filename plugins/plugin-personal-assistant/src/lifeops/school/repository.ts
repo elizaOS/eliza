@@ -7,11 +7,13 @@
  * ownership without introducing another graph or a parallel scheduler.
  */
 
-import { type Entity } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
-import {
-  type EntityStore,
-  type RelationshipStore,
+import type {
+  KnowledgeGraphEntity as Entity,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
+import type {
+  EntityStore,
+  RelationshipStore,
 } from "@elizaos/plugin-relationships";
 import {
   ACTION_EFFECT_CLASSES,

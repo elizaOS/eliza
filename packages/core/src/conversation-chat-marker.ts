@@ -3,7 +3,7 @@
  * message's producer, agent, room and requester before using its outcomes. */
 
 import type { UUID } from "./types/primitives.js";
-import { stringToUuid } from "./utils.js";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 
 export function normalizeChatIdempotencyKey(
 	value: unknown,
@@ -20,7 +20,7 @@ export function conversationClientUserMemoryId(
 	scope: string,
 	clientMessageId: string,
 ): UUID {
-	return stringToUuid(`conversation-user:${scope}:${clientMessageId}`) as UUID;
+	return stringToUuid(`conversation-user:${scope}:${clientMessageId}`);
 }
 
 export interface DurableConversationChatMarker {

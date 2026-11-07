@@ -3,7 +3,7 @@
  * onto the `CharacterExperienceRecord` view-model the Experience workspace
  * renders. Pure, no React — `CharacterExperienceView` calls it on fetched data.
  */
-import type { ExperienceRecord } from "../../api";
+import type { ExperienceRecord } from "../../api/client-types-experience";
 import type { CharacterExperienceRecord } from "./character-hub-types";
 
 export function mapExperienceRecordToHubRecord(

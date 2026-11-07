@@ -920,25 +920,34 @@ function runWithAccessibilityPermission<T>(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+const LEGACY_MODIFIERS: readonly string[] = [
+  "cmd",
+  "command",
+  "meta",
+  "super",
+  "ctrl",
+  "control",
+  "alt",
+  "option",
+  "shift",
+];
+
+/**
+ * Whether `desktopClickWithModifiers` accepts this modifier name. A blank
+ * entry is accepted because `normalizeModifiers` drops it.
+ */
+export function legacySupportsModifier(modifier: string): boolean {
+  const normalized = modifier.trim().toLowerCase();
+  return normalized === "" || LEGACY_MODIFIERS.includes(normalized);
+}
+
 function normalizeModifiers(modifiers: string[]): string[] {
   const normalized = modifiers
     .map((modifier) => modifier.trim().toLowerCase())
     .filter(Boolean);
 
   for (const modifier of normalized) {
-    if (
-      ![
-        "cmd",
-        "command",
-        "meta",
-        "super",
-        "ctrl",
-        "control",
-        "alt",
-        "option",
-        "shift",
-      ].includes(modifier)
-    ) {
+    if (!LEGACY_MODIFIERS.includes(modifier)) {
       throw new Error(`Unsupported modifier key: ${modifier}`);
     }
   }

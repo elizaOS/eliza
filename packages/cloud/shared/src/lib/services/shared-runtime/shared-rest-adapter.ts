@@ -1,3 +1,4 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /**
  * Shared-runtime REST adapter (mobile chat unblock).
  *
@@ -15,17 +16,20 @@
  * agentId, bridge roomId === conversationId). The list always has exactly one
  * item, so no conversation index is needed.
  */
+
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { type SharedReminderDelivery } from "@elizaos/plugin-scheduling";
-import { type RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
+import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling";
+import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
-import { type BridgeRequest } from "../eliza-sandbox-bridge";
+import type { BridgeRequest } from "../eliza-sandbox";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
-import { type PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
-import { type SharedAgentCharacter } from "./run-shared-agent-turn";
-import { type SharedRuntimeAgent } from "./shared-runtime-agent";
-import { type SharedRuntimeChannel } from "./shared-runtime-channel";
+import type { NetworkAdmissionEnvelope } from "./network-shared-admission";
+import type { NetworkSharedTurnObservation } from "./network-shared-context";
+import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
+import type { SharedAgentCharacter } from "./run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
+import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
 import {
   parseSharedProviderTimingReceipt,
@@ -71,7 +75,13 @@ function makeConversation(
 ): SharedRestConversation {
   const id = canonicalConversationId(agentId);
   // updatedAt === createdAt: the canonical conversation is never renamed/moved.
-  return { id, title: agentName || "Chat", roomId: id, createdAt, updatedAt: createdAt };
+  return {
+    id,
+    title: agentName || "Chat",
+    roomId: id,
+    createdAt,
+    updatedAt: createdAt,
+  };
 }
 /** GET .../api/health — the agent is in-Worker; if it resolves, it's up. */
 export function sharedRestHealth(): {
@@ -93,7 +103,11 @@ export function sharedRestStatus(agentName: string): {
   agentName: string;
   canRespond: true;
 } {
-  return { state: "running", agentName: agentName || "Eliza", canRespond: true };
+  return {
+    state: "running",
+    agentName: agentName || "Eliza",
+    canRespond: true,
+  };
 }
 // ---------------------------------------------------------------------------
 // Shell-endpoint defaults (mobile/web startup-coordinator unblock)
@@ -395,20 +409,8 @@ export function sharedRestConfig(): {
 } {
   return { websocket: false, streaming: false };
 }
-/**
- * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
- * useAuthStatus → authMe(), ui/src/api/auth-client.ts). A shared agent has no
- * agent server and no owner-password flow; it is reached purely through the
- * caller's authenticated API key, which the route already validated
- * (resolveSharedAgent → requireUserOrApiKeyWithOrg). So the caller is, by
- * construction, an authed machine identity — return it in the agent-server's
- * `bearer-agent` shape (auth-routes.ts authorized branch: identity.kind
- * "machine", session machine with no expiry, access mode "bearer"). Without an
- * `ok:true` body here, the client maps the 404 to status 503 →
- * "server_unavailable" → StartupFailureView and never reaches chat. The identity
- * is the agent itself (id = agentId, displayName = agentName) — the only stable
- * identity this adapter owns.
- */
+/** Machine identity for a caller admitted by the shared-agent auth boundary.
+ * Shared runtimes expose USER capabilities and have no local owner session. */
 export function sharedRestAuthMe(
   agentId: string,
   agentName: string,
@@ -425,6 +427,7 @@ export function sharedRestAuthMe(
   };
   access: {
     mode: "bearer";
+    role: "USER";
     passwordConfigured: false;
     ownerConfigured: false;
   };
@@ -436,7 +439,12 @@ export function sharedRestAuthMe(
       kind: "machine",
     },
     session: { id: "bearer", kind: "machine", expiresAt: null },
-    access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
+    access: {
+      mode: "bearer",
+      role: "USER",
+      passwordConfigured: false,
+      ownerConfigured: false,
+    },
   };
 }
 /**
@@ -556,7 +564,9 @@ export async function sharedRestMessagesGet(
 ): Promise<{
   messages: SharedRestMessage[];
 }> {
-  const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
+  const history = await coordinateSharedHistory(agentId, conversationId, {
+    namespace,
+  });
   // Lifecycle system events shape model continuity but are not authored chat
   // bubbles, so keep them private to the canonical history/prompt boundary.
   const visibleHistory = history.filter(
@@ -596,11 +606,18 @@ export async function sharedRestMessageSend(
   trustedChannel?: SharedRuntimeChannel,
   /** Server-resolved Dedicated fallback account state (#25146); never from RPC params. */
   trustedAccountState?: PersonalSharedFallbackAccountState,
+  traceId?: string,
+  abortSignal?: AbortSignal,
+  trustedNetworkContext?: NetworkSharedTurnObservation,
+  /** The Network service's open-turn context (takeover); read only for personal shared turns. */
+  trustedNetworkTurn?: unknown,
+  trustedNetworkAdmission?: NetworkAdmissionEnvelope,
 ): Promise<{
   text: string;
   agentName: string;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
+  acknowledgementReaction?: string;
   responded?: false;
   responseReason?: "no_response";
 }> {
@@ -613,6 +630,7 @@ export async function sharedRestMessageSend(
     params: {
       text,
       roomId: conversationId,
+      ...(trustedNetworkContext ? { userId: agent.user_id } : {}),
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(trustedDelivery ? { trustedDelivery } : {}),
     },
@@ -622,9 +640,14 @@ export async function sharedRestMessageSend(
   const response = await coordinateSharedBridge(agent, rpc, {
     executionCtx,
     namespace,
+    ...(traceId ? { traceId } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
     ...(trustedAccountState ? { trustedAccountState } : {}),
+    ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
+    ...(trustedNetworkTurn !== undefined ? { trustedNetworkTurn } : {}),
+    ...(trustedNetworkAdmission ? { trustedNetworkAdmission } : {}),
     channel: trustedChannel ?? {
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
@@ -644,6 +667,7 @@ export async function sharedRestMessageSend(
     timing?: unknown;
     actionResults?: unknown;
     responded?: unknown;
+    acknowledgementReaction?: unknown;
   };
   const replyText = typeof result.text === "string" ? result.text : "";
   const mediaUrls = Array.isArray(result.actionResults)
@@ -663,6 +687,10 @@ export async function sharedRestMessageSend(
         return typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : [];
       })
     : [];
+  const acknowledgementReaction =
+    result.responded === false && !replyText && mediaUrls.length === 0
+      ? parseImessageReaction(result.acknowledgementReaction)
+      : undefined;
   const timing = parseSharedProviderTimingReceipt(result.timing);
   if (result.timing !== undefined && timing === undefined) {
     logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
@@ -672,6 +700,7 @@ export async function sharedRestMessageSend(
   }
   return {
     text: replyText,
+    ...(acknowledgementReaction !== undefined ? { acknowledgementReaction } : {}),
     agentName: agentName || "Eliza",
     ...(result.responded === false
       ? { responded: false as const, responseReason: "no_response" as const }

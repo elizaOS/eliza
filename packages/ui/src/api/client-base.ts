@@ -1,3 +1,4 @@
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
 /**
  * ElizaClient class — core infrastructure only.
  *
@@ -5,37 +6,46 @@
  * without circular dependency issues.
  */
 
-import { parseChatTerminalFailure } from "@elizaos/core/contracts/chat";
-import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/core/events";
-import { isInferenceTraceId } from "@elizaos/core/inference-trace";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import type { NetworkStatusChangeDetail } from "@elizaos/core/protocol";
+import {
+  DELTA_STREAM_PROTOCOL,
   extractAssistantReplyText,
+  isInferenceTraceId,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
-} from "@elizaos/core/utils/assistant-text";
+} from "@elizaos/core/protocol";
 import {
   clearElizaApiBase,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
-} from "@elizaos/core/utils/eliza-globals";
+} from "@elizaos/host/protocol";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
-import {
-  NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
-} from "../events";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
+import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import { logger } from "../logger.ts";
 import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import { isCapacitorNativeRuntime } from "../platform/native-probe";
 import {
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
   upsertAndActivateAgentProfile,
 } from "../state/agent-profiles";
+import { isPlainWebPlatform } from "../state/loopback-steward-development";
 import {
   clearPersistedActiveServer,
   createPersistedActiveServer,
@@ -50,44 +60,41 @@ import {
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   directCloudSharedAgentIdFromBase,
+  isManagedCloudSharedAgentBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
-import {
-  DELTA_STREAM_PROTOCOL,
-  mergeStreamingText,
-} from "../utils/streaming-text.js";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { mergeStreamingText } from "../utils/streaming-text.js";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "./auth/sessions";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
+import type {
+  AccountConnectRequest,
+  ChatActionResultSummary,
+  ChatTokenUsage,
+  ConversationChannelType,
+  ImageAttachment,
+  LocalInferenceChatMetadata,
+} from "./client-types-chat";
+import type {
+  ConnectionStateInfo,
+  WebSocketConnectionState,
+  WsEventHandler,
+} from "./client-types-core";
+import { ApiError, isCloudAgentGoneError } from "./client-types-core";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import {
-  type AccountConnectRequest,
-  ApiError,
-  type ChatActionResultSummary,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatTokenUsage,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
-  type ConnectionStateInfo,
-  type ConversationChannelType,
-  type ImageAttachment,
-  isCloudAgentGoneError,
-  type LocalInferenceChatMetadata,
-  type WebSocketConnectionState,
-  type WsEventHandler,
-} from "./client-types";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
-import {
-  iosInProcessAgentTransportForUrl,
-  isIosInProcessLocalAgentBase,
-} from "./ios-local-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
-import { remoteRelayTransportForUrl } from "./remote-relay-transport";
+  getHostRequestTransport,
+  hostRequestOwnerId,
+  isHostInProcessAgentBase,
+} from "./host-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
-import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import {
+  type AgentRequestTransport,
+  type ElizaClientFetch,
+  type ElizaClientFetchOptions,
+  fetchAgentTransport,
+  SseEventFramer,
+} from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -304,19 +311,7 @@ function requestHeadersToRecord(
   }
   return { ...(headers as Record<string, string>) };
 }
-function findSseEventBreak(chunkBuffer: string): {
-  index: number;
-  length: number;
-} | null {
-  const lfBreak = chunkBuffer.indexOf("\n\n");
-  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-  if (lfBreak === -1 && crlfBreak === -1) return null;
-  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-  return lfBreak < crlfBreak
-    ? { index: lfBreak, length: 2 }
-    : { index: crlfBreak, length: 4 };
-}
+
 // Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
 // bridge, and control-plane fallback chat) classify frames only through their
 // SSE event name. Map those names when `type` is absent so a terminal `done`
@@ -607,7 +602,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
   value: string | null | undefined,
 ): boolean {
   return (
-    isIosInProcessLocalAgentBase(value) ||
+    isHostInProcessAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
     isRemoteRelayRestAdapterBase(value) ||
@@ -689,20 +684,7 @@ function shouldUseRestOnlyForInsecureWebSocket(
  * no `Capacitor.isNativePlatform()` → false, so same-origin deployments keep
  * their realtime WebSocket.
  */
-function isCapacitorNativeRuntime(): boolean {
-  try {
-    const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | {
-          isNativePlatform?: () => boolean;
-        }
-      | undefined;
-    return Boolean(cap?.isNativePlatform?.());
-  } catch {
-    // error-policy:J4 an unanswerable platform probe reads as "not native",
-    // preserving the browser's WebSocket path.
-    return false;
-  }
-}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -767,24 +749,7 @@ export function onNetworkStatusChange(
 export function generateChatClientMessageId(): string {
   return ElizaClient.generateMessageId();
 }
-/** Test-only: reset the cached network state. */
-export function __resetNetworkStatusForTests(): void {
-  lastKnownNetworkConnected = true;
-  networkStatusListeners.clear();
-}
-/** Test-only: read the last bridged network status. */
-export function __getLastKnownNetworkConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
-/**
- * The last bridged connectivity state (`true` = the device reports a usable
- * network). Public counterpart to the test-only reader so the send path can
- * tell "we're offline" (worth waiting for reconnect to auto-retry) from "we're
- * online but the server 503'd / was slow" (surface the manual affordance now).
- */
-export function isNetworkCurrentlyConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
+
 // ---------------------------------------------------------------------------
 // Dedicated-agent resume (HTTP 202) handling
 // ---------------------------------------------------------------------------
@@ -894,7 +859,7 @@ function sleepUnlessAborted(
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
-export class ElizaClient {
+export class ElizaClient implements ElizaClientFetch {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
@@ -1043,6 +1008,15 @@ export class ElizaClient {
         return activeServer.accessToken?.trim() || null;
       }
       return null;
+    }
+    // Managed web Shared requests use the account's current authority. A
+    // refresh or logout must not leave an older installed bearer in use.
+    if (
+      isPlainWebPlatform() &&
+      isManagedCloudSharedAgentBase(this.baseUrl) &&
+      isTrustedCloudApiBaseUrl(this.baseUrl)
+    ) {
+      return readStoredStewardToken()?.trim() || null;
     }
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
@@ -1534,6 +1508,7 @@ export class ElizaClient {
     // setBaseUrl cannot attribute another host's 404 to the new binding.
     let requestBase = this.baseUrl;
     let requestUrl = this.rawRequestUrl(path);
+    const ownerId = hostRequestOwnerId(requestUrl);
     let token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
     // One bounded classification loop: EVERY response — first attempt or any
@@ -1564,6 +1539,7 @@ export class ElizaClient {
         options,
         token,
         ++requestAttempt,
+        ownerId,
       );
     let res = await requestOnce();
     // Personal-Eliza cutover repoint happens once, before classification: a
@@ -1907,6 +1883,7 @@ export class ElizaClient {
       | undefined,
     token: string | null,
     requestAttempt: number,
+    ownerId?: string,
   ): Promise<Response> {
     const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
     const abortController = new AbortController();
@@ -1935,8 +1912,11 @@ export class ElizaClient {
         requestUrl,
         requestAttempt,
       );
-      const transport = await this.rawRequestTransport(requestUrl);
-      return await transport.request(requestUrl, requestInit, { timeoutMs });
+      const transport = await this.rawRequestTransport(requestUrl, requestInit);
+      return await transport.request(requestUrl, requestInit, {
+        timeoutMs,
+        ownerId,
+      });
     } catch (err) {
       // error-policy:J2 context-adding rethrow — throwRawRequestError wraps
       // the transport failure with path/timeout/abort context and throws.
@@ -2027,18 +2007,13 @@ export class ElizaClient {
   }
   private async rawRequestTransport(
     requestUrl: string,
+    init: RequestInit,
   ): Promise<AgentRequestTransport> {
     if (this.requestTransport !== fetchAgentTransport) {
       return this.requestTransport;
     }
     return (
-      (await androidNativeAgentTransportForUrl(requestUrl)) ??
-      (await iosInProcessAgentTransportForUrl(requestUrl)) ??
-      (await desktopLocalAgentTransportForUrl(requestUrl)) ??
-      remoteRelayTransportForUrl(requestUrl) ??
-      sshRuntimeTransportForUrl(requestUrl) ??
-      desktopHttpTransportForUrl(requestUrl) ??
-      nativeCloudHttpTransportForUrl(requestUrl) ??
+      (await getHostRequestTransport(requestUrl, "agent", init)) ??
       this.requestTransport
     );
   }
@@ -2170,20 +2145,7 @@ export class ElizaClient {
   async fetch<T>(
     path: string,
     init?: RequestInit,
-    options?: {
-      allowNonOk?: boolean;
-      timeoutMs?: number;
-      /** Skip the 202 resume-retry loop (see `rawRequest.skipResume`). */
-      skipResume?: boolean;
-      /**
-       * Called with the (bounded-read, best-effort-parsed) body when the FIRST
-       * response is a 202 and `skipResume` is set — lets the status poll map the
-       * cloud resume-progress body to a real value WITHOUT bypassing the shared
-       * bounded body-read / timeout logic (#14040 sub-defect 2). Non-202
-       * responses go through the normal strict-parse path unchanged.
-       */
-      on202?: (body: unknown) => T;
-    },
+    options?: ElizaClientFetchOptions<T>,
   ): Promise<T> {
     const res = await this.rawRequest(
       path,
@@ -2950,7 +2912,7 @@ export class ElizaClient {
     }
     const decoder = new TextDecoder();
     const reader = res.body.getReader();
-    let buffer = "";
+    const framer = new SseEventFramer();
     const streamState: StreamChatState = {
       deltaProtocol: true,
       fullText: "",
@@ -3044,12 +3006,7 @@ export class ElizaClient {
         break;
       }
       if (done || !value) break;
-      buffer += decoder.decode(value, { stream: true });
-      let eventBreak = findSseEventBreak(buffer);
-      while (eventBreak) {
-        const rawEvent = buffer.slice(0, eventBreak.index);
-        buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        const eventLines = rawEvent.split(/\r?\n/);
+      framer.push(decoder.decode(value, { stream: true }), (eventLines) => {
         const eventName = sseEventName(eventLines);
         for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
@@ -3064,21 +3021,19 @@ export class ElizaClient {
               notifyReplyReady,
             )
           ) {
-            buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
               .cancel("elizaos-sse-terminal-done")
               .catch(() => undefined);
-            break;
+            return true;
           }
         }
-        if (streamState.receivedDone) break;
-        eventBreak = findSseEventBreak(buffer);
-      }
+        return false;
+      });
       if (streamState.receivedDone) break;
     }
-    if (!streamState.receivedDone && buffer.trim()) {
-      const trailingLines = buffer.split(/\r?\n/);
+    if (!streamState.receivedDone) {
+      const trailingLines = framer.takePending();
       const trailingEventName = sseEventName(trailingLines);
       for (const line of trailingLines) {
         if (line.startsWith("data:")) {
@@ -3149,4 +3104,22 @@ export class ElizaClient {
         : {}),
     };
   }
+}
+
+export async function invokeLocalDesktopRpc<T>(
+  baseUrl: string,
+  options: {
+    rpcMethod: string;
+    ipcChannel: string;
+    params?: unknown;
+  },
+): Promise<T | null> {
+  if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
+  return invokeDesktopBridgeRequest<T>(options);
 }

@@ -5,14 +5,13 @@
  * `parseJsonModelRecord` / `parseJsonModelArray` add shape guards for the common
  * object / array cases.
  */
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
+
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
 import {
 	findNextCloseTag,
 	findNextOpenTag,
-	REASONING_TAG_NAMES,
+	REASONING_TAG_ALTERNATION,
 } from "../utils/reasoning-tags.ts";
-
-const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
 
 /**
  * Drop a reasoning block only when the candidate OPENS with one (any shared

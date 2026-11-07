@@ -6,16 +6,16 @@
 
 import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
 import {
-  Button,
-  Card,
-  Divider,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
   Field,
-  HStack,
-  List,
+  SpatialHStack as HStack,
+  SpatialList as List,
   type SpatialTone,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 
 const SENT_SMS_TYPE = 2;
 

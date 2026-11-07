@@ -1,36 +1,4 @@
-/**
- * Shared catalog of per-connector account defaults
- * (`defaultRole` / `defaultPurpose` / `supportsOAuth`) for the plugin-managed
- * account inventory (#12087 Item 10, arch-audit roles-permissions).
- *
- * The audit's sanctioned pattern is "owner-declared, runtime-enforced": the
- * metadata that governs a connector account's default role / purpose / OAuth
- * capability belongs to the connector's declaration, not duplicated as literals
- * in the UI. This module is that single declaration site.
- *
- * It lives in `@elizaos/core` — the package both the agent server and the UI
- * already depend on — so it can be the one catalog both consult. Today the
- * connector setup UI (`packages/ui/src/components/connectors/
- * connector-account-options.ts`) reads role / purpose / OAuth from here when
- * rendering plugin-managed account options. The server connector-account layer
- * (`@elizaos/core` connectors, `packages/agent/src/api/connector-*-routes.ts`)
- * is the intended next consumer so these defaults project from one place rather
- * than being re-declared; it does not import this catalog yet.
- *
- * The UI previously hardcoded these three fields per connector in its own map
- * (the `@deprecated CONNECTOR_PLUGIN_MANAGED_ACCOUNT_OPTIONS` literal). That
- * copy is now removed: the UI reads role / purpose / OAuth from this catalog and
- * only owns its presentation strings (label / title / description). A grep guard
- * test (`connector-account-catalog.test.ts`) asserts the authorization-relevant
- * defaults exist only here.
- *
- * IMPORTANT: this module is dependency-free (pure data + pure functions) so it
- * imports safely into the browser UI bundle without pulling `@elizaos/core`.
- * The role/purpose string unions are declared structurally here and are kept
- * in lockstep with `@elizaos/core`'s `ConnectorAccountRole` /
- * `ConnectorAccountPurpose` (see `packages/core/src/types/
- * connector-account-policy.ts`).
- */
+/** Connector account defaults come from each owner plugin and are enforced by the runtime. This catalog projects default role, purpose, and OAuth support for clients. */
 /**
  * Canonical connector account role. Mirrors `ConnectorAccountRole` in
  * `@elizaos/core` (`types/connector-account-policy.ts`) — kept structural here

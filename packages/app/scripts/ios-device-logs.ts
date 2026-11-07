@@ -242,7 +242,15 @@ async function main() {
   let consoleCaptureError = null;
   let consoleVerdict = null;
   if (!args["no-console"]) {
-    const durationSeconds = Number.parseInt(args.duration ?? "120", 10);
+    // Number.parseInt stops at the first non-digit ("60junk" -> 60), so a
+    // typo silently passed the positive-integer guard instead of failing.
+    // Require the whole trimmed value to be decimal; malformed -> NaN fails
+    // the guard as before, mirroring resolveGenerationTimeoutMs in the
+    // discord plugin.
+    const durationRaw = (args.duration ?? "120").trim();
+    const durationSeconds = /^\+?\d+$/.test(durationRaw)
+      ? Number(durationRaw)
+      : Number.NaN;
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       fail(
         `--duration must be a positive integer of seconds, got ${args.duration}`,

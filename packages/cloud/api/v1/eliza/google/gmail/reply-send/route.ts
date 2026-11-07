@@ -5,15 +5,18 @@
  * the managed Google connector.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   sendManagedGoogleReply,
-} from "@/lib/services/agent-google-connector";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 
@@ -41,6 +44,7 @@ app.post("/", async (c) => {
       );
     }
 
+    if (parsed.data.side !== "agent") await requirePrivateOwnerAccess(c, user);
     await sendManagedGoogleReply({
       organizationId: user.organization_id,
       userId: user.id,

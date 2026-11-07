@@ -364,7 +364,7 @@ export class HeadscaleIntegration {
         // the base hostname, Headscale registers blue as `<name>-<random8>`.
         // Exact-name polling never finds it and the upgrade times out despite a
         // healthy registration.
-        const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
+        const node = await this.client.getNodeByNameOrSuffixedStrict(nodeName, {
           excludeNodeId: options?.excludeNodeId,
           createdAfter: registrationStartedAt,
         });

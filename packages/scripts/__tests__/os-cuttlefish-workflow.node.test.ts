@@ -40,10 +40,7 @@ test("Cuttlefish runs from OS package paths with pinned Node and a gated native 
   const commands = job.steps
     .flatMap((s) => [s.run ?? "", s.with?.script ?? ""])
     .join("\n");
-  assert.doesNotMatch(
-    commands,
-    /reports\/cuttlefish|\b(?:node|git -C) \.eliza-source/,
-  );
+  assert.doesNotMatch(commands, /reports\/cuttlefish/);
   assert.match(commands, /testOutputPath\("os-cuttlefish"\)/);
   assert.doesNotMatch(commands, /\$\{\{ inputs\./);
   assert.equal(workflow.concurrency["cancel-in-progress"], false);

@@ -20,7 +20,7 @@ case "${STAGE}" in
     build)
         ;;
     config|lint)
-        exec make -C "${HERE}/elizaos" lint
+        exec make -C "${HERE}" lint
         ;;
     *)
         printf 'ERROR: unsupported canonical Debian build stage: %s\n' "${STAGE}" >&2
@@ -29,6 +29,6 @@ case "${STAGE}" in
         ;;
 esac
 
-exec make -C "${HERE}/elizaos" build \
+exec make -C "${HERE}" build \
     ARCH="${ARCH}" \
     PROFILE="${PROFILE}"

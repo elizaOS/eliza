@@ -1,3 +1,4 @@
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 /**
  * HARNESS-ONLY node/bun boot of the REAL Phase-1 voice-session server.
  *
@@ -53,42 +54,42 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  type WebSocket as NodeWebSocket,
-  WebSocket as NodeWs,
-  WebSocketServer,
-} from "ws";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
   type VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
+} from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import {
   resolveElizaModel,
   resolveMaxSessions,
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
 import {
   consumeConsentNonce,
   issueConsentNonce,
-} from "@/lib/voice-session/consent-nonce";
+} from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
   mintVoiceSessionToken,
   recordVoiceSessionJti,
-} from "@/lib/voice-session/jwt";
+} from "@elizaos/cloud-shared/lib/voice-session/jwt";
 import {
   __resetVoiceSessionRegistryForTests,
   getVoiceSessionRegistry,
-} from "@/lib/voice-session/session-registry";
-import { installVoiceSessionTestSigningKey } from "@/lib/voice-session/test-signing";
+} from "@elizaos/cloud-shared/lib/voice-session/session-registry";
+import { installVoiceSessionTestSigningKey } from "@elizaos/cloud-shared/lib/voice-session/test-signing";
 import {
   attachVoiceWsHandler,
   type ServerWebSocketLike,
-} from "@/lib/voice-session/ws-handler";
+} from "@elizaos/cloud-shared/lib/voice-session/ws-handler";
+import {
+  type WebSocket as NodeWebSocket,
+  WebSocket as NodeWs,
+  WebSocketServer,
+} from "ws";
 import { VoiceSession } from "./session";
 
 /**
@@ -105,7 +106,7 @@ import type {
   CartesiaWebSocketFactory,
   CartesiaWebSocketFactoryOptions,
   CartesiaWebSocketLike,
-} from "@/lib/services/cartesia-sonic-tts";
+} from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import type {
   CartesiaInkTransportRequest,
   CartesiaInkWebSocket,
@@ -477,7 +478,7 @@ export async function startRealVoiceServer(
         "Content-Type": "audio/wav",
         "Content-Length": String(synthesis.wav.byteLength),
         "Cache-Control": "no-store",
-        "X-Eliza-TTS-Provider": "cartesia-sonic-3.5",
+        "X-Eliza-TTS-Provider": `cartesia-${CARTESIA_SONIC_MODEL_ID}`,
       });
       res.end(Buffer.from(synthesis.wav));
       return;

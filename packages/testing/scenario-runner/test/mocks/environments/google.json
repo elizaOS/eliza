@@ -438,6 +438,1324 @@
       "responseMode": null,
       "streamingMode": null,
       "streamingInterval": 0
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020001",
+      "type": "http",
+      "documentation": "GET calendar/v3/users/me/calendarList",
+      "method": "get",
+      "endpoint": "calendar/v3/users/me/calendarList",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020002",
+          "body": "{\n  \"kind\": \"calendar#calendarList\",\n  \"etag\": \"\\\"3829471\\\"\",\n  \"nextPageToken\": null,\n  \"items\": [\n    {\n      \"kind\": \"calendar#calendarListEntry\",\n      \"id\": \"primary\",\n      \"summary\": \"shaw@eliza.dev\",\n      \"primary\": true,\n      \"accessRole\": \"owner\",\n      \"timeZone\": \"America/Los_Angeles\"\n    },\n    {\n      \"kind\": \"calendar#calendarListEntry\",\n      \"id\": \"team-eliza@group.calendar.google.com\",\n      \"summary\": \"Eliza team\",\n      \"accessRole\": \"writer\",\n      \"timeZone\": \"America/Los_Angeles\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020003",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020004",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020005",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020006",
+      "type": "http",
+      "documentation": "GET calendar/v3/calendars/:calendarId/events",
+      "method": "get",
+      "endpoint": "calendar/v3/calendars/:calendarId/events",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020007",
+          "body": "{\n  \"kind\": \"calendar#events\",\n  \"etag\": \"\\\"3829499\\\"\",\n  \"timeZone\": \"America/Los_Angeles\",\n  \"nextPageToken\": null,\n  \"items\": [\n    {\n      \"id\": \"ev_193a200a44b0bb02\",\n      \"status\": \"confirmed\",\n      \"summary\": \"Standup\",\n      \"description\": \"Daily standup \u2014 what blocked you yesterday?\",\n      \"start\": {\n        \"dateTime\": \"2026-05-09T16:30:00-07:00\",\n        \"timeZone\": \"America/Los_Angeles\"\n      },\n      \"end\": {\n        \"dateTime\": \"2026-05-09T17:00:00-07:00\",\n        \"timeZone\": \"America/Los_Angeles\"\n      },\n      \"attendees\": [\n        {\n          \"email\": \"shaw@eliza.dev\",\n          \"responseStatus\": \"accepted\"\n        },\n        {\n          \"email\": \"priya.raman@bluepine.dev\",\n          \"responseStatus\": \"accepted\"\n        },\n        {\n          \"email\": \"marcus@delta-four.io\",\n          \"responseStatus\": \"tentative\"\n        }\n      ],\n      \"conferenceData\": {\n        \"conferenceId\": \"abc-defg-hij\",\n        \"entryPoints\": [\n          {\n            \"entryPointType\": \"video\",\n            \"uri\": \"https://meet.google.com/abc-defg-hij\"\n          }\n        ]\n      },\n      \"organizer\": {\n        \"email\": \"priya.raman@bluepine.dev\",\n        \"displayName\": \"Priya Raman\"\n      }\n    },\n    {\n      \"id\": \"ev_193a1ed8c0aa1f01\",\n      \"status\": \"confirmed\",\n      \"summary\": \"Q3 OKR review\",\n      \"start\": {\n        \"dateTime\": \"2026-05-12T11:00:00-07:00\"\n      },\n      \"end\": {\n        \"dateTime\": \"2026-05-12T12:00:00-07:00\"\n      },\n      \"attendees\": [\n        {\n          \"email\": \"shaw@eliza.dev\",\n          \"responseStatus\": \"needsAction\"\n        },\n        {\n          \"email\": \"mei.t@nautilus.studio\",\n          \"responseStatus\": \"accepted\"\n        }\n      ]\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020008",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020009",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002000a",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002000b",
+      "type": "http",
+      "documentation": "GET calendar/v3/calendars/:calendarId/events/:eventId",
+      "method": "get",
+      "endpoint": "calendar/v3/calendars/:calendarId/events/:eventId",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002000c",
+          "body": "{\n  \"id\": \"ev_193a200a44b0bb02\",\n  \"status\": \"confirmed\",\n  \"summary\": \"Standup\",\n  \"start\": {\n    \"dateTime\": \"2026-05-09T16:30:00-07:00\"\n  },\n  \"end\": {\n    \"dateTime\": \"2026-05-09T17:00:00-07:00\"\n  },\n  \"attendees\": [\n    {\n      \"email\": \"shaw@eliza.dev\",\n      \"responseStatus\": \"accepted\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002000d",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002000e",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002000f",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020010",
+      "type": "http",
+      "documentation": "POST calendar/v3/calendars/:calendarId/events",
+      "method": "post",
+      "endpoint": "calendar/v3/calendars/:calendarId/events",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020011",
+          "body": "{\n  \"id\": \"ev_new_193b000000000001\",\n  \"status\": \"confirmed\",\n  \"htmlLink\": \"https://calendar.google.com/event?eid=ev_new_193b000000000001\",\n  \"created\": \"2026-05-09T18:00:00.000Z\",\n  \"updated\": \"2026-05-09T18:00:00.000Z\",\n  \"summary\": \"Lifeops scheduled call\",\n  \"start\": {\n    \"dateTime\": \"2026-05-10T15:00:00-07:00\"\n  },\n  \"end\": {\n    \"dateTime\": \"2026-05-10T15:30:00-07:00\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020012",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020013",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020014",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020015",
+      "type": "http",
+      "documentation": "PATCH calendar/v3/calendars/:calendarId/events/:eventId",
+      "method": "patch",
+      "endpoint": "calendar/v3/calendars/:calendarId/events/:eventId",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020016",
+          "body": "{\n  \"id\": \"{{urlParam 'eventId'}}\",\n  \"status\": \"confirmed\",\n  \"updated\": \"2026-05-09T18:05:12.000Z\",\n  \"summary\": \"Standup (rescheduled)\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020017",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020018",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020019",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002001a",
+      "type": "http",
+      "documentation": "calendar events.delete",
+      "method": "delete",
+      "endpoint": "calendar/v3/calendars/:calendarId/events/:eventId",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002001b",
+          "body": "",
+          "latency": 0,
+          "statusCode": 204,
+          "label": "happy path",
+          "headers": [],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002001c",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002001d",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002001e",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000010",
+      "type": "http",
+      "documentation": "Gmail messages.list",
+      "method": "get",
+      "endpoint": "gmail/v1/users/:userId/messages",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000011",
+          "body": "{\n  \"messages\": [\n    { \"id\": \"193a1ed8c0aa1f01\", \"threadId\": \"193a1ed8c0aa1f01\" },\n    { \"id\": \"193a1de2451fc788\", \"threadId\": \"193a1de2451fc788\" },\n    { \"id\": \"193a1cf18f9ddc20\", \"threadId\": \"193a1cf18f9ddc20\" },\n    { \"id\": \"193a1c0fa11baacb\", \"threadId\": \"193a1c0fa11baacb\" }\n  ],\n  \"resultSizeEstimate\": 4,\n  \"nextPageToken\": null\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000012",
+          "body": "{ \"error\": { \"code\": 429, \"message\": \"Quota exceeded for quota metric 'Queries' and limit 'Queries per user per 100 seconds' of service 'gmail.googleapis.com'.\", \"status\": \"RESOURCE_EXHAUSTED\" } }",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000013",
+          "body": "{ \"error\": { \"code\": 401, \"message\": \"Request had invalid authentication credentials. Expected OAuth 2 access token, login cookie or other valid authentication credential. See https://developers.google.com/identity/sign-in/web/devconsole-project.\", \"status\": \"UNAUTHENTICATED\" } }",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000014",
+          "body": "{ \"error\": { \"code\": 500, \"message\": \"Backend Error\", \"status\": \"INTERNAL\" } }",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000020",
+      "type": "http",
+      "documentation": "Gmail messages.get",
+      "method": "get",
+      "endpoint": "gmail/v1/users/:userId/messages/:id",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000021",
+          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"threadId\": \"{{urlParam 'id'}}\",\n  \"labelIds\": [\"INBOX\", \"UNREAD\", \"CATEGORY_PERSONAL\"],\n  \"snippet\": \"Hey \u2014 confirming the Thursday standup move to 9:30. Let me know if that works.\",\n  \"historyId\": \"3829471\",\n  \"internalDate\": \"1746810000000\",\n  \"sizeEstimate\": 18234,\n  \"payload\": {\n    \"mimeType\": \"multipart/alternative\",\n    \"headers\": [\n      { \"name\": \"From\", \"value\": \"Priya Raman <priya.raman@bluepine.dev>\" },\n      { \"name\": \"To\", \"value\": \"shaw@eliza.dev\" },\n      { \"name\": \"Subject\", \"value\": \"Thursday standup -> 9:30?\" },\n      { \"name\": \"Date\", \"value\": \"Thu, 09 May 2026 17:40:00 +0000\" },\n      { \"name\": \"Message-ID\", \"value\": \"<CABc7Pk8q9Lj9w=ABCD@mail.bluepine.dev>\" }\n    ],\n    \"parts\": [\n      {\n        \"partId\": \"0\",\n        \"mimeType\": \"text/plain\",\n        \"body\": { \"size\": 142, \"data\": \"SGV5IOKAlCBjb25maXJtaW5nIHRoZSBUaHVyc2RheSBzdGFuZHVwIG1vdmUgdG8gOTozMC4gTGV0IG1lIGtub3cgaWYgdGhhdCB3b3Jrcy4=\" }\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000030",
+      "type": "http",
+      "documentation": "Gmail threads.list",
+      "method": "get",
+      "endpoint": "gmail/v1/users/:userId/threads",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000031",
+          "body": "{\n  \"threads\": [\n    { \"id\": \"193a1ed8c0aa1f01\", \"snippet\": \"Thursday standup -> 9:30?\", \"historyId\": \"3829471\" },\n    { \"id\": \"193a1de2451fc788\", \"snippet\": \"Re: Q3 OKR draft for review\", \"historyId\": \"3829352\" }\n  ],\n  \"resultSizeEstimate\": 2\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000040",
+      "type": "http",
+      "documentation": "Gmail threads.get",
+      "method": "get",
+      "endpoint": "gmail/v1/users/:userId/threads/:id",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000041",
+          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"historyId\": \"3829471\",\n  \"messages\": [\n    {\n      \"id\": \"193a1ed8c0aa1f01\",\n      \"threadId\": \"{{urlParam 'id'}}\",\n      \"labelIds\": [\"INBOX\", \"UNREAD\"],\n      \"snippet\": \"Hey \u2014 confirming the Thursday standup move to 9:30.\",\n      \"internalDate\": \"1746810000000\",\n      \"payload\": {\n        \"headers\": [\n          { \"name\": \"From\", \"value\": \"Priya Raman <priya.raman@bluepine.dev>\" },\n          { \"name\": \"Subject\", \"value\": \"Thursday standup -> 9:30?\" }\n        ]\n      }\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000050",
+      "type": "http",
+      "documentation": "Gmail drafts.create",
+      "method": "post",
+      "endpoint": "gmail/v1/users/:userId/drafts",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000051",
+          "body": "{\n  \"id\": \"r-583920183\",\n  \"message\": {\n    \"id\": \"193a200a44b0bb02\",\n    \"threadId\": \"193a200a44b0bb02\",\n    \"labelIds\": [\"DRAFT\"]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000060",
+      "type": "http",
+      "documentation": "Gmail drafts.send",
+      "method": "post",
+      "endpoint": "gmail/v1/users/:userId/drafts/send",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000061",
+          "body": "{\n  \"id\": \"193a200a44b0bb02\",\n  \"threadId\": \"193a200a44b0bb02\",\n  \"labelIds\": [\"SENT\"]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000070",
+      "type": "http",
+      "documentation": "Gmail labels.list",
+      "method": "get",
+      "endpoint": "gmail/v1/users/:userId/labels",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000071",
+          "body": "{\n  \"labels\": [\n    { \"id\": \"INBOX\", \"name\": \"INBOX\", \"type\": \"system\" },\n    { \"id\": \"SENT\", \"name\": \"SENT\", \"type\": \"system\" },\n    { \"id\": \"DRAFT\", \"name\": \"DRAFT\", \"type\": \"system\" },\n    { \"id\": \"Label_1837\", \"name\": \"lifeops/triaged\", \"type\": \"user\" },\n    { \"id\": \"Label_1838\", \"name\": \"lifeops/awaiting-reply\", \"type\": \"user\" }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "11111111-aaaa-4000-8000-000000000080",
+      "type": "http",
+      "documentation": "Gmail messages.modify",
+      "method": "post",
+      "endpoint": "gmail/v1/users/:userId/messages/:id/modify",
+      "responses": [
+        {
+          "uuid": "11111111-aaaa-4000-8000-000000000081",
+          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"threadId\": \"{{urlParam 'id'}}\",\n  \"labelIds\": [\"INBOX\", \"Label_1837\"]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
     }
   ],
   "rootChildren": [

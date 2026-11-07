@@ -6,16 +6,20 @@ import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
+import { recordOriginalInvoiceEvent } from "../../db/repositories/subscription-invoice-event-evidence";
 import {
   finalizePaidRenewal,
+  finalizeRecordedPaidRenewal,
   PAID_RENEWAL_DISPOSITION,
 } from "../../db/repositories/subscription-renewal-finalization";
 import { billingSubscriptions } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { requireStripe } from "../stripe";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { reconcileOrganizationUpgradesBeforeRenewal } from "./organization-upgrade-renewal-ordering";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
+import { createSubscriptionInvoiceEventEvidence } from "./subscription-invoice-event-evidence";
 
 const eventSchema = z.object({
   id: z.string().regex(/^evt_[A-Za-z0-9]+$/),
@@ -59,7 +63,7 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("event_identity_mismatch");
   const fetchedInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
   const stripeSubscriptionId = invoiceSubscriptionId(fetchedInvoice);
-  const [source] = await dbWrite
+  let [source] = await dbWrite
     .select()
     .from(billingSubscriptions)
     .where(
@@ -113,6 +117,52 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     await reconcileSubscriptionCheckout(session.id, source.organization_id);
     return;
   }
+  // Preserve authenticated original debit observations before any grant or plan recovery.
+  // Current provider state locates the owner; it must never replace the signed invoice body.
+  const originalBalances = z
+    .object({
+      data: z.object({
+        object: z.object({
+          starting_balance: z.number().optional(),
+          ending_balance: z.number().optional(),
+        }),
+      }),
+    })
+    .safeParse(message.event);
+  const hasDebit = (value: { starting_balance?: number | null; ending_balance?: number | null }) =>
+    (value.starting_balance ?? 0) > 0 || (value.ending_balance ?? 0) > 0;
+  if (
+    hasDebit(fetchedInvoice) ||
+    (originalBalances.success && hasDebit(originalBalances.data.data.object))
+  ) {
+    const providerAccountId = (await requireStripe().accounts.retrieve(null)).id;
+    const observation = createSubscriptionInvoiceEventEvidence(message.event, {
+      organizationId: source.organization_id,
+      subscriptionId: source.id,
+      providerAccountId,
+      customerId: source.stripe_customer_id,
+      providerSubscriptionId: source.stripe_subscription_id,
+      invoiceId: event.data.object.id,
+      providerEventId: event.id,
+      livemode: event.livemode,
+    });
+    await recordOriginalInvoiceEvent(
+      {
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        providerEventId: event.id,
+        eventType: event.type,
+        providerObjectType: "invoice",
+        providerObjectId: event.data.object.id,
+        livemode: event.livemode,
+        eventCreatedAt: created,
+        payloadDigest: createHash("sha256").update(JSON.stringify(message.event)).digest("hex"),
+        now: new Date(),
+      },
+      observation,
+    );
+    renewalUnavailable("deferred_invoice_observation_retained");
+  }
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,
     subscriptionId: source.id,
@@ -130,6 +180,25 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     recorded.value.disposition === PAID_RENEWAL_DISPOSITION
   )
     return;
+  await reconcileOrganizationUpgradesBeforeRenewal({
+    organizationId: source.organization_id,
+    subscriptionId: source.id,
+  });
+  // Recovery can publish the original target. Capture the renewed plan/revision only afterwards.
+  const originalSourceId = source.id;
+  const originalOrganizationId = source.organization_id;
+  [source] = await dbWrite
+    .select()
+    .from(billingSubscriptions)
+    .where(
+      and(
+        eq(billingSubscriptions.id, originalSourceId),
+        eq(billingSubscriptions.organization_id, originalOrganizationId),
+        isNull(billingSubscriptions.billing_scope_id),
+      ),
+    );
+  if (!source) renewalUnavailable("source_unavailable_after_upgrade_recovery");
+  assertOrganizationSubscription(source);
   const lease = {
     organizationId: source.organization_id,
     receiptId: recorded.value.id,
@@ -139,6 +208,21 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     renewalUnavailable("receipt_lease_unavailable");
   try {
     const projection = await subscriptionEntitlementsRepository.find(source.organization_id);
+    // A distinct delivery of an already-funded invoice needs no current price, schedule or payment reads.
+    // The transaction validates the original invoice, paid revision, grant and this delivery's live lease.
+    if (
+      await finalizeRecordedPaidRenewal({
+        ...lease,
+        subscriptionId: source.id,
+        invoiceId: event.data.object.id,
+        invoice: fetchedInvoice,
+        expectedSubscriptionRevision: source.lifecycle_revision,
+        expectedProjectionRevision: projection?.projection_revision ?? null,
+        providerEventId: event.id,
+        eventCreatedAt: created,
+      })
+    )
+      return;
     const objects = await retrievePaidRenewalObjects(source, event.data.object.id, requireStripe());
     await finalizePaidRenewal({
       ...lease,

@@ -2,7 +2,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ComponentType } from "react";
 import { userEvent } from "storybook/test";
-import type { ElectrobunRendererRpc } from "../../bridge";
+import type { ElectrobunRendererRpc } from "../../bridge/electrobun-rpc";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DesktopShortcutsSection } from "./DesktopShortcutsSection";
 

@@ -666,6 +666,13 @@
       "when": 1787529855000,
       "tag": "0114_passkey_rp_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1793208279000,
+      "tag": "0115_drop_erc8004_registrations",
+      "breakpoints": true
     }
   ]
 }

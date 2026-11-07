@@ -25,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = join(here, "../..");
 const script = join(
   repositoryRoot,
-  "scripts/distro-android/verify-grizzly-artifacts.ts",
+  "scripts/android/verify-grizzly-artifacts.ts",
 );
 
 function run(args: string[]) {

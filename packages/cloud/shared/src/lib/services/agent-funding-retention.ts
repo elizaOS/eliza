@@ -135,7 +135,7 @@ async function defaultEnqueueSleep(input: {
   organizationId: string;
   userId: string;
 }): Promise<{ jobId: string }> {
-  const { provisioningJobService } = await import("./provisioning-jobs");
+  const { provisioningJobService } = await import("./provisioning-job-queue");
   const { job } = await provisioningJobService.enqueueAgentSleepOnce(input);
   return { jobId: job.id };
 }

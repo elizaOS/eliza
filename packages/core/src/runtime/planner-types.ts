@@ -4,6 +4,7 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+import type { RequestOperationIssuer } from "../actions/task-extraction-context";
 import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
@@ -15,7 +16,6 @@ import type {
 	EvaluationResult,
 	ReplyEffectStatus,
 } from "../types/components";
-import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
@@ -27,11 +27,17 @@ import type {
 	ToolChoice,
 	ToolDefinition,
 } from "../types/model";
+import type { Content } from "../types/primitives";
 import type { State } from "../types/state";
+import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
-
-export type { ContextObject } from "../types/context-object";
+import type {
+	TypedReadEgressReceipt,
+	TypedReadReplyBinding,
+	TypedReadReplyPart,
+	TypedReadReplyResolver,
+} from "./typed-read-contract";
 
 export interface PlannerToolCall {
 	id?: string;
@@ -100,6 +106,15 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Runtime-owned reply validation failure; never parsed from model output. */
+	replyFailure?: ActionReplyFailure;
+	/** Canonical typed-read receipts; never populated from model fields. */
+	typedReadRejected?: true;
+	typedReadSnapshot?: string;
+	typedReadFinal?: true;
+	typedReadValidatedParts?: readonly TypedReadReplyPart[];
+	typedReadAwaitingEvidence?: true;
+	typedReadRendered?: true;
 	/** Auditable semantic coverage judgment, never independent execution proof. */
 	requestFullyCovered?: boolean;
 	outcomeCoverage?: readonly {
@@ -176,6 +191,8 @@ export interface InferredSubactionDispatch {
 }
 
 export interface PlannerToolResult {
+	/** Tool-owned inventory observation; preserve it until scoped final egress. */
+	emptyTrackedState?: ActionResult["emptyTrackedState"];
 	success: boolean;
 	verification?: ActionResult["verification"];
 	/**
@@ -277,11 +294,7 @@ export interface PlannerToolResult {
 	modelReplyRequired?: boolean;
 	/** Vetted action-owned fallback for a failed required model synthesis. */
 	modelReplyFallback?: string;
-	/**
-	 * Explicit chain-control override. `false` unconditionally aborts the
-	 * remaining planner queue, including for legacy failure and fire-and-forget
-	 * results. It is distinct from the conservative `turnComplete` fast path.
-	 */
+	/** An explicit false aborts the remaining planner queue, including failed and fire-and-forget results. This differs from the conservative turnComplete fast path. */
 	continueChain?: boolean;
 }
 
@@ -333,6 +346,8 @@ export interface PlannerLoopResult {
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
+	/** Authentic source-bound content, when the settled-reply host supplied literal sources. */
+	finalContent?: Content;
 	/**
 	 * Machine-readable terminal failure that survives independent text delivery.
 	 * The message service propagates this outside `responseContent`, so a host
@@ -364,8 +379,19 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Actual host request capability; the model port and serialized IDs cannot supply it. */
+	requestOperationIssuer?: RequestOperationIssuer;
+	resolveTypedReadReply?: TypedReadReplyResolver;
+	onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void;
+	admitTypedReadCorrection?: () => boolean;
 	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
 	deferInternalReplyRecoveryToCaller?: boolean;
+	/**
+	 * Stage 1 judged the requested app-view navigation part of a larger request
+	 * (visualContinuation disposition "planning"): opening the view alone does
+	 * not satisfy it. A hint for replanning only; it grants no authority.
+	 */
+	navigationWithFollowUp?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
@@ -376,6 +402,11 @@ export interface PlannerLoopParams {
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
+		/** Already authorized immutable data, not dialogue memory or additional read authority. */
+		sourceReply?: {
+			scope: { agentId: string; roomId: string; messageId: string };
+			sources: readonly { id: string; text: string }[];
+		};
 	};
 	/** Host persists resumed execution before dispatch and after settled results. */
 	onCheckpoint?: (
@@ -407,6 +438,12 @@ export interface PlannerLoopParams {
 		},
 	) => Promise<PlannerToolResult> | PlannerToolResult;
 	evaluate?: (params: {
+		resolveTypedReadReply?: TypedReadReplyResolver;
+		typedReadFinalizing?: true;
+		admitTypedReadCorrection?: () => boolean;
+		admittedToolNames?: readonly string[];
+		iteration?: number;
+		onUsage?: RunEvaluatorParams["onUsage"];
 		runtime: PlannerRuntime;
 		context: ContextObject;
 		trajectory: PlannerTrajectory;
@@ -432,6 +469,13 @@ export interface PlannerLoopParams {
 	 * non-terminal tool has executed for the current turn.
 	 */
 	requireNonTerminalToolCall?: boolean;
+	/**
+	 * The caller delivers a reply even when the planner ends silent (for the
+	 * message service: a non-ambient RESPOND with nothing sent yet). A
+	 * STOP/IGNORE-only terminal before any non-terminal tool runs is then
+	 * returned to the planner once for review.
+	 */
+	replyOwed?: boolean;
 	/**
 	 * The Stage-1 router's own replyText for this turn, when it produced one.
 	 * When the required-tool gate exhausts its miss budget without a captured
@@ -465,7 +509,7 @@ export interface PlannerLoopParams {
 	 * marker and keep the full corrective budget. Inferred evidence is weaker —
 	 * when the planner re-commits to the
 	 * IDENTICAL terminal answer on consecutive misses, the loop accepts it
-	 * (mirroring the widget-identity early-finish, #15230) instead of
+	 * instead of
 	 * burning the full miss budget on the heuristic's guess. Omitted (the
 	 * model named the tool itself) keeps the full corrective budget.
 	 */
@@ -484,6 +528,11 @@ export interface PlannerLoopParams {
 }
 
 export interface RunEvaluatorParams {
+	resolveTypedReadReply?: TypedReadReplyResolver;
+	typedReadFinalizing?: true;
+	admitTypedReadCorrection?: () => boolean;
+	admittedToolNames?: readonly string[];
+	typedReadReply?: TypedReadReplyBinding;
 	/** Runtime failure authority; does not prevent continuation or recovery. */
 	hasUnresolvedToolFailure?: boolean;
 	runtime: EvaluatorRuntime;

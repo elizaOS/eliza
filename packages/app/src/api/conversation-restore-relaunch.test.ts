@@ -33,6 +33,7 @@ import {
   type AgentRuntime as AgentRuntimeType,
   ChannelType,
   createCharacter,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -43,7 +44,7 @@ import {
   PgliteDatabaseAdapter,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import { createTestPgliteDataDir } from "@elizaos/testing";
+import { createTestPgliteDataDir } from "@elizaos/testing/runtime";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -199,11 +200,12 @@ async function seedConversation(
   await runtime.createRoom({
     id: roomId,
     name: `Chat ${convId}`,
-    source: "web",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     type: ChannelType.DM,
     channelId: channelIdOverride ?? `web-conv-${convId}`,
     worldId,
   });
+  await runtime.addParticipant(runtime.agentId, roomId);
   await runtime.createMemory(
     {
       entityId: runtime.agentId,

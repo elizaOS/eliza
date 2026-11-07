@@ -2,4 +2,4 @@
 export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-} from "@elizaos/core/contracts/wallet";
+} from "@elizaos/contracts";

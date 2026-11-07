@@ -1,38 +1,8 @@
 /**
- * Per-turn grammar / response-skeleton generation for the Stage-1 response
- * handler and the Stage-2 planner.
- *
- * Eliza-1 is the local voice target: we get to shape the response envelope, the
- * action/evaluator registration, and the decode loop to match. This module is
- * the *producer* side — it walks the registered actions, the registered
- * Stage-1 field evaluators, and the available context ids and emits a
- * {@link ResponseSkeleton} (engine-neutral structure-forcing description) plus,
- * where the skeleton can't express a constraint (the `contexts` array is an
- * array whose *elements* are drawn from a fixed enum), an explicit GBNF
- * `grammar` string. The local llama-server engine (W4,
- * `packages/app/src/services/local-inference/structured-output.ts`)
- * consumes either: `grammar` wins, else it compiles the skeleton to a lazy
- * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
- * equivalent (unforced) contract for them, so there is no fallback branch here.
- *
- * Source of truth:
- *   `ResponseHandlerFieldRegistry.composeSchema()`
- *   (`./response-handler-field-registry.ts`) is canonical. Production Stage 1
- *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`.
- *   `buildResponseGrammar` emits the same field-registry envelope in priority
- *   order; when a caller omits fields, this module defaults to the builtin
- *   field evaluator set.
- *
- * Caching: `buildResponseGrammar` is pure given the runtime registries
- * snapshot. The result is byte-stable across turns when the registries haven't
- * changed, so callers may cache on the returned `responseSkeleton.id` (which is
- * derived from the field-registry signature + the context-id set + the channel
- * flag + the action set). A small process-wide cache is kept here keyed on that
- * id.
- *
- * Simple regex `{n}` / `{n,m}` expansion is fail-closed at both a per-repeat
- * ceiling and a total compiled-grammar budget. Exact `{1000000}` and nested
- * repeats otherwise allocate unbounded GBNF atoms.
+ * Generates response skeletons and GBNF from action and field registries. The composed field
+ * schema is authoritative; stable registry/context/channel/action signatures key the cache.
+ * Grammar takes precedence over skeleton constraints. Repetition expansion rejects per-
+ * repeat and total-budget overflow.
  */
 
 import {
@@ -48,14 +18,12 @@ import type {
 	SpanSamplerPlan,
 } from "../types/model.js";
 
-// ---------------------------------------------------------------------------
 // Inputs
-// ---------------------------------------------------------------------------
 
 /**
  * A registered Stage-1 field evaluator, narrowed to the bits this module needs
  * (name / priority / schema). The full contract lives in
- * `runtime/response-handler-field-evaluator.ts`; we keep the dependency
+ * `runtime/response-handler-fields.ts`; we keep the dependency
  * structural so this module doesn't drag the registry's transitive imports
  * into the browser bundle.
  */
@@ -124,9 +92,7 @@ export interface ResponseGrammarResult {
 	grammar: string;
 }
 
-// ---------------------------------------------------------------------------
 // GBNF helpers
-// ---------------------------------------------------------------------------
 
 /** Escape a string for a GBNF double-quoted literal (C-style escapes). */
 function gbnfEscapeLiteral(text: string): string {
@@ -169,6 +135,20 @@ const GBNF_RULE_BODIES: Record<string, string> = {
 	jsonbool: '"true" | "false"',
 	ws: "[ \\t\\n\\r]*",
 };
+
+/** Shared rules each shared rule body references, computed once. */
+const GBNF_RULE_DEPENDENCIES: ReadonlyMap<string, readonly string[]> = new Map(
+	Object.entries(GBNF_RULE_BODIES).map(([name, body]) => [
+		name,
+		Object.keys(GBNF_RULE_BODIES).filter(
+			(candidate) =>
+				candidate !== name &&
+				new RegExp(`(^|[^A-Za-z0-9_-])${candidate}([^A-Za-z0-9_-]|$)`).test(
+					body,
+				),
+		),
+	]),
+);
 
 type SimpleRegexQuantifier =
 	| { kind: "zeroOrOne" }
@@ -783,12 +763,8 @@ class GbnfBuilder {
 		if (body === undefined) return this;
 		this.rules.set(name, body);
 		// Pull in transitively referenced shared rules.
-		for (const candidate of Object.keys(GBNF_RULE_BODIES)) {
-			if (candidate === name) continue;
-			const referenced = new RegExp(
-				`(^|[^A-Za-z0-9_-])${candidate}([^A-Za-z0-9_-]|$)`,
-			);
-			if (referenced.test(body)) this.useShared(candidate);
+		for (const dependency of GBNF_RULE_DEPENDENCIES.get(name) ?? []) {
+			this.useShared(dependency);
 		}
 		return this;
 	}
@@ -800,9 +776,24 @@ class GbnfBuilder {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Stage-1: buildResponseGrammar
-// ---------------------------------------------------------------------------
+
+/**
+ * Compiled grammars are keyed by per-turn inputs (exposed actions, contexts and
+ * parameter schemas, which can carry per-message ids), so each cache keeps only
+ * its most recently inserted entries.
+ */
+const GRAMMAR_CACHE_LIMIT = 64;
+
+function cacheGrammar<T>(cache: Map<string, T>, key: string, value: T): T {
+	cache.set(key, value);
+	while (cache.size > GRAMMAR_CACHE_LIMIT) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) break;
+		cache.delete(oldest);
+	}
+	return value;
+}
 
 const stage1Cache = new Map<string, ResponseGrammarResult>();
 
@@ -819,11 +810,11 @@ function hashStringSet(values: ReadonlyArray<string>): string {
 	return h.toString(16);
 }
 
+/** Signature of already priority-sorted fields. */
 function deriveFieldSignature(
 	fields: ReadonlyArray<ResponseHandlerFieldShape>,
 ): string {
-	const sorted = sortFields(fields);
-	return sorted.map((f) => `${f.name}:${JSON.stringify(f.schema)}`).join("|");
+	return fields.map((f) => `${f.name}:${JSON.stringify(f.schema)}`).join("|");
 }
 
 function sortFields(
@@ -941,9 +932,9 @@ function gbnfRefForFieldSchema(
  * Build the Stage-1 response envelope skeleton + a precise GBNF grammar.
  *
  * The skeleton's spans, in order:
- *   `{` literal
- *   [one span per registered field evaluator, priority-ordered]
- *   `}` literal
+ * `{` literal
+ * [one span per registered field evaluator, priority-ordered]
+ * `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element
  * string enum) lower to literal spans here — no tokens spent.
@@ -952,18 +943,15 @@ export function buildResponseGrammar(
 	runtime: ResponseGrammarRuntimeView,
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
-	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const baseFields = sortFields(suppliedFields);
-	const fields = baseFields;
+	const fields = sortFields(runtime.responseHandlerFields ?? []);
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
 			(options.actions ?? runtime.actions).map((a) => a.name).filter(Boolean),
 		),
 	).sort();
-	const suppliedFieldSignature =
-		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(baseFields);
-	const fieldSignature = suppliedFieldSignature;
+	const fieldSignature =
+		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(fields);
 
 	const cacheKey = [
 		"stage1",
@@ -1039,15 +1027,17 @@ export function buildResponseGrammar(
 	builder.root(rootParts);
 	const grammar = builder.build();
 	const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-	const result: ResponseGrammarResult = { responseSkeleton: skeleton, grammar };
-	stage1Cache.set(cacheKey, result);
-	return result;
+	return cacheGrammar(stage1Cache, cacheKey, {
+		responseSkeleton: skeleton,
+		grammar,
+	});
 }
 
 /** Clear the process-wide Stage-1 grammar cache (test hook). */
 export function clearResponseGrammarCache(): void {
 	stage1Cache.clear();
 	plannerCache.clear();
+	plannerStrictCache.clear();
 }
 
 /**
@@ -1093,24 +1083,8 @@ export function withGuidedDecodeProviderOptions<
 }
 
 /**
- * Derive a {@link SpanSamplerPlan} from a {@link ResponseSkeleton} using the
- * canonical policy: every `enum` (with ≥2 values), `number`, and `boolean` span
- * gets `temperature: 0, topK: 1` (argmax). `literal`, `free-string`, and
- * `free-json` spans get no override — the call-level temperature applies.
- *
- * `spanIndex` addresses the position INTO `skeleton.spans` directly, so the
- * caller (and tests) can stare at `skeleton.spans[overrides[i].spanIndex]` to
- * verify the policy. Engines that need free-span addressing convert at the
- * boundary by counting non-literal spans up to `spanIndex`.
- *
- * Single-value enums are skipped because they collapse to `literal` upstream;
- * defensively skipped here too. Returns a plan with `overrides: []` when the
- * skeleton has no argmax-eligible spans (caller decides whether to send it).
- *
- * Hardcoded policy matches the user's request: "for any enum or numerical
- * temperature, we should turn temperature to 0 and in fact just select the
- * most likely token." Applies to local inference and Eliza Cloud hosted
- * `eliza-1` (Wave 3 wires the cloud honor path).
+ * Builds per-span sampler overrides: constrained enums, numbers, and booleans decode
+ * greedily; literal and free-text spans use their own generation policy.
  */
 export function buildSpanSamplerPlan(
 	skeleton: ResponseSkeleton,
@@ -1136,9 +1110,7 @@ export function buildSpanSamplerPlan(
 	return { overrides };
 }
 
-// ---------------------------------------------------------------------------
 // Stage-2: planner action grammar
-// ---------------------------------------------------------------------------
 
 /**
  * A minimal description of an action available to the planner this turn: the
@@ -1180,6 +1152,31 @@ export interface PlannerActionGrammarResult {
 }
 
 const plannerCache = new Map<string, PlannerActionGrammarResult>();
+const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
+
+/** Descriptors, name enum, cache key and schema map shared by both planner grammars. */
+function plannerGrammarInput(
+	cachePrefix: string,
+	actions: ReadonlyArray<
+		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
+	>,
+) {
+	const descriptors = actions
+		.map(actionToPlannerDescriptor)
+		.filter((d) => d.name.length > 0);
+	if (descriptors.length === 0) return null;
+	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
+	const actionSchemas: Record<string, JSONSchema> = {};
+	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
+	// Sorting in place is safe: the schema map above kept registration order.
+	const sortedDescriptors = descriptors.sort((a, b) =>
+		a.name.localeCompare(b.name),
+	);
+	const cacheKey = `${cachePrefix}#${hashStringSet(names)}#${JSON.stringify(
+		sortedDescriptors.map((d) => [d.name, d.parametersSchema]),
+	)}`;
+	return { names, sortedDescriptors, cacheKey, actionSchemas };
+}
 
 /**
  * Build a {@link PlannerActionDescriptor} from a registered action.
@@ -1208,29 +1205,14 @@ export function buildPlannerActionGrammar(
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
 	>,
 ): PlannerActionGrammarResult | null {
-	const descriptors = actions
-		.map(actionToPlannerDescriptor)
-		.filter((d) => d.name.length > 0);
-	if (descriptors.length === 0) return null;
-	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
-
-	const cacheKey = `planner#${hashStringSet(names)}#${JSON.stringify(
-		descriptors
-			.slice()
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((d) => [d.name, d.parametersSchema]),
-	)}`;
+	const input = plannerGrammarInput("planner", actions);
+	if (!input) return null;
+	const { names, cacheKey, actionSchemas } = input;
 	const cached = plannerCache.get(cacheKey);
 	if (cached) return cached;
 
-	const actionSchemas: Record<string, JSONSchema> = {};
-	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
-
-	// Skeleton: { "action": <enum>, "parameters": <free-json>, "thought": <free-string> }
-	// Legacy PLAN_ACTIONS-style envelope kept here as the local engine's
-	// guided-decode contract: the model's first sampled field pins the action
-	// name, the second the action's parameters, the third a short thought.
-	// Property order is action, parameters, thought.
+	// Guided decoding emits action, parameters, and thought in that order, pinning the action
+	// before its arguments.
 	const spans: ResponseSkeletonSpan[] = [];
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
@@ -1271,13 +1253,11 @@ export function buildPlannerActionGrammar(
 	rootParts.push(gbnfLiteral("}"));
 
 	builder.root(rootParts);
-	const result: PlannerActionGrammarResult = {
+	return cacheGrammar(plannerCache, cacheKey, {
 		responseSkeleton: { spans, id: cacheKey },
 		grammar: builder.build(),
 		actionSchemas,
-	};
-	plannerCache.set(cacheKey, result);
-	return result;
+	});
 }
 
 /**
@@ -1304,40 +1284,21 @@ export function buildPlannerActionGrammar(
  *
  * Returns `null` when no actions are exposed.
  */
-/**
- * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
- * Returns a map of prefix → suffixes, plus a list of ungrouped names.
- */
 export function buildPlannerActionGrammarStrict(
 	actions: ReadonlyArray<
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
 	>,
 ): PlannerActionGrammarResult | null {
-	const descriptors = actions
-		.map(actionToPlannerDescriptor)
-		.filter((d) => d.name.length > 0);
-	if (descriptors.length === 0) return null;
-	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
-
-	const cacheKey = `planner-strict#${hashStringSet(names)}#${JSON.stringify(
-		descriptors
-			.slice()
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((d) => [d.name, d.parametersSchema]),
-	)}`;
+	const input = plannerGrammarInput("planner-strict", actions);
+	if (!input) return null;
+	const { sortedDescriptors, cacheKey, actionSchemas } = input;
 	const cached = plannerStrictCache.get(cacheKey);
 	if (cached) return cached;
-
-	const actionSchemas: Record<string, JSONSchema> = {};
-	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
 
 	const builder = new GbnfBuilder();
 	builder.useShared("jsonstring");
 
 	const branchRuleNames: string[] = [];
-	const sortedDescriptors = descriptors
-		.slice()
-		.sort((a, b) => a.name.localeCompare(b.name));
 
 	// One branch per action. A previous version of this function tried to
 	// factor common UPPER_SNAKE_CASE prefixes (e.g. emit "MESSAGE_" once with a
@@ -1377,16 +1338,12 @@ export function buildPlannerActionGrammarStrict(
 		id: cacheKey,
 	};
 
-	const result: PlannerActionGrammarResult = {
+	return cacheGrammar(plannerStrictCache, cacheKey, {
 		responseSkeleton,
 		grammar: builder.build(),
 		actionSchemas,
-	};
-	plannerStrictCache.set(cacheKey, result);
-	return result;
+	});
 }
-
-const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
 
 /**
  * GBNF rule names must stay inside the name characters accepted by the
@@ -1488,14 +1445,6 @@ function emitObjectRule(
 }
 
 /**
- * Map a single property schema to a GBNF expression. Pulls in the matching
- * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
- * as a side effect on `builder`.
- *
- * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
- * unique rule names for nested constructs (e.g. `...-obj`, `...-item`).
- */
-/**
  * Build a GBNF rule that matches only numbers within a [min, max] range.
  * For integers: emits a union of literal ranges and digit-length cases.
  * For numbers: allows integer part + optional fractional digits, bounded by min/max.
@@ -1540,8 +1489,10 @@ function buildBoundedNumberRule(
 				? Math.floor(maximum)
 				: Number.POSITIVE_INFINITY;
 
-		// Handle edge cases: if bounds are missing, fall back to unbounded.
-		if (!Number.isFinite(min) && !Number.isFinite(max)) {
+		// Unbounded, or fractional bounds that admit no integer (e.g. 1.2..1.8
+		// rounds to 2..1): same fallback as an inverted range, since enumerating
+		// an empty range would emit an empty rule body.
+		if ((!Number.isFinite(min) && !Number.isFinite(max)) || min > max) {
 			builder.useShared("jsonnumber");
 			return "jsonnumber";
 		}
@@ -1551,7 +1502,12 @@ function buildBoundedNumberRule(
 		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
 			const literals: string[] = [];
 			for (let i = min; i <= max; i++) {
-				literals.push(gbnfJsonStringLiteral(String(i)));
+				// Emit a bare JSON numeric literal (e.g. `5`), not a JSON string
+				// (`"5"`): this rule constrains an integer parameter, so quoting
+				// it would force the model to emit `{"count":"5"}` and violate the
+				// declared {type:"integer"} schema. Matches the float / large-range
+				// branches, which both use the bare `jsonnumber` rule.
+				literals.push(gbnfLiteral(String(i)));
 			}
 			builder.rule(ruleName, literals.join(" | "));
 			return ruleName;
@@ -1576,6 +1532,14 @@ function buildBoundedNumberRule(
 	return "jsonnumber";
 }
 
+/**
+ * Map a single property schema to a GBNF expression. Pulls in the matching
+ * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
+ * as a side effect on `builder`.
+ *
+ * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
+ * unique rule names for nested constructs (e.g. `...-obj`, `...-item`).
+ */
 function propertyValueGbnf(
 	builder: GbnfBuilder,
 	propSchema: JSONSchema,
@@ -1584,7 +1548,7 @@ function propertyValueGbnf(
 ): string {
 	const type = (propSchema as { type?: unknown }).type;
 	if (type === "string") {
-		const enumValues = readStringEnumForGrammar(propSchema);
+		const enumValues = readStringEnum(propSchema);
 		if (enumValues !== null) {
 			if (enumValues.length === 1) {
 				return gbnfJsonStringLiteral(enumValues[0]);
@@ -1622,7 +1586,7 @@ function propertyValueGbnf(
 		const items = (propSchema as { items?: JSONSchema }).items;
 		const itemsType = items && (items as { type?: unknown }).type;
 		if (itemsType === "string") {
-			const enumValues = readStringEnumForGrammar(items as JSONSchema);
+			const enumValues = readStringEnum(items as JSONSchema);
 			if (enumValues !== null && enumValues.length > 0) {
 				builder.useShared("ws");
 				const elem = `( ${enumValues
@@ -1666,18 +1630,6 @@ function schemaHasDeclaredProperties(schema: JSONSchema): boolean {
 		properties !== null &&
 		Object.keys(properties).length > 0
 	);
-}
-
-/** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
-function readStringEnumForGrammar(propSchema: JSONSchema): string[] | null {
-	const raw = (propSchema as { enum?: unknown }).enum;
-	if (!Array.isArray(raw) || raw.length === 0) return null;
-	const normalized: string[] = [];
-	for (const v of raw) {
-		if (typeof v !== "string") return null;
-		normalized.push(v);
-	}
-	return normalized;
 }
 
 function escapeJsonKey(key: string): string {
@@ -1758,8 +1710,6 @@ function readStringEnum(propSchema: JSONSchema): string[] | null {
 	return normalized;
 }
 
-// Re-export the local JsonSchema type for convenience.
+// The package entry exposes these through this module.
 export type { JsonSchema };
-// Re-export the schema normalizer so callers that already import this module
-// don't need a second import path.
 export { normalizeActionJsonSchema };

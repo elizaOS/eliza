@@ -1,0 +1,36 @@
+apply plugin: 'com.android.application'
+
+// -PasrFixturesDir=<dir> adds the LibriSpeech + speech-fixture WAVs that
+// `host-wer-gate.ts --export-device-fixtures <dir>` writes (asr-fixtures.json +
+// 16 kHz PCM16 WAVs, pinned by fixtures.json) to the androidTest assets.
+def asrFixturesDir = providers.gradleProperty('asrFixturesDir').orNull
+
+android {
+    namespace 'ai.eliza.voicequalify'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'ai.eliza.voicequalify'
+        minSdk 26
+        targetSdk 36
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    // Copying compressed GGUFs out of the APK is slow; store them plain.
+    androidResources {
+        noCompress 'gguf', 'lex', 'wav'
+    }
+    sourceSets {
+        androidTest {
+            if (asrFixturesDir != null) assets.srcDirs += file(asrFixturesDir)
+        }
+    }
+}
+
+dependencies {
+    implementation project(':paradee-voice')
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

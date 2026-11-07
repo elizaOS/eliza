@@ -367,3 +367,25 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(git(work, "log", "-1", "--pretty=%B")).toBe("feat: pr leg");
   });
 });
+
+describe("TASKS manage_issues without repo", () => {
+  for (const text of [
+    "list the open/closed issues",
+    "list the issues about src/index.ts crashing",
+  ]) {
+    it(`asks for the repository instead of reading one out of "${text}"`, async () => {
+      const runtime = makeRuntime(tempDir("issues-base-"));
+      await startService(runtime);
+      const result = await tasksAction.handler(
+        runtime,
+        { ...message(), content: { text, metadata: {} } } as Memory,
+        undefined as unknown as State,
+        { parameters: { action: "manage_issues", issueAction: "list" } },
+        async () => [],
+      );
+
+      expect(result).toMatchObject({ success: false, error: "MISSING_REPO" });
+      expect(result?.text).toContain("pass it as repo");
+    });
+  }
+});

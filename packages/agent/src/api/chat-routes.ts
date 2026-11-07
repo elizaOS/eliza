@@ -7,16 +7,22 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  type LinkedAccountProviderId,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import {
   type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
   asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
+  type ChatImageAttachment,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -34,12 +40,11 @@ import {
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-  isLinkedAccountProviderId,
   isRateLimitError,
   isTextGenerationModelType,
-  type LinkedAccountProviderId,
   type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
   type Memory,
   type MessageReplyRecoveryContext,
   ModelType,
@@ -48,14 +53,10 @@ import {
   normalizeCharacterLanguage,
   normalizeEffectReceipts,
   PRIVACY_DENIED_TEXT,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-  type ReadJsonBodyOptions,
+  type ReadView,
   type RolesWorldMetadata,
   type RoomHandlerLease,
-  type RouteRequestContext,
   readActionReplyFailure,
-  readAliasedEnv,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -72,15 +73,22 @@ import {
   toWellFormedUnicode,
   trackPostDeliveryTask,
   type UUID,
+  validateReadView,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-
 import {
+  type ElizaConfig,
+  isLinkedAccountProviderId,
+  type ReadJsonBodyOptions,
+  type RouteRequestContext,
+  readAliasedEnv,
+} from "@elizaos/host/protocol";
+import {
+  bindDeviceRequestedActionPolicy,
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
-import type { ElizaConfig } from "../config/config.ts";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
@@ -98,6 +106,10 @@ import {
 } from "../services/chat-idempotency-service.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
+import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
 } from "./chat-augmentation.ts";
@@ -107,7 +119,11 @@ import {
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
 import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -125,11 +141,10 @@ import {
   type LocalInferenceRouteApi,
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
+import { captureNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   validateChatImages,
@@ -139,11 +154,8 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
-import type { ChatImageAttachment } from "./server-types.ts";
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
-
-export type { ChatImageAttachment, LogEntry };
 
 const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 type LocalInferenceChatApi = Pick<
@@ -328,40 +340,11 @@ export function admitChatMessageId(
 export function normalizeClientMessageId(value: unknown): string | null {
   return chatIdempotency.normalize(value);
 }
-/**
- * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
- * remain reserved until their owner either settles or explicitly releases the
- * key; they must not become duplicate work merely because generation is slow.
- * Settled outcomes remain replayable for a bounded retention period.
- *
- * `scope` is the conversation room id (dashboard chat) or the per-user room key
- * (agent-message API) so the key cannot collide across conversations/users.
- */
-export function isDuplicateChatMessage(
-  scope: string,
-  clientMessageId: string | null,
-  now: number = Date.now(),
-): boolean {
-  return chatIdempotency.reserve(scope, clientMessageId, now);
-}
-/**
- * Roll back an idempotency key recorded by {@link isDuplicateChatMessage}.
- *
- * The guard records at request ARRIVAL (so a duplicate landing while the
- * original is still mid-turn is suppressed — that's the blip-retry window it
- * exists for). But when the original turn dies WITHOUT persisting a visible
- * assistant reply — a client disconnect aborts generation, or an error hits
- * after a disconnect so no fallback reply is persisted — a suppressed retry
- * would eat the user's message entirely: no reply, no error, no retry chip.
- * Callers release the key on exactly those paths so the client's single
- * auto-retry legitimately re-runs the turn (it is not a duplicate of any
- * delivered outcome). Releasing is always safe: the worst case is the
- * pre-guard behavior (a second turn) on a turn that produced nothing.
- */
+/** Release an active reservation held by the requesting turn. */
 export function releaseChatMessageId(
   scope: string,
   clientMessageId: string | null,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
   chatIdempotency.release(scope, clientMessageId, reservation);
 }
@@ -385,13 +368,29 @@ export function getChatMessageIdFirstSeenAt(
  * after that result is durable; a retry can then replay this exact outcome
  * without starting another model turn or borrowing a neighboring turn.
  */
+/**
+ * A provider wait counts from the failed attempt, so an idempotent replay must
+ * not repeat it. Replays keep the typed failure without `rateLimit`.
+ */
+export function withoutLiveRateLimit(
+  outcome: ChatMessageIdOutcome,
+): ChatMessageIdOutcome {
+  if (!outcome.terminalFailure?.rateLimit) return outcome;
+  const { rateLimit: _rateLimit, ...terminalFailure } = outcome.terminalFailure;
+  return { ...outcome, terminalFailure };
+}
 export function setChatMessageIdOutcome(
   scope: string,
   clientMessageId: string | null,
   outcome: ChatMessageIdOutcome,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
-  chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
+  chatIdempotency.settle(
+    scope,
+    clientMessageId,
+    withoutLiveRateLimit(outcome),
+    reservation,
+  );
 }
 /** Return the durable outcome bound to an exact idempotency key, if settled. */
 export function getChatMessageIdOutcome(
@@ -488,6 +487,12 @@ export interface ChatGenerationResult {
   };
 }
 export interface ChatActionResultSummary {
+  /** Validated restart-safe locator metadata; never arbitrary tool payload. */
+  data?: {
+    actionName: string;
+    readView: ReadView;
+    control?: Record<string, unknown>;
+  };
   effectReceipts?: readonly EffectReceipt[];
   actionName?: string;
   success: boolean;
@@ -497,18 +502,30 @@ export interface ChatActionResultSummary {
 }
 /**
  * Where a streamed text emission originated. `"model"` text is (or extends)
- * the turn's final reply; `"action_callback"` text is an in-flight action
- * status delivery that the turn's final reply may replace entirely. Voice
- * clients must not synthesize `"action_callback"` text until the terminal
- * frame confirms it — speech, unlike a chat bubble, cannot be retracted
- * (the "double-speak" defect: ack spoken, then the reply spoken again).
+ * the turn's final reply; `"model_draft"` text is a structured model field
+ * (the Stage-1 reply) streamed before validation, which the final reply
+ * confirms, revises or retracts; `"action_callback"` text is an in-flight
+ * action status delivery that the turn's final reply may replace entirely.
+ * Voice clients must not synthesize `"model_draft"` or `"action_callback"`
+ * text until a `"model"` frame or the terminal frame confirms it — speech,
+ * unlike a chat bubble, cannot be retracted (the "double-speak" defect: ack
+ * spoken, then the reply spoken again).
  */
-export type ChatStreamTextOrigin = "model" | "action_callback";
+export type ChatStreamTextOrigin = "model" | "model_draft" | "action_callback";
 export interface ChatGenerateOptions {
   /** Internal host timer begun before room admission; never read from a request body. */
   inferenceTimer?: InferenceTurnTimer;
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
-  onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
+  /**
+   * Replaces the streamed text. `revision` marks a new model attempt (retry,
+   * repair or failover) or the validated final reply rewriting what streamed:
+   * consumers must replace even a strict prefix of what they already hold.
+   */
+  onSnapshot?: (
+    text: string,
+    origin?: ChatStreamTextOrigin,
+    revision?: boolean,
+  ) => void;
   /**
    * Called once the authoritative generation result is settled, before the
    * room's post-delivery bookkeeping is drained. Realtime transports can use
@@ -656,7 +673,6 @@ function isAppendOnlyStreamDivergenceError(
     error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
   );
 }
-// LogEntry is canonical in @elizaos/core and re-exported above.
 type CallbackMergeMode = "append" | "replace";
 function resolveCallbackMergeMode(
   content: Content,
@@ -1095,7 +1111,14 @@ function buildRuntimeActionNameLookup(
   }
   return lookup;
 }
-function readRuntimeActionResults(
+/**
+ * Returns the action results recorded for `messageId`, or `[]` when the caller
+ * asked about no message or the runtime exposes no reader. A reader that throws
+ * rejects with `ElizaError` (`ACTION_RESULTS_READ_FAILED`) rather than
+ * resolving `[]`: downstream `[]` means "no action succeeded", so a failed read
+ * would be reported as unexecuted model actions instead of a read failure.
+ */
+export function readRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
 ): unknown[] {
@@ -1111,9 +1134,18 @@ function readRuntimeActionResults(
     return [];
   }
   try {
-    return getActionResults(messageId);
-  } catch {
-    return [];
+    // AgentRuntime.getActionResults reads `this.stateCache`; keep the receiver.
+    return getActionResults.call(runtime, messageId);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — downstream `[]` means "no
+    // action succeeded", so swallowing a read failure would make the route
+    // fail a completed turn closed with a false "actions were not executed"
+    // reply instead of reporting the read failure.
+    throw new ElizaError("Failed to read action results for message", {
+      code: "ACTION_RESULTS_READ_FAILED",
+      cause: error,
+      context: { messageId },
+    });
   }
 }
 function readActionResultName(result: unknown): string {
@@ -1263,10 +1295,67 @@ function summarizeActionResultForClient(
       : record.error instanceof Error
         ? record.error.message
         : undefined;
+  // Opaque reference spelling is provider-owned, never an authorization check.
+  // Persist only the validated, current revision-bound read metadata.
+  let readData: ChatActionResultSummary["data"];
+  if (
+    record.success === true &&
+    actionName === "MESSAGE_READ_MESSAGE" &&
+    data &&
+    (record.actionName === undefined || record.actionName === actionName)
+  ) {
+    try {
+      const readView = validateReadView(data.readView),
+        control = asRecord(data.control),
+        promptData = asRecord(record.promptData);
+      if (
+        promptData &&
+        ((promptData.readView !== undefined &&
+          !isDeepStrictEqual(promptData.readView, data.readView)) ||
+          (promptData.control !== undefined &&
+            !isDeepStrictEqual(promptData.control, data.control)))
+      )
+        throw Error("Conflicting read metadata");
+      const safeView =
+        isDeepStrictEqual(data.readView, readView) &&
+        readView.reference.kind === "email" &&
+        readView.reference.resumability === "restart-safe" &&
+        (readView.reference.expiresAt === undefined ||
+          Date.parse(readView.reference.expiresAt) > Date.now()) &&
+        typeof readView.reference.revision === "string" &&
+        readView.reference.revision === readView.slice.revision;
+      if (
+        safeView &&
+        readView.slice.completeness === "complete" &&
+        data.control === undefined
+      )
+        readData = { actionName, readView };
+      else if (
+        safeView &&
+        readView.slice.completeness === "partial-recoverable" &&
+        control &&
+        Object.keys(control).sort().join(",") ===
+          "action,expectedRevision,limit,offset,reference,source,unit" &&
+        control.action === "read_message" &&
+        control.source === "gmail" &&
+        control.reference === readView.reference.ref &&
+        control.expectedRevision === readView.reference.revision &&
+        control.offset === readView.slice.nextOffset &&
+        control.unit === readView.slice.range.unit &&
+        Number.isSafeInteger(control.limit) &&
+        Number(control.limit) > 0 &&
+        Number(control.limit) <= 65536
+      )
+        readData = { actionName, readView, control: { ...control } };
+    } catch {
+      /* Malformed source metadata never becomes durable read authority. */
+    }
+  }
   const effectReceipts = normalizeEffectReceipts(record.effectReceipts);
   if (!actionName && !values && !text && !error && effectReceipts.length === 0)
     return null;
   return {
+    ...(readData ? { data: readData } : {}),
     ...(effectReceipts.length ? { effectReceipts } : {}),
     ...(actionName ? { actionName } : {}),
     success: Boolean(record.success),
@@ -1363,7 +1452,12 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   }
   const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
   if (fromEnv) {
-    const parsed = Number.parseInt(fromEnv, 10);
+    // Number.parseInt stops at the first non-digit, so "60000junk" parsed to
+    // a finite 60000 and was accepted as a deliberate setting instead of
+    // falling back to the default. Require the whole trimmed value to be
+    // decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+    const text = fromEnv.trim();
+    const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
     if (Number.isFinite(parsed) && parsed > 0) {
       return Math.max(1000, parsed);
     }
@@ -1664,15 +1758,11 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
 // SSE helpers
 // ---------------------------------------------------------------------------
 export {
-  type ChatTokenStreamProtocol,
   type ChatTokenStreamWriter,
-  type ChatTokenStreamWriterDeps,
   type ChatTokenWriteOptions,
   createChatTokenStreamWriter,
-  DELTA_STREAM_PROTOCOL,
   initSse,
   writeChatStatusSse,
-  writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseData,
@@ -1841,10 +1931,25 @@ async function hasRecentAssistantMemory(
         createdAt >= sinceMs - 2000
       );
     });
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — this read guards a live chat
+    // write; returning false here would persist a duplicate row and re-send a
+    // prior turn exactly when storage is unhealthy and retries are likely.
+    // Fail closed so the route boundary surfaces a retryable error instead.
+    throw new ElizaError("Failed to read recent assistant memory for dedupe", {
+      code: "ASSISTANT_DEDUPE_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
+/**
+ * Reports whether the recent 12-message read contains a visible assistant
+ * reply at or after `sinceMs - 2000`. A failed storage read rejects with `ElizaError`
+ * (`ASSISTANT_MEMORY_READ_FAILED`) instead of resolving `false`: `false`
+ * means no matching reply in that read, and callers must not catch the
+ * rejection and substitute `false`.
+ */
 export async function hasRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1854,6 +1959,13 @@ export async function hasRecentVisibleAssistantMemorySince(
     await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
   );
 }
+/**
+ * Returns the newest visible assistant reply text at or after
+ * `sinceMs - slackMs` in the recent 12-message read, or `null` when that
+ * successful read contains no matching reply. A storage read
+ * failure rejects with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) rather
+ * than degrading to `null`, which would read as "no prior reply".
+ */
 export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1906,6 +2018,15 @@ export function compareAssistantTurnRecencyDescending(
     (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
   );
 }
+/**
+ * Reads the most recent visible (non-internal) assistant turn at or after
+ * `sinceMs - slackMs` among the recent 12 messages, newest first, as
+ * `{ id, text }`. Resolves `null` when that successful read has no match; a failed storage read rejects
+ * with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) wrapping the cause.
+ * Fail closed is the contract: a fabricated "no prior reply" would regenerate
+ * and re-send a previous turn's answer on rapid-fire retries. Reachable by
+ * external consumers through `@elizaos/agent/api/chat-routes`.
+ */
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1947,8 +2068,15 @@ export async function getRecentVisibleAssistantMemorySince(
     return persistedAssistantTurn?.id && text
       ? { id: persistedAssistantTurn.id as UUID, text }
       : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — null means "no prior reply",
+    // so swallowing a storage failure here would regenerate and re-send a
+    // prior turn's answer on rapid-fire retries. Fail closed instead.
+    throw new ElizaError("Failed to read recent visible assistant memory", {
+      code: "ASSISTANT_MEMORY_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
 export async function persistAssistantConversationMemory(
@@ -2180,13 +2308,9 @@ export async function readChatRequestPayload(
   preferredLanguage?: string;
   source?: string;
   metadata?: Record<string, unknown>;
-  /** Client-supplied idempotency key (see `isDuplicateChatMessage`); absent
+  /** Client-supplied idempotency key (see `admitChatMessageId`); absent
    *  when the client did not stamp one. */
   clientMessageId?: string;
-  /** Present only when the client advertised the exact delta-v2 wire protocol;
-   *  drives `createChatTokenStreamWriter`. Unknown values are ignored so the
-   *  server stays on legacy framing for un-negotiated clients. */
-  streamProtocol?: typeof DELTA_STREAM_PROTOCOL;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -2196,7 +2320,7 @@ export async function readChatRequestPayload(
     source?: string;
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
-    streamProtocol?: string;
+    requestedActionPolicy?: unknown;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -2237,6 +2361,12 @@ export async function readChatRequestPayload(
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  // Runtime-internal keys: a client could skip the inbound hardening hook, or
+  // pair a forged isAutonomous with the autonomy source to unlock private actions.
+  if (rawMetadata) {
+    delete rawMetadata.isAutonomous;
+    delete rawMetadata.skipIncomingMessageHooks;
+  }
   const metadata = enrichChatUiViewMetadata(
     rawMetadata,
     helpers.runtime
@@ -2256,10 +2386,27 @@ export async function readChatRequestPayload(
     );
     return null;
   }
-  const streamProtocol =
-    body.streamProtocol === DELTA_STREAM_PROTOCOL
-      ? DELTA_STREAM_PROTOCOL
-      : undefined;
+  // Consume this transport command in the authenticated request scope only;
+  // it must not become model-facing or persisted message metadata.
+  if (
+    body.requestedActionPolicy !== undefined &&
+    (!helpers.runtime ||
+      !clientMessageId ||
+      (channelType !== ChannelType.DM &&
+        channelType !== ChannelType.VOICE_DM) ||
+      !bindDeviceRequestedActionPolicy(
+        helpers.runtime,
+        body.requestedActionPolicy,
+        clientMessageId,
+      ))
+  ) {
+    helpers.error(
+      res,
+      "Requested action policy requires a current authenticated device request",
+      403,
+    );
+    return null;
+  }
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -2268,7 +2415,6 @@ export async function readChatRequestPayload(
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
-    ...(streamProtocol ? { streamProtocol } : {}),
   };
 }
 function readMessageTrajectoryStepId(
@@ -2404,6 +2550,7 @@ async function generateChatResponseWithTiming(
     let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
     let visibleCallbackDeliveries = 0;
+    const deliveredActionAttachments: Media[] = [];
     const deliveredActionCallbacks: Array<{
       actionName: string;
       text?: string;
@@ -2426,11 +2573,22 @@ async function generateChatResponseWithTiming(
     // `running_action`, not one per chunk) by tracking the last signature.
     let lastStatusSignature = "";
     let planningAcknowledgment: string | undefined;
+    // The latest transient label (the model acknowledgement, then each
+    // content-free activity) carries through later unlabeled phases. Hosts
+    // speak a labelled thinking status, so it inherits only the model's own
+    // acknowledgement, never an activity name.
+    let transientStatusLabel: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      const visibleStatus = planningAcknowledgment
-        ? { ...status, label: planningAcknowledgment }
-        : status;
+      if (status.label) transientStatusLabel = status.label;
+      const inheritedLabel =
+        status.kind === "thinking"
+          ? planningAcknowledgment
+          : transientStatusLabel;
+      const visibleStatus =
+        !status.label && inheritedLabel
+          ? { ...status, label: inheritedLabel }
+          : status;
       const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
       lastStatusSignature = signature;
@@ -2459,6 +2617,7 @@ async function generateChatResponseWithTiming(
     const emitSnapshot = (
       text: string,
       origin: ChatStreamTextOrigin = "model",
+      revision = false,
     ): void => {
       if (!text) return;
       // Skip when the snapshot matches the current responseText exactly:
@@ -2468,7 +2627,7 @@ async function generateChatResponseWithTiming(
       responseText = text;
       if (opts?.onSnapshot) {
         markFirstVisibleReply();
-        opts.onSnapshot(text, origin);
+        opts.onSnapshot(text, origin, revision);
       }
     };
     const claimStreamSource = (
@@ -2484,10 +2643,16 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
+    // The model attempt whose accumulation the stream currently carries.
+    let activeStreamRevision: number | undefined;
+    // A structured draft reached the client; finalization must confirm,
+    // revise or retract it from the authoritative result.
+    let draftStreamed = false;
     const appendIncomingText = (
       chunk: string,
       accumulated?: string,
       origin: ChatStreamTextOrigin = "model",
+      streamRevision?: number,
     ): void => {
       // StreamChunkCallback defines `chunk` as a delta. Structured extractors
       // additionally provide their authoritative accumulation, which lets this
@@ -2498,12 +2663,27 @@ async function generateChatResponseWithTiming(
         emitChunk(chunk, origin);
         return;
       }
+      draftStreamed = true;
+      // A new revision is a new model attempt (retry, repair, failover): its
+      // accumulation restarts the reply. An older one is a superseded attempt.
+      let revised = false;
+      if (streamRevision !== undefined) {
+        if (
+          activeStreamRevision !== undefined &&
+          streamRevision < activeStreamRevision
+        )
+          return;
+        revised =
+          activeStreamRevision !== undefined &&
+          streamRevision !== activeStreamRevision;
+        activeStreamRevision = streamRevision;
+      }
       if (accumulated === responseText) return;
       if (accumulated.startsWith(responseText)) {
         emitChunk(accumulated.slice(responseText.length), origin);
         return;
       }
-      emitSnapshot(accumulated, origin);
+      emitSnapshot(accumulated, origin, revised);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -2701,6 +2881,9 @@ async function generateChatResponseWithTiming(
                       : chunk;
                     const attributedActionName =
                       normalizeActionName(actionName);
+                    if (attributedActionName && content.attachments?.length) {
+                      deliveredActionAttachments.push(...content.attachments);
+                    }
                     const progressCallback = isProgressActionCallback(content);
                     if (!visibleChunk) {
                       if (attributedActionName) {
@@ -2752,8 +2935,20 @@ async function generateChatResponseWithTiming(
                           // One transient label survives tool phases without entering
                           // response text or durable terminal persistence.
                           planningAcknowledgment = text;
-                          emitStatus({ kind: "thinking" });
+                          emitStatus({ kind: "thinking", label: text });
                           markInference("chat:planning-acknowledgment");
+                        }
+                      : undefined,
+                    // Audience-checked, content-free activity names drive the
+                    // working indicator on every turn, owner-private included.
+                    onActivityStatus: opts?.onStatus
+                      ? ({ actionName, label }) => {
+                          if (generationAbortController.signal.aborted) return;
+                          emitStatus({
+                            kind: "running_tool",
+                            toolName: actionName,
+                            label,
+                          });
                         }
                       : undefined,
                     onSettledActionResult: (actionResult) => {
@@ -2767,6 +2962,7 @@ async function generateChatResponseWithTiming(
                           chunk: string,
                           _messageId?: string,
                           accumulated?: string,
+                          streamRevision?: number,
                         ) => {
                           if (!chunk) return;
                           if (isInternalStructuredStreamText(chunk)) {
@@ -2781,8 +2977,18 @@ async function generateChatResponseWithTiming(
                             }
                             return;
                           }
+                          // A structured accumulation is a revisable draft. A
+                          // transport that cannot replace text gets the
+                          // validated reply whole at finalization instead.
+                          if (accumulated !== undefined && !opts.onSnapshot)
+                            return;
                           if (!claimStreamSource("onStreamChunk")) return;
-                          appendIncomingText(chunk, accumulated);
+                          appendIncomingText(
+                            chunk,
+                            accumulated,
+                            accumulated === undefined ? "model" : "model_draft",
+                            streamRevision,
+                          );
                         }
                       : undefined,
                   },
@@ -2856,7 +3062,7 @@ async function generateChatResponseWithTiming(
                   )
                 : terminalFailure.message;
             if (opts?.onSnapshot && !replyFailure) {
-              emitSnapshot(failureText);
+              emitSnapshot(failureText, "model", draftStreamed);
             } else {
               responseText = failureText;
             }
@@ -3107,6 +3313,15 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
+    // A streamed draft is not the reply: only the authoritative result is.
+    // Clear it so the fallback below re-sends the result as a confirming
+    // revision, or retract it when the turn produced no visible reply.
+    if (draftStreamed && !terminalFailure) {
+      responseText = "";
+      if (!resultText || resultTextVisibility === "internal") {
+        opts?.onSnapshot?.("", "model", true);
+      }
+    }
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (
       !terminalFailure &&
@@ -3115,7 +3330,7 @@ async function generateChatResponseWithTiming(
       resultTextVisibility !== "internal"
     ) {
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", draftStreamed);
       } else {
         emitChunk(resultText);
       }
@@ -3137,8 +3352,11 @@ async function generateChatResponseWithTiming(
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
     ) {
+      // The validated reply rewrote the streamed text (a planner reroute,
+      // cleanup of raw model tokens). It is a revision: clients replace their
+      // buffer even when the final text is a prefix of it.
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", true);
       } else {
         responseText = resultText;
       }
@@ -3217,6 +3435,14 @@ async function generateChatResponseWithTiming(
             const content = {
               ...result.responseContent,
               text: finalText,
+              ...(deliveredActionAttachments.length > 0
+                ? {
+                    attachments: [
+                      ...(result.responseContent.attachments ?? []),
+                      ...deliveredActionAttachments,
+                    ],
+                  }
+                : {}),
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
@@ -3243,6 +3469,9 @@ async function generateChatResponseWithTiming(
         : finalText
           ? ({
               text: finalText,
+              ...(deliveredActionAttachments.length > 0
+                ? { attachments: [...deliveredActionAttachments] }
+                : {}),
               ...(terminalFailureKind
                 ? { failureKind: terminalFailureKind }
                 : {}),
@@ -3408,6 +3637,10 @@ async function generateOwnedChatResponse(
       label: "chat-request",
       roomId: message.roomId,
     });
+  const recordNativeTiming = captureNativeInferenceTiming(
+    runtime,
+    message.entityId,
+  );
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(
@@ -3427,6 +3660,7 @@ async function generateOwnedChatResponse(
     } finally {
       const summary = emitInferenceTiming(timer);
       if (summary) {
+        recordNativeTiming?.(summary);
         void persistInferenceTimingSummary(runtime, message, summary).catch(
           (error) => {
             // error-policy:J7 latency persistence must not turn a completed
@@ -3563,7 +3797,8 @@ export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
 export async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
-  agentName: string,
+  /** agentIdentityName(runtime.character): stays the same after a rename. */
+  identityName: string,
   channelIdPrefix: string,
   roomKey: string,
   principal: TrustedApiPrincipal,
@@ -3572,21 +3807,29 @@ export async function ensureCompatChatConnection(
   roomId: UUID;
   worldId: UUID;
 }> {
-  const ownerPrincipal =
+  const ownerAuthenticated =
     principal.kind === "owner_session" || principal.kind === "owner_api_token";
-  const userId = ownerPrincipal
-    ? ensureAdminEntityIdForChat(state)
-    : (stringToUuid(
-        `${agentName}:${channelIdPrefix}:external:${principal.principalId}`,
-      ) as UUID);
-  const principalScopedRoomKey = ownerPrincipal
+  // ELIZA_CONVERSATION_CALLER_ROLE=USER: the owner credential carries an end
+  // user's chat, so the turn speaks as the product user at role USER (the same
+  // mapping as resolveConversationCaller in conversation-routes.ts).
+  const productUser =
+    ownerAuthenticated && resolveOwnerChatCallerRole() === "USER";
+  const ownerPrincipal = ownerAuthenticated && !productUser;
+  const userId = productUser
+    ? productUserChatEntityId()
+    : ownerPrincipal
+      ? ensureAdminEntityIdForChat(state)
+      : (stringToUuid(
+          `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
+        ) as UUID);
+  const principalScopedRoomKey = ownerAuthenticated
     ? roomKey
     : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
-    `${agentName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
+    `${identityName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
   ) as UUID;
-  const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
-  const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
+  const worldId = stringToUuid(`${identityName}-web-chat-world`) as UUID;
+  const messageServerId = stringToUuid(`${identityName}-web-server`) as UUID;
   await runtime.ensureConnection({
     entityId: userId,
     roomId,
@@ -3599,7 +3842,10 @@ export async function ensureCompatChatConnection(
     metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
   if (!ownerPrincipal) {
-    if (principal.kind === "service_gateway" && principal.sessionRole) {
+    if (
+      productUser ||
+      (principal.kind === "service_gateway" && principal.sessionRole)
+    ) {
       await grantSessionUserWorldRole(runtime, worldId, userId);
     }
     return { userId, roomId, worldId };
@@ -3637,7 +3883,8 @@ export async function ensureCompatChatConnection(
 }
 /**
  * Grant-on-first-contact USER world membership for an authenticated
- * machine-session (paired-device) principal's minted external entity, so its
+ * machine-session (paired-device) principal's minted external entity, or for
+ * the product user under `ELIZA_CONVERSATION_CALLER_ROLE=USER`, so its
  * turns resolve at least the session's boundary role through
  * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
  *
@@ -3743,13 +3990,17 @@ export function resolveTrustedApiPrincipal(
     principalId: "non-owner-api",
   };
 }
-function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {
+/** @internal Ordinary chat synchronization carries no implicit rename intent. */
+export function syncRuntimeCharacterToChatStateConfig(
+  state: Pick<ChatRouteState, "runtime" | "config">,
+): void {
   if (!state.runtime || !state.config) {
     return;
   }
   syncCharacterIntoConfig(
     state.config,
     state.runtime.character as Parameters<typeof syncCharacterIntoConfig>[1],
+    { nameWasExplicitlyEdited: false },
   );
 }
 // ---------------------------------------------------------------------------
@@ -3900,7 +4151,7 @@ export async function handleChatRoutes(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = agentIdentityName(runtime.character) ?? "Eliza";
           const { userId, roomId } = await ensureCompatChatConnection(
             state,
             runtime,
@@ -4048,7 +4299,7 @@ export async function handleChatRoutes(
           return true;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = agentIdentityName(runtime.character) ?? "Eliza";
         const { userId, roomId } = await ensureCompatChatConnection(
           state,
           runtime,
@@ -4294,7 +4545,7 @@ export async function handleChatRoutes(
         {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
-          const agentName = runtime.character.name ?? "Eliza";
+          const agentName = agentIdentityName(runtime.character) ?? "Eliza";
           const { userId, roomId } = await ensureCompatChatConnection(
             state,
             runtime,
@@ -4433,7 +4684,7 @@ export async function handleChatRoutes(
           return true;
         }
         const runtime = state.runtime;
-        const agentName = runtime.character.name ?? "Eliza";
+        const agentName = agentIdentityName(runtime.character) ?? "Eliza";
         const { userId, roomId } = await ensureCompatChatConnection(
           state,
           runtime,
@@ -4574,7 +4825,7 @@ export async function handleChatRoutes(
     }
     try {
       const runtime = state.runtime;
-      const agentName = runtime.character.name ?? "Eliza";
+      const agentName = agentIdentityName(runtime.character) ?? "Eliza";
       const messagePrincipal: TrustedApiPrincipal =
         trustedApiPrincipal.kind === "service_gateway"
           ? {

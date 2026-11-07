@@ -26,8 +26,9 @@ test("delayed one-time callback returns its redirect without a socket retry", as
     ),
   );
   Object.assign(process.env, environment);
-  const { authRoutes, getAuthChallengeStore } = await import(
-    "../api/src/routes/auth"
+  const { authRoutes } = await import("../api/routes/auth");
+  const { getAuthChallengeStore } = await import(
+    "../api/services/auth-lifecycle"
   );
   const { startEmbeddedLogin } = await import("../runtime");
   const callbackPath = `/transport-callback-${randomBytes(8).toString("hex")}`;

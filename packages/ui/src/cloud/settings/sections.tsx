@@ -8,6 +8,12 @@
  * props. Domain bodies self-load their data, while adapters inject app-owned
  * actions such as the platform-aware Cloud login flow.
  *
+ * Account and Billing, opened from the hosted web shell, leave that shell for
+ * `/cloud/account` and `/cloud/billing`. The settings hash is written with
+ * `replaceState`, which does not update the cloud router, so those sections
+ * would otherwise stay mounted beside the agent composer. Native settings have
+ * no host router and keep the embedded bodies.
+ *
  * Section → source domain:
  *  - {@link CloudAccountSection}       → cloud/account-security (AccountSurface)
  *  - {@link CloudBillingSection}       → cloud/billing (BillingSectionBody + invoices route)
@@ -19,9 +25,11 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
-import { useCallback } from "react";
-import { useAppSelectorShallow } from "../../state";
+import { type ReactNode, useCallback, useEffect } from "react";
+import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { runAsPrivilegedShell } from "../../surface-realm-channel";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -32,7 +40,46 @@ import { OrganizationSection } from "../organization/OrganizationSection";
 import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
+type HostedCloudSectionPath = "/cloud/account" | "/cloud/billing";
+
+function HostedCloudSectionNavigate({
+  to,
+}: {
+  to: HostedCloudSectionPath;
+}): null {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    // This fixed host-shell transition leaves the settings view. Keep view
+    // navigation gated while giving the shell router its existing identity.
+    runAsPrivilegedShell(() =>
+      navigate(`${to}${location.search}`, { replace: true }),
+    );
+  }, [navigate, to, location.search]);
+  return null;
+}
+
+/** Hosted web settings sit inside CloudRouterShell. Native settings do not. */
+function HostedCloudSectionRedirect({
+  to,
+  children,
+}: {
+  to: HostedCloudSectionPath;
+  children: ReactNode;
+}): React.JSX.Element {
+  if (!useInRouterContext()) return <>{children}</>;
+  return <HostedCloudSectionNavigate to={to} />;
+}
+
 export function CloudAccountSection(): React.JSX.Element {
+  return (
+    <HostedCloudSectionRedirect to="/cloud/account">
+      <CloudAccountSectionBody />
+    </HostedCloudSectionRedirect>
+  );
+}
+
+function CloudAccountSectionBody(): React.JSX.Element {
   const {
     elizaCloudLoginBusy,
     elizaCloudLoginError,
@@ -79,6 +126,14 @@ export function CloudAccountSection(): React.JSX.Element {
 }
 
 export function CloudBillingSection(): React.JSX.Element {
+  return (
+    <HostedCloudSectionRedirect to="/cloud/billing">
+      <CloudBillingSectionBody />
+    </HostedCloudSectionRedirect>
+  );
+}
+
+function CloudBillingSectionBody(): React.JSX.Element {
   const {
     elizaCloudLoginBusy,
     elizaCloudLoginError,

@@ -32,6 +32,7 @@ import {
   type IAgentRuntime,
   isActiveMemoryEvidence,
   logger,
+  parseBooleanValue,
   resolvePrimaryEntityId,
   Service,
   type ServiceTypeName,
@@ -54,6 +55,11 @@ function isMemoryStorageProvider(
     "storeLongTermMemory" in service &&
     typeof service.storeLongTermMemory === "function"
   );
+}
+
+/** True when a setting was supplied at all (empty string counts as absent). */
+function isPresentSetting(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
 }
 
 export class MemoryService extends Service {
@@ -133,30 +139,44 @@ export class MemoryService extends Service {
     this.storage = provider;
 
     // Read config overrides from environment / character settings.
-    const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
-    if (longTermEnabled === "false" || longTermEnabled === false) {
-      this.memoryConfig.longTermExtractionEnabled = false;
-    } else if (longTermEnabled === "true" || longTermEnabled === true) {
-      this.memoryConfig.longTermExtractionEnabled = true;
+    // A settings UI or config file can spell the value in any letter case
+    // ("FALSE", " false "). Parse it with the shared boolean reader so an
+    // explicit disable does not fail open, as in the triggers gate (#37535).
+    const longTermEnabled = parseBooleanValue(
+      runtime.getSetting("MEMORY_LONG_TERM_ENABLED"),
+    );
+    if (longTermEnabled !== undefined) {
+      this.memoryConfig.longTermExtractionEnabled = longTermEnabled;
     }
 
     const confidenceThreshold = runtime.getSetting(
       "MEMORY_CONFIDENCE_THRESHOLD",
     );
-    if (confidenceThreshold) {
-      this.memoryConfig.longTermConfidenceThreshold = Number.parseFloat(
-        String(confidenceThreshold),
-      );
+    if (isPresentSetting(confidenceThreshold)) {
+      const raw = String(confidenceThreshold).trim();
+      const parsed = /^\+?\d*\.?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+        this.memoryConfig.longTermConfidenceThreshold = parsed;
+      } else {
+        logger.warn(
+          `[MemoryService] ignoring MEMORY_CONFIDENCE_THRESHOLD=${JSON.stringify(String(confidenceThreshold))}; expected a number between 0 and 1, keeping ${this.memoryConfig.longTermConfidenceThreshold}`,
+        );
+      }
     }
 
     const extractionThreshold = runtime.getSetting(
       "MEMORY_EXTRACTION_THRESHOLD",
     );
-    if (extractionThreshold) {
-      this.memoryConfig.longTermExtractionThreshold = Number.parseInt(
-        String(extractionThreshold),
-        10,
-      );
+    if (isPresentSetting(extractionThreshold)) {
+      const raw = String(extractionThreshold).trim();
+      const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+      if (Number.isSafeInteger(parsed) && parsed > 0) {
+        this.memoryConfig.longTermExtractionThreshold = parsed;
+      } else {
+        logger.warn(
+          `[MemoryService] ignoring MEMORY_EXTRACTION_THRESHOLD=${JSON.stringify(String(extractionThreshold))}; expected a positive whole number, keeping ${this.memoryConfig.longTermExtractionThreshold}`,
+        );
+      }
     }
 
     const extractionInterval = runtime.getSetting("MEMORY_EXTRACTION_INTERVAL");

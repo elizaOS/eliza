@@ -82,7 +82,7 @@ function isStewardOperationalKey(key: string): boolean {
   return DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEY_SET.has(key.toUpperCase());
 }
 
-function isCloudAuthorityKey(key: string): boolean {
+export function isCloudAuthorityKey(key: string): boolean {
   const normalizedKey = key.toUpperCase();
   if (DEV_CLOUD_CONTROL_KEYS.has(normalizedKey)) return false;
   return (

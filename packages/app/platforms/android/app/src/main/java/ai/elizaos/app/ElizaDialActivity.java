@@ -1,11 +1,10 @@
 package ai.elizaos.app;
 
+import ai.eliza.plugins.phone.TelecomDial;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.telecom.PhoneAccountHandle;
-import android.telecom.TelecomManager;
 import android.util.Log;
 
 /**
@@ -14,9 +13,9 @@ import android.util.Log;
  * Receives ACTION_DIAL (open the dial pad) and ACTION_CALL (place a call
  * directly). For ACTION_DIAL we forward to the WebView which renders the
  * Eliza dial pad. For ACTION_CALL with a tel: URI we invoke
- * {@link TelecomManager#placeCall} so the framework actually originates
- * the outgoing call — without this, Eliza would be a dialer UI that
- * never dials anything.
+ * {@link TelecomDial#originate} (TelecomManager.placeCall) so the framework
+ * actually originates the outgoing call — without this, Eliza would be a
+ * dialer UI that never dials anything.
  *
  * The InCallService then receives the resulting Call object and owns
  * the native call screen independently of WebView and agent startup.
@@ -54,30 +53,11 @@ public class ElizaDialActivity extends Activity {
     }
 
     /**
-     * Place an outgoing call via the platform's TelecomManager. The
-     * MANAGE_OWN_CALLS / CALL_PHONE permissions cover this; on a
-     * privileged install both are auto-granted via default-permissions.
-     *
-     * Failures here are recoverable — the WebView still opens and the
-     * user can re-attempt manually — so we log instead of throwing.
+     * Places an outgoing call through the shared {@link TelecomDial}. A refusal (no dialer role or
+     * CALL_PHONE) is logged; the WebView still opens and the user can re-attempt manually.
      */
     private void originateCall(Uri telUri) {
-        TelecomManager telecom = (TelecomManager) getSystemService(TELECOM_SERVICE);
-        if (telecom == null) {
-            Log.w(TAG, "TelecomManager unavailable; ACTION_CALL not honored.");
-            return;
-        }
-        try {
-            Bundle extras = new Bundle();
-            PhoneAccountHandle defaultAccount =
-                    telecom.getDefaultOutgoingPhoneAccount(telUri.getScheme());
-            if (defaultAccount != null) {
-                extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, defaultAccount);
-            }
-            telecom.placeCall(telUri, extras);
-            Log.i(TAG, "Originated call to " + telUri);
-        } catch (SecurityException error) {
-            Log.w(TAG, "placeCall denied; CALL_PHONE not granted.", error);
-        }
+        TelecomDial.Outcome outcome = TelecomDial.originate(this, telUri);
+        if (outcome != TelecomDial.Outcome.PLACED) Log.w(TAG, "ACTION_CALL not placed: " + outcome);
     }
 }

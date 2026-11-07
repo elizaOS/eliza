@@ -8,6 +8,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import type { BrowserTarget } from "../browser-service.js";
+import {
+  BROWSER_COMMAND_TIMEOUT_GRACE_MS,
+  BROWSER_COMMAND_TIMEOUT_MS,
+  resolveBrowserCommandTimeoutMs,
+} from "../workspace/browser-workspace-helpers.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
@@ -107,26 +112,16 @@ export const STAGEHAND_PROBE_TIMEOUT_MS = 5_000;
  * probe budget and longer than the 15s Google OAuth sibling — not a shared
  * hardcoded command bound.
  */
-export const STAGEHAND_COMMAND_TIMEOUT_MS = 30_000;
-export const STAGEHAND_COMMAND_TIMEOUT_GRACE_MS = 5_000;
+export const STAGEHAND_COMMAND_TIMEOUT_MS = BROWSER_COMMAND_TIMEOUT_MS;
+export const STAGEHAND_COMMAND_TIMEOUT_GRACE_MS =
+  BROWSER_COMMAND_TIMEOUT_GRACE_MS;
 
 /** Keeps the transport alive long enough for commands with their own longer deadline. */
 export function resolveStagehandCommandTimeoutMs(
   command: BrowserWorkspaceCommand,
   defaultTimeoutMs: number = STAGEHAND_COMMAND_TIMEOUT_MS,
 ): number {
-  const requestedTimeoutMs = command.timeoutMs;
-  if (
-    typeof requestedTimeoutMs !== "number" ||
-    !Number.isFinite(requestedTimeoutMs) ||
-    requestedTimeoutMs < 0
-  ) {
-    return defaultTimeoutMs;
-  }
-  return Math.max(
-    defaultTimeoutMs,
-    requestedTimeoutMs + STAGEHAND_COMMAND_TIMEOUT_GRACE_MS,
-  );
+  return resolveBrowserCommandTimeoutMs(command, defaultTimeoutMs);
 }
 
 export async function probeStagehandWithFetch(
@@ -159,7 +154,17 @@ export async function executeStagehandCommandWithFetch(
       resolveStagehandCommandTimeoutMs(command, timeoutMs),
     ),
   });
-  const body = await response.json().catch(() => null);
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    if (response.ok) {
+      throw new Error(
+        `Stagehand command endpoint returned invalid JSON (HTTP ${response.status})`,
+      );
+    }
+    body = null;
+  }
   if (!response.ok) {
     const message =
       body && typeof body === "object" && "error" in body

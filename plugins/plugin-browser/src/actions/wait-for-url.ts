@@ -24,7 +24,7 @@ const WAIT_FOR_URL_MIN_POLL_INTERVAL_MS = 50;
 /** Lower bound for the timeout (always allow at least one poll). */
 const WAIT_FOR_URL_MIN_TIMEOUT_MS = 1;
 
-export type WaitForUrlStatus = "matched" | "timeout";
+export type WaitForUrlStatus = "matched" | "timeout" | "cancelled";
 
 export interface WaitForUrlOutcome {
   status: WaitForUrlStatus;
@@ -66,6 +66,8 @@ export interface WaitForUrlDeps {
   now?: () => number;
   /** Async sleep. Defaults to a real `setTimeout` promise. */
   sleep?: (ms: number) => Promise<void>;
+  /** The turn's abort signal: the wait stops at once when it fires. */
+  signal?: AbortSignal;
 }
 
 function realSleep(ms: number): Promise<void> {
@@ -88,6 +90,24 @@ function clampTimeout(value: number | undefined): number {
     return WAIT_FOR_URL_DEFAULT_TIMEOUT_MS;
   }
   return Math.max(WAIT_FOR_URL_MIN_TIMEOUT_MS, Math.floor(candidate));
+}
+
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+function sleepUntilAborted(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (!signal) return sleep(ms);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    signal.addEventListener("abort", done, { once: true });
+    void sleep(ms).then(done, done);
+  });
 }
 
 function describeCurrentUrl(url: string | null): string {
@@ -113,8 +133,18 @@ export async function waitForUrl(
 
   let polls = 0;
   let lastUrl: string | null = null;
+  const cancelled = (): WaitForUrlOutcome => ({
+    status: "cancelled",
+    matched: false,
+    pattern: predicate.pattern,
+    lastUrl,
+    polls,
+    elapsedMs: now() - startedAt,
+    message: `Stopped waiting for "${predicate.pattern}": the request was cancelled.`,
+  });
 
   while (true) {
+    if (deps.signal?.aborted) return cancelled();
     polls += 1;
 
     let currentUrl: string | null = null;
@@ -127,8 +157,9 @@ export async function waitForUrl(
     if (currentUrl !== null) {
       lastUrl = currentUrl;
     }
+    if (deps.signal?.aborted) return cancelled();
 
-    if (currentUrl !== null && predicate.test(currentUrl)) {
+    if (currentUrl !== null && now() < deadline && predicate.test(currentUrl)) {
       const elapsedMs = now() - startedAt;
       const message = `Done — tab reached ${currentUrl} (matched ${predicate.kind} "${predicate.pattern}" after ${polls} check${polls === 1 ? "" : "s"}).`;
       await deps.emitStatus?.(`✅ ${message}`);
@@ -163,6 +194,10 @@ export async function waitForUrl(
       `⏳ still waiting for "${predicate.pattern}"… (${describeCurrentUrl(currentUrl)})`,
     );
 
-    await sleep(Math.min(pollIntervalMs, remainingMs));
+    await sleepUntilAborted(
+      sleep,
+      Math.min(pollIntervalMs, remainingMs),
+      deps.signal,
+    );
   }
 }

@@ -1,20 +1,20 @@
 /** Owner-authorized agent controller. The Cloud relay receives ciphertext only. */
 
-import type { HttpPlugin, RouteHandlerContext } from "@elizaos/core";
+import type {
+  RemoteBrowserCommandPayload,
+  RemoteControllerPublicIdentity,
+  RemoteTargetPublicIdentity,
+} from "@elizaos/contracts";
+import {
+  isRemoteControllerPublicIdentity,
+  isRemoteTargetPublicIdentity,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   fetchWithSsrfGuard,
   type IAgentRuntime,
 } from "@elizaos/core";
-import type {
-  RemoteBrowserCommandPayload,
-  RemoteControllerPublicIdentity,
-  RemoteTargetPublicIdentity,
-} from "@elizaos/core/contracts/remote-control";
-import {
-  isRemoteControllerPublicIdentity,
-  isRemoteTargetPublicIdentity,
-} from "@elizaos/core/contracts/remote-control";
+import type { HttpPlugin, RouteHandlerContext } from "@elizaos/host/protocol";
 import type { BrowserService } from "../browser-service";
 import { createRemoteBrowserDeviceTarget } from "../targets/remote-device-target";
 import {
@@ -428,7 +428,11 @@ export class AgentRemoteBrowserController {
         const response = record(result.result);
         if (response.status !== 200 || typeof response.body !== "string")
           throw failure("Remote browser result is malformed.");
-        return JSON.parse(response.body);
+        try {
+          return JSON.parse(response.body);
+        } catch {
+          throw failure("Remote browser result is malformed.");
+        }
       }
       if (
         ["execution_ambiguous", "expired", "cancelled", "failed"].includes(

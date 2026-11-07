@@ -18,20 +18,24 @@ REPO_ROOT = BENCH_DIR.parents[1]  # benchmarks repo root (registry/ lives here)
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from registry.commands import get_benchmark_registry  # noqa: E402
-from registry.scores import _score_from_recall_json  # noqa: E402
+from benchmarks.registry.commands import get_benchmark_registry  # noqa: E402
+from benchmarks.registry.scores import _score_from_recall_json  # noqa: E402
 
 
 def main() -> int:
     reg = get_benchmark_registry(REPO_ROOT)
     by_id = {b.id: b for b in reg}
     if "recall_bench" not in by_id:
-        print("FAIL: recall_bench not registered in registry/commands.py", file=sys.stderr)
+        print(
+            "FAIL: recall_bench not registered in registry/commands.py", file=sys.stderr
+        )
         return 1
     rb = by_id["recall_bench"]
 
     out = Path("/tmp/recall-registry-check")
-    cmd = rb.build_command(out, type("M", (), {"provider": "", "model": ""})(), {"tier": "1k"})
+    cmd = rb.build_command(
+        out, type("M", (), {"provider": "", "model": ""})(), {"tier": "1k"}
+    )
     if cmd[0] != "bun" or "run.ts" not in cmd or "--tier" not in cmd:
         print(f"FAIL: unexpected recall_bench command: {cmd}", file=sys.stderr)
         return 1
@@ -42,10 +46,16 @@ def main() -> int:
     baseline = BENCH_DIR / "baseline-1k.json"
     score = _score_from_recall_json(json.loads(baseline.read_text()))
     if not (0.0 <= score.score <= 1.0):
-        print(f"FAIL: baseline headline score out of range: {score.score}", file=sys.stderr)
+        print(
+            f"FAIL: baseline headline score out of range: {score.score}",
+            file=sys.stderr,
+        )
         return 1
     if score.metrics.get("fail_open_observable") is not True:
-        print("FAIL: committed baseline does not show an observable fail-open", file=sys.stderr)
+        print(
+            "FAIL: committed baseline does not show an observable fail-open",
+            file=sys.stderr,
+        )
         return 1
 
     print(

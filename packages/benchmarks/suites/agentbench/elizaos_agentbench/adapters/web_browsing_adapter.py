@@ -11,7 +11,7 @@ This AgentBench adapter:
 
 - Loads Mind2Web prompt fixtures via
   ``upstream_loader.load_web_browsing_tasks``.
-- Delegates the actual agent loop to ``benchmarks.mind2web`` when
+- Delegates the actual agent loop to ``benchmarks.suites.mind2web`` when
   available. If the package or the dataset is unavailable, it returns
   a "skipped" result with instructions.
 """

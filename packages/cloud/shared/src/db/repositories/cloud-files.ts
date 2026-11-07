@@ -1,5 +1,6 @@
 // Persists cloud files records for cloud services through the shared DB boundary.
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type CloudFile, cloudFiles, type NewCloudFile } from "../schemas/cloud-files";
 import { escapeLikePattern } from "../utils/like-pattern";
@@ -20,13 +21,28 @@ function boundedLimit(limit?: number): number {
 }
 
 export class CloudFilesRepository {
-  async create(data: NewCloudFile): Promise<CloudFile> {
-    const [row] = await dbWrite.insert(cloudFiles).values(data).returning();
+  async create(data: NewCloudFile, tx?: DbTransaction): Promise<CloudFile> {
+    const [row] = await (tx ?? dbWrite).insert(cloudFiles).values(data).returning();
     return row;
   }
 
-  async findActiveByOrgAndId(organizationId: string, id: string): Promise<CloudFile | undefined> {
-    return await dbRead.query.cloudFiles.findFirst({
+  /** Serialize record creation and deletion for one stored object. */
+  async lockStorageKey(
+    organizationId: string,
+    storageKey: string,
+    tx: DbTransaction,
+  ): Promise<void> {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`cloud-file:${organizationId}:${storageKey}`}, 0))`,
+    );
+  }
+
+  async findActiveByOrgAndId(
+    organizationId: string,
+    id: string,
+    tx?: DbTransaction,
+  ): Promise<CloudFile | undefined> {
+    return await (tx ?? dbRead).query.cloudFiles.findFirst({
       where: and(
         eq(cloudFiles.organization_id, organizationId),
         eq(cloudFiles.id, id),
@@ -68,8 +84,12 @@ export class CloudFilesRepository {
     };
   }
 
-  async softDeleteByOrgAndId(organizationId: string, id: string): Promise<CloudFile | undefined> {
-    const [row] = await dbWrite
+  async softDeleteByOrgAndId(
+    organizationId: string,
+    id: string,
+    tx?: DbTransaction,
+  ): Promise<CloudFile | undefined> {
+    const [row] = await (tx ?? dbWrite)
       .update(cloudFiles)
       .set({
         status: "deleted",
@@ -87,9 +107,14 @@ export class CloudFilesRepository {
     return row;
   }
 
-  async activeStorageKeyReferences(organizationId: string, storageKey: string): Promise<number> {
-    const [row] = await dbRead
-      .select({ count: sql<number>`count(*)::int` })
+  /** Serialize deletion of records that share an object before the caller removes it. */
+  async lockActiveStorageKeyReferences(
+    organizationId: string,
+    storageKey: string,
+    tx: DbTransaction,
+  ): Promise<CloudFile[]> {
+    return await tx
+      .select()
       .from(cloudFiles)
       .where(
         and(
@@ -97,8 +122,9 @@ export class CloudFilesRepository {
           eq(cloudFiles.storage_key, storageKey),
           eq(cloudFiles.status, "active"),
         ),
-      );
-    return row?.count ?? 0;
+      )
+      .orderBy(cloudFiles.id)
+      .for("update");
   }
 }
 

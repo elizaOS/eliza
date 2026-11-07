@@ -239,7 +239,7 @@ export function parseNavigationTabPaths(
     /export const TAB_PATHS\s*:\s*Record<BuiltinTab,\s*string>\s*=\s*\{([\s\S]*?)\};/,
   );
   const descriptorBlock = source.match(
-    /export const BUILTIN_ROUTE_DESCRIPTORS\s*=\s*defineBuiltinRoutes\(\{([\s\S]*?)\}\s+as const\);/,
+    /export const BUILTIN_ROUTE_DESCRIPTORS\s*=\s*(?:defineBuiltinRoutes\()?\{([\s\S]*?)\}\s+as const(?:\s+satisfies Record<string,\s*BuiltinRouteDescriptor>)?\)?;/,
   );
   const block = legacyBlock?.[1] ?? descriptorBlock?.[1];
   if (!block) {

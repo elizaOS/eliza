@@ -6,9 +6,12 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   isLoopbackBindHost,
-  isNullOriginAllowed,
   isWildcardBindHost,
   logger,
+  stripOptionalHostPort,
+} from "@elizaos/core";
+import {
+  isNullOriginAllowed,
   readAliasedEnv,
   resolveAllowedHosts,
   resolveAllowedOrigins,
@@ -16,8 +19,7 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-  stripOptionalHostPort,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { normalizeHostPairingCode } from "../host-use-cases.js";

@@ -9,7 +9,8 @@
     "checkJs": false,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "customConditions": ["eliza-source", "development"]
   },
   "include": ["memperf-kpi.ts"]
 }

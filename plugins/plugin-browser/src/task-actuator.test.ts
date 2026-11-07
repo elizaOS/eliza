@@ -1,393 +1,167 @@
+import { describe, expect, it } from "vitest";
 import {
-  createInteractiveTask,
-  type TaskActionProposal,
-  transitionInteractiveTask,
-} from "@elizaos/core/messaging/interactive-task";
-import { expect, it } from "vitest";
-import { NativeTaskActuator } from "./task-actuator.js";
+  NativeTaskActuator,
+  validTaskBrowserBlockers,
+} from "./task-actuator.js";
 
-const owner = {
-  actorId: "actor",
-  agentId: "agent",
-  connector: { source: "test", accountId: "account" },
-};
-function setup(
-  capability = "browser.click",
-  resolveValue: ConstructorParameters<
-    typeof NativeTaskActuator
-  >[0]["resolveValue"] = async () => "value",
-  guideTask?: NonNullable<
-    ConstructorParameters<typeof NativeTaskActuator>[0]["target"]["guideTask"]
-  >,
-  reconcile?: ConstructorParameters<typeof NativeTaskActuator>[0]["reconcile"],
-) {
-  let task = createInteractiveTask({
-    id: "task",
-    owner,
-    goalRef: "goal",
-    authorization: {
-      decisionId: "grant",
-      policyRevision: "policy",
-      state: "active",
-      decidedAt: new Date().toISOString(),
-      revokedAt: null,
-    },
-    allowedCapabilities: [capability],
-    allowedOrigins: ["https://example.test"],
-    now: Date.now(),
+const elements = [
+  { selector: "snap:0:0", label: "Reject all" },
+  { selector: "snap:0:1", label: "Close" },
+];
+
+describe("validTaskBrowserBlockers", () => {
+  it("accepts a page from a browser without blocker reports", () => {
+    expect(validTaskBrowserBlockers({ elements })).toBe(true);
   });
-  const protectedKinds: Array<string | undefined> = [];
-  const targetCounts: number[] = [];
-  let sequence = 0,
-    effects = 0,
-    bindings = 0;
-  const transition = (
-    event: Parameters<typeof transitionInteractiveTask>[2],
-  ) => {
-    task = transitionInteractiveTask(
-      task,
-      { owner, expectedRevision: task.revision, now: Date.now() },
-      event,
-    ).task;
-  };
-  const actuator = new NativeTaskActuator({
-    getTask: () => task,
-    reconcile,
-    nextBindingRevision: () => ++bindings,
-    policy: () => ({
-      tabId: "1",
-      origin: "https://example.test",
-      leaseMs: 60000,
-      targets: [
-        {
-          selector: "#target",
-          action: capability === "browser.click" ? "click" : "fill",
-        },
-      ],
-    }),
-    target: {
-      guideTask: guideTask || (async () => ({ visible: false })),
-      bindTask: async (binding) => {
-        targetCounts.push(binding.targets.length);
-        return {
-          bound: true,
-          tabId: binding.tabId,
-          taskId: binding.taskId,
-          epoch: binding.epoch,
-          bindingRevision: binding.bindingRevision,
-        };
-      },
-      execute: async (command, options) => {
-        expect(options?.taskContext?.taskId).toBe(task.id);
-        expect(options?.taskContext?.epoch).toBe(task.epoch);
-        if (command.subaction !== "snapshot") {
-          expect(options?.taskExpiresAt).toBeGreaterThan(Date.now());
-          effects++;
-          protectedKinds.push(options?.protectedValueKind);
-        }
-        const id = `00000000-0000-0000-0000-${String(++sequence).padStart(12, "0")}`;
-        return {
-          targetId: "test",
-          mode: "desktop",
-          subaction: command.subaction,
-          value: {
-            result:
-              command.subaction === "snapshot"
-                ? {
-                    snapshotId: id,
-                    frames: [
-                      {
-                        frameId: 0,
-                        documentId: "document",
-                        url: "https://example.test/",
-                        complete: true,
-                        inputRevision: 0,
-                        text: `effects:${effects}`,
-                        elements: [{ selector: `${id}:0:0` }],
-                      },
-                    ],
-                  }
-                : {
-                    dispatched: true,
-                    completed: false,
-                    requiresReadback: true,
-                  },
-          },
-        };
-      },
-    },
-    resolveValue,
-    verify: async (_proposal, before, after) =>
-      before.text === "effects:0" && after.text === "effects:1"
-        ? "succeeded"
-        : "unknown",
-    recordEvidence: async (_task, _proposal, _before, _after, status) => {
-      expect(status).toBe("succeeded");
-      return "evidence:observed-change";
-    },
+
+  it("accepts typed blockers that name this snapshot's controls", () => {
+    expect(
+      validTaskBrowserBlockers({
+        elements,
+        blockers: [
+          { kind: "cookie-consent", rejectRef: "snap:0:0", covers: "target" },
+          { kind: "modal", ref: "snap:0:1", covers: "viewport", text: "News" },
+          { kind: "captcha", covers: "partial" },
+          { kind: "login-wall", covers: "viewport" },
+          { kind: "paywall", covers: "partial" },
+        ],
+      }),
+    ).toBe(true);
   });
-  const prepare = async () => {
-    const observation = await actuator.observe({
-      owner,
-      taskId: task.id,
-      signal: new AbortController().signal,
+
+  it.each([
+    ["an unknown kind", { kind: "popup", covers: "viewport" }],
+    ["an unknown coverage", { kind: "modal", covers: "most" }],
+    [
+      "a ref from another snapshot",
+      { kind: "modal", ref: "old:0:1", covers: "viewport" },
+    ],
+    [
+      "a person check with a ref",
+      { kind: "captcha", ref: "snap:0:1", covers: "partial" },
+    ],
+    [
+      "a reject ref on a modal",
+      { kind: "modal", rejectRef: "snap:0:0", covers: "viewport" },
+    ],
+    ["non-text text", { kind: "paywall", covers: "partial", text: 3 }],
+    [
+      "a close ref on a consent banner",
+      { kind: "cookie-consent", ref: "snap:0:1", covers: "target" },
+    ],
+    [
+      "text longer than 200 characters",
+      { kind: "paywall", covers: "partial", text: "x".repeat(201) },
+    ],
+  ])("rejects %s", (_name, blocker) => {
+    expect(validTaskBrowserBlockers({ elements, blockers: [blocker] })).toBe(
+      false,
+    );
+  });
+
+  it("rejects a blocker report that is not a list", () => {
+    expect(validTaskBrowserBlockers({ elements, blockers: {} })).toBe(false);
+  });
+});
+
+describe("NativeTaskActuator cleanup", () => {
+  it("answers only once no cancelled browser command can still take effect", async () => {
+    let settle!: (error?: Error) => void;
+    const settled = new Promise<void>((resolve, reject) => {
+      settle = (error) => (error ? reject(error) : resolve());
     });
-    transition({ type: "observe", observation });
-    const proposal: TaskActionProposal = {
-      id: "operation",
-      taskId: task.id,
-      epoch: task.epoch,
-      observationId: observation.id,
-      observationVersion: observation.version,
-      inputRevision: observation.inputRevision,
-      targetRef: `${observation.id}:0:0`,
-      capability,
-      authorizationId: "grant",
-      expiresAt: Date.now() + 60000,
-      ...(capability === "browser.fill" ? { valueRef: "protected:value" } : {}),
+    const fail = () => {
+      throw new Error("unexpected call");
     };
-    transition({ type: "prepare", proposal });
-    transition({ type: "dispatch", operationId: proposal.id });
-    return proposal;
-  };
-  return {
-    actuator,
-    protectedKinds,
-    targetCounts,
-    prepare,
-    transition,
-    get task() {
-      return task;
-    },
-    get effects() {
-      return effects;
-    },
-    get bindings() {
-      return bindings;
-    },
-  };
-}
-
-it("binds the core task to a native observation and verifies actual readback before success", async () => {
-  const f = setup();
-  const proposal = await f.prepare();
-  expect(f.actuator.readObservation("task", owner).snapshot.text).toBe(
-    "effects:0",
-  );
-  const result = await f.actuator.execute(proposal, {
-    owner,
-    signal: new AbortController().signal,
-    isCurrent: () => true,
-  });
-  expect(result).toEqual({
-    status: "succeeded",
-    evidenceRef: "evidence:observed-change",
-  });
-  expect(f.effects).toBe(1);
-  expect(f.bindings).toBe(1);
-  await expect(
-    f.actuator.execute(proposal, {
-      owner,
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-    }),
-  ).rejects.toThrow();
-  expect(f.effects).toBe(1);
-});
-
-it("pausing during protected value resolution prevents dispatch", async () => {
-  let release: (value: string) => void = () => {};
-  let entered: () => void = () => {};
-  const waiting = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const f = setup("browser.fill", () => {
-    entered();
-    return new Promise<string>((resolve) => {
-      release = resolve;
+    const actuator = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        settled: () => settled,
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
     });
+    const owner = {
+      actorId: "actor",
+      agentId: "agent",
+      connector: { source: "browser", accountId: "account" },
+    };
+    let done = false;
+    const quiesced = actuator.quiesce({ owner, taskId: "task-1" }).then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(done).toBe(false);
+    settle();
+    await quiesced;
+    const refused = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        settled: () => Promise.reject(new Error("cancel unconfirmed")),
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
+    });
+    await expect(refused.quiesce({ owner, taskId: "task-1" })).rejects.toThrow(
+      "cancel unconfirmed",
+    );
   });
-  const proposal = await f.prepare();
-  const result = f.actuator.execute(proposal, {
-    owner,
-    signal: new AbortController().signal,
-    isCurrent: () => f.task.status === "waiting",
+
+  it("hides guidance even when the browser cannot confirm the fence", async () => {
+    const fail = () => {
+      throw new Error("unexpected call");
+    };
+    const calls: string[] = [];
+    const guideTask = async (input: { kind: string }) => {
+      calls.push(input.kind);
+      return { visible: false };
+    };
+    const actuator = new NativeTaskActuator({
+      target: {
+        bindTask: fail,
+        execute: fail,
+        guideTask: guideTask as never,
+        settled: async () => {
+          calls.push("settled");
+          throw new Error("cancel unconfirmed");
+        },
+      },
+      getTask: fail,
+      policy: fail,
+      nextBindingRevision: fail,
+      resolveValue: fail,
+      verify: fail,
+      recordEvidence: fail,
+    });
+    const owner = {
+      actorId: "actor",
+      agentId: "agent",
+      connector: { source: "browser", accountId: "account" },
+    };
+    // Seed the state a shown guidance leaves behind.
+    const state = actuator as unknown as {
+      bindings: Map<string, unknown>;
+      activeGuidance: Set<string>;
+    };
+    state.bindings.set("task-1", {
+      context: { actorId: "actor", accountId: "account", agentId: "agent" },
+      policy: { tabId: "tab-1" },
+    });
+    state.activeGuidance.add("task-1");
+    await expect(actuator.quiesce({ owner, taskId: "task-1" })).rejects.toThrow(
+      "cancel unconfirmed",
+    );
+    expect(calls).toEqual(["hide", "settled"]);
+    expect(state.activeGuidance.has("task-1")).toBe(false);
   });
-  const rejected = expect(result).rejects.toThrow();
-  await waiting;
-  f.transition({ type: "pause" });
-  release("value");
-  await rejected;
-  expect(f.effects).toBe(0);
-});
-
-it("wrong-account observations are rejected before contacting the browser", async () => {
-  const f = setup();
-  await expect(
-    f.actuator.observe({
-      owner: { ...owner, actorId: "other" },
-      taskId: "task",
-      signal: new AbortController().signal,
-    }),
-  ).rejects.toThrow();
-  expect(f.bindings).toBe(0);
-  expect(f.effects).toBe(0);
-});
-
-it("task guidance is observed, owner-bound and removable after pause", async () => {
-  const requests: Array<{ kind: string; revision: number }> = [];
-  let rejectHide = false;
-  const f = setup(
-    "browser.click",
-    async () => "value",
-    async (request) => {
-      requests.push(request);
-      return request.kind === "show"
-        ? { accepted: true }
-        : rejectHide
-          ? {}
-          : { visible: false };
-    },
-  );
-  const observation = await f.actuator.observe({
-    owner,
-    taskId: "task",
-    signal: new AbortController().signal,
-  });
-  f.transition({ type: "observe", observation });
-  await f.actuator.showGuidance(
-    "task",
-    owner,
-    {
-      stepId: "step",
-      targetRef: `${observation.id}:0:0`,
-      text: "Continue here",
-    },
-    new AbortController().signal,
-  );
-  f.transition({ type: "pause" });
-  rejectHide = true;
-  await expect(f.actuator.quiesce({ owner, taskId: "task" })).rejects.toThrow(
-    /not acknowledged/,
-  );
-  await expect(
-    f.actuator.quiesce({
-      owner: { ...owner, actorId: "other" },
-      taskId: "task",
-    }),
-  ).rejects.toThrow(/owner/);
-  rejectHide = false;
-  await f.actuator.quiesce({ owner, taskId: "task" });
-  expect(requests.map((r) => r.kind)).toEqual(["show", "hide", "hide"]);
-  expect(requests.map((r) => r.revision)).toEqual([1, 2, 3]);
-  expect(f.effects).toBe(0);
-});
-
-it("requires acknowledged feedback cleanup before any effect and after dispatch", async () => {
-  const denied = setup(
-    "browser.click",
-    async () => "value",
-    async () => ({}),
-  );
-  await expect(
-    denied.actuator.execute(await denied.prepare(), {
-      owner,
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-    }),
-  ).rejects.toThrow(/not acknowledged/);
-  expect(denied.effects).toBe(0);
-  let calls = 0;
-  const uncertain = setup(
-    "browser.click",
-    async () => "value",
-    async () => (++calls === 1 ? { visible: false } : {}),
-  );
-  await expect(
-    uncertain.actuator.execute(await uncertain.prepare(), {
-      owner,
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-    }),
-  ).rejects.toThrow(/not acknowledged/);
-  expect(uncertain.effects).toBe(1);
-});
-
-it("only a protected resolver result marks an OTP fill", async () => {
-  const f = setup("browser.fill", async () => ({
-    kind: "verification-code",
-    text: "123456",
-  }));
-  const proposal = await f.prepare();
-  const result = await f.actuator.execute(proposal, {
-    owner,
-    signal: new AbortController().signal,
-    isCurrent: () => true,
-  });
-  expect(result.status).toBe("succeeded");
-  expect(f.protectedKinds).toEqual(["verification-code"]);
-});
-
-it("rejects malformed protected values before effects", async () => {
-  const f = setup("browser.fill", async () => ({
-    kind: "verification-code",
-    text: "not a code",
-  }));
-  const proposal = await f.prepare();
-  await expect(
-    f.actuator.execute(proposal, {
-      owner,
-      signal: new AbortController().signal,
-      isCurrent: () => true,
-    }),
-  ).rejects.toMatchObject({ code: "TASK_ACTION_DENIED" });
-  expect(f.effects).toBe(0);
-});
-
-it("reconciles through a fresh read-only binding without dispatch or reusable observation", async () => {
-  let reads = 0;
-  const f = setup(
-    "browser.click",
-    undefined,
-    undefined,
-    async (_task, _proposal, snapshot) => {
-      reads++;
-      expect(snapshot.text).toBe("effects:0");
-      return { status: "failed", evidenceRef: "fresh-readback" };
-    },
-  );
-  const proposal = await f.prepare();
-  f.transition({ type: "pause" });
-  const result = await f.actuator.reconcile(proposal, {
-    owner,
-    signal: new AbortController().signal,
-    isCurrent: () => true,
-  });
-  expect(result).toEqual({ status: "failed", evidenceRef: "fresh-readback" });
-  expect(f.targetCounts).toEqual([1, 0]);
-  expect(f.effects).toBe(0);
-  expect(reads).toBe(1);
-  expect(() => f.actuator.readObservation("task", owner)).toThrow();
-  expect(f.task.status).toBe("paused");
-  expect(f.task.operations[0].status).toBe("unknown");
-});
-
-it("rejects stale readback before binding or interpreting a snapshot", async () => {
-  let reads = 0;
-  const f = setup("browser.click", undefined, undefined, async () => {
-    reads++;
-    return { status: "unknown" };
-  });
-  const proposal = await f.prepare();
-  f.transition({ type: "pause" });
-  await expect(
-    f.actuator.reconcile(proposal, {
-      owner,
-      signal: new AbortController().signal,
-      isCurrent: () => false,
-    }),
-  ).rejects.toThrow();
-  expect(f.targetCounts).toEqual([1]);
-  expect(f.effects).toBe(0);
-  expect(reads).toBe(0);
 });

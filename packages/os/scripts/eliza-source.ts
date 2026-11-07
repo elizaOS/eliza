@@ -18,9 +18,7 @@ export function resolveElizaSourceRoot({
   const candidate =
     explicit !== undefined
       ? path.resolve(explicit)
-      : existsSync(path.join(workspaceRoot, "packages/app/package.json"))
-        ? workspaceRoot
-        : path.join(osRoot, ".eliza-source");
+      : workspaceRoot;
   const manifest = path.join(candidate, "packages/app/package.json");
   if (!existsSync(manifest)) {
     throw new Error(

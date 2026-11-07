@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { isLoopbackBindHost } from "@elizaos/core/runtime-env";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
 export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH = "/api/connectors/google/oauth/callback";
 export type GoogleOAuthCallbackConfigIssueCode =
   | "missing"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.training.memory_calc import (
+from eliza_training.training.memory_calc import (
     GB,
     HARDWARE,
     SHAPES,

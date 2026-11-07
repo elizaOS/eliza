@@ -11,7 +11,10 @@ import {
   TaskService,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime, SQLiteDatabaseAdapter } from "@elizaos/testing";
+import {
+  createTestRuntime,
+  SQLiteDatabaseAdapter,
+} from "@elizaos/testing/runtime";
 import { afterEach, expect, it } from "vitest";
 import { encodeRecord } from "../../../plugins/plugin-sqlite/record-codec.ts";
 import { LogsRetentionService } from "../src/runtime/logs-retention-service.ts";

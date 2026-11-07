@@ -25,6 +25,52 @@ export interface CloudLoginOptions {
 }
 
 const DEFAULT_CLOUD_REQUEST_TIMEOUT_MS = 10_000;
+const MAX_CONSECUTIVE_INVALID_POLL_RESPONSES = 5;
+const INVALID_POLL_RESPONSE_MESSAGE =
+  "Eliza Cloud returned invalid login poll responses";
+
+interface CloudLoginPollData {
+  status: string;
+  apiKey?: string;
+  keyPrefix?: string;
+  expiresAt?: string;
+}
+
+function parseCloudLoginPollData(value: unknown): CloudLoginPollData {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Eliza Cloud login poll response must be an object");
+  }
+
+  const data = value as Record<string, unknown>;
+  if (typeof data.status !== "string" || !data.status.trim()) {
+    throw new TypeError("Eliza Cloud login poll response has no status");
+  }
+  const apiKey = data.apiKey;
+  const keyPrefix = data.keyPrefix;
+  const expiresAt = data.expiresAt;
+  for (const [field, fieldValue] of [
+    ["apiKey", apiKey],
+    ["keyPrefix", keyPrefix],
+    ["expiresAt", expiresAt],
+  ] as const) {
+    // Optional fields may be JSON null (e.g. a non-expiring key has
+    // `expiresAt: null`); treat null as absent.
+    if (
+      fieldValue !== undefined &&
+      fieldValue !== null &&
+      typeof fieldValue !== "string"
+    ) {
+      throw new TypeError(`Eliza Cloud login poll response has an invalid ${field}`);
+    }
+  }
+
+  return {
+    status: data.status,
+    ...(typeof apiKey === "string" ? { apiKey } : {}),
+    ...(typeof keyPrefix === "string" ? { keyPrefix } : {}),
+    ...(typeof expiresAt === "string" ? { expiresAt } : {}),
+  };
+}
 
 function isRedirectResponse(response: Response): boolean {
   return response.status >= 300 && response.status < 400;
@@ -118,6 +164,8 @@ export async function cloudLogin(
   options.onBrowserUrl?.(browserUrl);
 
   const deadline = Date.now() + timeoutMs;
+  let consecutiveInvalidPollResponses = 0;
+  let lastInvalidPollResponseError: unknown;
 
   while (Date.now() < deadline) {
     const remainingBeforeSleep = deadline - Date.now();
@@ -161,12 +209,29 @@ export async function cloudLogin(
       continue;
     }
 
-    const data = (await pollResponse.json()) as {
-      status: string;
-      apiKey?: string;
-      keyPrefix?: string;
-      expiresAt?: string;
-    };
+    let data: CloudLoginPollData;
+    try {
+      data = parseCloudLoginPollData(await pollResponse.json());
+    } catch (err) {
+      // error-policy:J2 a 200 with invalid JSON or an invalid response shape
+      // may be transient, so keep polling — but record it so a persistent
+      // upstream failure surfaces as itself, not as a false timeout.
+      consecutiveInvalidPollResponses += 1;
+      lastInvalidPollResponseError = err;
+      logger.warn(
+        `[cloud-auth] Login poll returned an invalid body (HTTP ${pollResponse.status}, content-type: ${pollResponse.headers.get("content-type") ?? "none"}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      options.onPollStatus?.("error");
+      if (
+        consecutiveInvalidPollResponses >=
+        MAX_CONSECUTIVE_INVALID_POLL_RESPONSES
+      ) {
+        throw new Error(INVALID_POLL_RESPONSE_MESSAGE, { cause: err });
+      }
+      continue;
+    }
+    consecutiveInvalidPollResponses = 0;
+    lastInvalidPollResponseError = undefined;
 
     options.onPollStatus?.(data.status);
 
@@ -184,6 +249,12 @@ export async function cloudLogin(
         "Auth session was completed but the API key was already retrieved. Please try logging in again.",
       );
     }
+  }
+
+  if (lastInvalidPollResponseError !== undefined) {
+    throw new Error(INVALID_POLL_RESPONSE_MESSAGE, {
+      cause: lastInvalidPollResponseError,
+    });
   }
 
   throw new Error(

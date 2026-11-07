@@ -12,6 +12,7 @@
  * `resolveActionArgs`, then calls the goals back-end.
  */
 
+import type { LifeOpsGoalRecord } from "@elizaos/contracts";
 import {
   type Action,
   type ActionResult,
@@ -25,7 +26,6 @@ import {
   type State,
   type SubactionsMap,
 } from "@elizaos/core";
-import { type LifeOpsGoalRecord } from "@elizaos/core/contracts/personal-assistant";
 import { GoalsServiceError } from "../goal-normalize.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
 import {
@@ -130,13 +130,13 @@ export const ownerGoalsAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Action: create | update | delete | review.",
+      description: "Action: create | update | delete | review | checkin.",
       required: true,
       schema: { type: "string" as const, enum: [...GOAL_ACTIONS] },
     },
     {
       name: "id",
-      description: "Goal id (update/delete/review).",
+      description: "Goal id (update/delete/review/checkin).",
       required: false,
       schema: { type: "string" as const },
     },

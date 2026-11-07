@@ -39,6 +39,7 @@ import {
   collectBlueColors,
   collectHoverViolations,
 } from "./helpers/brand-color-scans";
+import { installCameraRecoveryFixture } from "./helpers/camera-recovery-fixture";
 import {
   analyzeScreenshot,
   type ScreenshotQuality,
@@ -70,6 +71,7 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 const FRAMED_PAGE_SLUGS = new Set([
+  "builtin-clock",
   "builtin-character",
   "builtin-character-skills",
   "builtin-database",
@@ -2119,7 +2121,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     await page.setContent(`
       <section data-testid="home-screen">
         <h1>Mostly clear</h1>
-        <p>Learn conversational Spanish</p>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);
@@ -2137,26 +2138,28 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
     await page.setContent(`
       <section data-view-lifecycle-slot="camera" data-view-hidden="false">
-        <div>View unavailable This app is unavailable here Install or enable it App: camera Retry Back to views</div>
+        <div>Camera access is off Enable camera access for Eliza, then return here to start the preview. Open Settings Try again</div>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);
     const cameraPolicy = resolveViewOcrPolicy("builtin-camera");
-    if (cameraPolicy.kind !== "semantic-exemption") {
-      throw new Error("builtin-camera must declare a semantic exemption");
+    if (cameraPolicy.kind !== "expectation") {
+      throw new Error(
+        "builtin-camera must declare its permission recovery state",
+      );
     }
-    // The complete browser fallback is painted; this does not certify the
-    // native Camera surface, which still needs separate native acceptance.
+    // The complete denied state is painted; this does not certify a physical
+    // camera, which still needs separate device acceptance.
     await expect(
       readViewPaint(
         semanticRootForView(page, "builtin-camera"),
         page.locator("[data-test-overlay]"),
-        cameraPolicy.fallbackExpectation,
+        cameraPolicy.expectation,
       ),
     ).resolves.toMatchObject({ semanticReady: true });
 
     for (const incompleteOrUnrelatedFallback of [
-      "View unavailable Retry",
+      "Camera access is off Try again",
       "Settings Wallet Projects",
     ]) {
       const cameraRoot = semanticRootForView(page, "builtin-camera");
@@ -2167,7 +2170,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         readViewPaint(
           cameraRoot,
           page.locator("[data-test-overlay]"),
-          cameraPolicy.fallbackExpectation,
+          cameraPolicy.expectation,
         ),
       ).resolves.toMatchObject({ semanticReady: false });
     }
@@ -2219,6 +2222,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         );
         await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
+        if (view.id === "camera") await installCameraRecoveryFixture(page);
         if (view.fixtureState === "family-interview") {
           // Capture the real renderer's private answer form against explicit read-only empty inventories.
           await page.route(
@@ -2322,6 +2326,23 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // contract that later judges screenshot OCR.
         const viewRoot = semanticRootForView(page, view.slug);
         await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
+        if (view.slug === "builtin-chat") {
+          // Owner records stay in the fixture; Home no longer projects Today cards.
+          await expect(viewRoot.getByTestId("chat-widget-todos")).toHaveCount(
+            0,
+          );
+          await expect(
+            viewRoot.getByText("Learn conversational Spanish"),
+          ).toHaveCount(0);
+          await expect(
+            viewRoot.getByText("Submit the quarterly report"),
+          ).toHaveCount(0);
+        }
+        if (view.slug === "builtin-tasks") {
+          await expect(
+            page.getByTestId("task-coordinator-panel"),
+          ).toBeVisible();
+        }
         const ocrPolicy = resolveViewOcrPolicy(view.slug);
         const semanticExpectation =
           ocrPolicy.kind === "expectation"
@@ -2389,6 +2410,36 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             ),
             "the rendered Cloud account must not satisfy the opposite auth state",
           ).resolves.toMatchObject({ semanticReady: false });
+        }
+        if (view.slug === "plugin-calendar-gui") {
+          const event = viewRoot.locator(
+            '[data-agent-id="calendar-event-smoke-evt-1"]',
+          );
+          await expect(event).toBeVisible();
+          const title = event.getByText("Design sync", { exact: true });
+          const time = event.locator(":scope > div").nth(1);
+          const titleBox = await title.boundingBox();
+          const timeBox = await time.boundingBox();
+          const eventBox = await event.boundingBox();
+          expect(titleBox).not.toBeNull();
+          expect(timeBox).not.toBeNull();
+          expect(eventBox).not.toBeNull();
+          if (!titleBox || !timeBox || !eventBox) {
+            throw new Error("Calendar event text must have visible geometry");
+          }
+          expect(
+            timeBox.y,
+            "event time must appear below its title on every viewport",
+          ).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+          expect(timeBox.y + timeBox.height).toBeLessThanOrEqual(
+            eventBox.y + eventBox.height,
+          );
+          expect(
+            await title.evaluate(
+              (element) => element.scrollWidth <= element.clientWidth,
+            ),
+            "the short event title must fit without unnecessary truncation",
+          ).toBe(true);
         }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
@@ -2579,14 +2630,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             exact: true,
           });
           await lastRowAction.scrollIntoViewIfNeeded();
+          await lastRowAction.click();
+          const composer = page
+            .getByTestId("chat-composer-textarea")
+            .filter({ visible: true });
+          await expect(composer).toHaveValue(
+            "Tell me about ent-acme in my relationships graph.",
+          );
           const messageResponse = page.waitForResponse(
             (response) =>
               response.request().method() === "POST" &&
-              /\/api\/conversations\/[^/]+\/messages$/.test(
+              /\/api\/conversations\/[^/]+\/messages\/stream$/.test(
                 new URL(response.url()).pathname,
               ),
           );
-          await lastRowAction.click();
+          await composer.press("Enter");
           const response = await messageResponse;
           expect(response.status()).toBe(200);
           expect(response.request().postDataJSON()).toMatchObject({

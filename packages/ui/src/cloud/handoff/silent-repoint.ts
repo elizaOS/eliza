@@ -2,7 +2,7 @@
  * Silently repoints the app at a provisioned cloud runtime, preserving a
  * personal logical identity when the runtime is its Dedicated target.
  */
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
 import {
   createPersistedActiveServer,

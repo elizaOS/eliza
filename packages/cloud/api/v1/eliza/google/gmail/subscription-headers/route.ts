@@ -5,15 +5,18 @@
  * matching the query — used by the subscription-cleanup tooling.
  */
 
-import { parseCanonicalInteger } from "@elizaos/core/utils/number-parsing";
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   fetchManagedGoogleGmailSubscriptionHeaders,
-} from "@/lib/services/agent-google-connector";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -21,6 +24,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawSide = c.req.query("side") ?? null;
+    if (rawSide !== "agent") await requirePrivateOwnerAccess(c, user);
     const grantId = c.req.query("grantId")?.trim();
     const rawQuery = c.req.query("query") ?? null;
     const rawMaxResults = c.req.query("maxResults") ?? null;

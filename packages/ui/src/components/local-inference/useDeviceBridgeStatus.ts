@@ -4,9 +4,10 @@
  * open. `buildDeviceBridgeStatusStreamUrl` appends the auth token as a query
  * param since EventSource cannot set headers.
  */
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+
+import type { DeviceBridgeStatus } from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { useEffect, useState } from "react";
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 export function buildDeviceBridgeStatusStreamUrl(

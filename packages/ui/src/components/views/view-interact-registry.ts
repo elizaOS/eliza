@@ -7,8 +7,8 @@
  * server, which routes it to the correct handler and sends the result back.
  */
 
-import type { AgentViewType } from "../../agent-surface";
-import { client } from "../../api";
+import type { AgentViewType } from "../../agent-surface/types";
+import { client } from "../../api/client";
 import {
   installElizaBridge,
   registerElizaBridgeCapability,

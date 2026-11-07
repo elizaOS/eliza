@@ -8,12 +8,12 @@
  */
 
 import { CapacitorHttp, registerPlugin } from "@capacitor/core";
-import { getCloudAuthToken } from "../api/client-cloud";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
-} from "../api/direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import { getCloudAuthToken } from "../api/client-cloud";
 import type { AndroidCloudAccountLifecycleAdapter } from "./AndroidCloudSettings";
 import {
   type AccountDeletionRequestDto,

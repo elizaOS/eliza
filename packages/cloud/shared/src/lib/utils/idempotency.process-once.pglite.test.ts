@@ -31,21 +31,68 @@ afterAll(async () => {
 });
 
 describe("processOnce", () => {
-  test("overlapping redeliveries of one key run the work once", async () => {
+  test.each(["UTC", "Europe/Berlin", "Asia/Tokyo", "America/New_York"])(
+    "overlapping redeliveries run once in %s",
+    async (zone) => {
+      await getPgliteClientForTests().query("SELECT set_config('TimeZone', $1, false)", [zone]);
+      const key = `twilio:SM_overlap:${zone}`;
+      let handled = 0;
+      const work = async () => {
+        handled += 1;
+        await delay(50);
+        return "reply";
+      };
+      const outcomes = await Promise.all([
+        processOnce(key, "twilio", work),
+        processOnce(key, "twilio", work),
+      ]);
+      expect(handled).toBe(1);
+      expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["duplicate", "processed"]);
+      // A later redelivery inside the TTL is still refused.
+      expect(await processOnce(key, "twilio", work)).toEqual({ status: "duplicate" });
+      expect(handled).toBe(1);
+    },
+  );
+
+  test.each(["UTC", "Europe/Berlin", "Asia/Tokyo", "America/New_York"])(
+    "an abandoned expired claim permits one retry in %s",
+    async (zone) => {
+      const database = getPgliteClientForTests();
+      await database.query("SELECT set_config('TimeZone', $1, false)", [zone]);
+      const key = `twilio:SM_expired:${zone}`;
+      expect(await tryClaimForProcessing(key, "twilio")).toBe(true);
+      await database.query(
+        "UPDATE idempotency_keys SET expires_at = $1::timestamp WHERE key = $2",
+        [new Date(Date.now() - 120_000).toISOString().replace("Z", ""), key],
+      );
+      let handled = 0;
+      const work = async () => {
+        handled += 1;
+        await delay(50);
+        return "reply";
+      };
+      const outcomes = await Promise.all([
+        processOnce(key, "twilio", work),
+        processOnce(key, "twilio", work),
+      ]);
+      expect(handled).toBe(1);
+      expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["duplicate", "processed"]);
+    },
+  );
+
+  test("a delivered message stays refused after the processing claim would expire", async () => {
     let handled = 0;
     const work = async () => {
       handled += 1;
-      await delay(50);
       return "reply";
     };
-    const outcomes = await Promise.all([
-      processOnce("twilio:SM_overlap", "twilio", work),
-      processOnce("twilio:SM_overlap", "twilio", work),
-    ]);
-    expect(handled).toBe(1);
-    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["duplicate", "processed"]);
-    // A later redelivery inside the TTL is still refused.
-    expect(await processOnce("twilio:SM_overlap", "twilio", work)).toEqual({ status: "duplicate" });
+    expect((await processOnce("blooio:MSG_late", "blooio", work)).status).toBe("processed");
+    // Three minutes later: past the 2-minute claim, inside Blooio's 300 s
+    // signature window, so the signed request can still be resent.
+    await getPgliteClientForTests().exec(
+      `UPDATE idempotency_keys SET expires_at = expires_at - interval '3 minutes' WHERE key = 'blooio:MSG_late'`,
+    );
+    expect(await processOnce("blooio:MSG_late", "blooio", work)).toEqual({ status: "duplicate" });
     expect(handled).toBe(1);
   });
 

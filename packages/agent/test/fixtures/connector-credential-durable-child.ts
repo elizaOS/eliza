@@ -21,10 +21,23 @@ import {
 } from "../../../../plugins/plugin-google-workspace/src/connector-credential-refs.ts";
 import { startElizaProcess } from "../../src/runtime/eliza.ts";
 
+import { defaultAgentHostBridge } from "../../src/runtime/host-bridge.ts";
+
 const mode = process.env.DURABLE_MODE ?? "write";
 const result: Record<string, unknown> = { mode };
 
 try {
+  let rejected = false;
+  try {
+    await defaultAgentHostBridge
+      .sharedVault()
+      .set("fixture", "must-not-disappear");
+  } catch (error) {
+    rejected =
+      (error as { code?: string }).code === "AGENT_HOST_VAULT_UNAVAILABLE";
+  }
+  if (!rejected)
+    throw new Error("Hostless vault write did not reject explicitly");
   const runtime = await startElizaProcess({ serverOnly: true });
   if (!runtime) throw new Error("startElizaProcess returned no runtime");
 

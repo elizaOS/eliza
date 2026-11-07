@@ -194,7 +194,12 @@ function validateMessagesRow(row) {
   }
   if (
     "metadata" in row &&
-    (typeof row.metadata !== "object" || row.metadata === null)
+    (typeof row.metadata !== "object" ||
+      row.metadata === null ||
+      // An array is not the object this rule names (typeof [] is
+      // "object"). The sidecar metadata check in this module rejects
+      // arrays for the same field; the row check must agree.
+      Array.isArray(row.metadata))
   ) {
     errors.push("row.metadata must be an object when present");
   }

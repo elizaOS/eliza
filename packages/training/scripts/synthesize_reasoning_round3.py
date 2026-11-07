@@ -25,10 +25,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
-from lib.groq_thoughts import (  # noqa: E402
+from eliza_training.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+from eliza_training.lib.groq_thoughts import (  # noqa: E402
     DEFAULT_OUT_FILE,
     HTTPPolicy,
     RoundConfig,

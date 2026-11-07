@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.training.model_registry import (
+from eliza_training.training.model_registry import (
     MTP_DRAFTER_BASE,
     REGISTRY,
     Tier,

@@ -21,14 +21,14 @@ can decide whether to drop the clip.
 
 Usage:
 
-    python3 stage_same_corpus.py \\
+    python3 stage_sam_corpus.py \\
         --source /tmp/ai_voices/sam \\
         --out packages/training/data/voice/same \\
         --upstream-sha <git sha of the ai_voices clone>
 
     # Re-transcribe samantha_002 with whisper-large-v3 (requires GPU + the
     # `openai-whisper` package; falls back to flagging if unavailable):
-    python3 stage_same_corpus.py \\
+    python3 stage_sam_corpus.py \\
         --source /tmp/ai_voices/sam \\
         --out packages/training/data/voice/same \\
         --retranscribe-suspicious --whisper-model large-v3
@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("kokoro.stage_same_corpus")
+log = logging.getLogger("kokoro.stage_sam_corpus")
 
 # The Whisper-base hallucination flagged in R12-ai_voices.md §3.5. If the
 # upstream transcript for samantha_002 still reads "641." we either re-

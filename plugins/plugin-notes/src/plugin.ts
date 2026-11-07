@@ -1,3 +1,5 @@
+import { notesRequestEffectField } from "./request-effect.js";
+import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
  * view backed by a durable per-agent service, delegating navigation and
@@ -7,12 +9,17 @@
 import {
   type ContextDefinition,
   promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { namedNotesProvider, notesProvider } from "./provider.js";
+import {
+  namedNotesProvider,
+  namedNotesRoutingProvider,
+  notesProvider,
+} from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
 import { NOTES_SURFACE } from "./surface.js";
@@ -41,6 +48,31 @@ export const notesPlugin: Plugin = {
   contexts: ["notes"],
   async init(_config, runtime) {
     runtime.contexts.tryRegister(NOTES_CONTEXT);
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.create",
+      actionNames: ["NOTES_CREATE"],
+      requiredActionTags: ["resource:notes", "capability:write"],
+      contexts: ["notes"],
+      // A backend save does not depend on an open Notes view. Only direct
+      // creation commands seed this operation; drafting, reported speech,
+      // explanations and other CRUD requests retain ordinary routing.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:create|save|add)\s+(?:(?:a|an|my|new)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.read",
+      actionNames: ["NOTES_LIST"],
+      requiredActionTags: ["resource:notes", "capability:read"],
+      contexts: ["notes"],
+      // Explicit store reads need current records; ordinary recall can still
+      // answer from supplied evidence. The list operation supports a title filter.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:read|list|search|find|look\s+up)\s+(?:(?:a|the|my|all|saved|latest)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
   },
   actions: [
     ...promoteSubactionsToActions(notesAction, {
@@ -60,17 +92,42 @@ export const notesPlugin: Plugin = {
         },
         create: {
           description:
-            "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
+            "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Supplied text is literal content, not a suggestion to expand: do not append checklists, tasks, summaries, headings or inferred action items unless the user requests them. Actionable prose remains prose. Generate or reformat content only when requested. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
+          parameters: notesAction.parameters?.map((parameter) =>
+            parameter.name === "content"
+              ? {
+                  ...parameter,
+                  description:
+                    "The exact content to save. Copy supplied text without additions, corrections or inferred tasks. For a separately supplied title and body, join their exact text with one newline; alternatively put the title here and exact body in body. Do not add a checklist, heading, summary or action item unless requested. Generate new prose only when the user asks you to compose it.",
+                }
+              : parameter.name === "body"
+                ? {
+                    ...parameter,
+                    description:
+                      "Optional exact body, only when the user supplied a separate title and body. Put the title in content. Preserve every character; do not append tasks, lists or explanations. Omit when content already contains the complete note.",
+                  }
+                : parameter,
+          ),
         },
         get: { similes: ["NOTES_GET_NOTE"] },
+        // Strict tool grammars cannot require UPDATE's target, edit form or
+        // revision because each form needs different fields. Sent here to
+        // append, the live planner wrote {} and then an empty literal edit
+        // (tj-9fbee52dd6eab4). PATCH requires its target and revision, so
+        // appends route there.
+        update: {
+          description:
+            "Change one existing note identified by noteId or content, never both, with exactly one edit form: textEdit {field,oldText,newText} for an exact substitution of one unique current match (no revision needed); authoredEdit to add a NEW checklist item or edit an authored checklist/transcript entry; or replacementContent with the complete note from a complete read. Supply expectedRevision for authoredEdit and replacementContent. To add or append text to a plain note use NOTES_PATCH with textEdit append instead.",
+        },
         patch: {
           description:
-            "Update one note. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. For field replacement supply changes entries (field, value) and expectedRevision from the complete note snapshot used to prepare this edit. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Omitted fields remain unchanged; replacing a body does not require rewriting its title. Preserve exact user wording. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
+            "Update one note, including adding text to it. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. To add one list item, use changes [] with textEdit {action:append,field:item,text:the item} and the current expectedRevision; the service adds it in the note's own checklist, comma or line list form. For other added text use field body with the exact new suffix including its leading newline or separator; it is appended verbatim and keeps every existing character. For field replacement supply changes entries (field, value) and notesRevision from the complete commit/read snapshot as expectedRevision. CREATE includes its exact transaction revision. Never guess the revision. Any intervening Notes mutation, including deleting another note, requires a fresh complete read and reconciliation. Body value excludes bodySeparator but preserves every authored leading newline and space. The store adds one framing newline; do not include the separator in the replacement. Omitted fields remain unchanged; replacing a body does not require rewriting its title. For a literal word/substring substitution use NOTES_UPDATE with textEdit instead; its unique-match atomic operation needs no preliminary read or revision.",
         },
       },
     }),
   ],
-  providers: [notesProvider, namedNotesProvider],
+  responseHandlerFieldEvaluators: [notesRequestEffectField],
+  providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
   views: [
@@ -98,6 +155,7 @@ export const notesPlugin: Plugin = {
       surface: NOTES_SURFACE,
       capabilities: NOTES_CAPABILITIES,
       relatedActions: ["NOTES"],
+      beforeAgentInteract: assertNotesAgentViewOperation,
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,

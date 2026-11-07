@@ -347,6 +347,29 @@ export async function saveSpiderState(
 }
 
 /**
+ * Runtime entity for a Discord author. This account's own bot user is the
+ * agent: the send path stores its messages as `runtime.agentId`, so history
+ * reads and backfill must attribute the same messages to the agent too.
+ */
+export function resolveHistoryAuthorEntityId(
+	service: HistoryServiceInternals,
+	authorId: string,
+): UUID {
+	return authorId === service.client.user?.id
+		? service.runtime.agentId
+		: service.resolveDiscordEntityId(authorId);
+}
+
+/** Edit stamp stored on memory content; unset until the author edits. */
+export function discordEditedAt(
+	message: Pick<Message, "editedTimestamp">,
+): string | undefined {
+	return message.editedTimestamp
+		? new Date(message.editedTimestamp).toISOString()
+		: undefined;
+}
+
+/**
  * Builds a Memory object from a Discord Message.
  */
 export async function buildMemoryFromMessage(
@@ -369,7 +392,7 @@ export async function buildMemoryFromMessage(
 		return null;
 	}
 
-	const entityId = service.resolveDiscordEntityId(message.author.id);
+	const entityId = resolveHistoryAuthorEntityId(service, message.author.id);
 	const roomId = createUniqueUuid(service.runtime, message.channel.id);
 	const channel = message.channel;
 	const accountId = options?.accountId ?? service.accountId ?? "default";
@@ -466,6 +489,7 @@ export async function buildMemoryFromMessage(
 		...(options?.extraMetadata ? options.extraMetadata : {}),
 	};
 
+	const editedAt = discordEditedAt(message);
 	const memory: Memory = {
 		id: createUniqueUuid(service.runtime, message.id),
 		entityId,
@@ -480,6 +504,7 @@ export async function buildMemoryFromMessage(
 			inReplyTo: message.reference?.messageId
 				? createUniqueUuid(service.runtime, message.reference.messageId)
 				: undefined,
+			...(editedAt ? { editedAt } : {}),
 			...(options?.extraContent ? options.extraContent : {}),
 		},
 		metadata: metadata as Memory["metadata"],
@@ -530,11 +555,15 @@ export async function ensureConnectionsForMessages(
 
 		const entities = Array.from(uniqueAuthors.entries()).map(
 			([authorId, message]) => {
-				const entityId = service.resolveDiscordEntityId(authorId);
+				const entityId = resolveHistoryAuthorEntityId(service, authorId);
 				// Owner-aliased authors (webhooks/alias accounts) resolve to the
-				// canonical owner entity; backfill must still create that entity so
-				// message rows link, but must not seed it with the alias's identity.
-				if (service.isOwnerAliasedDiscordUser(authorId)) {
+				// canonical owner entity, and this account's bot resolves to the
+				// agent; backfill must still create that entity so message rows
+				// link, but must not seed it with the Discord user's identity.
+				if (
+					entityId === service.runtime.agentId ||
+					service.isOwnerAliasedDiscordUser(authorId)
+				) {
 					return {
 						id: entityId,
 						names: [],

@@ -15,7 +15,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { androidNativeHost } from "./android-host.mjs";
+import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
+import { applyFontScaleOnChange } from "./chromium/font-scale-on-change.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
+import { applyNoEarlyConnection } from "./chromium/no-early-connection.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
 import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
 
@@ -27,7 +30,12 @@ export const EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const assetNames = [
   "background.mjs",
   "command-handler.mjs",
+  "task-bindings.mjs",
   "commands.mjs",
+  "effect-watch.mjs",
+  "page-command.mjs",
+  "figtree-OFL.txt",
+  "guide-font.mjs",
   "manual-activity.mjs",
   "manifest.json",
   "native-connection.mjs",
@@ -36,10 +44,36 @@ export const assetNames = [
   "protocol.mjs",
   "runtime-config.mjs",
 ];
+export const protectionAssetNames = [
+  "protection.mjs",
+  "advisory.mjs",
+  "policy.mjs",
+  "warning.html",
+  "warning.mjs",
+  "warning.css",
+  "licenses.html",
+];
+export function componentAssetNames(assets) {
+  return Object.hasOwn(assets, "protection.mjs")
+    ? [...assetNames, ...protectionAssetNames]
+    : assetNames;
+}
 const resourceIds = {
+  "protection.mjs": "IDR_ELIZA_BROWSER_PROTECTION",
+  "advisory.mjs": "IDR_ELIZA_BROWSER_PROTECTION_ADVISORY",
+  "policy.mjs": "IDR_ELIZA_BROWSER_PROTECTION_POLICY",
+  "warning.html": "IDR_ELIZA_BROWSER_PROTECTION_WARNING",
+  "warning.mjs": "IDR_ELIZA_BROWSER_PROTECTION_WARNING_SCRIPT",
+  "warning.css": "IDR_ELIZA_BROWSER_PROTECTION_WARNING_STYLE",
+  "licenses.html": "IDR_ELIZA_BROWSER_PROTECTION_LICENSES",
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
+  "task-bindings.mjs": "IDR_ELIZA_BROWSER_TASK_BINDINGS",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
+  "effect-watch.mjs": "IDR_ELIZA_BROWSER_EFFECT_WATCH",
+  "page-command.mjs": "IDR_ELIZA_BROWSER_PAGE_COMMAND",
+  "figtree-OFL.txt": "IDR_ELIZA_BROWSER_GUIDE_FONT_LICENSE",
+  "guide-font.mjs": "IDR_ELIZA_BROWSER_GUIDE_FONT",
   "manual-activity.mjs": "IDR_ELIZA_BROWSER_MANUAL_ACTIVITY",
   "manifest.json": "IDR_ELIZA_BROWSER_MANIFEST",
   "native-connection.mjs": "IDR_ELIZA_BROWSER_CONNECTION",
@@ -71,7 +105,7 @@ export function validateAssets(
     throw new Error("Platform must be linux or android");
   if (
     JSON.stringify(Object.keys(assets).sort()) !==
-    JSON.stringify([...assetNames].sort())
+    JSON.stringify([...componentAssetNames(assets)].sort())
   )
     throw new Error(
       "Extension resource inventory changed; review every resource before embedding",
@@ -89,7 +123,9 @@ export function validateAssets(
     .replace(/[0-9a-f]/g, (digit) =>
       String.fromCharCode(97 + Number.parseInt(digit, 16)),
     );
+  const protection = Object.hasOwn(assets, "protection.mjs");
   const keys = [
+    ...(protection ? ["web_accessible_resources"] : []),
     "manifest_version",
     "name",
     "version",
@@ -100,6 +136,11 @@ export function validateAssets(
     "background",
   ];
   if (
+    (protection &&
+      JSON.stringify(manifest.web_accessible_resources) !==
+        JSON.stringify([
+          { resources: ["warning.html"], matches: ["<all_urls>"] },
+        ])) ||
     identity !== EXTENSION_ID ||
     manifest.manifest_version !== 3 ||
     !Array.isArray(manifest.permissions) ||
@@ -110,14 +151,16 @@ export function validateAssets(
     JSON.stringify([...manifest.permissions].sort()) !==
       JSON.stringify([
         "alarms",
+        ...(protection ? ["declarativeNetRequest"] : []),
         "nativeMessaging",
         "scripting",
         "storage",
         "tabs",
         "webNavigation",
+        "webRequest",
       ]) ||
     JSON.stringify(manifest.host_permissions) !==
-      JSON.stringify(["http://*/*", "https://*/*"])
+      JSON.stringify(["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"])
   )
     throw new Error(
       "Extension identity or reviewed manifest capabilities changed",
@@ -157,6 +200,7 @@ export async function generateComponentOverlay({
   validateAssets(assets, platform, certificate, application);
   if (typeof embedHost !== "boolean" || (embedHost && platform !== "android"))
     throw new Error("Host embedding is an explicit Android-only build option");
+  const assetNames = componentAssetNames(assets);
   const files = {};
   const edit = (filename, transform) => {
     files[filename] = transform(files[filename] ?? sources[filename]);
@@ -212,7 +256,7 @@ export async function generateComponentOverlay({
     replaceOnce(
       source,
       '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2460],',
-      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2470],',
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2474],',
       "component resource allocation",
     ),
   );
@@ -344,6 +388,9 @@ export async function generateComponentOverlay({
   });
   applyIndexedDBLockOrder(edit, replaceOnce);
   if (platform === "android") {
+    applyAutofillFullOrigin(edit, replaceOnce);
+    applyNoEarlyConnection(edit, replaceOnce);
+    applyFontScaleOnChange(edit, replaceOnce);
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
     if (embedHost) {

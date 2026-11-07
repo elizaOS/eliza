@@ -1,4 +1,3 @@
-/** Exercises memory relationships real e2e behavior with deterministic app test fixtures. */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync } from "node:fs";
@@ -9,13 +8,13 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildFirstRunRuntimeConfig } from "@elizaos/ui/first-run/first-run-config";
+import { getFreePort, waitForChildExit } from "@elizaos/testing/fixtures";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { buildFirstRunRuntimeConfig } from "../../../ui/src/first-run/first-run-config";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   getFirstRunProviderForLiveProvider,
@@ -663,25 +662,6 @@ async function ensureUiDistReady(): Promise<void> {
   }
 }
 
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Could not allocate a loopback port"));
-        return;
-      }
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
-}
-
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : undefined,
@@ -741,36 +721,6 @@ async function waitForJsonPredicate<T>(
   throw lastError instanceof Error
     ? lastError
     : new Error(`Timed out waiting for ${url}`);
-}
-
-async function waitForChildExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
 }
 
 async function submitFirstRun(apiBase: string): Promise<void> {

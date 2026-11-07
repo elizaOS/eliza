@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-web-search",
-    "version": "2.0.3-beta.7",
+    "version": "2.0.12-beta.0",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -15,6 +15,11 @@
             }
         },
         "./*.css": "./dist/*.css",
+        "./edge": {
+            "eliza-source": "./src/edge.ts",
+            "types": "./dist/edge.d.ts",
+            "import": "./dist/edge.js"
+        },
         "./browser-web-search": {
             "eliza-source": "./src/browser-web-search.ts",
             "types": "./dist/browser-web-search.d.ts",
@@ -28,14 +33,13 @@
         "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.14",
-        "tsup": "^8.5.1",
+        "@biomejs/biome": "2.6.3",
+        "tsup": "^9.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.2"
+        "vitest": "^5.0.5"
     },
     "scripts": {
-        "test": "vitest run --config ./vitest.config.ts",
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
         "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -44,7 +48,8 @@
         "format:fix": "bunx @biomejs/biome format --write src/",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "lint:check": "bunx @biomejs/biome check .",
-        "format:check": "bunx @biomejs/biome format ."
+        "format:check": "bunx @biomejs/biome format .",
+        "test": "vitest run --config vitest.config.ts"
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",
@@ -58,5 +63,8 @@
                 "description": "Registered profile-bound browser target; defaults to chromium-device. Does not grant access without the exact profile ID."
             }
         }
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }

@@ -1,7 +1,7 @@
 """Tests for SWE-bench character."""
 
 
-from benchmarks.swe_bench.character import (
+from benchmarks.suites.swe_bench.character import (
     SWE_BENCH_MESSAGE_HANDLER_TEMPLATE,
     SWE_BENCH_REPLY_TEMPLATE,
     create_swe_bench_character,

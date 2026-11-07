@@ -5,7 +5,7 @@
  * the configured agent API base as `x-eliza-last-activity: <epoch ms>`; the
  * server clamps and validates it (and allows it in CORS).
  */
-import { LAST_ACTIVITY_HEADER_NAME } from "./sessions";
+import { LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
 
 /** Minimum spacing between recorded interactions. */
 export const USER_ACTIVITY_THROTTLE_MS = 5_000;

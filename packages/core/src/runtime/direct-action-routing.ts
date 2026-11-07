@@ -7,6 +7,7 @@
  */
 
 import type { AgentContext } from "../types/contexts";
+import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 export interface DirectActionRoutingRule {
@@ -29,6 +30,18 @@ export interface DirectActionRoutingRule {
 	/** Contexts to add when the route is selected. */
 	readonly contexts: readonly AgentContext[];
 	/**
+	 * Optional, stricter ownership of the complete original request. Only an
+	 * admitted, unambiguous owner may replace model-derived intent scope. The
+	 * broad matches() route remains additive for other requests. Named fields are
+	 * inferred operation-scope extensions, never core or original source data.
+	 */
+	readonly wholeRequest?: {
+		matches(messageText: string, message?: Memory): boolean;
+		readonly invalidateFields: readonly string[];
+		/** The closed request has no visible-surface dependency. Never inferred from model output. */
+		readonly inputScope?: "domain-only";
+	};
+	/**
 	 * Fail-closed reply used when this exact intent is owned by the rule but no
 	 * eligible action is available for the current actor/turn. This is opt-in:
 	 * rules without an unavailable contract preserve their existing Stage-1
@@ -40,8 +53,11 @@ export interface DirectActionRoutingRule {
 		/** Honest user-facing reply; must not claim that an action ran. */
 		readonly reply: string;
 	};
-	/** True only for a current-turn request owned by this route. */
-	matches(messageText: string): boolean;
+	/**
+	 * True only for a current-turn request owned by this route. The optional
+	 * message exposes typed control metadata for routing, never effect authority.
+	 */
+	matches(messageText: string, message?: Memory): boolean;
 }
 
 const rules = new WeakMap<IAgentRuntime, DirectActionRoutingRule[]>();

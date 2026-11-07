@@ -5,17 +5,20 @@
  * DELETE: hard-delete after ownership check.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import type { NewUserCharacter } from "@elizaos/cloud-shared/db/repositories";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { NewUserCharacter } from "@/db/repositories";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys } from "@/lib/cache/keys";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { ElizaCharacter } from "@/lib/types";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -23,7 +26,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
@@ -87,11 +90,7 @@ app.put("/", async (c) => {
       avatar_url: elizaCharacter.avatarUrl ?? null,
     };
 
-    const character = await charactersService.updateForUser(
-      id,
-      user.id,
-      updates,
-    );
+    const character = await charactersService.updateForUser(id, user, updates);
     if (!character) throw NotFoundError("Character not found or access denied");
 
     const invalidations: Promise<void>[] = [
@@ -118,7 +117,7 @@ app.delete("/", async (c) => {
       userId: user.id,
     });
 
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json(
         { success: false, error: "Character not found or access denied" },

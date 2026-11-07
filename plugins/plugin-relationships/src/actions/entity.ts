@@ -27,6 +27,10 @@
  */
 
 import {
+  type KnowledgeGraphEntity as Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
+import {
   type Action,
   type ActionResult,
   describeUserReference,
@@ -38,10 +42,6 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import {
-  type Entity,
-  SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 import {
   ENTITY_OPS,
@@ -159,6 +159,99 @@ export const entityAction: Action = {
   contexts: [...RELATIONSHIPS_CONTEXTS],
   contextGate: { anyOf: [...RELATIONSHIPS_CONTEXTS] },
   roleGate: { minRole: "OWNER" },
+  // The planner validates every argument against this list before the
+  // handler runs (`validateToolArgs`); it mirrors `EntityActionParameters`.
+  parameters: [
+    {
+      name: "action",
+      description:
+        "Operation: create | read | list | log_interaction | set_relationship.",
+      required: true,
+      schema: { type: "string" as const, enum: [...ENTITY_OPS] },
+    },
+    {
+      name: "name",
+      subactions: ["create"],
+      requiredForSubactions: ["create"],
+      description: "Display name of the entity to create.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "kind",
+      subactions: ["create", "list"],
+      description:
+        "Entity kind (person, organization, …): the kind to create, or a filter for list.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "entityId",
+      subactions: ["read", "log_interaction"],
+      requiredForSubactions: ["read", "log_interaction"],
+      description: "Id of the entity to read or to log the interaction on.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "limit",
+      subactions: ["list"],
+      description: "Maximum number of entities to list.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "platform",
+      subactions: ["log_interaction"],
+      description: "Connector platform the interaction happened on.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "direction",
+      subactions: ["log_interaction"],
+      description: "Interaction direction. Default outbound.",
+      required: false,
+      schema: { type: "string" as const, enum: ["inbound", "outbound"] },
+    },
+    {
+      name: "summary",
+      subactions: ["log_interaction"],
+      description: "Short summary of the interaction.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "toEntityId",
+      subactions: ["set_relationship"],
+      requiredForSubactions: ["set_relationship"],
+      description: "Target entity id of the relationship edge.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "fromEntityId",
+      subactions: ["set_relationship"],
+      description: "Source entity id of the relationship edge. Default self.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "relationshipType",
+      subactions: ["set_relationship"],
+      requiredForSubactions: ["set_relationship"],
+      description: "Edge type label, for example manages.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "evidence",
+      subactions: ["set_relationship"],
+      description: "Free-form provenance for the relationship edge.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -356,12 +449,11 @@ export const entityAction: Action = {
         }
         const fromEntityId = trimmed(params.fromEntityId) ?? SELF_ENTITY_ID;
         const evidence = trimmed(params.evidence) ?? "user_chat";
-        const edge = await relationshipStore.upsert({
+        // Restating an edge updates the active one instead of adding a duplicate.
+        const edge = await relationshipStore.assertEdge({
           fromEntityId,
           toEntityId,
           type: relationshipType,
-          metadata: {},
-          state: {},
           evidence: [evidence],
           confidence: 1,
           source: "user_chat",

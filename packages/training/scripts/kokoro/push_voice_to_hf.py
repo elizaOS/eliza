@@ -73,12 +73,7 @@ REQUIRED_ARTIFACTS: tuple[str, ...] = (
 OPTIONAL_ARTIFACTS: tuple[str, ...] = ("kokoro.onnx",)
 
 
-def _sha256_file(path: Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
 
 
 def _load_eval(release_dir: Path) -> dict[str, Any]:

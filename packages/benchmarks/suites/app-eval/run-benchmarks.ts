@@ -28,6 +28,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -329,7 +330,7 @@ function validateTasks(tasks: TaskDefinition[]): void {
 
 function createResultsDir(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const resultsBase = join(__dirname, "results");
+  const resultsBase = testOutputPath("app-eval");
   const runDir = join(resultsBase, timestamp);
 
   mkdirSync(runDir, { recursive: true });

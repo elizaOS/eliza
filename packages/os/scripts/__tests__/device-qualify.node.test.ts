@@ -397,3 +397,42 @@ if (file && fs.existsSync(file)) process.stdout.write(fs.readFileSync(file));
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("exact identity gates refuse another SKU, changed baseline and missing observations", () => {
+  const req = validateRequirements({
+    schemaVersion: 1,
+    requirements: [
+      {
+        id: "model",
+        level: "required",
+        check: "identity",
+        field: "model",
+        equals: "TB336FU",
+      },
+      {
+        id: "baseline",
+        level: "required",
+        check: "identity",
+        field: "vendorFingerprint",
+        equals: "reviewed-vendor",
+      },
+    ],
+  });
+  const facts = { model: "TB336FU", vendorFingerprint: "reviewed-vendor" };
+  assert.equal(evaluate(facts, req).verdict, "pass");
+  assert.equal(evaluate({ ...facts, model: "TB336ZU" }, req).verdict, "fail");
+  assert.equal(
+    evaluate({ ...facts, vendorFingerprint: "other" }, req).verdict,
+    "fail",
+  );
+  assert.equal(evaluate({ model: "TB336FU" }, req).verdict, "incomplete");
+  for (const change of [{ field: "__proto__" }, { equals: "" }, { equals: 42 }])
+    assert.throws(
+      () =>
+        validateRequirements({
+          ...req,
+          requirements: [{ ...req.requirements[0], ...change }],
+        }),
+      /identity/,
+    );
+});

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.types import RealmProblem
+from benchmarks.suites.realm.dataset import REALMDataset
+from benchmarks.suites.realm.types import RealmProblem
 
 
 UPSTREAM = Path(__file__).resolve().parents[1] / "upstream" / "datasets"

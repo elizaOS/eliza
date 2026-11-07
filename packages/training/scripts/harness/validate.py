@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from eliza_training.lib.tool_calls import call_args as _call_args
+
 import json
 import re
 from dataclasses import dataclass
@@ -49,24 +51,6 @@ def _call_name(call: dict[str, Any]) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _call_args(call: dict[str, Any]) -> dict[str, Any]:
-    function = call.get("function") if isinstance(call.get("function"), dict) else {}
-    args = (
-        call.get("input")
-        if "input" in call
-        else call.get("args")
-        if "args" in call
-        else call.get("arguments")
-        if "arguments" in call
-        else function.get("arguments")
-    )
-    if isinstance(args, str):
-        try:
-            parsed = json.loads(args)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return args if isinstance(args, dict) else {}
 
 
 def normalize_tool_calls(value: Any) -> list[dict[str, Any]]:

@@ -5,9 +5,10 @@
  * vi.mock), so the assertions isolate the access-control boundary in plugin.ts.
  */
 import type http from "node:http";
-import { _resetAuthRateLimiter } from "@elizaos/app/api/auth";
-import { type AgentRuntime } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
+import { _resetAuthRateLimiter } from "@elizaos/app/auth";
+import type { AgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
+import { calendarPlugin } from "@elizaos/plugin-calendar";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
@@ -192,6 +193,35 @@ describe("LifeOps raw route owner/admin gate", () => {
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body)).toEqual({ error: "Unauthorized" });
   });
+  it("reports an auth store fault before failing closed", async () => {
+    process.env.ELIZA_API_TOKEN = "owner-token";
+    const res = createResponse();
+    const reportError = vi.fn();
+    const runtime = {
+      ...createRuntime(),
+      // A database handle the auth store cannot use: resolving the store throws.
+      adapter: { db: {} },
+      reportError,
+    } as AgentRuntime;
+    const allowed = await requireLifeOpsRouteOwnerAdminAccess({
+      req: createRequest("/api/lifeops/app-state?q=private", {
+        authorization: "Bearer owner-token",
+      }),
+      res,
+      runtime,
+    });
+    expect(allowed).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "LifeOps route access could not be verified",
+    });
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError).toHaveBeenCalledWith(
+      "LifeOps.routeAccess",
+      expect.objectContaining({ code: "AUTH_DATABASE_INCOMPATIBLE" }),
+      { method: "GET", path: "/api/lifeops/app-state" },
+    );
+  });
   it("denies spoofed actor headers even when they name the canonical owner", async () => {
     const res = createResponse();
     const runtime = createRuntime();
@@ -225,7 +255,6 @@ describe("LifeOps raw route owner/admin gate", () => {
   });
   it("mounts every owner calendar surface behind the same private gate", () => {
     const calendarRoutes = [
-      ["GET", "/api/lifeops/calendar/feed"],
       ["GET", "/api/lifeops/calendar/sources"],
       ["POST", "/api/lifeops/calendar/sources"],
       ["PATCH", "/api/lifeops/calendar/sources/:sourceId"],
@@ -233,7 +262,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/calendar/sources/:sourceId/sync"],
       ["GET", "/api/lifeops/calendar/meeting-auto-join"],
       ["PUT", "/api/lifeops/calendar/meeting-auto-join"],
-      ["GET", "/api/lifeops/calendar/calendars"],
       ["PUT", "/api/lifeops/calendar/calendars/:id/include"],
       ["GET", "/api/lifeops/calendar/next-context"],
       ["POST", "/api/lifeops/calendar/events"],
@@ -251,6 +279,16 @@ describe("LifeOps raw route owner/admin gate", () => {
     ] as const;
     for (const [type, path] of calendarRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+  it("leaves calendar plugin routes to the calendar plugin", () => {
+    for (const route of calendarPlugin.routes ?? []) {
+      expect(
+        personalAssistantRoutesPlugin.routes?.some(
+          (candidate) =>
+            candidate.type === route.type && candidate.path === route.path,
+        ),
+      ).toBe(false);
     }
   });
   it("mounts every agreement mutation and preview behind the owner gate", () => {

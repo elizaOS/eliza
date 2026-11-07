@@ -1,4 +1,18 @@
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import {
+  contextDiagnosticOptions,
+  describeEvaluatorContext,
+  type EvaluatorContextAttribution,
+} from "./evaluator-context-attribution.ts";
+import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import { recordGatedEvaluationStage } from "./record-gated-evaluation";
+import {
+  applyTypedReadReply,
+  availableTypedReadFacts,
+  partialTypedReadReply,
+  typedReadPartsSchema,
+} from "./typed-read-reply";
+
 /**
  * Evaluator stage of the planner loop: renders the evaluator model input, runs
  * the evaluator model call, and parses/repairs/sanitizes its structured
@@ -6,6 +20,13 @@ import { projectBackgroundHistory } from "../services/message/history-discovery.
  * Also records each evaluation as a trajectory stage for offline review.
  */
 
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  CALENDAR_READ_ACTIONS,
+  type CalendarReadBinding,
+  type CalendarReadFailureCode,
+  parseUnambiguousZonedDateTime,
+} from "@elizaos/contracts";
 import type {
   ContextEvent,
   ContextObject,
@@ -15,18 +36,21 @@ import type {
   EvaluatorOutput,
   EvaluatorRoute,
   EvaluatorRuntime,
+  JSONSchema,
   PlannerToolCall,
   PlannerTrajectory,
   RecordedStage,
   RecordedUsage,
   RunEvaluatorParams,
   TrajectoryRecorder,
+  TypedReadReplyBinding,
 } from "@elizaos/core";
 import {
   activeCommittedEffectReceipts,
   buildModelInputBudget,
   buildStageChatMessages,
   type ChatMessage,
+  compactHistoricalReceiptSegments,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
   containsToolCallShapedMarkup,
@@ -36,10 +60,14 @@ import {
   extractJsonObjects,
   getModelFallbackChain,
   getStreamingContext,
+  hashStableJson,
+  isDiscoveryActionName,
+  isObjectRecord,
   MODEL_WINDOW_RESERVE_FRACTION,
   type ModelAttemptContext,
   type ModelRegistrationMetadata,
   ModelType,
+  modelOutputIncompleteEvidence,
   modelProviderErrorDetail,
   normalizePromptSegments,
   type PromptSegment,
@@ -65,8 +93,10 @@ import {
   evaluatorSchema,
   evaluatorTemplateForQueue,
 } from "../prompts/evaluator.ts";
-import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
-import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import {
+  orderHistoryFirst,
+  referenceRepeatedHistory,
+} from "../services/message/history-wire.ts";
 import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
@@ -83,6 +113,7 @@ export type {
 } from "@elizaos/core";
 
 interface RawEvaluatorOutput {
+  typedReadParts?: unknown;
   success?: unknown;
   decision?: unknown;
   route?: unknown;
@@ -283,23 +314,153 @@ function evaluatorBudgetOptions(contextWindowTokens: number): {
   };
 }
 
+function evaluatorProtocolDiagnostic(parsed: EvaluatorOutput) {
+  const raw = parsed.raw as Record<string, unknown> | undefined;
+  const error = raw?.protocolError;
+  const staticReasons: Record<string, string> = {
+    "replyEffectStatus must be none, applied or non_applied":
+      "reply_effect_status",
+    "requestFullyCovered must be a boolean": "coverage_boolean",
+    "outcomeCoverage must contain exact intent IDs, completion statuses and distinct evidence step IDs":
+      "coverage_items",
+    'required field "success" must be a boolean': "success_boolean",
+    'required field "decision" must be a supported routing or restoration decision':
+      "decision",
+    'fields "decision" and legacy "route" must agree':
+      "decision_route_mismatch",
+    'required field "thought" must be a string': "thought_type",
+    "Context restoration requires a restoration decision (or legacy contextRequest with CONTINUE), success=false, no reply text, and no copyToClipboard":
+      "context_request",
+    'optional field "messageToUser" must be a string': "message_type",
+    'optional field "effectReceiptIds" must be an array of distinct nonempty strings':
+      "effect_receipt_ids",
+    'optional field "recommendedToolCallId" must be a string':
+      "recommended_tool_call_id",
+    'optional field "copyToClipboard" must be an object': "clipboard_type",
+    'fields "copyToClipboard.title" and "copyToClipboard.content" must be strings':
+      "clipboard_fields",
+    'optional field "copyToClipboard.tags" must be an array of strings':
+      "clipboard_tags",
+  };
+  const reason =
+    typeof error !== "string"
+      ? null
+      : Object.hasOwn(staticReasons, error)
+        ? staticReasons[error]
+        : error.startsWith('field "copyToClipboard.')
+          ? "clipboard_unknown_field"
+          : error.startsWith('field "')
+            ? "unknown_field"
+            : error.startsWith('optional field "nextTool"')
+              ? "next_tool"
+              : error.startsWith('optional field "nextRecommendedTool"')
+                ? "next_recommended_tool"
+                : "unclassified_protocol_error";
+  const typeOfField = (name: string) => {
+    if (!raw || !Object.hasOwn(raw, name)) return "absent";
+    const value = raw[name];
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    return typeof value;
+  };
+  return {
+    protocolGuard: reason,
+    requiredFieldTypes: {
+      success: typeOfField("success"),
+      requestFullyCovered: typeOfField("requestFullyCovered"),
+      decision: typeOfField("decision"),
+      thought: typeOfField("thought"),
+      replyEffectStatus: typeOfField("replyEffectStatus"),
+    },
+  };
+}
+
+/**
+ * Plain copy for each requested Calendar read the evidence check could not
+ * confirm. `unread` stands alone; `partial` follows Calendar results already
+ * shown, so it never denies that those were read.
+ */
+const UNCONFIRMED_CALENDAR_READ_COPY = {
+  feed: {
+    unread: "I couldn't read your calendar for those dates just now.",
+    partial: "I couldn't confirm your whole calendar for those dates.",
+  },
+  next_event: {
+    unread: "I couldn't check your next calendar event just now.",
+    partial: "I couldn't confirm your next event.",
+  },
+  search_events: {
+    unread: "I couldn't look up that event in your calendar just now.",
+    partial: "I couldn't confirm that event.",
+  },
+  read_selected: {
+    unread: "I couldn't read the selected calendar event just now.",
+    partial: "I couldn't confirm the selected calendar event.",
+  },
+  check_availability: {
+    unread: "I couldn't check whether that time is free just now.",
+    partial: "I couldn't confirm whether that time is free.",
+  },
+  propose_times: {
+    unread: "I couldn't check your calendar for open times just now.",
+    partial: "I couldn't confirm which times are open.",
+  },
+} satisfies Record<
+  CalendarReadBinding["operation"],
+  { unread: string; partial: string }
+>;
+
+/** Follows an agenda answered from the phone Calendar alone because Google
+ * Calendar failed (feedReadAnswersRequest "google-unavailable"). */
+const GOOGLE_CALENDAR_UNREACHED_COPY =
+  "I couldn't reach Google Calendar just now, so this only shows the calendar on this phone.";
+
+function unconfirmedCalendarReadCopy(
+  unverifiedIntentIds: readonly string[],
+  original: ContextObject,
+  calendarResultsShown: boolean,
+): string {
+  const variant = calendarResultsShown ? "partial" : "unread";
+  const bindings = original.metadata?.calendarReadBindings;
+  const copy = new Set(
+    (Array.isArray(bindings) ? bindings : []).flatMap((binding) =>
+      isObjectRecord(binding) &&
+      typeof binding.intentId === "string" &&
+      unverifiedIntentIds.includes(binding.intentId) &&
+      typeof binding.operation === "string" &&
+      Object.hasOwn(UNCONFIRMED_CALENDAR_READ_COPY, binding.operation)
+        ? [
+            UNCONFIRMED_CALENDAR_READ_COPY[
+              binding.operation as CalendarReadBinding["operation"]
+            ][variant],
+          ]
+        : [],
+    ),
+  );
+  // Malformed bindings name no operation; the copy then stays general.
+  if (copy.size > 0) return [...copy].join(" ");
+  return calendarResultsShown
+    ? "I couldn't confirm the rest of your calendar."
+    : "I couldn't check your calendar just now.";
+}
+
 function finalizeEvaluatorOutput(
+  parsed: EvaluatorOutput,
   raw: EvaluatorModelResult,
   context: ContextObject,
   trajectory: PlannerTrajectory,
+  redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): EvaluatorOutput {
-  const output = sanitizeOutputMessage(
+  // The model cannot author runtime-owned failure diagnostics.
+  const { replyFailure: _untrustedReplyFailure, ...modelOutput } = parsed;
+  let output = sanitizeOutputMessage(
     repairFinishWithUnservedDeclaredIntents(
       repairFinishWithProgressPromise(
         repairFinishedToolTurnWithoutUserMessage(
           repairMissingEvaluatorMessage(
             repairMissingEvaluatorSuccess(
               rejectEvaluatorInvocationMessage(
-                recoverEvaluatorTextOutput(
-                  parseEvaluatorOutput(raw),
-                  raw,
-                  trajectory,
-                ),
+                recoverEvaluatorTextOutput(modelOutput, raw, trajectory),
               ),
               trajectory,
             ),
@@ -314,6 +475,68 @@ function finalizeEvaluatorOutput(
       trajectory,
     ),
   );
+  const calendarCoverage = calendarReadCoverage(output, context, trajectory);
+  if (!calendarCoverage.verified) {
+    const scoped = calendarCoverageSourceFacts(output, context, trajectory);
+    const messageToUser = redactDiagnosticText(
+      [
+        ...scoped.facts,
+        unconfirmedCalendarReadCopy(
+          calendarCoverage.unverifiedIntentIds,
+          trajectory.modelBaseContext ?? context,
+          scoped.calendarScopeReported,
+        ),
+        ...(scoped.calendarScopeReported
+          ? [
+              "Those Calendar results cover only the connected sources and dates checked.",
+            ]
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    output = {
+      ...output,
+      success: false,
+      requestFullyCovered: false,
+      outcomeCoverage: output.outcomeCoverage?.map((entry) =>
+        calendarCoverage.unverifiedIntentIds.includes(entry.intentId)
+          ? { ...entry, status: "blocked" as const }
+          : entry,
+      ),
+      replyFailure: {
+        kind: "reply_generation_error",
+        transient: false,
+        code: calendarCoverage.failureCode ?? "CALENDAR_READ_EVIDENCE_REJECTED",
+        message: messageToUser,
+      },
+      messageToUser,
+    };
+  }
+  const canonicalCalendarReply = verifiedSingleCalendarReadReply(
+    output,
+    context,
+    trajectory,
+    calendarCoverage,
+  );
+  if (canonicalCalendarReply)
+    output = {
+      ...output,
+      messageToUser: redactDiagnosticText(canonicalCalendarReply),
+    };
+  // The agenda came from the phone Calendar alone: keep the reply and say so
+  // once. calendarReadCoverage never marks an applied reply, whose receipt
+  // binding needs its exact text.
+  const reply = output.messageToUser?.trim();
+  if (
+    calendarCoverage.googleUnavailable &&
+    reply &&
+    !reply.includes(GOOGLE_CALENDAR_UNREACHED_COPY)
+  )
+    output = {
+      ...output,
+      messageToUser: `${reply}\n\n${GOOGLE_CALENDAR_UNREACHED_COPY}`,
+    };
   if (output.replyEffectStatus !== "applied") return output;
   const available = new Set(
     activeCommittedEffectReceipts(
@@ -440,7 +663,256 @@ function evaluatorQueuedCallIds(
   ];
 }
 
-export async function runEvaluator(
+const typedReadCorrectionPermit = Symbol("typed-read-answer-correction");
+const typedReadCorrectionConsumed = new WeakSet<PlannerTrajectory>();
+const typedReadCorrectionDraft = new WeakMap<PlannerTrajectory, string>();
+
+const typedReadSnapshotKey = Symbol("typed-read-evaluation-snapshot");
+const typedReadLifecycles = new WeakMap<
+  PlannerTrajectory,
+  Map<string, Promise<EvaluatorOutput>>
+>();
+
+/** Coalesces only the same terminal read snapshot; ordinary planning can advance. */
+export function runEvaluator(
+  params: RunEvaluatorParams,
+): Promise<EvaluatorOutput> {
+  const signal = getStreamingContext()?.abortSignal;
+  if (signal?.aborted) return Promise.reject(signal.reason);
+  const resolved = params.resolveTypedReadReply?.({
+    trajectory: params.trajectory,
+    nowMs: Date.now(),
+    admittedToolNames: params.admittedToolNames ?? [],
+  });
+  const supplied = resolved
+    ? { ...resolved, admitCorrection: params.admitTypedReadCorrection }
+    : params.typedReadReply;
+  const binding =
+    supplied && params.typedReadFinalizing
+      ? {
+          ...supplied,
+          phase: "final-answer" as const,
+          remainingReadActionNames: [],
+          pendingReadCallIds: [],
+        }
+      : supplied;
+  if (!binding) return runEvaluatorStage(params);
+  params = { ...params, typedReadReply: binding };
+  if (binding.phase !== "final-answer" && binding.phase !== "planning")
+    return Promise.reject(
+      new ElizaError("Typed read phase is invalid", {
+        code: "TYPED_READ_PHASE_INVALID",
+      }),
+    );
+  const { policy, facts } = binding;
+  const snapshot = hashStableJson({
+    phase: binding.phase,
+    planningIteration:
+      binding.phase === "planning" ? params.iteration : undefined,
+    remainingReadActionNames: binding.remainingReadActionNames,
+    pendingReadCallIds: binding.pendingReadCallIds,
+    ownerScope: policy.ownerScope,
+    turnId: policy.turnId,
+    requirements: policy.requirements,
+    includeSources: policy.includeSources,
+    connectors: policy.connectors,
+    facts,
+    steps: params.trajectory.steps,
+    archivedSteps: params.trajectory.archivedSteps,
+    plannedQueue: params.trajectory.plannedQueue,
+  });
+  let evaluations = typedReadLifecycles.get(params.trajectory);
+  if (!evaluations) {
+    evaluations = new Map();
+    typedReadLifecycles.set(params.trajectory, evaluations);
+  }
+  const revalidateCached = (output: EvaluatorOutput): EvaluatorOutput => {
+    getStreamingContext()?.abortSignal?.throwIfAborted();
+    if (!output.typedReadFinal) return output;
+    const checked = applyTypedReadReply(
+      output,
+      {
+        ...binding,
+        phase: "final-answer",
+        policy: { ...policy, nowMs: Date.now() },
+      },
+      true,
+    );
+    return checked === output
+      ? output
+      : {
+          ...checked,
+          typedReadFinal: true,
+          typedReadSnapshot: snapshot,
+        };
+  };
+  const existing = evaluations.get(snapshot);
+  if (existing) return existing.then(revalidateCached);
+  let retained: EvaluatorOutput | undefined;
+  for (
+    let index = params.trajectory.evaluatorOutputs.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    const entry = params.trajectory.evaluatorOutputs[index];
+    if (entry?.typedReadFinal && entry.typedReadSnapshot === snapshot) {
+      retained = entry;
+      break;
+    }
+  }
+  if (retained) return Promise.resolve().then(() => revalidateCached(retained));
+  const retainedRejection = params.trajectory.evaluatorOutputs.some(
+    (entry) => entry.typedReadRejected && entry.typedReadSnapshot === snapshot,
+  );
+  if (retainedRejection)
+    return Promise.resolve({
+      success: false,
+      decision: "FINISH",
+      typedReadRejected: true,
+      typedReadFinal: true,
+      typedReadSnapshot: snapshot,
+      thought:
+        "This exact read snapshot already consumed its answer correction.",
+      messageToUser: "I couldn't verify that from the available information.",
+    });
+  const internal = Object.assign({}, params, {
+    [typedReadSnapshotKey]: snapshot,
+  });
+  // Register before the first provider-await. New evidence gets a new key;
+  // the rejection receipt and correction budget remain owned by the turn.
+  const result = Promise.resolve()
+    .then(async () => {
+      const startedAt = Date.now();
+      const current = {
+        ...binding,
+        policy: { ...binding.policy, nowMs: startedAt },
+      };
+      if (
+        availableTypedReadFacts(current.policy, current.facts).size <
+        current.policy.requirements.length
+      ) {
+        const consumed =
+          typedReadCorrectionConsumed.has(params.trajectory) ||
+          params.trajectory.evaluatorOutputs.some(
+            (entry) => entry.typedReadRejected === true,
+          );
+        const decision = gateTypedReadOutput(
+          {
+            success: false,
+            decision: "FINISH",
+            thought: "Required public read evidence is not yet complete.",
+          },
+          current,
+          internal,
+          consumed,
+        );
+        const output: EvaluatorOutput = {
+          ...decision,
+          typedReadSnapshot: snapshot,
+          ...(decision.decision === "FINISH"
+            ? { typedReadFinal: true as const }
+            : {}),
+        };
+        const stream = getStreamingContext();
+        stream?.abortSignal?.throwIfAborted();
+        await recordGatedEvaluationStage({
+          runtime: params.runtime,
+          recorder: params.recorder,
+          trajectoryId: params.trajectoryId,
+          parentStageId: params.parentStageId,
+          iteration: params.iteration ?? 1,
+          startedAt,
+          endedAt: Date.now(),
+          output,
+          evaluationSnapshot: snapshot,
+          reason: output.typedReadAwaitingEvidence
+            ? "typed_read_pending"
+            : params.typedReadFinalizing
+              ? "typed_read_declined"
+              : "typed_read_unavailable",
+          logger: params.runtime.logger,
+        });
+        stream?.abortSignal?.throwIfAborted();
+        await emitStreamingHook(stream, "onEvaluation", {
+          evaluation: output,
+          messageId: stream?.messageId,
+        });
+        stream?.abortSignal?.throwIfAborted();
+        await applyEvaluatorEffects(output, params.effects);
+        return output;
+      }
+      return runEvaluatorStage(internal);
+    })
+    .then((output) => {
+      if (output.typedReadFinal)
+        params.trajectory.evaluatorOutputs.push(output);
+      return output;
+    });
+  evaluations.set(snapshot, result);
+  return result;
+}
+
+/** Keeps missing reads in the existing queue, and corrections strictly answer-only. */
+function gateTypedReadOutput(
+  output: EvaluatorOutput,
+  binding: TypedReadReplyBinding,
+  params: RunEvaluatorParams,
+  consumed: boolean,
+): EvaluatorOutput {
+  if (binding.phase === "planning" && output.decision !== "FINISH")
+    return { ...output, messageToUser: undefined, copyToClipboard: undefined };
+  const checked = applyTypedReadReply(
+    output,
+    { ...binding, phase: "final-answer" },
+    consumed,
+  );
+  const available = availableTypedReadFacts(binding.policy, binding.facts);
+  if (available.size < binding.policy.requirements.length) {
+    const admitted = new Set(params.admittedToolNames ?? []);
+    const completed = new Set(
+      [...params.trajectory.archivedSteps, ...params.trajectory.steps]
+        .filter((step) => step.result !== undefined)
+        .map((step) => step.toolCall?.id),
+    );
+    const pending = params.trajectory.plannedQueue.find(
+      (call) =>
+        call.id !== undefined &&
+        binding.pendingReadCallIds?.includes(call.id) &&
+        admitted.has(call.name) &&
+        !completed.has(call.id),
+    );
+    const canRetrieve =
+      pending ||
+      binding.remainingReadActionNames?.some((name) => admitted.has(name));
+    if (
+      !consumed &&
+      canRetrieve &&
+      params.admitTypedReadCorrection?.() === true
+    ) {
+      return {
+        ...output,
+        success: false,
+        decision: pending ? "NEXT_RECOMMENDED" : "CONTINUE",
+        recommendedToolCallId: pending?.id,
+        nextTool: undefined,
+        messageToUser: undefined,
+        copyToClipboard: undefined,
+        typedReadRejected: undefined,
+        typedReadAwaitingEvidence: true,
+        thought: `Required producer evidence is missing for ${JSON.stringify(binding.policy.requirements.filter((requirement) => !available.has(requirement.id)).map((requirement) => ({ id: requirement.id, label: requirement.label, kind: requirement.kind, ...(requirement.kind === "publication" ? { requestedDay: requirement.requestedDay } : { unit: requirement.unit, current: requirement.current }) })))}. Continue the existing authorized read path ${JSON.stringify(pending ? [{ id: pending.id, name: pending.name }] : (binding.remainingReadActionNames?.filter((name) => admitted.has(name)) ?? []))}; preserve completed results.`,
+      };
+    }
+    const partial = partialTypedReadReply(output, binding);
+    // Keep the existing validator's precise stale-source diagnostic while
+    // returning only supported parts and explicit uncertainty.
+    return checked.parseError === "typed-read:unverified-time"
+      ? { ...partial, parseError: checked.parseError }
+      : partial;
+  }
+  return checked;
+}
+
+async function runEvaluatorStage(
   params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
   const configuredModel = resolveSetting(
@@ -528,14 +1000,60 @@ async function runEvaluatorWithSelectedModel(
     ),
   };
   const responseSchema = structuredClone(evaluatorSchema);
+  const finalContext = params.trajectory.modelBaseContext ?? params.context;
+  const voicePolicy =
+    finalContext.metadata?.responseChannel === "VOICE_DM"
+      ? finalContext.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy && responseSchema.properties?.messageToUser) {
+    responseSchema.properties.messageToUser.description = `${responseSchema.properties.messageToUser.description ?? ""}\n${voicePolicy.content}`;
+  }
+
+  if (params.typedReadReply) {
+    if (!responseSchema.properties)
+      throw new ElizaError("Typed read evaluator schema has no properties", {
+        code: "TYPED_READ_SCHEMA_INVALID",
+      });
+    Object.assign(responseSchema.properties, {
+      typedReadParts: typedReadPartsSchema,
+    });
+  }
+  // Navigation ACKs prove navigation, not a durable record mutation. Keep the
+  // post-decode effect-receipt guard authoritative if a provider ignores this.
+  if (
+    availableReceiptIds.length === 0 &&
+    !params.hasUnresolvedToolFailure &&
+    isDeliveredNavigationOnlyTurn(params.trajectory) &&
+    responseSchema.properties?.replyEffectStatus
+  ) {
+    responseSchema.properties.replyEffectStatus.enum = ["none", "non_applied"];
+  }
+  // Coverage guards match exact intent IDs. Unconstrained, the model often
+  // cited intent text instead (tj-6eb9a245fd912d), which voided a committed
+  // move. The set is fixed for the turn, so its evaluator calls share a schema.
+  const coverageItem = responseSchema.properties?.outcomeCoverage?.items;
+  if (
+    decisionState.intents.length > 0 &&
+    coverageItem &&
+    !Array.isArray(coverageItem) &&
+    coverageItem.properties?.intentId
+  )
+    coverageItem.properties.intentId.enum = decisionState.intents.map(
+      (intent) => intent.id,
+    );
   const initialBudgetOptions = budgetResolution.contextWindowTokens
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};
   const renderArgs = {
+    responseSchema,
+    ...(params.typedReadReply ? { typedReadReply: params.typedReadReply } : {}),
     context: params.context,
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
     decisionState,
+    captureContextAttribution: Boolean(params.recorder && params.trajectoryId),
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -571,7 +1089,8 @@ async function runEvaluatorWithSelectedModel(
     providerOptions.eliza = {
       ...(providerOptions.eliza ?? {}),
       thinking: "off",
-      ...(evaluatorEvidenceSteps(params.trajectory).some(
+      ...(params.trajectory.codingMode === true &&
+      evaluatorEvidenceSteps(params.trajectory).some(
         ({ step }) => step.toolCall && !step.terminalOnly,
       )
         ? { preferToolReasoning: true }
@@ -615,6 +1134,7 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: args.provider,
       messages: args.input.messages,
+      contextAttribution: args.input.contextAttribution,
       providerOptions: args.providerOptions,
       raw: `[evaluator input budget failure] ${args.error.message} | code: MODEL_INPUT_OVER_BUDGET`,
       output: {
@@ -772,6 +1292,11 @@ async function runEvaluatorWithSelectedModel(
     // stage WITH the request messages and the provider's real error detail,
     // then rethrow for the planner-loop's degrade/propagate policy.
     const detail = modelProviderErrorDetail(error);
+    const failureEvidence = modelOutputIncompleteEvidence(error);
+    // The provider rejected before returning raw output, so its billed usage
+    // has not reached the evaluator's existing per-call accounting callback.
+    if (failureEvidence?.usage)
+      reportEvaluatorUsage({ usage: failureEvidence.usage }, params.onUsage);
     await recordEvaluationStage({
       runtime: params.runtime,
       recorder: params.recorder,
@@ -782,7 +1307,10 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: preparedAttempt?.provider ?? params.provider,
       messages: (preparedAttempt?.input ?? renderedInput).messages,
+      contextAttribution: (preparedAttempt?.input ?? renderedInput)
+        .contextAttribution,
       providerOptions: preparedAttempt?.providerOptions ?? providerOptions,
+      failureEvidence,
       raw: `[evaluator model call failed] ${
         error instanceof Error ? error.message : String(error)
       }${detail?.providerMessage ? ` | provider: ${detail.providerMessage}` : ""}${
@@ -805,10 +1333,55 @@ async function runEvaluatorWithSelectedModel(
     });
     throw error;
   }
+  const parsedOutput = parseEvaluatorOutput(
+    raw,
+    Boolean(params.typedReadReply),
+  );
   let output = enforceEvaluatorDecisionState(
-    finalizeEvaluatorOutput(raw, params.context, params.trajectory),
+    finalizeEvaluatorOutput(
+      parsedOutput,
+      raw,
+      params.context,
+      params.trajectory,
+      redactDiagnosticText,
+    ),
     decisionState,
   );
+  // Finite metadata only: diagnose completion coercion without exposing model text.
+  if (
+    output.decision === "CONTINUE" &&
+    (parsedOutput.decision === "FINISH" || output.protocolFailure === true)
+  ) {
+    const rejection = output.protocolFailure
+      ? "protocol_rejected"
+      : "finish_rejected_after_normalization";
+    try {
+      params.runtime.logger?.warn?.(
+        {
+          diagnosticOnly: true,
+          scope: "Evaluator.normalizedDecision",
+          messageId: streamingContext?.messageId,
+          iteration: params.iteration ?? 1,
+          rejection,
+          ...evaluatorProtocolDiagnostic(parsedOutput),
+          parsedDecision: parsedOutput.decision,
+          parsedSuccess: parsedOutput.success,
+          parsedRequestFullyCovered: parsedOutput.requestFullyCovered ?? null,
+          decision: output.decision,
+          success: output.success,
+          requestFullyCovered: output.requestFullyCovered ?? null,
+          protocolFailure: output.protocolFailure === true,
+          parseErrorPresent: typeof output.parseError === "string",
+          messagePresent: Boolean(output.messageToUser?.trim()),
+          terminalOnly: latestStep?.terminalOnly === true,
+          requiresReplyField,
+        },
+        "[evaluator] proposed finish rejected after normalization",
+      );
+    } catch {
+      // Diagnostic sinks cannot change the evaluator result or trigger another call.
+    }
+  }
   if (!clipboardAvailable && output.copyToClipboard) {
     output = {
       ...output,
@@ -832,6 +1405,7 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: snapshot?.provider ?? params.provider,
       messages: (snapshot?.input ?? renderedInput).messages,
+      contextAttribution: (snapshot?.input ?? renderedInput).contextAttribution,
       providerOptions: snapshot?.providerOptions ?? providerOptions,
       raw,
       output,
@@ -890,6 +1464,60 @@ async function runEvaluatorWithSelectedModel(
       parseError: "Full completion context was already supplied",
     };
   }
+  if (params.typedReadReply) {
+    const binding = {
+      ...params.typedReadReply,
+      policy: { ...params.typedReadReply.policy, nowMs: Date.now() },
+    };
+    const internal = params as RunEvaluatorParams & {
+      [typedReadCorrectionPermit]?: true;
+      [typedReadSnapshotKey]?: string;
+    };
+    const original = output;
+    const consumed =
+      typedReadCorrectionConsumed.has(params.trajectory) ||
+      params.trajectory.evaluatorOutputs.some(
+        (entry) => entry.typedReadRejected === true,
+      );
+    output = gateTypedReadOutput(output, binding, params, consumed);
+    output = { ...output, typedReadSnapshot: internal[typedReadSnapshotKey] };
+    if (output.typedReadRejected && !consumed) {
+      // Claim before any await. Existing turn usage and abort authority own the one correction.
+      typedReadCorrectionConsumed.add(params.trajectory);
+      params.trajectory.evaluatorOutputs.push(output);
+      streamingContext?.abortSignal?.throwIfAborted();
+      const admitted = binding.admitCorrection?.() === true;
+      streamingContext?.abortSignal?.throwIfAborted();
+      if (admitted) {
+        typedReadCorrectionDraft.set(
+          params.trajectory,
+          JSON.stringify({
+            reason: output.parseError,
+            draft: {
+              messageToUser: original.messageToUser,
+              typedReadParts: original.raw?.typedReadParts,
+            },
+          }),
+        );
+        await recordOutput();
+        return runEvaluatorWithSelectedModel(
+          Object.assign({}, params, { [typedReadCorrectionPermit]: true }),
+          model,
+        );
+      }
+      output = applyTypedReadReply(
+        original,
+        { ...binding, phase: "final-answer" },
+        true,
+      );
+    }
+    if (output.decision === "FINISH")
+      output = {
+        ...output,
+        typedReadFinal: true,
+        typedReadSnapshot: internal[typedReadSnapshotKey],
+      };
+  }
   await timeInferenceSpan("evaluator:stream-hook", () =>
     emitStreamingHook(streamingContext, "onEvaluation", {
       evaluation: projectToolDiagnosticValue(
@@ -919,7 +1547,9 @@ async function recordEvaluationStage(args: {
   modelType: string;
   provider?: string;
   messages?: ChatMessage[];
+  contextAttribution?: EvaluatorContextAttribution;
   providerOptions?: Record<string, unknown>;
+  failureEvidence?: ReturnType<typeof modelOutputIncompleteEvidence>;
   raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
   output: EvaluatorOutput;
   startedAt: number;
@@ -938,8 +1568,10 @@ async function recordEvaluationStage(args: {
           ? args.raw.text
           : JSON.stringify(args.raw.object ?? {});
     const contextRequest = evaluatorContextRequest(args.output.raw);
-    const usage = extractEvaluatorUsage(args.raw);
-    const modelName = extractEvaluatorModelName(args.raw);
+    const usage =
+      args.failureEvidence?.usage ?? extractEvaluatorUsage(args.raw);
+    const modelName =
+      args.failureEvidence?.model ?? extractEvaluatorModelName(args.raw);
     const stage: RecordedStage = {
       // Distinct restoration calls can share the same millisecond and attempt label.
       stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}${
@@ -954,14 +1586,31 @@ async function recordEvaluationStage(args: {
       model: {
         modelType: args.modelType,
         modelName,
-        provider: extractEvaluatorProviderName(args.raw) ?? args.provider,
+        provider:
+          args.failureEvidence?.provider ??
+          extractEvaluatorProviderName(args.raw) ??
+          args.provider,
         messages: args.messages,
         tools: [],
         toolCalls: [],
-        providerOptions: args.providerOptions,
+        providerOptions: args.failureEvidence
+          ? {
+              ...contextDiagnosticOptions(
+                args.providerOptions,
+                args.contextAttribution,
+              ),
+              outputEvidence: args.failureEvidence,
+            }
+          : contextDiagnosticOptions(
+              args.providerOptions,
+              args.contextAttribution,
+            ),
+        finishReason: args.failureEvidence?.finishReason,
         response: responseText,
         usage,
-        costUsd: usage ? computeCallCostUsd(modelName, usage) : undefined,
+        costUsd:
+          args.failureEvidence?.costUsd ??
+          (usage ? computeCallCostUsd(modelName, usage) : undefined),
       },
       evaluation: {
         success: args.output.success,
@@ -1061,7 +1710,7 @@ function extractEvaluatorUsage(
 }
 
 function reportEvaluatorUsage(
-  raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>,
+  raw: Parameters<typeof extractEvaluatorUsage>[0],
   onUsage: RunEvaluatorParams["onUsage"],
 ): void {
   const usage = extractEvaluatorUsage(raw);
@@ -1089,19 +1738,24 @@ function evaluatorRestorableContext(
 }
 
 function renderEvaluatorModelInput(params: {
+  responseSchema: JSONSchema;
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
   decisionState: EvaluatorDecisionState;
   redactText: ToolDiagnosticTextRedactor;
+  captureContextAttribution?: boolean;
+  typedReadReply?: RunEvaluatorParams["typedReadReply"];
 }): {
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
   cacheKeySegments: PromptSegment[];
   completionSelectionApplied: boolean;
+  contextAttribution?: EvaluatorContextAttribution;
 } {
   const completion = selectCompletionContext(
     params.trajectory.modelBaseContext ?? params.context,
+    { historicalEffects: true },
   );
   const background = completion.applied
     ? { context: completion.context, applied: false, omittedSourceCount: 0 }
@@ -1109,6 +1763,24 @@ function renderEvaluatorModelInput(params: {
   const deferred = projectDeferredProviders(background.context);
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
+  );
+  // The final generation field owns voice policy. Remove its earlier prompt
+  // copy so it is supplied once, in responseSchema.messageToUser.description.
+  const voicePolicy =
+    deferred.context.metadata?.responseChannel === "VOICE_DM"
+      ? deferred.context.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy) {
+    renderedContext.promptSegments = renderedContext.promptSegments.filter(
+      (segment) => segment.id !== voicePolicy.id,
+    );
+  }
+
+  renderedContext.promptSegments = orderHistoryFirst(
+    deferred.context,
+    renderedContext.promptSegments,
   );
   renderedContext.promptSegments = referenceRepeatedHistory(
     params.trajectory.modelBaseContext ?? params.context,
@@ -1132,7 +1804,7 @@ function renderEvaluatorModelInput(params: {
       id: "completion-context-selection",
       label: "completion_context",
       stable: false,
-      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, use decision=RESTORE_HISTORY, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue and their request-bound historical outcomes are shown. Outcomes for omitted reviewed requests remain with the complete originals. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, use decision=RESTORE_HISTORY, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
   const template = params.template ?? evaluatorTemplateForQueue(true);
@@ -1147,11 +1819,6 @@ function renderEvaluatorModelInput(params: {
         redactText: params.redactText,
       },
     );
-  // The planner's append-only history stays byte-stable. Only this stage's
-  // wire copy removes JSON indentation; all result fields and string bytes
-  // survive, including receipts, failures, attachments and pending work.
-  const stepMessages =
-    compactCanonicalToolMessagesForModel(completeStepMessages);
   // Mirrors planner-loop: the evaluator stage instructions are template-derived
   // (`evaluatorTemplate`) and structurally identical across calls. Marking
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -1164,6 +1831,28 @@ function renderEvaluatorModelInput(params: {
   const dynamicContextSegments = renderedContext.promptSegments.filter(
     (segment) => !segment.stable,
   );
+  if (params.typedReadReply) {
+    const typedReadSegment = {
+      id: "typed-public-read-contract",
+      stable: false,
+      content: `Typed read answer contract (host-owned, opt-in): continue normal authorized retrieval while evidence is missing; a FINISH requires typedReadParts covering every requirement. Select host requirementId, factId and its exact source value/title. Use unverified parts for unsupported requirements and qualified parts only for admitted nearby/report alternatives. Connector parts select a host connectorId. The host validates and renders these parts; messageToUser prose cannot add claims, links, dates or qualifiers. Never invent facts, dates, ownership, source IDs or conversions. Preserve ordinary non-opt-in behavior.
+${JSON.stringify({ policy: params.typedReadReply.policy, facts: params.typedReadReply.facts })}
+${typedReadCorrectionDraft.get(params.trajectory) ? `Correct only the final answer using the SAME completed results. Do not request tools or repeat effects. This is the only correction. Prior draft and rejection: ${typedReadCorrectionDraft.get(params.trajectory)}` : ""}`,
+    };
+    dynamicContextSegments.push(typedReadSegment);
+    renderedContext.promptSegments.push(typedReadSegment);
+  }
+  const contextAttribution = params.captureContextAttribution
+    ? describeEvaluatorContext({
+        original: params.trajectory.modelBaseContext ?? params.context,
+        projection: completion,
+        background,
+        deferredProviderCount: deferred.available.length,
+        segments: [...stableContextSegments, ...dynamicContextSegments],
+        instructions: `evaluator_stage:\n${instructions}`,
+        decisionState: renderEvaluatorDecisionState(params.decisionState),
+      })
+    : undefined;
   const promptSegments = normalizePromptSegments([
     ...stableContextSegments,
     { content: `evaluator_stage:\n${instructions}`, stable: true },
@@ -1177,18 +1866,23 @@ function renderEvaluatorModelInput(params: {
     ...stableContextSegments,
     { content: `evaluator_stage:\n${instructions}`, stable: true },
     // Hash the native response contract without duplicating it in model text.
-    { content: JSON.stringify(evaluatorSchema), stable: true },
+    {
+      content: JSON.stringify(params.responseSchema),
+      stable: true,
+    },
   ]);
   // Use proper assistant/tool message pairs so the evaluator sees the same
   // native tool-calling format as the planner. The trajectory JSON is NOT
   // included in dynamicBlocks — it is conveyed through stepMessages.
-  const messages = buildStageChatMessages({
-    contextSegments: renderedContext.promptSegments,
-    stageLabel: "evaluator_stage",
-    instructions,
-    dynamicBlocks: [],
-    stepMessages,
-  });
+  const messages = compactCanonicalToolMessagesForModel(
+    buildStageChatMessages({
+      contextSegments: renderedContext.promptSegments,
+      stageLabel: "evaluator_stage",
+      instructions,
+      dynamicBlocks: [],
+      stepMessages: completeStepMessages,
+    }),
+  );
   messages.push({
     role: "user",
     content: renderEvaluatorDecisionState(params.decisionState),
@@ -1197,6 +1891,7 @@ function renderEvaluatorModelInput(params: {
     messages,
     promptSegments,
     cacheKeySegments,
+    ...(contextAttribution ? { contextAttribution } : {}),
     completionSelectionApplied:
       completion.applied || background.applied || deferred.available.length > 0,
   };
@@ -1273,6 +1968,7 @@ function projectEvaluatorContext(context: ContextObject): ContextObject {
 
 export function parseEvaluatorOutput(
   raw: EvaluatorModelResult,
+  typedRead = false,
 ): EvaluatorOutput {
   const parsedResult = getStructuredEvaluatorObject(raw);
   if (parsedResult.parseError) {
@@ -1304,7 +2000,7 @@ export function parseEvaluatorOutput(
   }
 
   const parsed = parsedResult.object ?? {};
-  const protocolError = evaluatorEnvelopeProtocolError(parsed);
+  const protocolError = evaluatorEnvelopeProtocolError(parsed, typedRead);
   if (protocolError) {
     return {
       success: false,
@@ -1315,15 +2011,31 @@ export function parseEvaluatorOutput(
     };
   }
   const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
+  const incompleteTerminalCoverage =
+    decision === "FINISH" &&
+    Array.isArray(parsed.outcomeCoverage) &&
+    parsed.outcomeCoverage.some((entry) => entry.status !== "completed");
   return {
-    success: parsed.success === true,
-    ...(typeof parsed.requestFullyCovered === "boolean"
-      ? { requestFullyCovered: parsed.requestFullyCovered }
-      : {}),
+    success: parsed.success === true && !incompleteTerminalCoverage,
+    ...(incompleteTerminalCoverage
+      ? { requestFullyCovered: false }
+      : typeof parsed.requestFullyCovered === "boolean"
+        ? { requestFullyCovered: parsed.requestFullyCovered }
+        : {}),
     ...(Array.isArray(parsed.outcomeCoverage)
       ? {
-          outcomeCoverage:
-            parsed.outcomeCoverage as EvaluatorOutput["outcomeCoverage"],
+          // Repeated identical wire rows carry no additional judgment. Keep
+          // conflicting rows intact so the coverage guard still rejects them.
+          outcomeCoverage: parsed.outcomeCoverage.filter(
+            (entry, index, entries) =>
+              entries.findIndex(
+                (other) =>
+                  other.intentId === entry.intentId &&
+                  other.status === entry.status &&
+                  JSON.stringify(other.evidenceStepIds) ===
+                    JSON.stringify(entry.evidenceStepIds),
+              ) === index,
+          ) as EvaluatorOutput["outcomeCoverage"],
         }
       : {}),
     decision,
@@ -1354,6 +2066,7 @@ export function parseEvaluatorOutput(
 
 function evaluatorEnvelopeProtocolError(
   output: RawEvaluatorOutput,
+  typedRead = false,
 ): string | undefined {
   if (
     output.replyEffectStatus !== undefined &&
@@ -1379,7 +2092,11 @@ function evaluatorEnvelopeProtocolError(
           ) ||
           typeof item.intentId !== "string" ||
           !item.intentId.trim() ||
-          !["completed", "blocked", "pending"].includes(String(item.status)) ||
+          // String() coercion would accept ["completed"], but the coverage
+          // check below compares the un-coerced value strictly. Require an
+          // actual string.
+          typeof item.status !== "string" ||
+          !["completed", "blocked", "pending"].includes(item.status) ||
           !Array.isArray(item.evidenceStepIds) ||
           item.evidenceStepIds.some(
             (id) => typeof id !== "string" || !id.trim(),
@@ -1390,7 +2107,9 @@ function evaluatorEnvelopeProtocolError(
   )
     return "outcomeCoverage must contain exact intent IDs, completion statuses and distinct evidence step IDs";
   const unknownKey = Object.keys(output).find(
-    (key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
+    (key) =>
+      !EVALUATOR_ENVELOPE_KEYS.has(key) &&
+      !(typedRead && key === "typedReadParts"),
   );
   if (unknownKey)
     return `field "${unknownKey}" is not allowed in evaluator output`;
@@ -1739,6 +2458,8 @@ export function validatedOutcomeCoverage(params: {
   hasUnresolvedToolFailure?: boolean;
 }): boolean {
   const { output, trajectory } = params;
+  if (!calendarReadCoverage(output, params.context, trajectory).verified)
+    return false;
   if (
     output.protocolFailure ||
     output.decision !== "FINISH" ||
@@ -1776,6 +2497,1056 @@ export function validatedOutcomeCoverage(params: {
         );
       }),
   );
+}
+
+/** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
+/** A cited update or delete may depend on an earlier exact target search. Keep
+ * the required read guard, but follow current result provenance rather than
+ * require the model to repeat that prerequisite's step ID in its final coverage
+ * list. Only the same unchanged target snapshot and an active applied commit
+ * qualify; unrelated/archived reads, other operations and uncertain effects do not. */
+function calendarMutationTargetReadEvidence(
+  binding: CalendarReadBinding,
+  cited: readonly string[],
+  trajectory: PlannerTrajectory,
+  evidence: ReadonlyMap<string, PlannerTrajectory["steps"][number]>,
+): readonly string[] {
+  if (binding.operation !== "search_events") return cited;
+  const ids = new Set(cited);
+  for (const id of cited) {
+    const mutation = evidence.get(id),
+      result = mutation?.result;
+    const index = mutation ? trajectory.steps.indexOf(mutation) : -1;
+    const call = mutation?.toolCall;
+    const subaction = call?.params?.subaction ?? call?.params?.action;
+    const operation =
+      call?.name === "CALENDAR_UPDATE_EVENT" ||
+      (call?.name === "CALENDAR" && subaction === "update_event")
+        ? "update"
+        : call?.name === "CALENDAR_DELETE_EVENT" ||
+            (call?.name === "CALENDAR" && subaction === "delete_event")
+          ? "delete"
+          : undefined;
+    if (
+      index < 0 ||
+      !operation ||
+      mutation?.terminalOnly ||
+      result?.success !== true ||
+      result.error != null ||
+      result.failureProvenance ||
+      result.replyFailure
+    )
+      continue;
+    const data = result.data;
+    if (!isObjectRecord(data) || !isObjectRecord(data.targetEvent)) continue;
+    const target = data.targetEvent;
+    if (
+      typeof target.id !== "string" ||
+      !target.id ||
+      // An update returns the changed event; a delete only marks the target.
+      (operation === "update"
+        ? !isObjectRecord(data.event) || data.event.id !== target.id
+        : data.deleted !== true) ||
+      !isObjectRecord(target.metadata) ||
+      typeof target.metadata.etag !== "string" ||
+      !target.metadata.etag
+    )
+      continue;
+    const targetEtag = target.metadata.etag;
+    let applied = false;
+    try {
+      applied = activeCommittedEffectReceipts(
+        [...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).some(
+        (receipt) =>
+          result.effectReceipts?.some(
+            (own) => own.receiptId === receipt.receiptId,
+          ) &&
+          receipt.operation === `calendar.event.${operation}` &&
+          receipt.outcome === "applied" &&
+          receipt.resource?.id === target.id,
+      );
+    } catch {
+      continue;
+    }
+    if (!applied) continue;
+    for (const [readId, read] of evidence) {
+      const readIndex = trajectory.steps.indexOf(read),
+        readData = read.result?.data;
+      if (
+        readIndex < 0 ||
+        readIndex >= index ||
+        read.result?.success !== true ||
+        read.result.error != null ||
+        read.result.failureProvenance ||
+        read.result.replyFailure ||
+        !isObjectRecord(readData) ||
+        !Array.isArray(readData.events) ||
+        !isObjectRecord(readData.replyContext) ||
+        readData.replyContext.domain !== "calendar" ||
+        readData.replyContext.scenario !== "search_results"
+      )
+        continue;
+      if (
+        readData.events.some(
+          (candidate) =>
+            isObjectRecord(candidate) &&
+            candidate.id === target.id &&
+            candidate.grantId === target.grantId &&
+            candidate.calendarId === target.calendarId &&
+            candidate.provider === target.provider &&
+            isObjectRecord(candidate.metadata) &&
+            candidate.metadata.etag === targetEtag,
+        )
+      )
+        ids.add(readId);
+    }
+  }
+  return [...ids];
+}
+
+/** The scheduling producer proves preview/read windows independently of agenda reads. */
+function calendarSchedulingOutcomeCovered(
+  operation: "propose_times" | "check_availability",
+  step: PlannerTrajectory["steps"][number],
+  reject: (code: CalendarReadFailureCode) => false,
+): boolean {
+  const result = step.result;
+  if (!result || !isObjectRecord(result.data))
+    return reject("CALENDAR_READ_RESULT_INVALID");
+  const data = result.data;
+  const proposal = operation === "propose_times";
+  const snapshot = data.calendarSnapshot;
+  if (!isObjectRecord(snapshot) || !isObjectRecord(snapshot.resource))
+    return reject("CALENDAR_READ_SNAPSHOT_INVALID");
+  const resource = snapshot.resource;
+  if (
+    resource.kind !== "calendar.feed" ||
+    typeof resource.id !== "string" ||
+    !resource.id ||
+    typeof resource.version !== "string" ||
+    !resource.version ||
+    typeof snapshot.observedAt !== "string" ||
+    !Number.isFinite(Date.parse(snapshot.observedAt))
+  )
+    return reject("CALENDAR_READ_SNAPSHOT_INVALID");
+  if (
+    !result.effectReceipts?.some(
+      (receipt) =>
+        receipt.operation ===
+          (proposal
+            ? "calendar.propose_times.preview"
+            : "calendar.check_availability.read") &&
+        receipt.outcome === (proposal ? "preview" : "noop") &&
+        receipt.idempotency.replayed === false &&
+        receipt.resource.kind === resource.kind &&
+        receipt.resource.id === resource.id &&
+        receipt.resource.version === resource.version &&
+        receipt.observedAt === snapshot.observedAt,
+    )
+  )
+    return reject("CALENDAR_READ_RECEIPT_MISMATCH");
+  const start =
+    typeof data.windowStart === "string" ? Date.parse(data.windowStart) : NaN;
+  const end =
+    typeof data.windowEnd === "string" ? Date.parse(data.windowEnd) : NaN;
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start ||
+    typeof data.timeZone !== "string" ||
+    !data.timeZone
+  )
+    return reject("CALENDAR_READ_INTERVAL_INVALID");
+  if (!proposal)
+    return (
+      (typeof data.isFree === "boolean" &&
+        Array.isArray(data.conflicts) &&
+        data.isFree === (data.conflicts.length === 0)) ||
+      reject("CALENDAR_READ_AVAILABILITY_INVALID")
+    );
+  const duration = data.durationMinutes;
+  if (
+    typeof duration !== "number" ||
+    !Number.isFinite(duration) ||
+    duration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+    !Array.isArray(data.slots)
+  )
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  const params = step.toolCall?.params;
+  const durationInput = isObjectRecord(params?.duration)
+    ? params.duration
+    : undefined;
+  const suppliedDuration = durationInput?.minutes ?? params?.durationMinutes;
+  if (
+    suppliedDuration !== undefined &&
+    (typeof suppliedDuration !== "number" ||
+      !Number.isFinite(suppliedDuration) ||
+      suppliedDuration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+      suppliedDuration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max ||
+      duration !== Math.floor(suppliedDuration))
+  )
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  const inherited =
+    suppliedDuration === undefined &&
+    typeof durationInput?.existingEventQuery === "string" &&
+    durationInput.existingEventQuery.trim().length > 0;
+  if (duration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max && !inherited)
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  if (inherited) {
+    // The canonical handler resolves this existing event from its target feed.
+    // Preserve its exact duration, not the limits for a newly requested length.
+    const event = data.existingEvent,
+      target = data.targetSnapshot;
+    if (
+      !isObjectRecord(event) ||
+      !isObjectRecord(target) ||
+      !isObjectRecord(target.resource) ||
+      target.resource.kind !== "calendar.feed" ||
+      typeof target.resource.id !== "string" ||
+      !target.resource.id ||
+      typeof target.resource.version !== "string" ||
+      !target.resource.version ||
+      typeof target.observedAt !== "string" ||
+      !Number.isFinite(Date.parse(target.observedAt)) ||
+      typeof event.id !== "string" ||
+      !event.id ||
+      typeof event.updatedAt !== "string" ||
+      !event.updatedAt ||
+      typeof event.startAt !== "string" ||
+      typeof event.endAt !== "string" ||
+      !Number.isFinite(Date.parse(event.startAt)) ||
+      !Number.isFinite(Date.parse(event.endAt)) ||
+      (Date.parse(event.endAt) - Date.parse(event.startAt)) / 60_000 !==
+        duration ||
+      !Array.isArray(target.artifacts) ||
+      !target.artifacts.some(
+        (artifact) =>
+          isObjectRecord(artifact) &&
+          artifact.kind === "calendar.event" &&
+          artifact.id === event.id &&
+          artifact.version === event.updatedAt,
+      )
+    )
+      return reject("CALENDAR_READ_TARGET_SNAPSHOT_INVALID");
+  }
+  // The canonical producer may truthfully find no options. A successful
+  // preview otherwise contains concrete slots, not unbounded free windows.
+  return data.slots.every((slot) => {
+    if (
+      !isObjectRecord(slot) ||
+      slot.durationMinutes !== duration ||
+      slot.timeZone !== data.timeZone
+    )
+      return reject("CALENDAR_READ_SLOT_INVALID");
+    const from =
+      typeof slot.startAt === "string" ? Date.parse(slot.startAt) : NaN;
+    const to = typeof slot.endAt === "string" ? Date.parse(slot.endAt) : NaN;
+    return (
+      (Number.isFinite(from) &&
+        Number.isFinite(to) &&
+        from >= start &&
+        to <= end &&
+        to - from === Math.round(duration * 60_000)) ||
+      reject("CALENDAR_READ_SLOT_INVALID")
+    );
+  });
+}
+
+/** The bound read operation, called directly or through the Calendar dispatcher. */
+function isCalendarReadCall(
+  call: PlannerToolCall,
+  operation: CalendarReadBinding["operation"],
+): boolean {
+  const expected = CALENDAR_READ_ACTIONS[operation];
+  return Boolean(
+    expected &&
+      (call.name === expected ||
+        (call.name === "CALENDAR" &&
+          (call.params?.action ?? call.params?.subaction) === operation)),
+  );
+}
+
+/** Whether a feed result read the whole window its call asked for: whole
+ * local days (details.date through details.endDate in details.timeZone) or
+ * timestamp bounds with an explicit offset, the forms the feed action takes.
+ * A call that names no zone asks for local days in the owner's Calendar zone,
+ * which the producer states as the read's timeZone. Live 2026-10-31, an
+ * Eliza-only "this week" read with no zone in its call became the partial
+ * caveat (tj-413f7f38d569e7). Absent arguments require a current-request-bound
+ * canonical producer window; otherwise missing or unresolved bounds prove nothing. */
+function feedReadCoversRequestedWindow(
+  params: PlannerToolCall["params"],
+  data: Record<string, unknown>,
+  readTimeZone: unknown,
+  binding?: CalendarReadBinding,
+): boolean {
+  let details = params?.details;
+  if (typeof details === "string") {
+    try {
+      details = JSON.parse(details);
+    } catch {
+      // error-policy:J3 untrusted model arguments; unparseable bounds prove nothing
+      return false;
+    }
+  }
+  // The canonical handler may resolve the owner's stated day when the model
+  // omits details entirely. Only that current request's bound producer window
+  // can replace absent arguments; malformed or explicit bounds never fall back.
+  if (details === undefined && binding) {
+    const proof = data.requestWindow;
+    if (
+      !isObjectRecord(proof) ||
+      proof.kind !== "calendar.request-window.v1" ||
+      proof.sourceMessageId !== binding.sourceMessageId ||
+      proof.roomId !== binding.roomId ||
+      proof.actorId !== binding.actorId ||
+      proof.requestedAt !== binding.requestedAt ||
+      typeof proof.timeZone !== "string" ||
+      proof.timeZone !== readTimeZone
+    )
+      return false;
+    details = { timeMin: proof.timeMin, timeMax: proof.timeMax };
+  }
+  if (!isObjectRecord(details)) return false;
+  const read = [data.timeMin, data.timeMax].map((bound) =>
+    typeof bound === "string" ? Date.parse(bound) : Number.NaN,
+  );
+  let asked: number[];
+  if (details.timeMin !== undefined || details.timeMax !== undefined) {
+    asked = [details.timeMin, details.timeMax].map((bound) =>
+      typeof bound === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(bound)
+        ? Date.parse(bound)
+        : Number.NaN,
+    );
+  } else {
+    const { date, endDate = date, timeZone = readTimeZone } = details;
+    const lastDay =
+      typeof endDate === "string"
+        ? parseUnambiguousZonedDateTime(`${endDate}T00:00`, "UTC")
+        : null;
+    asked = [
+      parseUnambiguousZonedDateTime(`${date}T00:00`, timeZone),
+      lastDay === null
+        ? null
+        : parseUnambiguousZonedDateTime(
+            `${new Date(lastDay + 86_400_000).toISOString().slice(0, 10)}T00:00`,
+            timeZone,
+          ),
+    ].map((bound) => bound ?? Number.NaN);
+  }
+  // NaN fails every comparison, so an unresolved bound proves no coverage.
+  return asked[0] < asked[1] && read[0] <= asked[0] && asked[1] <= read[1];
+}
+
+/** Whether one feed step is a read proven to answer THIS request. Being in
+ * the trajectory is not proof: an archived step can come from an earlier
+ * request. The read counts only when it passes each of these:
+ * - request: the producer read at or after the bound request time, and its
+ *   read receipt is not a replay;
+ * - actor: each source it read in scope is an owner source (read bindings
+ *   exist only for the owner, see plugin-calendar read-binding.ts), not the
+ *   agent's own calendar;
+ * - window: its read window covers the window its call asked for;
+ * - completeness, relative to the source scope the call asked for: every
+ *   in-scope source is fresh. A read that names no grant must also be
+ *   complete overall, so a partial or unavailable source never grounds a
+ *   global agenda, while a grant-scoped read (such as the local Eliza
+ *   Calendar) is not judged on an unrelated Google source. A read the
+ *   producer marks as not reading the app/device Calendar never counts,
+ *   whatever grant it names: the evaluator cannot tell that the owner asked
+ *   for that other source.
+ * Such a read is "complete". One narrow partial read passes the same request,
+ * actor, window and app Calendar checks as "google-unavailable": it names no
+ * grant, every source is in scope and owned, the phone (Eliza) Calendar was
+ * read fresh for this request, and every other source is Google failing
+ * outright (error or disconnected), so it added no Google events. Its agenda
+ * is the whole phone Calendar and must say Google was not reached
+ * (GOOGLE_CALENDAR_UNREACHED_COPY). Any other partial, stale or unavailable
+ * mix answers nothing.
+ * Compaction does not change any of these, so an archived read of this
+ * request stays valid. A cited read and the uncited fallback are judged
+ * alike: a citation names the read, it does not prove it answers the request. */
+function feedReadAnswersRequest(
+  binding: CalendarReadBinding,
+  step: PlannerTrajectory["steps"][number],
+  allowResolvedWindow = false,
+): "complete" | "google-unavailable" | undefined {
+  const result = step.result,
+    data = result?.data,
+    reply = isObjectRecord(data) ? data.replyContext : undefined,
+    read = isObjectRecord(reply) ? reply.context : undefined,
+    scope = isObjectRecord(read) ? read.sourceScope : undefined;
+  if (
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    !isObjectRecord(data) ||
+    !isObjectRecord(read) ||
+    !isObjectRecord(scope) ||
+    typeof read.asOf !== "string" ||
+    !(Date.parse(read.asOf) >= binding.requestedAt) ||
+    !result.effectReceipts?.some(
+      (receipt) =>
+        receipt.operation === "calendar.feed.read" &&
+        receipt.outcome === "noop" &&
+        receipt.idempotency.replayed === false,
+    ) ||
+    !feedReadCoversRequestedWindow(
+      step.toolCall?.params,
+      data,
+      read.timeZone,
+      allowResolvedWindow ? binding : undefined,
+    ) ||
+    // calendar-handler.ts sets this in a device-owned Calendar turn, where a
+    // connected-provider read must not stand in for the unread app Calendar.
+    scope.appDeviceCalendarRead === false
+  )
+    return undefined;
+  const grantId =
+    typeof scope.grantId === "string" && scope.grantId
+      ? scope.grantId
+      : undefined;
+  const calendarId =
+    typeof scope.calendarId === "string" && scope.calendarId
+      ? scope.calendarId
+      : undefined;
+  // A source without a key cannot be shown to be out of scope.
+  const required = (Array.isArray(data.sources) ? data.sources : []).filter(
+    (source) => {
+      const key = isObjectRecord(source) ? source.key : undefined;
+      return (
+        !isObjectRecord(key) ||
+        ((grantId === undefined || key.grantId === grantId) &&
+          (calendarId === undefined ||
+            key.calendarId === calendarId ||
+            key.calendarId === "all"))
+      );
+    },
+  );
+  if (required.length === 0) return undefined;
+  if (
+    required.every(
+      (source) =>
+        isObjectRecord(source) &&
+        source.status === "fresh" &&
+        isObjectRecord(source.key) &&
+        source.key.side === "owner",
+    ) &&
+    (grantId !== undefined || data.state === "complete")
+  )
+    return "complete";
+  // plugin-calendar CalendarService: the Eliza Calendar source is stamped
+  // fresh when read, and a Google source that failed with no cached snapshot
+  // is error or disconnected (MANAGED_CALENDAR_READ_UNAVAILABLE among them).
+  const phoneRead = (source: unknown) =>
+    isObjectRecord(source) &&
+    isObjectRecord(source.key) &&
+    source.key.side === "owner" &&
+    source.key.provider === "eliza" &&
+    source.status === "fresh" &&
+    typeof source.syncedAt === "string" &&
+    Date.parse(source.syncedAt) >= binding.requestedAt;
+  const googleFailed = (source: unknown) =>
+    isObjectRecord(source) &&
+    isObjectRecord(source.key) &&
+    source.key.side === "owner" &&
+    source.key.provider === "google" &&
+    (source.status === "error" || source.status === "disconnected");
+  return grantId === undefined &&
+    data.state === "partial" &&
+    Array.isArray(data.sources) &&
+    required.length === data.sources.length &&
+    required.some(phoneRead) &&
+    required.some(googleFailed) &&
+    required.every((source) => phoneRead(source) || googleFailed(source))
+    ? "google-unavailable"
+    : undefined;
+}
+
+/** Fallback coverage for a required agenda read whose evaluator coverage is
+ * omitted or cites no real step. A complete feed read counts only when it is
+ * the last feed call and the only complete one that answers THIS request
+ * (feedReadAnswersRequest). When the reply can take the Google caveat, a
+ * "google-unavailable" read counts only when it is the last feed call and the
+ * only read of either kind, so it never displaces a complete read. Otherwise
+ * the base outcome holds: no coverage without a valid citation. */
+function requestBoundFeedRead(
+  binding: CalendarReadBinding,
+  evidence: ReadonlyMap<string, PlannerTrajectory["steps"][number]>,
+  phoneOnlyAccepted: boolean,
+): string | undefined {
+  const calls = [...evidence]
+    .filter(
+      ([, step]) =>
+        step.toolCall &&
+        !step.terminalOnly &&
+        isCalendarReadCall(step.toolCall, "feed"),
+    )
+    .map(
+      ([id, step]) =>
+        [id, feedReadAnswersRequest(binding, step, true)] as const,
+    );
+  const soleLast = (bound: typeof calls) =>
+    bound.length === 1 && bound[0] === calls.at(-1) ? bound[0][0] : undefined;
+  return (
+    soleLast(calls.filter(([, answer]) => answer === "complete")) ??
+    (phoneOnlyAccepted
+      ? soleLast(calls.filter(([, answer]) => answer !== undefined))
+      : undefined)
+  );
+}
+
+export function calendarReadCoverage(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+): {
+  verified: boolean;
+  unverifiedIntentIds: string[];
+  failureCode?: CalendarReadFailureCode;
+  /** A binding verified only on a "google-unavailable" agenda read. */
+  googleUnavailable?: true;
+} {
+  if (output.decision !== "FINISH" || !output.success)
+    return { verified: true, unverifiedIntentIds: [] };
+  const original = trajectory.modelBaseContext ?? context;
+  const bindings = original.metadata?.calendarReadBindings;
+  if (
+    bindings === undefined ||
+    (Array.isArray(bindings) && bindings.length === 0)
+  )
+    return { verified: true, unverifiedIntentIds: [] };
+  if (!Array.isArray(bindings))
+    return {
+      verified: false,
+      unverifiedIntentIds: [],
+      failureCode: "CALENDAR_READ_BINDINGS_INVALID",
+    };
+  let failureCode: CalendarReadFailureCode | undefined;
+  const reject = (code: CalendarReadFailureCode) => {
+    failureCode ??= code;
+    return false;
+  };
+  const evidence = new Map(
+    evaluatorEvidenceSteps(trajectory).map(({ id, step }) => [id, step]),
+  );
+  // finalize appends GOOGLE_CALENDAR_UNREACHED_COPY to a reply verified on a
+  // "google-unavailable" read. An applied reply must keep its exact text
+  // (egress-policy binds its receipts to it), so it never takes one.
+  const phoneOnlyAccepted = output.replyEffectStatus !== "applied";
+  let googleUnavailable = false;
+  const verdicts = bindings.map((raw) => {
+    if (!isObjectRecord(raw)) return reject("CALENDAR_READ_BINDING_INVALID");
+    const binding = raw as CalendarReadBinding;
+    if (
+      typeof binding.sourceMessageId !== "string" ||
+      !binding.sourceMessageId ||
+      typeof binding.roomId !== "string" ||
+      !binding.roomId ||
+      typeof binding.actorId !== "string" ||
+      !binding.actorId ||
+      binding.sourceMessageId !== original.metadata?.messageId ||
+      binding.roomId !== original.metadata?.roomId ||
+      binding.actorId !== original.metadata?.actorId ||
+      !Number.isFinite(binding.requestedAt) ||
+      !evaluatorIntentSources(original, trajectory).some(
+        (intent) => intent.id === binding.intentId,
+      )
+    )
+      return reject("CALENDAR_READ_BINDING_IDENTITY_INVALID");
+    const covered = output.outcomeCoverage?.filter(
+      (entry) => entry.intentId === binding.intentId,
+    );
+    // The schema lets the model omit coverage it has not checked, and step
+    // citations are free text. Live 2026-10-30, correct agenda reads became
+    // failure copy when coverage was omitted (tj-605ca329c8a78d) or cited
+    // "1:success=true" (tj-8dfdee5735fb18). Such a required feed binding takes
+    // the one read proven to answer this request (requestBoundFeedRead), which
+    // must still pass every evidence check below. A stated status or a valid
+    // citation governs; other operations still need a valid citation.
+    const fallback =
+      binding.execution === "required" &&
+      binding.operation === "feed" &&
+      (output.outcomeCoverage === undefined ||
+        (covered?.length === 1 &&
+          !covered[0].evidenceStepIds.some((id) => evidence.has(id)))) &&
+      bindings.filter(
+        (other) =>
+          isObjectRecord(other) && other.operation === binding.operation,
+      ).length === 1
+        ? requestBoundFeedRead(binding, evidence, phoneOnlyAccepted)
+        : undefined;
+    const coverage = fallback
+      ? {
+          status: covered?.[0]?.status ?? "completed",
+          evidenceStepIds: [fallback],
+        }
+      : covered?.length === 1
+        ? covered[0]
+        : undefined;
+    if (!coverage) return reject("CALENDAR_READ_COVERAGE_MISSING");
+    if (
+      coverage.status !== "completed" ||
+      coverage.evidenceStepIds.length === 0
+    )
+      return reject("CALENDAR_READ_COVERAGE_INCOMPLETE");
+    if (binding.execution === "conditional") {
+      // The existing semantic condition verdict remains authoritative; this
+      // binding selects an operation, never makes its prerequisite true.
+      return coverage.evidenceStepIds.every((id) => {
+        const step = evidence.get(id);
+        return Boolean(
+          step?.toolCall && !step.terminalOnly && step.result?.success === true,
+        );
+      });
+    }
+    if (binding.execution !== "required")
+      return reject("CALENDAR_READ_EXECUTION_INVALID");
+    const readEvidenceIds = calendarMutationTargetReadEvidence(
+      binding,
+      coverage.evidenceStepIds,
+      trajectory,
+      evidence,
+    );
+    let evidenceFailure: CalendarReadFailureCode | undefined;
+    const rejectEvidence = (code: CalendarReadFailureCode): false => {
+      evidenceFailure ??= code;
+      return false;
+    };
+    let phoneOnly = false;
+    const readVerified = readEvidenceIds.some((id) => {
+      const step = evidence.get(id);
+      if (!step?.toolCall || step.terminalOnly || step.result?.success !== true)
+        return rejectEvidence("CALENDAR_READ_RESULT_UNSUCCESSFUL");
+      const data = step.result.data;
+      if (!isObjectRecord(data))
+        return rejectEvidence("CALENDAR_READ_RESULT_INVALID");
+      if (!isCalendarReadCall(step.toolCall, binding.operation))
+        return rejectEvidence("CALENDAR_READ_OPERATION_MISMATCH");
+      if (
+        binding.operation === "propose_times" ||
+        binding.operation === "check_availability"
+      )
+        return calendarSchedulingOutcomeCovered(
+          binding.operation,
+          step,
+          rejectEvidence,
+        );
+      const reply = data.replyContext;
+      if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
+      if (binding.operation === "read_selected") {
+        const target = binding.selectedTarget;
+        const proof = data.selectionProof;
+        const event = data.event;
+        if (
+          !target ||
+          !isObjectRecord(proof) ||
+          !isObjectRecord(event) ||
+          reply.scenario !== "selected_event" ||
+          !["id", "revision", "accountId", "sourceRevision"].every(
+            (key) =>
+              typeof target[key as keyof typeof target] === "string" &&
+              !!target[key as keyof typeof target] &&
+              proof[key] === target[key as keyof typeof target],
+          ) ||
+          proof.sourceMessageId !== binding.sourceMessageId ||
+          proof.actorId !== binding.actorId ||
+          proof.roomId !== binding.roomId ||
+          proof.requestedAt !== binding.requestedAt ||
+          event.id !== target.id ||
+          event.grantId !== target.accountId ||
+          !isObjectRecord(event.metadata) ||
+          event.metadata.etag !== target.revision ||
+          !step.result.effectReceipts?.some(
+            (receipt) =>
+              receipt.operation === "calendar.event.selected.read" &&
+              receipt.resource.kind === "calendar.event" &&
+              receipt.resource.id === target.id &&
+              receipt.resource.version === target.revision &&
+              receipt.outcome === "noop" &&
+              receipt.idempotency.replayed === false &&
+              Date.parse(receipt.observedAt) >= binding.requestedAt,
+          )
+        )
+          return rejectEvidence("CALENDAR_READ_TARGET_SNAPSHOT_INVALID");
+        return true;
+      }
+      if (binding.operation === "feed") {
+        const scope = reply.context;
+        if (
+          reply.scenario !== "feed_results" ||
+          !isObjectRecord(scope) ||
+          scope.selection !== "bounded_agenda"
+        )
+          return false;
+        // Codex #743: a real step ID only names the read. A cited partial,
+        // stale or other-request read must not ground "nothing scheduled"
+        // where the same read, uncited, would not. A read of the phone
+        // Calendar alone verifies only when the reply can take the caveat
+        // and no complete read is also cited.
+        const answer = feedReadAnswersRequest(
+          binding,
+          step,
+          bindings.filter(
+            (other) => isObjectRecord(other) && other.operation === "feed",
+          ).length === 1,
+        );
+        if (answer === "google-unavailable" && phoneOnlyAccepted)
+          phoneOnly = true;
+        else if (answer !== "complete")
+          rejectEvidence("CALENDAR_READ_COVERAGE_INCOMPLETE");
+        return answer === "complete";
+      }
+      if (binding.operation === "search_events") {
+        let details = step.toolCall.params?.details;
+        if (typeof details === "string") {
+          try {
+            details = JSON.parse(details);
+          } catch {
+            return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
+          }
+        }
+        const filters = binding.filterEvidence;
+        const values = [
+          step.toolCall.params?.query,
+          ...(Array.isArray(step.toolCall.params?.queries)
+            ? step.toolCall.params.queries
+            : []),
+          ...(isObjectRecord(details)
+            ? [
+                details.query,
+                ...(Array.isArray(details.queries) ? details.queries : []),
+              ]
+            : []),
+        ].filter((v): v is string => typeof v === "string" && !!v.trim());
+        const scope = reply.context;
+        if (
+          !Array.isArray(filters) ||
+          !filters.length ||
+          !values.length ||
+          !filters.every(
+            (e) =>
+              isObjectRecord(e) &&
+              typeof e.query === "string" &&
+              typeof e.quote === "string" &&
+              e.query === e.quote.trim() &&
+              (e.origin === "current" || e.origin === "referent") &&
+              (e.origin !== "current" ||
+                (e.sourceMessageId === binding.sourceMessageId &&
+                  e.sourceActorId === binding.actorId &&
+                  e.sourceCreatedAt === binding.requestedAt)) &&
+              e.sourceRoomId === binding.roomId &&
+              !!e.sourceMessageId &&
+              !!e.sourceActorId &&
+              Number.isFinite(e.sourceCreatedAt) &&
+              e.sourceCreatedAt <= binding.requestedAt,
+          ) ||
+          !values.every((q) =>
+            filters.some(
+              (e) => e.query.toLowerCase() === q.trim().toLowerCase(),
+            ),
+          ) ||
+          !isObjectRecord(scope) ||
+          scope.selection !== "filtered_search" ||
+          scope.contentFilterApplied !== true
+        )
+          return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
+        return reply.scenario === "search_results";
+      }
+      if (binding.operation !== "next_event" || reply.scenario !== "next_event")
+        return false;
+      const scope = data.readScope;
+      const reference = data.timeReference;
+      if (
+        !isObjectRecord(scope) ||
+        scope.selection !== "next_event" ||
+        !isObjectRecord(reference)
+      )
+        return false;
+      if (
+        !step.result.effectReceipts?.some(
+          (receipt) =>
+            receipt.operation === "calendar.event.next.read" &&
+            receipt.resource.kind === "calendar.next_event" &&
+            receipt.outcome === "noop" &&
+            receipt.idempotency.replayed === false,
+        )
+      )
+        return false;
+      const asOf =
+        typeof reference.asOf === "string"
+          ? Date.parse(reference.asOf)
+          : Number.NaN;
+      const min =
+        typeof scope.timeMin === "string"
+          ? Date.parse(scope.timeMin)
+          : Number.NaN;
+      const max =
+        typeof scope.timeMax === "string"
+          ? Date.parse(scope.timeMax)
+          : Number.NaN;
+      if (
+        !Number.isFinite(asOf) ||
+        asOf < binding.requestedAt ||
+        !Number.isFinite(min) ||
+        !Number.isFinite(max) ||
+        min > asOf ||
+        asOf >= max ||
+        data.calendarFeedState !== "complete"
+      )
+        return false;
+      const sources = data.calendarSources;
+      if (
+        !Array.isArray(sources) ||
+        sources.length === 0 ||
+        sources.some(
+          (source) => !isObjectRecord(source) || source.status !== "fresh",
+        )
+      )
+        return false;
+      // A fresh bounded NEXT lookup can successfully return no event. Its
+      // non-exhaustive window limits what the reply may claim; it does not
+      // turn the requested read into a failed operation. The producer supplies
+      // those bounds to the evaluator alongside its user-facing source facts.
+      if (data.event === null) return typeof scope.exhaustive === "boolean";
+      const event = data.event;
+      if (!isObjectRecord(event)) return false;
+      const start =
+        typeof event.startAt === "string"
+          ? Date.parse(event.startAt)
+          : Number.NaN;
+      const end =
+        typeof event.endAt === "string" ? Date.parse(event.endAt) : Number.NaN;
+      return (
+        Number.isFinite(start) &&
+        Number.isFinite(end) &&
+        start < max &&
+        end > asOf
+      );
+    });
+    if (!readVerified && phoneOnly) googleUnavailable = true;
+    return (
+      readVerified ||
+      phoneOnly ||
+      reject(evidenceFailure ?? "CALENDAR_READ_EVIDENCE_MISSING")
+    );
+  });
+  return {
+    ...(verdicts.every(Boolean)
+      ? googleUnavailable
+        ? { googleUnavailable: true as const }
+        : {}
+      : { failureCode: failureCode ?? "CALENDAR_READ_EVIDENCE_REJECTED" }),
+    verified: verdicts.every(Boolean),
+    unverifiedIntentIds: bindings.flatMap((binding, index) =>
+      !verdicts[index] &&
+      isObjectRecord(binding) &&
+      typeof binding.intentId === "string"
+        ? [binding.intentId]
+        : [],
+    ),
+  };
+}
+
+/** Preserve producer-formatted dates only after the normal evaluator verified one
+ * complete next-event read and no other requested outcome/tool needs prose.
+ * Read receipts remain noop; this does not manufacture applied-effect proof. */
+function verifiedSingleCalendarReadReply(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+  coverage: ReturnType<typeof calendarReadCoverage>,
+): string | undefined {
+  if (
+    !coverage.verified ||
+    output.decision !== "FINISH" ||
+    output.success !== true ||
+    output.requestFullyCovered !== true
+  )
+    return;
+  const original = trajectory.modelBaseContext ?? context,
+    intents = evaluatorIntentSources(original, trajectory),
+    bindings = original.metadata?.calendarReadBindings;
+  if (
+    intents.length !== 1 ||
+    declaredIntentsFromContext(original).length > 1 ||
+    !Array.isArray(bindings) ||
+    bindings.length !== 1
+  )
+    return;
+  const binding = bindings[0];
+  if (
+    !isObjectRecord(binding) ||
+    binding.intentId !== intents[0].id ||
+    binding.operation !== "next_event" ||
+    binding.execution !== "required"
+  )
+    return;
+  const work = evaluatorEvidenceSteps(trajectory).filter(
+    ({ step }) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      !isDiscoveryActionName(step.toolCall.name),
+  );
+  if (work.length !== 1) return;
+  const step = work[0].step,
+    result = step.result;
+  if (
+    result?.success !== true ||
+    result.verifiedUserFacing !== true ||
+    typeof result.userFacingText !== "string"
+  )
+    return;
+  if (
+    step.toolCall?.name !== "CALENDAR_NEXT_EVENT" &&
+    !(
+      step.toolCall?.name === "CALENDAR" &&
+      (step.toolCall.params?.action ?? step.toolCall.params?.subaction) ===
+        "next_event"
+    )
+  )
+    return;
+  const data = result.data,
+    reply = isObjectRecord(data) ? data.replyContext : undefined;
+  if (
+    !isObjectRecord(reply) ||
+    reply.domain !== "calendar" ||
+    reply.scenario !== "next_event" ||
+    reply.userFacingFacts !== result.userFacingText
+  )
+    return;
+  return result.userFacingText.trim() || undefined;
+}
+
+/** Scoped failure copy from current producer facts, never unsupported evaluator prose. */
+function calendarCoverageSourceFacts(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+): { facts: string[]; calendarScopeReported: boolean } {
+  const facts: string[] = [];
+  let calendarScopeReported = false;
+  const cited = new Set(
+    output.outcomeCoverage?.flatMap((entry) => entry.evidenceStepIds) ?? [],
+  );
+  const current = new Set(trajectory.steps);
+  const metadata = (trajectory.modelBaseContext ?? context).metadata;
+  const bindings = metadata?.calendarReadBindings;
+  const requestedAt = Array.isArray(bindings)
+    ? Math.max(
+        ...bindings.flatMap((binding) =>
+          isObjectRecord(binding) && typeof binding.requestedAt === "number"
+            ? [binding.requestedAt]
+            : [],
+        ),
+      )
+    : Number.NaN;
+  for (const { id, step } of evaluatorEvidenceSteps(trajectory)) {
+    if (
+      !current.has(step) ||
+      !cited.has(id) ||
+      !step.toolCall ||
+      step.terminalOnly ||
+      step.result?.success !== true
+    )
+      continue;
+    const result = step.result;
+    if (
+      result.verifiedUserFacing === true &&
+      typeof result.userFacingText === "string"
+    ) {
+      facts.push(result.userFacingText);
+      continue;
+    }
+    const data = result.data;
+    if (!isObjectRecord(data)) continue;
+    const navigation = data.navigation;
+    if (
+      isObjectRecord(navigation) &&
+      navigation.status === "delivered" &&
+      typeof navigation.label === "string"
+    ) {
+      facts.push(`${navigation.label} view is open.`);
+      continue;
+    }
+    if (
+      step.toolCall.name === "NOTES_LIST" ||
+      step.toolCall.name === "NOTES_GET"
+    ) {
+      if (
+        data.total === 0 &&
+        data.lookupMode === "all" &&
+        data.filterApplied === false
+      )
+        facts.push("No notes exist in Notes.");
+      const notes = isObjectRecord(data.note)
+        ? [data.note]
+        : Array.isArray(data.notes)
+          ? data.notes
+          : [];
+      for (const note of notes) {
+        if (
+          isObjectRecord(note) &&
+          typeof note.title === "string" &&
+          typeof note.body === "string"
+        )
+          // The stored body is the verbatim remainder, including its separator.
+          facts.push(note.title + note.body);
+      }
+      continue;
+    }
+    const reply = data.replyContext;
+    const scope = data.readScope;
+    const reference = data.timeReference;
+    const details = isObjectRecord(reply) ? reply.context : undefined;
+    const snapshot = isObjectRecord(reference)
+      ? reference.asOf
+      : isObjectRecord(details)
+        ? details.asOf
+        : undefined;
+    const asOf =
+      typeof snapshot === "string" ? Date.parse(snapshot) : Number.NaN;
+    // A next event found while some source was not fresh is real but
+    // unconfirmed: report it with the sources that were not checked, instead
+    // of hiding it behind "couldn't confirm".
+    const partialNextEvent =
+      isObjectRecord(reply) &&
+      reply.scenario === "next_event" &&
+      isObjectRecord(data.event) &&
+      data.calendarFeedState === "partial";
+    if (
+      Number.isFinite(requestedAt) &&
+      Number.isFinite(asOf) &&
+      asOf >= requestedAt &&
+      isObjectRecord(reply) &&
+      reply.domain === "calendar" &&
+      typeof reply.userFacingFacts === "string" &&
+      (reply.scenario === "feed_results" ||
+        (data.event === null &&
+          isObjectRecord(scope) &&
+          scope.exhaustive === false) ||
+        partialNextEvent)
+    ) {
+      facts.push(reply.userFacingFacts);
+      calendarScopeReported = true;
+      if (partialNextEvent && Array.isArray(data.calendarSources)) {
+        const unchecked = data.calendarSources.flatMap((source) =>
+          isObjectRecord(source) &&
+          source.status !== "fresh" &&
+          typeof source.summary === "string"
+            ? [source.summary]
+            : [],
+        );
+        if (unchecked.length > 0)
+          facts.push(`Not up to date: ${unchecked.join(", ")}.`);
+      }
+    }
+  }
+  return { facts: [...new Set(facts)], calendarScopeReported };
 }
 
 function repairFinishWithUnservedDeclaredIntents(
@@ -2653,7 +4424,37 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
   // unambiguous for every canonical spelling (think/thinking/reasoning/…):
   // everything before the LAST close is reasoning, never output — strip it
   // before any envelope handling (#20080 generalizes the F18 </think> fix).
-  return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
+  return parseEvaluatorVisibleText(
+    unwrapNativeVerdictEnvelope(stripReasoningPrefixes(text).trim()),
+  );
+}
+
+/**
+ * Qwen-family models can serialize the evaluator verdict in their native
+ * tool-call dialect even though the evaluator offers no tools (live cold
+ * calendar voice turn tj-929faaf3d187f1: `<tool_call><function=functions.<hash>>`
+ * around a complete FINISH verdict). Rejecting it as extra text replanned a
+ * REPLY and paid a second evaluator call (3.6 s + 5.4 s). Unwrap only one
+ * envelope that is the whole response, names that opaque function and holds
+ * exactly one evaluator-shaped JSON object; the body then gets the same checks
+ * as bare evaluator JSON. Every other shape keeps its current path. The name
+ * must be that observed `functions.<64 hex>$<32 hex>` digest: an action in any
+ * case or namespace (`CALENDAR`, `calendar`, `functions.CALENDAR`) is still an
+ * action call, and unwrapping it would discard that identity before validation.
+ * The body is matched greedily and trimmed after: a lazy body between two
+ * `\s*` runs backtracks quadratically on padding before the close and
+ * cubically on padding after the open tag when the envelope does not close.
+ */
+function unwrapNativeVerdictEnvelope(text: string): string {
+  const match =
+    /^<tool_call>\s*<function=([^>\s]+)>([\s\S]*)<\/function>\s*<\/tool_call>$/.exec(
+      text,
+    );
+  if (!match || !/^functions\.[0-9a-f]{64}\$[0-9a-f]{32}$/.test(match[1])) {
+    return text;
+  }
+  const body = match[2].trim();
+  return isEvaluatorShapedObject(tryParseJson(body)) ? body : text;
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {

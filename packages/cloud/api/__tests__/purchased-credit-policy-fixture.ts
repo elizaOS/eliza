@@ -1,5 +1,5 @@
 /** Supplies fresh purchased-credit policy observations for isolated route billing tests; no database or module mocks are installed here. */
-import type { OrganizationQuotaPolicy } from "@/lib/services/organization-quota-policy";
+import type { OrganizationQuotaPolicy } from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 
 export function purchasedCreditPolicyFixture(): OrganizationQuotaPolicy {
   return {

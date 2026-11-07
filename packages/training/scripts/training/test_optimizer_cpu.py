@@ -15,7 +15,7 @@ import pytest
 import torch
 from torch import nn
 
-from scripts.training.optimizer import (
+from eliza_training.training.optimizer import (
     _NON_LOWRANK_NAME_HINTS,
     build_apollo_mini_optimizer,
     build_apollo_optimizer,

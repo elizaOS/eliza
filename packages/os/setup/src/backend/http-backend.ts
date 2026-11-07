@@ -1,3 +1,4 @@
+import { readExecutionStream } from "../runtime/execute-stream";
 import { authorizedFetch, backendRoute } from "../runtime/server-url";
 import type {
   AospBuild,
@@ -10,8 +11,6 @@ import type {
   FlashStepStatus,
 } from "./types";
 
-const MAX_SSE_BYTES = 50 * 1024 * 1024; // 50 MB hard cap
-
 export class InvalidServerResponseError extends Error {
   constructor(
     public readonly raw: unknown,
@@ -19,15 +18,6 @@ export class InvalidServerResponseError extends Error {
   ) {
     super(`Server returned an invalid response: ${parseError}`);
     this.name = "InvalidServerResponseError";
-  }
-}
-
-export class SseResponseTooLargeError extends Error {
-  constructor(byteCount: number) {
-    super(
-      `SSE stream exceeded ${MAX_SSE_BYTES} byte cap (read ${byteCount} bytes). Aborting.`,
-    );
-    this.name = "SseResponseTooLargeError";
   }
 }
 
@@ -278,70 +268,11 @@ export class HttpAospFlasherBackend implements AospFlasherBackend {
       body: JSON.stringify({ executionToken: plan.executionToken }),
     });
 
-    if (!res.ok || !res.body) {
-      throw new Error(`POST /execute failed: HTTP ${res.status}`);
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let bytesConsumed = 0;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        bytesConsumed += value.byteLength;
-        if (bytesConsumed > MAX_SSE_BYTES) {
-          await reader.cancel();
-          throw new SseResponseTooLargeError(bytesConsumed);
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
-
-        for (const frame of frames) {
-          const dataLine = frame
-            .split("\n")
-            .find((l) => l.startsWith("data: "));
-          if (!dataLine) continue;
-
-          const json = dataLine.slice("data: ".length);
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(json);
-          } catch (err) {
-            throw new InvalidServerResponseError(
-              json,
-              err instanceof Error ? err.message : String(err),
-            );
-          }
-
-          let msg: ExecuteFrame;
-          try {
-            msg = validateExecuteFrame(parsed);
-          } catch (err) {
-            throw new InvalidServerResponseError(
-              parsed,
-              err instanceof Error ? err.message : String(err),
-            );
-          }
-
-          if ("error" in msg) {
-            throw new Error(msg.error);
-          }
-          if ("done" in msg) {
-            return;
-          }
-          onProgress(msg.stepId, msg.status, msg.detail);
-        }
-      }
-    } finally {
-      // Best-effort release of the reader if we're exiting via an error path.
-      reader.releaseLock?.();
-    }
+    await readExecutionStream(res, (raw) => {
+      const msg = validateExecuteFrame(raw);
+      if ("done" in msg || "error" in msg)
+        throw new InvalidServerResponseError(raw, "Expected a progress event");
+      onProgress(msg.stepId, msg.status, msg.detail);
+    });
   }
 }

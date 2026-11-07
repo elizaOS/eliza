@@ -228,6 +228,7 @@ export {
   type SchedulingSqlStoreOptions,
 } from "./scheduled-task/store.ts";
 export {
+  configuredDefaultTimeZone,
   OWNER_LOCAL_TZ,
   resolveTriggerTz,
 } from "./scheduled-task/trigger-tz.ts";

@@ -1,13 +1,11 @@
 /**
  * Legacy JSON vault store helpers used by one-shot migration.
  *
- * Reads and writes the pre-PGlite `vault.json` shape with atomic 0600 writes
- * so old installs can be imported into the current storage engine.
+ * Reads and validates the pre-PGlite `vault.json` shape so old installs can
+ * be imported into the current storage engine.
  */
 
-import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 import type { StoredEntry } from "./types.js";
 
 /**
@@ -59,49 +57,6 @@ export async function readStore(path: string): Promise<StoreData> {
     );
   }
   return validateShape(parsed);
-}
-
-export async function writeStore(path: string, data: StoreData): Promise<void> {
-  await fs.mkdir(dirname(path), { recursive: true });
-  // Per-write tmp filename so two VaultImpl instances cannot collide on the
-  // same `${path}.tmp` and silently clobber each other's writes. pid + 8
-  // random bytes is overkill for collision avoidance but keeps the cost
-  // negligible vs the rest of the write.
-  const tmp = `${path}.tmp.${process.pid}.${randomBytes(8).toString("hex")}`;
-  const body = `${JSON.stringify(data, null, 2)}\n`;
-  // mode 0o600 on the tmp file, before rename. POSIX rename preserves mode,
-  // so the final file inherits 0o600 with no observable window where it sat
-  // at the umask default.
-  await fs.writeFile(tmp, body, { mode: 0o600, flag: "w" });
-  try {
-    await fs.rename(tmp, path);
-  } catch (renameErr) {
-    // error-policy:J2 context-adding rethrow — the write failed; rethrow so the
-    // caller knows the store was NOT persisted. The inner
-    // `fs.rm(...).catch(() => {})` is error-policy:J6 best-effort teardown of
-    // the orphaned tmp file (cross-device / EROFS / ENOSPC); its own failure is
-    // irrelevant to the already-failing write.
-    await fs.rm(tmp, { force: true }).catch(() => {});
-    throw renameErr;
-  }
-}
-
-export function setEntry(
-  data: StoreData,
-  key: string,
-  entry: StoredEntry,
-): StoreData {
-  return {
-    version: data.version,
-    entries: { ...data.entries, [key]: entry },
-  };
-}
-
-export function removeEntry(data: StoreData, key: string): StoreData {
-  if (!(key in data.entries)) return data;
-  const next = { ...data.entries };
-  delete next[key];
-  return { version: data.version, entries: next };
 }
 
 function validateShape(parsed: unknown): StoreData {

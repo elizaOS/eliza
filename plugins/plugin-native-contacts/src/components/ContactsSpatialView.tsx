@@ -6,15 +6,15 @@
 
 import type { ContactSummary } from "@elizaos/plugin-native-contacts/bridge";
 import {
-  Button,
-  Card,
-  Divider,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
   Field,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 
 /** Which screen the contacts surface is currently showing. */
 export type ContactsMode = "list" | "detail" | "new";
@@ -141,8 +141,16 @@ export function ContactsSpatialView({
           dispatch={dispatch}
           onAction={onAction}
         />
-      ) : mode === "detail" && selected ? (
-        <ContactsDetailBody contact={selected} dispatch={dispatch} />
+      ) : mode === "detail" ? (
+        selected ? (
+          <ContactsDetailBody contact={selected} dispatch={dispatch} />
+        ) : (
+          <ContactsListBody
+            snapshot={snapshot}
+            dispatch={dispatch}
+            onAction={onAction}
+          />
+        )
       ) : (
         <ContactsFormBody
           snapshot={snapshot}

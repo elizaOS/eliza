@@ -3,15 +3,15 @@
  * Returns crypto-payment availability + supported tokens/networks.
  */
 
-import { Hono } from "hono";
 import {
   getSupportedNetworks,
   NETWORK_CONFIGS,
   SUPPORTED_PAY_CURRENCIES,
-} from "@/lib/config/crypto";
-import { directWalletPaymentsService } from "@/lib/services/direct-wallet-payments";
-import { isOxaPayConfigured } from "@/lib/services/oxapay";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/config/crypto";
+import { directWalletPaymentsService } from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { isOxaPayConfigured } from "@elizaos/cloud-shared/lib/services/oxapay";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

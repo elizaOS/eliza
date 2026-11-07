@@ -14,36 +14,20 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final, Mapping, Sequence
 
-try:
-    from scripts.manifest.eliza1_manifest import (
-        ELIZA_1_MTP_TIERS,
-        ELIZA_1_HF_REPO,
-        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
-        ELIZA_1_TIERS,
-        ELIZA_1_VISION_TIERS,
-        REQUIRED_KERNELS_BY_TIER,
-        SUPPORTED_BACKENDS_BY_TIER,
-        VOICE_BACKENDS_BY_TIER,
-        VOICE_PRESET_CACHE_PATH,
-        VOICE_QUANT_BY_TIER,
-        canonical_source_repo_error,
-        required_voice_artifacts_for_tier,
-    )
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import (
-        ELIZA_1_MTP_TIERS,
-        ELIZA_1_HF_REPO,
-        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
-        ELIZA_1_TIERS,
-        ELIZA_1_VISION_TIERS,
-        REQUIRED_KERNELS_BY_TIER,
-        SUPPORTED_BACKENDS_BY_TIER,
-        VOICE_BACKENDS_BY_TIER,
-        VOICE_PRESET_CACHE_PATH,
-        VOICE_QUANT_BY_TIER,
-        canonical_source_repo_error,
-        required_voice_artifacts_for_tier,
-    )
+from eliza_training.manifest.eliza1_manifest import (
+    ELIZA_1_MTP_TIERS,
+    ELIZA_1_HF_REPO,
+    ELIZA_1_PUBLISHABLE_RELEASE_STATES,
+    ELIZA_1_TIERS,
+    ELIZA_1_VISION_TIERS,
+    REQUIRED_KERNELS_BY_TIER,
+    SUPPORTED_BACKENDS_BY_TIER,
+    VOICE_BACKENDS_BY_TIER,
+    VOICE_PRESET_CACHE_PATH,
+    VOICE_QUANT_BY_TIER,
+    canonical_source_repo_error,
+    required_voice_artifacts_for_tier,
+)
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "2b": "Q4_K_M",

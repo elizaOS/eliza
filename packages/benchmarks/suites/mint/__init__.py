@@ -58,9 +58,10 @@ def __getattr__(name: str):
         "LEADERBOARD_SCORES",
         "PAPER_RESULTS_URL",
         "SUBTASK_TO_TASK_TYPE",
-        }
+    }
     if name in types_attrs:
         from . import types
+
         return getattr(types, name)
     component_map = {
         "MINTDataset": (".dataset", "MINTDataset"),
@@ -76,5 +77,21 @@ def __getattr__(name: str):
     if name in component_map:
         module_name, attr = component_map[name]
         import importlib
+
         return getattr(importlib.import_module(module_name, __package__), attr)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+from .protocol import (
+    history_to_openai_messages,
+    last_user_text,
+    normalize_tool_calls,
+    DEFAULT_SYSTEM_PROMPT,
+)
+
+__all__ += [
+    "history_to_openai_messages",
+    "last_user_text",
+    "normalize_tool_calls",
+    "DEFAULT_SYSTEM_PROMPT",
+]

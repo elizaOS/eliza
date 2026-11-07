@@ -5,8 +5,9 @@
  * stays silent for non-TTY output and for `--json` / `--version` invocations so
  * machine-readable output is never polluted.
  */
-import { isRich, theme } from "../terminal/theme.js";
+
 import { resolveCommitHash } from "./git-commit";
+import { isRich, theme } from "./terminal.js";
 
 type BannerOptions = {
   env?: NodeJS.ProcessEnv;

@@ -12,17 +12,20 @@
  * `persistFirstRun` helper, so a completed onboarding posts exactly once.
  */
 
-import { client } from "../api";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
-import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
+import { client } from "../api/client";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+
 import type { CloudCompatAgent } from "../api/client-types-cloud";
-import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
-import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
-import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
+import {
+  getDesktopRuntimeMode,
+  invokeDesktopBridgeRequest,
+} from "../bridge/electrobun-rpc";
+import { getAgentPlugin } from "../bridge/native-plugins";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
@@ -32,8 +35,7 @@ import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-hando
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
-import { getBootConfig } from "../config/boot-config";
-import type { UiLanguage } from "../i18n";
+import { getBootConfig } from "../config/boot-config-store";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import {
   isAndroid,
@@ -41,18 +43,16 @@ import {
   isIOS,
   isNative,
 } from "../platform/init";
+import { addAgentProfile, removeAgentProfile } from "../state/agent-profiles";
+import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import {
-  addAgentProfile,
   createPersistedActiveServer,
-  loadPersistedActiveServer,
-  removeAgentProfile,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-} from "../state";
-import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+} from "../state/persistence";
 import type { CloudLoginOptions } from "../state/types";
-import { isCloudStatusAuthenticated } from "../utils";
 import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
+import { isCloudStatusAuthenticated } from "../utils/cloud-status";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -132,12 +132,9 @@ export interface FirstRunFinishPorts {
   /**
    * Fires immediately after interactive Cloud login settles successfully so
    * the conductor can retire the OAuth-only recovery deadline before personal
-   * agent activation begins.
+   * runtime resolution begins.
    */
   onInteractiveLoginComplete?: () => void;
-  /** Visible first-run quote/consent seam; absent callers stay read-only. */
-  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
-  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -154,7 +151,6 @@ export type FirstRunFinishOutcome =
   | { kind: "done" }
   | { kind: "handoff-started" }
   | { kind: "needs-cloud-login"; fallbackUrl?: string }
-  | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
   | { kind: "error"; message: string };
 
 // ── Exactly-once POST funnel ─────────────────────────────────────────────────
@@ -338,9 +334,8 @@ async function startMobileLocalAgent(): Promise<void> {
   } catch {
     // error-policy:J4 the agent plugin is not registered on this host —
     // load it directly; a failure of this direct start still propagates
-    const agentPluginId = "@elizaos/capacitor-agent";
-    const { Agent } = await import(/* @vite-ignore */ agentPluginId);
-    await (Agent as AgentPluginLike | undefined)?.start?.({
+    const { Agent } = await import("@elizaos/capacitor-agent");
+    await Agent.start({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });
@@ -790,9 +785,9 @@ export async function bindCloudAgent(
 }
 
 /**
- * Cloud finish entry: connect Eliza Cloud (Steward), then bind the best healthy
- * existing agent or create one if needed. First-run stays a single clean path;
- * specific agent management belongs in Settings after onboarding.
+ * Cloud finish entry: connect Eliza Cloud (Steward), then bind its existing
+ * personal runtime without activating paid compute. Specific agent management
+ * belongs in Settings after onboarding.
  */
 export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
@@ -837,18 +832,6 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-    ...(ports.requestDedicatedActivationConfirmation
-      ? {
-          requestDedicatedActivationConfirmation:
-            ports.requestDedicatedActivationConfirmation,
-        }
-      : {}),
-    ...(ports.requestDedicatedAdoptionConfirmation
-      ? {
-          requestDedicatedAdoptionConfirmation:
-            ports.requestDedicatedAdoptionConfirmation,
-        }
-      : {}),
   });
   addAgentProfile({
     kind: "cloud",
@@ -904,14 +887,4 @@ export async function runFirstRunFinish(
       message: err instanceof Error ? err.message : "First-run setup failed.",
     };
   }
-}
-
-/** Re-read the active cloud agent id (for the picker's "already bound" guard). */
-export function readActiveCloudAgentId(): string | null {
-  const active = loadPersistedActiveServer();
-  if (active?.kind !== "cloud") return null;
-  const id = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length)
-    : "";
-  return id && !id.includes("/") ? id : null;
 }

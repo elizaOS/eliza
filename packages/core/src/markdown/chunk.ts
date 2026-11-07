@@ -2,10 +2,14 @@
 
 import { ElizaError } from "../errors.js";
 import {
+	advanceFenceScan,
+	type FenceScan,
+	type FenceSpan,
 	findFenceSpanAt,
 	isSafeFenceBreak,
 	parseFenceSpans,
-} from "./fences.js";
+	startFenceScan,
+} from "./code.js";
 
 /** Stable classification for invalid public Markdown chunk limits. */
 export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID";
@@ -63,7 +67,7 @@ export function chunkText(text: string, limit: number): string[] {
 			breakIdx = limit;
 		}
 
-		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+		breakIdx = avoidGraphemeSplit(remaining, breakIdx);
 
 		const rawChunk = remaining.slice(0, breakIdx);
 		const chunk = rawChunk.trimEnd();
@@ -185,7 +189,21 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 	let remaining = text;
 
 	while (remaining.length > limit) {
-		const spans = parseFenceSpans(remaining);
+		// Every span query below is at an index <= limit, so only fences starting
+		// on a line at or before `limit` matter. A fence still open there gets an
+		// unbounded end (its closing line starts after `limit`); its real end is
+		// resolved only when the closing-line check below needs it. Scanning the
+		// whole remainder on every chunk would make chunking quadratic.
+		const scan = startFenceScan();
+		advanceFenceScan(remaining, scan, limit);
+		const pendingFence: FenceSpan | undefined = scan.open && {
+			start: scan.open.start,
+			end: Number.POSITIVE_INFINITY,
+			openLine: scan.open.openLine,
+			marker: scan.open.marker,
+			indent: scan.open.indent,
+		};
+		const spans = pendingFence ? [...scan.spans, pendingFence] : scan.spans;
 		const window = remaining.slice(0, limit);
 
 		const softBreak = pickSafeBreakIndex(window, spans);
@@ -259,14 +277,40 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					: undefined;
 		}
 
-		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+		breakIdx = avoidGraphemeSplit(remaining, breakIdx);
 		if (fenceToSplit && breakIdx < minimumFenceProgress) {
-			// A surrogate-safe backoff can move the cut before the first byte of
+			// A grapheme-safe backoff can move the cut before the first byte of
 			// fence content. Closing and reopening there would consume only the
 			// opening line and prepend that same line forever. Preserve progress by
 			// taking the existing hard-cap fallback without synthetic fence lines.
 			fenceToSplit = undefined;
-			breakIdx = avoidSurrogateSplit(remaining, limit);
+			breakIdx = avoidGraphemeSplit(remaining, limit);
+		}
+
+		const closer =
+			fenceToSplit &&
+			resolveFenceEnd(remaining, scan, fenceToSplit, pendingFence, breakIdx)
+				? findClosingFenceLine(remaining, fenceToSplit)
+				: undefined;
+		if (
+			fenceToSplit &&
+			closer &&
+			/^\s*$/.test(remaining.slice(breakIdx, closer.start))
+		) {
+			// Only whitespace and the original closing line remain, and that line
+			// is longer than the synthetic one (trailing whitespace or a longer
+			// marker). Reopening would emit an empty block, so close here and
+			// drop that line.
+			const body = remaining.slice(0, Math.min(breakIdx, closer.start));
+			const closeLine = `${fenceToSplit.indent}${fenceToSplit.marker}`;
+			const closed = body.endsWith("\n")
+				? `${body}${closeLine}`
+				: `${body}\n${closeLine}`;
+			if (closed.length <= limit) {
+				chunks.push(closed);
+				remaining = stripLeadingNewlines(remaining.slice(closer.end));
+				continue;
+			}
 		}
 
 		let rawChunk = remaining.slice(0, breakIdx);
@@ -302,6 +346,52 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 	return chunks;
 }
 
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+	Intl as unknown as {
+		Segmenter: new (
+			locale: string,
+			options: { granularity: "grapheme" },
+		) => { segment(text: string): Iterable<{ segment: string }> };
+	}
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+	granularity: "grapheme",
+});
+
+/**
+ * A hard break at an arbitrary UTF-16 index can land inside a grapheme
+ * cluster (a ZWJ emoji sequence, a regional-indicator flag, a combining mark,
+ * or a skin-tone modifier), so the two halves render as different characters
+ * in the two emitted chunks even though neither half is a lone surrogate.
+ * Back the break off to the previous grapheme boundary so the cluster stays
+ * whole in one chunk. When a single cluster alone is longer than the index
+ * (an oversized cluster at the very start of the remaining text), no earlier
+ * boundary exists, so the surrogate-safe boundary below is the fallback: it
+ * is the only case with no clean boundary.
+ */
+function avoidGraphemeSplit(text: string, index: number): number {
+	if (index <= 0 || index >= text.length) {
+		return index;
+	}
+	let boundary = 0;
+	for (const { segment } of graphemeSegmenter.segment(text)) {
+		if (boundary + segment.length > index) {
+			break;
+		}
+		boundary += segment.length;
+	}
+	if (boundary === index) {
+		return index;
+	}
+	if (boundary > 0) {
+		return boundary;
+	}
+	return avoidSurrogateSplit(text, index);
+}
+
 /**
  * A hard break at an arbitrary UTF-16 index can land between the two halves of
  * a surrogate pair (any non-BMP character: emoji, symbols, rare CJK), leaving a
@@ -325,6 +415,57 @@ function avoidSurrogateSplit(text: string, index: number): number {
 	return index;
 }
 
+/**
+ * Give `span` its real end when the closing-line check can use it. That check
+ * passes only when nothing but whitespace lies between `breakIdx` and the
+ * closing line, so the scan stops at the first non-whitespace character: a
+ * fence still open there closes on a later line and the check would fail.
+ * Returns false in that case.
+ */
+function resolveFenceEnd(
+	text: string,
+	scan: FenceScan,
+	span: FenceSpan,
+	pendingFence: FenceSpan | undefined,
+	breakIdx: number,
+): boolean {
+	if (span !== pendingFence) {
+		return true;
+	}
+	let firstContent = breakIdx;
+	while (firstContent < text.length && /\s/.test(text[firstContent])) {
+		firstContent++;
+	}
+	advanceFenceScan(text, scan, firstContent);
+	const closed = scan.spans.find((candidate) => candidate.start === span.start);
+	if (!closed) {
+		return false;
+	}
+	span.end = closed.end;
+	return true;
+}
+
+/** Locate the line that closed `span`; undefined when the fence runs to EOF. */
+function findClosingFenceLine(
+	text: string,
+	span: FenceSpan,
+): { start: number; end: number } | undefined {
+	const start = text.lastIndexOf("\n", span.end - 1) + 1;
+	if (start <= span.start) {
+		return undefined;
+	}
+	const line = text.slice(start, span.end).replace(/\r$/, "");
+	const match = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+	if (
+		!match ||
+		match[1][0] !== span.marker[0] ||
+		match[1].length < span.marker.length
+	) {
+		return undefined;
+	}
+	return { start, end: span.end };
+}
+
 function stripLeadingNewlines(value: string): string {
 	let i = 0;
 	while (i < value.length && value[i] === "\n") {
@@ -335,7 +476,7 @@ function stripLeadingNewlines(value: string): string {
 
 function pickSafeBreakIndex(
 	window: string,
-	spans: ReturnType<typeof parseFenceSpans>,
+	spans: readonly FenceSpan[],
 ): number {
 	const { lastNewline, lastWhitespace } = scanParenAwareBreakpoints(
 		window,
@@ -355,10 +496,27 @@ function scanParenAwareBreakpoints(
 	window: string,
 	isAllowed: (index: number) => boolean = () => true,
 ): { lastNewline: number; lastWhitespace: number } {
-	let lastNewline = -1;
-	let lastWhitespace = -1;
-	let depth = 0;
+	// Breaks outside every "(" keep a parenthetical whole. A "(" that never
+	// closes in the window (":(", "(see below:") blocks every later break, so
+	// when no such break exists, fall back to breaks outside closed pairs only
+	// instead of cutting mid-word or inside a code fence.
+	const closes = new Map<number, number>();
+	const open: number[] = [];
+	for (let i = 0; i < window.length; i++) {
+		if (!isAllowed(i)) {
+			continue;
+		}
+		if (window[i] === "(") {
+			open.push(i);
+		} else if (window[i] === ")" && open.length > 0) {
+			closes.set(open.pop() as number, i);
+		}
+	}
 
+	const outside = { lastNewline: -1, lastWhitespace: -1 };
+	const outsideClosed = { lastNewline: -1, lastWhitespace: -1 };
+	let depth = 0;
+	let closedUntil = -1;
 	for (let i = 0; i < window.length; i++) {
 		if (!isAllowed(i)) {
 			continue;
@@ -366,23 +524,29 @@ function scanParenAwareBreakpoints(
 		const char = window[i];
 		if (char === "(") {
 			depth += 1;
+			closedUntil = Math.max(closedUntil, closes.get(i) ?? -1);
 			continue;
 		}
 		if (char === ")" && depth > 0) {
 			depth -= 1;
 			continue;
 		}
-		if (depth !== 0) {
+		const key =
+			char === "\n" ? "lastNewline" : /\s/.test(char) ? "lastWhitespace" : null;
+		if (!key) {
 			continue;
 		}
-		if (char === "\n") {
-			lastNewline = i;
-		} else if (/\s/.test(char)) {
-			lastWhitespace = i;
+		if (depth === 0) {
+			outside[key] = i;
+		}
+		if (i > closedUntil) {
+			outsideClosed[key] = i;
 		}
 	}
 
-	return { lastNewline, lastWhitespace };
+	return outside.lastNewline > 0 || outside.lastWhitespace > 0
+		? outside
+		: outsideClosed;
 }
 
 function describeInvalidLimit(limit: number): string {

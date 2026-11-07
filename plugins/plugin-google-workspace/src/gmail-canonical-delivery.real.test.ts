@@ -17,7 +17,7 @@ import {
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { identityClaimTable } from "@elizaos/plugin-sql";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { Auth } from "googleapis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import googlePlugin from "./index.js";

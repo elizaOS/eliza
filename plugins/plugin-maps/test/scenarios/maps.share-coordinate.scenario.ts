@@ -1,6 +1,8 @@
 /**
  * Keyless runtime proof for a coordinate-only Maps share handoff, exercising
  * the promoted action without a provider credential or external request.
+ * Sharing a location is consent-gated: the first turn must only ask, and the
+ * handoff exists only after the explicit confirm turn.
  */
 
 import {
@@ -11,6 +13,10 @@ import {
 } from "@elizaos/testing";
 
 const MAPS_SHARE = "MAPS_SHARE";
+const PLACE = {
+  name: "Eliza Research",
+  address: "San Francisco, California",
+};
 const LATITUDE = 37.7749;
 const LONGITUDE = -122.4194;
 
@@ -40,10 +46,24 @@ export default scenario({
       text: "Share Eliza Research in San Francisco.",
       options: {
         parameters: {
-          name: "Eliza Research",
-          address: "San Francisco, California",
+          ...PLACE,
           latitude: LATITUDE,
           longitude: LONGITUDE,
+        },
+      },
+      timeoutMs: 120_000,
+    },
+    {
+      kind: "action",
+      name: "confirm-share",
+      actionName: MAPS_SHARE,
+      text: `Yes, share the location of ${PLACE.name} (confirmed).`,
+      options: {
+        parameters: {
+          ...PLACE,
+          latitude: LATITUDE,
+          longitude: LONGITUDE,
+          confirm: true,
         },
       },
       timeoutMs: 120_000,
@@ -55,6 +75,25 @@ export default scenario({
       actionName: MAPS_SHARE,
       status: "success",
       minCount: 1,
+    },
+    {
+      type: "custom",
+      name: "share-asks-before-handoff",
+      predicate: (ctx) => {
+        const calls = ctx.actionsCalled.filter(
+          (call) => call.actionName === MAPS_SHARE,
+        );
+        const first = toRecord(calls[0]?.result?.data);
+        if (calls[0]?.result?.success !== false || !first) {
+          return `the unconfirmed share must not succeed; calls: ${describeCalls(ctx)}`;
+        }
+        if (first.reason !== "confirmation_required" || first.handoff) {
+          return `the unconfirmed share must ask without a handoff, saw ${JSON.stringify(first)}`;
+        }
+        if (calls.length !== 2) {
+          return `expected the ask and the confirmed share, saw ${describeCalls(ctx)}`;
+        }
+      },
     },
     {
       type: "custom",

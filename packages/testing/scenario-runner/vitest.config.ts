@@ -7,7 +7,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../../scripts/vitest/source-aliases";
+import { buildWorkspaceSourceAliases } from "../../scripts/vitest/source-aliases.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -30,13 +30,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/testing$/,
         replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/testing\/scenario-runner\/missing-input-terminal-relay$/,
-        replacement: path.join(
-          repoRoot,
-          "packages/testing/scenario-runner/src/missing-input-terminal-relay.ts",
-        ),
       },
       {
         find: /^@elizaos\/core\/node$/,

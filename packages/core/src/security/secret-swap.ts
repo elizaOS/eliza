@@ -5,9 +5,8 @@
  * so the raw value never reaches the model; on egress it restores the originals
  * at the execution boundary (tool call / outbound request).
  *
- * Ingress draws assignment-style secrets from the shared redact pattern set
- * (`./redact`) and validated PII/token classes from `./pii-detectors`; a generic
- * length floor gates the former while proven-sensitive PII swaps at a lower floor.
+ * Ingress draws assignment-style secrets from the shared redaction pattern set
+ * (`./log-redaction`) and validated PII/token classes from `./pii-detectors`; explicit credential context admits short values; detected PII uses its own floor.
  *
  * The per-session nonce makes placeholders unforgeable: restore and assertion
  * scope only to THIS session's nonce, so a placeholder-shaped token from user
@@ -18,8 +17,9 @@
  */
 import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
+import { SENSITIVE_TEXT_REGEXPS } from "./log-redaction";
 import { detectPii } from "./pii-detectors";
-import { getDefaultRedactPatterns } from "./redact";
+import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
@@ -90,18 +90,16 @@ export type SecretSwapSessionOptions = {
 	disabledKinds?: Iterable<string>;
 };
 
-const MIN_SWAP_VALUE_LENGTH = 8;
+const SHORT_SWAP_VALUE_LENGTH = 8;
 /** Validated PII spans (email, card, SSN, …) swap even when short — the detector
- * already proved they are sensitive, so the generic length floor does not apply. */
+ * already proved they are sensitive. */
 const MIN_PII_VALUE_LENGTH = 4;
 const PLACEHOLDER_PREFIX = "__ELIZA_SECRET_";
-/**
- * Broad "looks like one of our placeholders" pattern (any session nonce, or the
- * legacy no-nonce form). Used only to AVOID swapping a value that is already a
- * placeholder; actual restore is scoped to the session-specific nonce so a
- * forged placeholder from input/model output never resolves to a real secret.
- */
-const PLACEHOLDER_PATTERN = /__ELIZA_SECRET_(?:[0-9a-f]{8,}_)?\d+__/g;
+// Contact references are data to preserve, not credentials to omit.
+const CONTACT_PLACEHOLDER_PREFIX = "__ELIZA_CONTACT_";
+/** Recognizes placeholder-shaped text to avoid swapping it twice. Restoration accepts only this session’s nonce, so input cannot forge a reference to a real secret. */
+const PLACEHOLDER_PATTERN =
+	/__ELIZA_(?:SECRET|CONTACT)_(?:[0-9a-f]{8,}_)?\d+__/g;
 
 /**
  * A per-session random nonce woven into every placeholder
@@ -114,29 +112,19 @@ function generateSessionNonce(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): a nonce
 	// from a predictable Math.random() fallback could be recovered from observed
 	// outputs, making placeholders forgeable and re-enabling restore-hijack.
-	const bytes = BufferUtils.randomBytes(8);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	return BufferUtils.toHex(BufferUtils.randomBytes(8));
 }
 
-function parsePattern(raw: string): RegExp | null {
-	if (!raw.trim()) return null;
-	const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
-	try {
-		if (match) {
-			const flags = match[2].includes("g") ? match[2] : `${match[2]}g`;
-			return new RegExp(match[1], flags);
-		}
-		return new RegExp(raw, "gi");
-	} catch {
-		// error-policy:J3 custom patterns are untrusted configuration; an invalid
-		// expression is excluded from the compiled detector set.
-		return null;
-	}
-}
-
-const SECRET_PATTERNS: readonly RegExp[] = getDefaultRedactPatterns()
-	.map(parsePattern)
-	.filter((pattern): pattern is RegExp => Boolean(pattern));
+/** PII kinds the local user may read back in a reply; every other kind stays redacted. */
+const USER_READABLE_KINDS: ReadonlySet<string> = new Set([
+	"email",
+	"phone",
+	"ipv4",
+	"mac-address",
+	"credit-card",
+	"ssn",
+	"iban",
+]);
 
 function shouldSwapValue(
 	value: string,
@@ -144,7 +132,7 @@ function shouldSwapValue(
 ): boolean {
 	const trimmed = value.trim();
 	return (
-		trimmed.length >= MIN_SWAP_VALUE_LENGTH &&
+		trimmed.length > 0 &&
 		!exemptValues.has(trimmed) &&
 		!trimmed.match(PLACEHOLDER_PATTERN)
 	);
@@ -161,18 +149,208 @@ function collectMatches(
 	text: string,
 	patterns: readonly RegExp[],
 	exemptValues: ReadonlySet<string>,
-): string[] {
-	const values: string[] = [];
+): { value: string; start: number; end: number }[] {
+	const values: { value: string; start: number; end: number }[] = [];
 	for (const pattern of patterns) {
 		pattern.lastIndex = 0;
 		for (const match of text.matchAll(pattern)) {
 			const token = extractToken(match[0], match.slice(1));
-			if (shouldSwapValue(token, exemptValues)) {
-				values.push(token);
+			if (!/^[[{]+$/.test(token) && shouldSwapValue(token, exemptValues)) {
+				const start = match.index + match[0].lastIndexOf(token);
+				values.push({ value: token, start, end: start + token.length });
 			}
 		}
 	}
 	return values;
+}
+
+// Unlike log masking, model data must distinguish credentials from schema/AST
+// metadata such as `key`, `tokenId`, and budget fields. Never classify those by suffix.
+function isCredentialField(key: string): boolean {
+	return /^(?:password|passwd|passphrase|mnemonic|seedphrase|credential|secret|token|apikey|accesstoken|refreshtoken|authtoken|bottoken|sessionkey|privatekey|clientsecret|authorization|cookie)$/.test(
+		key.toLowerCase().replace(/[_ .-]/g, ""),
+	);
+}
+
+// Parse a whole quoted assignment before the generic token patterns. Escaped
+// quotes and spaces belong to the credential, not to unprotected trailing text.
+function collectQuotedCredentials(
+	text: string,
+	exemptValues: ReadonlySet<string>,
+) {
+	const spans: { value: string; start: number; end: number }[] = [];
+	const pattern =
+		/(?:"([^"\r\n]+)"|'([^'\r\n]+)'|\b([A-Za-z][A-Za-z0-9_.-]*))\s*[:=]\s*(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)')/g;
+	for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+		const key = match[1] ?? match[2] ?? match[3];
+		const value = match[4] ?? match[5];
+		// A noncredential wrapper such as `text` may itself contain a quoted
+		// credential. Resume inside it instead of consuming the whole value.
+		if (!isCredentialField(key)) {
+			pattern.lastIndex = match.index + 1;
+			continue;
+		}
+		if (!shouldSwapValue(value, exemptValues)) continue;
+		const end = match.index + match[0].length - 1;
+		spans.push({ value, start: end - value.length, end });
+	}
+	return spans;
+}
+
+// Bound userinfo to one URI authority and use its final @ separator. A
+// literal @ inside a password must not leave a suffix exposed; /, query,
+// fragment, whitespace and prose delimiters cannot extend the authority.
+function collectUriCredentials(
+	text: string,
+	exemptValues: ReadonlySet<string>,
+) {
+	const spans: { value: string; start: number; end: number }[] = [];
+	const pattern = /\b[a-z][a-z0-9+.-]*:\/\/([^\s/?#\\<>"']+)/gi;
+	for (const match of text.matchAll(pattern)) {
+		const authority = match[1],
+			separator = authority.lastIndexOf("@");
+		if (separator <= 0 || separator === authority.length - 1) continue;
+		const value = authority.slice(0, separator);
+		if (!shouldSwapValue(value, exemptValues)) continue;
+		const start = match.index + match[0].length - authority.length;
+		spans.push({ value, start, end: start + value.length });
+	}
+	return spans;
+}
+
+// Prompt templates may contain whole JSON strings or escaped JSON fragments.
+// Decode only valid JSON escapes for detection, then map spans back to exact
+// original bytes so restoration never changes the caller's representation.
+function collectEncodedCredentials(
+	text: string,
+	exemptValues: ReadonlySet<string>,
+	depth = 0,
+) {
+	const spans: { value: string; start: number; end: number }[] = [];
+	if (!text.includes("\\")) return spans;
+	const starts: number[] = [],
+		ends: number[] = [],
+		pieces: string[] = [];
+	const escapes: Record<string, string> = {
+		'"': '"',
+		"\\": "\\",
+		"/": "/",
+		b: "\b",
+		f: "\f",
+		n: "\n",
+		r: "\r",
+		t: "\t",
+	};
+	for (let i = 0; i < text.length; ) {
+		const start = i;
+		let decoded = text[i++];
+		if (decoded === "\\") {
+			const next = text[i];
+			if (Object.hasOwn(escapes, next)) {
+				decoded = escapes[next];
+				i++;
+			} else if (
+				next === "u" &&
+				/^[0-9a-f]{4}$/i.test(text.slice(i + 1, i + 5))
+			) {
+				decoded = String.fromCharCode(
+					Number.parseInt(text.slice(i + 1, i + 5), 16),
+				);
+				i += 5;
+			}
+		}
+		pieces.push(decoded);
+		starts.push(start);
+		ends.push(i);
+	}
+	const decoded = pieces.join("");
+	if (decoded === text) return spans;
+	if (depth >= 8)
+		failSecretSwapUnbounded({ inspection: "encoded credential depth", depth });
+	const decodedSpans = [
+		...collectUriCredentials(decoded, exemptValues),
+		...collectQuotedCredentials(decoded, exemptValues),
+		...collectMatches(decoded, SENSITIVE_TEXT_REGEXPS, exemptValues),
+		...collectEncodedCredentials(decoded, exemptValues, depth + 1),
+	];
+	for (const span of decodedSpans) {
+		const start = starts[span.start],
+			end = ends[span.end - 1];
+		if (start === undefined || end === undefined) continue;
+		const value = text.slice(start, end);
+		if (shouldSwapValue(value, exemptValues)) spans.push({ value, start, end });
+	}
+	return spans;
+}
+
+// Short values must not replace fragments of words, JSON syntax, or opaque handles.
+function valuePattern(value: string): string {
+	const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	if (value.length >= SHORT_SWAP_VALUE_LENGTH) return escaped;
+	return /[\p{L}\p{N}_]/u.test(value)
+		? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`
+		: `(?<!\\S)${escaped}(?!\\S)`;
+}
+
+/** Only string values are secret-bearing in a complete JSON document. */
+function replaceJsonStringValues(
+	text: string,
+	replace: (value: string) => string,
+): string | null {
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+	try {
+		JSON.parse(text);
+	} catch {
+		// Unrecognized/malformed data retains the ordinary redaction path.
+		return null;
+	}
+	return text.replace(/"(?:\\[\s\S]|[^"\\])*"/g, (token, offset: number) => {
+		// Object keys are protocol structure, not credential values.
+		let next = offset + token.length;
+		while (next < text.length && /\s/.test(text[next])) next++;
+		if (text[next] === ":") return token;
+		const value = JSON.parse(token) as string;
+		const replaced = replace(value);
+		return replaced === value ? token : JSON.stringify(replaced);
+	});
+}
+
+/** Matches an existing placeholder (kept) or `value` (replaced); compiled once per session value. */
+function compileReplacePattern(value: string): RegExp {
+	return new RegExp(
+		`(${PLACEHOLDER_PATTERN.source})|(?:${valuePattern(value)})`,
+		"gu",
+	);
+}
+
+function replaceValue(
+	text: string,
+	pattern: RegExp,
+	placeholder: string,
+): string {
+	const replace = (value: string) =>
+		value.replace(
+			pattern,
+			(_match, existingPlaceholder) => existingPlaceholder ?? placeholder,
+		);
+	const json = replaceJsonStringValues(text, replace);
+	if (json !== null) return json;
+	// Evaluators also accept fenced JSON. Protect its structure while still
+	// redacting surrounding prose; malformed fences keep ordinary redaction.
+	const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
+	let cursor = 0;
+	const parts: string[] = [];
+	for (const match of text.matchAll(fence)) {
+		const body = match[1];
+		const replaced = replaceJsonStringValues(body, replace);
+		if (replaced === null) continue;
+		const bodyStart = match.index + match[0].indexOf("\n") + 1;
+		parts.push(replace(text.slice(cursor, bodyStart)), replaced);
+		cursor = bodyStart + body.length;
+	}
+	parts.push(replace(text.slice(cursor)));
+	return parts.join("");
 }
 
 function createSecretSwapWalkContext(): SecretSwapWalkContext {
@@ -248,12 +426,17 @@ function walkSecretSwapValue(
 	value: unknown,
 	depth: number,
 	ctx: SecretSwapWalkContext,
-	mapString: (text: string) => string,
+	mapString: (text: string, key?: string) => string,
+	key?: string,
 ): unknown {
 	if (typeof value === "string") {
-		return mapString(value);
+		return mapString(value, key);
 	}
 	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	// Preserve a clean native cancellation signal, never control-shaped payload data.
+	if (isRuntimeAbortSignal(value)) {
 		return value;
 	}
 	if (depth > MAX_SECRET_SWAP_WALK_DEPTH) {
@@ -311,7 +494,7 @@ function walkSecretSwapValue(
 			defineSecretSwapValue(
 				next,
 				key,
-				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString),
+				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString, key),
 			);
 		}
 		return next;
@@ -321,6 +504,7 @@ function walkSecretSwapValue(
 }
 
 export class SecretSwapSession {
+	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
@@ -328,25 +512,21 @@ export class SecretSwapSession {
 	/**
 	 * Longest token (secret value or minted placeholder) the session holds,
 	 * maintained incrementally as entries are added. The streaming guard
-	 * ({@link ./guarded-stream}) reads this to size its carry-over window: a known
+	 * ({@link./guarded-stream}) reads this to size its carry-over window: a known
 	 * secret that arrives split across two chunks must be held whole, so the guard
 	 * never emits a chunk shorter than the longest value it might straddle.
 	 */
 	private maxToken = 0;
 	/** Per-session nonce woven into every placeholder so it is unforgeable. */
 	private readonly nonce = generateSessionNonce();
-	/**
-	 * Restore/assert match only THIS session's nonce'd placeholders. A
-	 * placeholder-shaped string with a different/legacy nonce is benign text the
-	 * layer never minted — it cannot reference a real secret, so it is left as-is
-	 * (no leak) rather than triggering a false "unresolved" failure. Fail-loud is
-	 * reserved for a this-session placeholder that should resolve but does not
-	 * (e.g. a model that fabricated `…_999__`).
-	 */
+	/** Restores only placeholders minted for this session. Other or absent nonces remain text; unresolved current-session placeholders fail explicitly. */
 	private readonly placeholderPattern = new RegExp(
-		`__ELIZA_SECRET_${this.nonce}_\\d+__`,
+		`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
 		"g",
 	);
+	/** Per-value compiled patterns, scoped to the session so secret values never outlive it. */
+	private readonly replacePatterns = new Map<string, RegExp>();
+	private readonly containsPatterns = new Map<string, RegExp>();
 
 	constructor(options: SecretSwapSessionOptions = {}) {
 		this.exemptValues = new Set(
@@ -364,6 +544,7 @@ export class SecretSwapSession {
 				typeof value === "string" &&
 				shouldSwapValue(value, this.exemptValues)
 			) {
+				this.replyProtectedValues.add(value);
 				this.entryForValue(value, name);
 			}
 		}
@@ -378,21 +559,29 @@ export class SecretSwapSession {
 		return this.maxToken;
 	}
 
-	substituteText(text: string): string {
-		let result = text;
+	/**
+	 * Learn every secret and PII value in `text` without rewriting it. Returns
+	 * the credential capture spans that {@link substituteText} splices first.
+	 */
+	private learnText(
+		text: string,
+	): { value: string; start: number; end: number }[] {
 		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
-		//    from the shared redact pattern set — value-extracted, length-gated.
-		for (const value of collectMatches(
-			result,
-			SECRET_PATTERNS,
-			this.exemptValues,
-		)) {
+		// from the shared redact pattern set — value-extracted, including short values.
+		const assignments = [
+			...collectEncodedCredentials(text, this.exemptValues),
+			...collectUriCredentials(text, this.exemptValues),
+			...collectQuotedCredentials(text, this.exemptValues),
+			...collectMatches(text, SENSITIVE_TEXT_REGEXPS, this.exemptValues),
+		];
+		for (const { value } of assignments) {
+			this.replyProtectedValues.add(value);
 			this.entryForValue(value, "secret");
 		}
 		// 2) Validated PII / token classes (credit-card+Luhn, email, ssn, iban,
-		//    jwt, cloud keys, …). Already proven sensitive by their detector, so
-		//    a lower length floor applies; class can be opted out via disabledKinds.
-		for (const match of detectPii(result, {
+		// jwt, cloud keys, …). Already proven sensitive by their detector, so
+		// its own length floor applies; class can be opted out via disabledKinds.
+		for (const match of detectPii(text, {
 			disabledKinds: this.disabledKinds,
 		})) {
 			const trimmed = match.value.trim();
@@ -401,26 +590,127 @@ export class SecretSwapSession {
 				!this.exemptValues.has(trimmed) &&
 				!trimmed.match(PLACEHOLDER_PATTERN)
 			) {
+				if (!USER_READABLE_KINDS.has(match.kind))
+					this.replyProtectedValues.add(trimmed);
 				this.entryForValue(trimmed, match.kind);
 			}
 		}
-		// Replace longest-first so a value that is a substring of another does not
-		// corrupt the longer placeholder.
+		return assignments;
+	}
+
+	substituteText(text: string): string {
+		let result = text;
+		const assignments = this.learnText(text);
+		// Replace credential capture spans before general known-value matching. This
+		// covers short punctuation-only assignments without rewriting JSON syntax.
+		let cursor = 0;
+		const parts: string[] = [];
+		for (const span of assignments.sort(
+			(a, b) => a.start - b.start || b.end - a.end,
+		)) {
+			if (span.start < cursor) continue;
+			parts.push(
+				result.slice(cursor, span.start),
+				this.entryForValue(span.value, "secret").placeholder,
+			);
+			cursor = span.end;
+		}
+		parts.push(result.slice(cursor));
+		result = parts.join("");
+		return this.replaceKnownValues(result);
+	}
+
+	/**
+	 * Replace every known value with its placeholder, longest first so a value
+	 * that is a substring of another does not corrupt the longer placeholder.
+	 */
+	private replaceKnownValues(text: string): string {
+		let result = text;
 		for (const entry of this.entries.sort(
 			(a, b) => b.value.length - a.value.length,
 		)) {
-			result = result.split(entry.value).join(entry.placeholder);
+			let pattern = this.replacePatterns.get(entry.value);
+			if (!pattern) {
+				pattern = compileReplacePattern(entry.value);
+				this.replacePatterns.set(entry.value, pattern);
+			}
+			result = replaceValue(result, pattern, entry.placeholder);
 		}
 		return result;
 	}
 
+	private containsValue(text: string, value: string): boolean {
+		let pattern = this.containsPatterns.get(value);
+		if (!pattern) {
+			pattern = new RegExp(valuePattern(value), "u");
+			this.containsPatterns.set(value, pattern);
+		}
+		return pattern.test(text);
+	}
+
 	substituteInValue<T>(value: T): T {
-		return walkSecretSwapValue(
+		// Snapshot descriptors and learn the entire graph before replacement, so
+		// a credential discovered in a later field protects earlier references too.
+		const snapshot = walkSecretSwapValue(
 			value,
+			0,
+			createSecretSwapWalkContext(),
+			(text, key) => {
+				if (
+					key &&
+					isCredentialField(key) &&
+					shouldSwapValue(text, this.exemptValues)
+				) {
+					this.replyProtectedValues.add(text);
+					this.entryForValue(text, "secret");
+				}
+				this.learnText(text);
+				return text;
+			},
+		);
+		return walkSecretSwapValue(
+			snapshot,
 			0,
 			createSecretSwapWalkContext(),
 			(text) => this.substituteText(text),
 		) as T;
+	}
+
+	/** Restore personal data only at the local user-reply boundary, never credentials. */
+	restoreUserReplyText(text: string): string {
+		this.placeholderPattern.lastIndex = 0;
+		return text.replace(this.placeholderPattern, (placeholder) => {
+			const entry = this.placeholderToEntry.get(placeholder);
+			if (
+				!entry ||
+				!USER_READABLE_KINDS.has(entry.kind) ||
+				this.isReplyProtected(entry.value)
+			)
+				return "[redacted credential]";
+			return entry.value;
+		});
+	}
+
+	/**
+	 * Apply the user-reply policy to text whose values were already restored
+	 * (tool-call sends: the execution boundary restores handler args). Known
+	 * values go back to placeholders, then {@link restoreUserReplyText} decides
+	 * what stays readable, so both reply paths share one policy.
+	 */
+	redactRestoredSecretValues(text: string): string {
+		return this.restoreUserReplyText(this.replaceKnownValues(text));
+	}
+
+	/** True when `value` overlaps (either contains or is contained in) a reply-protected value. */
+	private isReplyProtected(value: string): boolean {
+		for (const protectedValue of this.replyProtectedValues) {
+			if (
+				this.containsValue(protectedValue, value) ||
+				this.containsValue(value, protectedValue)
+			)
+				return true;
+		}
+		return false;
 	}
 
 	restoreText(
@@ -470,7 +760,7 @@ export class SecretSwapSession {
 		const existing = this.valueToEntry.get(value);
 		if (existing) return existing;
 		const entry = {
-			placeholder: `${PLACEHOLDER_PREFIX}${this.nonce}_${this.valueToEntry.size + 1}__`,
+			placeholder: `${(kind === "email" || kind === "phone") && !this.replyProtectedValues.has(value) ? CONTACT_PLACEHOLDER_PREFIX : PLACEHOLDER_PREFIX}${this.nonce}_${this.valueToEntry.size + 1}__`,
 			value,
 			kind,
 		};

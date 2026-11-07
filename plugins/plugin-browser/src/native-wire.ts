@@ -2,9 +2,12 @@
 export const MAX_NATIVE_BYTES = 48 * 1024;
 export class BridgeError extends Error {
   readonly kind: string;
-  constructor(kind: string, message: string) {
+  /** Stable machine-readable cause, sent beside `kind` so callers never match `message`. */
+  readonly reason: string | undefined;
+  constructor(kind: string, message: string, reason?: string) {
     super(message);
     this.kind = kind;
+    this.reason = reason;
   }
 }
 export function serializeCompleteMessage(value: unknown) {
@@ -23,7 +26,9 @@ const actions = new Set([
   "snapshot",
   "click",
   "fill",
+  "select",
   "scroll",
+  "follow",
   "back",
   "forward",
   "reload",
@@ -84,15 +89,23 @@ export function parseCommand(input: unknown) {
       );
   }
   if (
-    ["click", "fill", "scroll"].includes(String(command.subaction)) &&
+    ["click", "fill", "select", "scroll", "follow"].includes(
+      String(command.subaction),
+    ) &&
     typeof command.selector !== "string"
   )
     throw new BridgeError(
       "INVALID_REQUEST",
       "Use an element selector from the latest snapshot.",
     );
-  if (command.subaction === "fill" && typeof command.text !== "string")
-    throw new BridgeError("INVALID_REQUEST", "Fill requires a text string.");
+  if (
+    ["fill", "select"].includes(String(command.subaction)) &&
+    typeof command.text !== "string"
+  )
+    throw new BridgeError(
+      "INVALID_REQUEST",
+      "Fill or select requires a text string.",
+    );
   return { id: value.id, command };
 }
 

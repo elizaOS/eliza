@@ -8,14 +8,15 @@
  * rewrites speaker names and `{{agentName}}`/`{{name}}` tokens in the message
  * examples so the persona stays self-consistent.
  */
+
+import { PostCharacterGenerateRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ModelType,
-  PostCharacterGenerateRequestSchema,
-  type RouteRequestContext,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type { ElizaConfig, RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
   buildCharacterHistorySnapshot,
@@ -29,6 +30,7 @@ import {
   recordCharacterHistory,
   toBoundedCharacterValue,
 } from "../services/character-history.ts";
+import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import { invalidateConversationConnectionTopology } from "./conversation-connection-readiness.ts";
 
 interface CharacterGenerateContext {
@@ -48,31 +50,6 @@ type CharacterGenerateField =
   | "postExamples";
 type CharacterGenerateMode = "append" | "replace";
 
-interface AgentConfigLike {
-  id?: string;
-  default?: boolean;
-  name?: string;
-  bio?: string[];
-  system?: string;
-  adjectives?: string[];
-  topics?: string[];
-  style?: {
-    all?: string[];
-    chat?: string[];
-    post?: string[];
-  };
-  messageExamples?: unknown;
-  postExamples?: string[];
-}
-
-import type { AutonomousConfigLike } from "../types/config-like.ts";
-
-export interface CharacterAutonomousConfigLike extends AutonomousConfigLike {
-  agents?: {
-    list?: AgentConfigLike[];
-  };
-}
-
 interface CharacterParseIssueLike {
   path: PropertyKey[];
   message: string;
@@ -89,13 +66,13 @@ type CharacterValidationResult =
 export interface CharacterRouteState {
   runtime: AgentRuntime | null;
   agentName: string;
-  config?: CharacterAutonomousConfigLike;
+  config?: ElizaConfig;
 }
 
 export interface CharacterRouteContext extends RouteRequestContext {
   state: CharacterRouteState;
   pickRandomNames: (count: number) => string[];
-  saveConfig?: (config: CharacterAutonomousConfigLike) => void;
+  saveConfig?: (config: ElizaConfig) => void;
   validateCharacter: (
     body: Record<string, unknown>,
   ) => CharacterValidationResult;
@@ -468,60 +445,16 @@ function commitStagedCharacter(
 
 function syncRuntimeCharacterToConfig(
   state: CharacterRouteState,
-  saveConfig?: (config: CharacterAutonomousConfigLike) => void,
+  saveConfig?: (config: ElizaConfig) => void,
+  nameWasExplicitlyEdited = false,
 ): void {
   const runtime = state.runtime;
   const config = state.config;
   if (!runtime || !config) return;
 
-  if (!config.agents) config.agents = {};
-  const existingList = config.agents.list ?? [];
-  const primaryAgent: AgentConfigLike = existingList[0] ?? {
-    id: "main",
-    default: true,
-  };
-  const character = runtime.character;
-  const nextAgent: AgentConfigLike = {
-    ...primaryAgent,
-    ...(character.name ? { name: character.name } : {}),
-    ...(Array.isArray(character.bio) ? { bio: [...character.bio] } : {}),
-    ...(typeof character.system === "string"
-      ? { system: character.system }
-      : {}),
-    ...(Array.isArray(character.adjectives)
-      ? { adjectives: [...character.adjectives] }
-      : {}),
-    ...(Array.isArray((character as { topics?: string[] }).topics)
-      ? { topics: [...((character as { topics?: string[] }).topics ?? [])] }
-      : {}),
-    ...(character.style
-      ? {
-          style: {
-            ...(Array.isArray(character.style.all)
-              ? { all: [...character.style.all] }
-              : {}),
-            ...(Array.isArray(character.style.chat)
-              ? { chat: [...character.style.chat] }
-              : {}),
-            ...(Array.isArray(character.style.post)
-              ? { post: [...character.style.post] }
-              : {}),
-          },
-        }
-      : {}),
-    ...(Array.isArray(character.postExamples)
-      ? { postExamples: [...character.postExamples] }
-      : {}),
-    ...(Array.isArray(character.messageExamples)
-      ? {
-          messageExamples: JSON.parse(
-            JSON.stringify(character.messageExamples),
-          ),
-        }
-      : {}),
-  };
-
-  config.agents.list = [nextAgent, ...existingList.slice(1)];
+  syncCharacterIntoConfig(config, runtime.character as RuntimeCharacterLike, {
+    nameWasExplicitlyEdited,
+  });
   saveConfig?.(config);
 }
 
@@ -826,7 +759,7 @@ export async function handleCharacterRoutes(
 
   if (method === "GET" && pathname === "/api/character/history") {
     if (!state.runtime) {
-      json(res, { history: [], agentName: state.agentName });
+      error(res, "Agent runtime not available. Start the agent first.", 503);
       return true;
     }
 
@@ -844,24 +777,26 @@ export async function handleCharacterRoutes(
 
   if (method === "GET" && pathname === "/api/character") {
     const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Agent runtime not available. Start the agent first.", 503);
+      return true;
+    }
     const merged: Record<string, unknown> = {};
-    if (runtime) {
-      const character = runtime.character;
-      if (character.name) merged.name = character.name;
-      if (character.username) merged.username = character.username;
-      if (character.bio) merged.bio = character.bio;
-      if (character.system) merged.system = character.system;
-      if (character.adjectives) merged.adjectives = character.adjectives;
-      if (Array.isArray((character as { topics?: string[] }).topics)) {
-        merged.topics = (character as { topics?: string[] }).topics;
-      }
-      if (character.style) merged.style = character.style;
-      if (character.messageExamples) {
-        merged.messageExamples = character.messageExamples;
-      }
-      if (character.postExamples) {
-        merged.postExamples = character.postExamples;
-      }
+    const character = runtime.character;
+    if (character.name) merged.name = character.name;
+    if (character.username) merged.username = character.username;
+    if (character.bio) merged.bio = character.bio;
+    if (character.system) merged.system = character.system;
+    if (character.adjectives) merged.adjectives = character.adjectives;
+    if (Array.isArray((character as { topics?: string[] }).topics)) {
+      merged.topics = (character as { topics?: string[] }).topics;
+    }
+    if (character.style) merged.style = character.style;
+    if (character.messageExamples) {
+      merged.messageExamples = character.messageExamples;
+    }
+    if (character.postExamples) {
+      merged.postExamples = character.postExamples;
     }
 
     json(res, { character: merged, agentName: state.agentName });
@@ -869,6 +804,12 @@ export async function handleCharacterRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/character") {
+    // A stopped agent has no live character to change, and its saved config
+    // is rebuilt on start: answering ok here would drop the edit silently.
+    if (!state.runtime) {
+      error(res, "Agent runtime not available. Start the agent first.", 503);
+      return true;
+    }
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
@@ -878,7 +819,19 @@ export async function handleCharacterRoutes(
         path: issue.path.join("."),
         message: issue.message,
       }));
-      json(res, { ok: false, validationErrors: issues }, 422);
+      json(
+        res,
+        {
+          ok: false,
+          error: issues
+            .map((issue) =>
+              issue.path ? `${issue.path}: ${issue.message}` : issue.message,
+            )
+            .join("; "),
+          validationErrors: issues,
+        },
+        422,
+      );
       return true;
     }
 
@@ -949,6 +902,37 @@ export async function handleCharacterRoutes(
         throw err;
       }
 
+      // Persist the staged character BEFORE changing the live character or the
+      // config: `updateAgent` reports false when the agent row was not written
+      // (for example a restored database that has no row for this agent), and
+      // the persistence service already treats that result as a failure. Do not
+      // answer "saved" for a write storage never confirmed.
+      const storedName =
+        staged.submitted.has("name") && typeof staged.values.name === "string"
+          ? staged.values.name
+          : character.name;
+      try {
+        const updated = await runtime.updateAgent(runtime.agentId, {
+          name: storedName,
+          metadata: {
+            ...(runtime.character as { metadata?: Record<string, unknown> })
+              .metadata,
+            character: charData,
+          },
+        });
+        if (!updated) {
+          error(res, "Character storage update was not confirmed.", 500);
+          return true;
+        }
+      } catch (err) {
+        // error-policy:J3 Zod-accepted passthrough extras can still overflow.
+        if (isCharacterHistoryUnbounded(err)) {
+          error(res, "Character payload exceeds the history walk budget", 400);
+          return true;
+        }
+        throw err;
+      }
+
       if (
         nextStoredCharacterName !== undefined &&
         nextStoredCharacterName !== previousCharacterName
@@ -957,16 +941,7 @@ export async function handleCharacterRoutes(
       }
       commitStagedCharacter(character as CharacterPutTarget, staged);
 
-      // Persist character fields to DB so edits survive restarts
       try {
-        await runtime.updateAgent(runtime.agentId, {
-          name: character.name,
-          metadata: {
-            ...(runtime.character as { metadata?: Record<string, unknown> })
-              .metadata,
-            character: charData,
-          },
-        });
         await recordCharacterHistory(runtime, {
           previousCharacter,
           nextCharacter: character as RuntimeCharacterLike,
@@ -982,7 +957,11 @@ export async function handleCharacterRoutes(
       }
     }
 
-    syncRuntimeCharacterToConfig(state, saveConfig);
+    syncRuntimeCharacterToConfig(
+      state,
+      saveConfig,
+      readOwnDataValue(body, "name") != null,
+    );
 
     const submittedAgentName = readOwnDataValue(body, "name");
     if (submittedAgentName) state.agentName = String(submittedAgentName);

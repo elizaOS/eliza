@@ -11,7 +11,7 @@
  * is the point of the #12674 audit item.
  */
 
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+import { dispatchNavigateViewEvent } from "@elizaos/ui";
 
 /** Deep-link payload the Phone view claims to pre-seed its dialer. */
 export type PhoneNavigatePayload = { number: string };

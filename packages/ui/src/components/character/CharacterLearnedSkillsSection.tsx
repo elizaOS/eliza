@@ -7,10 +7,10 @@
  * Pass `showTitle={false}` when a host ViewHeader already renders the title.
  */
 import { useCallback, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import { dispatchChatPrefill } from "../../events";
-import { useFetchData } from "../../hooks";
+import { useFetchData } from "../../hooks/useFetchData";
 import {
   type TranslationContextValue,
   useTranslation,

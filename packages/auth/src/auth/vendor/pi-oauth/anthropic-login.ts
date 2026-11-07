@@ -8,8 +8,8 @@
  * the UI / CLI calls once the user has copied the code.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { generatePKCE } from "./pkce.ts";
+import { ElizaError } from "@elizaos/core/protocol";
+import { generatePKCE } from "../../../contracts/index.ts";
 
 const decode = (s: string): string => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");

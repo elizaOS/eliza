@@ -5,7 +5,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { AgentRuntime, Service, ServiceType } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Integration tests for basic-capabilities control-message delivery. Each test
  * boots a real AgentRuntime (explicit test storage, migrations skipped) with the

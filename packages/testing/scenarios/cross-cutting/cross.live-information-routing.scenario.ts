@@ -10,8 +10,7 @@ import { webSearch } from "@elizaos/agent/runtime/actions/web-search";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 import type { CapturedAction, ScenarioTurnExecution } from "@elizaos/testing";
-import { scenario } from "@elizaos/testing";
-import { actionsAreScenarioEquivalent } from "@elizaos/testing/scenario-runner/action-families";
+import { actionsAreScenarioEquivalent, scenario } from "@elizaos/testing";
 
 const INLINE_WEB_PLUGIN_NAME = "agent-inline-web";
 const WEB_ACTION_NAMES = ["WEB_FETCH", "WEB_SEARCH"] as const;

@@ -25,12 +25,20 @@ export interface RuntimeLocalInferenceLoader extends LocalInferenceLoader {
 	transcribe?: (args: {
 		pcmBase64: string;
 		sampleRate: number;
+		signal?: AbortSignal;
 	}) => Promise<string>;
+	synthesize?: (args: {
+		text: string;
+		speed?: number;
+		signal?: AbortSignal;
+	}) => Promise<{ pcm: Float32Array; sampleRate: number }>;
 	describeImage?: (args: {
 		imageBase64: string;
 		mmprojPath?: string;
 		prompt?: string;
 	}) => Promise<string>;
+	createStreamingTranscriber?(opts: never): unknown;
+	asrStreamSupported?(): Promise<boolean>;
 }
 
 /** Service instance that delegates the runtime lifecycle to one selected backend. */
@@ -46,7 +54,10 @@ export class LocalInferenceLoaderRuntimeService
 	readonly prepareEmbeddingModel?: LocalInferenceLoader["prepareEmbeddingModel"];
 	readonly getMemoryArbiter?: () => unknown;
 	readonly transcribe?: RuntimeLocalInferenceLoader["transcribe"];
+	readonly synthesize?: RuntimeLocalInferenceLoader["synthesize"];
 	readonly describeImage?: RuntimeLocalInferenceLoader["describeImage"];
+	readonly createStreamingTranscriber?: RuntimeLocalInferenceLoader["createStreamingTranscriber"];
+	readonly asrStreamSupported?: RuntimeLocalInferenceLoader["asrStreamSupported"];
 
 	constructor(
 		runtime: IAgentRuntime,
@@ -63,8 +74,17 @@ export class LocalInferenceLoaderRuntimeService
 			this.getMemoryArbiter = loader.getMemoryArbiter.bind(loader);
 		}
 		if (loader.transcribe) this.transcribe = loader.transcribe.bind(loader);
+		if (loader.synthesize) this.synthesize = loader.synthesize.bind(loader);
 		if (loader.describeImage) {
 			this.describeImage = loader.describeImage.bind(loader);
+		}
+		// The live ASR route reads these from the service, not the backend.
+		if (loader.createStreamingTranscriber) {
+			this.createStreamingTranscriber =
+				loader.createStreamingTranscriber.bind(loader);
+		}
+		if (loader.asrStreamSupported) {
+			this.asrStreamSupported = loader.asrStreamSupported.bind(loader);
 		}
 	}
 

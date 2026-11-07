@@ -1,11 +1,33 @@
 /** Maintains native profile registration and consumes each browser command once across worker restarts. */
 
 import { createCommandHandler } from "./command-handler.mjs";
+import { createEffectWatch } from "./effect-watch.mjs";
 import { NativeConnection } from "./native-connection.mjs";
 import { nativeHost } from "./runtime-config.mjs";
 
-const handleCommand = createCommandHandler(chrome);
+// Registered at the worker's top level, so every request wakes it.
+const handleCommand = createCommandHandler(chrome, {
+  effects: createEffectWatch(chrome),
+});
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message?.type === "task-guide-answer") {
+    // The page receives only whether the value-free answer reached the host.
+    void Promise.resolve()
+      .then(() => connection.notify(handleCommand.answerGuide(message, sender)))
+      .then(
+        () => reply({ delivered: true }),
+        () => reply({ delivered: false }),
+      );
+    return true;
+  }
+  if (message?.type === "task-guide-dismissed") {
+    try {
+      reply(handleCommand.dismissGuide(message, sender));
+    } catch {
+      reply({ recorded: false });
+    }
+    return false;
+  }
   if (message?.type !== "task-manual-activity") return false;
   void handleCommand
     .recordManualActivity(message, sender)
@@ -29,23 +51,33 @@ const connection = new NativeConnection({
       extensionId: chrome.runtime.id,
       profileId,
       capabilities: [
+        ...(handleCommand.hasProtectionAdvisory() ? ["protection-owner"] : []),
         "list",
         "open",
         "navigate",
         "snapshot",
         "click",
         "fill",
+        "select",
         "scroll",
+        "follow",
         "back",
         "forward",
         "reload",
         "close",
         "cancel",
+        "cancel-reply",
         "task-bind",
         "task-guide",
+        "task-guide-label",
         "task-action-feedback",
         "task-manual-activity",
         "task-protected-fill",
+        "task-expected-target",
+        "task-commit-grant",
+        "task-commit-pattern",
+        "task-guide-keep-clear",
+        "task-origins",
       ],
     };
   },

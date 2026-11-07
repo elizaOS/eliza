@@ -224,7 +224,7 @@ const examples: ActionExample[][] = [
     {
       name: "{{agentName}}",
       content: {
-        text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
+        text: "Ready to block x.com, twitter.com for 120 minutes. Reply yes to confirm or no to cancel.",
         action: ACTION_NAME,
       },
     },
@@ -301,10 +301,10 @@ export const blockAction: Action & {
   ],
   description:
     "Block/unblock phone apps or desktop websites. " +
-    "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR subaction=create_event. " +
+    "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR action=create_event. " +
     "target=app phone apps; target=website desktop websites. " +
     "Actions block|unblock|status all targets; request_permission|release|list_active website-only. " +
-    "Website block drafts first; confirmed:true for website block + release.",
+    "Website block + release ask the owner first; after the owner replies yes, repeat the same call (same hostnames, durationMinutes, ruleId).",
   descriptionCompressed:
     "BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
@@ -341,7 +341,8 @@ export const blockAction: Action & {
     // permissive: each backend reads only the keys it understands.
     {
       name: "intent",
-      description: "Owner intent text; extract apps/hostnames + duration.",
+      description:
+        "(target=app) Owner intent text; Android apps are inferred from it when packageNames is omitted.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -353,15 +354,9 @@ export const blockAction: Action & {
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
-      name: "confirmed",
-      description:
-        "(target=website) true after owner confirmed. Without: block drafts. Required by release.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
       name: "ruleId",
-      description: "(target=website action=release) Managed block rule id.",
+      description:
+        "(target=website action=release) Managed block rule id (UUID from action=list_active), not a hostname.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -402,8 +397,12 @@ export const blockAction: Action & {
     // Shared duration param (semantics differ slightly; each backend honors its own bounds).
     {
       name: "durationMinutes",
+      // Omission, not null, is "indefinite": tool-argument validation rejects
+      // null for this number schema, and OpenAI strict mode already sends
+      // null for "no value", which is dropped so the handler can read a
+      // duration from the message text.
       description:
-        "Block duration minutes. Omit/null = indefinite until manual removal.",
+        "Block duration in minutes. Omit to block until manually removed.",
       required: false,
       schema: { type: "number" as const },
     },

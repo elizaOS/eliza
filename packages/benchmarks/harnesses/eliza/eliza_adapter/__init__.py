@@ -1,74 +1,47 @@
-"""Benchmark adapter for the TypeScript eliza agent.
+"""Public harness API; workload dependencies load only when requested."""
 
-Bridges Python benchmark runners with the eliza benchmark HTTP server.
-"""
+from importlib import import_module
 
-from eliza_adapter.client import ElizaClient
-from eliza_adapter.server_manager import ElizaServerManager
-from eliza_adapter.swe_bench import (
-    SWEBenchModelHandler,
-    make_eliza_swe_bench_model_handler,
-)
+_EXPORTS = {
+    "run_code_agent_task": ("eliza_adapter.code_agent", "run_code_agent_task"),
+    "ElizaClient": ("eliza_adapter.client", "ElizaClient"),
+    "ElizaServerManager": ("eliza_adapter.server_manager", "ElizaServerManager"),
+    "SWEBenchModelHandler": ("eliza_adapter.swe_bench", "SWEBenchModelHandler"),
+    "make_eliza_swe_bench_model_handler": (
+        "eliza_adapter.swe_bench",
+        "make_eliza_swe_bench_model_handler",
+    ),
+    "ElizaBridgeTrustHandler": ("eliza_adapter.trust", "ElizaBridgeTrustHandler"),
+    "build_lifeops_bench_agent_fn": (
+        "eliza_adapter.lifeops_bench",
+        "build_lifeops_bench_agent_fn",
+    ),
+    "fetch_world_state": ("eliza_adapter.lifeops_bench", "fetch_world_state"),
+    "teardown_lifeops_session": (
+        "eliza_adapter.lifeops_bench",
+        "teardown_lifeops_session",
+    ),
+    "ElizaREALMAgent": ("eliza_adapter.realm", "ElizaREALMAgent"),
+    "ElizaADHDBenchRunner": ("eliza_adapter.adhdbench", "ElizaADHDBenchRunner"),
+    "ElizaBridgeExperienceRunner": (
+        "eliza_adapter.experience",
+        "ElizaBridgeExperienceRunner",
+    ),
+    "ElizaExperienceConfig": ("eliza_adapter.experience", "ElizaExperienceConfig"),
+    "ElizaGauntletAgent": ("eliza_adapter.gauntlet", "Agent"),
+    "ElizaMINTAgent": ("eliza_adapter.mint", "ElizaMINTAgent"),
+}
+__all__ = list(_EXPORTS)
 
-__all__ = [
-    "ElizaClient",
-    "ElizaServerManager",
-    "SWEBenchModelHandler",
-    "make_eliza_swe_bench_model_handler",
-]
 
-# Optional: REALM adapter is only importable when the benchmarks.realm package
-# is on sys.path (it lives under eliza/realm). We expose it
-# lazily to avoid forcing every consumer of eliza-adapter to install REALM.
-try:
-    from eliza_adapter.realm import ElizaREALMAgent  # noqa: F401
-    __all__.append("ElizaREALMAgent")
-except ImportError:
-    pass
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module, symbol = _EXPORTS[name]
+    value = getattr(import_module(module), symbol)
+    globals()[name] = value
+    return value
 
-# Optional: ADHDBench bridge — only loaded when elizaos_adhdbench is on sys.path.
-try:
-    from eliza_adapter.adhdbench import ElizaADHDBenchRunner  # noqa: F401
-    __all__.append("ElizaADHDBenchRunner")
-except ImportError:
-    pass
 
-# Optional: Experience bridge — only loaded when elizaos_experience_bench is on sys.path.
-try:
-    from eliza_adapter.experience import (  # noqa: F401
-        ElizaBridgeExperienceRunner,
-        ElizaExperienceConfig,
-    )
-    __all__.extend(["ElizaBridgeExperienceRunner", "ElizaExperienceConfig"])
-except ImportError:
-    pass
-
-# Optional: Gauntlet bridge — only loaded when gauntlet.sdk is on sys.path.
-try:
-    from eliza_adapter.gauntlet import Agent as ElizaGauntletAgent  # noqa: F401
-    __all__.append("ElizaGauntletAgent")
-except ImportError:
-    pass
-
-# Optional: MINT bridge — only loaded when benchmarks.mint is on sys.path.
-try:
-    from eliza_adapter.mint import ElizaMINTAgent  # noqa: F401
-    __all__.append("ElizaMINTAgent")
-except ImportError:
-    pass
-
-# Trust bridge — only depends on the lightweight HTTP client, always importable.
-from eliza_adapter.trust import ElizaBridgeTrustHandler  # noqa: F401  # noqa: E402
-__all__.append("ElizaBridgeTrustHandler")
-
-# LifeOpsBench bridge — depends on the HTTP client. The MessageTurn type used
-# in the agent_fn return is imported lazily inside the builder, so this module
-# is importable even when the lifeops-bench package is not installed.
-from eliza_adapter.lifeops_bench import (  # noqa: F401  # noqa: E402
-    build_lifeops_bench_agent_fn,
-    fetch_world_state,
-    teardown_lifeops_session,
-)
-__all__.extend(
-    ["build_lifeops_bench_agent_fn", "fetch_world_state", "teardown_lifeops_session"]
-)
+def __dir__():
+    return sorted(set(globals()) | set(__all__))

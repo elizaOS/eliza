@@ -29,7 +29,7 @@
  *   probe support, that path wins automatically.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { BGE_EMBEDDING_MODEL } from "../model-catalog/bge-embedding-model.js";
 import { loadCapacitorLlama } from "./load-capacitor-llama.js";
 

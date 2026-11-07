@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import finalize_eliza1_evidence as F  # noqa: E402
+from eliza_training.manifest import finalize_eliza1_evidence as F  # noqa: E402
 
 
 def test_upload_evidence_requires_complete_platform_upload_paths() -> None:

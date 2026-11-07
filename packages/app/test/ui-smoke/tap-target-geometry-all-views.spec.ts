@@ -53,7 +53,10 @@ const DOCUMENTED_EXCEPTIONS: Record<
   ReadonlyArray<{ match: RegExp; reason: string }>
 > = {};
 
-const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {};
+const DOCUMENTED_ZERO_CONTROL_VIEWS: Record<string, string> = {
+  clock:
+    "Without a native Clock host, the web view explains that alarms are managed on the phone and exposes no alarm controls. Native controls have separate clock-host UI coverage.",
+};
 
 /**
  * Collect, classify, and (in-page) exception-filter every interactive control
@@ -307,8 +310,8 @@ async function collectControls(
         if (isDisabled(el)) continue;
 
         const rect = el.getBoundingClientRect();
-        const width = Math.round(rect.width * 100) / 100;
-        const height = Math.round(rect.height * 100) / 100;
+        let width = Math.round(rect.width * 100) / 100;
+        let height = Math.round(rect.height * 100) / 100;
 
         if (
           tag === "input" &&
@@ -326,6 +329,36 @@ async function collectControls(
             reason: `visually-hidden ${type} input; visible proxy button is the tap surface`,
           });
           continue;
+        }
+
+        // The chat grabber deliberately extends its real pointer target above
+        // the bar with ::before, keeping the composer below unobstructed.
+        // Count that surface only when browser hit-testing confirms its edges.
+        if (el.getAttribute("data-testid") === "chat-sheet-grabber") {
+          const before = getComputedStyle(el, "::before");
+          const left = rect.left + Number.parseFloat(before.left);
+          const top = rect.top + Number.parseFloat(before.top);
+          const targetWidth = Number.parseFloat(before.width);
+          const targetHeight = Number.parseFloat(before.height);
+          const points = [
+            [left + 1, top + 1],
+            [left + targetWidth - 1, top + 1],
+            [left + 1, top + targetHeight - 1],
+            [left + targetWidth - 1, top + targetHeight - 1],
+          ];
+          if (
+            before.content !== "none" &&
+            before.pointerEvents !== "none" &&
+            targetWidth >= minTap &&
+            targetHeight >= minTap &&
+            points.every(([x, y]) => {
+              const hit = document.elementFromPoint(x, y);
+              return hit === el || (hit !== null && el.contains(hit));
+            })
+          ) {
+            width = Math.max(width, targetWidth);
+            height = Math.max(height, targetHeight);
+          }
         }
 
         // Nested inner control: an interactive element inside another
@@ -425,7 +458,6 @@ const allRecords: ControlRecord[] = [];
 test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
   test.beforeEach(async ({ page }) => {
     await seedAppStorage(page, { "eliza:permissions-primed": "1" });
-    await hideChatOverlay(page);
     await installDefaultAppRoutes(page);
   });
 
@@ -433,6 +465,7 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
     test(`${view.id} — every standalone control is a >=44px, coherent hit target`, async ({
       page,
     }) => {
+      if (view.id !== "chat") await hideChatOverlay(page);
       if (view.id === "desktop") await installDesktopBridgeFixture(page);
       if (view.id === "files") {
         const hash = "a".repeat(64);
@@ -491,6 +524,11 @@ test.describe("tap-target rendered-geometry + role/DOM coherence gate", () => {
       }
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });
+      if (view.id === "clock") {
+        await expect(
+          page.getByText("Open Clock on your Android phone to manage alarms."),
+        ).toBeVisible();
+      }
 
       // `openAppPath` proves the shell is ready, but many view bodies are lazy
       // chunks. Poll the rendered controls so the gate measures the mounted

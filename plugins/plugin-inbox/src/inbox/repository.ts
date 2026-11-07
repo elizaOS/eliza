@@ -364,12 +364,14 @@ export class InboxRepository {
   }
 
   async getBySourceMessageId(
+    source: string,
     sourceMessageId: string,
   ): Promise<TriageEntry | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_inbox.life_inbox_triage_entries
        WHERE source_message_id = ${sqlText(sourceMessageId)}
+         AND source = ${sqlText(source)}
          AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
@@ -378,6 +380,7 @@ export class InboxRepository {
   }
 
   async getBySourceMessageIds(
+    source: string,
     sourceMessageIds: string[],
   ): Promise<Set<string>> {
     if (sourceMessageIds.length === 0) return new Set();
@@ -386,6 +389,7 @@ export class InboxRepository {
       this.runtime,
       `SELECT source_message_id FROM app_inbox.life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
+         AND source = ${sqlText(source)}
          AND source_message_id IN (${inClause})`,
     );
     return new Set(rows.map((r) => toText(r.source_message_id)));
@@ -411,6 +415,48 @@ export class InboxRepository {
       this.runtime,
       `UPDATE app_inbox.life_inbox_triage_entries
        SET ${sets.join(", ")}
+       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
+    );
+  }
+
+  /**
+   * Claim the entry for sending `body`. Returns false when this exact body was
+   * already sent for the entry, so a retried or concurrent approve sends once.
+   */
+  async claimReplySend(id: string, body: string): Promise<boolean> {
+    const now = isoNow();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_inbox.life_inbox_triage_entries
+       SET resolved = TRUE,
+           resolved_at = ${sqlText(now)},
+           auto_replied = TRUE,
+           draft_response = ${sqlText(body)},
+           updated_at = ${sqlText(now)}
+       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
+         AND NOT (auto_replied = TRUE
+           AND draft_response IS NOT DISTINCT FROM ${sqlText(body)})
+       RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
+  /** Undo `claimReplySend` after the send failed. */
+  async releaseReplySend(
+    id: string,
+    previous: Pick<
+      TriageEntry,
+      "resolved" | "resolvedAt" | "autoReplied" | "draftResponse"
+    >,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_inbox.life_inbox_triage_entries
+       SET resolved = ${sqlBoolean(previous.resolved)},
+           resolved_at = ${previous.resolvedAt == null ? "NULL" : sqlText(previous.resolvedAt)},
+           auto_replied = ${sqlBoolean(previous.autoReplied)},
+           draft_response = ${previous.draftResponse == null ? "NULL" : sqlText(previous.draftResponse)},
+           updated_at = ${sqlText(isoNow())}
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
     );
   }

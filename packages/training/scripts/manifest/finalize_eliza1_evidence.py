@@ -24,38 +24,30 @@ and `verify_bundle_licenses()` is clean.
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256
+
 import argparse
-import hashlib
 import json
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
-try:
-    from scripts.manifest.eliza1_licenses import (
-        verify_bundle_licenses,
-        write_bundle_licenses,
-    )
-    from scripts.manifest.eliza1_manifest import (
-        ELIZA_1_HF_REPO,
-        ELIZA_1_VISION_TIERS,
-        SUPPORTED_BACKENDS_BY_TIER,
-        validate_manifest,
-    )
-    from scripts.manifest.eliza1_platform_plan import (
-        REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
-        _target_backend,
-        required_files_for_tier,
-    )
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_licenses import verify_bundle_licenses, write_bundle_licenses  # type: ignore
-    from eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_VISION_TIERS, SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
-    from eliza1_platform_plan import (  # type: ignore
-        REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
-        _target_backend,
-        required_files_for_tier,
-    )
+from eliza_training.manifest.eliza1_licenses import (
+    verify_bundle_licenses,
+    write_bundle_licenses,
+)
+from eliza_training.manifest.eliza1_manifest import (
+    ELIZA_1_HF_REPO,
+    ELIZA_1_VISION_TIERS,
+    SUPPORTED_BACKENDS_BY_TIER,
+    validate_manifest,
+)
+from eliza_training.manifest.eliza1_platform_plan import (
+    REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
+    _target_backend,
+    required_files_for_tier,
+)
 
 # How an operator produces each kind of evidence. Keyed by backend.
 _RUNNER_BY_BACKEND: Final[Mapping[str, str]] = {
@@ -123,12 +115,6 @@ def _git_short_sha(repo_root: Path) -> str:
         return "unknown"
 
 
-def _sha256(path: Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def _is_sha256(value: Any) -> bool:

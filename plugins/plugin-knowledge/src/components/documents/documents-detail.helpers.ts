@@ -3,9 +3,7 @@
  * from a content type, a translated source label (YouTube/URL/upload), and a
  * one-line summary (source, fragment count, byte size) for a document record.
  */
-
-import type { DocumentRecord } from "@elizaos/ui/api";
-import { formatByteSize } from "@elizaos/ui/utils";
+import { type DocumentRecord, formatByteSize } from "@elizaos/ui";
 
 export function getDocumentTypeLabel(contentType?: string): string {
   return contentType?.split("/").pop()?.toUpperCase() || "DOCUMENT";
@@ -15,6 +13,19 @@ export function getDocumentSourceLabel(
   source: string | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
+  if (source === "import") {
+    return t("documentsview.ConversationImport", {
+      defaultValue: "Conversation import",
+    });
+  }
+  if (source === "learned") {
+    return t("documentsview.LearnedDocument", {
+      defaultValue: "Learned document",
+    });
+  }
+  if (source === "unknown") {
+    return t("documentsview.GenericDocument", { defaultValue: "Document" });
+  }
   if (source === "bundled") {
     return t("documentsview.Bundled", { defaultValue: "Bundled" });
   }

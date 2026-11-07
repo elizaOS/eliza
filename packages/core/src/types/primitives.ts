@@ -4,22 +4,12 @@
  * enums. The leaf dependency most other `types/*` modules build on; keep it
  * independent of runtime initialization.
  */
+
+import { validateUuid } from "../utils/uuid.js";
 import type { InteractionBlock } from "./interactions.js";
+import type { JsonValue } from "./json.js";
 
-/**
- * JSON-serializable primitive value.
- */
-export type JsonPrimitive = string | number | boolean | null;
-
-export type JsonValue =
-	| JsonPrimitive
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-/**
- * JSON-serializable object (used for dynamic properties).
- */
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue } from "./json.js";
 
 /**
  * Minimal process-like environment shape for packages that also run in
@@ -28,7 +18,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export type ProcessEnvLike = Record<string, string | undefined>;
 
 /**
- * Defines a UUID as a string for protobuf interoperability.
+ * A UUID string; validate untrusted values with {@link asUUID}.
  */
 export type UUID = string;
 
@@ -59,16 +49,11 @@ export type ChannelType = (typeof ChannelType)[keyof typeof ChannelType];
 export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * Helper function to safely cast a string to strongly typed UUID
- * @param id The string UUID to validate and cast
- * @returns The same UUID with branded type information
+ * Validate that a string is a UUID.
  * @throws Error if the id is not a valid UUID format
  */
 export function asUUID(id: string): UUID {
-	if (
-		!id ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-	) {
+	if (!validateUuid(id)) {
 		throw new Error(`Invalid UUID format: ${id}`);
 	}
 	return id as UUID;
@@ -121,18 +106,14 @@ export interface Content {
 	/** Actions to be performed */
 	actions?: string[];
 
-	/**
-	 * Legacy serialized provider names from pre-v5 planner replies. The v5
-	 * message loop does not use model-emitted content to select providers;
-	 * providers enter prompts through context routing or `alwaysInResponseState`.
-	 */
+	/** Serialized provider names for stored replies. Model output does not select runtime providers; context routing and alwaysInResponseState govern prompt composition. */
 	providers?: string[];
 
 	/** Source/origin of the content (e.g., 'discord', 'telegram') */
 	source?: string;
 
 	/**
-	 * Provenance flag for the humanness voice gate (#14873): `true` marks text
+	 * Provenance flag for the humanness voice gate: `true` marks text
 	 * that is already final user-facing copy (a model-generated reply, output
 	 * the voice gate already rephrased, or a byte-exact canonical action reply)
 	 * so `ensureAgentVoice` preserves it. Hardcoded templates, ordinary tool
@@ -158,7 +139,7 @@ export interface Content {
 	 * that record an emoji reaction as a short display stub in `text` (e.g.
 	 * `*Added 👍 to: "first 50 chars…"*`) set this so context-building can feed
 	 * the planner the complete reacted-to statement instead of a truncated
-	 * fragment it would otherwise back-rationalize into a phantom task (#9874).
+	 * fragment it would otherwise back-rationalize into a phantom task.
 	 */
 	reactedMessageText?: string;
 
@@ -269,12 +250,8 @@ export interface Media {
 	 */
 	thumbnailUrl?: string;
 
-	// --- Additive metadata widening (#8876) ----------------------------------
-	// All optional and backward-compatible: `Media` is serialized inside
-	// `memories.content` (jsonb) and `central_messages.content` (text), so adding
-	// optional keys is a pure type change with zero at-rest migration. Fine-grained
-	// kind (pdf/code/transcript/3d) is derived from `mimeType` at read time — the
-	// coarse `ContentType` enum stays frozen and append-only.
+	// Optional media metadata is serialized with content. Derive fine-grained kind from mimeType;
+	// ContentType is the coarse category.
 
 	/** Authoritative IANA media type of the bytes (e.g. `application/pdf`). */
 	mimeType?: string;
@@ -337,8 +314,8 @@ export interface Media {
 
 	/**
 	 * Served URL of this attachment's PII-scrubbed variant — a SEPARATE
-	 * content-addressed media object under its own sha256 (#14781; per #8876
-	 * redacted variants are new bytes, never an edit of the original). When a
+	 * content-addressed media object under its own sha256 (redacted variants
+	 * are new bytes, never an edit of the original). When a
 	 * viewer's disclosure resolves to `redacted`, the DTO layer emits this URL
 	 * in place of `url` and withholds the original. Never a file id — the URL
 	 * itself is the reference the media GC scans.
@@ -359,21 +336,14 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 /**
  * Allowed value types for metadata (JSON-serializable).
  *
- * This type is intentionally broad to accept:
- * - Primitive JSON values (string, number, boolean, null)
- * - Arrays of metadata values
- * - Complex domain objects with UUID fields (template literal strings)
- *
- * The Record<string, unknown> union member ensures that domain types like
- * ContactInfo, RelationshipData, etc. are accepted without requiring
- * unsafe double assertions.
+ * Accepts JSON values, `undefined`, arrays of metadata values, and readonly
+ * records of metadata values (so domain objects need no double assertions).
  */
 export type MetadataValue =
 	| JsonValue
 	| undefined
 	| MetadataValue[]
-	| { readonly [key: string]: MetadataValue | undefined }
-	| JsonObject;
+	| { readonly [key: string]: MetadataValue | undefined };
 
 /**
  * A type for metadata objects with JSON-serializable values.

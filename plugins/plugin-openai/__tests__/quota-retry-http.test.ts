@@ -5,7 +5,7 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, EventType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleResponseHandler, handleTextSmall } from "../models/text";
 
@@ -140,6 +140,25 @@ describe("provider quota retry HTTP boundary", () => {
       "Recovered"
     );
     expect(test.requests()).toBe(2);
+  }, 10000);
+
+  it("reports a MODEL_USED listener failure without failing the served response", async () => {
+    const test = await fixture("rate_limit_exceeded", true);
+    test.runtime.registerEvent(EventType.MODEL_USED, async () => {
+      throw new Error("MODEL_USED listener failed");
+    });
+
+    await expect(handleTextSmall(test.runtime, { prompt: "Reply briefly." })).resolves.toBe(
+      "Recovered"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(test.runtime.getRecentReportedErrors()).toContainEqual(
+      expect.objectContaining({
+        scope: "OpenAIModelUsage.emitEvent",
+        message: "MODEL_USED listener failed",
+      })
+    );
   }, 10000);
 
   it("honors the provider retry delay before recovering", async () => {

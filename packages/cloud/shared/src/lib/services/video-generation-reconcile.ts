@@ -29,6 +29,7 @@ import { type Generation, generationsRepository } from "../../db/repositories/ge
 import { findVideoProvider } from "../providers/video/registry";
 import {
   VIDEO_PENDING_SETTLEMENT_MARKER,
+  VIDEO_RECONCILE_ATTEMPTED_AT_KEY,
   type VideoJobStatus,
   type VideoPendingSettlement,
 } from "../providers/video/types";
@@ -202,6 +203,21 @@ async function markFailed(
   });
 }
 
+/**
+ * Record that this sweep looked at a pending row it left pending. The sweep
+ * reads the least recently attempted rows first, so rows it cannot settle
+ * (a probe that keeps failing, a still-running job) rotate to the back
+ * instead of holding every batch and hiding newer settlements.
+ */
+async function markReconcileAttempt(generation: Generation): Promise<void> {
+  await generationsRepository.update(generation.id, {
+    metadata: {
+      ...generation.metadata,
+      [VIDEO_RECONCILE_ATTEMPTED_AT_KEY]: new Date().toISOString(),
+    },
+  });
+}
+
 export async function reconcilePendingVideoGenerations(params: {
   apiKeys: Record<string, string | undefined>;
   deadlineMs?: number;
@@ -229,6 +245,7 @@ export async function reconcilePendingVideoGenerations(params: {
         organizationId: generation.organization_id,
         jobId: generation.job_id,
       });
+      await markReconcileAttempt(generation);
       continue;
     }
 
@@ -239,6 +256,7 @@ export async function reconcilePendingVideoGenerations(params: {
         generationId: generation.id,
         billingSource: settlement.billing_source,
       });
+      await markReconcileAttempt(generation);
       continue;
     }
 
@@ -263,6 +281,7 @@ export async function reconcilePendingVideoGenerations(params: {
         jobId: generation.job_id,
         error: error instanceof Error ? error.message : String(error),
       });
+      await markReconcileAttempt(generation);
       continue;
     }
 
@@ -309,6 +328,7 @@ export async function reconcilePendingVideoGenerations(params: {
     const ageMs = Date.now() - generation.created_at.getTime();
     if (ageMs < deadlineMs) {
       stats.stillPending++;
+      await markReconcileAttempt(generation);
       continue;
     }
 

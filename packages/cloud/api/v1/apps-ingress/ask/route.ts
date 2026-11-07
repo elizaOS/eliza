@@ -1,12 +1,13 @@
 // Handles v1 cloud API v1 apps ingress ask route traffic with route-local auth expectations.
+
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { containers as containersTable } from "@elizaos/cloud-shared/db/schemas/containers";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead } from "@/db/helpers";
-import { containers as containersTable } from "@/db/schemas/containers";
-import { appsService } from "@/lib/services/apps";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * GET /api/v1/apps-ingress/ask?domain=<host>

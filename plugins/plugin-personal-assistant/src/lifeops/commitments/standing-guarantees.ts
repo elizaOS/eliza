@@ -71,7 +71,7 @@ function guaranteeIdempotencyKey(obligationClass: LifeOpsCommitmentKind) {
   return `commitment-guarantee:${obligationClass}`;
 }
 
-function guaranteeWarnDays(task: ScheduledTask): number {
+export function guaranteeWarnDays(task: ScheduledTask): number {
   const raw = (task.metadata as Record<string, unknown> | undefined)
     ?.warnDaysBefore;
   return typeof raw === "number" && Number.isFinite(raw) && raw > 0
@@ -130,13 +130,20 @@ export async function installCommitmentClassGuarantee(
   });
 }
 
-/** List the installed standing guarantees matching one obligation class. */
+/**
+ * List the installed standing guarantees matching one obligation class. An
+ * event task leaves `scheduled` when it first fires, but the guarantee stays
+ * in force for every later artifact until it reaches a terminal state.
+ */
 export async function listCommitmentClassGuarantees(
   runtime: IAgentRuntime,
   args: { agentId: string; obligationKind: LifeOpsCommitmentKind },
 ): Promise<ScheduledTask[]> {
   const runner = getScheduledTaskRunner(runtime, { agentId: args.agentId });
-  const tasks = await runner.list({ kind: "watcher", status: "scheduled" });
+  const tasks = await runner.list({
+    kind: "watcher",
+    status: ["scheduled", "fired", "acknowledged"],
+  });
   return tasks.filter((task) => isGuaranteeForClass(task, args.obligationKind));
 }
 
@@ -195,6 +202,19 @@ export async function applyCommitmentClassGuarantees(
       },
     });
     warnTaskIds.push(warnTask.taskId);
+  }
+
+  // A moved deadline must retire the warnings for the old deadline, or the
+  // owner is warned about a date that no longer applies.
+  const pending = await runner.list({ kind: "watcher", status: "scheduled" });
+  for (const task of pending) {
+    if (warnTaskIds.includes(task.taskId)) continue;
+    if (task.trigger.kind !== "once") continue;
+    if (task.metadata?.documentId !== artifact.documentId) continue;
+    if (task.metadata?.obligationKind !== artifact.obligationKind) continue;
+    await runner.apply(task.taskId, "dismiss", {
+      reason: `deadline moved to ${artifact.deadline}`,
+    });
   }
 
   const obligationPayload: CommitmentObligationEventPayload = {

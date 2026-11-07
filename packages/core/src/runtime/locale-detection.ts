@@ -8,9 +8,9 @@
  * with no LLM calls.
  *
  * Priority order applied by `resolveOwnerLocale`:
- *   1. `ownerLocale` (canonical, when the owner has set it)
- *   2. `detectLocaleFromText(recentMessage)` (heuristic on most-recent message)
- *   3. `defaultLocale` (caller-provided, defaults to `"en"`)
+ * 1. `ownerLocale` (canonical, when the owner has set it)
+ * 2. `detectLocaleFromText(recentMessage)` (heuristic on most-recent message)
+ * 3. `defaultLocale` (caller-provided, defaults to `"en"`)
  */
 
 /**
@@ -83,7 +83,7 @@ const FRENCH_HINT_WORDS = new Set([
 	"avoir",
 ]);
 
-const SPANISH_DIACRITICS = /[ñ¿¡áéíóúüÑ¿¡ÁÉÍÓÚÜ]/;
+const SPANISH_DIACRITICS = /[ñ¿¡áéíóúüÑÁÉÍÓÚÜ]/;
 const FRENCH_DIACRITICS = /[àâäæçéèêëîïôœùûüÿÀÂÄÆÇÉÈÊËÎÏÔŒÙÛÜŸ]/;
 
 /**
@@ -92,12 +92,9 @@ const FRENCH_DIACRITICS = /[àâäæçéèêëîïôœùûüÿÀÂÄÆÇÉÈÊË
  */
 export function detectLocaleFromText(
 	text: string | null | undefined,
-): SupportedLocale | string | null {
-	if (typeof text !== "string") {
-		return null;
-	}
-	const trimmed = text.trim();
-	if (trimmed.length === 0) {
+): SupportedLocale | null {
+	const trimmed = text?.trim();
+	if (!trimmed) {
 		return null;
 	}
 
@@ -164,18 +161,10 @@ export interface ResolveOwnerLocaleOptions {
  * compare against `defaultLocale` themselves.
  */
 export function resolveOwnerLocale(opts: ResolveOwnerLocaleOptions): string {
-	const owner =
-		typeof opts.ownerLocale === "string" ? opts.ownerLocale.trim() : "";
-	if (owner.length > 0) {
-		return owner;
-	}
-	const detected = detectLocaleFromText(opts.recentMessage);
-	if (detected) {
-		return detected;
-	}
-	const fallback =
-		typeof opts.defaultLocale === "string" && opts.defaultLocale.trim()
-			? opts.defaultLocale.trim()
-			: "en";
-	return fallback;
+	return (
+		opts.ownerLocale?.trim() ||
+		detectLocaleFromText(opts.recentMessage) ||
+		opts.defaultLocale?.trim() ||
+		"en"
+	);
 }

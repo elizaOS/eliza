@@ -8,7 +8,7 @@
  * still exercise the real body shape.
  */
 
-import { AGENT_PRICING } from "../constants/agent-pricing";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { logger } from "../utils/logger";
 import type { CreditGateResult } from "./agent-billing-gate";
 import type { SignupGrantWithheldReason } from "./signup-grant-guard";

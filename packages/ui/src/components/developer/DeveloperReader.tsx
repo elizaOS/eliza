@@ -1,3 +1,4 @@
+/// <reference path="../../css-modules.d.ts" preserve="true" />
 /** Read recorded model inputs and outputs without expanding the chat transcript. */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";

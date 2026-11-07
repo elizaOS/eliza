@@ -9,14 +9,16 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  createSelfApiRequestHeaders,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
-  requireRestartHandler,
 } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import {
+  createSelfApiRequestHeaders,
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 import {
   isPluginManagerLike,
@@ -101,6 +103,7 @@ interface PluginListEntry {
   loadError?: string;
   category?: string;
   isActive?: boolean;
+  npmName?: string;
 }
 
 interface PluginsListResponse {
@@ -138,11 +141,12 @@ function mutationAcknowledged(data: PluginMutationResponse): boolean {
   );
 }
 
+// `telegram` is the bot connector. It has no entry here: the personal-account
+// cancel route does not stop the bot, so it takes the plugin-disable path.
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
-  telegram: "/api/setup/telegram-account/cancel",
   "telegram-account": "/api/setup/telegram-account/cancel",
   whatsapp: "/api/whatsapp/disconnect",
-  "discord-local": "/api/discord-local/disconnect",
+  "discord-local": "/api/setup/discord/cancel",
 };
 
 function getApiBase(): string {
@@ -516,7 +520,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
   const plugins = listData.plugins;
   const lower = pluginId.toLowerCase();
   const plugin =
-    plugins.find((p) => p.id === pluginId) ??
+    plugins.find((p) => p.id === pluginId || p.npmName === pluginId) ??
     plugins.find(
       (p) =>
         p.id.toLowerCase().includes(lower) ||
@@ -797,7 +801,9 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
           data.state === "idle" &&
           data.ok !== false &&
           data.success !== false
-        : mutationAcknowledged(data);
+        : dedicatedPath === "/api/setup/discord/cancel"
+          ? data.connector === "discord" && data.state === "idle"
+          : mutationAcknowledged(data);
     if (!resp.ok || !acknowledged) {
       const errMsg =
         data.error || data.message || `Disconnect failed (${resp.status}).`;
@@ -907,10 +913,11 @@ export const pluginAction: Action = {
     "reinject (drop ejected copy and use npm), configure (save key/value " +
     "config + auto-test), read_config (return current state), toggle " +
     "(enable/disable), list (enumerate plugins or connectors with optional " +
-    "filter), disconnect (sign out connector and drop session). type='plugin' " +
-    "(default) targets installed plugins; type='connector' targets plugins in " +
-    "the 'connector' category and manages their **package** install/eject " +
-    "only, not account state. For **account**-level connector lifecycle (log " +
+    "filter), disconnect (sign out connector and drop session). type only " +
+    "scopes list: type='connector' (default) lists plugins in the 'connector' " +
+    "category, type='plugin' lists every installed plugin. Connector " +
+    "operations here manage the **package** and its config only, not account " +
+    "state. For **account**-level connector lifecycle (log " +
     "in, log out, verify account, list account status), use the `CONNECTOR` " +
     "action instead.",
   descriptionCompressed:
@@ -1002,7 +1009,7 @@ export const pluginAction: Action = {
     {
       name: "type",
       description:
-        "What we are operating on. 'plugin' (default) = any installed plugin; 'connector' = a plugin in the 'connector' category (discord, telegram, slack, etc.).",
+        "list scope. 'connector' (default) = only plugins in the 'connector' category (discord, telegram, slack, etc.); 'plugin' = every installed plugin. Other operations ignore it.",
       required: false,
       schema: { type: "string" as const, enum: [...PLUGIN_TYPES] },
     },
@@ -1025,7 +1032,19 @@ export const pluginAction: Action = {
       description:
         "configure: object of key/value strings to save. Keys are plugin parameter names; values are their new settings.",
       required: false,
-      schema: { type: "object" as const },
+      // A bare object schema is closed by the validator and would reject
+      // every config key, so the map shape is declared. Values match what
+      // normalizeConfig accepts.
+      schema: {
+        type: "object" as const,
+        additionalProperties: {
+          anyOf: [
+            { type: "string" as const },
+            { type: "number" as const },
+            { type: "boolean" as const },
+          ],
+        },
+      },
     },
     {
       name: "enabled",
@@ -1095,7 +1114,7 @@ export const pluginAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin: Discord (@elizaos/plugin-discord)\nStatus: enabled | configured: true",
+          text: "Plugin: Discord (discord)\nStatus: enabled | configured: true",
         },
       },
     ],

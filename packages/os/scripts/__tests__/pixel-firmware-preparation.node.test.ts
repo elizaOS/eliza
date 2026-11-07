@@ -6,14 +6,16 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { loadBrandConfig } from "../distro-android/brand-config.ts";
+import { loadBrandConfig } from "../android/brand-config.ts";
 import {
   assertGeneratedVintfApi,
   grizzlyLunchTarget,
   normalizeGeneratedBuildIdGuard,
   withLockedVendorReference,
-} from "../distro-android/prepare-grizzly.ts";
-import { syncToAosp } from "../distro-android/sync-to-aosp.ts";
+} from "../android/prepare-grizzly.ts";
+import { stageImageLauncher } from "../android/image-launcher.ts";
+import { syncToAosp } from "../android/sync-to-aosp.ts";
+import { fakeTools } from "./image-launcher-fixture.ts";
 
 function temporaryTree(t) {
   const parent = testOutputPath("pixel-firmware-preparation");
@@ -50,7 +52,7 @@ test("Pixel release selection preserves the stock policy API and rejects develop
     },
   };
   const brand = loadBrandConfig(
-    new URL("../distro-android/brand.eliza-grizzly.json", import.meta.url)
+    new URL("../android/brand.eliza-grizzly.json", import.meta.url)
       .pathname,
   );
   const hardware = JSON.parse(
@@ -186,7 +188,7 @@ test("Pixel sync admits matching ARM64 app bytes and rejects x86 pins before rep
   const aospRoot = path.join(root, "aosp");
   const sourceVendor = path.join(root, "vendor");
   const brand = loadBrandConfig(
-    new URL("../distro-android/brand.eliza-grizzly.json", import.meta.url)
+    new URL("../android/brand.eliza-grizzly.json", import.meta.url)
       .pathname,
   );
   fs.mkdirSync(path.join(aospRoot, "build"), { recursive: true });
@@ -196,6 +198,15 @@ test("Pixel sync admits matching ARM64 app bytes and rejects x86 pins before rep
     path.join(sourceVendor, "apps/Eliza/Eliza.apk"),
     "Eliza fixture",
   );
+  const launcherTools = fakeTools(path.join(root, "tools"));
+  stageImageLauncher({
+    brand,
+    apk: launcherTools.apk,
+    development: true,
+    output: path.join(sourceVendor, "launcher"),
+    aapt: launcherTools.aapt,
+    apksigner: launcherTools.apksigner,
+  });
   fs.mkdirSync(path.join(sourceVendor, "manifests"));
   const pins = JSON.parse(
     fs.readFileSync(

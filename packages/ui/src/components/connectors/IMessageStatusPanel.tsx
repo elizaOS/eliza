@@ -4,9 +4,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { client, type IMessageApiStatus } from "../../api";
-import { useAppSelector } from "../../state";
-import { openExternalUrl } from "../../utils";
+import { client } from "../../api/client";
+import type { IMessageApiStatus } from "../../api/client-imessage";
+import { useAppSelector } from "../../state/app-store";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 

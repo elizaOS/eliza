@@ -369,7 +369,7 @@ export function validateEnvelope(
 ) {
   requireThat(
     envelope?.schemaVersion === 2,
-    "confirmed installation requires a signed schemaVersion 2 contract; legacy manifests are planning-only",
+    "installation requires a signed schemaVersion 2 contract",
   );
   const r = validateReleaseShape(envelope.release);
   const subject = sha256(canonical(r));

@@ -5,8 +5,8 @@
 
 import { once } from "node:events";
 import http from "node:http";
-import { type AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -18,16 +18,16 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
-import { type ApprovalQueue } from "../approval-queue.types.js";
+import type { ApprovalQueue } from "../approval-queue.types.js";
 import { InstacartProductsLinkClient } from "./instacart.js";
 import { FoodRepository } from "./repository.js";
 import { FoodDomainService } from "./service.js";
-import {
-  type FoodPreference,
-  type HardFoodConstraint,
-  type InventoryObservation,
-  type MealCandidate,
-  type MealParticipant,
+import type {
+  FoodPreference,
+  HardFoodConstraint,
+  InventoryObservation,
+  MealCandidate,
+  MealParticipant,
 } from "./types.js";
 
 describe("food domain — real PGlite and approval queue", () => {

@@ -12,22 +12,22 @@ import { constants, lstatSync, unlinkSync } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
-import {
-  type AgentBackupRestoreV3OperationControl,
-  logger,
-} from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
+import type {
+  AgentBackupRestoreV3Attestation,
+  AgentBackupRestoreV3BootGrant,
+  AgentBackupRestoreV3ContainerRoots,
+  AgentBackupRestoreV3ProbeRequest,
+} from "@elizaos/contracts/node";
 import {
   AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS,
-  type AgentBackupRestoreV3Attestation,
-  type AgentBackupRestoreV3BootGrant,
   AgentBackupRestoreV3BootGrantSchema,
-  type AgentBackupRestoreV3ContainerRoots,
-  type AgentBackupRestoreV3ProbeRequest,
   AgentBackupRestoreV3ProbeRequestSchema,
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
   signAgentBackupRestoreV3Attestation,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
+import { logger } from "@elizaos/core";
 import { openAgentBackupRestoreV3CandidateFs } from "./agent-backup-restore-v3-candidate-fs";
 import type { AgentBackupRestoreV3PreparedGenerationReceipt } from "./agent-backup-restore-v3-generation";
 import { AgentBackupRestoreV3RuntimeGeneration } from "./agent-backup-restore-v3-runtime-generation";

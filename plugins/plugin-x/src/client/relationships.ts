@@ -284,12 +284,12 @@ export async function fetchProfileFollowers(
 /**
  * Follow a user using Twitter API v2
  *
- * @param {string} username - The username to follow
+ * @param {string} userId - The X user id to follow
  * @param {TwitterAuth} auth - The authentication credentials
  * @returns {Promise<Response>} Response from the API
  */
 export async function followUser(
-  username: string,
+  userId: string,
   auth: TwitterAuth,
 ): Promise<Response> {
   if (!auth) {
@@ -299,12 +299,6 @@ export async function followUser(
   const client = await auth.getV2Client();
 
   try {
-    // First get the user ID from username
-    const userResponse = await client.v2.userByUsername(username);
-    if (!userResponse.data) {
-      throw new Error(`User ${username} not found`);
-    }
-
     // Get the authenticated user's ID
     const meResponse = await client.v2.me();
     if (!meResponse.data) {
@@ -312,10 +306,7 @@ export async function followUser(
     }
 
     // Follow the user
-    const result = await client.v2.follow(
-      meResponse.data.id,
-      userResponse.data.id,
-    );
+    const result = await client.v2.follow(meResponse.data.id, userId);
 
     // Return the same Response shape used by the rest of the client.
     return new Response(JSON.stringify(result), {
@@ -325,11 +316,11 @@ export async function followUser(
       }),
     });
   } catch (error) {
-    // error-policy:J2 context-adding rethrow — attach the target username.
+    // error-policy:J2 context-adding rethrow — attach the target user id.
     throw new ElizaError("Failed to follow user", {
       code: "X_FOLLOW_FAILED",
       cause: error,
-      context: { username },
+      context: { userId },
     });
   }
 }

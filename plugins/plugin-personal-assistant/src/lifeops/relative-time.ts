@@ -13,11 +13,9 @@ import {
   type LifeOpsRelativeTimeAnchorSource,
   type LifeOpsScheduleInsight,
   type LifeOpsScheduleRegularity,
-} from "@elizaos/core/contracts/personal-assistant";
-import {
   parseIsoMs,
   roundConfidence,
-} from "@elizaos/core/lifeops-normalize/time-util";
+} from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -107,8 +105,10 @@ const BEDTIME_TARGET_MAX_FUTURE_MS = DAY_MS;
  * Builds a UTC instant for a normalized local bedtime hour
  * (in the canonical [12, 36) range) anchored on the sleep-day that `anchorMs`
  * belongs to. When no wake anchor is given, the local date of `nowMs` is used.
- * The result is then rolled ±24h so it represents "tonight's" bedtime relative
- * to now: not more than ~18h in the past and not more than ~24h in the future.
+ * The result is then rolled by civil days so it represents "tonight's" bedtime
+ * relative to now: not more than ~18h in the past and not more than ~24h in
+ * the future. A 24-hour step would move 23:00 to midnight across the
+ * spring-forward.
  */
 function localHourInstantMs(args: {
   timezone: string;
@@ -127,27 +127,36 @@ function localHourInstantMs(args: {
   const dayDelta = Math.floor(wholeMinutes / (24 * 60));
   const minuteOfDay = ((wholeMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const baseDate = addDaysToLocalDate(anchorParts, dayDelta);
-  let candidate = buildUtcDateFromLocalParts(args.timezone, {
-    year: baseDate.year,
-    month: baseDate.month,
-    day: baseDate.day,
-    hour: Math.floor(minuteOfDay / 60),
-    minute: minuteOfDay % 60,
-    second: 0,
-  }).getTime();
-  // Advance one day at a time until the target is no longer unreasonably far
-  // in the past — this handles stale wake anchors without clobbering a
-  // just-passed bedtime (e.g. 12:56 AM after an 11:30 PM target).
+  // Build each civil day from the fixed clock time, not from the previous
+  // candidate: a time in the spring-forward gap moves an hour later, and
+  // reading it back would keep that hour on every later day.
+  const onCivilDay = (days: number) => {
+    const date = addDaysToLocalDate(baseDate, days);
+    return buildUtcDateFromLocalParts(args.timezone, {
+      year: date.year,
+      month: date.month,
+      day: date.day,
+      hour: Math.floor(minuteOfDay / 60),
+      minute: minuteOfDay % 60,
+      second: 0,
+    }).getTime();
+  };
+  let days = 0;
+  let candidate = onCivilDay(days);
+  // Advance one civil day at a time until the target is no longer
+  // unreasonably far in the past. Adding 24 absolute hours crosses the
+  // spring-forward and lands a 23:00 bedtime at midnight.
   for (let step = 0; step < 14; step += 1) {
     if (candidate >= args.nowMs - BEDTIME_TARGET_MAX_PAST_MS) break;
-    candidate += DAY_MS;
+    candidate = onCivilDay(++days);
   }
   for (let step = 0; step < 14; step += 1) {
     if (candidate <= args.nowMs + BEDTIME_TARGET_MAX_FUTURE_MS) break;
-    candidate -= DAY_MS;
+    candidate = onCivilDay(--days);
   }
   return candidate;
 }
+
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }

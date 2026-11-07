@@ -298,7 +298,8 @@ export function attach(pr, files, run = gh) {
     // GitHub rejects zero-byte release assets with an opaque 400
     // (Bad Content-Length) that aborts the whole batch — fail per-file with
     // the actual reason instead. An empty artifact is never real evidence.
-    if (readFileSync(file).length === 0) {
+    const bytes = readFileSync(file);
+    if (bytes.length === 0) {
       fail(`refusing to upload empty file (0 bytes): ${file}`);
     }
     const name = `${pr}-${basename(file).replace(new RegExp(`^${pr}-`), "")}`;
@@ -309,12 +310,23 @@ export function attach(pr, files, run = gh) {
       console.log(`  = ${name} (already on '${existing.tag}', reusing)`);
       continue;
     }
-    if (!stagedByName.has(name)) {
-      // gh names the asset after the file, so stage a correctly-named copy.
-      const stagedPath = join(tmpdir(), name);
-      writeFileSync(stagedPath, readFileSync(file));
-      stagedByName.set(name, stagedPath);
+    const stagedPath = stagedByName.get(name);
+    if (stagedPath !== undefined) {
+      // One asset name, so one asset: a second file whose basename matches
+      // (`before/shot.png` and `after/shot.png`) would keep the first file's
+      // bytes and its row would reference them. Identical bytes are the same
+      // artifact and stay a silent dedupe; different bytes are refused.
+      if (!readFileSync(stagedPath).equals(bytes)) {
+        fail(
+          `two different files upload as the same evidence asset '${name}'. Rename one file so the basenames differ.`,
+        );
+      }
+      continue;
     }
+    // gh names the asset after the file, so stage a correctly-named copy.
+    const newStagedPath = join(tmpdir(), name);
+    writeFileSync(newStagedPath, bytes);
+    stagedByName.set(name, newStagedPath);
   }
   if (stagedByName.size > 0) {
     const uploaded = uploadAssets(stagedByName, releases, run);
@@ -343,10 +355,10 @@ export function renderRow(id, value) {
   );
 }
 
-// Mirrors the terminal-footer shape enforced by
-// packages/eliza-computer/src/lib/leaderboard.ts (markerFooterError /
-// terminalAttributionBlock), so this tool's own appends never land AFTER the
-// marker the validator requires to be the body's final source content.
+// Mirrors the trailing-footer shape this tool's own validator requires (see
+// findTrailingAttributionFooterStart below: marker line last, lane signature and
+// attribution labels above it), so this tool's own appends never land AFTER
+// the marker the validator requires to be the body's final source content.
 // Kept intentionally simpler than the validator (no fence/blockquote
 // awareness) since these patterns only need to recognize the footer shape
 // contribute-to-eliza/SKILL.md instructs contributors to append, not every

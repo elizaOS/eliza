@@ -1,11 +1,11 @@
 /** Owns connector grants persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountIdFromGrant,

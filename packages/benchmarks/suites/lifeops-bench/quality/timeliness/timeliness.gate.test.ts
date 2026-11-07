@@ -7,20 +7,23 @@
  * at a 5-minute cadence across both 2026 US DST transitions.
  *
  * Scores are compared against committed floors in ../budgets.json; the
- * measured run is written to ../results/timeliness-results.json and the
+ * measured run is written to root test-results/lifeops-timeliness/ and the
  * committed reference lives in ../baseline.json.
  */
 
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
-import { LifeOpsRepository } from "@eliza-repo/plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { processDueScheduledTasks } from "@eliza-repo/plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts";
+import path from "node:path";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "@eliza-repo/plugins/plugin-personal-assistant/test/helpers/runtime.ts";
+import {
+  LifeOpsRepository,
+  processDueScheduledTasks,
+} from "@elizaos/plugin-personal-assistant";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it } from "vitest";
+import { testOutputPath } from "../../../../../scripts/lib/test-output.ts";
 import budgets from "../budgets.json";
 import { TIMELINESS_WINDOWS } from "./corpus.ts";
 import {
@@ -36,8 +39,9 @@ import {
  * plugin seeds for the agent can never starve a corpus fire out of a tick. */
 const TICK_LIMIT = 200;
 
-const RESULTS_PATH = fileURLToPath(
-  new URL("../results/timeliness-results.json", import.meta.url),
+const RESULTS_PATH = testOutputPath(
+  "lifeops-timeliness",
+  "timeliness-results.json",
 );
 
 interface WindowRun {
@@ -150,7 +154,7 @@ describe("lifeops-quality: reminder timeliness gate (#10723)", () => {
   afterEach(() => {
     // Persist whatever was measured, even on assertion failure, so CI
     // artifacts always carry the numbers behind a red gate.
-    fs.mkdirSync(fileURLToPath(new URL("../results/", import.meta.url)), {
+    fs.mkdirSync(path.dirname(RESULTS_PATH), {
       recursive: true,
     });
     fs.writeFileSync(

@@ -3,8 +3,8 @@
  * the shared ScheduledTask runner, provider-event replay, and privacy views.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   resolveKnowledgeGraphService,

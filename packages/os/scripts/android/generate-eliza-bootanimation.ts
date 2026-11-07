@@ -5,7 +5,7 @@
 // daemon plays during boot (kernel logo -> this splash -> Eliza launcher).
 //
 // Frames land under vendor/eliza/bootanimation/{part0,part1}/ and are packed
-// into bootanimation.zip by build-eliza-bootanimation.ts (`make bootanimation`).
+// into bootanimation.zip by build-bootanimation.ts (`make bootanimation`).
 // The rendered frames + zip are gitignored — this regenerates them from the
 // canonical brand SVG on demand, the same way linux renders
 // its branding.
@@ -30,7 +30,6 @@ import { parseArgs } from "node:util";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const osRepoRoot = path.resolve(here, "../..");
 const repoRoot = resolveElizaSourceRoot();
 const reqFromApp = createRequire(
   path.join(repoRoot, "packages/app/package.json"),
@@ -62,8 +61,8 @@ const BOOTANIM_DIR = args["out-dir"]
 const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
 const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
 const rmRecursiveScript = path.resolve(
-  osRepoRoot,
-  "scripts/rm-path-recursive.ts",
+  repoRoot,
+  "packages/scripts/rm-path-recursive.ts",
 );
 
 // Device framebuffer geometry (matches desc.txt); the eliza_cf_*_phone
@@ -180,5 +179,5 @@ console.log(
   `Rendered ${whitelabel ? "white-label" : "elizaOS"} boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
 );
 console.log(
-  `Pack it with: node scripts/android/build-eliza-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
+  `Pack it with: node scripts/android/build-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
 );

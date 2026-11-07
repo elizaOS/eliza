@@ -12,27 +12,37 @@
  * models, database); provider API keys are synced into process.env.
  */
 import type http from "node:http";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
-  type AgentRuntime,
+  type ElizaConfig,
   isElizaSettingsDebugEnabled,
-  logger,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   type ReadJsonBodyOptions,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
-import { reconcileDirectTextModelSettings } from "../runtime/runtime-settings.ts";
+import {
+  clearConfigEnvValue,
+  writeConfigEnvValue,
+} from "../config/env-vars.ts";
+import {
+  agentIdentityName,
+  buildCharacterFromConfig,
+} from "../runtime/build-character-config.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import { buildProductCharacterFromConfig } from "../runtime/prepare-product-character-config.ts";
+import {
+  reconcileConfigEnvSettings,
+  reconcileDirectTextModelSettings,
+} from "../runtime/runtime-settings.ts";
 import {
   hasBlockedObjectKeyDeep,
   MAX_BLOCKED_OBJECT_DEPTH,
@@ -189,6 +199,31 @@ const PROVIDER_ENV_KEYS = [
   "OLLAMA_BASE_URL",
 ] as const;
 
+/**
+ * Read a provider credential from a config record the same way the reload
+ * env-sync below does (`env.vars.*` first, legacy direct `env.*` second). A
+ * non-empty trimmed string counts as present; anything else is absent.
+ */
+function readProviderEnvValue(
+  config: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const envSection = config.env as
+    | (Record<string, unknown> & { vars?: Record<string, unknown> })
+    | undefined;
+  const envVars =
+    envSection?.vars && typeof envSection.vars === "object"
+      ? (envSection.vars as Record<string, unknown>)
+      : undefined;
+  const value =
+    typeof envVars?.[key] === "string"
+      ? (envVars[key] as string)
+      : typeof envSection?.[key] === "string"
+        ? (envSection[key] as string)
+        : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 interface ReloadDiff {
   applied: string[];
   requiresRestart: string[];
@@ -256,24 +291,18 @@ async function applyReloadedConfig(params: {
   const nextRecord = asConfigRecord(next);
 
   // Sync provider API keys into process.env (the runtime reads them at
-  // request time via getSetting → process.env).
-  const envSection = nextRecord.env as
-    | (Record<string, unknown> & { vars?: Record<string, unknown> })
-    | undefined;
-  const envVars =
-    envSection?.vars && typeof envSection.vars === "object"
-      ? (envSection.vars as Record<string, unknown>)
-      : undefined;
+  // request time via getSetting → process.env). Keys removed (or blanked) in
+  // the reloaded config are cleared too, so a deleted credential stops being
+  // served to provider clients — but only when the previous config owned the
+  // live value; an operator-set env var (docker env, shell export) is left
+  // alone.
   for (const key of PROVIDER_ENV_KEYS) {
     if (isBlockedEnvKey(key)) continue;
-    const value =
-      typeof envVars?.[key] === "string"
-        ? (envVars[key] as string)
-        : typeof envSection?.[key] === "string"
-          ? (envSection[key] as string)
-          : undefined;
-    if (typeof value === "string" && value.trim()) {
-      process.env[key] = value.trim();
+    const value = readProviderEnvValue(nextRecord, key);
+    if (value !== undefined) {
+      writeConfigEnvValue(key, value);
+    } else {
+      clearConfigEnvValue(key);
     }
   }
 
@@ -281,7 +310,17 @@ async function applyReloadedConfig(params: {
   // them to the live runtime. This propagates renames, system prompt
   // edits, bio/style updates, and topic/adjective changes.
   if (runtime) {
-    const rebuilt = buildCharacterFromConfig(next);
+    // The live agent keeps its id after a rename; keep the identity name that
+    // id came from instead of the rebuilt one (the new display name).
+    const liveIdentityName = agentIdentityName(runtime.character);
+    const product = getAgentHostBridge().productCharacter;
+    const rebuilt =
+      product &&
+      !process.env.SANDBOX_ROUTE_AGENT_ID?.trim() &&
+      !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
+      !process.env.ELIZA_CHARACTER_PATH?.trim()
+        ? buildProductCharacterFromConfig(next, product)
+        : buildCharacterFromConfig(next);
     const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
       "name",
@@ -302,6 +341,23 @@ async function applyReloadedConfig(params: {
         character[field as string] = value;
       }
     }
+    if (liveIdentityName && liveIdentityName !== rebuilt.name) {
+      runtime.character.settings = {
+        ...runtime.character.settings,
+        identityName: liveIdentityName,
+      };
+      state.agents ??= {};
+      const agentList = state.agents.list ?? [];
+      const primaryAgent = agentList[0] ?? { id: "main", default: true };
+      if (!primaryAgent.identityName) {
+        state.agents.list = [
+          { ...primaryAgent, identityName: liveIdentityName },
+          ...agentList.slice(1),
+        ];
+        saveElizaConfig(state);
+      }
+    }
+    reconcileConfigEnvSettings(runtime, previous, next);
     reconcileDirectTextModelSettings(runtime, previous, next);
   }
 }
@@ -764,6 +820,7 @@ export async function handleConfigRoutes(
       }
     }
     if (runtime) {
+      reconcileConfigEnvSettings(runtime, previousConfig, config);
       reconcileDirectTextModelSettings(runtime, previousConfig, config);
     }
     json(res, redactConfigSecrets(asConfigRecord(config)));

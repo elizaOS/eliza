@@ -19,6 +19,11 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
 import type {
   ActionResult,
   HandlerCallback,
@@ -36,10 +41,6 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
 import {
   buildWideLookupRange,
   resolveCalendarMutationCandidates,
@@ -52,6 +53,7 @@ import type {
   ApprovalRequest,
 } from "../../lifeops/approval-queue.types.js";
 import { getChannelRegistry } from "../../lifeops/channels/index.js";
+import { resolveKnownTimeZone } from "../../lifeops/defaults.js";
 import type { SchedulingMessageDraft } from "../../lifeops/domains/scheduling-service.js";
 import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 import {
@@ -77,6 +79,7 @@ import {
 } from "../../lifeops/sql.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import {
+  addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../../lifeops/time.js";
@@ -171,6 +174,7 @@ type AvailabilityInterval = {
 };
 
 export type CheckAvailabilityParameters = AvailabilityInterval & {
+  timeZone?: string;
   interval?: AvailabilityInterval;
 };
 
@@ -200,17 +204,83 @@ function dayOfWeekInTz(date: Date, timeZone: string): number {
   ).getUTCDay();
 }
 
+type LocalDate = { year: number; month: number; day: number };
+
+function localDayStartMs(date: LocalDate, timeZone: string): number {
+  return buildUtcDateFromLocalParts(timeZone, {
+    ...date,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  }).getTime();
+}
+
+// An all-day event blocks the owner's local days. Google and ICS store its
+// civil dates at UTC midnight with an exclusive end, so the ISO prefix is the
+// date. EventKit sends local midnight of the event's zone (the device zone
+// when the event floats) and an end at 23:59:59 of the last day, so an Apple
+// date is read in that zone, as CalendarService and conflict-detect do.
+function allDayBusyBoundsMs(
+  event: LifeOpsCalendarEvent,
+  timeZone: string,
+): { start: number; end: number } {
+  if (event.provider === "apple_calendar") {
+    const startMs = Date.parse(event.startAt);
+    const endMs = Date.parse(event.endAt);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      return { start: Number.NaN, end: Number.NaN };
+    }
+    const eventZone = event.timezone?.trim() || timeZone;
+    const startDate = getZonedDateParts(new Date(startMs), eventZone);
+    const lastDate = getZonedDateParts(
+      new Date(Math.max(startMs, endMs - 1)),
+      eventZone,
+    );
+    return {
+      start: localDayStartMs(startDate, timeZone),
+      end: localDayStartMs(addDaysToLocalDate(lastDate, 1), timeZone),
+    };
+  }
+  const datePrefix = (iso: string): LocalDate | null => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    return match
+      ? {
+          year: Number(match[1]),
+          month: Number(match[2]),
+          day: Number(match[3]),
+        }
+      : null;
+  };
+  const startDate = datePrefix(event.startAt);
+  const endDate = datePrefix(event.endAt);
+  if (!startDate || !endDate) return { start: Number.NaN, end: Number.NaN };
+  return {
+    start: localDayStartMs(startDate, timeZone),
+    end: localDayStartMs(endDate, timeZone),
+  };
+}
+
 function buildBusyIntervals(
   events: readonly LifeOpsCalendarEvent[],
   travelBufferMinutes: number,
+  timeZone: string,
 ): Array<{ start: number; end: number }> {
   const bufferMs = travelBufferMinutes * MS_PER_MINUTE;
   const intervals = events
-    .filter((e) => e.status !== "cancelled")
-    .map((e) => ({
-      start: Date.parse(e.startAt) - bufferMs,
-      end: Date.parse(e.endAt) + bufferMs,
-    }))
+    // An event shown as "free" (Google/ICS transparency "transparent",
+    // Outlook "free") does not block the owner's time.
+    .filter(
+      (e) =>
+        e.status !== "cancelled" &&
+        e.metadata?.transparency !== "transparent" &&
+        e.metadata?.icsTransparency !== "transparent",
+    )
+    .map((e) => {
+      const bounds = e.isAllDay
+        ? allDayBusyBoundsMs(e, timeZone)
+        : { start: Date.parse(e.startAt), end: Date.parse(e.endAt) };
+      return { start: bounds.start - bufferMs, end: bounds.end + bufferMs };
+    })
     .filter((i) => Number.isFinite(i.start) && Number.isFinite(i.end))
     .sort((a, b) => a.start - b.start);
 
@@ -289,7 +359,7 @@ export function computeProposedSlots(args: {
     events,
   } = args;
   const tz = preferences.timeZone;
-  const busy = buildBusyIntervals(events, preferences.travelBufferMinutes);
+  const busy = buildBusyIntervals(events, preferences.travelBufferMinutes, tz);
 
   const preferredStart = parseTimeOfDayToMinutes(
     preferences.preferredStartLocal,
@@ -298,7 +368,9 @@ export function computeProposedSlots(args: {
 
   const results: ProposedMeetingSlot[] = [];
   const seenDays = new Set<string>();
-  const seenStarts = new Set<number>();
+  // Offered slots are alternatives, so none may overlap another: the second
+  // pass otherwise offered 12:00, 12:15 and 12:30 for one free hour.
+  const chosen: Array<{ start: number; end: number }> = [];
 
   const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
   const cursor =
@@ -327,7 +399,7 @@ export function computeProposedSlots(args: {
         slotEndMin <= preferredEnd;
 
       if (
-        !seenStarts.has(t) &&
+        !overlapsBusy(t, t + durationMs, chosen) &&
         withinPreferred &&
         !overlapsBusy(slotStart.getTime(), slotEnd.getTime(), busy) &&
         !overlapsBlackout(slotStart, slotEnd, tz, preferences.blackoutWindows)
@@ -335,7 +407,7 @@ export function computeProposedSlots(args: {
         const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
         if (!onePerDay || !seenDays.has(dayKey)) {
           seenDays.add(dayKey);
-          seenStarts.add(t);
+          chosen.push({ start: t, end: t + durationMs });
           results.push({
             startAt: slotStart.toISOString(),
             endAt: slotEnd.toISOString(),
@@ -597,22 +669,46 @@ export async function runProposeMeetingTimesHandler(
   const counterparties = params.counterparties ?? [];
   const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
   const requestedDuration = params.duration?.minutes ?? params.durationMinutes;
+  // A supplied value outside its range is refused. Using the default in its
+  // place would answer a different question than the one asked.
+  const outOfRange = (
+    [
+      [
+        "durationMinutes",
+        requestedDuration,
+        CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+        CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+      ],
+      ["slotCount", params.slotCount, 1, 10],
+      ["daysAhead", params.daysAhead, 1, MAX_DAYS_LOOKAHEAD],
+    ] as const
+  )
+    .filter(
+      ([, value, min, max]) =>
+        value != null &&
+        !(typeof value === "number" && value >= min && value <= max),
+    )
+    .map(([field, , min, max]) => `${field} (${min}-${max})`);
+  if (outOfRange.length > 0) {
+    return respond({
+      success: false,
+      scenario: "scheduling_invalid_proposal_arguments",
+      error: `INVALID_ARGUMENTS: Out of range: ${outOfRange.join(", ")}. No calendar read was performed. Correct the arguments from the user request before retrying.`,
+      fallback: `I can't propose times with those values. Out of range: ${outOfRange.join(", ")}.`,
+      context: { outOfRange },
+      data: { error: "INVALID_ARGUMENTS", outOfRange },
+    });
+  }
   let durationMinutes =
-    typeof requestedDuration === "number" &&
-    requestedDuration >= 5 &&
-    requestedDuration <= 480
+    typeof requestedDuration === "number"
       ? Math.floor(requestedDuration)
       : effectivePreferences.defaultDurationMinutes;
   const slotCount =
-    typeof params.slotCount === "number" &&
-    params.slotCount >= 1 &&
-    params.slotCount <= 10
+    typeof params.slotCount === "number"
       ? Math.floor(params.slotCount)
       : DEFAULT_SLOTS_COUNT;
   const daysAhead =
-    typeof params.daysAhead === "number" &&
-    params.daysAhead >= 1 &&
-    params.daysAhead <= MAX_DAYS_LOOKAHEAD
+    typeof params.daysAhead === "number"
       ? Math.floor(params.daysAhead)
       : DEFAULT_DAYS_LOOKAHEAD;
 
@@ -710,10 +806,11 @@ export async function runProposeMeetingTimesHandler(
       durationMinutes =
         (Date.parse(existingEvent.endAt) - Date.parse(existingEvent.startAt)) /
         MS_PER_MINUTE;
+      // Preserve the existing minimum. A move keeps the event's full length;
+      // the maximum for a newly requested slot does not shorten this record.
       if (
         !Number.isFinite(durationMinutes) ||
-        durationMinutes < 5 ||
-        durationMinutes > 480
+        durationMinutes < CALENDAR_NEW_SLOT_DURATION_MINUTES.min
       ) {
         return respond({
           success: false,
@@ -867,8 +964,15 @@ export async function runCheckAvailabilityHandler(
     (supplied.startAt !== undefined ||
       supplied.endAt !== undefined ||
       supplied.durationMinutes !== undefined);
-  const windowStart = parseOptionalIso(params.startAt);
-  const explicitEnd = parseOptionalIso(params.endAt);
+  const preferences = await readLifeOpsMeetingPreferences(runtime);
+  // A start or end without an offset is a local clock in the supplied zone,
+  // or in the owner's meeting-preference zone; never in the server's zone.
+  const localClockTimeZone =
+    typeof supplied.timeZone === "string" && supplied.timeZone.trim().length > 0
+      ? supplied.timeZone.trim()
+      : preferences.timeZone;
+  const windowStart = parseProposalBound(params.startAt, localClockTimeZone);
+  const explicitEnd = parseProposalBound(params.endAt, localClockTimeZone);
   const hasDuration = params.durationMinutes !== undefined;
   const durationMs =
     typeof params.durationMinutes === "number"
@@ -900,7 +1004,6 @@ export async function runCheckAvailabilityHandler(
     });
   }
 
-  const preferences = await readLifeOpsMeetingPreferences(runtime);
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
@@ -979,6 +1082,14 @@ export async function runCheckAvailabilityHandler(
   });
 }
 
+const MEETING_PREFERENCE_SCALAR_FIELDS = [
+  { key: "timeZone", expected: "IANA time zone" },
+  { key: "preferredStartLocal", expected: "HH:MM 24h" },
+  { key: "preferredEndLocal", expected: "HH:MM 24h" },
+  { key: "defaultDurationMinutes", expected: "5-480" },
+  { key: "travelBufferMinutes", expected: "0-240" },
+] as const;
+
 // Dispatched from the CALENDAR umbrella (action=update_preferences).
 // Not a planner-visible Action — no name:, similes:, or registration.
 export async function runUpdateMeetingPreferencesHandler(
@@ -1009,6 +1120,23 @@ export async function runUpdateMeetingPreferencesHandler(
   const params = getParams<Record<string, unknown>>(options);
   const patch: LifeOpsMeetingPreferencesPatch =
     normalizeLifeOpsMeetingPreferencesPatch(params);
+
+  // The patch normalizer drops a scalar it cannot accept. A supplied field
+  // that did not survive means the request is invalid; writing the rest would
+  // report success while losing part of what the owner asked for.
+  const invalidFields = MEETING_PREFERENCE_SCALAR_FIELDS.filter(
+    ({ key }) => params[key] != null && patch[key] === undefined,
+  ).map(({ key, expected }) => `${key} (${expected})`);
+  if (invalidFields.length > 0) {
+    return respond({
+      success: false,
+      scenario: "scheduling_preferences_invalid_fields",
+      error: `INVALID_FIELDS: ${invalidFields.join(", ")}. No preferences were changed. Correct the arguments from the user request before retrying.`,
+      fallback: `I didn't change your meeting preferences. These values are not valid: ${invalidFields.join(", ")}.`,
+      context: { invalidFields },
+      data: { error: "INVALID_FIELDS", invalidFields },
+    });
+  }
 
   if (Object.keys(patch).length === 0) {
     return respond({
@@ -1200,16 +1328,21 @@ async function surfaceSchedulingApproval(
   }
 }
 
-type SchedulingSubaction =
-  | "start"
-  | "propose"
-  | "respond"
-  | "finalize"
-  | "cancel"
-  | "list_active"
-  | "list_proposals";
+export const SCHEDULING_SUBACTIONS = [
+  "start",
+  "propose",
+  "respond",
+  "finalize",
+  "cancel",
+  "list_active",
+  "list_proposals",
+] as const;
+
+type SchedulingSubaction = (typeof SCHEDULING_SUBACTIONS)[number];
 
 export type SchedulingActionParameters = {
+  /** Declared planner selector on PERSONAL_ASSISTANT (action=scheduling). */
+  schedulingOp?: SchedulingSubaction;
   subaction?: SchedulingSubaction;
   intent?: string;
   negotiationId?: string;
@@ -1405,7 +1538,11 @@ export async function runSchedulingNegotiationHandler(
   const messageBody =
     typeof message.content.text === "string" ? message.content.text : "";
   const planIntent = (params.intent ?? messageBody).trim();
-  const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
+  // The promoted PERSONAL_ASSISTANT_SCHEDULING virtual pins `subaction` to
+  // "scheduling", so the planner's operation arrives as `schedulingOp`.
+  const explicitSubaction = normalizeSchedulingSubaction(
+    params.schedulingOp ?? params.subaction,
+  );
   const llmPlan = await resolveSchedulingPlanWithLlm({
     runtime,
     message,
@@ -1467,6 +1604,23 @@ export async function runSchedulingNegotiationHandler(
           },
         });
       }
+      // The negotiation zone is the zone offset-less proposal clocks are read
+      // in, so a name that identifies no zone is refused instead of stored.
+      // Without one, the owner's meeting-preference zone applies, as it does
+      // for slot proposals and availability checks. The stored preference
+      // passes the same check, because its writer accepts any short string.
+      const requestedTimezone =
+        params.timezone ??
+        (await readLifeOpsMeetingPreferences(runtime)).timeZone;
+      const timezone = resolveKnownTimeZone(requestedTimezone);
+      if (timezone === null) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_start_unknown_timezone",
+          fallback: `I don't recognize the time zone "${requestedTimezone}". Give an IANA time zone such as America/New_York.`,
+          data: { error: "UNKNOWN_TIMEZONE", timezone: requestedTimezone },
+        });
+      }
       // Contact graph stores do not accept the PA transaction handle. Resolve
       // the delivery target before opening the transaction so PGlite does not
       // deadlock on a second connection while the negotiation write is open.
@@ -1486,7 +1640,7 @@ export async function runSchedulingNegotiationHandler(
             subject,
             relationshipId: params.relationshipId ?? null,
             durationMinutes: params.durationMinutes,
-            timezone: params.timezone,
+            timezone,
             tx,
           });
           const draft = await service.draftOpeningMessage(neg, counterparty);
@@ -1551,10 +1705,30 @@ export async function runSchedulingNegotiationHandler(
       }
       const proposedBy = params.proposedBy ?? "agent";
       const negotiationId = params.negotiationId;
-      const startAt = params.startAt;
-      const endAt = params.endAt;
       const negotiationBeforeMutation =
         await service.getNegotiation(negotiationId);
+      // An offset-less clock is a local time in the negotiation's zone, never
+      // the server's. A missing negotiation is reported by proposeTime.
+      const proposedStart = negotiationBeforeMutation
+        ? parseProposalBound(params.startAt, negotiationBeforeMutation.timezone)
+        : undefined;
+      const proposedEnd = negotiationBeforeMutation
+        ? parseProposalBound(params.endAt, negotiationBeforeMutation.timezone)
+        : undefined;
+      if (proposedStart === null || proposedEnd === null) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_propose_invalid_time",
+          fallback: `I could not read the proposed ${proposedStart === null ? "start" : "end"} time. Give it as ISO-8601, either with a UTC offset or as a local time in ${negotiationBeforeMutation?.timezone}.`,
+          data: {
+            error: "INVALID_PROPOSAL_TIME",
+            field: proposedStart === null ? "startAt" : "endAt",
+            timezone: negotiationBeforeMutation?.timezone,
+          },
+        });
+      }
+      const startAt = proposedStart?.toISOString() ?? params.startAt;
+      const endAt = proposedEnd?.toISOString() ?? params.endAt;
       const counterparty = negotiationBeforeMutation
         ? await service.resolveCounterpartyTarget(negotiationBeforeMutation)
         : null;

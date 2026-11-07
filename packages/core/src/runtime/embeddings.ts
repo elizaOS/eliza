@@ -4,6 +4,7 @@ import {
 	getEmbeddingVectorSpace,
 } from "../embedding-vector-space";
 import { ElizaError } from "../errors";
+import type { IDatabaseAdapter } from "../types/database.js";
 import { EventType } from "../types/events.js";
 import type { Memory } from "../types/memory.js";
 import { ModelType, type ModelTypeName } from "../types/model.js";
@@ -12,7 +13,7 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
-} from "./model-dispatch/policy.js";
+} from "./model-policy.js";
 
 /** One failed TEXT_EMBEDDING dimension-probe attempt, kept for diagnostics. */
 export interface EmbeddingProbeAttempt {
@@ -30,13 +31,7 @@ export const LOCAL_EMBEDDING_PROVIDERS = new Set([
 	"eliza-aosp-llama",
 ]);
 
-/**
- * Per-agent record of which embedder produced the vectors in the store. Same
- * width does not mean same space (gte-small and bge-small are both 384-dim and
- * incompatible), so the runtime refuses to pin a different model at the same
- * width until the operator performs a scoped backup + fresh-index cutover and
- * acknowledges the new model with ELIZA_EMBEDDING_STORE_ACCEPT_MODEL.
- */
+/** Pins the embedder identity for each agent. Equal vector dimensions do not imply compatible spaces; changing models requires an explicitly acknowledged fresh index. */
 export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity";
 export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING =
 	"ELIZA_EMBEDDING_STORE_ACCEPT_MODEL";
@@ -90,15 +85,7 @@ export class RuntimeEmbeddings {
 			: null;
 	}
 
-	/**
-	 * Refuse to mix embedding spaces. Records which embedder owns this agent's
-	 * vectors on the first pin (legacy stores adopt the active embedder with a
-	 * warning because their model is unknowable), follows a width change (the
-	 * stale-dimension reconcile owns those vectors), tolerates a provider swap
-	 * that serves the same model, and fails clearly when a different model is
-	 * pinned at the same width without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL naming
-	 * that model. Returns the active model label for the pin log.
-	 */
+	/** Pins model identity, warns when the store has no identity, and rejects same-width model changes without ELIZA_EMBEDDING_STORE_ACCEPT_MODEL. Dimension changes use the stale-vector reconciliation path. */
 	private async guardEmbeddingStoreIdentity(
 		registration: ResolvedModelRegistration,
 		dimension: number,
@@ -194,9 +181,11 @@ export class RuntimeEmbeddings {
 				? embeddingProviderOutput
 				: [embeddingProviderOutput];
 		const targets = batch && Array.isArray(result) ? result : [result];
-		const namedSpace = sources
-			.map(getEmbeddingVectorSpace)
-			.find((space) => space !== undefined);
+		let namedSpace: string | undefined;
+		for (const source of sources) {
+			namedSpace = getEmbeddingVectorSpace(source);
+			if (namedSpace !== undefined) break;
+		}
 		// A named vector cannot escape before its adapter representation commits.
 		// Recall may precede the host's deferred probe, so initialize on first use
 		// as well as sharing an in-flight probe. The null probe must never await
@@ -207,8 +196,7 @@ export class RuntimeEmbeddings {
 			(params !== null || batch)
 		) {
 			signal?.throwIfAborted();
-			const initialization =
-				this.embeddingInitialization ?? this.ensureEmbeddingDimension();
+			const initialization = this.ensureEmbeddingDimension();
 			if (!signal) await initialization;
 			else {
 				signal.throwIfAborted();
@@ -256,7 +244,7 @@ export class RuntimeEmbeddings {
 					"Embedding provider returned a different or unidentified representation",
 					{
 						code: "EMBEDDING_SPACE_MISMATCH",
-						context: { expected, provider: provider },
+						context: { expected, provider },
 					},
 				);
 			}
@@ -276,7 +264,7 @@ export class RuntimeEmbeddings {
 	 * later embedding calls without an explicit provider are pinned to it —
 	 * letting a different registration serve an embedding call can emit a
 	 * different-width vector that the adapter silently drops on dimension
-	 * mismatch (#8769). Re-set on every successful `ensureEmbeddingDimension`.
+	 * mismatch. Re-set on every successful `ensureEmbeddingDimension`.
 	 */
 	private pinnedEmbeddingProvider: string | undefined;
 
@@ -461,17 +449,18 @@ export class RuntimeEmbeddings {
 				if (!(error instanceof NoModelProviderConfiguredError)) {
 					allFailuresBenign = false;
 				}
+				const message = error instanceof Error ? error.message : String(error);
 				attempts.push({
 					provider: registration.provider,
 					modelKey: registration.modelKey,
-					error: error instanceof Error ? error.message : String(error),
+					error: message,
 				});
 				this.runtime.logger.warn(
 					{
 						src: "agent",
 						agentId: this.runtime.agentId,
 						provider: registration.provider,
-						error: error instanceof Error ? error.message : String(error),
+						error: message,
 					},
 					localOnly
 						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
@@ -625,7 +614,7 @@ export class RuntimeEmbeddings {
 			// Every TEXT_EMBEDDING provider failed the dimension probe, so the
 			// vector column was never sized for this runtime. Skip generation
 			// explicitly (warn once) instead of producing a vector the SQL
-			// adapter would silently drop on dimension mismatch (#8769).
+			// adapter would silently drop on dimension mismatch.
 			this.warnEmbeddingGenerationSkipped();
 			return memory;
 		}
@@ -659,6 +648,19 @@ export class RuntimeEmbeddings {
 	 * once; a chunk failure is reported and the rest still proceed.
 	 */
 	async reembedMemoriesByIds(memoryIds: UUID[]): Promise<void> {
+		// The embedding service registers the request handler when it starts. At
+		// boot that is after this re-embed is scheduled, and a request sent with
+		// no handler is dropped, so the reclaimed memory would keep no vector.
+		try {
+			await this.runtime.getServiceLoadPromise("embedding-generation");
+		} catch (error) {
+			// error-policy:J7 without the embedding service nothing can re-embed; report the memories left without vectors.
+			this.runtime.reportError("AgentRuntime.reembedMemoriesByIds", error, {
+				agentId: this.runtime.agentId,
+				count: memoryIds.length,
+			});
+			return;
+		}
 		const CHUNK = 200;
 		for (let i = 0; i < memoryIds.length; i += CHUNK) {
 			try {
@@ -683,9 +685,8 @@ export class RuntimeEmbeddings {
 	 */
 	async queueEmbeddingGeneration(
 		memory: Memory,
-		priority?: "high" | "normal" | "low",
+		priority: "high" | "normal" | "low" = "normal",
 	): Promise<void> {
-		priority = priority || "normal";
 		if (
 			!memory ||
 			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
@@ -738,14 +739,9 @@ export class RuntimeEmbeddings {
 		return this.runtime.adapter.clearEmbeddingsOutsideActiveDimension();
 	}
 
-	async getCachedEmbeddings(params: {
-		query_table_name: string;
-		query_threshold: number;
-		query_input: string;
-		query_field_name: string;
-		query_field_sub_name: string;
-		query_match_count: number;
-	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
+	getCachedEmbeddings(
+		params: Parameters<IDatabaseAdapter["getCachedEmbeddings"]>[0],
+	): ReturnType<IDatabaseAdapter["getCachedEmbeddings"]> {
 		return this.runtime.adapter.getCachedEmbeddings(params);
 	}
 }

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 /**
  * Turn-scoped AbortController registry.
@@ -6,11 +7,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * Every inbound message handler invocation runs inside a turn controller.
  * The controller's signal threads through:
  *
- *   - The Stage-1 response-handler LLM call
- *   - Response-handler field evaluators
- *   - The planner loop and per-step LLM calls
- *   - Action handlers
- *   - Sub-process / fetch / sub-agent spawns
+ * - The Stage-1 response-handler LLM call
+ * - Response-handler field evaluators
+ * - The planner loop and per-step LLM calls
+ * - Action handlers
+ * - Sub-process / fetch / sub-agent spawns
  *
  * When the user (or a sibling field-evaluator like threadOps' abort op) wants
  * to abort the turn, they call `registry.abortTurn(roomId, reason)`. This
@@ -19,28 +20,21 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *
  * Synchronous vs background:
  *
- *   - Sync sub-tasks share the parent's signal directly.
- *   - Background sub-agents (Claude Code / Codex / Pi spawned via plugin-
- *     agent-orchestrator) get their own AbortController but register a
- *     parent-signal listener that aborts the child when the parent fires.
- *     This is set up at spawn time by the orchestrator, NOT here.
+ * - Sync sub-tasks share the parent's signal directly.
+ * - Background sub-agents (Claude Code / Codex / Pi spawned via plugin-
+ * agent-orchestrator) get their own AbortController but register a
+ * parent-signal listener that aborts the child when the parent fires.
+ * This is set up at spawn time by the orchestrator, NOT here.
  *
  * Crash safety:
  *
- *   - Controllers live in memory. A process crash loses them — that's fine
- *     because there's no in-flight turn anymore.
- *   - The registry never holds stale controllers. `runWith` always unregisters
- *     on exit (success, error, or abort).
+ * - Controllers live in memory. A process crash loses them — that's fine
+ * because there's no in-flight turn anymore.
+ * - The registry never holds stale controllers. `runWith` always unregisters
+ * on exit (success, error, or abort).
  */
 
-export class TurnAbortedError extends Error {
-	readonly code = "TURN_ABORTED";
-	readonly reason: string;
-	constructor(reason: string) {
-		super(`Turn aborted: ${reason}`);
-		this.reason = reason;
-	}
-}
+export { TurnAbortedError };
 
 interface ActiveTurn {
 	roomId: string;
@@ -54,6 +48,7 @@ const currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
 export class TurnControllerRegistry {
 	private active = new Map<string, ActiveTurn[]>();
 	private listeners = new Set<(event: TurnEvent) => void>();
+	private closedReason: string | null = null;
 
 	/**
 	 * Run `fn` inside a turn-scoped AbortController. The signal is passed to
@@ -74,6 +69,10 @@ export class TurnControllerRegistry {
 			controller,
 			startedAt: Date.now(),
 		};
+		if (this.closedReason !== null) {
+			turn.reason = this.closedReason;
+			controller.abort(new TurnAbortedError(this.closedReason));
+		}
 		const turns = this.active.get(roomId) ?? [];
 		turns.push(turn);
 		this.active.set(roomId, turns);
@@ -108,14 +107,8 @@ export class TurnControllerRegistry {
 			}
 			throw error;
 		} finally {
-			const remaining = (this.active.get(roomId) ?? []).filter(
-				(t) => t !== turn,
-			);
-			if (remaining.length > 0) {
-				this.active.set(roomId, remaining);
-			} else {
-				this.active.delete(roomId);
-			}
+			turns.splice(turns.indexOf(turn), 1);
+			if (turns.length === 0) this.active.delete(roomId);
 		}
 	}
 
@@ -171,6 +164,16 @@ export class TurnControllerRegistry {
 			}
 		}
 		return aborted;
+	}
+
+	/**
+	 * Abort every active turn and every turn that starts later. Runtime stop
+	 * uses it: a turn already holding or queued for its room enters runWith
+	 * after the stop and must not run unaborted.
+	 */
+	closeTurns(reason: string): string[] {
+		this.closedReason = reason;
+		return this.abortAllTurns(reason);
 	}
 
 	hasActiveTurn(roomId: string): boolean {
@@ -241,35 +244,3 @@ export type TurnEvent =
 			reason: string;
 			durationMs: number;
 	  };
-
-/**
- * Minimum runtime surface needed to abort in-flight inference. We keep this
- * structural so non-`AgentRuntime` test doubles can satisfy the contract
- * without dragging in the full interface.
- */
-export interface AbortableInflightRuntime {
-	turnControllers: Pick<
-		TurnControllerRegistry,
-		"abortAllTurns" | "activeRoomIds"
-	>;
-}
-
-/**
- * Abort every in-flight inference turn on `runtime`. Used by lifecycle
- * handlers — Wave 3C's `APP_PAUSE_EVENT` listener calls this so the OS
- * pause budget doesn't kill the process while a slow phone-CPU decode is
- * still spinning.
- *
- * Returns the list of room ids that were aborted. Already-aborted or
- * idle turns are skipped, so an empty array means "nothing was running".
- *
- * `reason` is passed through to the `TurnAbortedError` raised inside each
- * in-flight `useModel` / handler path; pick a stable string (e.g. `"app-pause"`,
- * `"container-shutdown"`) so telemetry can group them.
- */
-export function abortInflightInference(
-	runtime: AbortableInflightRuntime,
-	reason = "abort-inflight-inference",
-): string[] {
-	return runtime.turnControllers.abortAllTurns(reason);
-}

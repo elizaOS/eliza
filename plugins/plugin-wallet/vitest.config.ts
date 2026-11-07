@@ -18,13 +18,7 @@ export default defineConfig({
   // automatic runtime so the merged UI-suite `.tsx` files transform correctly.
   esbuild: { jsx: "automatic" },
   resolve: {
-    // Anchored-regex entries:
-    // force a single React/ReactDOM copy across workspace packages, and
-    // collapse `@elizaos/ui` plus the mocked subpaths onto the ui package's
-    // SOURCE entry so the suite runs before workspace build artifacts exist.
-    // The wallet gui test fully `vi.mock`s `@elizaos/ui`, so the source file is
-    // only resolved (to key the mock), never loaded. Anchors keep unlisted
-    // subpaths (e.g. `@elizaos/ui/spatial`) resolving through package exports.
+    // Use source for the single public UI entry and share one React instance.
     alias: [
       {
         find: /^react$/,
@@ -41,10 +35,6 @@ export default defineConfig({
       {
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
-      },
-      {
-        find: /^@elizaos\/ui\/(agent-surface|api|bridge|components(?:\/.*)?|hooks|layouts|state|utils)$/,
-        replacement: uiSource,
       },
       { find: /^@elizaos\/ui$/, replacement: uiSource },
       // plugin-health publishes no matching subpath export; redirect to source.

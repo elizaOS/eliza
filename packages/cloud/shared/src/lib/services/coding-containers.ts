@@ -13,7 +13,7 @@ export {
   type SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerRequestSchema,
   type SyncCloudCodingContainerResponse,
-} from "@elizaos/core/contracts/cloud-coding-containers";
+} from "@elizaos/contracts";
 
 import {
   type CloudCodingContainerSession,
@@ -24,7 +24,7 @@ import {
   type PromoteVfsToCloudContainerRequest,
   type RequestCodingAgentContainerRequest,
   type SyncCloudCodingContainerRequest,
-} from "@elizaos/core/contracts/cloud-coding-containers";
+} from "@elizaos/contracts";
 import { containersEnv } from "../config/containers-env";
 import { describeImageReference } from "./containers/image-rollout-status";
 export interface CodingContainerCreatePayload {

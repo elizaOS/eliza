@@ -350,6 +350,8 @@ export interface SetOfMarksResult {
   readonly marks: ReadonlyArray<SetOfMarksMark>;
   /** Base64 PNG of the numbered overlay (present only when requested). */
   readonly overlayPngBase64?: string;
+  /** Why the OCR run failed; the marks then hold icons only. */
+  readonly ocrError?: string;
 }
 
 export interface SetOfMarksInput {

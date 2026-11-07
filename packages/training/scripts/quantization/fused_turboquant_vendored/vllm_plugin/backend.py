@@ -27,7 +27,7 @@ from typing import Any, List, Optional, Tuple, Type
 
 import torch
 
-from quantization.fused_turboquant_vendored.vllm_plugin.cache_ops import (
+from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.cache_ops import (
     compressed_copy_blocks,
     compressed_swap_blocks,
     compute_compressed_elem_size,
@@ -68,22 +68,22 @@ class FusedTurboQuantBackend(_AttentionBackendBase):
 
     @staticmethod
     def get_impl_cls() -> Type:
-        from quantization.fused_turboquant_vendored.vllm_plugin.attention_impl import FusedTurboQuantImpl
+        from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.attention_impl import FusedTurboQuantImpl
         return FusedTurboQuantImpl
 
     @staticmethod
     def get_metadata_cls() -> Type:
-        from quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_metadata_cls
+        from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_metadata_cls
         return get_metadata_cls()
 
     @staticmethod
     def get_builder_cls() -> Optional[Type]:
-        from quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_builder_cls
+        from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_builder_cls
         return get_builder_cls()
 
     @staticmethod
     def get_state_cls() -> Type:
-        from quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_state_cls
+        from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.metadata import get_state_cls
         cls = get_state_cls()
         if cls is not None:
             return cls

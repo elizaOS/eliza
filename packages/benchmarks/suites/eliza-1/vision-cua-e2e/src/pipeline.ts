@@ -1,3 +1,4 @@
+import { testOutputPath } from "../../../../../scripts/lib/test-output.ts";
 /**
  * eliza-1 vision + CUA E2E pipeline.
  *
@@ -20,8 +21,7 @@
  * The pipeline intentionally consumes plugin-vision and plugin-computeruse
  * through public interfaces only:
  *   - Capture: `captureAllDisplays()` (plugin-computeruse).
- *   - Tile:    `tileScreenshot()` (plugin-vision; mirrored locally — see
- *              `./screen-tiler.ts` for why).
+ *   - Tile:    `tileScreenshot()` from the plugin-vision public API.
  *   - OCR:     `OcrWithCoordsService.describe()` (plugin-vision).
  *   - VLM:     `runtime.useModel(IMAGE_DESCRIPTION, …)` (eliza-1 plugin
  *              registers this slot).
@@ -30,7 +30,11 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  reconstructAbsoluteCoords,
+  type ScreenTile,
+  tileScreenshot,
+} from "@elizaos/plugin-vision";
 import { type FixtureId, loadFixture } from "./fixtures.ts";
 import { captureRealDisplays } from "./real-capture.ts";
 import {
@@ -41,11 +45,6 @@ import {
 import { discoverOcrProvider, type RealOcrProvider } from "./real-ocr.ts";
 import { discoverRuntimeAdapter } from "./real-runtime.ts";
 import { RealVlm } from "./real-vlm.ts";
-import {
-  reconstructAbsoluteCoords,
-  type ScreenTile,
-  tileScreenshot,
-} from "./screen-tiler.ts";
 import { StubDriver } from "./stubs/stub-driver.ts";
 import { StubOcrWithCoords } from "./stubs/stub-ocr.ts";
 import { StubVlm } from "./stubs/stub-vlm.ts";
@@ -60,8 +59,7 @@ import type {
   StageRecord,
 } from "./types.ts";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const REPORT_DIR = join(HERE, "..", "reports");
+const REPORT_DIR = testOutputPath("vision-cua-e2e");
 
 export interface RunPipelineOptions {
   readonly fixtureId: FixtureId;
@@ -69,7 +67,7 @@ export interface RunPipelineOptions {
   readonly groundingTarget?: string;
   /** When true, write the trace to `reports/`. Default true. */
   readonly writeReport?: boolean;
-  /** Override the report directory. Default: `<package>/reports`. */
+  /** Override the report directory. Default: repository-root `test-results/vision-cua-e2e`. */
   readonly reportDir?: string;
   /** Override the run id (default: timestamp). */
   readonly runId?: string;
@@ -82,7 +80,7 @@ export interface RunRealPipelineOptions {
   readonly groundingTarget?: string;
   /** Persist trace to `reports/`. Default true. */
   readonly writeReport?: boolean;
-  /** Override the report directory. Default: `<package>/reports`. */
+  /** Override the report directory. Default: repository-root `test-results/vision-cua-e2e`. */
   readonly reportDir?: string;
   /** Override the run id (default: timestamp). */
   readonly runId?: string;

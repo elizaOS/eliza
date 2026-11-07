@@ -1,25 +1,6 @@
 /**
- * Audio PII redaction — re-transcribe verifier contract (#14807).
- *
- * Deliberately SEPARATE from the span producer (`audio-redaction.ts`): the
- * verifier must be able to run on a DIFFERENT ASR backend than the one that
- * produced the word spans, so a model that missed a PII token in span
- * production cannot "verify" the redacted audio with the same blind spot
- * (acceptance note on #14807). The provider contract is intentionally
- * minimal — normalized transcript text in, no timestamps required — so
- * self-hosted OpenAI-compatible STT endpoints (faster-whisper, FunASR,
- * SenseVoice) plug in as independent verifiers next to the local
- * `ModelType.TRANSCRIPTION` handler.
- *
- * Judgment semantics (pure, unit-testable here):
- *  - **PII absence** is separator-insensitive containment over normalized
- *    text (never transcript equality — Whisper-family models hallucinate
- *    filler over silence, and that is fine as long as no PII token surfaces).
- *  - **Sentinel presence** guards against over-mute: known non-PII words from
- *    the original must still be heard.
- *  - **No verifier ⇒ typed failure.** An unreachable/unregistered ASR makes
- *    the verify step FAIL ({@link AudioRedactionVerifyUnavailableError}),
- *    never a vacuous pass; a transcriber that throws mid-run fails the run.
+ * Verifies audio redaction by retranscribing with an independently selected ASR provider, so
+ * span-production misses do not automatically pass verification.
  */
 
 import { normalizeSpokenText } from "./audio-redaction.js";
@@ -99,7 +80,10 @@ export function findResidualPii(
 	transcript: string,
 	piiTexts: readonly string[],
 ): string[] {
-	const haystack = normalizeSpokenText(transcript);
+	return residualPii(normalizeSpokenText(transcript), piiTexts);
+}
+
+function residualPii(haystack: string, piiTexts: readonly string[]): string[] {
 	const found: string[] = [];
 	for (const pii of piiTexts) {
 		const needle = normalizeSpokenText(pii);
@@ -113,7 +97,13 @@ export function findMissingSentinels(
 	transcript: string,
 	sentinelTexts: readonly string[],
 ): string[] {
-	const haystack = normalizeSpokenText(transcript);
+	return missingSentinels(normalizeSpokenText(transcript), sentinelTexts);
+}
+
+function missingSentinels(
+	haystack: string,
+	sentinelTexts: readonly string[],
+): string[] {
 	const missing: string[] = [];
 	for (const sentinel of sentinelTexts) {
 		const needle = normalizeSpokenText(sentinel);
@@ -131,15 +121,26 @@ export function judgeRedactedTranscript(
 	expectation: RedactionVerifyExpectation,
 ): RedactionVerifierFinding {
 	assertVerifyExpectation(expectation);
-	if (normalizeSpokenText(transcript).length === 0) {
+	const haystack = normalizeSpokenText(transcript);
+	if (haystack.length === 0) {
 		throw new ElizaError(
 			"audio redaction verifier returned an empty transcript",
 			{ code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
 		);
 	}
-	const piiFound = findResidualPii(transcript, expectation.piiTexts);
-	const sentinelsMissing = findMissingSentinels(
-		transcript,
+	return judge(verifierId, transcript, haystack, expectation);
+}
+
+/** Judgment over an already-validated expectation and non-empty normalized transcript. */
+function judge(
+	verifierId: string,
+	transcript: string,
+	haystack: string,
+	expectation: RedactionVerifyExpectation,
+): RedactionVerifierFinding {
+	const piiFound = residualPii(haystack, expectation.piiTexts);
+	const sentinelsMissing = missingSentinels(
+		haystack,
 		expectation.sentinelTexts ?? [],
 	);
 	return {
@@ -172,18 +173,18 @@ export async function verifyAudioRedaction(
 	const findings: RedactionVerifierFinding[] = [];
 	for (const transcriber of transcribers) {
 		const transcript = await transcriber.transcribe(input);
-		if (
-			!transcript ||
-			typeof transcript.text !== "string" ||
-			normalizeSpokenText(transcript.text).length === 0
-		) {
+		const haystack =
+			typeof transcript?.text === "string"
+				? normalizeSpokenText(transcript.text)
+				: "";
+		if (haystack.length === 0) {
 			throw new ElizaError(
 				`audio redaction verifier ${transcriber.id} returned no usable transcript text`,
 				{ code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT" },
 			);
 		}
 		findings.push(
-			judgeRedactedTranscript(transcriber.id, transcript.text, expectation),
+			judge(transcriber.id, transcript.text, haystack, expectation),
 		);
 	}
 	return { ok: findings.every((finding) => finding.ok), findings };

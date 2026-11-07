@@ -1,6 +1,6 @@
 /** Storybook states for the in-chat capability setup handoff. */
 
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { userEvent } from "storybook/test";
 import { assert } from "../../storybook/home-widget-decorator";

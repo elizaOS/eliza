@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseFastbootInfoArtifacts } from "./flash-metadata.ts";
 import { syncDirectoryTree, withDeviceInstallLock } from "./install-lock.ts";
 import { readHealthToken, verifyPostBoot } from "./post-boot.ts";
@@ -694,10 +693,7 @@ export function main(argv = process.argv.slice(2)) {
     },
   );
 }
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (import.meta.main) {
   try {
     main();
   } catch (error) {

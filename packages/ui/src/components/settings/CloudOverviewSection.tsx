@@ -17,8 +17,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button";
@@ -203,11 +203,7 @@ export function CloudOverviewSection() {
           </Button>
         }
       >
-        {/* Account state only. This row used to read "Cloud is connected" /
-            "Local mode is active", which conflated three separate facts — the
-            account session, where the agent process runs, and which models
-            answer chat. Runtime and inference live in Models & Providers,
-            where `resolveServingAxes` states both axes (#20045 follow-up). */}
+        {/* Account state only; Models & Providers shows runtime and inference. */}
         <SettingsRow
           icon={Rocket}
           label={

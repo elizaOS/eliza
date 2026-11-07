@@ -17,7 +17,7 @@ so the only honest delta in the report is the patch producer.
 
 Usage::
 
-    python -m benchmarks.swe_bench.harness.comparison --n 2
+    python -m benchmarks.suites.swe_bench.harness.comparison --n 2
 
 If ``opencode`` is not on ``PATH`` the Path B record for each instance
 is marked ``status="skipped_opencode_missing"`` and the run continues.
@@ -362,7 +362,7 @@ async def _run(args: argparse.Namespace) -> int:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        prog="benchmarks.swe_bench.harness.comparison",
+        prog="benchmarks.suites.swe_bench.harness.comparison",
         description="Head-to-head: elizaOS internal agent vs opencode on SWE-bench Lite.",
     )
     p.add_argument("--n", type=int, default=2, help="Number of instances to run (default: 2)")

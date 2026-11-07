@@ -25,7 +25,7 @@ const PATHS = [
   /(^|\/)(contracts?|migrations)(\/|$)/i,
 ];
 const REQUIRED_CHECKS = ["All Tests Passed"];
-const REQUIRED_WORKFLOW_PATHS = [".github/workflows/pr-static-smoke.yml"];
+const REQUIRED_WORKFLOW_PATHS = [".github/workflows/pr-validation.yml"];
 const SUCCESS = new Set(["success"]);
 const TERMINAL = new Set([
   "success",

@@ -44,6 +44,8 @@
       ],
       "inputs": [
         "packages/scripts/**",
+        ".gitleaks.toml",
+        ".gitleaksignore",
         "*.md",
         "**/*.md",
         "packages/scripts/audit-*.ts",
@@ -58,16 +60,6 @@
       "workflow": ".github/workflows/cloud-tests.yml",
       "workspacePatterns": ["packages/cloud/**", "plugins/plugin-elizacloud"],
       "inputs": ["packages/scripts/cloud/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "platform-smoke",
-      "workflow": ".github/workflows/platform-smoke.yml",
-      "workspacePatterns": ["packages/core"],
-      "inputs": [
-        "packages/scripts/test-cloud-run-watchdog.self-test.ts",
-        ".github/ci-windows-command-inventory.json"
-      ],
       "dependsOn": ["canonical"]
     },
     {

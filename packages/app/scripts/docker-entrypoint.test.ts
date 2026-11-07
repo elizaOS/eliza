@@ -1,4 +1,3 @@
-/** Exercises docker entrypoint behavior with deterministic app test fixtures. */
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

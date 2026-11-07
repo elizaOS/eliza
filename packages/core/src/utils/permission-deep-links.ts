@@ -12,7 +12,7 @@
  * surface advertises the limitation up-front.
  */
 
-import type { PermissionId } from "../contracts/permissions.js";
+import type { PermissionId } from "../types/permissions.js";
 
 const ROOT_PRIVACY =
 	"x-apple.systempreferences:com.apple.preference.security?Privacy";
@@ -61,15 +61,9 @@ export function getMacPermissionDeepLink(id: PermissionId): string {
 type Platform = "darwin" | "win32" | "linux" | "unknown";
 
 function detectPlatform(): Platform {
-	if (
-		typeof globalThis !== "undefined" &&
-		typeof (globalThis as { process?: { platform?: string } }).process
-			?.platform === "string"
-	) {
-		const p = (globalThis as { process: { platform: string } }).process
-			.platform;
-		if (p === "darwin" || p === "win32" || p === "linux") return p;
-	}
+	const p = (globalThis as { process?: { platform?: unknown } }).process
+		?.platform;
+	if (p === "darwin" || p === "win32" || p === "linux") return p;
 	if (
 		typeof navigator !== "undefined" &&
 		typeof navigator.userAgent === "string"
@@ -86,7 +80,7 @@ export interface OpenPermissionSettingsDeps {
 	/**
 	 * Optional opener. Injected for tests; defaults to `window.open` in the
 	 * browser/electron renderer. On Node-only contexts the caller must inject
-	 * something (e.g. `child_process.exec("open ...")`).
+	 * something (e.g. `child_process.exec("open...")`).
 	 */
 	open?: (url: string) => void | Promise<void>;
 	/** Override platform detection (tests). */

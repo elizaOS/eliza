@@ -27,7 +27,7 @@ const cursorSchema = z
         .object({
           kind: z.literal("usage"),
           reservationId: z.string().uuid(),
-          source: z.enum(["trial_claim", "paid_invoice"]),
+          source: z.enum(["trial_claim", "paid_invoice", "pilot"]),
         })
         .strict(),
       z
@@ -185,9 +185,11 @@ export class GenericBillingRecordsService {
     const page = rows.slice(0, pageSize);
     const items = page.map((row): AppBillingUsage => {
       if (row.occurredAt === null) appBillingConflict("Finalized app usage has no settlement time");
+      if (row.source === "promo_grant")
+        appBillingConflict("App usage cannot be funded by a subscription grant");
       return {
         operationId: row.operationId,
-        fundingSource: row.source === "trial_claim" ? "trial" : "paid_invoice",
+        fundingSource: row.source === "trial_claim" ? "trial" : row.source,
         amountUsd: row.amountUsd,
         occurredAt: row.occurredAt.toISOString(),
       };
@@ -200,7 +202,11 @@ export class GenericBillingRecordsService {
           ? cursor(identity, {
               kind: "usage",
               reservationId: last.reservationId,
-              source: last.source,
+              // App-scoped buckets are never subscription-grant buckets (CHECK constraint).
+              source:
+                last.source === "promo_grant"
+                  ? appBillingConflict("App usage cannot be funded by a subscription grant")
+                  : last.source,
             })
           : null,
     };

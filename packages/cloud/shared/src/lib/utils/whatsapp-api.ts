@@ -51,10 +51,19 @@ export interface WhatsAppIncomingMessage {
   from: string; // WhatsApp ID (digits only, e.g. "14245074963")
   timestamp: string;
   type: string;
+  /** Text body, or the caption of a photo, video or document. */
   text?: string;
+  /** Kind of media the message carries, when it is not a text message. */
+  mediaType?: WhatsAppMediaType;
+  /** File name of a document. */
+  mediaFilename?: string;
   profileName?: string;
   phoneNumberId: string; // The business phone number ID that received the message
 }
+
+export type WhatsAppMediaType = "image" | "video" | "audio" | "document" | "sticker";
+
+const WHATSAPP_MEDIA_TYPES = new Set<string>(["image", "video", "audio", "document", "sticker"]);
 
 // ============================================================================
 // Webhook Payload Schemas (Zod)
@@ -74,6 +83,19 @@ const WhatsAppWebhookMessageSchema = z.object({
       caption: z.string().optional(),
     })
     .optional(),
+  video: z
+    .object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional() })
+    .optional(),
+  document: z
+    .object({
+      id: z.string(),
+      mime_type: z.string().optional(),
+      caption: z.string().optional(),
+      filename: z.string().optional(),
+    })
+    .optional(),
+  audio: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
+  sticker: z.object({ id: z.string(), mime_type: z.string().optional() }).optional(),
 });
 
 const WhatsAppWebhookContactSchema = z.object({
@@ -194,12 +216,17 @@ export function extractWhatsAppMessages(
       }
 
       for (const msg of value.messages) {
+        const caption = msg.image?.caption ?? msg.video?.caption ?? msg.document?.caption;
         messages.push({
           messageId: msg.id,
           from: msg.from,
           timestamp: msg.timestamp,
           type: msg.type,
-          text: msg.text?.body,
+          text: msg.text?.body ?? caption,
+          ...(WHATSAPP_MEDIA_TYPES.has(msg.type)
+            ? { mediaType: msg.type as WhatsAppMediaType }
+            : {}),
+          ...(msg.document?.filename ? { mediaFilename: msg.document.filename } : {}),
           profileName: contactMap.get(msg.from),
           phoneNumberId: value.metadata.phone_number_id,
         });

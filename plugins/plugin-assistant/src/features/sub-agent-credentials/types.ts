@@ -1,12 +1,4 @@
-/**
- * Sub-agent credential bridge — atomic action contracts.
- *
- * These types describe the runtime contract between the four atomic actions
- * in this feature and the parent-side credential tunnel service. Actions
- * never import the app service directly — they resolve a client
- * implementation via `runtime.getService(name)`. The Wave F follow-up wires
- * a concrete adapter that calls `CredentialTunnelService` in app.
- */
+/** Runtime contracts for owner-scoped sub-agent credential requests. */
 
 export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
 export const SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE =
@@ -17,6 +9,12 @@ export const SUB_AGENT_CHILD_DECISION_BUS_SERVICE = "SubAgentChildDecisionBus";
 export const SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE =
   "SubAgentChildResultsClient";
 
+export interface SensitiveRequestDeliveryFailure {
+  target: "dm" | "owner_app_inline";
+  /** Adapter or transport message that explains why the owner was not asked. */
+  message: string;
+}
+
 export interface SubAgentCredentialScope {
   credentialScopeId: string;
   scopedToken: string;
@@ -24,6 +22,12 @@ export interface SubAgentCredentialScope {
   expiresAt: number;
   /** request ids dispatched to collect the missing values, if any. */
   sensitiveRequestIds: readonly string[];
+  /**
+   * Set when the owner prompt could not be delivered. The scope exists, but no
+   * request reached the owner, so the child cannot receive a value until one
+   * does. Callers must surface this instead of reporting a plain success.
+   */
+  sensitiveRequestFailure?: SensitiveRequestDeliveryFailure;
 }
 
 export interface SubAgentCredentialRequestOrigin {

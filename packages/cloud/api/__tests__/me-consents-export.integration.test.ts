@@ -30,39 +30,44 @@ const passthrough: MiddlewareHandler = async (_c, next) => {
   await next();
 };
 const rateLimitActual = await import(
-  "@/lib/middleware/rate-limit-hono-cloudflare"
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare"
 );
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  ...rateLimitActual,
-  rateLimit: () => passthrough,
-}));
-const authActual = await import("@/lib/auth/workers-hono-auth");
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    ...rateLimitActual,
+    rateLimit: () => passthrough,
+  }),
+);
+const authActual = await import("@elizaos/cloud-shared/auth");
 const TEST_USER = {
   id: USER_ID,
   organization_id: ORG_ID,
   organization: { id: ORG_ID, is_active: true },
 };
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   ...authActual,
   requireUserWithOrg: async () => TEST_USER,
   requireRecentSessionUserWithOrg: async () => TEST_USER,
 }));
 
-let dbWrite: typeof import("@/db/helpers").dbWrite;
-let closeDatabaseConnectionsForTests: typeof import("@/db/client").closeDatabaseConnectionsForTests;
+let dbWrite: typeof import("@elizaos/cloud-shared/db/helpers").dbWrite;
+let closeDatabaseConnectionsForTests: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
 let consentsRoute: typeof import("../v1/me/consents/route").default;
 let createDataExportRoute: typeof import("../v1/me/data-export/route").createDataExportRoute;
 let auditEventsSink: typeof import("../src/services/audit-events").auditEventsSink;
-let AccountDeletionExportError: typeof import("@/lib/services/account-deletion-export").AccountDeletionExportError;
+let AccountDeletionExportError: typeof import("@elizaos/cloud-shared/lib/services/account-deletion-export").AccountDeletionExportError;
 
 beforeAll(async () => {
-  ({ dbWrite } = await import("@/db/helpers"));
-  ({ closeDatabaseConnectionsForTests } = await import("@/db/client"));
+  ({ dbWrite } = await import("@elizaos/cloud-shared/db/helpers"));
+  ({ closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  ));
   consentsRoute = (await import("../v1/me/consents/route")).default;
   ({ createDataExportRoute } = await import("../v1/me/data-export/route"));
   ({ auditEventsSink } = await import("../src/services/audit-events"));
   ({ AccountDeletionExportError } = await import(
-    "@/lib/services/account-deletion-export"
+    "@elizaos/cloud-shared/lib/services/account-deletion-export"
   ));
   const { initAuditDispatcher } = await import(
     "../src/services/audit-dispatcher-singleton"

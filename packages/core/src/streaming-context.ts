@@ -27,6 +27,178 @@ export interface TurnActionConstraint {
 	reason: string;
 }
 
+/** A host-verified text tariff. Unknown routes and non-text billing are refused. */
+export interface ModelAttemptTariff {
+	provider: string;
+	model: string;
+	route: string;
+	inputNanoUsdPerToken: number;
+	outputNanoUsdPerToken: number;
+	/** Conservative reservation bound, not measured prompt tokens. */
+	inputTokenUpperBound: number;
+}
+
+export interface ModelAttemptLease {
+	readonly messageId: string;
+	readonly maxOutputTokens: number;
+	reserve(
+		provider: string,
+		model: string,
+		route: string | undefined,
+		serialized: string,
+		outputTokens: number | undefined,
+	): void;
+	close(): void;
+}
+
+/** Host-only, in-memory trial allowance. Reservations are never refunded. */
+export interface ModelAttemptAllowance {
+	openTurn(
+		messageId: string,
+		signal: AbortSignal,
+		assertCurrent?: () => void,
+	): ModelAttemptLease;
+	close(): void;
+	readonly remainingMicroUsd: number;
+}
+const modelAttemptLeases = getAmbientSingleton(
+	Symbol.for("elizaos.modelAttemptLeases"),
+	() => new WeakSet<ModelAttemptLease>(),
+);
+export function createModelAttemptAllowance(options: {
+	signal: AbortSignal;
+	budgetMicroUsd: number;
+	maxAttempts: number;
+	maxOutputTokens: number;
+	expiresAt: number;
+	tariffs: readonly ModelAttemptTariff[];
+}): ModelAttemptAllowance {
+	const positive = (n: number) => Number.isSafeInteger(n) && n > 0;
+	if (
+		!positive(options.budgetMicroUsd) ||
+		!positive(options.maxAttempts) ||
+		!positive(options.maxOutputTokens) ||
+		!positive(options.expiresAt) ||
+		!options.tariffs.length ||
+		options.tariffs.some(
+			(t) =>
+				!t.provider ||
+				!t.model ||
+				!t.route ||
+				!positive(t.inputNanoUsdPerToken) ||
+				!positive(t.outputNanoUsdPerToken) ||
+				!positive(t.inputTokenUpperBound),
+		)
+	) {
+		throw new ElizaError("Invalid host model allowance", {
+			code: "MODEL_ATTEMPT_POLICY_INVALID",
+		});
+	}
+	const tariffs = options.tariffs.map((t) => Object.freeze({ ...t }));
+	const { maxOutputTokens, expiresAt } = options;
+	let remaining = options.budgetMicroUsd,
+		attempts = options.maxAttempts,
+		closed = false;
+	const abortTrial = () => {
+		closed = true;
+	};
+	options.signal.addEventListener("abort", abortTrial, { once: true });
+	if (options.signal.aborted) closed = true;
+	return Object.freeze({
+		get remainingMicroUsd() {
+			return remaining;
+		},
+		close() {
+			closed = true;
+			options.signal.removeEventListener("abort", abortTrial);
+		},
+		openTurn(
+			messageId: string,
+			signal: AbortSignal,
+			assertCurrent?: () => void,
+		): ModelAttemptLease {
+			if (!messageId || closed || Date.now() >= expiresAt || signal.aborted) {
+				throw new ElizaError("Model allowance ended", {
+					code: "MODEL_ATTEMPT_POLICY_CLOSED",
+				});
+			}
+			let ended = false;
+			// Barge-in cancels this turn, not the session's remaining allowance.
+			const abort = () => close();
+			const close = () => {
+				ended = true;
+				signal.removeEventListener("abort", abort);
+			};
+			signal.addEventListener("abort", abort, { once: true });
+			const lease: ModelAttemptLease = Object.freeze({
+				messageId,
+				maxOutputTokens,
+				close,
+				reserve(
+					provider: string,
+					model: string,
+					route: string | undefined,
+					serialized: string,
+					outputTokens: number | undefined,
+				) {
+					if (ended || closed || signal.aborted || Date.now() >= expiresAt) {
+						throw new ElizaError("Model allowance ended", {
+							code: "MODEL_ATTEMPT_POLICY_CLOSED",
+						});
+					}
+					assertCurrent?.();
+					const tariff = tariffs.find(
+						(t) =>
+							t.provider === provider && t.model === model && t.route === route,
+					);
+					if (
+						!tariff ||
+						!outputTokens ||
+						!positive(outputTokens) ||
+						outputTokens > maxOutputTokens ||
+						Buffer.byteLength(serialized, "utf8") > tariff.inputTokenUpperBound
+					) {
+						throw new ElizaError("Unqualified bounded model request", {
+							code: "MODEL_ATTEMPT_POLICY_ROUTE",
+						});
+					}
+					const nanoUsd =
+						BigInt(tariff.inputTokenUpperBound) *
+							BigInt(tariff.inputNanoUsdPerToken) +
+						BigInt(outputTokens) * BigInt(tariff.outputNanoUsdPerToken);
+					const microUsd = (nanoUsd + 999n) / 1000n;
+					if (attempts < 1 || microUsd > BigInt(remaining)) {
+						throw new ElizaError("Model allowance exhausted", {
+							code: "MODEL_ATTEMPT_POLICY_EXHAUSTED",
+						});
+					}
+					// No await between admission and debit: parallel attempts cannot share funds.
+					remaining -= Number(microUsd);
+					attempts--;
+				},
+			});
+			modelAttemptLeases.add(lease);
+			return lease;
+		},
+	});
+}
+
+/** Model parameters and UI metadata cannot mint a trusted lease. */
+export function getModelAttemptLease(): ModelAttemptLease | undefined {
+	const context = getStreamingContext();
+	const lease = context?.modelAttemptLease;
+	if (!lease) return undefined;
+	if (
+		!modelAttemptLeases.has(lease) ||
+		context.modelAttemptTurnId !== lease.messageId
+	) {
+		throw new ElizaError("Invalid model turn lease", {
+			code: "MODEL_ATTEMPT_POLICY_INVALID",
+		});
+	}
+	return lease;
+}
+
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
@@ -49,6 +221,10 @@ export interface StreamingContext extends StreamingEventHooks {
 	abortSignal?: AbortSignal;
 	/** Shared by nested model/action scopes; policy producers own writes. */
 	actionConstraints?: Map<string, TurnActionConstraint>;
+	/** Opaque host-created policy; never reconstructed from request/model metadata. */
+	modelAttemptLease?: ModelAttemptLease;
+	/** Original incoming user turn, separate from the assistant streaming ID. */
+	modelAttemptTurnId?: string;
 }
 
 export interface StreamingHookPayloads {
@@ -80,9 +256,8 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 		// error-policy:J7 Streaming observers cannot alter model/action flow;
 		// the owning runtime receives the observer failure when available.
 		context?.reportError?.("StreamingContext.emitHook", error, {
-			hook: String(hook),
+			hook,
 		});
-		// Streaming observers must not break the underlying model/action flow.
 	}
 }
 
@@ -108,18 +283,8 @@ const STREAMING_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.streamingContextManager",
 );
 
-function initContextManagerSync(): IStreamingContextManager {
+function createStreamingContextManager(): IStreamingContextManager {
 	return new AsyncContextManager<StreamingContext | undefined>();
-}
-
-function getOrCreateContextManager(): IStreamingContextManager {
-	// The shared global slot is the single source of truth (no module-local
-	// cache): under a duplicated core bundle every copy must observe the same
-	// manager, and `setStreamingContextManager` must be visible everywhere.
-	return getAmbientSingleton(
-		STREAMING_CONTEXT_MANAGER_KEY,
-		initContextManagerSync,
-	);
 }
 
 /**
@@ -135,11 +300,17 @@ export function setStreamingContextManager(
 }
 
 /**
- * Get the global streaming context manager.
- * Auto-detects and creates the appropriate manager on first access.
+ * Get the global streaming context manager, creating it on first access.
+ *
+ * The shared global slot is the single source of truth (no module-local
+ * cache): under a duplicated core bundle every copy must observe the same
+ * manager, and `setStreamingContextManager` must be visible everywhere.
  */
 export function getStreamingContextManager(): IStreamingContextManager {
-	return getOrCreateContextManager();
+	return getAmbientSingleton(
+		STREAMING_CONTEXT_MANAGER_KEY,
+		createStreamingContextManager,
+	);
 }
 
 /**
@@ -149,11 +320,11 @@ export function getStreamingContextManager(): IStreamingContextManager {
  * @example
  * ```typescript
  * await runWithStreamingContext(
- *   { onStreamChunk: async (chunk) => sendSSE(chunk), messageId },
- *   async () => {
- *     // All useModel calls here will stream automatically
- *     await runtime.processMessage(message);
- *   }
+ * { onStreamChunk: async (chunk) => sendSSE(chunk), messageId },
+ * async () => {
+ * // All useModel calls here will stream automatically
+ * await runtime.processMessage(message);
+ * }
  * );
  * ```
  *
@@ -165,19 +336,43 @@ export function runWithStreamingContext<T>(
 	context: StreamingContext | undefined,
 	fn: () => T,
 ): T {
-	const manager = getOrCreateContextManager();
+	const manager = getStreamingContextManager();
 	const parent = manager.active();
 	const sameTurn =
 		!context?.messageId || context.messageId === parent?.messageId;
+	if (parent?.modelAttemptLease) {
+		const originalTurn = parent.modelAttemptTurnId;
+		if (
+			originalTurn !== parent.modelAttemptLease.messageId ||
+			(context?.modelAttemptTurnId !== undefined &&
+				context.modelAttemptTurnId !== originalTurn) ||
+			(!sameTurn && context?.modelAttemptTurnId !== originalTurn)
+		) {
+			throw new ElizaError("Bounded model turn cannot change identity", {
+				code: "MODEL_ATTEMPT_POLICY_INVALID",
+			});
+		}
+		context = {
+			...context,
+			messageId: context?.messageId || parent.messageId,
+			modelAttemptLease: parent.modelAttemptLease,
+			modelAttemptTurnId: originalTurn,
+			abortSignal: inheritedAbortSignal(context, parent.abortSignal),
+		};
+	}
 	if (parent?.actionConstraints && sameTurn) {
 		// Detaching model streaming must not detach execution policy/cancellation.
-		context = context ?? { messageId: parent.messageId };
-		context.actionConstraints = parent.actionConstraints;
-		if (parent.abortSignal && context.abortSignal !== parent.abortSignal) {
-			context.abortSignal = context.abortSignal
-				? AbortSignal.any([parent.abortSignal, context.abortSignal])
-				: parent.abortSignal;
-		}
+		// Derive a new scope: a caller's reused context object must not carry
+		// this turn's policy or signal into a later turn.
+		const base = context ?? { messageId: parent.messageId };
+		context = {
+			...base,
+			actionConstraints: parent.actionConstraints,
+			// A leased parent's signal was already merged into the copy above.
+			abortSignal: parent.modelAttemptLease
+				? base.abortSignal
+				: inheritedAbortSignal(base, parent.abortSignal),
+		};
 	} else if (
 		parent?.actionConstraints &&
 		context?.actionConstraints === parent.actionConstraints
@@ -185,6 +380,16 @@ export function runWithStreamingContext<T>(
 		context = { ...context, actionConstraints: new Map() };
 	}
 	return manager.run(context, fn);
+}
+
+/** A nested scope can only add cancellation on top of its parent's signal. */
+function inheritedAbortSignal(
+	context: StreamingContext | undefined,
+	parentSignal: AbortSignal | undefined,
+): AbortSignal | undefined {
+	const own = context?.abortSignal;
+	if (!parentSignal || own === parentSignal) return own;
+	return own ? AbortSignal.any([parentSignal, own]) : parentSignal;
 }
 
 /** Register validated policy on the ambient turn before asynchronous selection. */
@@ -251,7 +456,7 @@ const discardStreamChunk: StreamChunkCallback = async () => undefined;
  * abort signal and structured tool/evaluation hooks, but its raw tokens no
  * longer reach the turn's visible reply channel — `onStreamChunk` becomes a
  * no-op. This is the seam that keeps an action handler's *internal* model
- * calls off the user-visible reply (#16230): only the top-level response
+ * calls off the user-visible reply: only the top-level response
  * generation streams raw tokens, while an action delivers its own output
  * through the HandlerCallback. The visible stream would otherwise surface an
  * action's intermediate model output as though it were the action's final
@@ -285,12 +490,11 @@ export function runWithSuppressedModelStream<T>(fn: () => T): T {
  * @returns The current streaming context or undefined
  */
 export function getStreamingContext(): StreamingContext | undefined {
-	return getOrCreateContextManager().active();
+	return getStreamingContextManager().active();
 }
 
-// ---------------------------------------------------------------------------
 // useModel → chunk callback delivery (dedupe `model_stream_chunk` hooks)
-// ---------------------------------------------------------------------------
+
 // The same provider chunk is often forwarded from useModel's textStream loop *and* from
 // DefaultMessageService. Without a turn-scoped marker, pipeline hooks would run twice per
 // token (inflated metrics, duplicate side effects). Node uses AsyncLocalStorage depth so
@@ -304,12 +508,12 @@ const MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY = Symbol.for(
 	"elizaos.modelStreamChunkDeliveryDepth",
 );
 
-function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
-	return getAmbientSingleton(
-		MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
-		() => new AsyncLocalStorage<number>(),
-	);
-}
+// Nothing replaces this slot after creation, so one lookup at module load is
+// enough; this sits on the per-token delivery path.
+const modelStreamChunkDeliveryDepth = getAmbientSingleton(
+	MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
+	() => new AsyncLocalStorage<number>(),
+);
 
 /**
  * While `> 0`, the runtime is inside `useModel`'s delivery of one `textStream` chunk to
@@ -318,15 +522,15 @@ function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
  * this window so the same raw token is not processed twice.
  */
 export function getModelStreamChunkDeliveryDepth(): number {
-	const s = modelStreamChunkDeliveryDepthStorage();
-	return s.getStore() ?? 0;
+	return modelStreamChunkDeliveryDepth.getStore() ?? 0;
 }
 
 /** Wrap `paramsChunk` / `ctxChunk` invocations from `useModel`'s stream loop. */
 export function runInsideModelStreamChunkDelivery<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const s = modelStreamChunkDeliveryDepthStorage();
-	const parent = s.getStore() ?? 0;
-	return s.run(parent + 1, fn);
+	return modelStreamChunkDeliveryDepth.run(
+		getModelStreamChunkDeliveryDepth() + 1,
+		fn,
+	);
 }

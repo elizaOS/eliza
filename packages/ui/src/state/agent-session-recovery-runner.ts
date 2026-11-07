@@ -19,7 +19,7 @@
  * owner-password boundary.
  */
 
-import type { CloudPairRelaySession } from "@elizaos/core/contracts/cloud-pair";
+import type { CloudPairRelaySession } from "@elizaos/contracts";
 import {
   CloudPairExchangeError,
   exchangeAuthenticatedNativeCloudPairToken,

@@ -9,7 +9,7 @@
 
 import { ElizaError } from "../errors";
 import { runWithTrajectoryPurpose } from "../trajectory-context";
-import { ModelType } from "../types/model.js";
+import { type GenerateTextParams, ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType];
@@ -31,6 +31,8 @@ export interface RunExtractorPipelineArgs<TParsed> {
 	prompt: string;
 	/** Request-bound canonical system context, when already supplied by the caller. */
 	system?: string;
+	/** Opt in to a provider text response format for both first and repair calls. */
+	responseFormat?: GenerateTextParams["responseFormat"];
 	/**
 	 * Convert the raw model text into a typed value. Return `null` when the
 	 * output is unparseable or fails validation; that triggers the repair pass.
@@ -57,26 +59,28 @@ function asString(value: unknown): string {
  * Run the canonical extractor pipeline.
  *
  * Order of operations:
- *   1. Call the model with `prompt`.
- *   2. Run `parser` on the result. If it returns non-null, return that.
- *   3. Otherwise, if `buildRepairPrompt` is provided, call the model again
- *      with the repair prompt and run `parser` on that result.
- *   4. Model and transport failures propagate after being reported.
+ * 1. Call the model with `prompt`.
+ * 2. Run `parser` on the result. If it returns non-null, return that.
+ * 3. Otherwise, if `buildRepairPrompt` is provided, call the model again
+ * with the repair prompt and run `parser` on that result.
+ * 4. Model and transport failures propagate after being reported.
  */
 export async function runExtractorPipeline<TParsed>(
 	args: RunExtractorPipelineArgs<TParsed>,
 ): Promise<ExtractorPipelineResult<TParsed>> {
 	const { runtime, prompt, parser, buildRepairPrompt } = args;
 	const modelType = args.modelType ?? ModelType.TEXT_LARGE;
+	const callOptions = {
+		...(args.system !== undefined ? { system: args.system } : {}),
+		...(args.responseFormat !== undefined
+			? { responseFormat: args.responseFormat }
+			: {}),
+	};
 
 	try {
 		const firstResult = await runWithTrajectoryPurpose(
 			"lifeops-extractor-first-pass",
-			() =>
-				runtime.useModel(modelType, {
-					prompt,
-					...(args.system !== undefined ? { system: args.system } : {}),
-				}),
+			() => runtime.useModel(modelType, { prompt, ...callOptions }),
 		);
 		const firstRaw = asString(firstResult);
 		const firstParsed = parser(firstRaw);
@@ -93,7 +97,7 @@ export async function runExtractorPipeline<TParsed>(
 			() =>
 				runtime.useModel(modelType, {
 					prompt: buildRepairPrompt(firstRaw),
-					...(args.system !== undefined ? { system: args.system } : {}),
+					...callOptions,
 				}),
 		);
 		const repairRaw = asString(repairResult);

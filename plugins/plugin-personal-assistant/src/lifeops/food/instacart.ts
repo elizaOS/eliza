@@ -342,63 +342,91 @@ export class InstacartProductsLinkClient {
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    let response: Response;
     try {
-      response = await this.fetchFn(this.endpoint, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body,
-        signal: controller.signal,
-        redirect: "error",
-      });
-    } catch (error) {
-      // error-policy:J2 the transport cause is preserved without including the secret header.
-      throw new FoodDomainError(
-        "Instacart products-link request did not produce an HTTP response",
-        "FOOD_PROVIDER_UNAVAILABLE",
-        { timedOut: controller.signal.aborted },
-        error,
+      let response: Response;
+      try {
+        response = await this.fetchFn(this.endpoint, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body,
+          signal: controller.signal,
+          redirect: "error",
+        });
+      } catch (error) {
+        // error-policy:J2 the transport cause is preserved without including the secret header.
+        throw new FoodDomainError(
+          "Instacart products-link request did not produce an HTTP response",
+          "FOOD_PROVIDER_UNAVAILABLE",
+          { timedOut: controller.signal.aborted },
+          error,
+        );
+      }
+      const requestId =
+        response.headers.get("x-request-id") ??
+        response.headers.get("instacart-request-id");
+      if (response.status === 429) {
+        throw new FoodDomainError(
+          "Instacart rate limited the products-link request",
+          "FOOD_PROVIDER_RATE_LIMITED",
+          { httpStatus: response.status, requestId },
+        );
+      }
+      if (response.status >= 400 && response.status < 500) {
+        throw new FoodDomainError(
+          "Instacart rejected the products-link request",
+          "FOOD_PROVIDER_REJECTED",
+          { httpStatus: response.status, requestId },
+        );
+      }
+      if (response.status < 200 || response.status >= 300) {
+        throw new FoodDomainError(
+          "Instacart products-link service is unavailable",
+          "FOOD_PROVIDER_UNAVAILABLE",
+          { httpStatus: response.status, requestId },
+        );
+      }
+      const contentType = response.headers.get("content-type");
+      if (
+        !contentType?.toLocaleLowerCase("en-US").includes("application/json")
+      ) {
+        throw new FoodDomainError(
+          "Instacart success response did not declare JSON",
+          "FOOD_PROVIDER_RESPONSE_INVALID",
+          { httpStatus: response.status, requestId, contentType },
+        );
+      }
+      let responseText: string;
+      try {
+        responseText = await readBoundedUtf8(response, this.maxResponseBytes);
+      } catch (error) {
+        if (error instanceof FoodDomainError) throw error;
+        // A body that never completes is the same provider-unavailable outcome as
+        // a transport failure before the headers: the declared deadline owns the
+        // whole exchange, so an aborted body read is reported as a timeout.
+        throw new FoodDomainError(
+          "Instacart products-link response did not complete",
+          "FOOD_PROVIDER_UNAVAILABLE",
+          {
+            timedOut: controller.signal.aborted,
+            httpStatus: response.status,
+            requestId,
+          },
+          error,
+        );
+      }
+      return parseProductsLinkResponse(
+        responseText,
+        response.status,
+        requestId,
       );
     } finally {
+      // The caller's timeout bounds headers AND the response body, so it is only
+      // released once the whole exchange is finished.
       clearTimeout(timeout);
     }
-    const requestId =
-      response.headers.get("x-request-id") ??
-      response.headers.get("instacart-request-id");
-    if (response.status === 429) {
-      throw new FoodDomainError(
-        "Instacart rate limited the products-link request",
-        "FOOD_PROVIDER_RATE_LIMITED",
-        { httpStatus: response.status, requestId },
-      );
-    }
-    if (response.status >= 400 && response.status < 500) {
-      throw new FoodDomainError(
-        "Instacart rejected the products-link request",
-        "FOOD_PROVIDER_REJECTED",
-        { httpStatus: response.status, requestId },
-      );
-    }
-    if (response.status < 200 || response.status >= 300) {
-      throw new FoodDomainError(
-        "Instacart products-link service is unavailable",
-        "FOOD_PROVIDER_UNAVAILABLE",
-        { httpStatus: response.status, requestId },
-      );
-    }
-    const contentType = response.headers.get("content-type");
-    if (!contentType?.toLocaleLowerCase("en-US").includes("application/json")) {
-      throw new FoodDomainError(
-        "Instacart success response did not declare JSON",
-        "FOOD_PROVIDER_RESPONSE_INVALID",
-        { httpStatus: response.status, requestId, contentType },
-      );
-    }
-    const responseText = await readBoundedUtf8(response, this.maxResponseBytes);
-    return parseProductsLinkResponse(responseText, response.status, requestId);
   }
 }

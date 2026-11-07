@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Framework theme for ElizaDataResetRecoveryActivity, a plain android.app.Activity in its own
+         process. values-v29 swaps in the DayNight variant. -->
+    <style name="ElizaDataResetRecoveryTheme" parent="@android:style/Theme.DeviceDefault.Light" />
+</resources>

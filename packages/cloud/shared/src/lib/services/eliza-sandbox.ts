@@ -869,6 +869,38 @@ export class ElizaSandboxService {
     // the materialization paths (provision / fleet upgrade / runtime
     // bootstrap) decrypt, so the running agent still sees real values.
     const encryptedEnvironment = await encryptAgentEnvVarsForStorage(orgId, environmentVars);
+    return await this.writeAgentEnvironment(agentId, orgId, () => encryptedEnvironment);
+  }
+
+  /**
+   * Set (string) or remove (`null`) the named variables and keep every other
+   * one. The change is applied to the row as stored under the lifecycle lock,
+   * so a concurrent writer's variables (another patch, a managed-key rotation)
+   * are not overwritten with an older copy.
+   */
+  async patchAgentEnvironment(
+    agentId: string,
+    orgId: string,
+    patch: Record<string, string | null>,
+  ): Promise<AgentSandbox | undefined> {
+    const setValues = Object.fromEntries(
+      Object.entries(patch).filter((entry): entry is [string, string] => entry[1] !== null),
+    );
+    const encryptedSet = await encryptAgentEnvVarsForStorage(orgId, setValues);
+    return await this.writeAgentEnvironment(agentId, orgId, (stored) => {
+      const next = { ...stored, ...encryptedSet };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === null) delete next[key];
+      }
+      return next;
+    });
+  }
+
+  private async writeAgentEnvironment(
+    agentId: string,
+    orgId: string,
+    resolve: (stored: Record<string, string>) => Record<string, string>,
+  ): Promise<AgentSandbox | undefined> {
     const updated = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -876,10 +908,14 @@ export class ElizaSandboxService {
       if (rec.deletion_attempt_id) {
         throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
       }
+      const stored =
+        rec.environment_vars && typeof rec.environment_vars === "object"
+          ? (rec.environment_vars as Record<string, string>)
+          : {};
       const [row] = await tx
         .update(agentSandboxes)
         .set({
-          environment_vars: encryptedEnvironment,
+          environment_vars: resolve(stored),
           environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
           warm_claim_credential_state: sql`
             CASE
@@ -927,7 +963,7 @@ export class ElizaSandboxService {
       return row;
     });
     if (updated?.claimed_at && updated.warm_claim_credential_state === "pending") {
-      const { provisioningJobService } = await import("./provisioning-jobs");
+      const { provisioningJobService } = await import("./provisioning-job-queue");
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: updated.id,
         organizationId: updated.organization_id,
@@ -2258,17 +2294,17 @@ export class ElizaSandboxService {
     // doing backup hydration/reconstruction outside the lifecycle transaction;
     // live push authority is re-read under the advisory + row locks below.
     const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
-    if (!rec) return { success: false, error: "Agent not found" };
+    if (!rec) return { success: false, error: "Agent not found", refusal: "not-found" };
 
     const initialAuthorityRejection = restoreAuthorityRejection(rec);
     if (initialAuthorityRejection) {
-      return { success: false, error: initialAuthorityRejection };
+      return { success: false, error: initialAuthorityRejection, refusal: "conflict" };
     }
 
     const restoringRunningGeneration = rec.status === "running";
     if (!restoringRunningGeneration && rec.retained_runtime) {
       // Replacing a retained runtime would discard writes no backup covers.
-      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL };
+      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL, refusal: "conflict" };
     }
     if (restoringRunningGeneration && !rec.bridge_url) {
       return { success: false, error: "Running agent is missing its restore endpoint" };
@@ -2277,6 +2313,7 @@ export class ElizaSandboxService {
       return {
         success: false,
         error: "Agent restore cannot start while replacement cleanup is pending",
+        refusal: "conflict",
       };
     }
 
@@ -2287,7 +2324,7 @@ export class ElizaSandboxService {
       ? await agentSandboxesRepository.getStoredBackupById(backupId)
       : await agentSandboxesRepository.getLatestStoredBackup(rec.id);
     if (!storedBackup || storedBackup.sandbox_record_id !== rec.id) {
-      return { success: false, error: "No backup found" };
+      return { success: false, error: "No backup found", refusal: "not-found" };
     }
 
     if (!restoringRunningGeneration && backupId) {
@@ -2296,6 +2333,7 @@ export class ElizaSandboxService {
         return {
           success: false,
           error: "Stopped agents can only restore the latest backup",
+          refusal: "conflict",
         };
       }
     }
@@ -2329,7 +2367,12 @@ export class ElizaSandboxService {
           lifecycle_revision: rec.lifecycle_revision,
         },
       });
-      return prov.success ? { success: true, backup } : { success: false, error: prov.error };
+      if (prov.success) return { success: true, backup };
+      // With `expectedAdmission`, provision refuses a lost admission CAS with
+      // this constant; any other provision failure is a fault.
+      return prov.error === RESTORE_AUTHORITY_CHANGED
+        ? { success: false, error: prov.error, refusal: "conflict" }
+        : { success: false, error: prov.error };
     }
 
     // Capture the complete target->base chain from the primary before
@@ -2342,7 +2385,7 @@ export class ElizaSandboxService {
       !storedRestoreChain ||
       !storedRestorePointStillCanonical(storedRestoreChain[0]!, storedBackup)
     ) {
-      return { success: false, error: RESTORE_BACKUP_CHANGED };
+      return { success: false, error: RESTORE_BACKUP_CHANGED, refusal: "conflict" };
     }
 
     const backup = await hydrateAgentSandboxBackup(storedBackup);
@@ -2360,35 +2403,54 @@ export class ElizaSandboxService {
       !confirmedRestoreChain ||
       !storedRestoreChainStillCanonical(confirmedRestoreChain, storedRestoreChain)
     ) {
-      return { success: false, error: RESTORE_BACKUP_CHANGED };
+      return { success: false, error: RESTORE_BACKUP_CHANGED, refusal: "conflict" };
     }
 
     const authorized = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current) return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+      if (!current)
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
 
       const currentAuthorityRejection = restoreAuthorityRejection(current);
       if (currentAuthorityRejection) {
-        return { success: false as const, error: currentAuthorityRejection };
+        return {
+          success: false as const,
+          error: currentAuthorityRejection,
+          refusal: "conflict" as const,
+        };
       }
       if (current.status !== "running" || !current.bridge_url) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
       if (this.getReplacementCleanupLocator(current)) {
         return {
           success: false as const,
           error: "Agent restore cannot start while replacement cleanup is pending",
+          refusal: "conflict" as const,
         };
       }
       if (await this.hasActiveExclusiveLifecycleJobTx(tx, agentId, orgId)) {
         return {
           success: false as const,
           error: "Agent restore cannot start while an exclusive lifecycle job is active",
+          refusal: "conflict" as const,
         };
       }
       if (!restoreCaptureStillCanonical(current, rec)) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
 
       // Hold every row used by reconstruction through the push so prune and
@@ -2416,7 +2478,11 @@ export class ElizaSandboxService {
         .for("update")
         .execute();
       if (!storedRestoreChainStillCanonical(lockedRestoreChain, storedRestoreChain)) {
-        return { success: false as const, error: RESTORE_BACKUP_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_BACKUP_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
 
       // Reserve a lifecycle generation BEFORE the irreversible runtime call.
@@ -2457,7 +2523,11 @@ export class ElizaSandboxService {
         )
         .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
       if (!reserved) {
-        return { success: false as const, error: RESTORE_AUTHORITY_CHANGED };
+        return {
+          success: false as const,
+          error: RESTORE_AUTHORITY_CHANGED,
+          refusal: "conflict" as const,
+        };
       }
       if (reserved.lifecycleRevision !== current.lifecycle_revision + 1) {
         // A returned row proves the CAS update ran. Committing it without the
@@ -2809,7 +2879,7 @@ export class ElizaSandboxService {
       error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
     });
     if (!updated) return;
-    const { provisioningJobService } = await import("./provisioning-jobs");
+    const { provisioningJobService } = await import("./provisioning-job-queue");
     const result = await provisioningJobService.enqueueAgentRestartOnce({
       agentId: rec.id,
       organizationId: rec.organization_id,

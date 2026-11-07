@@ -2,13 +2,17 @@ import type { GoogleGmailAttachment } from "@elizaos/plugin-google-workspace/typ
 // Coordinates cloud service shared behavior behind route handlers.
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
+import { authorizePersonalGoogleContextRead } from "../../../db/repositories/personal-google-context-consent";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
-import { googleFetchWithToken } from "../../utils/google-mcp-shared";
+import type { GmailMessageLink } from "../../utils/gmail-mime-text";
+import { GoogleApiError, googleFetchWithToken } from "../../utils/google-mcp-shared";
+import { NO_FOLLOW_REDIRECT, withoutRedirects } from "../../utils/no-redirect-fetch";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
 import { getProvider, isProviderConfigured } from "../oauth/provider-registry";
 import type { OAuthConnectionRole } from "../oauth/types";
+import { googlePersonalContextConsent } from "../shared-runtime/shared-google-consent";
 
 const DEFAULT_GOOGLE_CONNECTOR_CAPABILITIES = [
   "google.basic_identity",
@@ -57,6 +61,11 @@ export interface ManagedGoogleCalendarEvent {
   timezone: string | null;
   htmlLink: string | null;
   conferenceLink: string | null;
+  /**
+   * Google's event revision, passed through unchanged. Send it back as
+   * `If-Match` on PATCH/DELETE to refuse a change to a newer revision (412).
+   */
+  etag: string | null;
   organizer: Record<string, unknown> | null;
   attendees: Array<{
     email: string | null;
@@ -93,6 +102,8 @@ export interface ManagedGoogleGmailMessage {
   snippet: string;
   receivedAt: string;
   isUnread: boolean;
+  /** Paperclip hint (multipart/mixed container or a named part); not an attachment inventory. */
+  hasAttachments?: boolean;
   isImportant: boolean;
   likelyReplyNeeded: boolean;
   triageScore: number;
@@ -106,11 +117,21 @@ export interface ManagedGoogleGmailReadResult {
   attachments?: GoogleGmailAttachment[];
   message: ManagedGoogleGmailMessage;
   bodyText: string;
+  bodyHtml: string | null;
+  bodyHtmlStatus: "available" | "none" | "too-large" | "owner-only";
+  /** Inert http(s) anchors from the HTML parts; clients review them before opening. */
+  links?: GmailMessageLink[];
 }
 
 export interface ManagedGoogleGmailSearchResult {
+  supportsSpamTrash: boolean;
   nextPageToken?: string | null;
   messages: ManagedGoogleGmailMessage[];
+  /**
+   * Gmail mailbox historyId read before a search page. When two pages of one
+   * search report different values, the mailbox changed between them.
+   */
+  mailboxHistoryId?: string;
   syncedAt: string;
 }
 
@@ -316,13 +337,35 @@ async function getActiveGoogleConnectionRecord(args: {
   };
 }
 
-export async function getGoogleAccessToken(args: {
+type ManagedGoogleConnectionScope = {
   organizationId: string;
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
-}): Promise<{ accessToken: string; connectionId: string }> {
+  /** Set by the personal-context read port, never used as authorization by itself. */
+  personalContextRead?: true;
+};
+
+async function requirePersonalGoogleContextRead(args: ManagedGoogleConnectionScope): Promise<void> {
+  if (!args.personalContextRead) return;
+  if (
+    args.side !== "owner" ||
+    !args.grantId ||
+    !(await authorizePersonalGoogleContextRead({
+      organizationId: args.organizationId,
+      userId: args.userId,
+      grantId: args.grantId,
+    }))
+  ) {
+    fail(409, "Selected personal Google context is no longer authorized.");
+  }
+}
+
+export async function getGoogleAccessToken(
+  args: ManagedGoogleConnectionScope,
+): Promise<{ accessToken: string; connectionId: string }> {
   try {
+    await requirePersonalGoogleContextRead(args);
     if (args.grantId) {
       const connection = (
         await getScopedGoogleConnections({
@@ -334,11 +377,22 @@ export async function getGoogleAccessToken(args: {
       if (!connection) {
         fail(404, "Google connection not found.");
       }
+      // Revoked grants never use cached tokens. Preserve legacy refresh of
+      // expired grants; personal context additionally requires active status.
+      if (
+        connection.status === "revoked" ||
+        (args.personalContextRead && connection.status !== "active")
+      ) {
+        fail(409, "Google connection is not active. Reconnect the selected account.");
+      }
       const token = await managedGoogleConnectorDeps.oauthService.getValidToken({
         organizationId: args.organizationId,
         connectionId: connection.id,
         platform: "google",
       });
+      // Token lookup/refresh can await a cache or provider. Recheck after it
+      // settles so revocation during that wait cannot authorize dispatch.
+      await requirePersonalGoogleContextRead(args);
       return {
         accessToken: token.accessToken,
         connectionId: connection.id,
@@ -368,15 +422,13 @@ export async function getGoogleAccessToken(args: {
   }
 }
 
-export async function googleFetch(args: {
-  organizationId: string;
-  userId: string;
-  side: OAuthConnectionRole;
-  grantId?: string;
-  url: string;
-  options?: RequestInit;
-  maxResponseBytes?: number;
-}): Promise<Response> {
+export async function googleFetch(
+  args: ManagedGoogleConnectionScope & {
+    url: string;
+    options?: RequestInit;
+    maxResponseBytes?: number;
+  },
+): Promise<Response> {
   const { accessToken } = await getGoogleAccessToken(args);
   try {
     if (args.maxResponseBytes !== undefined) {
@@ -384,16 +436,25 @@ export async function googleFetch(args: {
         args.url,
         {
           ...args.options,
-          redirect: "error",
+          redirect: NO_FOLLOW_REDIRECT,
           headers: { ...args.options?.headers, Authorization: `Bearer ${accessToken}` },
         },
-        { provider: "google", timeoutMs: 30000, maxResponseBytes: args.maxResponseBytes },
+        {
+          provider: "google",
+          timeoutMs: 30000,
+          maxResponseBytes: args.maxResponseBytes,
+          // Never follow a redirect with the bearer token: a 3xx rejects (502).
+          fetchImpl: withoutRedirects(),
+        },
       );
       if (!response.ok) fail(502, "Google request failed.");
       return response;
     }
     return await googleFetchWithToken(accessToken, args.url, args.options);
   } catch (error) {
+    // An If-Match the event no longer matches is the caller's stale revision, not an outage.
+    if (error instanceof GoogleApiError && error.status === 412)
+      fail(412, "The event changed since it was read. Read it again before changing it.");
     // error-policy:J1 translate a Google API transport/timeout failure into a 502 boundary error
     fail(502, error instanceof Error ? error.message : String(error));
   }
@@ -453,12 +514,10 @@ function emptyStatus(side: OAuthConnectionRole, configured: boolean): ManagedGoo
   };
 }
 
-export async function getManagedGoogleConnectorStatus(args: {
-  organizationId: string;
-  userId: string;
-  side: OAuthConnectionRole;
-  grantId?: string;
-}): Promise<ManagedGoogleConnectorStatus> {
+export async function getManagedGoogleConnectorStatus(
+  args: ManagedGoogleConnectionScope,
+): Promise<ManagedGoogleConnectorStatus> {
+  await requirePersonalGoogleContextRead(args);
   const provider = getProvider("google");
   const configured = provider ? isProviderConfigured(provider) : false;
 
@@ -524,22 +583,34 @@ export async function initiateManagedGoogleConnection(args: {
   side: OAuthConnectionRole;
   redirectUrl?: string;
   capabilities?: AgentGoogleCapability[];
+  personalContextPurpose?: "personal_google_context_v1";
 }) {
-  const requestedCapabilities = normalizeCapabilities(args.capabilities);
+  const requestedCapabilities = args.personalContextPurpose
+    ? normalizeCapabilities([
+        "google.basic_identity",
+        "google.gmail.triage",
+        "google.calendar.read",
+      ])
+    : normalizeCapabilities(args.capabilities);
   const auth = await managedGoogleConnectorDeps.oauthService.initiateAuth({
     organizationId: args.organizationId,
     userId: args.userId,
     platform: "google",
-    redirectUrl: args.redirectUrl,
+    redirectUrl: args.personalContextPurpose ? "/cloud/connectors" : args.redirectUrl,
     scopes: capabilitiesToScopes(requestedCapabilities),
-    connectionRole: args.side,
+    connectionRole: args.personalContextPurpose ? "owner" : args.side,
+    ...(args.personalContextPurpose
+      ? { personalGoogleContext: googlePersonalContextConsent() }
+      : {}),
   });
   return {
     provider: "google" as const,
-    side: args.side,
+    side: args.personalContextPurpose ? ("owner" as const) : args.side,
     mode: "cloud_managed" as const,
     requestedCapabilities,
-    redirectUri: args.redirectUrl ?? "/auth/success?platform=google",
+    redirectUri: args.personalContextPurpose
+      ? "/cloud/connectors"
+      : (args.redirectUrl ?? "/auth/success?platform=google"),
     authUrl: auth.authUrl,
   };
 }
@@ -551,14 +622,22 @@ export async function disconnectManagedGoogleConnection(args: {
   connectionId?: string | null;
 }): Promise<void> {
   const connections = await getScopedGoogleConnections(args);
-  const activeConnection =
-    (args.connectionId
-      ? connections.find((connection) => connection.id === args.connectionId)
-      : getPreferredActiveConnection(connections, args.userId, args.side)) ??
-    connections[0] ??
+  let activeConnection: Awaited<ReturnType<typeof getScopedGoogleConnections>>[number] | null =
     null;
-  if (!activeConnection) {
-    return;
+  if (args.connectionId !== null && args.connectionId !== undefined) {
+    activeConnection =
+      connections.find((connection) => connection.id === args.connectionId) ?? null;
+    if (!activeConnection) {
+      // An explicit id names one connection; revoking whatever happens to be
+      // listed first instead would disconnect an unrelated account.
+      fail(404, "Google connection not found.");
+    }
+  } else {
+    activeConnection =
+      getPreferredActiveConnection(connections, args.userId, args.side) ?? connections[0] ?? null;
+    if (!activeConnection) {
+      return;
+    }
   }
   await managedGoogleConnectorDeps.oauthService.revokeConnection({
     organizationId: args.organizationId,

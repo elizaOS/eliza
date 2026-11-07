@@ -1,8 +1,6 @@
 /** Cross-platform messaging helpers shared by channel plugins. */
 
-// ============================================================================
 // Chat Type Normalization
-// ============================================================================
 
 /**
  * Normalized chat type - the canonical representation of chat types across platforms.
@@ -33,9 +31,7 @@ export function normalizeChatType(raw?: string): NormalizedChatType {
 	return "direct";
 }
 
-// ============================================================================
 // Mention Gating
-// ============================================================================
 
 /**
  * Parameters for resolving mention gating.
@@ -132,9 +128,7 @@ export function resolveMentionGatingWithBypass(
 	};
 }
 
-// ============================================================================
 // Typing Indicators
-// ============================================================================
 
 /**
  * Callbacks for managing typing indicators.
@@ -191,9 +185,7 @@ export function createTypingCallbacks(
 	return { onReplyStart, onIdle };
 }
 
-// ============================================================================
 // Acknowledgment Reactions
-// ============================================================================
 
 /**
  * Scope for acknowledgment reactions (e.g., "👀" seen indicators).
@@ -327,19 +319,19 @@ export function removeAckReactionAfterReply(
 	if (!params.ackReactionValue) {
 		return;
 	}
-	void params.ackReactionPromise.then((didAck) => {
-		if (!didAck) {
-			return;
-		}
-		// error-policy:J6 Acknowledgement removal is best-effort UI teardown; the
-		// caller's error hook is its observable failure channel.
-		params.remove().catch((err) => params.onError?.(err));
-	});
+	void params.ackReactionPromise
+		.then((didAck) => {
+			if (!didAck) {
+				return;
+			}
+			return params.remove();
+		})
+		// error-policy:J6 Report acknowledgement and removal failures through
+		// the caller's error hook without leaving a rejected teardown promise.
+		.catch((err) => params.onError?.(err));
 }
 
-// ============================================================================
 // Sender Labels
-// ============================================================================
 
 /**
  * Parameters for resolving a sender's display label.
@@ -436,9 +428,7 @@ export function listSenderLabelCandidates(params: SenderLabelParams): string[] {
 	return Array.from(candidates);
 }
 
-// ============================================================================
 // Location Utilities
-// ============================================================================
 
 /**
  * Source type for location data.
@@ -556,9 +546,7 @@ export function toLocationContext(
 	};
 }
 
-// ============================================================================
 // Channel Logging Utilities
-// ============================================================================
 
 /**
  * Log function signature.

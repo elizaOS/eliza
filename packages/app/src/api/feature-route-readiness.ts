@@ -4,8 +4,8 @@
  * still registering from a route that genuinely does not exist.
  */
 import { matchPluginRoutePath } from "@elizaos/agent/api/runtime-plugin-routes";
-import { type DeferredBootPhaseStatus } from "@elizaos/agent/runtime/deferred-boot-status";
-import { type Route } from "@elizaos/core/api/http-plugin";
+import type { DeferredBootPhaseStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import type { Route } from "@elizaos/host/protocol";
 export const DEFERRED_FEATURE_ROUTE_PREFIXES = [
   "/api/asr/cloud",
   "/api/browser-workspace",
@@ -43,13 +43,11 @@ export type FeatureRouteReadinessFailure = {
  */
 const HOST_OWNED_FEATURE_ROUTE_PREFIXES = [
   "/api/browser-workspace",
-  "/api/computer-use",
   "/api/wallet",
 ] as const;
 /** Exact host fallbacks that share a prefix with genuinely deferred routes. */
 const HOST_OWNED_FEATURE_ROUTES = [
   { method: "GET", pathname: "/api/coding-agents/preflight" },
-  { method: "GET", pathname: "/api/coding-agents/coordinator/status" },
   { method: "GET", pathname: "/api/lifeops/inbox" },
   { method: "GET", pathname: "/api/lifeops/activity-signals" },
   { method: "POST", pathname: "/api/lifeops/activity-signals" },

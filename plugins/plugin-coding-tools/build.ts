@@ -8,8 +8,22 @@ import { buildPlugin } from "../plugin-build";
 await buildPlugin({
   name: "@elizaos/plugin-coding-tools",
   clean: true,
-  externals: ["@elizaos/core", "@vscode/ripgrep", "phonemizer", "figlet"],
+  externals: [
+    "@elizaos/core",
+    "@elizaos/plugin-web-search/edge",
+    "@vscode/ripgrep",
+    "phonemizer",
+    "figlet",
+  ],
   targets: [
+    {
+      label: "Edge",
+      entry: "./src/edge.ts",
+      outSubdir: "",
+      target: "browser",
+      format: "esm",
+      sourcemap: "linked",
+    },
     {
       label: "Node",
       entry: "./src/index.ts",

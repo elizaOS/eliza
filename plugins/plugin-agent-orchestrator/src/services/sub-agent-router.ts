@@ -15,7 +15,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isTokenExpiryText } from "@elizaos/auth/auth/token-expiry";
+import { isTokenExpiryText } from "@elizaos/auth/auth";
 import type {
   Content,
   Entity,
@@ -44,6 +44,7 @@ import {
   hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
+import { isLoopbackUrl } from "./completion-evidence.js";
 import {
   beginPendingHandoff,
   settlePendingHandoff,
@@ -467,16 +468,6 @@ function comparableUrlTarget(url: string): string | undefined {
   }
 }
 
-function isLoopbackUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "localhost" || host === "::1" || host.startsWith("127.");
-  } catch {
-    // error-policy:J3 URL parse of untrusted input; unparseable = not loopback.
-    return false;
-  }
-}
-
 /**
  * Is this URL a loopback probe target? Matches the guard's own classification
  * (127.0.0.0/8, ::1 — bracketed or not — IPv4-mapped loopback, `localhost`)
@@ -828,7 +819,12 @@ export class SubAgentRouter extends Service {
       return;
     }
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
-    const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
+    // Number.parseInt stops at the first non-digit ("5junk" -> 5), so a
+    // typo was silently accepted as the cap instead of falling back to
+    // the default (32). Require the whole trimmed value to be decimal,
+    // mirroring resolveGenerationTimeoutMs in the discord plugin.
+    const capText = (capRaw ?? "").trim();
+    const parsed = /^\+?\d+$/.test(capText) ? Number(capText) : NaN;
     // Resolve the state-lost respawn cap through the shared resolver so the
     // router and the task service's terminal decision agree on the SAME
     // effective cap even under an operator override (#14104).
@@ -1751,6 +1747,11 @@ export class SubAgentRouter extends Service {
     // source and selected swarm room. If the connector isn't registered, fall through to
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
+    // One planner turn answers the user. The task room (else the first
+    // target) runs it; any other swarm room (a worktree room) only stores the
+    // post, so the user does not get the same answer and actions twice.
+    const plannerTarget =
+      targets.find((target) => target.roles.includes("task")) ?? targets[0];
     for (const target of targets) {
       const sessionMeta = session.metadata as
         | Record<string, unknown>
@@ -1847,6 +1848,19 @@ export class SubAgentRouter extends Service {
         },
         createdAt: Date.now(),
       };
+      if (target !== plannerTarget) {
+        await this.runtime.createMemory(memory, "messages").catch((err) => {
+          // error-policy:J7 the context copy for a secondary swarm room is
+          // best-effort; warned, does not abort the loop.
+          this.log("warn", "createMemory for sub-agent post failed", {
+            sessionId,
+            event,
+            roomId: target.roomId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+        continue;
+      }
       const replyCallback = this.buildReplyCallback(origin, sessionId, target);
       // messageService.handleMessage saves the memory itself ("Saving message
       // to memory" inside SERVICE:MESSAGE). When that path is available, skip

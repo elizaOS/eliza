@@ -1,6 +1,7 @@
 /**
  * Drizzle definitions for the `app_goals` schema — the goal tables
- * (`life_goal_definitions`, `life_goal_links`) this plugin owns.
+ * (`life_goal_definitions`, `life_goal_links`) this plugin owns, plus the goal
+ * audit table the standalone (PA-free) service writes.
  *
  * Table and column names (and column order) mirror the `app_lifeops` originals
  * verbatim so the non-destructive `GoalsMigrationService` can copy existing rows
@@ -60,9 +61,39 @@ export const lifeGoalLinks = goalsSchema.table(
   ],
 );
 
+/**
+ * Goal audit events written without plugin-personal-assistant. Same columns as
+ * PA's `app_lifeops.life_audit_events`; when PA is loaded it records goal
+ * audits there through its own `recordAudit` hook instead.
+ */
+export const lifeGoalAuditEvents = goalsSchema.table(
+  "life_goal_audit_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    eventType: text("event_type").notNull(),
+    ownerType: text("owner_type").notNull(),
+    ownerId: text("owner_id").notNull(),
+    reason: text("reason").notNull(),
+    inputsJson: text("inputs_json").notNull().default("{}"),
+    decisionJson: text("decision_json").notNull().default("{}"),
+    actor: text("actor").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_goal_audit_events_owner").on(
+      t.agentId,
+      t.ownerType,
+      t.ownerId,
+      t.createdAt,
+    ),
+  ],
+);
+
 export const goalsDbSchema = {
   lifeGoalDefinitions,
   lifeGoalLinks,
+  lifeGoalAuditEvents,
 } as const;
 
 export type GoalDefinitionRow = typeof lifeGoalDefinitions.$inferSelect;

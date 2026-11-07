@@ -9,8 +9,8 @@
  * swapped for a translator-only stub (see accounts-fixture-state-stub.ts).
  */
 
+import { AccountList } from "@elizaos/ui";
 import { createRoot } from "react-dom/client";
-import { AccountList } from "../../../ui/src/components/accounts/AccountList";
 
 function AccountsFixture() {
   return (

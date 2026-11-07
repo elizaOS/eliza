@@ -12,13 +12,13 @@
  * - Redirect URL whitelist prevents open redirect attacks
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   getIpKey,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { handleGenericOAuthCallback } from "../../generic-callback";
 
 const app = new Hono<AppEnv>();

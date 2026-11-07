@@ -28,6 +28,8 @@ export const pancakeswapPlugin: Plugin = {
         dex: "pancakeswap",
         label: "PancakeSwap V3",
         service,
+        appliesRange: true,
+        closeNeedsTokenId: true,
       }),
     );
   },

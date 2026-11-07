@@ -15,7 +15,7 @@ gpu_arch: sm_120
 vram_gb: 32
 mem_bandwidth_gbps: 1792
 fp8_supported: true
-fp4_supported: true                # hardware-capable; KV FP4 requires matching runtime kernels
+fp4_supported: true # hardware-capable; KV FP4 requires matching runtime kernels
 nvlink: false
 
 bundle_recommendations:
@@ -88,7 +88,7 @@ mtp:
 
 verify_recipe:
   build_target: linux-x64-cuda
-  cuda_arch: 120                    # sm_120 — verify CUDA toolkit >= 12.8
+  cuda_arch: 120 # sm_120 — verify CUDA toolkit >= 12.8
   cmake_flags:
     - "-DGGML_CUDA=ON"
     - "-DCMAKE_CUDA_ARCHITECTURES=120"
@@ -107,4 +107,4 @@ verify_recipe:
   # warns (not fails) when a kernel is absent — runtime falls back.
   warn_on_kernel_absent: true
   smoke_bundle: eliza-1-27b-256k
-  tolerance_pct: 15                 # wider tolerance — first-class kernels still maturing on Blackwell
+  tolerance_pct: 15 # wider tolerance — first-class kernels still maturing on Blackwell

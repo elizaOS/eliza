@@ -25,7 +25,7 @@ import {
 import { type RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
-import { charactersService } from "./services/characters/characters";
+import { charactersService } from "./services/characters";
 import { discordService } from "./services/discord";
 import { invalidateBoundPersonalDeliveryProjection } from "./services/eliza-app/personal-delivery-projection-contract";
 import { emailService } from "./services/email";
@@ -63,6 +63,8 @@ export type StewardSyncedUser = UserWithOrganization &
      * the independently self-healing character + tenant provisioning tail.
      */
     postCommitProvisioningDeferred?: true;
+    /** True only when this sync made the Cloud user and its organization. */
+    accountCreated?: true;
   };
 export interface StewardSyncExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -884,32 +886,45 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           `Failed to fetch newly created user (steward: ${stewardUserId}) after accepting invite`,
         );
       }
-      await organizationInvitesRepository.markAsAccepted(pendingInvite.id, userWithOrg.id);
-      // Log to Discord (fire-and-forget)
-      discordService
-        .logUserSignup({
-          userId: userWithOrg.id,
-          stewardUserId: userWithOrg.steward_user_id || "",
-          email: userWithOrg.email || null,
-          name: userWithOrg.name || null,
-          walletAddress: userWithOrg.wallet_address || null,
-          organizationId: userWithOrg.organization?.id || "",
-          organizationName: userWithOrg.organization?.name || "",
-          role: userWithOrg.role,
-          isNewOrganization: false,
-        })
-        .catch((error) => {
-          logger.error("[StewardSync] Discord log failed:", { error });
-        });
-      // Same personal default-key mint as the direct-signup branch below —
-      // without it an invited user cannot use inference until manually keyed.
-      // Awaited for the same Workers-cancellation reason (see the note above
-      // the branch-5 provisioning).
-      await apiKeysService.provisionDefaultApiKey(
+      const acceptedInvite = await organizationInvitesRepository.markAsAccepted(
+        pendingInvite.id,
         userWithOrg.id,
-        userWithOrg.organization?.id || "",
       );
-      return userWithOrg;
+      if (acceptedInvite) {
+        // Log to Discord (fire-and-forget)
+        discordService
+          .logUserSignup({
+            userId: userWithOrg.id,
+            stewardUserId: userWithOrg.steward_user_id || "",
+            email: userWithOrg.email || null,
+            name: userWithOrg.name || null,
+            walletAddress: userWithOrg.wallet_address || null,
+            organizationId: userWithOrg.organization?.id || "",
+            organizationName: userWithOrg.organization?.name || "",
+            role: userWithOrg.role,
+            isNewOrganization: false,
+          })
+          .catch((error) => {
+            logger.error("[StewardSync] Discord log failed:", { error });
+          });
+        // Same personal default-key mint as the direct-signup branch below —
+        // without it an invited user cannot use inference until manually keyed.
+        // Awaited for the same Workers-cancellation reason (see the note above
+        // the branch-5 provisioning).
+        await apiKeysService.provisionDefaultApiKey(
+          userWithOrg.id,
+          userWithOrg.organization?.id || "",
+        );
+        return userWithOrg;
+      }
+      // The invite was revoked or claimed after the read above. This branch
+      // created the user inside the inviting organization, so remove that
+      // membership and continue as a sign-up without an invite.
+      await usersRepository.delete(userWithOrg.id);
+      await usersService.invalidateCache(userWithOrg);
+      logger.warn(
+        `[StewardSync] Invite ${pendingInvite.id} was no longer pending at sign-up for ${stewardUserId}; removed the invited user ${userWithOrg.id} and continuing without the invite`,
+      );
     }
   }
   // ── 3. Email already taken (account linking) ─────────────────────────
@@ -1059,15 +1074,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
             await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
           }
           if (existingUser.steward_user_id !== stewardUserId) {
-            // NOTE: This is the link path that the Steward identity-link DB
-            // migration drafts depend on (see
-            // packages/db/migrations/_drafts_steward_link/README.md, Phase 2).
-            // The match-by-email or match-by-wallet branches above find the
+            // NOTE: This is the Steward identity-link path. The
+            // match-by-email or match-by-wallet branches above find the
             // existing auth row, and this block writes the
             // steward_user_id link onto both `users` and `user_identities`.
-            // The drafted Phase 3 migration will not run until the
-            // unlinked-active-user count hits zero, which depends on this
-            // path executing for every active user.
             logger.info(
               `[StewardSync] Linking Steward account for ${email}: ${existingUser.steward_user_id} → ${stewardUserId}`,
             );
@@ -1217,6 +1227,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     });
   return {
     ...userWithOrg,
+    accountCreated: true,
     initialCreditsGranted,
     initialFreeCreditsUsd,
     ...(params.executionCtx ? { postCommitProvisioningDeferred: true as const } : {}),

@@ -1,9 +1,48 @@
+import {
+  CLOUDFLARE_TTS_MAX_CHARACTERS,
+  CloudflareSpeechError,
+  synthesizeCloudflareAudio,
+} from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { CUSTOM_VOICE_TTS_MARKUP } from "@elizaos/cloud-shared/lib/pricing-constants";
 import {
-  FIRST_SENTENCE_SNIP_VERSION,
-  firstSentenceSnip,
-} from "@elizaos/core/voice/first-sentence-snip";
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import {
+  elevenLabsSdkErrorStatus,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
+import {
+  fingerprintCloudVoiceSettings,
+  getCloudFirstLineCacheService,
+  shouldBypassCloudFirstLineCache,
+} from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import {
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/tts-synthesis-options";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { FIRST_SENTENCE_SNIP_VERSION, firstSentenceSnip } from "@elizaos/voice";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -12,29 +51,8 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  timeSpeechPhase,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import {
-  type CreditReservation,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
-import { recordCustomVoiceUsage } from "@/lib/services/tts-custom-voice-usage";
-import {
-  fingerprintCloudVoiceSettings,
-  getCloudFirstLineCacheService,
-  shouldBypassCloudFirstLineCache,
-} from "@/lib/services/tts-first-line-cache";
-import { usageService } from "@/lib/services/usage";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { type AppContext, type AppEnv } from "@/types/cloud-worker-env";
 import {
   CartesiaRestTtsError,
   synthesizeCartesiaBytes,
@@ -44,7 +62,11 @@ import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
-import { selectTtsProvider, type TtsProvider } from "./provider-selection";
+import {
+  resolveCartesiaVoiceId,
+  selectTtsProvider,
+  type TtsProvider,
+} from "./provider-selection";
 
 /**
  * Voice TTS API (v1)
@@ -87,8 +109,9 @@ function resolveElevenLabsVoiceRevision(
   return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
 const MAX_TEXT_LENGTH = 5000;
-const TtsBody = z.object({
+const TtsBody = TtsSynthesisOptions.extend({
   text: z.string(),
+  withTimestamps: z.boolean().optional(),
   voiceId: z.string().optional(),
   modelId: z.string().optional(),
   // Optional container format. Default (unset) = MP3, unchanged for every
@@ -125,19 +148,6 @@ function buildTtsObservabilityHeaders(
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24000;
 const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
-/**
- * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
- * verified live). Override per-environment with CARTESIA_VOICE_ID; the legacy
- * CARTESIA_DEFAULT_VOICE_ID remains accepted for older deploy configs.
- */
-const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
-function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
-  return (
-    env.CARTESIA_VOICE_ID?.trim() ||
-    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
-    DEFAULT_CARTESIA_VOICE_ID
-  );
-}
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
  * merged copy + the WAV in Worker memory, so the cap must reflect the real
@@ -205,7 +215,9 @@ async function __hono_POST(c: AppContext) {
   const requestStart = Date.now();
   const timings: TtsTimings = {};
   try {
-    const decodedRawBody = await decodeRequestJson(request);
+    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () =>
+      decodeRequestJson(request),
+    );
     let pendingResponse: Response | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
@@ -230,10 +242,15 @@ async function __hono_POST(c: AppContext) {
     const providerSelection = body
       ? selectTtsProvider({
           voiceId: body.voiceId,
+          cloudflareConfigured: Boolean(env.AI),
           cartesiaConfigured: Boolean(cartesiaApiKey),
           kokoroConfigured: Boolean(kokoroBaseUrl),
         })
       : undefined;
+    const maxTextLength =
+      providerSelection?.ok && providerSelection.provider === "cloudflare"
+        ? CLOUDFLARE_TTS_MAX_CHARACTERS
+        : MAX_TEXT_LENGTH;
     if (body && !body.text) {
       pendingResponse = Response.json(
         { error: "No text provided" },
@@ -244,23 +261,44 @@ async function __hono_POST(c: AppContext) {
         { error: "Text cannot be empty" },
         { status: 400 },
       );
-    } else if (body && body.text.length > MAX_TEXT_LENGTH) {
+    } else if (body && body.text.length > maxTextLength) {
       pendingResponse = Response.json(
         {
-          error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
+          error: `Text too long. Maximum length is ${maxTextLength} characters`,
         },
+        { status: 400 },
+      );
+    }
+    if (
+      body &&
+      (hasTtsSynthesisOptions(body) || body.withTimestamps === true) &&
+      providerSelection?.ok &&
+      providerSelection.provider !== "elevenlabs"
+    ) {
+      pendingResponse = Response.json(
+        {
+          error:
+            "Synthesis options require an explicitly selected ElevenLabs voice",
+          code: "unsupported_synthesis_options",
+        },
+        { status: 400 },
+      );
+    }
+    if (body?.withTimestamps && body.format === "wav") {
+      pendingResponse = Response.json(
+        { error: "Timed speech requires MP3 output" },
         { status: 400 },
       );
     }
     const willAdmit =
       pendingResponse === undefined &&
       providerSelection?.ok === true &&
-      providerSelection.provider !== "kokoro";
+      providerSelection.provider !== "kokoro" &&
+      providerSelection.provider !== "cloudflare";
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -310,17 +348,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: `TTS text: ${text}`,
-      metadata: {
-        type: "tts",
-        model: modelId || "eleven_flash_v2_5",
-        voiceId,
-      },
-    });
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -330,10 +357,29 @@ async function __hono_POST(c: AppContext) {
       voiceId: providerSelection.voiceId ?? "default",
     });
     // -------------------------------------------------------------------------
-    // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
-    // is the product default — no credit reservation, no billing. Explicit
-    // custom/ElevenLabs voice ids continue down the paid provider path.
+    // Workers AI replaces the hosted free default without changing customer
+    // billing. Explicit paid provider voices retain their existing admission.
     // -------------------------------------------------------------------------
+    if (providerSelection.provider === "cloudflare") {
+      timings.admissionMs = Date.now() - admissionStart;
+      const synthesisStart = Date.now();
+      const audio = await synthesizeCloudflareAudio(
+        env.AI,
+        text,
+        wantWav,
+        c.req.raw.signal,
+        providerSelection.speaker,
+      );
+      timings.synthesisMs = Date.now() - synthesisStart;
+      return new Response(audio, {
+        headers: {
+          "Content-Type": wantWav ? "audio/wav" : "audio/mpeg",
+          "Cache-Control": "no-store",
+          ...buildTtsObservabilityHeaders("cloudflare", timings),
+          "X-Eliza-TTS-Voice": providerSelection.speaker,
+        },
+      });
+    }
     if (providerSelection.provider === "kokoro") {
       const kokoroVoice = providerSelection.voiceId;
       timings.admissionMs = Date.now() - admissionStart;
@@ -357,8 +403,10 @@ async function __hono_POST(c: AppContext) {
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
-          const cached =
-            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          const cached = await getCloudFirstLineCacheService().get(
+            kokoroCacheKey,
+            getGenerativeExecutionContext(c),
+          );
           if (cached) {
             timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
@@ -480,15 +528,20 @@ async function __hono_POST(c: AppContext) {
         : voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
-    const cacheBypass = shouldBypassCloudFirstLineCache({
-      modelId: resolvedModelId,
-    });
+    // Context and rendering controls change audio. Never read or populate a
+    // legacy text-only cache entry for these requests.
+    const cacheBypass =
+      body.withTimestamps === true ||
+      hasTtsSynthesisOptions(body) ||
+      shouldBypassCloudFirstLineCache({
+        modelId: resolvedModelId,
+      });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
     const mp3CacheProvider =
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        ? `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:mp3_44100_128`
         : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -505,17 +558,20 @@ async function __hono_POST(c: AppContext) {
       try {
         const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
+        const cached = await cacheService.get(
+          {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3",
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          },
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -557,7 +613,7 @@ async function __hono_POST(c: AppContext) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "cartesia",
             voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:pcm${WAV_PCM_SAMPLE_RATE}`,
             sampleRate: WAV_PCM_SAMPLE_RATE,
             codec: "wav" as const,
             voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
@@ -570,7 +626,10 @@ async function __hono_POST(c: AppContext) {
     if (wavCacheKey) {
       try {
         const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        const cached = await getCloudFirstLineCacheService().get(
+          wavCacheKey,
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -621,7 +680,21 @@ async function __hono_POST(c: AppContext) {
     // sends it on BOTH the direct request and the proxy fallback, so a retry
     // after an ambiguous network outcome replays the committed reservation
     // instead of charging the utterance twice. Org-scoped inside reserve().
-    const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
+    // The key is bound to the utterance it names: the same key with another
+    // text, voice, model or format is a new paid request, never a replay.
+    // Hash resolved defaults because the proxy fallback fills the legacy
+    // default voice and model that the direct request is allowed to omit.
+    const clientIdempotencyKey = request.headers.get("Idempotency-Key");
+    const ttsIdempotencyKey = clientIdempotencyKey
+      ? `${clientIdempotencyKey}:${settlementDigest({
+          text,
+          voiceId: resolvedVoiceId,
+          modelId: resolvedModelId,
+          format: body.format ?? "mp3",
+          withTimestamps: body.withTimestamps === true,
+          synthesis: TtsSynthesisOptions.parse(body),
+        })}`
+      : null;
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -735,16 +808,30 @@ async function __hono_POST(c: AppContext) {
     }
     if (wav === undefined) {
       if (audioStream === undefined) {
+        // Only this lane loads the ElevenLabs SDK, so cold requests on the
+        // other providers do not evaluate its module graph.
+        const { getElevenLabsService } = await import(
+          "@elizaos/cloud-shared/lib/services/elevenlabs"
+        );
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
-        audioStream = await elevenlabs.textToSpeech({
+        const synthesis = {
+          ...TtsSynthesisOptions.parse(body),
           text,
           voiceId,
           modelId,
-          // WAV path requests raw PCM (wrapped in a WAV header below); default
-          // callers get the service's MP3 default.
-          ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
-        });
+        };
+        audioStream = body.withTimestamps
+          ? await elevenlabs.textToSpeechWithTimestamps(
+              synthesis,
+              request.signal,
+            )
+          : await elevenlabs.textToSpeech({
+              ...synthesis,
+              ...(wantWav
+                ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` }
+                : {}),
+            });
       }
       if (wantWav) {
         wav = await drainPcm16ToWav(
@@ -769,7 +856,7 @@ async function __hono_POST(c: AppContext) {
             ...billingContext,
             model:
               synthesisEngine === "cartesia"
-                ? "cartesia/sonic-3.5"
+                ? `cartesia/${CARTESIA_SONIC_MODEL_ID}`
                 : billingContext.model,
             provider: synthesisEngine,
           },
@@ -798,7 +885,7 @@ async function __hono_POST(c: AppContext) {
           // ElevenLabs-served one would.
           model:
             synthesisEngine === "cartesia"
-              ? "sonic-3.5"
+              ? CARTESIA_SONIC_MODEL_ID
               : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),
@@ -902,16 +989,31 @@ async function __hono_POST(c: AppContext) {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
           ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+          // Clients can avoid applying the requested pace a second time and
+          // remain compatible with deployments predating provider controls.
+          ...(body.speed !== undefined
+            ? { "X-Eliza-TTS-Speed": String(body.speed) }
+            : {}),
           "X-TTS-Cache": "miss",
         },
       });
     }
     return new Response(audioStream, {
       headers: {
-        "Content-Type": cartesiaMp3ContentType,
+        "Content-Type": body.withTimestamps
+          ? "application/x-ndjson"
+          : cartesiaMp3ContentType,
         "Transfer-Encoding": "chunked",
+        ...(body.withTimestamps
+          ? { "X-Eliza-TTS-Timing": "character-v1" }
+          : {}),
         "Cache-Control": "no-cache",
         ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+        // Clients can avoid applying the requested pace a second time and
+        // remain compatible with deployments predating provider controls.
+        ...(body.speed !== undefined
+          ? { "X-Eliza-TTS-Speed": String(body.speed) }
+          : {}),
         "X-TTS-Cache": "miss",
       },
     });
@@ -924,8 +1026,16 @@ async function __hono_POST(c: AppContext) {
       errorType: error instanceof Error ? error.name : "unknown",
     });
     if (reservation) {
+      // A clear rejection before any audio proves nothing was synthesized:
+      // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
+      const sdkStatus = elevenLabsSdkErrorStatus(error);
+      const rejected =
+        (error instanceof CartesiaRestTtsError &&
+          error.beforeAudio &&
+          isKnownUnacceptedProviderStatus(error.status)) ||
+        (sdkStatus !== undefined && isKnownUnacceptedProviderStatus(sdkStatus));
       const settlement =
-        providerWorkMayHaveStarted && settleUnknown
+        providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);
@@ -949,7 +1059,18 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
     if (error instanceof CartesiaRestTtsError) {
       const status =
@@ -970,6 +1091,12 @@ async function __hono_POST(c: AppContext) {
           code: error.classification,
         },
         { status },
+      );
+    }
+    if (error instanceof CloudflareSpeechError) {
+      return Response.json(
+        { error: error.message, provider: "cloudflare" },
+        { status: error.status },
       );
     }
     const errorMessage =

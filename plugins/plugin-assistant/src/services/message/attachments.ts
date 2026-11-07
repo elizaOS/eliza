@@ -521,7 +521,10 @@ export class MessageAttachments {
         );
       }
       const contentType =
-        res.headers.get("content-type") || "application/octet-stream";
+        res.headers
+          .get("content-type")
+          ?.replace(/^[^;]+/, (type) => type.trim().toLowerCase()) ||
+        "application/octet-stream";
       const buffer = await readResponseWithLimit(res, maxBytes);
       budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
       return { buffer, contentType };

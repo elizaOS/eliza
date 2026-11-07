@@ -2,12 +2,12 @@
  * GET /api/v1/advertising/campaigns/[id]/report — JSON/CSV campaign performance export.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_DATE_RANGE_MS = 365 * 24 * 60 * 60 * 1000;
 

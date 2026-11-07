@@ -1,4 +1,5 @@
 import { requestReminderWake } from "../reminder-wake.js";
+
 /**
  * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
  * their occurrences (the recurring reminders/check-ins/routines the scheduler
@@ -6,7 +7,6 @@ import { requestReminderWake } from "../reminder-wake.js";
  * scoring.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -24,11 +24,12 @@ import type {
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   type DefinitionCreationContext,
@@ -133,11 +134,15 @@ export class DefinitionsDomain {
     private readonly deps: DefinitionsDeps,
   ) {}
 
+  /** Caller-authorized rows, including archived definitions, without derived data.
+   * Cost: one definition query per existing caller scope; no plan/occurrence reads.
+   */
+  listDefinitionRows(): Promise<LifeOpsTaskDefinition[]> {
+    return listCallerDefinitions(this.ctx.repository, this.ctx);
+  }
+
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-    );
+    const definitions = await this.listDefinitionRows();
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -331,7 +336,6 @@ export class DefinitionsDomain {
       LIFEOPS_DEFINITION_KINDS,
     );
     const title = requireNonEmptyString(request.title, "title");
-    const description = normalizeOptionalString(request.description) ?? "";
     const originalIntent =
       normalizeOptionalString(request.originalIntent) ?? title;
     const timezone = normalizeValidTimeZone(request.timezone, "timezone");
@@ -341,6 +345,13 @@ export class DefinitionsDomain {
       timezone,
     );
     const cadence = normalizeCadence(request.cadence, windowPolicy);
+    const description =
+      cadence.kind === "once" &&
+      request.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+      typeof request.description === "string" &&
+      request.description.trim().length > 0
+        ? request.description
+        : (normalizeOptionalString(request.description) ?? "");
     if (cadence.kind === "unscheduled" && kind !== "task") {
       fail(400, "unscheduled cadence is only valid for task definitions");
     }
@@ -420,6 +431,7 @@ export class DefinitionsDomain {
           },
           reminderPlan: reminderPlanDraft,
         }),
+        context?.assertNewCreation,
       );
       if (claim.replayed)
         return {
@@ -428,6 +440,7 @@ export class DefinitionsDomain {
         };
       definition = claim.definition;
     } else {
+      context?.assertNewCreation?.();
       await this.ctx.repository.createDefinition(definition);
     }
     const reminderPlan = await this.deps.syncReminderPlan(
@@ -589,7 +602,12 @@ export class DefinitionsDomain {
           : current.definition.title,
       description:
         request.description !== undefined
-          ? (normalizeOptionalString(request.description) ?? "")
+          ? nextCadence.kind === "once" &&
+            current.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+            typeof request.description === "string" &&
+            request.description.trim().length > 0
+            ? request.description
+            : (normalizeOptionalString(request.description) ?? "")
           : current.definition.description,
       originalIntent:
         request.originalIntent !== undefined
@@ -1093,7 +1111,11 @@ export class DefinitionsDomain {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now = new Date(),
+    options?: { expectedDefinitionUpdatedAt: string },
   ): Promise<LifeOpsOccurrenceView> {
+    if (!Number.isFinite(now.getTime())) {
+      fail(400, "snooze time must be a valid date");
+    }
     const { occurrence, definition } = await this.deps.getFreshOccurrence(
       occurrenceId,
       now,
@@ -1108,9 +1130,44 @@ export class DefinitionsDomain {
     ) {
       fail(409, `occurrence cannot be snoozed from state ${occurrence.state}`);
     }
-    const snoozedUntil = computeSnoozedUntil(definition, request, now);
+    // A duration postpones the current eligible time, including an existing
+    // snooze. Named wall-clock presets still resolve from now, not that anchor.
+    const eligibleTimes = [
+      now.getTime(),
+      Date.parse(occurrence.relevanceStartAt),
+      occurrence.snoozedUntil === null
+        ? now.getTime()
+        : Date.parse(occurrence.snoozedUntil),
+    ];
+    if (eligibleTimes.some((time) => !Number.isFinite(time))) {
+      fail(400, "occurrence eligibility time must be a valid date");
+    }
+    const eligibleAt = new Date(Math.max(...eligibleTimes));
+    const absolutePreset =
+      request.preset === "tonight" || request.preset === "tomorrow_morning";
+    const snoozedUntil = computeSnoozedUntil(
+      definition,
+      request,
+      absolutePreset ? now : eligibleAt,
+    );
     if (snoozedUntil.getTime() <= now.getTime()) {
       fail(400, "snoozedUntil must be in the future");
+    }
+    if (snoozedUntil.getTime() < eligibleAt.getTime()) {
+      fail(400, "snooze preset would deliver before the current eligible time");
+    }
+    // A count-per-day occurrence is that local day's quota and the next day has
+    // its own occurrence, so its relevance never follows a snooze. A snooze
+    // past the day's end would expire before it could deliver.
+    if (
+      definition.cadence.kind === "count_per_day" &&
+      snoozedUntil.getTime() > Date.parse(occurrence.relevanceEndAt)
+    ) {
+      fail(
+        409,
+        `a daily-count occurrence cannot be snoozed past the end of its day (${occurrence.relevanceEndAt})`,
+        "LIFEOPS_SNOOZE_PAST_QUOTA_DAY",
+      );
     }
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,
@@ -1126,7 +1183,8 @@ export class DefinitionsDomain {
     await this.ctx.repository.updateOccurrence(updatedOccurrence, {
       definitionScope,
       expectedUpdatedAt: occurrence.updatedAt,
-      expectedDefinitionUpdatedAt: definition.updatedAt,
+      expectedDefinitionUpdatedAt:
+        options?.expectedDefinitionUpdatedAt ?? definition.updatedAt,
     });
     await this.ctx.recordAudit(
       "occurrence_snoozed",

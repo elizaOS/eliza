@@ -13,7 +13,7 @@ import pytest
 from eliza_lifeops_bench.corpus_audit import build_corpus_audit
 from eliza_lifeops_bench.lifeworld.generators import WorldGenerator
 from eliza_lifeops_bench.lifeworld.world import LifeWorld
-from eliza_lifeops_bench.runner import _execute_action
+from eliza_lifeops_bench.lifeworld.executor import _execute_action
 from eliza_lifeops_bench.scenarios import CORE_SCENARIOS
 from eliza_lifeops_bench.scorer import (
     _action_is_hash_inert,

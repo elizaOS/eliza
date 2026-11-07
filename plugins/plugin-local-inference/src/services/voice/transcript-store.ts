@@ -43,7 +43,7 @@ import {
 	type TranscriptSummary,
 	transcriptCapturePrivacyState,
 	transcriptPreview,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.type` marker — NOT "document"/"fragment", so no CHECK fires. */
@@ -986,6 +986,11 @@ export class TranscriptStore {
 	}
 	/** Delete a transcript record (the knowledge mirror is removed separately). */
 	async delete(id: UUID): Promise<void> {
+		// The redacted variant is a separate row holding redacted segments and
+		// any redacted audio; it must not outlive its original.
+		const row = await this.runtime.getMemoryById(id);
+		const variantId = row ? redactedVariantId(row) : null;
+		if (variantId) await this.runtime.deleteMemory(variantId);
 		await this.runtime.deleteMemory(id);
 	}
 }

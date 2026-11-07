@@ -5,49 +5,49 @@
  * POST — create a new Agent cloud agent (gated on a minimum credit balance).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
   ApiError,
   NotFoundError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { requireDedicatedComputePriceAcceptance } from "@/lib/services/dedicated-compute-price-acceptance";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { requireDedicatedComputePriceAcceptance } from "@elizaos/cloud-shared/lib/services/dedicated-compute-price-acceptance";
 import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
-} from "@/lib/services/eliza-agent-config";
-import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
+} from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
+import { prepareManagedElizaEnvironment } from "@elizaos/cloud-shared/lib/services/eliza-managed-launch";
 import {
   AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { publicJobErrorSummary } from "@/lib/services/job-error-text";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@elizaos/cloud-shared/lib/services/job-error-text";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
 import {
   getAgentTier,
   tierProvisionsEagerly,
-} from "@/lib/services/shared-runtime/agent-tier";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/agent-tier";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   AgentActiveJobDto,
   AgentListItemDto,
   AgentsResponse,
-} from "@/lib/types/cloud-api";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { projectProductAgentList } from "./product-agent-list";
 
 const app = new Hono<AppEnv>();
@@ -450,6 +450,10 @@ app.post("/", async (c) => {
       agentConfig: parsed.data.characterId
         ? withReusedElizaCharacterOwnership(sanitizedConfig)
         : sanitizedConfig,
+      // An eager tier created without provisioning waits for the caller's
+      // explicit provision; the orphaned-pending sweep must leave it alone.
+      provisioningDeferred:
+        !autoProvision && tierProvisionsEagerly(executionTier),
       environmentVars: parsed.data.environmentVars,
       executionTier,
       // Default reuses the org's existing non-terminal agent (idempotent create);
@@ -514,6 +518,57 @@ app.post("/", async (c) => {
       orgId: user.organization_id,
       status: agent.status,
     });
+    // A request that asks for provisioning must not leave a reused eager agent
+    // pending with no job: its earlier enqueue was lost, or it was created with
+    // `autoProvision: false`. The reused agent's tier decides, because the
+    // reuse guard returns the org's agent whatever tier this request names.
+    // The queue returns the live job when one exists.
+    if (
+      autoProvision &&
+      agent.status === "pending" &&
+      tierProvisionsEagerly(agent.execution_tier)
+    ) {
+      // A request for a non-eager tier skipped the dedicated price and credit
+      // gates above; provisioning this agent bills dedicated compute.
+      if (!shouldProvisionEagerly) {
+        const priceError = requireDedicatedComputePriceAcceptance(c.req.raw);
+        if (priceError) return priceError;
+        const creditCheck = await checkAgentCreditGate(user.organization_id);
+        if (!creditCheck.allowed) {
+          return c.json(
+            insufficientCredits402(
+              creditCheck,
+              "[agent-api] Agent provisioning blocked: insufficient credits",
+              { orgId: user.organization_id },
+            ),
+            402,
+          );
+        }
+      }
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        return c.json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
+      }
+      const repair =
+        await provisioningJobService.enqueueReusedPendingAgentProvision({
+          agent,
+          organizationId: user.organization_id,
+          userId: user.id,
+        });
+      if (repair?.created) {
+        void provisioningJobService.triggerImmediate(c.env).catch(() => {
+          // Logged inside the service.
+        });
+        logger.info("[agent-api] Provisioning job enqueued for reused agent", {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          jobId: repair.job.id,
+        });
+      }
+    }
     return c.json(
       {
         success: true,
@@ -579,16 +634,17 @@ app.post("/", async (c) => {
       }
       if (createExecutionCtx) {
         createExecutionCtx.waitUntil(
-          import("@/lib/services/shared-runtime/prewarm-shared-agent").then(
-            ({ prewarmSharedAgentTurnCaches }) =>
-              prewarmSharedAgentTurnCaches(agent, {
-                namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
-                // The creating request's credential is the one the immediate
-                // first message presents; it lets the prewarm seed the exact
-                // credential-scoped authorization entry that message consults.
-                requestContext: c,
-                stewardUserId: user.steward_id ?? undefined,
-              }),
+          import(
+            "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent"
+          ).then(({ prewarmSharedAgentTurnCaches }) =>
+            prewarmSharedAgentTurnCaches(agent, {
+              namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
+              // The creating request's credential is the one the immediate
+              // first message presents; it lets the prewarm seed the exact
+              // credential-scoped authorization entry that message consults.
+              requestContext: c,
+              stewardUserId: user.steward_id ?? undefined,
+            }),
           ),
         );
       }

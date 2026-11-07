@@ -13,13 +13,13 @@
  */
 
 import { logger } from "@elizaos/core";
+import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudStewardOperationalTuple,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
-import { type SecureStoreSecretKind } from "./platform-secure-store";
 import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,

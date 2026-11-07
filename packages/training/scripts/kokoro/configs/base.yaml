@@ -1,7 +1,7 @@
 # Shared defaults for every Kokoro fine-tune run.
 #
-# Per-run configs override these via YAML merge in finetune_kokoro.py.
-# Edit the per-run config (eliza-1-default.yaml, kokoro_lora_ljspeech.yaml,
+# Per-run configs override these via YAML merge in finetune_kokoro_full.py.
+# Edit the per-run config (eliza-1-default.yaml, kokoro_full_ljspeech.yaml,
 # kokoro_full_ljspeech.yaml) rather than this file unless the change is
 # meant to apply globally.
 

@@ -11,7 +11,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { applyModelGateway, resolveModelGateway } from "@elizaos/core";
+import {
+  applyModelGateway,
+  parseBooleanValue,
+  resolveModelGateway,
+} from "@elizaos/core";
 import z from "zod";
 import {
   type ModelConfig,
@@ -19,14 +23,9 @@ import {
   type ProviderRateLimits,
 } from "./types.ts";
 
-const parseBooleanEnv = (
-  value: string | boolean | number | undefined,
-): boolean => {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") return value.toLowerCase() === "true";
-  return false;
-};
+/** Core boolean reading: true/false, 1/0, yes/no and on/off. */
+const parseBooleanEnv = (value: string | undefined): boolean =>
+  parseBooleanValue(value) ?? false;
 
 const normalizeEnvValue = (value: string | undefined): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -39,10 +38,14 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
     const getSetting = (key: string, defaultValue?: string) => {
       if (runtime) {
         const runtimeValue = runtime.getSetting(key);
+        // runtime.getSetting turns "true"/"false" into booleans; keep them.
         const normalizedRuntimeValue =
           typeof runtimeValue === "string"
             ? normalizeEnvValue(runtimeValue)
-            : undefined;
+            : typeof runtimeValue === "boolean" ||
+                typeof runtimeValue === "number"
+              ? String(runtimeValue)
+              : undefined;
         return (
           normalizedRuntimeValue ??
           normalizeEnvValue(process.env[key]) ??

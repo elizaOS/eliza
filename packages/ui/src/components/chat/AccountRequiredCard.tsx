@@ -10,13 +10,13 @@
  */
 import { CheckCircle2, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import { useRef } from "react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
-import { useBranding } from "../../config/branding";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   type ConnectorReconnectPhase,
   useConnectorReconnect,
 } from "../../hooks/useConnectorReconnect";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";

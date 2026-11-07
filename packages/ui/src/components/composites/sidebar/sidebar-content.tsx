@@ -7,22 +7,12 @@
  * (skill-sidebar-item, the sidebar root) build on these.
  */
 import * as React from "react";
-
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
+import { assignRef } from "../../../utils/refs";
 import { Alert } from "../../ui/alert";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import { StatusDot } from "../../ui/status-badge";
-
-function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-  if (ref) {
-    ref.current = value;
-  }
-}
 
 export interface SidebarSectionLabelProps
   extends React.HTMLAttributes<HTMLDivElement> {}

@@ -1,24 +1,6 @@
-/**
- * TodosView — the GUI data wrapper for the owner todo board.
- *
- * It owns the live todos data (the fetcher seam over the single read-only
- * endpoint PA serves, the quiet background poll, wire->display mapping, lane
- * grouping, and the overdue signal) and renders the one presentational
- * {@link TodosSpatialView} inside a {@link SpatialSurface}. The browser DOM
- * surface ships today, while the retained modality contract stays available for
- * future adapters.
- *
- * Data source (PA owns the shared scheduled-task spine; this plugin only reads):
- *   GET {base}/api/lifeops/todos -> { todos: TodoWire[] }
- *
- * The board is read-only: the only owner actions are `add` (route an add-a-todo
- * request through the assistant chat — no fabricated todos) and `retry` (reload
- * after an error). This plugin MUST NOT import from
- * @elizaos/plugin-personal-assistant; the wire DTO below is declared locally to
- * match the JSON shape PA emits.
- */
+/** Todos view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,29 +40,11 @@ export interface TodosFetchers {
 /** Todos JSON GET is a short UI read — same 15s family as GoalsView / FocusView. */
 export const TODOS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getTodosJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = TODOS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Todos request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
 async function getTodos(signal?: AbortSignal): Promise<TodosWire> {
-  return getTodosJsonWithFetch<TodosWire>(
-    `${client.getBaseUrl()}/api/lifeops/todos`,
-    globalThis.fetch,
-    TODOS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<TodosWire>(
+    "/api/lifeops/todos",
+    { method: "GET", signal },
+    { timeoutMs: TODOS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
@@ -180,13 +144,7 @@ type LoadState =
   | { kind: "ready"; todos: TodoItem[] };
 
 function requestNewTodo(): void {
-  // The add-a-todo affordance routes through the assistant chat. `client` does
-  // not type `sendChatMessage`, so read it through a narrow optional-method view
-  // and call it only when present — no fabricated todos, best-effort dispatch.
-  const chatClient = client as {
-    sendChatMessage?: (text: string) => void;
-  };
-  chatClient.sendChatMessage?.("Add a todo for me.");
+  dispatchChatPrefill({ text: "Add a todo for me." });
 }
 
 export function TodosView(props: TodosViewProps = {}): ReactNode {

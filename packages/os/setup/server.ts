@@ -1,22 +1,16 @@
-// Configures the AOSP setup flasher build and tests.
-
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Server } from "bun";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";
 import { SideloaderIosBackend } from "./src/backend/ios-backend";
-import type {
-  IosInstallPlan,
-  IosInstallStepId,
-  IosInstallStepStatus,
-} from "./src/backend/ios-types";
+import { createIosHandler } from "./src/backend/ios-handler";
 import type {
   FlashPlan,
   FlashRequest,
   FlashStepId,
   FlashStepStatus,
 } from "./src/backend/types";
-import { DependencyManager } from "./src/dependencies/dep-manager";
-import type { DependencyId } from "./src/dependencies/types";
+import { DependencyManager } from "./src/backend/dependencies";
+import type { DependencyId } from "./src/backend/types";
 
 const VALID_DEP_IDS: DependencyId[] = [
   "adb",
@@ -144,6 +138,7 @@ export function createFetchHandler(
       healthTokenFile: process.env.ELIZAOS_ANDROID_HEALTH_TOKEN_FILE,
     });
   const iosBackend = deps.iosBackend ?? new SideloaderIosBackend();
+  const iosHandler = createIosHandler(iosBackend, cors);
   const depManager = deps.depManager ?? new DependencyManager();
   const authToken = deps.authToken;
   const pendingPlans = new Map<
@@ -190,31 +185,13 @@ export function createFetchHandler(
       return Response.json(result, { headers: cors });
     }
 
-    // POST /dependencies/:id/install — trigger auto-install (canonical path)
+    // POST /dependencies/:id/install — trigger auto-install
     if (
       url.pathname.startsWith("/dependencies/") &&
       url.pathname.endsWith("/install") &&
       req.method === "POST"
     ) {
       const id = parseDepId(url.pathname, "/install");
-      if (!id) {
-        return new Response("Unknown dependency", {
-          status: 400,
-          headers: cors,
-        });
-      }
-      const result = await depManager.autoInstall(id);
-      return Response.json(result, { headers: cors });
-    }
-
-    // POST /dependencies/:id — legacy alias (kept for the brief window where
-    // the old client may still be running against a new server).
-    if (
-      url.pathname.startsWith("/dependencies/") &&
-      !url.pathname.endsWith("/install") &&
-      req.method === "POST"
-    ) {
-      const id = parseDepId(url.pathname, "");
       if (!id) {
         return new Response("Unknown dependency", {
           status: 400,
@@ -317,84 +294,7 @@ export function createFetchHandler(
       });
     }
 
-    // ── iOS sideloading endpoints ──────────────────────────────────────────────
-
-    if (url.pathname === "/ios/devices" && req.method === "GET") {
-      const devices = await iosBackend.listDevices();
-      return Response.json(devices, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/apps" && req.method === "GET") {
-      const apps = await iosBackend.listApps();
-      return Response.json(apps, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/region" && req.method === "GET") {
-      const region = await iosBackend.getRegionNotice();
-      return Response.json(region, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/authenticate" && req.method === "POST") {
-      const body = (await req.json()) as { appleId: string; password: string };
-      const state = await iosBackend.authenticate(body.appleId, body.password);
-      return Response.json(state, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/2fa" && req.method === "POST") {
-      const body = (await req.json()) as { code: string };
-      const state = await iosBackend.submit2fa(body.code);
-      return Response.json(state, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/plan" && req.method === "POST") {
-      const request = (await req.json()) as Parameters<
-        typeof iosBackend.createInstallPlan
-      >[0];
-      const plan = await iosBackend.createInstallPlan(request);
-      return Response.json(plan, { headers: cors });
-    }
-
-    if (url.pathname === "/ios/execute" && req.method === "POST") {
-      const body = (await req.json()) as { plan: IosInstallPlan };
-      const encoder = new TextEncoder();
-
-      const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            await iosBackend.executeInstallPlan(
-              body.plan,
-              (
-                stepId: IosInstallStepId,
-                status: IosInstallStepStatus,
-                detail?: string,
-              ) => {
-                const data = JSON.stringify({ stepId, status, detail });
-                controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-              },
-            );
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`),
-            );
-          } catch (err) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ error: String(err) })}\n\n`,
-              ),
-            );
-          } finally {
-            controller.close();
-          }
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          ...cors,
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-      });
-    }
+    if (url.pathname.startsWith("/ios/")) return iosHandler(req, url.pathname);
 
     return new Response("Not found", { status: 404, headers: cors });
   };

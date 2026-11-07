@@ -7,9 +7,9 @@ import {
   assertValidMeetingArtifact,
   MEETING_ARTIFACT_SCHEMA_VERSION,
   type MeetingArtifact,
-} from "@elizaos/core/meeting-artifacts";
-import { type MeetingParticipant } from "@elizaos/core/meetings";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+  type MeetingParticipant,
+  type TranscriptSegment,
+} from "@elizaos/core/protocol";
 export interface ZoomBotMeetingArtifactInput {
   artifactId: string;
   meetingId: string;

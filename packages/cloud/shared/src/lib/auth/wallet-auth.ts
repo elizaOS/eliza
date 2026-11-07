@@ -22,7 +22,7 @@ const MAX_TIMESTAMP_AGE_MS = 5 * 60 * 1000; // WHY: limits replay window while a
 /**
  * Canonical query string for the payload hash: decoded `key=value` pairs
  * sorted by key then value and joined with `&`, so parameter reordering does
- * not change the digest. Documented in packages/docs/cloud/authentication.mdx.
+ * not change the digest.
  */
 export function canonicalWalletAuthQuery(url: URL): string {
   return [...url.searchParams.entries()]

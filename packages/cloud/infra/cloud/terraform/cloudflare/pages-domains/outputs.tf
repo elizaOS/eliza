@@ -71,7 +71,7 @@ output "canonical_edge" {
 }
 
 output "railway_tunnel_dns" {
-  description = "DNS-only canonical tunnel records whose exact targets and verification values originate in Railway."
+  description = "Canonical tunnel records retained at their original Terraform addresses through the Worker cutover."
   value = {
     for key, record in cloudflare_dns_record.railway_tunnel : key => {
       id      = record.id
@@ -98,6 +98,20 @@ output "legacy_certificate_packs" {
         id     = pack.id
         hosts  = pack.hosts
         status = pack.status
+      }
+    }
+  }
+}
+
+output "tunnel_worker" {
+  description = "Selected tunnel Worker and its canonical ingress routes. Empty until cutover."
+  value = {
+    hostname = var.tunnel_worker_hostname
+    routes = {
+      for key, route in cloudflare_workers_route.tunnel : key => {
+        id      = route.id
+        pattern = route.pattern
+        script  = route.script
       }
     }
   }

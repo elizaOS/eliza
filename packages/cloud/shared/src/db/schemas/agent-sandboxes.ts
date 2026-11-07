@@ -28,6 +28,7 @@
  * that polymorphism is higher than the cost of two clearly-scoped tables.
  */
 
+import type { AgentBackupManifest } from "@elizaos/contracts";
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
@@ -878,62 +879,6 @@ export const AGENT_BACKUP_RETENTION_REASONS = [
 ] as const;
 
 export type AgentBackupRetentionReason = (typeof AGENT_BACKUP_RETENTION_REASONS)[number];
-
-export interface AgentBackupFileEntry {
-  path: string;
-  sha256: string;
-  size: number;
-  mode?: number;
-  mtimeMs?: number;
-  bytesBase64: string;
-}
-
-export interface AgentBackupFileSet {
-  kind: "file-set";
-  rootLabel: "state-dir" | "pglite-dir";
-  rootPath?: string;
-  files: AgentBackupFileEntry[];
-  sha256: string;
-}
-
-export interface AgentBackupPostgresTable {
-  name: string;
-  columns: string[];
-  rows: Record<string, unknown>[];
-}
-
-export interface AgentBackupPostgresDump {
-  kind: "postgres-rows";
-  tables: AgentBackupPostgresTable[];
-  sha256: string;
-}
-
-export interface AgentBackupManifest {
-  schemaVersion: 1;
-  format: "elizaos.agent-backup";
-  createdAt: string;
-  agentId: string;
-  components: {
-    database: {
-      kind: "pglite-files" | "postgres-rows" | "none";
-      pglite?: AgentBackupFileSet;
-      postgres?: AgentBackupPostgresDump;
-      reason?: string;
-      sha256: string;
-    };
-    media: AgentBackupFileSet;
-    vault: AgentBackupFileSet;
-    character: {
-      runtimeCharacter: unknown;
-      configFile?: AgentBackupFileEntry;
-      sha256: string;
-    };
-    stateFiles: AgentBackupFileSet;
-  };
-  integrity: {
-    componentHashes: Record<string, string>;
-  };
-}
 
 export interface AgentBackupStateData {
   memories: Array<{ role: string; text: string; timestamp: number }>;

@@ -1,10 +1,27 @@
+import {
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  agentTransferPasswordByteLength,
+} from "@elizaos/contracts";
+import { getHostRequestTransport } from "./host-transport";
+import { nativeJsonRequestData as directCloudBodyData } from "./native-http-codec";
 /**
  * Cloud domain methods — cloud billing, compat agents, sandbox,
  * export/import, direct cloud auth, bug reports.
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core/errors";
+import { DEDICATED_COMPUTE_PRICE_HEADER } from "@elizaos/cloud-sdk/browser-contracts";
+import { ElizaError } from "@elizaos/core/protocol";
+import {
+  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
+  DEFAULT_DIRECT_CLOUD_BASE_URL,
+  DIRECT_ELIZA_CLOUD_API_BY_HOST,
+  resolveDirectCloudAppBase,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+  stripTrailingSlashes,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -18,13 +35,14 @@ import {
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
+  currentOwnedElizaPagesOrigin,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
   isPersonalSharedElizaId,
@@ -32,7 +50,6 @@ import {
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
-  ApiError,
   CloudApiKeySummary,
   CloudApiKeys,
   CloudBillingCheckoutRequest,
@@ -47,7 +64,6 @@ import type {
   CloudCompatAgent,
   CloudCompatAgentProvisionResponse,
   CloudCompatAgentStatus,
-  CloudCompatDiscordConfig,
   CloudCompatJob,
   CloudCompatLaunchResult,
   CloudCompatManagedDiscordStatus,
@@ -62,27 +78,21 @@ import type {
   CloudStatus,
   CloudTwitterOAuthInitiateResponse,
   LocalAgentBackupMetadata,
+} from "./client-types-cloud";
+import type {
+  ApiError,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
   SandboxScreenshotRegion,
   SandboxStartResponse,
   SandboxWindowInfo,
-} from "./client-types";
+} from "./client-types-core";
 import {
   confirmDedicatedActivation,
   type DedicatedActivationConfirmationRequester,
   parseDedicatedActivationConfirmationQuote,
 } from "./dedicated-activation-confirmation";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import {
-  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
-  DEFAULT_DIRECT_CLOUD_BASE_URL,
-  DIRECT_ELIZA_CLOUD_API_BY_HOST,
-  resolveDirectCloudAuthApiBase,
-  resolveDirectCloudWebBase,
-  stripTrailingSlashes,
-} from "./direct-cloud-endpoints";
 import {
   type PersonalFallbackAccountState,
   parsePersonalFallbackAccountState,
@@ -94,7 +104,6 @@ import { fetchAgentTransport } from "./transport";
 // Module-level constants
 // ---------------------------------------------------------------------------
 
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 // Cloud account reads can legitimately take longer than 15 seconds on a cold
 // regional worker. Keep the request bounded, but leave enough room for the
 // billing/credits response the desktop dashboard depends on.
@@ -208,10 +217,19 @@ function isCloudRouteNotFound(error: unknown): error is ApiError {
 
 function resolveKnownDirectCloudApiBase(baseUrl: string): string | null {
   try {
+    const url = new URL(baseUrl);
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy && url.origin === proxy) {
+      if (url.username || url.password || url.search || url.hash) return null;
+      const path = url.pathname.replace(/\/+$/, "");
+      return path === "" ||
+        path === "/api/v1/eliza/agents" ||
+        isTrustedCloudApiBaseUrl(baseUrl)
+        ? proxy
+        : null;
+    }
     return (
-      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
-        new URL(baseUrl).hostname.toLowerCase(),
-      ) ?? null
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(url.hostname.toLowerCase()) ?? null
     );
   } catch {
     // error-policy:J3 malformed Cloud endpoints fail closed.
@@ -277,6 +295,8 @@ function resolveDedicatedCloudAgentControlPlaneApiBase(
 ): string | null {
   if (!isDedicatedCloudAgentClient(client)) return null;
   if (typeof window !== "undefined") {
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy) return proxy;
     const pageApiBase = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );
@@ -579,7 +599,7 @@ async function directCloudFetch(
   timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
-  const transport = desktopHttpTransportForUrl(url);
+  const transport = await getHostRequestTransport(url, "cloud");
   if (transport) {
     return transport.request(
       url,
@@ -601,13 +621,12 @@ export {
   resolveDirectCloudAppBase,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
-} from "./direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
-  if (baseUrl && isDirectCloudBase(client)) {
-    return resolveDirectCloudAuthApiBase(baseUrl);
-  }
+  const knownBase = baseUrl ? resolveKnownDirectCloudApiBase(baseUrl) : null;
+  if (knownBase) return knownBase;
   const dedicatedControlPlaneApiBase =
     resolveDedicatedCloudAgentControlPlaneApiBase(client);
   if (dedicatedControlPlaneApiBase) return dedicatedControlPlaneApiBase;
@@ -644,6 +663,8 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   // page host. Firing this branch while connected would mis-route to the cloud
   // host and 401. See PR #11448.
   if (!baseUrl && typeof window !== "undefined") {
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy) return proxy;
     const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );
@@ -670,7 +691,9 @@ export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
  * (`writeStoredStewardToken`), so it resolves here through the canonical Steward
  * branch too. The client REST token is the last fallback.
  */
-export function getCloudAuthToken(client?: ElizaClient): string | null {
+export function getCloudAuthToken(
+  client?: Pick<ElizaClient, "getBaseUrl" | "getRestAuthToken">,
+): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
 
@@ -924,18 +947,6 @@ function directCloudResponseText(data: unknown): string {
     return JSON.stringify(data);
   } catch {
     return String(data);
-  }
-}
-
-function directCloudBodyData(body: BodyInit | null | undefined): unknown {
-  if (body == null) return undefined;
-  if (typeof body !== "string") return body;
-  const trimmed = body.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return body;
   }
 }
 
@@ -1734,7 +1745,7 @@ function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getCloudStatus(): Promise<CloudStatus>;
     getCloudCredits(): Promise<CloudCredits>;
@@ -1780,6 +1791,13 @@ declare module "./client-base" {
       agentName: string;
       agentConfig?: Record<string, unknown>;
       environmentVars?: Record<string, string>;
+      /**
+       * The Dedicated price the owner accepted for this paid start
+       * (`getDedicatedComputePriceAcceptance()`). Sent as the price header the
+       * Cloud API requires before it starts Dedicated compute. Pass it only
+       * after the owner confirmed the price.
+       */
+      dedicatedPriceAcceptance?: string;
       /**
        * Phase-0 tier flip. When true, omit `alwaysOn` so the backend derives a
        * SHARED (container-free, instant) agent instead of a DEDICATED always-on
@@ -1853,17 +1871,6 @@ declare module "./client-base" {
     disconnectCloudCompatAgentManagedDiscord(agentId: string): Promise<{
       success: boolean;
       data: CloudCompatManagedDiscordStatus;
-    }>;
-    getCloudCompatAgentDiscordConfig(agentId: string): Promise<{
-      success: boolean;
-      data: CloudCompatDiscordConfig;
-    }>;
-    updateCloudCompatAgentDiscordConfig(
-      agentId: string,
-      config: CloudCompatDiscordConfig,
-    ): Promise<{
-      success: boolean;
-      data: CloudCompatDiscordConfig;
     }>;
     getCloudCompatAgentManagedGithub(agentId: string): Promise<{
       success: boolean;
@@ -1959,7 +1966,11 @@ declare module "./client-base" {
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
-    resumeCloudCompatAgent(agentId: string): Promise<{
+    resumeCloudCompatAgent(
+      agentId: string,
+      /** See `createCloudCompatAgent` for `dedicatedPriceAcceptance`. */
+      options?: { dedicatedPriceAcceptance?: string },
+    ): Promise<{
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
@@ -2115,6 +2126,11 @@ declare module "./client-base" {
       preferAgentId?: string | null;
       /** Skip reuse and always create a new agent (explicit "Create new"). */
       forceCreate?: boolean;
+      /**
+       * The Dedicated price the owner accepted. Sent on the paid create and on
+       * the start of a stopped Dedicated agent. See `createCloudCompatAgent`.
+       */
+      dedicatedPriceAcceptance?: string;
       /**
        * Phase-0 tier flip. When true, a freshly created agent is requested as
        * SHARED (instant, container-free) instead of DEDICATED always-on. Only
@@ -2444,6 +2460,12 @@ ElizaClient.prototype.getCloudBillingSummary = async function (
         typeof pricing.x402Enabled === "boolean" ? pricing.x402Enabled : false,
       low: typeof balance === "number" ? balance < 2 : undefined,
       critical: typeof balance === "number" ? balance < 0.5 : undefined,
+      // Same top-level fields as the plugin-elizacloud proxy summary.
+      hasPaymentMethod:
+        typeof organization.hasPaymentMethod === "boolean"
+          ? organization.hasPaymentMethod
+          : undefined,
+      minimumTopUp: numberOrNull(pricing.minimumTopUp) ?? undefined,
     };
   }
   return this.fetch("/api/cloud/billing/summary");
@@ -2507,8 +2529,45 @@ ElizaClient.prototype.createCloudBillingCheckout = async function (
   this: ElizaClient,
   request,
 ) {
+  const idempotencyKey = ElizaClient.generateMessageId();
+  // A Shared agent base and the Cloud API itself serve no /api/cloud/* proxy,
+  // so checkout must reach the control plane the same way the summary does.
+  const directBase = resolveDirectCloudClientApiBase(this);
+  if (directBase) {
+    // Same return URLs the plugin-elizacloud checkout proxy sends upstream.
+    const appBase = resolveDirectCloudAppBase(directBase);
+    const successUrl = new URL("/cloud/billing/success", `${appBase}/`);
+    successUrl.searchParams.set("from", "eliza");
+    const cancelUrl = new URL("/cloud/billing", `${appBase}/`);
+    cancelUrl.searchParams.set("from", "eliza");
+    cancelUrl.searchParams.set("tab", "billing");
+    cancelUrl.searchParams.set("canceled", "1");
+    const direct = await directCloudRequest<Record<string, unknown>>(
+      this,
+      "/api/v1/credits/checkout",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({
+          amountUsd: request.amountUsd,
+          success_url: successUrl.toString(),
+          cancel_url: cancelUrl.toString(),
+        }),
+      },
+    );
+    if (direct) {
+      return {
+        success: true,
+        provider: "stripe",
+        mode: "hosted",
+        checkoutUrl: requireString(direct.url, "url"),
+        sessionId: requireString(direct.sessionId, "sessionId"),
+      };
+    }
+  }
   return this.fetch("/api/cloud/billing/checkout", {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(request),
   });
 };
@@ -2605,6 +2664,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   // the demo flag drops `alwaysOn` to request shared. `tierFields` is spread
   // into both create bodies so the dedicated path stays byte-identical to before.
   const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
+  const priceHeaders = dedicatedPriceHeaders(opts.dedicatedPriceAcceptance);
   const direct = await directCloudRequest<{
     success: boolean;
     // `created: false` means a non-forced request reused an existing
@@ -2616,6 +2676,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     error?: string;
   }>(this, "/api/v1/eliza/agents", {
     method: "POST",
+    ...(priceHeaders ? { headers: priceHeaders } : {}),
     body: JSON.stringify({
       agentName: opts.agentName,
       // The Eliza app provisions a DEDICATED (own-container, always-on) agent —
@@ -2682,6 +2743,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       error?: string;
     }>("/api/v1/eliza/agents", {
       method: "POST",
+      ...(priceHeaders ? { headers: priceHeaders } : {}),
       body: JSON.stringify({
         agentName: opts.agentName,
         // Dedicated (own-container, always-on) agent — see the direct-path note.
@@ -2724,16 +2786,17 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     );
   }
 
+  const { dedicatedPriceAcceptance: _accepted, ...compatBody } = opts;
   return this.fetch("/api/cloud/compat/agents", {
     method: "POST",
-    body: JSON.stringify(opts),
+    body: JSON.stringify(compatBody),
   });
 };
 
 ElizaClient.prototype.ensureCloudCompatManagedDiscordAgent = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/cloud/v1/app/discord/gateway-agent", {
+  return this.fetch("/api/cloud/v1/eliza/discord/gateway-agent", {
     method: "POST",
   });
 };
@@ -2828,14 +2891,14 @@ ElizaClient.prototype.getCloudCompatAgentManagedDiscord = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord`,
   );
 };
 
 ElizaClient.prototype.createCloudCompatAgentManagedDiscordOauth =
   async function (this: ElizaClient, agentId, request = {}) {
     return this.fetch(
-      `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/oauth`,
+      `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord/oauth`,
       {
         method: "POST",
         body: JSON.stringify(request),
@@ -2846,42 +2909,19 @@ ElizaClient.prototype.createCloudCompatAgentManagedDiscordOauth =
 ElizaClient.prototype.disconnectCloudCompatAgentManagedDiscord =
   async function (this: ElizaClient, agentId) {
     return this.fetch(
-      `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord`,
+      `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/discord`,
       {
         method: "DELETE",
       },
     );
   };
 
-ElizaClient.prototype.getCloudCompatAgentDiscordConfig = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/config`,
-  );
-};
-
-ElizaClient.prototype.updateCloudCompatAgentDiscordConfig = async function (
-  this: ElizaClient,
-  agentId,
-  config,
-) {
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/discord/config`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(config),
-    },
-  );
-};
-
 ElizaClient.prototype.getCloudCompatAgentManagedGithub = async function (
   this: ElizaClient,
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github`,
   );
 };
 
@@ -2889,7 +2929,7 @@ ElizaClient.prototype.createCloudCompatAgentManagedGithubOauth =
   async function (this: ElizaClient, agentId, request = {}) {
     try {
       return await this.fetch(
-        `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/oauth`,
+        `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/oauth`,
         {
           method: "POST",
           body: JSON.stringify(request),
@@ -2932,7 +2972,7 @@ ElizaClient.prototype.linkCloudCompatAgentManagedGithub = async function (
   connectionId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/link`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/link`,
     {
       method: "POST",
       body: JSON.stringify({ connectionId }),
@@ -2945,7 +2985,7 @@ ElizaClient.prototype.disconnectCloudCompatAgentManagedGithub = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github`,
     {
       method: "DELETE",
     },
@@ -3024,7 +3064,7 @@ ElizaClient.prototype.getCloudCompatAgentGithubToken = async function (
   agentId,
 ) {
   return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/github/token`,
+    `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/github/token`,
   );
 };
 
@@ -3179,7 +3219,7 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
         bridgeUrl: a.bridge_url,
         webUiUrl: a.webUiUrl,
         currentNode: null,
-        suspendedReason: null,
+        suspendedReason: a.error_message ?? null,
         databaseStatus: a.database_status,
       },
     };
@@ -3215,6 +3255,17 @@ ElizaClient.prototype.getCloudCompatAgentLogs = async function (
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/logs?tail=${tail}`,
   );
 };
+
+/**
+ * The price header the Cloud API requires before it starts Dedicated compute.
+ * Absent when the caller holds no owner acceptance, so the request stays
+ * unaccepted and the control plane answers 428 without starting compute.
+ */
+function dedicatedPriceHeaders(
+  acceptance: string | undefined,
+): Record<string, string> | null {
+  return acceptance ? { [DEDICATED_COMPUTE_PRICE_HEADER]: acceptance } : null;
+}
 
 /**
  * Normalize a cloud lifecycle (suspend/resume) response into the
@@ -3265,15 +3316,21 @@ async function runCloudLifecycleAction(
   client: ElizaClient,
   agentId: string,
   action: "suspend" | "resume",
+  dedicatedPriceAcceptance?: string,
 ): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
   const encoded = encodeURIComponent(agentId);
   const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
+  const priceHeaders = dedicatedPriceHeaders(dedicatedPriceAcceptance);
+  const directInit: RequestInit = {
+    method: "POST",
+    ...(priceHeaders ? { headers: priceHeaders } : {}),
+  };
 
   const direct = await directCloudRequest<{
     success: boolean;
     data?: { jobId?: string; status?: string; message?: string };
     error?: string;
-  }>(client, directPath, { method: "POST" });
+  }>(client, directPath, directInit);
   if (direct) return normalizeCloudLifecycleResponse(direct, action);
 
   if (isDirectCloudAuthMissing(client)) {
@@ -3293,7 +3350,7 @@ async function runCloudLifecycleAction(
       success: boolean;
       data?: { jobId?: string; status?: string; message?: string };
       error?: string;
-    }>(directPath, { method: "POST" }, { allowNonOk: true });
+    }>(directPath, directInit, { allowNonOk: true });
     return normalizeCloudLifecycleResponse(response, action);
   }
 
@@ -3327,8 +3384,14 @@ ElizaClient.prototype.suspendCloudCompatAgent = async function (
 ElizaClient.prototype.resumeCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
+  options,
 ) {
-  return runCloudLifecycleAction(this, agentId, "resume");
+  return runCloudLifecycleAction(
+    this,
+    agentId,
+    "resume",
+    options?.dedicatedPriceAcceptance,
+  );
 };
 
 ElizaClient.prototype.launchCloudCompatAgent = async function (
@@ -3428,6 +3491,14 @@ ElizaClient.prototype.exportAgent = async function (
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
     );
   }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
+    );
+  }
   return this.rawRequest("/api/agent/export", {
     method: "POST",
     headers: {
@@ -3449,6 +3520,14 @@ ElizaClient.prototype.importAgent = async function (
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
+    );
+  }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
     );
   }
   const passwordBytes = new TextEncoder().encode(password);
@@ -4231,6 +4310,8 @@ export async function waitForCloudAgentRunning(
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
     signal?: AbortSignal;
+    /** The Dedicated price the owner accepted for this start. */
+    dedicatedPriceAcceptance?: string;
   },
 ): Promise<CloudCompatAgent> {
   const { agentId, onProgress } = options;
@@ -4250,7 +4331,12 @@ export async function waitForCloudAgentRunning(
     "Starting your agent — a cold boot can take a few minutes...",
   );
   const resume = await client
-    .resumeCloudCompatAgent(agentId)
+    .resumeCloudCompatAgent(
+      agentId,
+      options.dedicatedPriceAcceptance
+        ? { dedicatedPriceAcceptance: options.dedicatedPriceAcceptance }
+        : undefined,
+    )
     .catch((cause: unknown) => {
       const hard = nonTransientWakeFailure(cause);
       if (hard) {
@@ -5491,6 +5577,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     preferSharedTier,
     knownAgents,
     preferStewardAgentAdapter,
+    dedicatedPriceAcceptance,
   } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
@@ -5579,6 +5666,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
             : {}),
           ...(onProgress ? { onProgress } : {}),
           ...(options.signal ? { signal: options.signal } : {}),
+          ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
         });
       }
       const hasDedicatedBase = Boolean(
@@ -5630,6 +5718,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     ...(bio?.length ? { agentConfig: { bio } } : {}),
     ...(mustForceCreate ? { forceCreate: true } : {}),
     ...(preferSharedTier ? { preferSharedTier: true } : {}),
+    ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
   });
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");
@@ -5728,6 +5817,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         timeoutMs: remainingWakeMs(),
         ...(onProgress ? { onProgress } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(dedicatedPriceAcceptance ? { dedicatedPriceAcceptance } : {}),
       });
     } catch (error) {
       if (options.signal?.aborted && error === options.signal.reason) {

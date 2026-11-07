@@ -10,7 +10,7 @@ import {
 	type Service,
 	type ServiceClass,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -139,12 +139,16 @@ vi.mock("../services/router-handler", () => ({
 	installRouterHandler: vi.fn(),
 }));
 
-vi.mock("../services/voice", () => ({
-	decodeMonoPcm16Wav: vi.fn(() => ({
-		pcm: new Float32Array([0]),
-		sampleRate: 16_000,
-	})),
-}));
+// The real codec, so TRANSCRIPTION tests prove which bytes were decoded.
+vi.mock("../services/voice", async () => {
+	const codec = await vi.importActual<
+		typeof import("../services/voice/wav-codec")
+	>("../services/voice/wav-codec");
+	return {
+		decodeMonoPcm16Wav: vi.fn(codec.decodeMonoPcm16Wav),
+		encodeMonoPcm16Wav: codec.encodeMonoPcm16Wav,
+	};
+});
 
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
 import { BionicHostLoader } from "../services/bionic-host-loader";
@@ -156,6 +160,10 @@ import {
 	TimedAsrService,
 } from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
+import {
+	decodeMonoPcm16Wav,
+	encodeMonoPcm16Wav,
+} from "../services/voice/wav-codec";
 import { registerLocalInferenceBoot } from "./boot";
 import {
 	ensureLocalInferenceHandler,
@@ -263,6 +271,13 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
+// Values exactly representable in PCM16, at a non-default rate, so the
+// asserted decode can only come from these bytes.
+const SPEECH_PCM = new Float32Array([0, -0.5, -0.25, 0]);
+function speechWav(): Uint8Array {
+	return encodeMonoPcm16Wav(SPEECH_PCM, 22_050);
+}
+
 describe("ensureLocalInferenceHandler", () => {
 	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
 		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
@@ -315,9 +330,7 @@ describe("ensureLocalInferenceHandler", () => {
 			expect(timedAsr).toBeInstanceOf(TimedAsrService);
 			if (!timedAsr) throw new Error("timed ASR service did not start");
 			expect(timedAsr.isAvailable()).toBe(true);
-			await expect(
-				timedAsr.transcribeWav(new Uint8Array([1, 2, 3])),
-			).resolves.toEqual({
+			await expect(timedAsr.transcribeWav(speechWav())).resolves.toEqual({
 				text: "timed transcription",
 				words: [{ word: "timed", start: 0, end: 0.25 }],
 			});
@@ -743,6 +756,32 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.load).toHaveBeenCalledWith(installed.path, resolved);
 	});
 
+	it("loads the assigned model once for two concurrent first requests", async () => {
+		const installed = {
+			id: "eliza-1-2b",
+			path: "/models/eliza-1-2b.gguf",
+		};
+		assignmentsState.assignments = { TEXT_SMALL: installed.id };
+		registryState.installed = [installed];
+		engineState.hasLoadedModel.mockReturnValue(true);
+		let loadedPath: string | null = null;
+		engineState.currentModelPath.mockImplementation(() => loadedPath);
+		engineState.load.mockImplementation(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			loadedPath = installed.path;
+		});
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+		const request = () =>
+			handler(runtime, { messages: [{ role: "user", content: "hello" }] });
+
+		await Promise.all([request(), request()]);
+
+		expect(engineState.load).toHaveBeenCalledTimes(1);
+	});
+
 	it.each([
 		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
 		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
@@ -875,14 +914,38 @@ describe("ensureLocalInferenceHandler", () => {
 			ModelType.TRANSCRIPTION,
 		);
 
-		await expect(
-			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).resolves.toBe("transcribed");
+		await expect(handler(runtime, { audio: speechWav() })).resolves.toBe(
+			"transcribed",
+		);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
-			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
+			decodeMonoPcm16Wav(speechWav()),
+			undefined,
+			undefined,
+		);
+	});
+
+	it("transcribes in-process audio sent beside the required empty audioUrl", async () => {
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TRANSCRIPTION,
+		);
+
+		await expect(
+			handler(runtime, {
+				audioUrl: "",
+				audio: speechWav(),
+				mimeType: "audio/wav",
+			}),
+		).resolves.toBe("transcribed");
+		expect(engineState.transcribePcm).toHaveBeenCalledTimes(1);
+		expect(engineState.transcribePcm).toHaveBeenCalledWith(
+			{ pcm: SPEECH_PCM, sampleRate: 22_050 },
 			undefined,
 			undefined,
 		);
@@ -903,9 +966,9 @@ describe("ensureLocalInferenceHandler", () => {
 			ModelType.TRANSCRIPTION,
 		);
 
-		await expect(
-			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).rejects.toThrow(VoiceStartupError);
+		await expect(handler(runtime, { audio: speechWav() })).rejects.toThrow(
+			VoiceStartupError,
+		);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
@@ -1020,6 +1083,37 @@ describe("ensureLocalInferenceHandler", () => {
 			}),
 		);
 	});
+});
+
+it("routes bionic-delegated TEXT_TO_SPEECH to the host's Paradee op and returns WAV", async () => {
+	vi.stubEnv("ELIZA_BIONIC_HOST_DELEGATED", "1");
+	vi.stubEnv("ELIZA_BIONIC_INFERENCE_SOCK", `bionic-tts-test-${process.pid}`);
+	const synthesize = vi
+		.spyOn(BionicHostLoader.prototype, "synthesize")
+		.mockResolvedValue({
+			pcm: new Float32Array([0, 0.5, -0.5]),
+			sampleRate: 24000,
+		});
+	try {
+		const { runtime, registrations } = makeRuntime();
+		await ensureLocalInferenceHandler(runtime);
+		await runtime.getServiceLoadPromise("localInferenceLoader");
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_TO_SPEECH,
+		);
+		const wav = (await handler(runtime, { text: " Hello. " })) as Uint8Array;
+		expect(synthesize).toHaveBeenCalledWith({
+			text: "Hello.",
+			signal: undefined,
+		});
+		expect(engineState.synthesizeSpeech).not.toHaveBeenCalled();
+		const decoded = decodeMonoPcm16Wav(wav);
+		expect(decoded.sampleRate).toBe(24000);
+		expect(decoded.pcm.length).toBe(3);
+	} finally {
+		synthesize.mockRestore();
+	}
 });
 
 it("does not unload the chat assignment when a dedicated embedding assignment is invalid", async () => {

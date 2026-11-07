@@ -11,7 +11,7 @@ import {
   resolveStageBReportPath,
   STAGE_B_SCHEMA,
   validateStageBReport,
-} from "./lib/voice-stage-b-eval.ts";
+} from "./stage-b-report.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

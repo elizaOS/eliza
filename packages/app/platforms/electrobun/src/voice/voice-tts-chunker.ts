@@ -1,4 +1,5 @@
-/** Implements Electrobun desktop voice tts chunker ts behavior for app shell integration. */
+import { truncateWellFormed } from "@elizaos/core/protocol";
+
 export type VoiceTtsChunkingConfig = {
 	minChars: number;
 	maxChars: number;
@@ -174,8 +175,8 @@ export class VoiceTtsChunker {
 	private findSplitIndex(limit: number): number {
 		const window = this.buffer.slice(0, limit);
 		const whitespace = window.lastIndexOf(" ");
-		if (whitespace >= this.config.minChars) return whitespace + 1;
-		return limit;
+		const split = whitespace >= this.config.minChars ? whitespace + 1 : limit;
+		return truncateWellFormed(this.buffer, split).length || 2;
 	}
 
 	private emit(

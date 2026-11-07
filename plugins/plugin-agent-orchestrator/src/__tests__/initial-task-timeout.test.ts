@@ -5,7 +5,7 @@
  * the chat-turn timeout (timeoutMs 0) while honoring explicit caller timeouts.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +158,63 @@ describe("initial-task spawn path applies the detached timeout (real AcpService 
       await stopping;
     }
   }, 60000);
+
+  it("a cancelled initial task closes its agent subprocess", async () => {
+    // Prompt turns wait until session/cancel.
+    const hangAgent = join(workdir, "hang-acp-agent.mjs");
+    writeFileSync(
+      hangAgent,
+      `import { createInterface } from "node:readline";
+const pending = new Map();
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === "initialize") return send({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  if (msg.method === "session/new") return send({ id: msg.id, result: { sessionId: "s1" } });
+  if (msg.method === "session/prompt") return void pending.set(msg.params.sessionId, msg.id);
+  if (msg.method === "session/cancel") {
+    const id = pending.get(msg.params.sessionId);
+    pending.delete(msg.params.sessionId);
+    if (id !== undefined) send({ id, result: { stopReason: "cancelled" } });
+    return;
+  }
+  if (msg.id !== undefined && msg.method) send({ id: msg.id, result: {} });
+});
+`,
+    );
+    const runtime = makeRuntime();
+    const getSetting = runtime.getSetting.bind(runtime);
+    runtime.getSetting = (key: string) =>
+      key === "ELIZA_ELIZAOS_ACP_COMMAND"
+        ? `node ${hangAgent}`
+        : getSetting(key);
+    service = new AcpService(runtime);
+    await service.start();
+    const spawned = await service.spawnSession({
+      agentType: "elizaos",
+      workdir,
+      approvalPreset: "permissive",
+      initialTask: "Long build",
+    });
+    await vi.waitFor(async () =>
+      expect((await service.getSession(spawned.sessionId))?.status).toBe(
+        "busy",
+      ),
+    );
+    await service.cancelSession(spawned.sessionId);
+    await Promise.allSettled([
+      ...(service as unknown as { initialTaskRuns: Set<Promise<void>> })
+        .initialTaskRuns,
+    ]);
+
+    const clients = (
+      service as unknown as { nativeClients: Map<string, unknown> }
+    ).nativeClients;
+    expect({
+      status: (await service.getSession(spawned.sessionId))?.status,
+      agentOpen: clients.has(spawned.sessionId),
+    }).toEqual({ status: "cancelled", agentOpen: false });
+  }, 60_000);
 
   it("spawn with an initialTask and NO explicit timeout sends the initial prompt with timeoutMs 0", async () => {
     // Pass-through spy: observes the real spawn→sendPrompt wiring without

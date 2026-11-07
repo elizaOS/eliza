@@ -1,12 +1,12 @@
 /** Handles internal cloud API internal discord gateway failover route traffic with service-to-service auth. */
 
+import { discordConnectionsRepository } from "@elizaos/cloud-shared/db/repositories/discord-connections";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { FailoverRequestSchema } from "@elizaos/cloud-shared/lib/services/gateway-discord/schemas";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { FailoverRequestSchema } from "@/lib/services/gateway-discord/schemas";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 
 const RECENT_HEARTBEAT_THRESHOLD_MS = 45_000;

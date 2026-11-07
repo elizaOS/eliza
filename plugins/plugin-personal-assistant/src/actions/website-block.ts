@@ -19,6 +19,7 @@ import {
   runWithTrajectoryPurpose,
   type SubactionsMap,
   toWellFormedUnicode,
+  validateUuid,
 } from "@elizaos/core";
 import {
   formatWebsiteList,
@@ -49,10 +50,8 @@ type WebsiteBlockSubaction =
   | "list_active";
 
 interface WebsiteBlockParams {
-  intent?: string;
   hostnames?: string[] | string;
   durationMinutes?: number | string | null;
-  confirmed?: boolean | string | null;
   ruleId?: string | null;
   reason?: string | null;
   includeLiveStatus?: boolean | string | null;
@@ -62,11 +61,11 @@ interface WebsiteBlockParams {
 const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
   block: {
     description:
-      "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; requires confirmed:true to actually edit the hosts file. Heuristic and LLM extract hosts from intent.",
+      "Start a hosts-file block on a set of public hostnames for a fixed duration or indefinitely. Always drafts first; the hosts file is edited only after the owner replies yes on a follow-up turn and the same call is repeated. Hosts and duration come from hostnames/durationMinutes or the owner message.",
     descriptionCompressed:
       "hosts-file block hostnames duration draft-confirm heuristic+LLM extract-hosts",
-    required: ["intent"],
-    optional: ["hostnames", "durationMinutes", "confirmed"],
+    required: [],
+    optional: ["hostnames", "durationMinutes"],
   },
   unblock: {
     description:
@@ -94,7 +93,7 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     descriptionCompressed:
       "release managed-block-rule(id) two-turn-confirm; harsh_no_bypass not releasable",
     required: ["ruleId"],
-    optional: ["reason", "confirmed"],
+    optional: ["reason"],
   },
   list_active: {
     description:
@@ -289,17 +288,6 @@ function extractHeuristicDurationMinutes(
   }
 
   return undefined;
-}
-
-function shouldTrustExplicitWebsites(
-  explicitWebsites: readonly string[],
-  heuristicWebsites: readonly string[],
-): boolean {
-  if (explicitWebsites.length === 0) return false;
-  if (heuristicWebsites.length === 0) return true;
-  return explicitWebsites.every((website) =>
-    heuristicWebsites.includes(website),
-  );
 }
 
 function createdAtSortKey(memory: { createdAt?: number }): number {
@@ -549,6 +537,9 @@ async function handleBlock(
   params: WebsiteBlockParams,
 ): Promise<ActionResult> {
   const messageText = getMessageText(message);
+  // Supplied hostnames are the request. The owner sees the full list in the
+  // confirmation prompt before anything is blocked, so they are never
+  // narrowed to the hosts the message-text heuristic happens to recognise.
   const explicitWebsites = normalizeWebsiteTargets(
     normalizeWebsiteCandidates(params.hostnames),
   );
@@ -558,28 +549,21 @@ async function handleBlock(
   const heuristicWebsites = normalizeWebsiteTargets(
     extractHostsFromIntent(messageText),
   );
-  const trustedExplicitWebsites = shouldTrustExplicitWebsites(
-    explicitWebsites,
-    heuristicWebsites,
-  )
-    ? explicitWebsites
-    : [];
   const heuristicDurationMinutes =
     explicitDurationMinutes === undefined
       ? extractHeuristicDurationMinutes(messageText)
       : explicitDurationMinutes;
   const llmPlan =
-    trustedExplicitWebsites.length === 0 && heuristicWebsites.length === 0
+    explicitWebsites.length === 0 && heuristicWebsites.length === 0
       ? await resolveWebsiteBlockPlanWithLlm({ runtime, message, state })
       : null;
   const recoveredWebsites =
-    trustedExplicitWebsites.length === 0 &&
-    (llmPlan?.websites.length ?? 0) === 0
+    explicitWebsites.length === 0 && (llmPlan?.websites.length ?? 0) === 0
       ? await recoverWebsiteContextWithLlm({ runtime, message, state })
       : [];
   const plannedWebsites =
-    trustedExplicitWebsites.length > 0
-      ? trustedExplicitWebsites
+    explicitWebsites.length > 0
+      ? explicitWebsites
       : heuristicWebsites.length > 0
         ? heuristicWebsites
         : (((llmPlan?.websites.length ?? 0) > 0
@@ -587,7 +571,7 @@ async function handleBlock(
             : recoveredWebsites) ?? []);
 
   const plannedWebsitesSafe: readonly string[] = plannedWebsites;
-  if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
+  if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
     return {
       success: false,
       text:
@@ -836,8 +820,36 @@ async function handleRelease(
   }
   // harsh_no_bypass rules can never be released by confirmation — reject up
   // front so we don't offer a confirmation prompt that could never succeed.
-  const rule = await new BlockRuleReader(runtime).getBlockRuleById(ruleId);
-  if (rule?.gateType === "harsh_no_bypass") {
+  // Rule ids are UUIDs; any other string cannot name a rule, and the uuid
+  // column would reject it with a raw SQL error.
+  const rule = validateUuid(ruleId)
+    ? await new BlockRuleReader(runtime).getBlockRuleById(ruleId)
+    : null;
+  if (!rule) {
+    return {
+      success: false,
+      text: `No website block rule has id ${ruleId}. Use BLOCK action=list_active to get the rule id.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "release",
+        ruleId,
+        error: "BLOCK_RULE_NOT_FOUND",
+      },
+    };
+  }
+  if (!rule.active) {
+    return {
+      success: false,
+      text: `Block rule ${ruleId} is already released.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "release",
+        ruleId,
+        error: "BLOCK_RULE_ALREADY_RELEASED",
+      },
+    };
+  }
+  if (rule.gateType === "harsh_no_bypass") {
     return {
       success: false,
       text: `Block rule ${ruleId} is harsh_no_bypass and cannot be released by confirmation — it must wait for gate fulfillment.`,

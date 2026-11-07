@@ -1,12 +1,14 @@
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
  * OpenAI-compatible chat completions endpoint.
@@ -18,10 +20,139 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * IMPORTANT: Do NOT call provider APIs directly. Always use AI SDK.
  */
 
+import { getErrorStatusCode } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
+import {
+  enforceOrgRateLimit,
+  type InferenceRatePolicyProof,
+  inferenceRatePolicyProof,
+  OrgRateLimitCacheNotReadyError,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import {
+  beginSdkStreamTiming,
+  bindSdkStreamTiming,
+  recordCloudStreamMilestones,
+} from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  invokeAtGatewayHandoff,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  calculateCost,
+  estimateTokens,
+  getProviderFromModel,
+  getSafeModelParams,
+  modelUsesReasoningTokens,
+  normalizeModelName,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  mergeAnthropicCotProviderOptions,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
+  buildProviderNativeWebSearchTools,
+  calculateAnthropicWebSearchMaxCost,
+  isAnthropicWebSearchEnabled,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
+import {
+  canonicalizeCerebrasModelId,
+  getAiProviderConfigurationError,
+  getLanguageModel,
+  hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
+  type PooledLanguageModelCredential,
+  resolveAiProviderSource,
+  resolvePassthroughUpstreamForModel,
+  resolvePooledDirectProviderForModel,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  type BillingContext,
+  type BillingResult,
+  billUsage,
+  estimateInputTokens,
+  InsufficientCreditsError,
+  type recordUsageAnalytics,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import {
+  admitAppInferenceCacheOnly,
+  assertInferenceAppAffiliateSupported,
+  InferenceAppAffiliateUnsupportedError,
+} from "@elizaos/cloud-shared/lib/services/app-inference-admission";
+import {
+  type AppInferenceDelegatedActor,
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+  appInferenceErrorResponse,
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import {
+  type InferenceAuthTelemetry,
+  resolveInferenceAuthContext,
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import {
+  assertInferenceCredentialActive,
+  hasInferenceRevocationBoundary,
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
+import {
+  createPassthroughStreamMeter,
+  isPassthroughStreamingEnabled,
+  type PassthroughStreamTail,
+} from "@elizaos/cloud-shared/lib/services/inference-passthrough";
+import {
+  isKnownUnacceptedProviderError,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  getCachedGatewayModelById,
+  getGatewayModelByIdCacheOnly,
+} from "@elizaos/cloud-shared/lib/services/model-catalog";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+  InferenceAffiliateCacheUnavailableError,
+  InferencePricingCacheUnavailableError,
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import {
+  getTeamPoolRegistry,
+  type SelectedPooledCredential,
+} from "@elizaos/cloud-shared/lib/services/team-credential-pool";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
 import {
   APICallError,
   generateText,
-  jsonSchema,
   type ModelMessage,
   RetryError,
   type StepResult,
@@ -33,134 +164,11 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
-import { getErrorStatusCode } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { createPreflightResponse } from "@/lib/middleware/cors-apps";
 import {
-  enforceOrgRateLimit,
-  OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import { recordCloudStreamMilestones } from "@/lib/observability/cloud-backend-observability";
-import {
-  bindGatewayHandoffTelemetry,
-  type GatewayHandoffTelemetry,
-  type GatewayPreforwardTiming,
-  invokeAtGatewayHandoff,
-  resolveElizaTraceId,
-  snapshotGatewayPreforwardTiming,
-  withGatewayPreforwardTelemetry,
-  withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
-import {
-  calculateCost,
-  estimateTokens,
-  getProviderFromModel,
-  getSafeModelParams,
-  modelUsesReasoningTokens,
-  normalizeModelName,
-} from "@/lib/pricing";
-import {
-  mergeAnthropicCotProviderOptions,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
-  buildProviderNativeWebSearchTools,
-  isAnthropicWebSearchEnabled,
-} from "@/lib/providers/anthropic-web-search";
-import {
-  canonicalizeCerebrasModelId,
-  getAiProviderConfigurationError,
-  getLanguageModel,
-  hasLanguageModelProviderConfigured,
-  isProviderConfigurationError,
-  type PooledLanguageModelCredential,
-  resolveAiProviderSource,
-  resolvePassthroughUpstreamForModel,
-  resolvePooledDirectProviderForModel,
-} from "@/lib/providers/language-model";
-import {
-  type AIUsage,
-  type BillingContext,
-  type BillingResult,
-  billUsage,
-  estimateInputTokens,
-  InsufficientCreditsError,
-  type recordUsageAnalytics,
-} from "@/lib/services/ai-billing";
-import { recordSettledInferenceBilling } from "@/lib/services/ai-billing-settled";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
-import { appCreditsService } from "@/lib/services/app-credits";
-import {
-  admitAppInferenceCacheOnly,
-  assertInferenceAppAffiliateSupported,
-  InferenceAppAffiliateUnsupportedError,
-} from "@/lib/services/app-inference-admission";
-import {
-  type AppInferenceDelegatedActor,
-  admitAppSubscriptionInference,
-  appInferenceDeveloperScope,
-  appInferenceErrorResponse,
-} from "@/lib/services/app-subscription-inference-admission";
-import { appsService } from "@/lib/services/apps";
-import { BillingHoldActiveError } from "@/lib/services/billing-hold";
-import { contentModerationService } from "@/lib/services/content-moderation";
-import type {
-  CreditReconciliationResult,
-  CreditReservation,
-} from "@/lib/services/credits";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import {
-  type InferenceAuthTelemetry,
-  resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import {
-  assertInferenceCredentialActive,
-  type InferenceCredentialCheck,
-  InferenceCredentialRevokedError,
-  inferenceCredentialRevocationReason,
-  isInferenceStrongRevocationEnabled,
-} from "@/lib/services/inference-credential-revocation";
-import {
-  createPassthroughStreamMeter,
-  isPassthroughStreamingEnabled,
-  type PassthroughStreamTail,
-} from "@/lib/services/inference-passthrough";
-import {
-  isKnownUnacceptedProviderError,
-  isKnownUnacceptedProviderStatus,
-} from "@/lib/services/inference-provider-outcome";
-import {
-  getCachedGatewayModelById,
-  getGatewayModelByIdCacheOnly,
-} from "@/lib/services/model-catalog";
-import {
-  nativeApplicationInferenceErrorResponse,
-  prepareNativeApplicationInference,
-} from "@/lib/services/native-application-inference";
-import {
-  admitOrganizationInference,
-  InferenceAdmissionUnavailableError,
-  InferenceAffiliateCacheUnavailableError,
-  InferenceAffiliateCacheWarmingError,
-  InferencePricingCacheUnavailableError,
-  InferencePricingCacheWarmingError,
-} from "@/lib/services/organization-inference-admission";
-import { settlementDigest } from "@/lib/services/settlement-digest";
-import {
-  getTeamPoolRegistry,
-  type SelectedPooledCredential,
-} from "@/lib/services/team-credential-pool";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
+  type CallerLlmPurpose,
+  getSafeCallerLlmPurpose,
+  getSafeProviderErrorMetadata,
+} from "./provider-error-metadata";
 
 /**
  * Write the durable billing ledger row for one settled inference. Credits are
@@ -207,10 +215,6 @@ interface PooledInferenceCredential extends PooledLanguageModelCredential {
   credentialId: string;
   label: string;
 }
-
-type PooledInferenceCredentialResolution =
-  | { kind: "ready"; credential: PooledInferenceCredential | null }
-  | { kind: "warming" | "unavailable" };
 
 function buildProviderReconciliationMetadata(
   provider: string,
@@ -456,14 +460,7 @@ interface ChatRequest {
    */
   stream_options?: { include_usage?: boolean };
   stop?: string | string[];
-  tools?: Array<{
-    type: "function";
-    function: {
-      name: string;
-      description?: string;
-      parameters?: Record<string, unknown>;
-    };
-  }>;
+  tools?: ChatCompletionTool[];
   tool_choice?:
     | "auto"
     | "none"
@@ -740,26 +737,6 @@ function convertToModelMessagesFromOpenAI(
   }
 
   return modelMessages;
-}
-
-function convertTools(tools: ChatRequest["tools"]) {
-  if (!tools?.length) return undefined;
-
-  return Object.fromEntries(
-    tools.map((tool) => [
-      tool.function.name,
-      {
-        ...(tool.function.description
-          ? { description: tool.function.description }
-          : {}),
-        inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
-        outputSchema: jsonSchema({
-          type: "object",
-          additionalProperties: true,
-        }),
-      },
-    ]),
-  );
 }
 
 function mapToolChoice(
@@ -1121,9 +1098,9 @@ async function selectPooledInferenceCredential(params: {
   sessionKey: string;
   requirePooledCredential: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-}): Promise<PooledInferenceCredentialResolution> {
+}): Promise<PooledInferenceCredential | null> {
   const providerId = resolvePooledDirectProviderForModel(params.model);
-  if (!providerId) return { kind: "ready", credential: null };
+  if (!providerId) return null;
   const selectionParams = {
     organizationId: params.organizationId,
     providerId,
@@ -1135,36 +1112,27 @@ async function selectPooledInferenceCredential(params: {
       : {}),
   };
   if (params.executionCtx) {
+    // Pooled credentials are additive. A cold optional pool hydrates under
+    // waitUntil while this request uses the configured platform credential;
+    // only deployments with no platform fallback wait for the pool inline.
     const resolution = await getTeamPoolRegistry().selectCredentialCacheOnly(
       selectionParams,
-      { executionCtx: params.executionCtx },
+      {
+        executionCtx: params.executionCtx,
+        awaitCold: params.requirePooledCredential,
+      },
     );
-    if (resolution.kind !== "ready") {
-      // Pooled credentials are additive. A cold optional pool hydrates under
-      // waitUntil while this request uses the configured platform credential;
-      // only deployments with no platform fallback must wait for the pool.
-      return params.requirePooledCredential
-        ? resolution
-        : { kind: "ready", credential: null };
-    }
-    return {
-      kind: "ready",
-      credential: resolution.credential
-        ? toPooledInferenceCredential(
-            params.organizationId,
-            resolution.credential,
-          )
-        : null,
-    };
+    if (resolution.kind !== "ready" || !resolution.credential) return null;
+    return toPooledInferenceCredential(
+      params.organizationId,
+      resolution.credential,
+    );
   }
   const selected =
     await getTeamPoolRegistry().selectCredential(selectionParams);
-  return {
-    kind: "ready",
-    credential: selected
-      ? toPooledInferenceCredential(params.organizationId, selected)
-      : null,
-  };
+  return selected
+    ? toPooledInferenceCredential(params.organizationId, selected)
+    : null;
 }
 
 async function recordPooledInferenceSuccess(
@@ -1281,6 +1249,9 @@ export async function handleChatCompletionsPOST(
       },
       { status: 403 },
     );
+  const callerPurpose = getSafeCallerLlmPurpose(
+    req.headers.get("X-Eliza-Llm-Purpose"),
+  );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -1343,15 +1314,15 @@ export async function handleChatCompletionsPOST(
         )
       : undefined;
 
-    // 1. Authenticate (+ moderation). API-key and Steward-session requests
-    // resolve auth + org + moderation from a combined cache decision. On one
-    // true cold miss, Workers may consume the retained authoritative decision
-    // under a bounded deadline; its cache projection remains off-path.
+    // 1. Authenticate. API-key and Steward-session requests resolve auth, org
+    // and account standing from a combined cache decision. A true cold miss is
+    // decided by the primary once; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
-    let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let cachedApiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
+    let ratePolicyProof: InferenceRatePolicyProof | undefined;
     let appScopeId: string | null = null;
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => user?.organization_id,
@@ -1361,32 +1332,15 @@ export async function handleChatCompletionsPOST(
     const deferStrongCredentialCheck =
       requestIsValid &&
       Boolean(options.executionCtx) &&
-      isInferenceStrongRevocationEnabled();
+      hasInferenceRevocationBoundary();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
-      cacheOnly: Boolean(options.executionCtx),
       deferStrongCredentialCheck,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
-    if (resolution.kind === "warming") {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Authorization cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "auth_cache_warming",
-              },
-            },
-            { status: 503 },
-          ),
-        ),
-      );
-    }
     if (resolution.kind === "suspended") {
       const denial = resolveInferenceAuthStandingDenial(resolution, {
         route: "chat_completions",
@@ -1441,12 +1395,32 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
-      admissionCredential = resolution.credential;
+      cachedApiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
+      // Only an API-key context carries a key cap read with its policy epoch.
+      ratePolicyProof =
+        "keyHash" in resolution.ctx
+          ? inferenceRatePolicyProof(resolution.ctx)
+          : undefined;
+      const resolvedCredential = resolution.credential;
+      admissionCredential =
+        resolvedCredential?.kind === "api_key"
+          ? {
+              ...resolvedCredential,
+              rateLimit:
+                "apiKeyRateLimit" in resolution.ctx
+                  ? resolution.ctx.apiKeyRateLimit
+                  : undefined,
+              expiresAt:
+                "apiKeyExpiresAt" in resolution.ctx
+                  ? resolution.ctx.apiKeyExpiresAt
+                  : undefined,
+            }
+          : resolvedCredential;
       appScopeId =
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
-      // The resolver already verified not-suspended (cache hit = at populate;
-      // origin miss = just now), so the synchronous moderation read is skipped.
-      moderationAlreadyChecked = true;
     } else {
       if (options.executionCtx) {
         return attachPreforwardTelemetry(
@@ -1474,19 +1448,46 @@ export async function handleChatCompletionsPOST(
     // cache-only dependency decisions vs admission) so production telemetry
     // catches any regression before a provider invocation.
     const tAuth = performance.now();
+    let fundedBudgetRateReceipt: string | undefined;
+    const fundedBudget =
+      options.executionCtx &&
+      isFundedBudgetAdmissionEnabled() &&
+      admissionSnapshot?.fundedBudget?.enabled &&
+      admissionSnapshot.fundedBudget.organizationId === user.organization_id &&
+      admissionCredential?.kind === "api_key" &&
+      Number.isSafeInteger(admissionCredential.rateLimit) &&
+      (admissionCredential.rateLimit ?? 0) > 0 &&
+      admissionCredential.expiresAt !== undefined
+        ? {
+            policy: admissionSnapshot.fundedBudget,
+            credential: admissionCredential,
+            requestId,
+            onReceipt: (receipt: string) => {
+              fundedBudgetRateReceipt = receipt;
+            },
+          }
+        : undefined;
 
     // 1b. Per-org tier rate limit. Start the authoritative decision now, then
     // overlap it with the independent cache-only preparation below. We still
     // inspect and return this result first, preserving the existing denial
     // precedence without serializing an unrelated Durable Object round trip
-    // ahead of every dependency read.
+    // ahead of every dependency read. The billing gate wakes at the same time
+    // so dispatch does not pay its activation in series after idle.
+    if (options.executionCtx && user.organization_id)
+      wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
     const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
             apiKeyId: apiKey?.id,
+            apiKeyRateLimit: cachedApiKeyRateLimit,
+            userId: user.id,
+            fundedBudget,
+            ratePolicy: ratePolicyProof,
           })
         : Promise.resolve(null),
     );
@@ -1500,10 +1501,9 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message:
-                    "Rate-limit authorization cache is warming. Retry shortly.",
+                  message: "Rate limiter is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "rate_limit_cache_warming",
+                  code: "rate_limit_unavailable",
                 },
               },
               { status: 503, headers: { "Retry-After": "1" } },
@@ -1625,26 +1625,17 @@ export async function handleChatCompletionsPOST(
     // signals), so for a name-pattern match the catalog cannot change
     // computeEffectiveMaxTokens — the read is pure latency. Default now (the
     // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
-    const skipCatalogLookup = modelUsesReasoningTokens(model);
+    const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
-      ? options.executionCtx
-        ? options.requiredAppId
-          ? appsService.getByIdCacheOnly(requestedAppId, {
+      ? (options.requiredAppId
+          ? appsService.getById(requestedAppId, {
               executionCtx: options.executionCtx,
             })
-          : appsService.getAuthorizedMonetizedAppForUserCacheOnly(
-              requestedAppId,
-              user,
-              { executionCtx: options.executionCtx },
-            )
-        : options.requiredAppId
-          ? appsService
-              .getById(requestedAppId)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-          : appsService
-              .getAuthorizedMonetizedAppForUser(requestedAppId, user)
-              .then((app) => ({ kind: "ready" as const, app: app ?? null }))
-      : Promise.resolve({ kind: "ready" as const, app: null });
+          : appsService.getAuthorizedMonetizedAppForUser(requestedAppId, user, {
+              executionCtx: options.executionCtx,
+            })
+        ).then((app) => app ?? null)
+      : Promise.resolve(null);
     const platformCredentialConfigured =
       hasLanguageModelProviderConfigured(model);
     const pooledCredentialPromise = selectPooledInferenceCredential({
@@ -1686,15 +1677,6 @@ export async function handleChatCompletionsPOST(
                 stale: false,
               };
             });
-    const shouldBlockUserPromise = moderationAlreadyChecked
-      ? Promise.resolve({ kind: "ready" as const, blocked: false })
-      : options.executionCtx
-        ? contentModerationService.shouldBlockUserCacheOnly(user.id, {
-            executionCtx: options.executionCtx,
-          })
-        : contentModerationService
-            .shouldBlockUser(user.id)
-            .then((blocked) => ({ kind: "ready" as const, blocked }));
     // Promise.all attaches a rejection observer to every input immediately and
     // remains fail-fast. Wrapping the aggregate records that failure until the
     // rate-limit verdict has been applied, including 429 and early-return paths.
@@ -1703,7 +1685,6 @@ export async function handleChatCompletionsPOST(
         monetizedAppPromise,
         pooledCredentialPromise,
         modelCatalogPromise,
-        shouldBlockUserPromise,
       ]),
     );
 
@@ -1713,34 +1694,9 @@ export async function handleChatCompletionsPOST(
       return attachPreforwardTelemetry(orgRateLimited);
     }
 
-    const [
-      appResolution,
-      pooledCredentialResolution,
-      modelCatalogResolution,
-      moderationResolution,
-    ] = unwrapConcurrentPromise(await dependencyResolutionsPromise);
-    if (
-      appResolution.kind !== "ready" ||
-      pooledCredentialResolution.kind !== "ready" ||
-      moderationResolution.kind !== "ready"
-    ) {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message:
-                  "Inference dependency cache is warming. Retry shortly.",
-                type: "service_unavailable",
-                code: "inference_dependency_cache_warming",
-              },
-            },
-            { status: 503, headers: { "Retry-After": "1" } },
-          ),
-        ),
-      );
-    }
-    monetizedApp = appResolution.app;
+    const [resolvedApp, pooledCredential, modelCatalogResolution] =
+      unwrapConcurrentPromise(await dependencyResolutionsPromise);
+    monetizedApp = resolvedApp;
     if (
       options.requiredAppId &&
       (!monetizedApp ||
@@ -1764,12 +1720,10 @@ export async function handleChatCompletionsPOST(
     }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp);
-    const pooledCredential = pooledCredentialResolution.credential;
     const modelSupportedParameters =
       modelCatalogResolution.kind === "ready"
         ? modelCatalogResolution.model?.supported_parameters
         : undefined;
-    const shouldBlockUser = moderationResolution.blocked;
 
     if (!pooledCredential && !platformCredentialConfigured) {
       return addCorsHeaders(
@@ -1796,6 +1750,36 @@ export async function handleChatCompletionsPOST(
       modelSupportedParameters,
       reasoningEffort,
     );
+    // This provider-owned catalog describes the accepted Cerebras request
+    // ceiling. It bounds all prompt tokens, including hidden serialization;
+    // the character-based estimate remains an estimate, never escrow authority.
+    const catalogModel =
+      modelCatalogResolution.kind === "ready"
+        ? modelCatalogResolution.model
+        : null;
+    const contextLimit =
+      catalogModel?.context_length ?? catalogModel?.context_window;
+    const hasBudgetTokenBounds = Boolean(
+      fundedBudget &&
+        !pooledCredential &&
+        provider.startsWith("cerebras") &&
+        catalogModel?.owned_by === "cerebras" &&
+        Number.isSafeInteger(contextLimit) &&
+        (contextLimit ?? 0) > 0 &&
+        !request.webSearchEnabled &&
+        !request.tools?.length,
+    );
+    const maximumInputTokens = hasBudgetTokenBounds ? contextLimit : undefined;
+    const catalogOutputLimit = catalogModel?.max_tokens ?? contextLimit;
+    const maximumOutputTokens =
+      hasBudgetTokenBounds &&
+      Number.isSafeInteger(catalogOutputLimit) &&
+      (catalogOutputLimit ?? 0) > 0
+        ? Math.min(
+            effectiveMaxTokens ?? catalogOutputLimit!,
+            catalogOutputLimit!,
+          )
+        : undefined;
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
       provider,
@@ -1809,52 +1793,8 @@ export async function handleChatCompletionsPOST(
       maxUses: request.webSearchMaxUses,
     });
 
-    // 5. Check content moderation. Skipped when the hot-path resolver already
-    // verified the suspension status in this request (#9899) — never skipped on
-    // the slow path.
-    if (shouldBlockUser) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message:
-                "Your account has been suspended due to policy violations.",
-              type: "account_suspended",
-              code: "moderation_violation",
-            },
-          },
-          { status: 403 },
-        ),
-      );
-    }
-
-    // Start async moderation in background. ALWAYS runs (it is off the hot path)
-    // so new violations are still detected; on a violation we invalidate this
-    // user's inference auth-context so the cached fast path can't keep serving a
-    // user who just crossed the suspension threshold (#9899).
-    const lastUserMessage = request.messages
-      .filter((m) => m.role === "user")
-      .pop();
-    if (lastUserMessage) {
-      const content = getMessageContent(lastUserMessage);
-      if (content) {
-        const moderationTask = contentModerationService.moderateInBackground(
-          content,
-          user.id,
-          undefined,
-          (result) => {
-            logger.warn(
-              "[Chat Completions] Async moderation detected violation",
-              {
-                userId: user.id,
-                categories: result.flaggedCategories,
-              },
-            );
-          },
-        );
-        options.executionCtx?.waitUntil(moderationTask);
-      }
-    }
+    // Chat content is not moderated, synchronously or in the background.
+    // Account standing is part of the cached auth decision above.
 
     // 6. Estimate tokens and reserve credits
     const estimatedInputTokens =
@@ -1872,6 +1812,11 @@ export async function handleChatCompletionsPOST(
       useAppCredits && appId && monetizedApp,
     );
     try {
+      // Provider-run web searches are billed per use on top of tokens. Hold the
+      // worst case (maxUses searches); settlement charges the reported count.
+      const webSearchHoldCost = webSearchActive
+        ? calculateAnthropicWebSearchMaxCost(request.webSearchMaxUses)
+        : 0;
       if (options.appFundingActor) {
         const { totalCost } = await calculateCost(
           normalizedModel,
@@ -1894,7 +1839,7 @@ export async function handleChatCompletionsPOST(
             billingSource,
             estimatedOutputTokens,
           }),
-          estimatedCostUsd: totalCost,
+          estimatedCostUsd: totalCost + webSearchHoldCost,
           revalidateDeveloperCredential: async () => {
             if (!apiKey)
               throw new Error("App infrastructure credential is unavailable");
@@ -1928,7 +1873,7 @@ export async function handleChatCompletionsPOST(
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
-        const { totalCost } = await calculateCost(
+        const { totalCost: tokenCost } = await calculateCost(
           normalizedModel,
           provider,
           estimatedInputTokens,
@@ -1938,6 +1883,7 @@ export async function handleChatCompletionsPOST(
             ? { cacheOnly: true, executionCtx: options.executionCtx }
             : undefined,
         );
+        const totalCost = tokenCost + webSearchHoldCost;
         const metadata = {
           model,
           provider,
@@ -1986,6 +1932,27 @@ export async function handleChatCompletionsPOST(
             settleReservation?.(totalCost) ?? Promise.resolve(null);
         }
       } else {
+        // Organization admission prices a token-metered hold only from token
+        // counts (flatCost would drop the token buffer and change the admission
+        // path). Add the input tokens whose price covers the search hold.
+        let admissionInputTokens = estimatedInputTokens;
+        if (webSearchHoldCost > 0) {
+          const { inputCost } = await calculateCost(
+            normalizedModel,
+            provider,
+            estimatedInputTokens,
+            0,
+            billingSource,
+            options.executionCtx
+              ? { cacheOnly: true, executionCtx: options.executionCtx }
+              : undefined,
+          );
+          if (inputCost > 0) {
+            admissionInputTokens += Math.ceil(
+              (webSearchHoldCost * estimatedInputTokens) / inputCost,
+            );
+          }
+        }
         const admission = await admitOrganizationInference({
           context: {
             organizationId: user.organization_id,
@@ -1997,8 +1964,11 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             requestId,
           },
-          estimatedInputTokens,
+          estimatedInputTokens: admissionInputTokens,
           estimatedOutputTokens,
+          maximumInputTokens,
+          maximumOutputTokens,
+          fundedBudgetRateReceipt,
           apiKeyId: apiKey?.id ?? null,
           affiliateCode,
           executionCtx: options.executionCtx,
@@ -2081,14 +2051,46 @@ export async function handleChatCompletionsPOST(
       }
       if (error instanceof InsufficientCreditsError) {
         const creditKind = useMonetizedAppBilling ? "cloud credits" : "credits";
+        // A plan subscriber (paid or grant) has spent its period allowance and
+        // credit: name that state and when the allowance resets. Status and
+        // type stay 402 / insufficient_quota for existing OpenAI-style clients.
+        // The Worker never reads Postgres to word a refusal: the cached
+        // admission snapshot names the plan state and its period end.
+        const exhaustion = useMonetizedAppBilling
+          ? null
+          : options.executionCtx
+            ? admissionSnapshot?.subscriptionFunded
+              ? {
+                  resetsAt: admissionSnapshot.authority.effectiveUntil
+                    ? new Date(admissionSnapshot.authority.effectiveUntil)
+                    : null,
+                }
+              : null
+            : await import(
+                "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
+              )
+                .then(({ readAllowanceExhaustion }) =>
+                  readAllowanceExhaustion(user.organization_id),
+                )
+                .catch(() => null);
         return addCorsHeaders(
           Response.json(
             {
-              error: {
-                message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
-                type: "insufficient_quota",
-                code: "insufficient_credits",
-              },
+              error: exhaustion
+                ? {
+                    message:
+                      "Plan allowance is used up for this period. Nothing is purchased automatically.",
+                    type: "insufficient_quota",
+                    code: "allowance_exhausted",
+                    ...(exhaustion.resetsAt && {
+                      resetsAt: exhaustion.resetsAt.toISOString(),
+                    }),
+                  }
+                : {
+                    message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
+                    type: "insufficient_quota",
+                    code: "insufficient_credits",
+                  },
             },
             { status: 402 },
           ),
@@ -2133,18 +2135,14 @@ export async function handleChatCompletionsPOST(
         );
       }
       if (
-        error instanceof InferenceBalanceCacheWarmingError ||
-        error instanceof AiPricingCacheWarmingError ||
+        error instanceof InferenceBillingUnavailableError ||
         error instanceof AiPricingCacheUnavailableError
       ) {
         const dependency =
-          error instanceof InferencePricingCacheWarmingError ||
           error instanceof InferencePricingCacheUnavailableError ||
-          error instanceof AiPricingCacheWarmingError ||
           error instanceof AiPricingCacheUnavailableError
             ? "pricing"
-            : error instanceof InferenceAffiliateCacheWarmingError ||
-                error instanceof InferenceAffiliateCacheUnavailableError
+            : error instanceof InferenceAffiliateCacheUnavailableError
               ? "affiliate_policy"
               : "balance";
         logger.warn("[Chat Completions] billing dependency failed closed", {
@@ -2165,9 +2163,10 @@ export async function handleChatCompletionsPOST(
             Response.json(
               {
                 error: {
-                  message: "Billing authorization is warming. Retry shortly.",
+                  message:
+                    "Billing authorization is unavailable. Retry shortly.",
                   type: "service_unavailable",
-                  code: "billing_cache_warming",
+                  code: "billing_unavailable",
                   details: { dependency },
                 },
               },
@@ -2265,6 +2264,7 @@ export async function handleChatCompletionsPOST(
           gatewayHandoffTelemetry,
           markProviderDispatched,
           traceId,
+          callerPurpose,
         )
       : await handleNonStreamingRequest(
           model,
@@ -2339,7 +2339,7 @@ export async function handleChatCompletionsPOST(
     }
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       logger.error(
         "[Chat Completions] provider-boundary admission failed closed",
@@ -2380,6 +2380,10 @@ export async function handleChatCompletionsPOST(
     );
     logger.error("[Chat Completions] Error", {
       traceId,
+      ...getSafeProviderErrorMetadata(
+        unwrapProviderError(error),
+        callerPurpose,
+      ),
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
@@ -2475,6 +2479,7 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
+  webSearchEnabled?: boolean;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2482,6 +2487,12 @@ async function settleStreamingAbortReservation(params: {
   settleUnknown: () => Promise<CreditReconciliationResult | null>;
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
+  // Tool-call frames prove only an attempt, not a billed search: Anthropic
+  // does not bill failed searches. An aborted request can also omit usage for
+  // the current step. Keep the admitted unknown-outcome settlement instead of
+  // treating observed calls or usage from earlier steps as the final charge.
+  if (params.webSearchEnabled) return await params.settleUnknown();
+
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
@@ -2958,14 +2969,13 @@ async function tryPassthroughStreamingRequest(params: {
           totalCost: billing.totalCost,
         });
       } catch (error) {
-        // The provider reported usage, so a local billing failure cannot be
-        // treated as proof of zero cost. The conservative terminal preserves
-        // the admitted estimate and is first-call-wins with a partial success.
-        await params.settleUnknown();
+        // Preserve the first chosen charge after an unknown acknowledgement.
+        // Record the original failure before retrying so a retry cannot hide it.
         logger.error("[Chat Completions] Passthrough settle error", {
           model,
           error: error instanceof Error ? error.message : String(error),
         });
+        await params.settleUnknown();
       }
       return;
     }
@@ -3124,6 +3134,7 @@ async function handleStreamingRequest(
   markProviderDispatched?: () => Promise<void>,
   /** Shared trace id (#16079) correlating the milestone event with the caller. */
   traceId?: string,
+  callerPurpose?: CallerLlmPurpose,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -3226,6 +3237,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
+          webSearchEnabled: Object.keys(webSearchOptions).length > 0,
           steps,
           settleReservation,
           settleUnknown,
@@ -3249,12 +3261,26 @@ async function handleStreamingRequest(
   );
 
   const languageModel = getLanguageModel(model, pooledCredential ?? undefined);
+  await markProviderDispatched?.();
+  const sdkTiming = provider.startsWith("cerebras")
+    ? beginSdkStreamTiming(traceId ?? requestId, model)
+    : undefined;
   const invokeStreamText = bindGatewayHandoffTelemetry(
     gatewayHandoffTelemetry,
-    (options: Parameters<typeof streamText>[0]) => streamText(options),
+    bindSdkStreamTiming(
+      sdkTiming,
+      (options: Parameters<typeof streamText>[0]) => {
+        try {
+          return streamText(options);
+        } catch (error) {
+          sdkTiming?.finish(true);
+          throw error;
+        }
+      },
+    ),
   );
-  await markProviderDispatched?.();
   const result = invokeStreamText({
+    ...(sdkTiming ? { includeRawChunks: true } : {}),
     model: languageModel,
     system: systemPrompt,
     messages,
@@ -3394,7 +3420,12 @@ async function handleStreamingRequest(
       logger.error(
         "[Chat Completions] Stream provider error — admission settled",
         {
+          traceId,
           model,
+          ...getSafeProviderErrorMetadata(
+            unwrapProviderError(error),
+            callerPurpose,
+          ),
           conservative: deliveredProviderOutput,
           error: redactPromptCacheKey(
             error instanceof Error ? error.message : String(error),
@@ -3416,8 +3447,12 @@ async function handleStreamingRequest(
   const includeUsage = request.stream_options?.include_usage === true;
   const usageFieldOnChunks = includeUsage ? { usage: null } : {};
 
-  const openAIStream = new ReadableStream({
-    async start(controller) {
+  const streamSource = {
+    async start(controller: ReadableStreamDefaultController<Uint8Array>) {
+      const enqueue = (bytes: Uint8Array) => {
+        controller.enqueue(bytes);
+        sdkTiming?.enqueue();
+      };
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
       // Argument chars already delivered per tool call id via
@@ -3431,8 +3466,10 @@ async function handleStreamingRequest(
       let finishReason = "stop";
       let finishUsage: unknown;
 
+      let streamCompleted = false;
       try {
         for await (const part of result.fullStream) {
+          sdkTiming?.part(part);
           if (part.type === "text-delta") {
             deliveredProviderOutput ||= part.text.length > 0;
             const chunk = {
@@ -3449,9 +3486,7 @@ async function handleStreamingRequest(
                 },
               ],
             };
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             deliveredText += part.text;
             continue;
           }
@@ -3461,7 +3496,7 @@ async function handleStreamingRequest(
             const index = nextToolCallIndex++;
             toolCallIndexes.set(part.id, index);
             toolCallArgsDelivered.set(part.id, 0);
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3498,7 +3533,7 @@ async function handleStreamingRequest(
               part.id,
               (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
             );
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3541,7 +3576,7 @@ async function handleStreamingRequest(
               finishReason = "tool_calls";
               continue;
             }
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3617,15 +3652,13 @@ async function handleStreamingRequest(
             },
           ],
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
-        );
+        enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
         // Terminal usage-only chunk (empty choices) per stream_options
         // .include_usage. Only ever built from the SDK's reported usage — if
         // the finish part never arrived there is nothing honest to report, so
         // the frame is omitted rather than fabricated as zeros.
         if (includeUsage && hasReportedUsageTokens(finishUsage)) {
-          controller.enqueue(
+          enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
                 id: responseId,
@@ -3641,8 +3674,9 @@ async function handleStreamingRequest(
             ),
           );
         }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
+        streamCompleted = true;
       } catch (error) {
         // Finding #11: a provider error mid-stream (e.g. the cerebras 429/5xx
         // surfaced as a `fullStream` error part) would otherwise leave the
@@ -3711,10 +3745,8 @@ async function handleStreamingRequest(
               code: status,
             },
           };
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`),
-          );
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
+          enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (enqueueError) {
           // The stream was already torn down (client disconnected / controller
@@ -3730,8 +3762,13 @@ async function handleStreamingRequest(
           );
           controller.error(error);
         }
+      } finally {
+        sdkTiming?.finish(!streamCompleted);
       }
     },
+  };
+  const openAIStream = new ReadableStream({
+    start: bindSdkStreamTiming(sdkTiming, streamSource.start),
   });
 
   return addCorsHeaders(

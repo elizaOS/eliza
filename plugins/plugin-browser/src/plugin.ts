@@ -1,7 +1,7 @@
 /** Composes the browser workspace, optional Stagehand target, and owner-authorized browser actions. */
 
 import { promoteSubactionsToActions, type ServiceClass } from "@elizaos/core";
-import { type HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { browserAction } from "./actions/browser.js";
 import { BrowserService } from "./browser-service.js";
 import { browserWorkspaceProvider } from "./providers/workspace.js";

@@ -4,12 +4,12 @@
  * methods onto the LifeOpsService base.
  */
 
-import {
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+} from "@elizaos/contracts";
 import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 
 export {
   DRIVE_CONNECTOR_CAPABILITIES,

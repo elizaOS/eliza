@@ -3,8 +3,8 @@
  * results. The lifecycle is pull-based because native platforms have no push
  * channel into this renderer surface.
  */
-import { Capacitor } from "@capacitor/core";
 import { getTesseractPlugin } from "../bridge/native-plugins";
+import { isNativeMobile } from "../platform/native-mobile";
 
 const POLL_INTERVAL_MS = 1200;
 const OCR_FETCH_TIMEOUT_MS = 15_000;
@@ -58,17 +58,6 @@ async function withFetchDeadline<T>(
   } finally {
     clearTimeout(timeout);
     signal.removeEventListener("abort", abort);
-  }
-}
-
-function isNativeMobile(): boolean {
-  try {
-    const platform = Capacitor.getPlatform();
-    return platform === "android" || platform === "ios";
-  } catch {
-    // error-policy:J4 capability probe — no Capacitor runtime means no native
-    // OCR on this platform; the bridge simply stays off.
-    return false;
   }
 }
 

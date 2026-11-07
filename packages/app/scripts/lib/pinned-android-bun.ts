@@ -12,8 +12,13 @@ const lock = JSON.parse(
 );
 const SHA256 = /^[a-f0-9]{64}$/;
 
-export function resolvePinnedBunArtifact(channel, arch) {
-  const release = lock.channels[channel];
+export function resolvePinnedBunArtifact(channel, arch, target = "linux-musl") {
+  if (target !== "linux-musl" && target !== "android")
+    throw new Error(`Unsupported Android Bun target: ${target}`);
+  const release =
+    target === "linux-musl"
+      ? lock.channels[channel]
+      : lock.targets?.[target]?.[channel];
   const artifact = release?.artifacts?.[arch];
   if (
     lock.schemaVersion !== 1 ||
@@ -27,15 +32,16 @@ export function resolvePinnedBunArtifact(channel, arch) {
     typeof release.version !== "string"
   ) {
     throw new Error(
-      `Missing or invalid pinned Android Bun artifact: ${channel}/${arch}`,
+      `Missing or invalid pinned Android Bun artifact: ${target}/${channel}/${arch}`,
     );
   }
   return {
     ...artifact,
+    target,
     version: release.version,
     revision: release.revision,
-    filename: `bun-linux-${arch}-musl.zip`,
-    entry: `bun-linux-${arch}-musl/bun`,
+    filename: `bun-linux-${arch}-${target === "android" ? "android" : "musl"}.zip`,
+    entry: `bun-linux-${arch}-${target === "android" ? "android" : "musl"}/bun`,
     url: `https://api.github.com/repos/oven-sh/bun/releases/assets/${artifact.assetId}`,
   };
 }
@@ -83,6 +89,7 @@ export async function stagePinnedBunArtifact({
     artifact_filename: artifact.filename,
     artifact_sha256: artifact.archiveSha256,
     binary_sha256: artifact.binarySha256,
+    target: artifact.target ?? "linux-musl",
     version: artifact.version,
     revision: artifact.revision,
   };

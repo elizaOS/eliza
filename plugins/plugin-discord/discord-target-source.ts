@@ -102,7 +102,10 @@ export async function fetchDiscordEnumeration(
 				{ src: "discord-target-source", status: guildsRes.status },
 				"Discord guilds REST returned non-ok",
 			);
-			return writeCache([]);
+			// A rejected guild list is not a completed enumeration. Caching it
+			// makes a transient 429/5xx report "no servers" for the whole
+			// window, so the next caller retries instead.
+			return [];
 		}
 		guilds = (await guildsRes.json()) as Array<{ id: string; name: string }>;
 	} catch (err) {

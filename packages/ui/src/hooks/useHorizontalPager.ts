@@ -10,10 +10,10 @@ import {
   PAGER_AXIS_DOMINANCE_RATIO as AXIS_DOMINANCE_RATIO,
   OVERSHOOT_RESISTANCE as EDGE_RESISTANCE,
   PAGER_FLICK_VELOCITY as FLICK_VELOCITY,
-  isRealCaptureLoss,
-  useClickSuppression,
-  useRafCoalescer,
-} from "../gestures";
+} from "../gestures/constants";
+import { isRealCaptureLoss } from "../gestures/lost-capture";
+import { useClickSuppression } from "../gestures/useClickSuppression";
+import { useRafCoalescer } from "../gestures/useRafCoalescer";
 import { beginRailGesture, endRailGesture } from "../state/rail-gesture-store";
 
 // The pager's tuned axis/flick/edge values live in the shared gesture constants

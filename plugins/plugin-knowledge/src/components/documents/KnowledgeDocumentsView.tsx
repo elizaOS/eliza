@@ -15,45 +15,38 @@
  * `KnowledgeView` (the `/documents` route) and, controlled, inside the character
  * hub. Upload compresses large images before sending.
  */
-
-import { getCached, setCached } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  Button,
+  ConfirmDeleteControl,
   client,
+  confirmDesktopAction,
   type DocumentRecord,
   type DocumentScope,
   type DocumentSearchResult,
-  isApiError,
-} from "@elizaos/ui/api";
-import {
-  Button,
   FormSelect,
   FormSelectItem,
-  Input,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
-import { ConfirmDeleteControl } from "@elizaos/ui/components/shared/confirm-delete-control";
-import { SectionTabStrip } from "@elizaos/ui/components/shared/SectionNav";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import {
-  isCapabilityWarmupAbort,
-  useAbortableCapabilityWarmup,
-} from "@elizaos/ui/hooks/runtime-capability-retry";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
-import { isNative } from "@elizaos/ui/platform";
-import {
-  useAppSelector,
-  useRegisterViewChatBinding,
-  useTranslation,
-} from "@elizaos/ui/state";
-import {
-  confirmDesktopAction,
   formatByteSize,
+  getCached,
+  Input,
+  isApiError,
+  isCapabilityWarmupAbort,
   isDocumentImageFile,
+  isNative,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
-} from "@elizaos/ui/utils";
+  PagePanel,
+  SectionTabStrip,
+  SettingsGroup,
+  setCached,
+  useAbortableCapabilityWarmup,
+  useActiveAgentAuthority,
+  useAgentElement,
+  useAppSelector,
+  useChatComposer,
+  useRegisterViewChatBinding,
+  useTranslation,
+} from "@elizaos/ui";
+
 import {
   AlertTriangle,
   ChevronRight,
@@ -363,9 +356,6 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
 interface KnowledgeDocumentsViewProps {
   fileInputId?: string;
   inModal?: boolean;
-  /** Own the top-level "Knowledge" header in list state (the canonical
-   *  `/character/documents` route). Off when embedded under other chrome. */
-  standalone?: boolean;
   onDocumentsChange?: (documents: DocumentRecord[]) => void;
   onSelectedDocumentIdChange?: (documentId: string | null) => void;
   selectedDocumentId?: string | null;
@@ -387,7 +377,6 @@ export function KnowledgeDocumentsView(
 function KnowledgeDocumentsViewForAuthority({
   fileInputId,
   inModal,
-  standalone = false,
   onDocumentsChange,
   onSelectedDocumentIdChange,
   selectedDocumentId,
@@ -395,7 +384,7 @@ function KnowledgeDocumentsViewForAuthority({
 }: KnowledgeDocumentsViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const chatSending = useAppSelector((s) => s.chatSending);
+  const { chatSending } = useChatComposer();
   const wasChatSending = useRef(chatSending);
   const authorityRef = useRef(authority);
   authorityRef.current = authority;
@@ -1365,14 +1354,6 @@ function KnowledgeDocumentsViewForAuthority({
         className={`flex min-h-0 flex-1 flex-col ${inModal ? "min-h-0" : ""}`}
         data-testid="documents-view"
       >
-        <ViewHeader
-          title={t("knowledgehub.readerTitle", { defaultValue: "Knowledge" })}
-          onBack={() => setSelectedDocId(null)}
-          backLabel={t("knowledgehub.backToList", {
-            defaultValue: "Back to Knowledge",
-          })}
-          className="px-0"
-        />
         <div className="flex min-h-0 flex-1 flex-col">
           <DocumentViewer
             documentId={selectedDocId}
@@ -1410,12 +1391,6 @@ function KnowledgeDocumentsViewForAuthority({
       onDragOver={handleRootDragOver}
       onDrop={handleRootDrop}
     >
-      {standalone ? (
-        <ViewHeader
-          title={t("knowledgehub.title", { defaultValue: "Knowledge" })}
-          className="px-0"
-        />
-      ) : null}
       {hiddenFileInput}
       <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-4">
         <SettingsGroup

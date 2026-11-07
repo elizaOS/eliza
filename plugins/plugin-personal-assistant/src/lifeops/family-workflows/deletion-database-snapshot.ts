@@ -7,8 +7,8 @@
  * This guard owns database comparison, not file, backup, or provider deletion.
  */
 import { createHash } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { z } from "zod";
 import {
   executeRawSqlTx,

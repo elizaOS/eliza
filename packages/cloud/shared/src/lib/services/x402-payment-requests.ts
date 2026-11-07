@@ -9,17 +9,15 @@ import {
   validateSvmAddress,
 } from "@x402/svm";
 import Decimal from "decimal.js";
-import { eq, sql } from "drizzle-orm";
 import { isAddress } from "viem";
-import { dbWrite } from "../../db/helpers";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
 import {
   type CryptoPayment,
   cryptoPaymentsRepository,
+  SETTLEMENT_PENDING_KEY,
 } from "../../db/repositories/crypto-payments";
-import { apps } from "../../db/schemas/apps";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
@@ -29,6 +27,9 @@ import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const KIND = "x402_payment_request";
+const SETTLE_CLAIM_MARGIN_SECONDS = 60;
+// x402 platform and service fees are not booked as app platform revenue.
+const X402_APP_PLATFORM_REVENUE_DELTA = "0.000000";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 type NetworkConfig = {
@@ -181,6 +182,14 @@ export class X402PaymentRequestError extends Error {
     super(message);
     this.name = "X402PaymentRequestError";
   }
+}
+
+function settlementInProgress(): X402PaymentRequestError {
+  return new X402PaymentRequestError(
+    "Payment request settlement is already in progress",
+    409,
+    "settlement_in_progress",
+  );
 }
 
 function parseStoredPaymentAmount(params: {
@@ -487,33 +496,16 @@ async function recordAppScopedPaymentEarnings(
     return;
   }
 
-  await appEarningsRepository.addPurchaseEarnings(appId, amountUsd);
-  await appEarningsRepository.createTransaction({
-    app_id: appId,
-    user_id: app.created_by_user_id,
-    type: "purchase_share",
-    amount: amountUsd.toFixed(6),
-    description: `x402 payment request ${payment.id}`,
-    metadata: {
-      paymentType: "x402_payment_request",
-      paymentRequestId: payment.id,
-      network: settlement.network,
-      transaction: settlement.transaction,
-      payer: settlement.payer,
-      platformFeeUsd: metadata.platformFeeUsd,
-      serviceFeeUsd: metadata.serviceFeeUsd,
-      totalChargedUsd: metadata.totalChargedUsd,
-    },
-  });
-
-  await dbWrite
-    .update(apps)
-    .set({
-      total_creator_earnings: sql`${apps.total_creator_earnings} + ${amountUsd}`,
-      updated_at: new Date(),
-    })
-    .where(eq(apps.id, appId));
-
+  const paymentFacts = {
+    paymentType: "x402_payment_request",
+    paymentRequestId: payment.id,
+    network: settlement.network,
+    transaction: settlement.transaction,
+    payer: settlement.payer,
+    platformFeeUsd: metadata.platformFeeUsd,
+    serviceFeeUsd: metadata.serviceFeeUsd,
+    totalChargedUsd: metadata.totalChargedUsd,
+  };
   const result = await redeemableEarningsService.addEarnings({
     userId: app.created_by_user_id,
     amount: amountUsd,
@@ -522,18 +514,16 @@ async function recordAppScopedPaymentEarnings(
     dedupeBySourceId: true,
     description: `App x402 payment request ${payment.id}`,
     metadata: {
+      ...paymentFacts,
       appId,
-      paymentType: "x402_payment_request",
-      network: settlement.network,
-      transaction: settlement.transaction,
-      payer: settlement.payer,
-      platformFeeUsd: metadata.platformFeeUsd,
-      serviceFeeUsd: metadata.serviceFeeUsd,
-      totalChargedUsd: metadata.totalChargedUsd,
+      earningsType: "purchase_share",
+      transactionUserId: app.created_by_user_id,
+      appCreatorShadowVersion: 1,
+      appPlatformRevenueDelta: X402_APP_PLATFORM_REVENUE_DELTA,
     },
   });
 
-  if (result && !result.success) {
+  if (!result.success) {
     logger.error("[x402-payment-requests] failed to credit app creator redeemable earnings", {
       paymentRequestId: payment.id,
       appId,
@@ -541,7 +531,22 @@ async function recordAppScopedPaymentEarnings(
       amountUsd,
       error: result.error,
     });
+    throw new X402PaymentRequestError("Creator earnings remain pending", 503, "earnings_pending");
   }
+
+  // Projects the redeemable entry into app_earnings, its transaction row and
+  // apps.total_creator_earnings atomically, keyed by the ledger entry id.
+  await appEarningsRepository.applyCreatorMovement({
+    appId,
+    userId: app.created_by_user_id,
+    type: "purchase_share",
+    creatorAmount: amountUsd,
+    platformRevenueAmount: 0,
+    description: `x402 payment request ${payment.id}`,
+    metadata: paymentFacts,
+    redeemableLedgerEntryId: result.ledgerEntryId,
+    redeemableDeduplicated: result.deduplicated === true,
+  });
 }
 
 class X402PaymentRequestsService {
@@ -701,20 +706,14 @@ class X402PaymentRequestsService {
     if (!payment) {
       throw new X402PaymentRequestError("Payment request not found", 404, "not_found");
     }
-    if (payment.status === "confirmed") {
-      const paymentResponse = Buffer.from(
-        JSON.stringify({
-          success: true,
-          transaction: payment.transaction_hash,
-          network: payment.network,
-          alreadySettled: true,
-        }),
-      ).toString("base64");
-      return { paymentRequest: this.toPublicView(payment), paymentResponse };
-    }
+    if (payment.status === "confirmed") return this.alreadySettled(payment);
     if (payment.expires_at.getTime() < Date.now()) {
-      const expired = (await cryptoPaymentsRepository.markAsExpired(payment.id)) ?? payment;
-      await this.triggerFailureCallback(expired, "expired", {
+      const expired = await cryptoPaymentsRepository.markAsExpired(payment.id);
+      const current = expired ?? (await this.get(id)) ?? payment;
+      // A concurrent settle confirmed this request after it was read above.
+      if (current.status === "confirmed") return this.alreadySettled(current);
+      if (current.status === "pending") throw settlementInProgress();
+      await this.triggerFailureCallback(current, "expired", {
         expiredAt: payment.expires_at.toISOString(),
       });
       throw new X402PaymentRequestError(
@@ -767,16 +766,36 @@ class X402PaymentRequestsService {
       );
     }
 
+    // One facilitator call per request: a second authorization submitted while
+    // the first is settling would otherwise charge the payer twice.
+    const claimSeconds = (requirements.maxTimeoutSeconds ?? 300) + SETTLE_CLAIM_MARGIN_SECONDS;
+    const claimed = await cryptoPaymentsRepository.claimSettlement(
+      payment.id,
+      new Date(Date.now() + claimSeconds * 1000),
+    );
+    if (!claimed) {
+      const current = (await this.get(id)) ?? payment;
+      if (current.status === "confirmed") return this.alreadySettled(current);
+      if (current.status === "pending") throw settlementInProgress();
+      throw new X402PaymentRequestError(
+        `Payment request is ${current.status}`,
+        410,
+        current.status === "expired" ? "expired" : "not_payable",
+      );
+    }
+
     let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
     try {
       settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
     } catch (error) {
+      // The transfer may have been broadcast; keep its claim until reconciled.
       await this.triggerFailureCallback(payment, "settlement_error", {
         error: error instanceof Error ? error.message : String(error),
       });
       throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
     }
     if (!settlement.success) {
+      await cryptoPaymentsRepository.releaseSettlementClaim(payment.id);
       await this.triggerFailureCallback(payment, settlement.errorReason ?? "settlement_failed", {
         settlement,
       });
@@ -787,28 +806,44 @@ class X402PaymentRequestsService {
       );
     }
 
-    const confirmed = await cryptoPaymentsRepository.markAsConfirmed(
-      payment.id,
-      settlement.transaction,
-      "",
-      payment.expected_amount,
-    );
-    const settledPayment =
-      (await cryptoPaymentsRepository.update(payment.id, {
-        metadata: {
-          ...metadata,
-          payer: settlement.payer,
-          settlement,
-        },
-      })) ??
-      confirmed ??
-      payment;
+    const settledPayment = await cryptoPaymentsRepository.confirmSettlement(payment.id, {
+      txHash: settlement.transaction,
+      receivedAmount: payment.expected_amount,
+      metadataPatch: { payer: settlement.payer, settlement },
+    });
+    if (!settledPayment) {
+      throw new X402PaymentRequestError(
+        "Payment confirmation was not persisted",
+        503,
+        "confirmation_pending",
+      );
+    }
+    await this.completeSettlement(settledPayment, amountUsd, settlement);
+
+    return {
+      paymentRequest: this.toPublicView(settledPayment),
+      paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
+    };
+  }
+
+  /**
+   * Records earnings and sends the paid callbacks for a confirmed settlement.
+   * Earnings writes are keyed by the payment id, so a retry after a failure
+   * here completes the work without crediting twice; only the caller that
+   * clears the pending flag sends the callbacks.
+   */
+  private async completeSettlement(
+    payment: CryptoPayment,
+    amountUsd: number,
+    settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>,
+  ): Promise<void> {
+    const metadata = metadataOf(payment);
     const appId = typeof metadata.appId === "string" ? metadata.appId : undefined;
 
     if (appId) {
       await recordAppScopedPaymentEarnings(payment, appId, amountUsd, settlement, metadata);
     } else if (payment.user_id && amountUsd > 0) {
-      await redeemableEarningsService.addEarnings({
+      const result = await redeemableEarningsService.addEarnings({
         userId: payment.user_id,
         amount: amountUsd,
         source: "creator_revenue_share",
@@ -825,19 +860,56 @@ class X402PaymentRequestsService {
           totalChargedUsd: metadata.totalChargedUsd,
         },
       });
+      if (!result.success) {
+        logger.error("[x402-payment-requests] failed to credit redeemable earnings", {
+          paymentRequestId: payment.id,
+          userId: payment.user_id,
+          amountUsd,
+          error: result.error,
+        });
+        throw new X402PaymentRequestError(
+          "Creator earnings remain pending",
+          503,
+          "earnings_pending",
+        );
+      }
     }
 
-    await triggerCallback(settledPayment, {
+    const completed = await cryptoPaymentsRepository.clearSettlementPending(payment.id);
+    if (!completed) return;
+    await triggerCallback(completed, {
       type: "x402.payment_request.paid",
-      paymentRequest: this.toView(settledPayment),
+      paymentRequest: this.toView(completed),
       settlement,
     });
-    await triggerChannelCallback(settledPayment, "paid");
+    await triggerChannelCallback(completed, "paid");
+  }
 
-    return {
-      paymentRequest: this.toPublicView(settledPayment),
-      paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
-    };
+  private async alreadySettled(payment: CryptoPayment): Promise<{
+    paymentRequest: X402PaymentRequestView;
+    paymentResponse: string;
+  }> {
+    const metadata = metadataOf(payment);
+    if (metadata[SETTLEMENT_PENDING_KEY] === true && isRecord(metadata.settlement)) {
+      await this.completeSettlement(
+        payment,
+        parseStoredPaymentAmount({
+          paymentId: payment.id,
+          field: "amountUsd",
+          value: metadata.amountUsd ?? payment.credits_to_add,
+        }),
+        metadata.settlement as unknown as Awaited<ReturnType<typeof x402FacilitatorService.settle>>,
+      );
+    }
+    const paymentResponse = Buffer.from(
+      JSON.stringify({
+        success: true,
+        transaction: payment.transaction_hash,
+        network: payment.network,
+        alreadySettled: true,
+      }),
+    ).toString("base64");
+    return { paymentRequest: this.toPublicView(payment), paymentResponse };
   }
 
   private async triggerFailureCallback(

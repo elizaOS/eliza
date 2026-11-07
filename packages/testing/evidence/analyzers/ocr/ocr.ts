@@ -9,7 +9,12 @@
  * screen").
  */
 
-import type { Analyzer, AnalyzerFragment, AnalyzerInput } from "../types.ts";
+import type {
+  Analyzer,
+  AnalyzerContext,
+  AnalyzerFragment,
+  AnalyzerInput,
+} from "../types.ts";
 import {
   type OcrEngine,
   type OcrGroundedRegion,
@@ -38,13 +43,17 @@ export function makeOcrAnalyzer(
     name: `ocr.${engine.id}`,
     tier,
     kinds: ["screenshot", "keyframe"],
-    async analyze(input: AnalyzerInput): Promise<AnalyzerFragment> {
-      const availability = await engine.available();
+    async analyze(
+      input: AnalyzerInput,
+      ctx: AnalyzerContext,
+    ): Promise<AnalyzerFragment> {
+      const availability = await engine.available(ctx.signal);
       if (!availability.available) {
         return { status: "skipped-missing-tool", reason: availability.reason };
       }
       const { text, confidence, regions } = await engine.recognize(
         input.absolutePath,
+        ctx.signal,
       );
       const data: OcrData = {
         engine: engine.id,

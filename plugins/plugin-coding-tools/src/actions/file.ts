@@ -4,6 +4,8 @@
  * through the local filesystem, or through a `device_filesystem` bridge service
  * when `target=device` (mobile). Gated to coding contexts with ADMIN role.
  */
+import * as fs from "node:fs/promises";
+
 import type {
   Action,
   ActionResult,
@@ -22,8 +24,9 @@ import {
   successActionResult,
   userFacingSuccessResult,
 } from "../lib/format.js";
-import { isAbsolutePath } from "../lib/path-utils.js";
-import { CODING_TOOLS_CONTEXTS } from "../types.js";
+import { isAbsolutePath, resolveInputPath } from "../lib/path-utils.js";
+import type { SandboxService } from "../services/sandbox-service.js";
+import { CODING_TOOLS_CONTEXTS, SANDBOX_SERVICE } from "../types.js";
 import { editFileHandler } from "./edit.js";
 import { globHandler } from "./glob.js";
 import { grepHandler } from "./grep.js";
@@ -166,6 +169,39 @@ function looksLikeRelativeGlob(value: string): boolean {
 }
 
 /**
+ * A literal directory name can contain glob characters (Next.js `app/[slug]`),
+ * so a glob-like relative `path` stays the search root when it names a
+ * directory the sandbox allows.
+ */
+async function globPathNamesDirectory(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: unknown,
+): Promise<boolean> {
+  const requestedPath = nonEmptyStringParam(options, "path");
+  if (requestedPath === undefined || !looksLikeRelativeGlob(requestedPath)) {
+    return false;
+  }
+  if (message.roomId === undefined || message.roomId === null) return false;
+  const conversationId = String(message.roomId);
+  const input = resolveInputPath(runtime, conversationId, requestedPath);
+  if (!input.ok) return false;
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
+    typeof SandboxService
+  > | null;
+  if (!sandbox) return false;
+  const validation = await sandbox.validatePath(conversationId, input.value);
+  if (validation.ok === false) return false;
+  try {
+    return (await fs.stat(validation.resolved)).isDirectory();
+  } catch {
+    // error-policy:J3 a path that cannot be stat'ed is not a directory, so it
+    // keeps the misplaced-pattern reading.
+    return false;
+  }
+}
+
+/**
  * Narrows the umbrella schema to the selected operation before dispatch. Some
  * strict decoders materialize every optional property in FILE's union-shaped
  * schema. In that recognizable dense shape, empty strings/arrays, optional
@@ -176,6 +212,7 @@ function looksLikeRelativeGlob(value: string): boolean {
 function normalizeWorkspaceFileOptions(
   operation: FileOperation,
   options: unknown,
+  pathNamesDirectory = false,
 ): HandlerOptions {
   const parameters: Record<string, unknown> = {};
   const denseUmbrellaShape = hasDenseUmbrellaShape(operation, options);
@@ -220,7 +257,7 @@ function normalizeWorkspaceFileOptions(
 
     if (pattern !== undefined) parameters.pattern = pattern;
     if (requestedPath !== undefined) {
-      if (looksLikeRelativeGlob(requestedPath)) {
+      if (looksLikeRelativeGlob(requestedPath) && !pathNamesDirectory) {
         if (pattern === undefined) parameters.pattern = requestedPath;
         delete parameters.path;
       } else {
@@ -475,6 +512,13 @@ export const fileAction: Action = {
       schema: { type: "string" },
     },
     {
+      name: "overwrite",
+      description:
+        "For action=write on the workspace target: set true only to intentionally replace an existing file after reading it completely. Default false. Not read for target=device, where a write always replaces the file.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
       name: "old_string",
       description: "Exact substring to replace for action=edit.",
       required: false,
@@ -489,6 +533,13 @@ export const fileAction: Action = {
     {
       name: "replace_all",
       description: "For action=edit: replace all matches, not exactly one.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "allow_literal_escapes",
+      description:
+        "For action=edit: set true only when literal backslash-n or backslash-r text is intentionally part of the source. Default false.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -636,7 +687,12 @@ export const fileAction: Action = {
       runtime,
       message,
       state,
-      normalizeWorkspaceFileOptions(operation, options),
+      normalizeWorkspaceFileOptions(
+        operation,
+        options,
+        operation === "glob" &&
+          (await globPathNamesDirectory(runtime, message, options)),
+      ),
       callback,
     );
     return result;

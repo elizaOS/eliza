@@ -14,8 +14,8 @@ import type {
   MessageExample,
   MessageExampleGroup,
 } from "@elizaos/core";
+import * as fs from "@elizaos/core";
 import { ElizaError, logger, resolveStateDir, Service } from "@elizaos/core";
-import * as fs from "@elizaos/core/utils/filesystem";
 import { z } from "zod";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
@@ -453,9 +453,13 @@ export class CharacterFileManager extends Service {
           character: currentCharacter as Record<string, unknown>,
           previousCharacter: this.runtime.character as Record<string, unknown>,
           previousName,
+          nameWasExplicitlyEdited: Boolean(modification.name),
           source: "agent",
         });
         if (!persistenceResult.success) {
+          if (persistenceResult.persistence?.config === "committed") {
+            Object.assign(this.runtime.character, currentCharacter);
+          }
           return {
             success: false,
             error:
@@ -604,8 +608,12 @@ export class CharacterFileManager extends Service {
               ? this.runtime.character.name
               : undefined,
           source: "restore",
+          nameWasExplicitlyEdited: true,
         });
         if (!persistenceResult.success) {
+          if (persistenceResult.persistence?.config === "committed") {
+            Object.assign(this.runtime.character, backupContent);
+          }
           return {
             success: false,
             error: persistenceResult.error ?? "Failed to restore character",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -19,6 +19,12 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./services/hosted-native-source": {
+      "eliza-source": "./src/services/hosted-native-source.ts",
+      "types": "./src/services/hosted-native-source.ts",
+      "import": "./dist/services/hosted-native-source.js",
+      "default": "./dist/services/hosted-native-source.js"
     }
   },
   "files": [
@@ -34,6 +40,9 @@
         "workflow",
         "automation"
       ]
+    },
+    "scripts": {
+      "mobileWorkflowArtifact": true
     }
   },
   "scripts": {
@@ -41,7 +50,6 @@
     "dev": "tsc6 --watch",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "node ../../packages/scripts/run-with-flake-retry.ts 'EEXIST[^\\n]*epoll_ctl|error: Failed to connect' -- node ../../packages/scripts/run-with-deadline.ts 1500000 -- node ../../packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
-    "test:unit": "bun test --isolate __tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -69,9 +77,10 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
+    "@elizaos/testing": "workspace:*",
     "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2"
   },
@@ -86,16 +95,18 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "smthrs": "0.35.0",
-    "effect": "4.0.0-beta.105",
-    "zod": "^4.6.5",
-    "drizzle-orm": "0.45.3",
+    "@elizaos/host": "workspace:*",
     "@smthrs/engine": "0.35.0",
-    "typescript": "^6.0.3",
-    "@types/react": "19.3.0",
-    "@types/node": "^25.1.0",
     "@types/bun": "1.4.2",
     "@types/json-schema": "7.0.15",
-    "buffer": "6.0.3"
+    "@types/node": "^25.1.0",
+    "@types/react": "19.3.0",
+    "buffer": "6.0.3",
+    "drizzle-orm": "0.45.4",
+    "effect": "4.0.0-beta.105",
+    "smthrs": "0.35.0",
+    "typescript": "^6.0.3",
+    "zod": "^4.6.5",
+    "@elizaos/contracts": "workspace:*"
   }
 }

@@ -1,10 +1,25 @@
 /** Delivers authenticated proactive messages through the gateway-owned connector. */
 
+import {
+  type ApprovedRelayPhoto,
+  parseApprovedRelayPhotos,
+} from "@elizaos/plugin-network/contract";
+import { svcVerify } from "@elizaos/plugin-network/svc-auth";
 import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
-import type { ChatEvent } from "./adapters/types";
+import { twilioAdapter } from "./adapters/twilio";
+import { type ChatEvent, PlatformDeliveryError } from "./adapters/types";
+import { resolveApprovedRelayPhotoUrls } from "./approved-relay-photos";
 import { resolveConnectorAccountId } from "./connector-account";
+import { deliveryReceiptStore } from "./delivery-receipts";
 import { logger } from "./logger";
+import {
+  isNetworkAddressOptedOut,
+  isNetworkProject,
+  type NetworkConsentLedger,
+  networkTakeoverAppliesTo,
+  redisNetworkConsentLedger,
+} from "./network-compliance";
 import type { GatewayRedis } from "./redis";
 import {
   isCanonicalTelegramProject,
@@ -15,9 +30,11 @@ import { resolveSharedWebhookConfig } from "./webhook-config";
 
 interface InternalDeliveryDependencies {
   redis: GatewayRedis;
+  /** Network consent ledger; defaults to the Redis ledger on `redis`. */
+  networkConsentLedger?: NetworkConsentLedger;
 }
 
-type InternalWebhookDelivery =
+type InternalWebhookDelivery = (
   | {
       platform: "telegram";
       project: string;
@@ -41,29 +58,58 @@ type InternalWebhookDelivery =
       chatId: string;
       text: string;
       idempotencyKey: string;
-    };
+    }
+  | {
+      // Proactive SMS for The Network only (risk 5 in the Network fit spike).
+      platform: "twilio";
+      project: string;
+      phoneNumber: string;
+      text: string;
+      idempotencyKey: string;
+    }
+) & {
+  app?: "ntwrk" | "slop" | "peon" | "friends";
+  approvedPhotos?: ApprovedRelayPhoto[];
+  networkCompliance?: { command: "stop" | "help" | "start"; messageId: string };
+};
 
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
-type DeliveryReceipt =
+type DeliveryReceipt = (
   | { state: "indeterminate" }
+  | { state: "abandoned" }
   | {
       state: "complete";
       acceptedAt?: string;
       providerMessageIds: string[];
-    };
+    }
+) & { hash?: string };
 
-function parseReceipt(value: string | null): DeliveryReceipt | undefined {
+function parseReceipt(value: unknown): DeliveryReceipt | undefined {
   if (value === "complete")
     return { state: "complete", providerMessageIds: [] };
   if (value === "dispatching" || value === "indeterminate") {
     return { state: "indeterminate" };
   }
-  if (!value?.startsWith("{")) return undefined;
+  // Both GatewayRedis adapters (and Upstash's default deserialization) hand
+  // back an already-parsed object for a JSON receipt; a raw string is parsed.
+  if (
+    !(value && typeof value === "object") &&
+    !(typeof value === "string" && value.startsWith("{"))
+  ) {
+    return undefined;
+  }
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const parsed = (
+      typeof value === "string" ? JSON.parse(value) : value
+    ) as Record<string, unknown>;
+    if (parsed.state === "abandoned" && typeof parsed.hash === "string")
+      return { state: "abandoned", hash: parsed.hash };
     if (parsed.state === "dispatching" || parsed.state === "indeterminate") {
-      return { state: "indeterminate" };
+      return {
+        state: "indeterminate",
+        ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
+      };
     }
     if (
       parsed.state === "complete" &&
@@ -72,6 +118,7 @@ function parseReceipt(value: string | null): DeliveryReceipt | undefined {
     ) {
       return {
         state: "complete",
+        ...(typeof parsed.hash === "string" ? { hash: parsed.hash } : {}),
         ...(typeof parsed.acceptedAt === "string" &&
         Number.isFinite(Date.parse(parsed.acceptedAt))
           ? { acceptedAt: parsed.acceptedAt }
@@ -101,6 +148,31 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return undefined;
   }
   if (
+    input.app !== undefined &&
+    !["ntwrk", "slop", "peon", "friends"].includes(String(input.app))
+  )
+    return undefined;
+  const approvedPhotos =
+    input.approvedPhotos === undefined
+      ? undefined
+      : parseApprovedRelayPhotos(input.approvedPhotos);
+  // Photo relay uses the normal configured service. Isolated reply realms have no photo authority here.
+  if (
+    input.approvedPhotos !== undefined &&
+    input.networkAuthority !== undefined
+  )
+    return undefined;
+  if (
+    input.approvedPhotos !== undefined &&
+    (!approvedPhotos ||
+      input.platform !== "blooio" ||
+      typeof input.phoneNumber !== "string" ||
+      input.chatId !== undefined ||
+      input.networkCompliance !== undefined ||
+      approvedPhotos.some((p) => p.app !== input.app))
+  )
+    return undefined;
+  if (
     input.platform === "telegram" &&
     typeof input.connectorAccountId === "string" &&
     input.connectorAccountId.trim().length >= 3 &&
@@ -115,6 +187,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "telegram",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
       ...(typeof input.providerThreadId === "string"
@@ -133,6 +208,36 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "blooio",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
+      phoneNumber: input.phoneNumber,
+      ...(approvedPhotos ? { approvedPhotos } : {}),
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+  // Twilio proactive delivery is enabled only for The Network's project, so
+  // every existing project keeps rejecting a Twilio payload exactly as before.
+  if (
+    input.platform === "twilio" &&
+    (isNetworkProject(input.project) ||
+      (typeof input.phoneNumber === "string" &&
+        networkTakeoverAppliesTo(input.project, {
+          platform: "twilio",
+          senderId: input.phoneNumber,
+        }))) &&
+    input.providerThreadId === undefined &&
+    input.chatId === undefined &&
+    typeof input.phoneNumber === "string" &&
+    /^\+[1-9]\d{6,14}$/.test(input.phoneNumber)
+  ) {
+    return {
+      platform: "twilio",
+      project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       phoneNumber: input.phoneNumber,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
@@ -152,6 +257,9 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     return {
       platform: "blooio",
       project: input.project,
+      ...(typeof input.app === "string"
+        ? { app: input.app as InternalWebhookDelivery["app"] }
+        : {}),
       connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
       text: input.text.trim(),
@@ -161,13 +269,179 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
   return undefined;
 }
 
+async function sha256Hex(body: string): Promise<string> {
+  return [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)),
+    ),
+  ]
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function deliveryHash(
+  delivery: InternalWebhookDelivery,
+): Promise<string> {
+  return sha256Hex(
+    JSON.stringify([
+      delivery.platform,
+      delivery.project,
+      delivery.app ?? null,
+      "connectorAccountId" in delivery ? delivery.connectorAccountId : null,
+      "providerThreadId" in delivery
+        ? (delivery.providerThreadId ?? null)
+        : null,
+      "phoneNumber" in delivery ? delivery.phoneNumber : delivery.chatId,
+      delivery.text,
+      delivery.idempotencyKey,
+      ...(delivery.approvedPhotos
+        ? [["approved-photos", delivery.approvedPhotos]]
+        : []),
+    ]),
+  );
+}
+
+/**
+ * Receipts written before connector and thread binding (gateway until
+ * 2026-10-12) hashed six slots. They stay valid for DELIVERY_RECEIPT_TTL_SECONDS
+ * after the deploy, but cannot prove connector or thread binding. Keep their
+ * outcome unknown without resending. Remove after every such receipt expires.
+ */
+async function deliveryHashBeforeBinding(
+  delivery: InternalWebhookDelivery,
+): Promise<string> {
+  return sha256Hex(
+    JSON.stringify([
+      delivery.platform,
+      delivery.project,
+      delivery.app ?? null,
+      "phoneNumber" in delivery ? delivery.phoneNumber : delivery.chatId,
+      delivery.text,
+      delivery.idempotencyKey,
+    ]),
+  );
+}
+
+async function receiptMatches(
+  receipt: { hash?: string } | null | undefined,
+  delivery: InternalWebhookDelivery,
+): Promise<boolean> {
+  if (!receipt?.hash) return false;
+  return receipt.hash === (await deliveryHash(delivery));
+}
+
+async function validPhotoDeliverySignature(
+  request: Request,
+  body: string,
+  delivery: InternalWebhookDelivery,
+): Promise<boolean> {
+  if (!delivery.approvedPhotos) return true;
+  const secret = process.env.SERVICE_TURN_SECRET;
+  const proof = await svcVerify(secret, {
+    method: "POST",
+    path: new URL(request.url).pathname,
+    headers: request.headers,
+    body,
+  });
+  return proof.ok && proof.id === delivery.idempotencyKey;
+}
+
+const notClaimed = () =>
+  Response.json(
+    {
+      success: false,
+      acceptance: "not_accepted",
+      code: "not_claimed",
+      retryable: false,
+    },
+    { status: 422 },
+  );
+
+/**
+ * Receipt recovery; never invokes a connector, even when no receipt exists.
+ * With `abandonUnclaimed`, a key with no claim at all is closed for good, so
+ * the caller can settle "not sent" and a late send of that key is refused.
+ * The gateway writes its indeterminate record before any provider call, so
+ * an unclaimed key was never sent.
+ */
+export async function readInternalDeliveryReceipt(
+  request: Request,
+  dependencies: InternalDeliveryDependencies,
+): Promise<Response> {
+  const rawBody = await request.text();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(rawBody);
+  } catch {
+    raw = null;
+  }
+  const delivery = parseDelivery(raw);
+  if (!delivery)
+    return Response.json({ success: false, error: "invalid" }, { status: 400 });
+  if (!(await validPhotoDeliverySignature(request, rawBody, delivery)))
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        error: "invalid photo delivery authority",
+      },
+      { status: 403 },
+    );
+  const receipts = deliveryReceiptStore(dependencies.redis);
+  const key = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
+  let value = await receipts.get(key);
+  if (
+    value == null &&
+    (raw as Record<string, unknown>).abandonUnclaimed === true
+  ) {
+    const abandoned = await receipts.set(
+      key,
+      JSON.stringify({
+        state: "abandoned",
+        hash: await deliveryHash(delivery),
+      }),
+      { ex: DELIVERY_RECEIPT_TTL_SECONDS, nx: true },
+    );
+    if (abandoned !== null) return notClaimed();
+    value = await receipts.get(key);
+  }
+  const receipt = parseReceipt(value);
+  if (
+    receipt?.state === "abandoned" &&
+    (await receiptMatches(receipt, delivery))
+  )
+    return notClaimed();
+  if (!receipt || !(await receiptMatches(receipt, delivery)))
+    return Response.json(
+      { success: false, acceptance: "unknown", retryable: false },
+      { status: 202 },
+    );
+  if (
+    receipt.state !== "complete" ||
+    !receipt.acceptedAt ||
+    receipt.providerMessageIds.length === 0
+  )
+    return Response.json(
+      { success: false, acceptance: "unknown", retryable: false },
+      { status: 202 },
+    );
+  return Response.json({
+    success: true,
+    replayed: true,
+    idempotencyKey: delivery.idempotencyKey,
+    acceptedAt: receipt.acceptedAt,
+    providerMessageIds: receipt.providerMessageIds,
+  });
+}
+
 export async function deliverInternalMessage(
   request: Request,
   dependencies: InternalDeliveryDependencies,
 ): Promise<Response> {
   let raw: unknown;
+  const rawBody = await request.text();
   try {
-    raw = await request.json();
+    raw = JSON.parse(rawBody);
   } catch {
     // error-policy:J3 malformed internal input is explicitly rejected.
     return Response.json(
@@ -183,6 +457,67 @@ export async function deliverInternalMessage(
     );
   }
 
+  if (!(await validPhotoDeliverySignature(request, rawBody, delivery)))
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        error: "invalid photo delivery authority",
+      },
+      { status: 403 },
+    );
+
+  const networkScoped =
+    isNetworkProject(delivery.project) ||
+    ("phoneNumber" in delivery &&
+      networkTakeoverAppliesTo(delivery.project, {
+        platform: delivery.platform,
+        senderId: delivery.phoneNumber,
+      }));
+  if (delivery.approvedPhotos && !networkScoped)
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        error: "photo relay scope unavailable",
+      },
+      { status: 403 },
+    );
+  let compliance = false;
+  const proof =
+    raw && typeof raw === "object"
+      ? (raw as Record<string, unknown>).networkCompliance
+      : undefined;
+  if (proof !== undefined) {
+    const p = proof as Record<string, unknown>;
+    const verified = await svcVerify(process.env.SERVICE_TURN_SECRET, {
+      method: "POST",
+      path: new URL(request.url).pathname,
+      headers: request.headers,
+      body: rawBody,
+    });
+    if (
+      !p ||
+      !["stop", "help", "start"].includes(String(p.command)) ||
+      typeof p.messageId !== "string" ||
+      !p.messageId ||
+      !verified.ok ||
+      verified.id !== delivery.idempotencyKey ||
+      !networkScoped ||
+      !("phoneNumber" in delivery)
+    )
+      return Response.json(
+        {
+          success: false,
+          acceptance: "not_accepted",
+          retryable: false,
+          error: "invalid compliance proof",
+        },
+        { status: 403 },
+      );
+    compliance = true;
+  }
+  const hash = await deliveryHash(delivery);
   const config = resolveSharedWebhookConfig(
     delivery.platform,
     delivery.project,
@@ -219,13 +554,57 @@ export async function deliverInternalMessage(
     );
   }
 
+  // Reuse the same refusal policy at admission and immediately before dispatch.
+  const consentRefusal = async (): Promise<Response | undefined> => {
+    if (networkScoped && "phoneNumber" in delivery && !compliance) {
+      let optedOut: boolean;
+      try {
+        optedOut = await isNetworkAddressOptedOut(
+          dependencies.networkConsentLedger ??
+            redisNetworkConsentLedger(dependencies.redis),
+          delivery.project,
+          delivery.phoneNumber,
+          delivery.app,
+        );
+      } catch {
+        // error-policy:J1 no provider call occurs when consent is unknown.
+        return Response.json(
+          {
+            success: false,
+            error: "consent ledger unavailable",
+            retryable: true,
+            acceptance: "not_accepted",
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+      if (optedOut) {
+        return Response.json(
+          {
+            success: false,
+            error: "recipient opted out",
+            code: "recipient_opted_out",
+            retryable: false,
+            acceptance: "not_accepted",
+          },
+          { status: 422 },
+        );
+      }
+    }
+
+    return undefined;
+  };
+  const admissionRefusal = await consentRefusal();
+  if (admissionRefusal) return admissionRefusal;
+
   // Keep the pre-account key as the monotonic replay fence. Changing this key
   // during rollout would strand complete/indeterminate receipts and could
   // resend a reminder that the provider already accepted.
+  const receipts = deliveryReceiptStore(dependencies.redis);
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
-  let existingValue: string | null;
+  let existingValue: unknown;
   try {
-    existingValue = await dependencies.redis.get<string>(dedupeKey);
+    existingValue = await receipts.get<unknown>(dedupeKey);
   } catch {
     // error-policy:J1 no provider call occurs when durable replay state is unavailable.
     return Response.json(
@@ -239,7 +618,40 @@ export async function deliverInternalMessage(
     );
   }
   const existing = parseReceipt(existingValue);
+  const existingMatches = await receiptMatches(existing, delivery);
+  if (
+    existing?.hash &&
+    !existingMatches &&
+    existing.hash === (await deliveryHashBeforeBinding(delivery))
+  ) {
+    // A legacy receipt cannot prove the requested connector/thread binding.
+    // Keep the outcome unknown and never resend or claim confirmed delivery.
+    return Response.json(
+      { success: false, acceptance: "unknown", retryable: false },
+      { status: 202 },
+    );
+  }
+  if (existing?.hash && !existingMatches)
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        retryable: false,
+        error: "delivery conflict",
+      },
+      { status: 409 },
+    );
   if (existing?.state === "complete") {
+    if (
+      delivery.idempotencyKey.startsWith("network:") &&
+      (!existingMatches ||
+        !existing.acceptedAt ||
+        existing.providerMessageIds.length === 0)
+    )
+      return Response.json(
+        { success: false, acceptance: "unknown", retryable: false },
+        { status: 202 },
+      );
     const acceptedAt = existing.acceptedAt ?? new Date().toISOString();
     return Response.json({
       success: true,
@@ -249,6 +661,7 @@ export async function deliverInternalMessage(
       providerMessageIds: existing.providerMessageIds,
     });
   }
+  if (existing?.state === "abandoned") return notClaimed();
   if (existing?.state === "indeterminate") {
     return Response.json(
       {
@@ -269,9 +682,20 @@ export async function deliverInternalMessage(
       { status: 409, headers: { "Retry-After": "1" } },
     );
   }
+  if (delivery.approvedPhotos && process.env.NETWORK_RELAY_ENABLED !== "1")
+    return Response.json(
+      {
+        success: false,
+        acceptance: "not_accepted",
+        retryable: false,
+        error: "photo relay disabled",
+      },
+      { status: 403 },
+    );
+  const pendingClaim = `pending:${crypto.randomUUID()}`;
   let claimed: unknown;
   try {
-    claimed = await dependencies.redis.set(dedupeKey, "pending", {
+    claimed = await receipts.set(dedupeKey, pendingClaim, {
       ex: 60,
       nx: true,
     });
@@ -317,30 +741,69 @@ export async function deliverInternalMessage(
       rawPayload: { source: "shared-reminder" },
     };
     const adapter =
-      delivery.platform === "telegram" ? telegramAdapter : blooioAdapter;
+      delivery.platform === "telegram"
+        ? telegramAdapter
+        : delivery.platform === "twilio"
+          ? twilioAdapter
+          : blooioAdapter;
     if (!adapter.sendReplyWithReceipt) {
       throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
+    // Resolve only this unsent, approved item. Receipt recovery exits above and
+    // cannot mint a fresh capability or dispatch another provider message.
+    const approvedMediaUrls =
+      delivery.approvedPhotos && "phoneNumber" in delivery
+        ? await resolveApprovedRelayPhotoUrls(
+            delivery.approvedPhotos,
+            delivery.idempotencyKey,
+            delivery.phoneNumber,
+            process.env,
+            fetch,
+          )
+        : undefined;
     // Provider dispatch may succeed before any transport error becomes visible.
     // Persist the tombstone first for every connector; only a proven rejection
     // or a validated receipt may replace it with retryable/complete state.
-    await dependencies.redis.set(dedupeKey, "indeterminate", {
-      ex: DELIVERY_RECEIPT_TTL_SECONDS,
-    });
-    connectorAttempted = true;
-    const receipt = await adapter.sendReplyWithReceipt(
-      config,
-      event,
-      delivery.text,
+    const dispatchClaimed = await receipts.replaceIfEquals(
+      dedupeKey,
+      pendingClaim,
+      JSON.stringify({ state: "indeterminate", hash }),
+      DELIVERY_RECEIPT_TTL_SECONDS,
     );
+    if (!dispatchClaimed) {
+      return Response.json(
+        { success: false, acceptance: "unknown", retryable: false },
+        { status: 202 },
+      );
+    }
+    const finalRefusal = await consentRefusal();
+    if (finalRefusal) {
+      // No connector was invoked. Release only this exact unsent claim.
+      await receipts.delIfEquals(
+        dedupeKey,
+        JSON.stringify({ state: "indeterminate", hash }),
+      );
+      return finalRefusal;
+    }
+    connectorAttempted = true;
+    const receipt = approvedMediaUrls
+      ? await adapter.sendReplyWithReceipt(
+          config,
+          event,
+          delivery.text,
+          undefined,
+          approvedMediaUrls,
+        )
+      : await adapter.sendReplyWithReceipt(config, event, delivery.text);
     if (receipt.providerMessageIds.length === 0) {
       throw new Error("Connector accepted delivery without a provider receipt");
     }
     const acceptedAt = new Date().toISOString();
-    await dependencies.redis.set(
+    await receipts.set(
       dedupeKey,
       JSON.stringify({
         state: "complete",
+        hash,
         acceptedAt,
         providerMessageIds: receipt.providerMessageIds,
       } satisfies DeliveryReceipt),
@@ -359,14 +822,19 @@ export async function deliverInternalMessage(
       providerMessageIds: receipt.providerMessageIds,
     });
   } catch (error) {
+    const twilioRejected =
+      delivery.platform === "twilio" &&
+      error instanceof PlatformDeliveryError &&
+      error.deliveryStatus === "failed";
     if (
       error instanceof TelegramApiResponseError ||
       (error instanceof BlooioApiResponseError &&
-        error.deliveryStatus === "failed")
+        error.deliveryStatus === "failed") ||
+      twilioRejected
     ) {
       let claimReleased = true;
       try {
-        await dependencies.redis.del(dedupeKey);
+        await receipts.del(dedupeKey);
       } catch {
         // error-policy:J6 the bounded claim expires after this explicit provider rejection.
         claimReleased = false;
@@ -374,7 +842,9 @@ export async function deliverInternalMessage(
       const providerStatus =
         error instanceof TelegramApiResponseError
           ? error.errorCode
-          : error.status;
+          : error instanceof BlooioApiResponseError
+            ? error.status
+            : (error as PlatformDeliveryError).providerStatus;
       const status =
         providerStatus === 401 ||
         providerStatus === 403 ||
@@ -417,7 +887,7 @@ export async function deliverInternalMessage(
     // accepted the message even if its response or our receipt write failed.
     if (!connectorAttempted) {
       try {
-        await dependencies.redis.del(dedupeKey);
+        await receipts.delIfEquals(dedupeKey, pendingClaim);
       } catch {
         // error-policy:J6 the bounded claim expires; the primary acceptance result wins.
       }

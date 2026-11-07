@@ -376,7 +376,7 @@ XML_PROSE_TAGS = ("thought", "text", "reasoning", "description", "think")
 
 
 def translate_xml(text: str, tr: Translator) -> str:
-    def replace_tag(tag: str, body: str) -> str:
+    def replace_tag(body: str) -> str:
         if not _is_prose_value(body):
             return body
         return tr.translate(body)
@@ -385,7 +385,7 @@ def translate_xml(text: str, tr: Translator) -> str:
     for tag in XML_PROSE_TAGS:
         pat = re.compile(rf"(<{tag}[^>]*>)([\s\S]*?)(</{tag}>)", re.IGNORECASE)
         out = pat.sub(
-            lambda m: m.group(1) + replace_tag(tag, m.group(2)) + m.group(3),
+            lambda m: m.group(1) + replace_tag(m.group(2)) + m.group(3),
             out,
         )
     return out

@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";
+import { OptimisticLockError } from "../sql.js";
 import type {
   ThreadSourceRef,
   WorkThread,
@@ -27,6 +28,8 @@ export interface CreateWorkThreadInput {
 }
 
 export interface UpdateWorkThreadInput {
+  /** Bind caller admission to this row version before the store rereads it. */
+  expectedVersion?: number;
   status?: WorkThreadStatus;
   title?: string;
   summary?: string;
@@ -213,6 +216,16 @@ export function createWorkThreadStore(
       if (!current) {
         return null;
       }
+      if (
+        input.expectedVersion !== undefined &&
+        current.version !== input.expectedVersion
+      ) {
+        throw new OptimisticLockError({
+          table: "life_work_threads",
+          id: workThreadId,
+          expectedVersion: input.expectedVersion,
+        });
+      }
       const timestamp = isoNow();
       const primary = input.primarySourceRef ?? current.primarySourceRef;
       const sourceRefs = input.sourceRefs
@@ -257,10 +270,13 @@ export function createWorkThreadStore(
         metadata: input.metadata
           ? { ...(current.metadata ?? {}), ...input.metadata }
           : current.metadata,
+        version: current.version + 1,
         updatedAt: timestamp,
         lastActivityAt: timestamp,
       };
-      await repo.upsertWorkThread(agentId, next);
+      await repo.upsertWorkThread(agentId, next, {
+        expectedVersion: current.version,
+      });
       await this.appendEvent(workThreadId, input.eventType ?? "updated", {
         reason: input.reason,
         detail: input.detail,

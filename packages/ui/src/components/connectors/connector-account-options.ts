@@ -10,19 +10,22 @@
  * roles-permissions); this module reads them from that catalog and only owns
  * the connector's presentation strings.
  */
+
+import type {
+  ConnectorAccountCatalogEntry,
+  ConnectorOAuthCapabilityDeclaration,
+} from "@elizaos/core/protocol";
 import {
   CONNECTOR_ACCOUNT_CATALOG,
-  type ConnectorAccountCatalogEntry,
-  type ConnectorOAuthCapabilityDeclaration,
   getConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId as normalizeConnectorCatalogIdShared,
-} from "@elizaos/core/connector-account-catalog";
+} from "@elizaos/core/protocol";
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,
   ConnectorAccountPurpose,
   ConnectorAccountRole,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 export interface ConnectorAccountOption<T extends string> {
   value: T;
   label: string;
@@ -103,10 +106,7 @@ export const CONNECTOR_OWNER_ROLE_CONFIRMATION = "OWNER";
  *
  * The authorization-relevant defaults (`defaultRole` / `defaultPurpose` /
  * `supportsOAuth`) are NOT here: they live in the server-authoritative
- * `CONNECTOR_ACCOUNT_CATALOG` in `@elizaos/core` (#12087 Item 10). This UI
- * map used to hardcode those three fields too; they were removed so the truth
- * lives in one place. `connector-account-catalog.test.ts` grep-guards that the
- * literals do not reappear here.
+ * `CONNECTOR_ACCOUNT_CATALOG` in `@elizaos/core`.
  */
 const CONNECTOR_PLUGIN_MANAGED_PRESENTATION: Readonly<
   Record<
@@ -211,11 +211,7 @@ export function getConnectorPluginManagedAccountOption(
     null
   );
 }
-export function hasConnectorPluginManagedAccounts(
-  connectorId: string | undefined,
-): boolean {
-  return getConnectorPluginManagedAccountOption(connectorId) !== null;
-}
+
 export function connectorAccountManagementPanelPluginId(
   connectorId: string,
 ): string | null {

@@ -1,4 +1,4 @@
-# @elizaos/plugin-solana
+# @elizaos/plugin-wallet — Solana chain
 
 Solana chain services and actions owned by the wallet plugin.
 

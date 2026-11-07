@@ -1,3 +1,4 @@
+import { createKpiReporter } from "../../lib/kpi-reporting.mjs";
 /**
  * Shared utilities for the load/perf KPI harness.
  *
@@ -6,7 +7,6 @@
  * that need them and degrade to a clearly-marked `skipped` result when unavailable.
  */
 
-import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -24,18 +24,16 @@ import {
 } from "node:zlib";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
-export const RESULTS_ROOT = join(HERE, "results");
 
 /**
- * These KPIs measure the elizaOS app itself, which lives in a separate
- * checkout of github.com/elizaOS/eliza — not in this benchmarks repo.
- * Point ELIZA_REPO at that checkout.
+ * These KPIs measure the selected elizaOS app checkout.
+ * Set ELIZA_REPO_DIR; ELIZA_REPO remains supported for existing invocations.
  */
 export function repoRoot() {
-  const root = process.env.ELIZA_REPO;
+  const root = process.env.ELIZA_REPO_DIR || process.env.ELIZA_REPO;
   if (!root) {
     throw new Error(
-      "ELIZA_REPO is not set — this KPI measures the elizaOS app in a separate checkout of github.com/elizaOS/eliza; set ELIZA_REPO to that checkout's root",
+      "Set ELIZA_REPO_DIR to the elizaOS checkout being measured",
     );
   }
   return resolve(root);
@@ -181,59 +179,12 @@ export function sleep(msv) {
 // Result recording + git context
 // ---------------------------------------------------------------------------
 
-export function gitInfo() {
-  // Git context describes the measured elizaOS checkout; without ELIZA_REPO
-  // there is nothing to describe.
-  if (!process.env.ELIZA_REPO) {
-    return { branch: null, commit: null, dirty: null };
-  }
-  const run = (args) => {
-    try {
-      return execFileSync("git", args, {
-        cwd: repoRoot(),
-        encoding: "utf8",
-      }).trim();
-    } catch {
-      return null;
-    }
-  };
-  return {
-    branch: run(["rev-parse", "--abbrev-ref", "HEAD"]),
-    commit: run(["rev-parse", "--short", "HEAD"]),
-    dirty: run(["status", "--porcelain"]) ? true : false,
-  };
-}
-
-/**
- * Persist a KPI result as timestamped JSON under results/<kpi>/ and also update
- * results/<kpi>/latest.json. `nowIso` must be supplied by the caller (scripts
- * pass `new Date().toISOString()` at top level — keeps this module pure).
- */
-export function recordResult(kpi, payload, nowIso) {
-  const dir = join(RESULTS_ROOT, kpi);
-  mkdirSync(dir, { recursive: true });
-  const stamp = nowIso.replace(/[:.]/g, "-");
-  const record = { kpi, recordedAt: nowIso, git: gitInfo(), ...payload };
-  const file = join(dir, `${stamp}.json`);
-  writeFileSync(file, JSON.stringify(record, null, 2));
-  writeFileSync(join(dir, "latest.json"), JSON.stringify(record, null, 2));
-  return { file, record };
-}
-
-export function readLatest(kpi) {
-  const f = join(RESULTS_ROOT, kpi, "latest.json");
-  if (!existsSync(f)) return null;
-  try {
-    return JSON.parse(readFileSync(f, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-export function loadBudgets() {
-  const f = join(HERE, "budgets.json");
-  return JSON.parse(readFileSync(f, "utf8"));
-}
+export const { RESULTS_ROOT, gitInfo, recordResult, readLatest, loadBudgets } =
+  createKpiReporter("loadperf", HERE, {
+    repoRoot: process.env.ELIZA_REPO_DIR || process.env.ELIZA_REPO || null,
+    recordKey: "kpi",
+    returnLatest: false,
+  });
 
 export {
   basename,

@@ -7,8 +7,8 @@
  * initial startup and resolve assets against that stable base.
  */
 
-import { getElizaApiBase } from "@elizaos/core/utils/eliza-globals";
-import { getBootConfig } from "../config/boot-config.js";
+import { getElizaApiBase } from "@elizaos/host/protocol";
+import { getBootConfig } from "../config/boot-config-store";
 
 type AssetUrlResolveOptions = {
   currentUrl?: string;
@@ -162,4 +162,19 @@ export function resolveApiUrl(apiPath: string): string {
   const normalized = base.replace(/\/+$/, "");
   const suffix = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
   return `${normalized}${suffix}`;
+}
+
+export function resolveWallpaperUrl(url: string): string {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+    url.startsWith("//")
+  ) {
+    return url;
+  }
+  if (url.startsWith("/api/") || url.startsWith("api/")) {
+    return resolveApiUrl(url);
+  }
+  return resolveAppAssetUrl(url);
 }

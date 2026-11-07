@@ -3,14 +3,14 @@
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
 
-import { hasConfiguredApiKey } from "@elizaos/core/voice";
+import { hasConfiguredApiKey } from "@elizaos/host/protocol";
 import * as React from "react";
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
 import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
 import { useDefaultProviderPresets } from "../hooks/useDefaultProviderPresets";
 import { useResolvedTtsDefault } from "../hooks/useResolvedTtsDefault";
-import { useAppSelector } from "../state";
+import { useAppSelector } from "../state/app-store";
 import {
   applyVoiceProviderDefaults,
   resolveCharacterVoiceConfigFromAppConfig,
@@ -49,7 +49,7 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const elevenLabsKeyConfigured = hasConfiguredApiKey(
     voiceConfig?.elevenlabs?.apiKey,
   );
-  // Capability-aware default: on-device Kokoro when staged, else Eliza Cloud
+  // Capability-aware default: on-device Paradee when staged, else Eliza Cloud
   // Kokoro when a session exists, else ElevenLabs (key), else browser TTS. Only
   // seeds when the user hasn't picked a provider (see applyVoiceProviderDefaults).
   const { provider: resolvedTtsProvider } = useResolvedTtsDefault({

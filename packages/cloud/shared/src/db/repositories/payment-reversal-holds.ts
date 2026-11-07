@@ -15,9 +15,13 @@
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
+import {
+  withInferencePolicyMutation,
+  withInferencePolicyMutationInTransaction,
+} from "../../lib/services/inference-policy-fence";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
-import { dbWrite, writeTransaction } from "../helpers";
+import { dbWrite } from "../helpers";
 import {
   type OrganizationPaymentReversalHold,
   organizationPaymentReversalHolds,
@@ -188,8 +192,15 @@ export async function settleReversalShortfalls(
   organizationId: string,
   tx?: DbTransaction,
 ): Promise<ReversalShortfallSettlement> {
-  if (tx) return settleInTransaction(tx, organizationId);
-  return writeTransaction((inner) => settleInTransaction(inner, organizationId));
+  if (tx)
+    return withInferencePolicyMutationInTransaction(
+      tx,
+      { organizationIds: [organizationId] },
+      (inner) => settleInTransaction(inner, organizationId),
+    );
+  return withInferencePolicyMutation({ organizationIds: [organizationId] }, (inner) =>
+    settleInTransaction(inner, organizationId),
+  );
 }
 
 /**
@@ -202,29 +213,39 @@ export async function releaseShortfallHoldForReinstatement(input: {
   clawbackTransactionId: string;
   stripeDisputeId: string;
 }): Promise<OrganizationPaymentReversalHold | null> {
-  const [released] = await dbWrite
-    .update(organizationPaymentReversalHolds)
-    .set({
-      released_at: new Date(),
-      released_by: "system:dispute_reinstated",
-      release_reason: `Stripe reinstated the funds for dispute ${input.stripeDisputeId}`,
-    })
-    .where(
-      and(
-        eq(organizationPaymentReversalHolds.clawback_transaction_id, input.clawbackTransactionId),
-        isNull(organizationPaymentReversalHolds.released_at),
-      ),
-    )
-    .returning();
-  if (released) return released;
-  const [existing] = await dbWrite
-    .select()
+  const [owner] = await dbWrite
+    .select({ organization_id: organizationPaymentReversalHolds.organization_id })
     .from(organizationPaymentReversalHolds)
     .where(
       eq(organizationPaymentReversalHolds.clawback_transaction_id, input.clawbackTransactionId),
     )
     .limit(1);
-  return existing ?? null;
+  if (!owner) return null;
+  return withInferencePolicyMutation({ organizationIds: [owner.organization_id] }, async (tx) => {
+    const [released] = await tx
+      .update(organizationPaymentReversalHolds)
+      .set({
+        released_at: new Date(),
+        released_by: "system:dispute_reinstated",
+        release_reason: `Stripe reinstated the funds for dispute ${input.stripeDisputeId}`,
+      })
+      .where(
+        and(
+          eq(organizationPaymentReversalHolds.clawback_transaction_id, input.clawbackTransactionId),
+          isNull(organizationPaymentReversalHolds.released_at),
+        ),
+      )
+      .returning();
+    if (released) return released;
+    const [existing] = await tx
+      .select()
+      .from(organizationPaymentReversalHolds)
+      .where(
+        eq(organizationPaymentReversalHolds.clawback_transaction_id, input.clawbackTransactionId),
+      )
+      .limit(1);
+    return existing ?? null;
+  });
 }
 
 /**
@@ -237,28 +258,30 @@ export async function releasePaymentReversalHold(input: {
   releasedBy: string;
   reason: string;
 }): Promise<OrganizationPaymentReversalHold> {
-  if (!input.releasedBy.trim() || !input.reason.trim()) {
-    throw new ElizaError("Releasing a payment reversal hold requires an actor and a reason", {
-      code: "PAYMENT_REVERSAL_HOLD_RELEASE_INVALID",
-      context: { organizationId: input.organizationId, holdId: input.holdId },
-    });
-  }
-  const [released] = await dbWrite
-    .update(organizationPaymentReversalHolds)
-    .set({ released_at: new Date(), released_by: input.releasedBy, release_reason: input.reason })
-    .where(
-      and(
-        eq(organizationPaymentReversalHolds.organization_id, input.organizationId),
-        eq(organizationPaymentReversalHolds.id, input.holdId),
-        isNull(organizationPaymentReversalHolds.released_at),
-      ),
-    )
-    .returning();
-  if (!released) {
-    throw new ElizaError("No active payment reversal hold matches this release", {
-      code: "PAYMENT_REVERSAL_HOLD_NOT_ACTIVE",
-      context: { organizationId: input.organizationId, holdId: input.holdId },
-    });
-  }
-  return released;
+  return withInferencePolicyMutation({ organizationIds: [input.organizationId] }, async (tx) => {
+    if (!input.releasedBy.trim() || !input.reason.trim()) {
+      throw new ElizaError("Releasing a payment reversal hold requires an actor and a reason", {
+        code: "PAYMENT_REVERSAL_HOLD_RELEASE_INVALID",
+        context: { organizationId: input.organizationId, holdId: input.holdId },
+      });
+    }
+    const [released] = await tx
+      .update(organizationPaymentReversalHolds)
+      .set({ released_at: new Date(), released_by: input.releasedBy, release_reason: input.reason })
+      .where(
+        and(
+          eq(organizationPaymentReversalHolds.organization_id, input.organizationId),
+          eq(organizationPaymentReversalHolds.id, input.holdId),
+          isNull(organizationPaymentReversalHolds.released_at),
+        ),
+      )
+      .returning();
+    if (!released) {
+      throw new ElizaError("No active payment reversal hold matches this release", {
+        code: "PAYMENT_REVERSAL_HOLD_NOT_ACTIVE",
+        context: { organizationId: input.organizationId, holdId: input.holdId },
+      });
+    }
+    return released;
+  });
 }

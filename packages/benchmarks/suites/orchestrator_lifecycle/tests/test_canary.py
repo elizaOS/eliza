@@ -20,7 +20,7 @@ from typing import Callable
 
 import pytest
 
-from benchmarks.orchestrator_lifecycle import canary
+from benchmarks.suites.orchestrator_lifecycle import canary
 
 
 def _write_plan_inputs(
@@ -1566,8 +1566,8 @@ def test_canary_module_has_no_scoring_or_publication_entrypoints() -> None:
 
     forbidden_modules = {
         "benchmarks.orchestrator.runner",
-        "benchmarks.orchestrator_lifecycle.reporting",
-        "benchmarks.orchestrator_lifecycle.runner",
+        "benchmarks.suites.orchestrator_lifecycle.reporting",
+        "benchmarks.suites.orchestrator_lifecycle.runner",
     }
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -1596,11 +1596,11 @@ def test_canary_module_has_no_scoring_or_publication_entrypoints() -> None:
 def test_canary_import_does_not_load_scored_runner_or_reporting() -> None:
     code = """
 import sys
-import benchmarks.orchestrator_lifecycle.canary
+import benchmarks.suites.orchestrator_lifecycle.canary
 
 for name in (
-    "benchmarks.orchestrator_lifecycle.runner",
-    "benchmarks.orchestrator_lifecycle.reporting",
+    "benchmarks.suites.orchestrator_lifecycle.runner",
+    "benchmarks.suites.orchestrator_lifecycle.reporting",
     "benchmarks.orchestrator.runner",
 ):
     assert name not in sys.modules, name

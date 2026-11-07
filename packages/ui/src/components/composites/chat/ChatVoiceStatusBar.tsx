@@ -20,12 +20,12 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
-import { cn } from "../../../lib/utils";
 import {
   hasLiveNativeTranscriptContent,
   LiveNativeTranscriptView,
   useLiveNativeTranscript,
 } from "../../../native-transcript/LiveNativeTranscript";
+import { cn } from "../../../utils/cn";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,

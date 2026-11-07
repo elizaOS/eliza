@@ -28,9 +28,9 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * Canonical Stage 1 tool name.
  *
  * - HANDLE_RESPONSE: stage 1, called once per inbound message. The model
- *   declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
- *   may emit a simple-mode reply directly, and may extract durable
- *   facts / relationships for the memory pipeline.
+ * declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
+ * may emit a simple-mode reply directly, and may extract durable
+ * facts / relationships for the memory pipeline.
  *
  * Stage 2 (planning) does not go through a single wrapper tool. Each
  * Action is exposed to the LLM as its own native tool whose name is the
@@ -41,10 +41,10 @@ export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /** Reserved planner protocol for loading authorized schemas without domain effects. */
 export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
-/** Legacy discovery name retained as the canonical action's declared simile. */
+/** Declared discovery simile for the canonical action. */
 export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
 
-/** Recognize current and persisted legacy planner discovery calls. */
+/** Recognizes planner discovery calls by their declared names. */
 export function isDiscoveryActionName(name: string): boolean {
 	const normalized = name.trim().toUpperCase();
 	return (
@@ -81,7 +81,8 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		intents: {
 			type: "array",
 			items: { type: "string" },
-			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+			description:
+				"Verb-led intents. Lowercase. No punctuation. ~6 words max. Empty for a completed answer or non_applied clarification/preview; those do not execute work this turn.",
 		},
 		completionContext: COMPLETION_CONTEXT_SCHEMA,
 		replyText: {
@@ -93,7 +94,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied. non_applied requires intents=[]; retain pending intents only for work executable now. A request awaiting missing user input is terminal for this turn, not a prepared proposal.",
 		},
 		candidateActionNames: {
 			type: "array",
@@ -217,9 +218,9 @@ export function createHandleResponseTool(options?: {
  * Stage 1 tool. The model uses this once per inbound message to declare
  * how it wants to handle the turn. Output drives the rest of the pipeline:
  *
- *   shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
- *   shouldRespond = "IGNORE"  → terminate silently
- *   shouldRespond = "STOP"    → terminate with terminal stop signal
+ * shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
+ * shouldRespond = "IGNORE" → terminate silently
+ * shouldRespond = "STOP" → terminate with terminal stop signal
  *
  * `replyText` is always present (the user-facing reply). For trivially simple
  * replies that don't need action planning the model sets `contexts = ["simple"]`
@@ -229,67 +230,6 @@ export function createHandleResponseTool(options?: {
  * early acknowledgement.
  */
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
-
-/**
- * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
- * runtime Actions (see `features/basic-capabilities/actions/`) but they
- * are not always part of the per-turn action surface. The
- * planner needs a stable, always-available way for the model to end the
- * turn — these shapes are converted into `ToolDefinition`s by
- * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
- *
- * STOP is purely a terminal sentinel (no runtime handler — the planner
- * loop's `isTerminalToolCall` recognises the name).
- */
-const REPLY_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "REPLY",
-	description:
-		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
-	descriptionCompressed: "reply to the user with text; terminates the turn",
-	parameters: [
-		{
-			name: "text",
-			description: "The user-facing reply text.",
-			required: false,
-			schema: { type: "string" },
-		},
-	],
-};
-
-const IGNORE_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "IGNORE",
-	description: "Terminate the turn silently. Use when no reply is appropriate.",
-	descriptionCompressed: "terminate the turn silently; emit no reply",
-	parameters: [],
-};
-
-const STOP_TERMINAL_ACTION: Pick<
-	Action,
-	| "name"
-	| "description"
-	| "descriptionCompressed"
-	| "parameters"
-	| "allowAdditionalParameters"
-> = {
-	name: "STOP",
-	description: "Stop the current turn immediately with a terminal stop signal.",
-	descriptionCompressed: "stop the turn with a terminal stop signal",
-	parameters: [],
-};
 
 /** Minimal Action shape consumed by the planner-tool conversion helpers. */
 export type PlannerToolActionShape = Pick<
@@ -306,6 +246,46 @@ export type PlannerToolActionShape = Pick<
 	subActions?: Action["subActions"];
 };
 
+/**
+ * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
+ * runtime Actions (see `features/basic-capabilities/actions/`) but they
+ * are not always part of the per-turn action surface. The
+ * planner needs a stable, always-available way for the model to end the
+ * turn — these shapes are converted into `ToolDefinition`s by
+ * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
+ *
+ * STOP is purely a terminal sentinel (no runtime handler — the planner
+ * loop's `isTerminalToolCall` recognises the name).
+ */
+const REPLY_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "REPLY",
+	description:
+		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
+	descriptionCompressed: "reply to the user with text; terminates the turn",
+	parameters: [
+		{
+			name: "text",
+			description: "The user-facing reply text.",
+			required: false,
+			schema: { type: "string" },
+		},
+	],
+};
+
+const IGNORE_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "IGNORE",
+	description: "Terminate the turn silently. Use when no reply is appropriate.",
+	descriptionCompressed: "terminate the turn silently; emit no reply",
+	parameters: [],
+};
+
+const STOP_TERMINAL_ACTION: PlannerToolActionShape = {
+	name: "STOP",
+	description: "Stop the current turn immediately with a terminal stop signal.",
+	descriptionCompressed: "stop the turn with a terminal stop signal",
+	parameters: [],
+};
+
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
 	const baseDescription = action.description;
@@ -313,10 +293,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
 		: baseDescription;
-	const parameters = normalizeActionJsonSchema({
-		parameters: action.parameters,
-		allowAdditionalParameters: action.allowAdditionalParameters,
-	});
+	const parameters = normalizeActionJsonSchema(action);
 	return {
 		name: action.name,
 		description,
@@ -336,8 +313,8 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  * JSONSchema, so the LLM calls each action directly by name.
  *
  * Tool description is composed from (in order):
- *   - the action's `routingHint` (if present, on its own line)
- *   - the complete `description` (legacy compressed text is fallback-only)
+ * - the action's `routingHint` (if present, on its own line)
+ * - the complete `description` (short descriptions are fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -354,13 +331,8 @@ export function buildPlannerToolsFromActions(
 }
 
 /**
- * A promoted operation's own description names only its operation
- * (`promoteSubactionsToActions`), so exposing a family does not repeat the
- * umbrella description per operation (#31017: nine MESSAGE_* tools each
- * restated it). Within one tool list the umbrella description is stated once,
- * on the family's first emitted operation, unless the umbrella's own tool in
- * the same list already carries it; later operations reference that tool.
- * `actions[i]` is the action rendered as `tools[i]`.
+ * Emits the umbrella description once per tool family, on its first operation unless the
+ * umbrella tool already carries it.
  */
 function statePromotedFamilyDescriptionsOnce(
 	actions: ReadonlyArray<PlannerToolActionShape>,
@@ -371,10 +343,7 @@ function statePromotedFamilyDescriptionsOnce(
 	);
 	const statedOn = new Map<string, string>();
 	return tools.map((tool, index) => {
-		const action = actions[index];
-		const promoted = action
-			? promotedSubactionDescription(action as Action)
-			: undefined;
+		const promoted = promotedSubactionDescription(actions[index] as Action);
 		const familyDescription = promoted?.parentDescription.trim();
 		if (!promoted || !familyDescription) return tool;
 		if (wireDescriptions.get(promoted.parent)?.includes(familyDescription))
@@ -398,18 +367,9 @@ function statePromotedFamilyDescriptionsOnce(
  * Options accepted by {@link buildPlannerToolsFromTieredActions}.
  */
 export interface BuildPlannerToolsFromTieredActionsOptions {
-	/** @deprecated Parent allow-lists are ignored; every parent expands. */
-	tierAParents?: ReadonlySet<string> | readonly string[];
 	/**
-	 * Optional registry of `name → Action` used to resolve string-only
-	 * sub-action references (parents may declare `subActions: ["FOO_BAR"]`).
-	 * When a string reference is not resolvable through this map, it is
-	 * skipped silently — string refs are advisory and the parent's handler
-	 * can still dispatch to them internally if the planner picks the parent.
-	 *
-	 * When provided, inline-Action sub-actions must also resolve through this
-	 * map. Runtime callers pass the already-authorized per-turn action set, so
-	 * expanding an absent inline object would disclose a rejected child.
+	 * Resolves string child references. Unresolved references are omitted; inline children must
+	 * resolve to registered actions when a lookup is supplied.
 	 */
 	actionLookup?:
 		| ReadonlyMap<string, PlannerToolActionShape>
@@ -423,10 +383,6 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		parentName: string;
 		subActionName: string;
 	}) => void;
-	/** @deprecated Child allow-lists are ignored; every registered child expands. */
-	tierAChildrenByParent?:
-		| ReadonlyMap<string, readonly string[]>
-		| Readonly<Record<string, readonly string[]>>;
 	/**
 	 * Expand registered child actions into first-class native tools. Defaults to
 	 * true. A caller may disable expansion only when it still exposes every
@@ -438,20 +394,11 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 }
 
 /**
- * Lenient key used only as a compatibility fallback for resolving string child
- * references. Separators and case are deliberately ignored.
- *
- * It must never be used as an action's IDENTITY. Because it strips every
- * non-alphanumeric character, distinct registered actions such as
- * `GMAIL_CREATE_DRAFT` and `GMAILCREATEDRAFT` — both legal under
- * {@link NATIVE_TOOL_NAME_PATTERN}, and treated as distinct everywhere else in
- * the runtime (see `matchActionWildcardParts`) — collapse onto one key. Keying
- * emission or sub-action resolution on it silently drops one of the pair from
- * the planner surface, or resolves a string sub-action reference to the wrong
- * Action. Use {@link toolIdentityKey} for identity.
+ * Case- and separator-insensitive fallback for string child references. Never use this key
+ * as action identity: distinct valid names can normalize to the same value.
  */
 function normalizeParentNameKey(name: string): string {
-	return String(name)
+	return name
 		.trim()
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "");
@@ -465,7 +412,7 @@ function normalizeParentNameKey(name: string): string {
  * snake case), so no case folding is needed.
  */
 function toolIdentityKey(name: string): string {
-	return String(name).trim();
+	return name.trim();
 }
 
 /**
@@ -505,10 +452,6 @@ class ActionLookup {
 		this.loose.set(looseKey, null);
 	}
 
-	has(key: string): boolean {
-		return this.exact.has(toolIdentityKey(key));
-	}
-
 	get(key: string): PlannerToolActionShape | undefined {
 		const identity = toolIdentityKey(key);
 		const exactMatch = this.exact.get(identity);
@@ -540,12 +483,12 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions are resolved through an explicitly supplied
- *     authorized lookup before expansion; standalone callers without a lookup
- *     retain the inline object.
- *   - String-only sub-action references are resolved through `actionLookup`
- *     when provided; references that cannot be resolved are skipped silently
- *     (the parent's handler can still route to them).
+ * - Inline `Action` sub-actions are resolved through an explicitly supplied
+ * authorized lookup before expansion; standalone callers without a lookup
+ * retain the inline object.
+ * - String-only sub-action references are resolved through `actionLookup`
+ * when provided; references that cannot be resolved are skipped silently
+ * (the parent's handler can still route to them).
  *
  * The output is deduplicated by tool `name` — if a child appears both as a
  * top-level entry in `actions` AND as a sub-action under a tier-A parent, it
@@ -562,11 +505,8 @@ export function buildPlannerToolsFromTieredActions(
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
-	for (const action of actions) {
-		if (!actionLookup.has(action.name)) {
-			actionLookup.add(action.name, action);
-		}
-	}
+	// `add` keeps an existing exact entry.
+	for (const action of actions) actionLookup.add(action.name, action);
 
 	const tools: ToolDefinition[] = [];
 	const emittedActions: PlannerToolActionShape[] = [];
@@ -585,35 +525,23 @@ export function buildPlannerToolsFromTieredActions(
 		emittedActions.push(action);
 	};
 
-	const onUnresolved = options.onUnresolvedSubAction ?? ((): void => undefined);
-
 	for (const action of actions) {
 		emit(action);
 		if (options.expandSubActions === false) {
 			continue;
 		}
 		for (const subAction of action.subActions ?? []) {
-			let child: PlannerToolActionShape | undefined;
-			let subActionName = "";
-			if (typeof subAction === "string") {
-				subActionName = subAction;
-			} else if (subAction && typeof subAction === "object") {
-				subActionName = subAction.name;
-				child = requireAuthorizedChild
-					? actionLookup.get(subAction.name)
-					: subAction;
-			}
-			if (typeof subAction === "string" || (requireAuthorizedChild && !child)) {
-				child = actionLookup.get(subActionName);
-				if (!child) {
-					onUnresolved({
-						parentName: action.name,
-						subActionName,
-					});
-					continue;
-				}
-			}
+			const inline = typeof subAction !== "string";
+			const subActionName = inline ? subAction.name : subAction;
+			const child =
+				inline && !requireAuthorizedChild
+					? subAction
+					: actionLookup.get(subActionName);
 			if (!child) {
+				options.onUnresolvedSubAction?.({
+					parentName: action.name,
+					subActionName,
+				});
 				continue;
 			}
 			try {
@@ -639,8 +567,7 @@ export function buildPlannerToolsFromTieredActions(
  * surface. REPLY emits the final user-facing message; IGNORE / STOP terminate
  * without a reply.
  *
- * Computed lazily inside the array so a static import does not pull in the
- * action runtime; the shapes are simple data.
+ * Built once at module load from plain data; no action runtime is involved.
  */
 export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> =
 	buildPlannerToolsFromActions([

@@ -14,7 +14,7 @@
 import type http from "node:http";
 import { buildHomeRemoteRunnerAccessUrl } from "./home-remote-runner-access-url";
 import { buildHomeRemoteRunnerSshTunnel } from "./home-remote-runner-access-url";
-import { type RouteHelpers } from "@elizaos/core/api/route-helpers";
+import { type RouteHelpers } from "@elizaos/host/protocol";
 interface RelayServiceLike {
     getSessionInfo(): {
         sessionId: string | null;

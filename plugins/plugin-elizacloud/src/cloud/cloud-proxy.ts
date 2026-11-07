@@ -3,7 +3,11 @@
  * Routes chat/status calls through the ElizaCloudClient to the remote sandbox.
  */
 
-import type { ChatChannelType, ElizaCloudClient } from "./bridge-client.js";
+import {
+  CloudBridgeError,
+  type ChatChannelType,
+  type ElizaCloudClient,
+} from "./bridge-client.js";
 
 export class CloudRuntimeProxy {
   constructor(
@@ -29,15 +33,46 @@ export class CloudRuntimeProxy {
     roomId = "web-chat",
     channelType: ChatChannelType = "DM",
   ): AsyncGenerator<string> {
+    // Text already yielded to the caller. Chunks may carry a delta (`text`),
+    // a cumulative snapshot (`fullText`), or both; `done` may carry the final
+    // reply. Only the part not yet shown is yielded.
+    let shown = "";
+    const unseenSuffix = (snapshot: string): string =>
+      snapshot.startsWith(shown) ? snapshot.slice(shown.length) : "";
     for await (const event of this.client.sendMessageStream(
       this.agentId,
       text,
       roomId,
       channelType,
     )) {
-      if (event.type === "chunk" && typeof event.data.text === "string") {
-        yield event.data.text;
+      if (event.type === "chunk") {
+        const { text: delta, fullText } = event.data;
+        let next = "";
+        if (typeof fullText === "string") next = unseenSuffix(fullText);
+        else if (typeof delta === "string") next = delta;
+        if (next.length > 0) {
+          shown += next;
+          yield next;
+        }
+      } else if (event.type === "done") {
+        const { text: doneText, fullText } = event.data;
+        const finalText =
+          typeof fullText === "string"
+            ? fullText
+            : typeof doneText === "string"
+              ? doneText
+              : null;
+        if (finalText !== null) {
+          const next = unseenSuffix(finalText);
+          if (next.length > 0) {
+            shown += next;
+            yield next;
+          }
+        }
       }
+    }
+    if (shown.length === 0) {
+      throw new CloudBridgeError("Cloud stream ended without reply text");
     }
   }
 

@@ -10,14 +10,15 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
-import type { Conversation, ConversationMessage } from "../../../api";
-import { client } from "../../../api";
+import type { Conversation, ConversationMessage } from "../../../api/client-types-chat";
+import { client } from "../../../api/client";
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import type { UseChatSendDeps } from "../../../state/useChatSend";
-import { useChatSend } from "../../../state/useChatSend";
+import { type UseChatSendDeps, useChatSend } from "../../../state/useChatSend";
+
 import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
-import type { ConversationNav, ShellController } from "../useShellController";
+import type { ShellController } from "../useShellController";
+import type { ConversationNav } from "../conversation-nav";
 
 declare global {
   interface Window {
@@ -170,7 +171,7 @@ function Harness(): React.JSX.Element {
     pollCloudCredits: async () => true,
   };
 
-  const { sendChatText } = useChatSend(deps);
+  const { sendChatText, handleChatRetry } = useChatSend(deps);
 
   const messages = React.useMemo<ShellMessage[]>(
     () =>
@@ -287,15 +288,17 @@ function Harness(): React.JSX.Element {
           {notice}
         </div>
       ) : null}
-      <ChatOverlay controller={controller} />
+      <MockAppProvider
+        value={{
+          handleChatRetry,
+          activeConversationId: "conv-1",
+        }}
+      >
+        <ChatOverlay controller={controller} />
+      </MockAppProvider>
     </div>
   );
 }
 
 const root = document.getElementById("root");
-if (root)
-  createRoot(root).render(
-    <MockAppProvider>
-      <Harness />
-    </MockAppProvider>,
-  );
+if (root) createRoot(root).render(<Harness />);

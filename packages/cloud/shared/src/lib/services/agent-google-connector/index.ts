@@ -1,4 +1,4 @@
-// Coordinates cloud service index behavior behind route handlers.
+// Coordinates cloud service agent google connector behavior behind route handlers.
 export {
   createManagedGoogleCalendarEvent,
   deleteManagedGoogleCalendarEvent,
@@ -14,6 +14,8 @@ export {
   sendManagedGoogleMessage,
   sendManagedGoogleReply,
 } from "./gmail";
+export { readManagedGoogleGmailAttachment } from "./gmail-attachments";
+export { fetchManagedGoogleGmailHistory, type GmailHistoryPage } from "./gmail-history";
 export {
   type AgentGoogleCapability,
   AgentGoogleConnectorError,

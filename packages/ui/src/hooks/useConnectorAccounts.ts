@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import type {
   ConnectorAccountActionResult,
   ConnectorAccountCreateInput,
@@ -14,7 +14,7 @@ import type {
   ConnectorAccountRecord,
   ConnectorAccountsListResponse,
   ConnectorAccountUpdateInput,
-} from "../api/client-agent";
+} from "../api/client-agent-connector-accounts";
 import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 

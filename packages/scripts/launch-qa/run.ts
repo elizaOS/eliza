@@ -11,10 +11,13 @@ const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
-  "app-focused",
   "agent-focused",
   "lifeops-focused",
-  "cloud-api-key-client",
+  // The gate's task id is cloud-api-key-redaction; the stale name that
+  // stood here matched no task, so the quick suite silently never ran
+  // the API-key redaction check. (A second stale entry, app-focused,
+  // has no task at all and is removed.)
+  "cloud-api-key-redaction",
   "model-data",
 ]);
 
@@ -88,13 +91,6 @@ const TASKS = [
     description: "Host app typecheck",
   },
   {
-    id: "app-typecheck",
-    tier: 1,
-    command: "bun",
-    args: ["run", "--cwd", "packages/app", "typecheck"],
-    description: "App-core typecheck",
-  },
-  {
     id: "agent-typecheck",
     tier: 1,
     command: "bun",
@@ -115,8 +111,8 @@ const TASKS = [
     args: [
       "test",
       "--preload",
-      "packages/cloud/api/test/e2e/preload.ts",
-      "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
+      "./packages/cloud/api/test/e2e/preload.ts",
+      "./packages/cloud/api/test/e2e/agent-token-flow.test.ts",
       "--timeout",
       "120000",
     ],

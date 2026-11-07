@@ -12,12 +12,12 @@
  * action handler had run.
  */
 
-import { ChannelSimulator } from "./channels.ts";
-import { FakeClock } from "./clock.ts";
 import {
   type ResponseHandlerResult,
   TurnControllerRegistry,
-} from "./core-lite.ts";
+} from "@elizaos/core";
+import { ChannelSimulator } from "./channels.ts";
+import { FakeClock } from "./clock.ts";
 import { runJudge } from "./judge.ts";
 import { callCerebras } from "./llm-cerebras.ts";
 import { callHarnessStage1 } from "./llm-harness.ts";

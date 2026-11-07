@@ -315,11 +315,17 @@ export class ResourceCapacityRepository {
 
   async ensureSchema(): Promise<void> {
     if (!this.schemaReady) {
-      this.schemaReady = (async () => {
+      const attempt = (async () => {
         for (const statement of RESOURCE_CAPACITY_SCHEMA) {
           await executeRawSql(this.runtime, statement);
         }
       })();
+      this.schemaReady = attempt;
+      // A failed attempt (e.g. the DB adapter is not attached yet) must not
+      // stay memoized for the service lifetime; the next call retries.
+      attempt.catch(() => {
+        if (this.schemaReady === attempt) this.schemaReady = null;
+      });
     }
     return this.schemaReady;
   }

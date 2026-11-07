@@ -33,6 +33,16 @@ import { recentMessagesSection } from "../../../services/evaluator-transcript.ts
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
+/** Minimum confidence an extracted item must reach before long-term storage. */
+export const LONG_TERM_CONFIDENCE_FLOOR = 0.85;
+
+/** Preserve the confidence floor even if a caller supplies a non-finite value. */
+export function minimumStoredConfidence(threshold: number): number {
+  return Number.isFinite(threshold)
+    ? Math.max(threshold, LONG_TERM_CONFIDENCE_FLOOR)
+    : LONG_TERM_CONFIDENCE_FLOOR;
+}
+
 function createdAtSortKey(memory: Memory): number {
   const value = memory.createdAt;
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -183,9 +193,8 @@ function parseLongTermOutput(
       parsed,
       context.message,
       context.options.extraction,
-      Math.max(
+      minimumStoredConfidence(
         context.prepared.memoryService.getConfig().longTermConfidenceThreshold,
-        0.85,
       ),
     );
   }
@@ -374,9 +383,8 @@ ${recentMessages}`;
           await prepared.memoryService.ensureIncrementalExtractionSupported();
         }
         const config = prepared.memoryService.getConfig();
-        const minConfidence = Math.max(
+        const minConfidence = minimumStoredConfidence(
           config.longTermConfidenceThreshold,
-          0.85,
         );
         const extractedAt = new Date().toISOString();
         let longTermStored = 0;

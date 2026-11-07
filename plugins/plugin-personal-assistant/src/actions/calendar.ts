@@ -13,6 +13,14 @@
 
 import { createHash } from "node:crypto";
 import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionParameterSchema,
@@ -32,29 +40,23 @@ import {
   resolveActionArgs,
   type SubactionsMap,
   stableStringify,
-  toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarProvider,
-} from "@elizaos/core/contracts/calendar";
-import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
+import {
+  renderGroundedActionReply,
+  requestLocalCalendarAgenda,
+} from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
-  type CalendarMutationApprovalResult,
-  type CalendarMutationGatewayDep,
   CalendarService,
   CalendarServiceError,
+  calendarReadParameters,
   createCalendarActionRunner,
-  isAppleCalendarGrant,
-  isElizaCalendarGrant,
-  isMicrosoftCalendarGrantId,
+  createCalendarMutationApprovalGateway,
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
+  registerCalendarActionHostAdapter,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
@@ -64,20 +66,10 @@ import {
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
-import type {
-  ApprovalAction,
-  ApprovalChannel,
-  ApprovalEnqueueInput,
-  ApprovalEnqueueResult,
-  ApprovalPayload,
-  CalendarCancellationMode,
-  CalendarSeriesMasterBinding,
-} from "../lifeops/approval-queue.types.js";
 import { settleBriefEngagementReward } from "../lifeops/briefing/engagement-reward.js";
-import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import {
-  normalizeTimeZone,
   resolveDefaultTimeZone,
+  resolveKnownTimeZone,
 } from "../lifeops/defaults.js";
 import {
   runLifeOpsJsonModel,
@@ -128,409 +120,6 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
   return service;
 }
 
-type CalendarApprovalPayload = Extract<
-  ApprovalPayload,
-  { action: "schedule_event" | "modify_event" | "cancel_event" }
->;
-
-interface CalendarApprovalQueue {
-  enqueueWithResult(
-    input: ApprovalEnqueueInput,
-  ): Promise<ApprovalEnqueueResult>;
-}
-
-function approvalSafeLabel(value: string): string {
-  return toWellFormedUnicode(
-    value
-      .replace(/[\r\n\t]+/g, " ")
-      .replace(/[[\]]/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
-}
-
-function requireApprovalMessageIdentity(message: Memory): {
-  messageId: string;
-  createdAt: number;
-} {
-  const messageId =
-    message.id === undefined || message.id === null
-      ? ""
-      : String(message.id).trim();
-  const createdAt = message.createdAt;
-  if (!messageId || !Number.isFinite(createdAt)) {
-    throw new CalendarServiceError(
-      409,
-      "Calendar approval requires a persisted source message id and timestamp.",
-      "CALENDAR_APPROVAL_MESSAGE_BINDING_REQUIRED",
-    );
-  }
-  return { messageId, createdAt: createdAt as number };
-}
-
-function requireCalendarTimestamp(value: string, field: string): number {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    throw new CalendarServiceError(
-      400,
-      `${field} must be a valid calendar date-time.`,
-      "CALENDAR_APPROVAL_INVALID_TIMESTAMP",
-    );
-  }
-  return timestamp;
-}
-
-function requireCalendarProviderVersion(event: LifeOpsCalendarEvent): string {
-  const etag = event.metadata.etag;
-  if (typeof etag !== "string" || !etag.trim()) {
-    throw new CalendarServiceError(
-      409,
-      "Calendar approval requires the provider ETag for an atomic mutation.",
-      "CALENDAR_PROVIDER_VERSION_MISSING",
-    );
-  }
-  return etag.trim();
-}
-
-async function bindFollowingSeriesMaster(
-  runtime: IAgentRuntime,
-  target: LifeOpsCalendarEvent,
-  recurrenceScope: string | undefined,
-): Promise<CalendarSeriesMasterBinding | null> {
-  if (recurrenceScope !== "this_and_following") return null;
-  const grantId = target.grantId?.trim();
-  if (!grantId) {
-    throw new CalendarServiceError(
-      409,
-      "This-and-following approval requires the target connector grant.",
-      "CALENDAR_MUTATION_TARGET_BINDING_REQUIRED",
-    );
-  }
-  const master = await resolveCalendarService(
-    runtime,
-  ).getConditionalCalendarMutationTarget(INTERNAL_URL, {
-    side: target.side,
-    grantId,
-    calendarId: target.calendarId,
-    eventId: target.externalId,
-    recurrenceScope: "series",
-  });
-  const recurringEventId =
-    target.recurringEventId ??
-    (typeof target.metadata.recurringEventId === "string"
-      ? target.metadata.recurringEventId
-      : null);
-  if (
-    !recurringEventId ||
-    recurringEventId !== master.externalId ||
-    master.provider !== target.provider ||
-    master.grantId !== target.grantId ||
-    master.calendarId !== target.calendarId
-  ) {
-    throw new CalendarServiceError(
-      409,
-      "The selected occurrence is no longer bound to its approved recurring-series master.",
-      "CALENDAR_MUTATION_TARGET_CHANGED",
-    );
-  }
-  return {
-    externalId: master.externalId,
-    startAtMs: requireCalendarTimestamp(master.startAt, "seriesMaster.startAt"),
-    updatedAt: new Date(
-      requireCalendarTimestamp(master.updatedAt, "seriesMaster.updatedAt"),
-    ).toISOString(),
-    etag: requireCalendarProviderVersion(master),
-  };
-}
-
-function calendarApprovalIdempotencyKey(
-  messageId: string,
-  payload: CalendarApprovalPayload,
-): string {
-  const digest = createHash("sha256")
-    .update(stableStringify(payload))
-    .digest("hex");
-  return `calendar-conversation:${messageId}:${digest}`;
-}
-
-function calendarApprovalChannel(
-  provider: LifeOpsCalendarProvider,
-): ApprovalChannel {
-  switch (provider) {
-    case "google":
-      return "google_calendar";
-    case "microsoft":
-      return "microsoft_calendar";
-    case "apple_calendar":
-      return "apple_calendar";
-    case "ics":
-      return "ics_calendar";
-    case "eliza":
-      return "internal";
-  }
-}
-
-/**
- * The create path binds a grant rather than an existing provider event, so
- * the provider is derived from the grant-id namespace the calendar service
- * used to prepare the request (Apple and Microsoft grants are recognizable;
- * every remaining writable grant is Google).
- */
-function boundCalendarProviderForGrant(
-  grantId: string,
-): LifeOpsCalendarProvider {
-  if (isElizaCalendarGrant(grantId)) return "eliza";
-  if (isAppleCalendarGrant(grantId)) return "apple_calendar";
-  if (isMicrosoftCalendarGrantId(grantId)) return "microsoft";
-  return "google";
-}
-
-async function enqueueCalendarApproval(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  queue: CalendarApprovalQueue;
-  action: Extract<
-    ApprovalAction,
-    "schedule_event" | "modify_event" | "cancel_event"
-  >;
-  provider: LifeOpsCalendarProvider;
-  payload: CalendarApprovalPayload;
-  reason: string;
-}): Promise<CalendarMutationApprovalResult> {
-  const identity = requireApprovalMessageIdentity(args.message);
-  const idempotencyKey = calendarApprovalIdempotencyKey(
-    identity.messageId,
-    args.payload,
-  );
-  const enqueued = await args.queue.enqueueWithResult({
-    requestedBy: "PERSONAL_ASSISTANT:CALENDAR",
-    subjectUserId: String(args.message.entityId),
-    action: args.action,
-    payload: args.payload,
-    channel: calendarApprovalChannel(args.provider),
-    reason: args.reason,
-    idempotencyKey,
-    expiresAt: new Date(identity.createdAt + 24 * 60 * 60 * 1000),
-  });
-  const { request } = enqueued;
-  if (
-    request.idempotencyKey !== idempotencyKey ||
-    !Number.isFinite(request.createdAt.getTime())
-  ) {
-    throw new CalendarServiceError(
-      500,
-      "The calendar approval queue returned incomplete persistence proof.",
-      "CALENDAR_APPROVAL_PERSISTENCE_PROOF_REQUIRED",
-    );
-  }
-  return {
-    requestId: request.id,
-    action: args.action,
-    state: request.state,
-    acceptedAt: request.createdAt.toISOString(),
-    idempotencyKey: request.idempotencyKey,
-    replayed: enqueued.reused,
-    text: enqueued.reused
-      ? `${request.reason}\nThe bound approval request is already ${request.state}.`
-      : request.state === "pending"
-        ? buildApprovalChoiceText({
-            requestId: request.id,
-            reason: request.reason,
-            action: request.action,
-          })
-        : `${request.reason}\nThe bound approval request is already ${request.state}.`,
-  };
-}
-
-function cancellationModeForEvent(
-  event: LifeOpsCalendarEvent,
-): CalendarCancellationMode {
-  if (event.organizer?.self === true) return "organizer_cancel";
-  const selfAttendee = event.attendees.find((attendee) => attendee.self);
-  if (selfAttendee) {
-    return selfAttendee.organizer ? "organizer_cancel" : "decline_invitation";
-  }
-  throw new CalendarServiceError(
-    409,
-    "Calendar cancellation is blocked because the owner's organizer or invitee role cannot be verified.",
-    "CALENDAR_ORGANIZER_IDENTITY_UNKNOWN",
-  );
-}
-
-export function createCalendarMutationApprovalGateway(options?: {
-  createQueue?: (runtime: IAgentRuntime) => CalendarApprovalQueue;
-}): CalendarMutationGatewayDep {
-  const resolveQueue =
-    options?.createQueue ??
-    ((runtime: IAgentRuntime) =>
-      createApprovalQueue(runtime, { agentId: runtime.agentId }));
-  return {
-    async schedule(args) {
-      const payload: CalendarApprovalPayload = {
-        action: "schedule_event",
-        ...(args.request.sourceNote !== undefined
-          ? { sourceNote: structuredClone(args.request.sourceNote) }
-          : {}),
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        title: args.request.title,
-        startsAtMs: requireCalendarTimestamp(args.request.startAt, "startAt"),
-        endsAtMs: requireCalendarTimestamp(args.request.endAt, "endAt"),
-        allDay: args.request.allDay ?? null,
-        timeZone: args.request.timeZone ?? null,
-        durationMinutes: args.request.durationMinutes ?? null,
-        windowPreset: args.request.windowPreset ?? null,
-        attendees:
-          args.request.attendees?.map((attendee) => ({
-            email: attendee.email,
-            ...(attendee.displayName !== undefined
-              ? { displayName: attendee.displayName }
-              : {}),
-            ...(attendee.optional !== undefined
-              ? { optional: attendee.optional }
-              : {}),
-          })) ?? [],
-        location: args.request.location ?? null,
-        description: args.request.description ?? null,
-        recurrence: args.request.recurrence ?? null,
-        notifyAttendees: args.request.notifyAttendees === true,
-        travelBuffer: args.travelBuffer ?? null,
-      };
-      const notification = payload.notifyAttendees
-        ? "and notify attendees"
-        : "without sending attendee notifications";
-      const travel = payload.travelBuffer
-        ? ` with a ${payload.travelBuffer.bufferMinutes}-minute travel buffer`
-        : "";
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "schedule_event",
-        provider: boundCalendarProviderForGrant(args.request.grantId),
-        payload,
-        reason: payload.allDay
-          ? `Create "${approvalSafeLabel(payload.title)}" as an all-day event from ${payload.allDay.startDate} through ${payload.allDay.endDateExclusive} (exclusive) on the bound calendar${travel}, ${notification}.`
-          : `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
-      });
-    },
-    async modify(args) {
-      const seriesMaster = await bindFollowingSeriesMaster(
-        args.runtime,
-        args.targetEvent,
-        args.request.recurrenceScope,
-      );
-      const payload: CalendarApprovalPayload = {
-        action: "modify_event",
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        eventId: args.request.eventId,
-        expectedProvider: args.targetEvent.provider,
-        expectedProviderVersion: requireCalendarProviderVersion(
-          args.targetEvent,
-        ),
-        expectedEventUpdatedAt: args.targetEvent.updatedAt,
-        expectedEventStartAtMs: requireCalendarTimestamp(
-          args.targetEvent.startAt,
-          "targetEvent.startAt",
-        ),
-        recurrenceScope: args.request.recurrenceScope ?? null,
-        seriesMaster,
-        notifyAttendees: args.request.notifyAttendees,
-        patch: {
-          title: args.request.title ?? null,
-          startsAtMs: args.request.startAt
-            ? requireCalendarTimestamp(args.request.startAt, "startAt")
-            : null,
-          endsAtMs: args.request.endAt
-            ? requireCalendarTimestamp(args.request.endAt, "endAt")
-            : null,
-          allDay: args.request.allDay ?? null,
-          timeZone: args.request.timeZone ?? null,
-          attendees:
-            args.request.attendees?.map((attendee) => ({
-              email: attendee.email,
-              ...(attendee.displayName !== undefined
-                ? { displayName: attendee.displayName }
-                : {}),
-              ...(attendee.optional !== undefined
-                ? { optional: attendee.optional }
-                : {}),
-            })) ?? null,
-          location: args.request.location ?? null,
-          description: args.request.description ?? null,
-          recurrence: args.request.recurrence ?? null,
-        },
-      };
-      if (Object.values(payload.patch).every((value) => value === null)) {
-        throw new CalendarServiceError(
-          400,
-          "Calendar update approval requires at least one concrete change.",
-          "CALENDAR_MUTATION_EMPTY_PATCH",
-        );
-      }
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "modify_event",
-        provider: args.targetEvent.provider,
-        payload,
-        reason:
-          payload.recurrenceScope === "this_and_following"
-            ? `Modify "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by splitting the recurring series. Later per-occurrence exceptions will reset${payload.notifyAttendees ? ", and attendees may receive both split update notifications" : ""}.`
-            : `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
-      });
-    },
-    async cancel(args) {
-      const cancellationMode = cancellationModeForEvent(args.targetEvent);
-      const seriesMaster = await bindFollowingSeriesMaster(
-        args.runtime,
-        args.targetEvent,
-        args.request.recurrenceScope,
-      );
-      const payload: CalendarApprovalPayload = {
-        action: "cancel_event",
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        eventId: args.request.eventId,
-        expectedProvider: args.targetEvent.provider,
-        expectedProviderVersion: requireCalendarProviderVersion(
-          args.targetEvent,
-        ),
-        expectedEventUpdatedAt: args.targetEvent.updatedAt,
-        expectedEventStartAtMs: requireCalendarTimestamp(
-          args.targetEvent.startAt,
-          "targetEvent.startAt",
-        ),
-        recurrenceScope: args.request.recurrenceScope ?? null,
-        seriesMaster,
-        cancellationMode,
-        notifyAttendees: args.request.notifyAttendees,
-      };
-      const verb =
-        cancellationMode === "organizer_cancel"
-          ? "Cancel"
-          : "Decline the invitation for";
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "cancel_event",
-        provider: args.targetEvent.provider,
-        payload,
-        reason:
-          payload.recurrenceScope === "this_and_following"
-            ? `${verb} "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by truncating the recurring series; every later occurrence and exception will be removed${payload.notifyAttendees ? ", and attendees will be notified" : ""}.`
-            : `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
-      });
-    },
-  };
-}
-
 /**
  * LifeOps-owned dependencies the moved calendar handler relies on. The handler
  * itself lives in `@elizaos/plugin-calendar`; these are the host integrations
@@ -539,6 +128,7 @@ export function createCalendarMutationApprovalGateway(options?: {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
+  requestLocalAgenda: requestLocalCalendarAgenda,
   runTextModel: runLifeOpsTextModel,
   runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
@@ -548,7 +138,10 @@ const calendarActionDeps: CalendarActionDeps = {
       domain: "calendar",
       preferCharacterVoice: true,
     }),
-  mutationGateway: createCalendarMutationApprovalGateway(),
+  mutationGateway: createCalendarMutationApprovalGateway({
+    createQueue: (runtime) =>
+      createApprovalQueue(runtime, { agentId: runtime.agentId }),
+  }),
   travelBuffer: {
     resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),
     computeTravelBuffer: (args) => {
@@ -574,6 +167,13 @@ const calendarActionDeps: CalendarActionDeps = {
       error instanceof TravelTimeUnavailableError,
   },
 };
+
+/** Bind PA integrations before Calendar's registered actions can execute. */
+export function registerPersonalAssistantCalendarHost(
+  runtime: IAgentRuntime,
+): void {
+  registerCalendarActionHostAdapter(runtime, calendarActionDeps);
+}
 
 const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
 
@@ -637,11 +237,7 @@ function actionResultCalendarEvent(
     : null;
 }
 
-// Re-exported for consumers that route calendar-plan extraction without going
-// through the umbrella handler (multilingual routing test, live LLM extraction
-// test). The implementation lives in `@elizaos/plugin-calendar`; importing this
-// module first runs `createCalendarActionRunner` above, so the extractor's
-// injected LLM dependencies are wired before any caller invokes it.
+// Direct plan-extraction consumers resolve the same runtime-specific host adapter.
 export { extractCalendarPlanWithLlm } from "@elizaos/plugin-calendar";
 
 type OwnerCalendarSubaction =
@@ -663,7 +259,11 @@ type OwnerCalendarSubaction =
 const ACTION_NAME = "CALENDAR";
 
 const proposalDurationProperties: Record<string, ActionParameterSchema> = {
-  minutes: { type: "number", minimum: 5, maximum: 480 },
+  minutes: {
+    type: "number",
+    minimum: CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+    maximum: CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+  },
   existingEventQuery: { type: "string", minLength: 1 },
 };
 
@@ -1208,28 +808,30 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "query", "queries", "details"],
   },
   create_event: {
-    description: "Create event.",
-    descriptionCompressed: "create calendar event",
+    description: `Create an event from the original request. A known day and exact start may omit end/duration; the domain uses its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Do not ask only for duration or invent an end. Missing exact time/source or invalid explicit timing still requires clarification.`,
+    descriptionCompressed: `create event; known date/start, omitted end/duration -> domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m; never invent timing`,
     required: [],
     optional: ["title", "intent", "details"],
   },
   update_event: {
-    description: "Update event.",
-    descriptionCompressed: "update calendar event",
+    description:
+      "Update from the original intent. Known names/IDs identify an event; a clock-only source on a verified selected Calendar day needs no title/ID through umbrella CALENDAR. Fresh target and availability checks decide writes; missing or ambiguous matches require clarification. Only a mutation receipt completes the edit.",
+    descriptionCompressed:
+      "edit from original intent; verified-day clock-only -> umbrella CALENDAR; ambiguous -> clarify; fresh checks + mutation receipt",
     required: [],
-    optional: ["title", "intent", "details"],
+    optional: ["title", "query", "intent", "details"],
   },
   delete_event: {
     description: "Delete event.",
     descriptionCompressed: "delete calendar event",
     required: [],
-    optional: ["intent", "details"],
+    optional: ["title", "query", "intent", "details"],
   },
   trip_window: {
     description: "List events during trip/place.",
     descriptionCompressed: "events trip-window place",
     required: [],
-    optional: ["intent", "query", "details"],
+    optional: ["intent", "query", "queries", "details"],
   },
   bulk_reschedule: {
     description: "Preview bulk reschedule. Push cohort to later window.",
@@ -1292,33 +894,44 @@ function messageText(message: Memory): string {
  * then throws "Invalid time zone specified: Z" — which failed an entire
  * calendar create (observed live). All snake/camel/lower aliases of the
  * timezone field are rewritten in place, both top-level and inside `details`,
- * via {@link normalizeTimeZone}; unknown zone names pass through untouched so
- * genuine mistakes still surface downstream.
+ * via {@link resolveKnownTimeZone}. A supplied name that is not a UTC
+ * spelling, a valid IANA zone, or a known alias is returned as
+ * `unknownTimeZone` and the route refuses it: using the host zone in its
+ * place would read the caller's local clocks in the wrong zone. A blank value
+ * is not a supplied zone and resolves to the host default as before.
  */
 function normalizeCalendarTimeZoneParams<
   T extends Record<string, unknown> | undefined,
->(params: T): T {
-  if (!params || typeof params !== "object") return params;
+>(
+  params: T,
+): { params: T; unknownTimeZone?: { field: string; value: string } } {
+  if (!params || typeof params !== "object") return { params };
   const TZ_KEYS = ["timeZone", "timezone", "time_zone"] as const;
-  const normalized: Record<string, unknown> = { ...params };
-  for (const key of TZ_KEYS) {
-    if (typeof normalized[key] === "string") {
-      normalized[key] = normalizeTimeZone(normalized[key] as string);
+  let unknownTimeZone: { field: string; value: string } | undefined;
+  const rewrite = (record: Record<string, unknown>, prefix: string): void => {
+    for (const key of TZ_KEYS) {
+      const value = record[key];
+      if (typeof value !== "string") continue;
+      if (value.trim().length === 0) {
+        record[key] = resolveDefaultTimeZone();
+        continue;
+      }
+      const known = resolveKnownTimeZone(value);
+      if (known) record[key] = known;
+      else unknownTimeZone ??= { field: `${prefix}${key}`, value };
     }
-  }
+  };
+  const normalized: Record<string, unknown> = { ...params };
+  rewrite(normalized, "");
   const details = normalized.details;
   if (details && typeof details === "object" && !Array.isArray(details)) {
     const nextDetails: Record<string, unknown> = {
       ...(details as Record<string, unknown>),
     };
-    for (const key of TZ_KEYS) {
-      if (typeof nextDetails[key] === "string") {
-        nextDetails[key] = normalizeTimeZone(nextDetails[key] as string);
-      }
-    }
+    rewrite(nextDetails, "details.");
     normalized.details = nextDetails;
   }
-  return normalized as T;
+  return { params: normalized as T, unknownTimeZone };
 }
 
 function extractBulkRescheduleCohortLabel(text: string): string | null {
@@ -1335,12 +948,12 @@ function extractBulkRescheduleCohortLabel(text: string): string | null {
 function buildBulkRescheduleLookupWindow(
   timeZone: string,
   text: string,
+  now: Date,
 ): {
   timeMin: string;
   timeMax: string;
   scopeLabel: string;
 } {
-  const now = new Date();
   const local = getZonedDateParts(now, timeZone);
   const startOfToday = buildUtcDateFromLocalParts(timeZone, {
     year: local.year,
@@ -1413,11 +1026,18 @@ async function handleBulkReschedulePreview(args: {
   timeZone: string | null;
 }): Promise<ActionResult> {
   const text = messageText(args.message);
-  const timeZone = args.timeZone ?? resolveDefaultTimeZone();
+  // The cohort's day and month boundaries are the owner's, resolved by the
+  // shared fail-closed calendar zone owner: an unreadable or invalid owner
+  // zone fails the preview instead of scoping the cohort in the host's zone.
+  const now = new Date();
+  const timeZone =
+    args.timeZone ??
+    (await resolveCalendarTimeZone(args.runtime, now)).timeZone;
   const cohortLabel = extractBulkRescheduleCohortLabel(text);
   const { timeMin, timeMax, scopeLabel } = buildBulkRescheduleLookupWindow(
     timeZone,
     text,
+    now,
   );
   const service = resolveCalendarService(args.runtime);
 
@@ -1525,7 +1145,23 @@ async function route(
   options: HandlerOptions | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const params = normalizeCalendarTimeZoneParams(getParams(options));
+  const { params, unknownTimeZone } = normalizeCalendarTimeZoneParams(
+    getParams(options),
+  );
+  if (unknownTimeZone) {
+    return {
+      text: `"${unknownTimeZone.value}" is not a time zone I recognize. Use an IANA name such as America/New_York. Nothing was read or changed.`,
+      success: false,
+      error: `INVALID_TIME_ZONE: ${unknownTimeZone.field} "${unknownTimeZone.value}" is not an IANA time zone or a known alias. No calendar read or write was performed. Supply an IANA zone such as America/New_York before retrying.`,
+      data: {
+        actionName: ACTION_NAME,
+        subaction,
+        error: "INVALID_TIME_ZONE",
+        field: unknownTimeZone.field,
+        noop: true,
+      },
+    };
+  }
   const { target, innerSubaction } = translateSubaction(subaction);
   const delegatedCallback: HandlerCallback | undefined = callback
     ? (content, actionName) => callback(content, actionName ?? ACTION_NAME)
@@ -1632,7 +1268,7 @@ export const calendarAction: Action & {
     "CARVE_OUT_TIME",
     "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
-    // handler argument routing; see packages/docs/action-prd-map.md.
+    // handler argument routing.
     "CALENDAR_LIST_UPCOMING",
     "CALENDAR_FIND_AVAILABILITY",
     "CALENDAR_CREATE_EVENT",
@@ -1659,9 +1295,10 @@ export const calendarAction: Action & {
     "Live calendar: event CRUD, availability, meeting prefs. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
+    "For a clock-only move on a verified selected Calendar day, call CALENDAR action=update_event with the original intent; no preliminary lookup or invented title/ID. " +
+    `For creation with a known day and exact start, omit unstated end/duration and let the domain use its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default; do not ask only for duration. ` +
     "Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
-  descriptionCompressed:
-    "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
+  descriptionCompressed: `calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose; create exact date/start, omit unstated end/duration -> domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m; verified-day clock move: CALENDAR action=update_event + original intent`,
   // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
@@ -1779,8 +1416,7 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences. " +
-        "update_event and delete_event need a target in the same call: top-level query (the event in its own words) or details.eventId/details.oldTitle; without one the call fails with CALENDAR_TARGET_UNRESOLVED. create_event needs details.start.",
+        "Calendar operation. update_event accepts a known query/details.oldTitle/eventId or, through umbrella CALENDAR, the original intent for a unique source clock on a verified selected day. Omit unknown identifiers. delete_event needs a named target or known eventId; create_event needs details.start.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1790,20 +1426,18 @@ export const calendarAction: Action & {
     {
       name: "intent",
       description:
-        'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
+        "Original user request; preserve source time/date and requested destination. For a verified-day clock-only move use CALENDAR action=update_event, intent='Move my 3pm to 4'; leave unknown title/query/eventId absent.",
+      descriptionCompressed:
+        "original request; verified-day clock-only -> CALENDAR action=update_event + intent; omit unknown IDs",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "title",
       description:
-        "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
-        "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
-        "NEVER inside `details`. " +
-        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
-        "Move example: `{ subaction: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
+        "TOP-LEVEL title, never details.title: create_event uses the new title; update_event uses the NEW name only, never selects its target; delete_event may use the existing title when query/eventId are absent. For an update use a known query/oldTitle/eventId, or umbrella CALENDAR with original intent for a clock-only target on a verified selected day. Omit unknown names and IDs.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
+        "title TOP-LEVEL, not details; create: new title; update: NEW name only, not target; delete: existing target title if query/ID absent",
       required: false,
       // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
       // a top-level title ("Unexpected argument 'title'") that the parent
@@ -1814,8 +1448,9 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Event-content search phrase for search_events/travel_itinerary: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
-        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
+        "Event-content filter for search_events/trip_window; dates and clock-only references are not invented title filters. For an agenda use feed without query. Updates use a known current title/oldTitle or observed eventId; a clock-only target on a verified selected day uses umbrella CALENDAR with original intent and no query. delete_event needs a named target or known eventId; a supplied existing title is supported.",
+      descriptionCompressed:
+        "content filter; known name for update/delete; verified-day clock-only -> umbrella CALENDAR + original intent, omit query",
       required: false,
       subactions: [
         "feed",
@@ -1824,7 +1459,6 @@ export const calendarAction: Action & {
         "update_event",
         "delete_event",
         "trip_window",
-        "bulk_reschedule",
       ],
       schema: { type: "string" as const },
     },
@@ -1844,8 +1478,8 @@ export const calendarAction: Action & {
         "`start`/`end`: local wall-clock ISO-8601 WITHOUT any offset or Z (e.g. 2026-09-10T18:00:00 for 6pm); never convert to UTC. When supplying the owner's local new start/end, explicitly include `details.timeZone` with the owner's configured IANA timezone; an update otherwise interprets them in the existing event's timezone, which may differ. If the user names another timezone, use that IANA zone for these values. " +
         "For a move or reschedule the time the user names ('to 6pm') is the new `start`; keep the event's previous duration for `end` unless the user gives a new end. " +
         "`details.date` selects the target event's current day, never the destination day of a move. " +
-        "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
-        "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
+        "create_event: `{ action: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
+        "update_event: `{ action: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
         "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
       descriptionCompressed:
         "details create|update|delete: calendarId,start/end,eventId,location; owner-local start/end require owner's IANA timeZone; date = target's current day; title/window TOP",
@@ -1864,7 +1498,7 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers. Top-level field, not inside details.",
+        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length for legacy callers (5-480; a value outside the range fails with INVALID_ARGUMENTS). Top-level field, not inside details.",
       required: false,
       subactions: ["propose_times", "check_availability"],
       schema: { type: "number" },
@@ -1898,14 +1532,15 @@ export const calendarAction: Action & {
     {
       name: "daysAhead",
       description:
-        "propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
+        "propose_times days ahead, 1-60. Default 7. Ignored with windowStart/windowEnd. A value outside the range fails with INVALID_ARGUMENTS.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "number" as const },
     },
     {
       name: "slotCount",
-      description: "propose_times slot count. Default 3.",
+      description:
+        "propose_times slot count, 1-10. Default 3. A value outside the range fails with INVALID_ARGUMENTS.",
       required: false,
       subactions: ["propose_times"],
       schema: { type: "number" as const },
@@ -1945,8 +1580,8 @@ export const calendarAction: Action & {
     {
       name: "startAt",
       description:
-        "TOP-LEVEL flat. check_availability start. ISO-8601. " +
-        "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
+        "TOP-LEVEL flat. check_availability start. ISO-8601. A value without an offset or Z is a local clock in timeZone (default: the meeting-preference zone). " +
+        "Example: `{ action: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
         "Do NOT wrap check_availability args in `details`.",
       required: false,
       subactions: ["check_availability"],
@@ -1964,17 +1599,24 @@ export const calendarAction: Action & {
     {
       name: "timeZone",
       description:
-        "IANA timezone for local proposal bounds and meeting preference hours.",
+        "IANA timezone for local proposal bounds, check_availability startAt/endAt without an offset, meeting preference hours, and the bulk_reschedule lookup window. An unknown zone name fails with INVALID_TIME_ZONE.",
       required: false,
-      subactions: ["check_availability", "propose_times", "update_preferences"],
+      // bulk_reschedule reads timeZone (and nothing from query); without this
+      // entry the promoted CALENDAR_BULK_RESCHEDULE child rejects it.
+      subactions: [
+        "bulk_reschedule",
+        "check_availability",
+        "propose_times",
+        "update_preferences",
+      ],
       schema: { type: "string" as const },
     },
     {
       name: "preferredStartLocal",
       description:
         "TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. " +
-        "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
-        "Do NOT wrap update_preferences args in `details`.",
+        "Example: `{ action: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
+        "Do NOT wrap update_preferences args in `details`. One invalid field fails the whole update with INVALID_FIELDS; nothing is written.",
       required: false,
       subactions: ["update_preferences"],
       schema: { type: "string" as const },
@@ -2160,7 +1802,10 @@ export const calendarAction: Action & {
 /** Updates and deletions share one explicit event selector; legacy umbrella
  * parameters remain available for compatible domain callers. */
 const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
-  ...(calendarAction.parameters ?? []),
+  ...(calendarAction.parameters ?? []).filter(
+    (parameter) =>
+      parameter.name !== "targetKind" && parameter.name !== "target",
+  ),
   {
     name: "targetKind",
     required: true,
@@ -2185,15 +1830,12 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           ? {
               ...parameter,
               schema: CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
-              description:
-                "New event fields. Use start/end as local wall-clock ISO timestamps with the IANA timeZone, or durationMinutes for its length. Supply only requested details; title is top-level. No existing-event lookup or rename fields belong here.",
-              descriptionCompressed:
-                "New event fields; start/end local ISO with IANA timeZone, or durationMinutes. Only requested details; title top-level.",
+              description: `New event fields. Use the requested start as local wall-clock ISO with IANA timeZone. End/duration may be omitted when unstated: the domain supplies its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Preserve an explicit valid end/duration; never invent one. Title is top-level. No existing-event lookup or rename fields belong here.`,
+              descriptionCompressed: `New event fields; requested local start + IANA zone; omit unstated end/duration (domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m); preserve explicit timing; title top-level.`,
             }
           : parameter,
       ),
-      description:
-        "Create an authorized event at the requested or accepted time. This action validates scheduling details and checks fresh availability before writing; a conflict or incomplete coverage prevents creation and returns the reason and checked alternatives when available. Use it directly for 'book this if I am free'; a separate availability call is unnecessary. Missing timing needs clarification. Do not book a suggested alternative until the user accepts it or explicitly delegates choosing a time.",
+      description: `Create an authorized event at the requested or accepted time. A known day and exact start need no duration question: omit unstated end/duration and the domain uses its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Preserve explicit valid bounds; do not invent them or replace invalid/ambiguous values. This action checks source authority and fresh availability before writing; a conflict or incomplete coverage blocks creation. Use it directly for 'book this if I am free'; no preliminary availability call is needed. A missing exact time/source still needs clarification. Do not book a suggested alternative without acceptance or explicit delegation.`,
     },
     check_availability: {
       parameters: calendarAction.parameters
@@ -2212,7 +1854,9 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
     update_event: {
       parameters: calendarMutationTargetParameters,
       description:
-        "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
+        "Edit an event identified by targetKind+target, retaining source date constraints. A clock-only reference on a verified selected Calendar day uses umbrella CALENDAR action=update_event with original intent and no invented target; discover CALENDAR first if it is not loaded. Vague morning/afternoon timing needs CALENDAR_PROPOSE_TIMES and an accepted time. Fresh target/version/availability checks may block writes; ambiguous targets need clarification. Only a mutation receipt completes the edit. title/details.newTitle never select the target.",
+      descriptionCompressed:
+        "named/ID edit: targetKind+target; verified-day clock-only -> CALENDAR action=update_event + original intent (discover if absent); ambiguous -> clarify; mutation receipt",
     },
     delete_event: {
       parameters: calendarMutationTargetParameters,
@@ -2229,12 +1873,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ),
     },
     ...Object.fromEntries(
-      (
-        [
-          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
-          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
-        ] as const
-      ).map(([name, schema]) => [
+      (["feed", "search_events"] as const).map((name) => [
         name,
         {
           ...(name === "search_events"
@@ -2246,25 +1885,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
                 description:
                   "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
-          parameters: calendarAction.parameters?.map((parameter) => {
-            if (name === "search_events" && parameter.name === "query") {
-              return {
-                ...parameter,
-                required: true,
-                description:
-                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
-                schema: { type: "string", minLength: 1 },
-              };
-            }
-            return parameter.name === "details"
-              ? {
-                  ...parameter,
-                  description:
-                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
-                  schema,
-                }
-              : parameter;
-          }),
+          parameters: calendarReadParameters(calendarAction, name),
         },
       ]),
     ),
@@ -2282,3 +1903,5 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
     },
   },
 };
+
+export { createCalendarMutationApprovalGateway } from "@elizaos/plugin-calendar";

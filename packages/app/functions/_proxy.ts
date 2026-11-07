@@ -18,6 +18,7 @@ const DEFAULT_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
 const PREVIEW_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 export interface PagesProxyEnv {
   API_UPSTREAM?: string;
+  ELIZA_NATIVE_AUTH_CALLBACKS_JSON?: string;
   API_WORKER?: {
     fetch(request: Request): Promise<Response>;
   };

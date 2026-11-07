@@ -29,7 +29,7 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
-import { client } from "../api";
+import { client } from "../api/client";
 import { logger } from "../logger.ts";
 
 declare global {

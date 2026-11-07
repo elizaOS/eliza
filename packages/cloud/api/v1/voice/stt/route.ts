@@ -1,11 +1,24 @@
+import {
+  CLOUDFLARE_STT_MODEL,
+  CloudflareSpeechError,
+  transcribeCloudflareAudio,
+} from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 /**
  * Cloud voice transcription route for multipart audio uploads. The request
  * body is size-gated before auth and multipart parsing so rejected uploads do
  * not spend provider, billing, or signature-parsing work.
  */
-import { Hono } from "hono";
 
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import {
+  elevenLabsSdkErrorStatus,
+  isKnownUnacceptedProviderError,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Voice STT API (v1)
@@ -31,6 +44,23 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * - Credit reservation before processing ensures payment
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  appendServerTiming,
+  type ServerTimingMetric,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateSTTCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
 import { parseBuffer } from "music-metadata";
 import {
@@ -39,18 +69,8 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  timeSpeechPhase,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateSTTCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  type CreditReservation,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { usageService } from "@/lib/services/usage";
-import { logger } from "@/lib/utils/logger";
 import {
   calculateCartesiaSttCost,
   parseCartesiaUsdPerCredit,
@@ -69,7 +89,7 @@ const CARTESIA_BATCH_STT_MODEL = "ink-whisper";
 const CARTESIA_BATCH_STT_API_VERSION = "2026-03-01";
 const DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS = 120_000;
 const MAX_CARTESIA_BATCH_STT_TIMEOUT_MS = 300_000;
-const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v1";
+const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v2";
 const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024;
 const MAX_MULTIPART_BODY_BYTES_ENV = "VOICE_STT_MAX_MULTIPART_BYTES";
 const OVERSIZED_MULTIPART_RESPONSE = {
@@ -82,6 +102,9 @@ const SUPPORTED_MIME_TYPES = [
   "audio/mpeg",
   "audio/mp4",
   "audio/m4a",
+  // Chromium and Safari report .m4a files (voice memos) as audio/x-m4a;
+  // the signature allowlist below already accepts that detected type.
+  "audio/x-m4a",
   "audio/wav",
   // Windows clients (and Bun's multipart layer) commonly declare WAV as the
   // legacy x- form; the magic-number allowlist below already accepts it.
@@ -124,6 +147,8 @@ function estimateAudioDurationMinutes(
 }
 
 interface DeepgramTranscription {
+  /** Seconds of audio Deepgram transcribed (`metadata.duration`). */
+  durationSeconds?: number;
   transcript: string;
   segments?: SttTimedSpan[];
   words?: SttTimedSpan[];
@@ -217,7 +242,21 @@ function parseDeepgramTranscription(
   const segments = parseDeepgramArray(results?.utterances, "transcript");
   if (words.invalid || segments.invalid) return null;
 
+  const metadata =
+    root?.metadata &&
+    typeof root.metadata === "object" &&
+    !Array.isArray(root.metadata)
+      ? (root.metadata as Record<string, unknown>)
+      : null;
+  const durationSeconds =
+    typeof metadata?.duration === "number" &&
+    Number.isFinite(metadata.duration) &&
+    metadata.duration > 0
+      ? metadata.duration
+      : undefined;
+
   return {
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
     transcript,
     ...(segments.spans.length > 0 ? { segments: segments.spans } : {}),
     ...(words.spans.length > 0 ? { words: words.spans } : {}),
@@ -262,7 +301,12 @@ function parseCartesiaTranscription(
   };
 }
 
-type BatchSttProvider = "cartesia" | "deepgram" | "elevenlabs" | "whisper";
+type BatchSttProvider =
+  | "cloudflare"
+  | "cartesia"
+  | "deepgram"
+  | "elevenlabs"
+  | "whisper";
 
 function parseBatchSttProvider(
   value: string | undefined,
@@ -270,6 +314,7 @@ function parseBatchSttProvider(
   if (value === undefined) return undefined;
   const provider = value.trim().toLowerCase();
   if (
+    provider === "cloudflare" ||
     provider === "cartesia" ||
     provider === "deepgram" ||
     provider === "elevenlabs" ||
@@ -431,9 +476,17 @@ async function readRequestWithMultipartLimit(
  * Includes 20% platform markup on all STT costs.
  *
  * @param request - Form data with audio file and optional languageCode.
- * @returns Transcript and processing duration.
+ * @returns Transcript and processing duration, with `upload`, `auth`,
+ * `admission` and `transcription` Server-Timing entries for the steps reached.
  */
 async function __hono_POST(c: AppContext) {
+  const timings: ServerTimingMetric[] = [];
+  const response = await transcribeRequest(c, timings);
+  appendServerTiming(response.headers, timings);
+  return response;
+}
+
+async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
   let reservation: CreditReservation | undefined;
   let settleUnknown: (() => Promise<unknown>) | undefined;
   let markProviderDispatched: (() => Promise<void>) | undefined;
@@ -460,10 +513,14 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    const sizeCheckedRequest = await readRequestWithMultipartLimit(
-      request,
-      multipartBodyLimit,
+    const uploadStartedAt = performance.now();
+    const sizeCheckedRequest = await timeSpeechPhase(c, "upload_read", () =>
+      readRequestWithMultipartLimit(request, multipartBodyLimit),
     );
+    timings.push({
+      name: "upload",
+      durationMs: performance.now() - uploadStartedAt,
+    });
     if (sizeCheckedRequest instanceof Response) {
       // Intentional transport-limit exception: reject and cancel oversized
       // multipart bytes before any authentication cache, database, billing,
@@ -472,12 +529,17 @@ async function __hono_POST(c: AppContext) {
     }
     request = sizeCheckedRequest;
 
+    const authStartedAt = performance.now();
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: true,
+      }).finally(() => {
+        timings.push({
+          name: "auth",
+          durationMs: performance.now() - authStartedAt,
+        });
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => user.organization_id,
@@ -496,7 +558,9 @@ async function __hono_POST(c: AppContext) {
 
     let formData: FormData;
     try {
-      formData = await request.formData();
+      formData = await timeSpeechPhase(c, "multipart_decode", () =>
+        request.formData(),
+      );
     } catch (error) {
       // error-policy:J3 malformed multipart bytes are explicit invalid input.
       logger.warn("[Voice STT API] Invalid multipart form data", {
@@ -504,6 +568,16 @@ async function __hono_POST(c: AppContext) {
       });
       return Response.json(
         { error: "Invalid multipart form data" },
+        { status: 400 },
+      );
+    }
+    const requestedProviders = formData.getAll("provider");
+    if (
+      requestedProviders.length > 1 ||
+      (requestedProviders.length === 1 && requestedProviders[0] !== "cartesia")
+    ) {
+      return Response.json(
+        { error: "Invalid speech-to-text provider" },
         { status: 400 },
       );
     }
@@ -540,8 +614,12 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    const buffer = Buffer.from(await audioFile.arrayBuffer());
-    const fileTypeResult = await fileTypeFromBuffer(buffer);
+    const buffer = Buffer.from(
+      await timeSpeechPhase(c, "audio_buffer", () => audioFile.arrayBuffer()),
+    );
+    const fileTypeResult = await timeSpeechPhase(c, "audio_sniff", () =>
+      fileTypeFromBuffer(buffer),
+    );
 
     if (!fileTypeResult) {
       logger.warn("[Voice STT API] Unable to detect audio file type", {
@@ -556,7 +634,10 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    if (!ALLOWED_AUDIO_SIGNATURES.has(fileTypeResult.mime)) {
+    // file-type adds codec parameters for some containers (Ogg/Opus from
+    // Telegram, Discord and Firefox is `audio/ogg; codecs=opus`).
+    const detectedMimeType = fileTypeResult.mime.split(";")[0].trim();
+    if (!ALLOWED_AUDIO_SIGNATURES.has(detectedMimeType)) {
       logger.warn("[Voice STT API] Audio file signature mismatch", {
         actualMimeType: fileTypeResult.mime,
         claimedMimeType: baseMimeType,
@@ -569,8 +650,8 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    let finalMimeType = fileTypeResult.mime;
-    if (fileTypeResult.mime === "video/webm") {
+    let finalMimeType = detectedMimeType;
+    if (detectedMimeType === "video/webm") {
       logger.info(
         "[Voice STT API] Converting video/webm container to audio/webm (Safari/macOS audio recording)",
       );
@@ -587,7 +668,9 @@ async function __hono_POST(c: AppContext) {
     let billingEstimate: SttBillingEstimate | undefined;
     const getBillingEstimate = async (): Promise<SttBillingEstimate> => {
       if (billingEstimate) return billingEstimate;
-      const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
+      const metadata = await timeSpeechPhase(c, "audio_metadata", () =>
+        parseBuffer(buffer, { mimeType: finalMimeType }),
+      );
       const parsedDurationSeconds = metadata.format?.duration;
       const durationSeconds = Number.isFinite(parsedDurationSeconds)
         ? Math.max(parsedDurationSeconds ?? 0, 1)
@@ -608,6 +691,7 @@ async function __hono_POST(c: AppContext) {
     ): Promise<
       Response | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
     > => {
+      const admissionStartedAt = performance.now();
       try {
         return await admitFlatGenerativeOperation({
           c,
@@ -629,6 +713,11 @@ async function __hono_POST(c: AppContext) {
           );
         }
         throw error;
+      } finally {
+        timings.push({
+          name: "admission",
+          durationMs: performance.now() - admissionStartedAt,
+        });
       }
     };
 
@@ -643,6 +732,7 @@ async function __hono_POST(c: AppContext) {
         { status: 503 },
       );
     }
+    if (requestedProviders.length === 1) batchSttProvider = "cartesia";
     const deepgramApiKey = env.DEEPGRAM_API_KEY?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     if (batchSttProvider === "deepgram" && !deepgramApiKey) {
@@ -709,12 +799,41 @@ async function __hono_POST(c: AppContext) {
       reservation = deepgramReservation.reservation;
       settleUnknown = deepgramReservation.settleUnknown;
 
-      const settleDeepgramFailure = async (reason: string) => {
+      const settleDeepgramFailure = async (
+        reason: string,
+        // A clear HTTP rejection proves the provider did not transcribe.
+        rejectedStatus?: number,
+      ) => {
         if (!reservation) return;
-        await (providerWorkMayHaveStarted && settleUnknown
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const rejected =
+          rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus);
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "deepgram",
           providerDispatchState: providerWorkMayHaveStarted
@@ -728,7 +847,7 @@ async function __hono_POST(c: AppContext) {
         });
       };
 
-      const deepgramStart = Date.now();
+      const deepgramStart = performance.now();
       const deepgramUrl = new URL(DEEPGRAM_PRERECORDED_URL);
       deepgramUrl.searchParams.set("model", DEEPGRAM_PRERECORDED_MODEL);
       deepgramUrl.searchParams.set("smart_format", "true");
@@ -765,7 +884,10 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await settleDeepgramFailure("upstream_http_error");
+        await settleDeepgramFailure(
+          "upstream_http_error",
+          deepgramResponse.status,
+        );
         logger.error("[Voice STT API] Deepgram request failed", {
           status: deepgramResponse.status,
         });
@@ -798,7 +920,12 @@ async function __hono_POST(c: AppContext) {
         );
       }
 
-      const deepgramDuration = Date.now() - deepgramStart;
+      const deepgramDuration = Math.round(performance.now() - deepgramStart);
+      timings.push({ name: "transcription", durationMs: deepgramDuration });
+      // Bill the audio Deepgram transcribed; the container header estimate
+      // only sized the reservation.
+      const billedDurationSeconds =
+        transcription.durationSeconds ?? estimate.durationSeconds;
       const billingReservation = reservation;
       reservation = undefined;
 
@@ -809,15 +936,23 @@ async function __hono_POST(c: AppContext) {
         pricingProxyModel: STT_PRICING_PROXY_MODEL,
         provider: "deepgram",
         segmentCount: transcription.segments?.length,
+        transcriptionDurationSeconds: transcription.durationSeconds,
         transcriptLength: transcription.transcript.length,
         wordCount: transcription.words?.length,
       });
       let billingApplied = false;
       const billingTask = (async () => {
         try {
+          const actualSttCost = await calculateSTTCostFromCatalog({
+            model: STT_PRICING_PROXY_MODEL,
+            durationSeconds: billedDurationSeconds,
+            ...(getGenerativePricingCacheOptions(c).cacheOnly
+              ? { cache: getGenerativePricingCacheOptions(c) }
+              : {}),
+          });
           const billing = await billFlatUsage(
             deepgramBillingContext,
-            sttCost,
+            actualSttCost,
             billingReservation,
           );
           billingApplied = true;
@@ -838,7 +973,8 @@ async function __hono_POST(c: AppContext) {
             metadata: {
               audioSizeBytes: audioFile.size,
               estimatedDurationMinutes: estimate.estimatedDurationMinutes,
-              durationSeconds: estimate.durationSeconds,
+              estimatedDurationSeconds: estimate.durationSeconds,
+              durationSeconds: billedDurationSeconds,
               languageCode,
               transcriptLength: transcription.transcript.length,
               baseTotalCost: billing.baseTotalCost,
@@ -923,12 +1059,41 @@ async function __hono_POST(c: AppContext) {
       reservation = cartesiaAdmission.reservation;
       settleUnknown = cartesiaAdmission.settleUnknown;
 
-      const settleCartesiaFailure = async (reason: string) => {
+      const settleCartesiaFailure = async (
+        reason: string,
+        // A clear HTTP rejection proves the provider did not transcribe.
+        rejectedStatus?: number,
+      ) => {
         if (!reservation) return;
-        await (providerWorkMayHaveStarted && settleUnknown
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const rejected =
+          rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus);
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "cartesia",
           providerDispatchState: providerWorkMayHaveStarted
@@ -942,7 +1107,7 @@ async function __hono_POST(c: AppContext) {
         });
       };
 
-      const cartesiaStart = Date.now();
+      const cartesiaStart = performance.now();
       const cartesiaForm = new FormData();
       cartesiaForm.append(
         "file",
@@ -997,7 +1162,10 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await settleCartesiaFailure("upstream_http_error");
+        await settleCartesiaFailure(
+          "upstream_http_error",
+          cartesiaResponse.status,
+        );
         logger.error("[Voice STT API] Cartesia request failed", {
           status: cartesiaResponse.status,
         });
@@ -1037,7 +1205,8 @@ async function __hono_POST(c: AppContext) {
         );
       }
 
-      const cartesiaDuration = Date.now() - cartesiaStart;
+      const cartesiaDuration = Math.round(performance.now() - cartesiaStart);
+      timings.push({ name: "transcription", durationMs: cartesiaDuration });
       const actualSttCost = calculateCartesiaSttCost({
         durationSeconds: transcription.durationSeconds,
         usdPerCredit: cartesiaUsdPerCredit,
@@ -1104,11 +1273,19 @@ async function __hono_POST(c: AppContext) {
       if (executionCtx) executionCtx.waitUntil(billingTask);
       else void billingTask;
 
-      return Response.json({
-        transcript: transcription.transcript,
-        duration_ms: cartesiaDuration,
-        ...(transcription.words ? { words: transcription.words } : {}),
-      });
+      return Response.json(
+        {
+          transcript: transcription.transcript,
+          duration_ms: cartesiaDuration,
+          ...(transcription.words ? { words: transcription.words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cartesia",
+            "X-Eliza-STT-Model": CARTESIA_BATCH_STT_MODEL,
+          },
+        },
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -1118,9 +1295,44 @@ async function __hono_POST(c: AppContext) {
     // the path below. Inert when WHISPER_STT_URL is unset or the operator
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
+    if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
+      await credentialGuard[Symbol.asyncDispose]();
+      const started = performance.now();
+      const payload = await transcribeCloudflareAudio(
+        env.AI,
+        new Uint8Array(buffer),
+        languageCode,
+        c.req.raw.signal,
+        finalMimeType,
+      );
+      const { segments, words, invalidFields } =
+        parseWhisperTimestamps(payload);
+      if (invalidFields.length > 0) {
+        return Response.json(
+          { error: "Speech-to-text returned invalid timestamps" },
+          { status: 502 },
+        );
+      }
+      const cloudflareDuration = Math.round(performance.now() - started);
+      timings.push({ name: "transcription", durationMs: cloudflareDuration });
+      return Response.json(
+        {
+          transcript: payload.text.trim(),
+          duration_ms: cloudflareDuration,
+          ...(segments ? { segments } : {}),
+          ...(words ? { words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cloudflare",
+            "X-Eliza-STT-Model": CLOUDFLARE_STT_MODEL,
+          },
+        },
+      );
+    }
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl && batchSttProvider !== "elevenlabs") {
-      const whisperStart = Date.now();
+      const whisperStart = performance.now();
       const form = new FormData();
       form.append(
         "file",
@@ -1200,7 +1412,8 @@ async function __hono_POST(c: AppContext) {
           { status: 502 },
         );
       }
-      const whisperDuration = Date.now() - whisperStart;
+      const whisperDuration = Math.round(performance.now() - whisperStart);
+      timings.push({ name: "transcription", durationMs: whisperDuration });
       // "timestamps absent" (plain-text response shape) and "zero timed spans"
       // are different states — log them distinguishably.
       logger.info("[Voice STT API] Whisper completed", {
@@ -1232,7 +1445,7 @@ async function __hono_POST(c: AppContext) {
       organizationId: user.organization_id,
       userId: user.id,
       apiKeyId,
-      model: "elevenlabs/scribe_v1",
+      model: "elevenlabs/scribe_v2",
       provider: "elevenlabs",
       billingSource: "elevenlabs",
       requestId: billingRequestId,
@@ -1240,61 +1453,63 @@ async function __hono_POST(c: AppContext) {
       description: `STT transcription: ${estimatedDurationMinutes.toFixed(2)} min`,
     };
 
-    try {
-      const admission = await admitFlatGenerativeOperation({
-        c,
-        context: elevenLabsBillingContext,
-        apiKeyId,
-        cost: sttCost,
-        admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
-        atomicProviderBoundary: true,
-      });
-      reservation = admission.reservation;
-      settleUnknown = admission.settleUnknown;
-      markProviderDispatched = admission.markProviderDispatched;
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        return Response.json(
-          {
-            error: "Insufficient credits for speech-to-text",
-            required: error.required,
-          },
-          { status: 402 },
-        );
-      }
-      throw error;
-    }
+    const admission = await reserveOr402(elevenLabsBillingContext, sttCost);
+    if (admission instanceof Response) return admission;
+    reservation = admission.reservation;
+    settleUnknown = admission.settleUnknown;
+    markProviderDispatched = admission.markProviderDispatched;
 
+    // Only this lane loads the ElevenLabs SDK, so cold requests on the other
+    // providers do not evaluate its module graph.
+    const { getElevenLabsService } = await import(
+      "@elizaos/cloud-shared/lib/services/elevenlabs"
+    );
     const elevenlabs = getElevenLabsService(env);
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     const validatedFile = new File([buffer], audioFile.name, {
       type: finalMimeType,
     });
     await markProviderDispatched?.();
     providerWorkMayHaveStarted = true;
     settlementProvider = "elevenlabs";
-    const transcript = await elevenlabs.speechToText({
-      audioFile: validatedFile,
-      languageCode,
-    });
-    const duration = Date.now() - startTime;
+    const { transcript, audioDurationSeconds, minAudioDurationSeconds } =
+      await elevenlabs.speechToText({
+        audioFile: validatedFile,
+        languageCode,
+      });
+    const duration = Math.round(performance.now() - startTime);
+    timings.push({ name: "transcription", durationMs: duration });
+    // Bill the audio ElevenLabs transcribed; the container header estimate
+    // only sized the reservation. Without a reported total, the last word end
+    // can only raise the header estimate: audio after the last word is billed.
+    const billedDurationSeconds =
+      audioDurationSeconds ??
+      Math.max(durationSeconds, minAudioDurationSeconds ?? 0);
 
     const billingReservation = reservation;
     reservation = undefined;
 
     logger.info("[Voice STT API] Completed", {
       durationMs: duration,
+      transcriptionDurationSeconds: audioDurationSeconds,
+      minTranscriptionDurationSeconds: minAudioDurationSeconds,
       transcriptLength: transcript.length,
     });
 
     let billingApplied = false;
     const billingTask = (async () => {
       try {
+        const actualSttCost = await calculateSTTCostFromCatalog({
+          model: STT_PRICING_PROXY_MODEL,
+          durationSeconds: billedDurationSeconds,
+          ...(getGenerativePricingCacheOptions(c).cacheOnly
+            ? { cache: getGenerativePricingCacheOptions(c) }
+            : {}),
+        });
         const billing = await billFlatUsage(
           elevenLabsBillingContext,
-          sttCost,
+          actualSttCost,
           billingReservation,
         );
         billingApplied = true;
@@ -1318,7 +1533,8 @@ async function __hono_POST(c: AppContext) {
             // not sensitive content, so it stays.
             audioSizeBytes: audioFile.size,
             estimatedDurationMinutes,
-            durationSeconds,
+            estimatedDurationSeconds: durationSeconds,
+            durationSeconds: billedDurationSeconds,
             languageCode,
             transcriptLength: transcript.length,
             baseTotalCost: billing.baseTotalCost,
@@ -1352,8 +1568,15 @@ async function __hono_POST(c: AppContext) {
     });
 
     if (reservation) {
+      // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
+      // status) proves nothing was transcribed.
+      const rejectedStatus = elevenLabsSdkErrorStatus(error);
+      const rejected =
+        isKnownUnacceptedProviderError(error) ||
+        (rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus));
       const settlement =
-        providerWorkMayHaveStarted && settleUnknown
+        providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);
@@ -1377,9 +1600,26 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
 
+    if (error instanceof CloudflareSpeechError) {
+      return Response.json(
+        { error: error.message, provider: "cloudflare" },
+        { status: error.status },
+      );
+    }
     if (error instanceof Error) {
       const errorMessage = error.message.toLowerCase();
       const errorWithBody = error as Error & {

@@ -4,9 +4,9 @@ Tests for BFCL Function Call Parser
 
 import pytest
 
-from suites.bfcl.dataset import BFCLDataset, _infer_default_from_description
-from suites.bfcl.parser import FunctionCallParser
-from suites.bfcl.types import BFCLConfig
+from benchmarks.suites.bfcl.dataset import BFCLDataset, _infer_default_from_description
+from benchmarks.suites.bfcl.parser import FunctionCallParser
+from benchmarks.suites.bfcl.types import BFCLConfig
 
 
 class TestFunctionCallParser:
@@ -27,10 +27,10 @@ class TestFunctionCallParser:
 
     def test_parse_json_array(self, parser: FunctionCallParser) -> None:
         """Test parsing JSON array of calls."""
-        response = '''[
+        response = """[
             {"name": "func1", "arguments": {"x": 1}},
             {"name": "func2", "arguments": {"y": 2}}
-        ]'''
+        ]"""
         calls = parser.parse(response)
 
         assert len(calls) == 2
@@ -39,11 +39,11 @@ class TestFunctionCallParser:
 
     def test_parse_json_in_code_fence(self, parser: FunctionCallParser) -> None:
         """Test parsing JSON in code fences."""
-        response = '''Here's the function call:
+        response = """Here's the function call:
 ```json
 {"name": "search", "arguments": {"query": "test"}}
 ```
-'''
+"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -51,10 +51,10 @@ class TestFunctionCallParser:
 
     def test_parse_xml_format(self, parser: FunctionCallParser) -> None:
         """Test parsing XML function call format."""
-        response = '''<function_call>
+        response = """<function_call>
             <name>get_weather</name>
             <arguments>{"location": "SF"}</arguments>
-        </function_call>'''
+        </function_call>"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -63,12 +63,12 @@ class TestFunctionCallParser:
 
     def test_parse_elizaos_params_format(self, parser: FunctionCallParser) -> None:
         """Test parsing ElizaOS params format."""
-        response = '''<params>
+        response = """<params>
             <GET_WEATHER>
                 <location>San Francisco</location>
                 <unit>celsius</unit>
             </GET_WEATHER>
-        </params>'''
+        </params>"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -98,14 +98,14 @@ class TestFunctionCallParser:
 
     def test_parse_tool_calls_format(self, parser: FunctionCallParser) -> None:
         """Test parsing OpenAI tool_calls format."""
-        response = '''{
+        response = """{
             "tool_calls": [
                 {
                     "type": "function",
                     "function": {"name": "search", "arguments": {"query": "test"}}
                 }
             ]
-        }'''
+        }"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -113,11 +113,11 @@ class TestFunctionCallParser:
 
     def test_parse_benchmark_calls_wrapper(self, parser: FunctionCallParser) -> None:
         """Test parsing benchmark bridge calls wrapper format."""
-        response = '''{
+        response = """{
             "calls": [
                 {"name": "search", "arguments": {"query": "bridge"}}
             ]
-        }'''
+        }"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -126,14 +126,14 @@ class TestFunctionCallParser:
 
     def test_parse_captured_benchmark_action(self, parser: FunctionCallParser) -> None:
         """Test parsing captured BENCHMARK_ACTION payloads."""
-        response = '''{
+        response = """{
             "action": "BENCHMARK_ACTION",
             "arg_0": {
                 "calls": [
                     {"name": "get_weather", "arguments": {"location": "SF"}}
                 ]
             }
-        }'''
+        }"""
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -151,7 +151,9 @@ class TestFunctionCallParser:
 
     def test_parse_boolean_arguments(self, parser: FunctionCallParser) -> None:
         """Test parsing boolean argument values."""
-        response = '{"name": "set_flag", "arguments": {"enabled": true, "verbose": false}}'
+        response = (
+            '{"name": "set_flag", "arguments": {"enabled": true, "verbose": false}}'
+        )
         calls = parser.parse(response)
 
         assert len(calls) == 1
@@ -168,13 +170,13 @@ class TestFunctionCallParser:
 
     def test_parse_mixed_content(self, parser: FunctionCallParser) -> None:
         """Test parsing response with mixed content."""
-        response = '''Let me help you with that.
+        response = """Let me help you with that.
 
 ```json
 {"name": "get_info", "arguments": {"id": "123"}}
 ```
 
-I've called the function above.'''
+I've called the function above."""
         calls = parser.parse(response)
 
         assert len(calls) == 1

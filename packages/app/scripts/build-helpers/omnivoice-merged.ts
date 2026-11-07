@@ -1,17 +1,4 @@
-/**
- * Merged-path OmniVoice build helpers.
- *
- * H2.c collapsed the W3-3 deprecation runway: the legacy graft path
- * (`OMNIVOICE_INSIDE_LLAMA_CPP=0` + `omnivoice-fuse/{prepare,cmake-graft}.mjs`)
- * is removed and the only supported path is the in-fork merged tree at
- * `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/`.
- *
- * This module exposes the two surfaces the build script needs:
- *   - `fusedCmakeBuildTargets()` — the target list passed to
- *     `cmake --build … --target …` for a fused build.
- *   - `fusedExtraCmakeFlags()` — the `-D…=…` flags a fused build adds on
- *     top of the per-target defaults.
- */
+/** CMake targets and flags for the merged tools/omnivoice build. */
 
 /**
  * Names of CMake build targets the fused build produces. The merged tree

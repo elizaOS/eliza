@@ -8,12 +8,17 @@
 import { randomBytes } from "node:crypto";
 import {
   createManager,
+  removeEntryMeta,
   type SecretsManager,
   type Vault,
   VaultDecryptionError,
   writeSensitiveValueVerified,
 } from "@elizaos/auth/vault";
 import { ElizaError } from "@elizaos/core";
+import {
+  FIRST_RUN_PROVIDER_CATALOG,
+  getFirstRunProviderSignalEnvKeys,
+} from "@elizaos/host/protocol";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {
@@ -314,6 +319,82 @@ export function vaultKeyForProviderApiKey(normalizedProvider: string): string {
     );
   }
   return `providers.${normalizedProvider}.api-key`;
+}
+
+const VAULT_CREDENTIAL_PROVIDER_IDS: ReadonlySet<string> = new Set<string>([
+  ...FIRST_RUN_PROVIDER_CATALOG.map((provider) => provider.id),
+  "gemini",
+  "zai",
+]);
+
+export async function removeResetCredentialsFromVault(
+  vault: Vault,
+): Promise<void> {
+  const keys = new Set([
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_BASE_URL",
+    "ELIZAOS_CLOUD_ENABLED",
+  ]);
+  for (const providerId of VAULT_CREDENTIAL_PROVIDER_IDS) {
+    keys.add(vaultKeyForProviderApiKey(providerId));
+    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
+      keys.add(envKey);
+    }
+  }
+  for (const provider of FIRST_RUN_PROVIDER_CATALOG) {
+    if (provider.envKey) keys.add(provider.envKey);
+  }
+  await removeVaultCredentialKeys(vault, keys, {
+    message: "Failed to remove reset credentials from the vault",
+    code: "VAULT_RESET_CREDENTIALS_FAILED",
+  });
+}
+
+export async function removeClearedCredentialsFromVault(
+  vault: Vault,
+  envKeys: Iterable<string>,
+): Promise<void> {
+  const keys = new Set<string>();
+  for (const envKey of envKeys) {
+    keys.add(envKey);
+    for (const providerId of VAULT_CREDENTIAL_PROVIDER_IDS) {
+      if (getFirstRunProviderSignalEnvKeys(providerId).includes(envKey)) {
+        keys.add(vaultKeyForProviderApiKey(providerId));
+      }
+    }
+  }
+  await removeVaultCredentialKeys(vault, keys, {
+    message: "Failed to remove cleared credentials from the vault",
+    code: "VAULT_CLEARED_CREDENTIALS_FAILED",
+  });
+}
+
+async function removeVaultCredentialKeys(
+  vault: Vault,
+  keys: Iterable<string>,
+  failure: { message: string; code: string },
+): Promise<void> {
+  const failedKeys: string[] = [];
+  let firstFailure: unknown;
+  for (const key of keys) {
+    try {
+      if (await vault.has(key)) await vault.remove(key);
+      for (const stored of await vault.list(key)) {
+        if (stored.startsWith(`${key}.profile.`)) await vault.remove(stored);
+      }
+      await removeEntryMeta(vault, key);
+    } catch (cause) {
+      failedKeys.push(key);
+      firstFailure ??= cause;
+    }
+  }
+  if (failedKeys.length > 0) {
+    throw new ElizaError(failure.message, {
+      code: failure.code,
+      context: { keys: failedKeys },
+      cause: firstFailure,
+    });
+  }
 }
 
 /**

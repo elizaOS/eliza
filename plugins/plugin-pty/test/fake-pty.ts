@@ -11,6 +11,8 @@ export class FakePty implements PtyHandle {
   readonly resized: Array<[number, number]> = [];
   killed = false;
   killedSignal: string | undefined;
+  /** When set, `kill()` throws this instead of killing (simulates EPERM/ESRCH). */
+  killError: Error | undefined;
   private readonly dataListeners: Array<(data: string) => void> = [];
   private readonly exitListeners: Array<
     (event: { exitCode: number; signal?: number }) => void
@@ -29,6 +31,7 @@ export class FakePty implements PtyHandle {
   }
 
   kill(signal?: string): void {
+    if (this.killError) throw this.killError;
     this.killed = true;
     this.killedSignal = signal;
   }

@@ -18,9 +18,9 @@ import {
   billingSubscriptions,
 } from "../../db/schemas/billing-subscriptions";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { retrieveStripeDunningObservation } from "./stripe-dunning-objects";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
@@ -127,6 +127,11 @@ export async function reconcileStripeDunningLifecycle(
   if (message.eventId !== event.id || message.eventType !== event.type)
     reject("queue_identity_mismatch");
   if (
+    (event.type === "invoice.payment_failed" && event.data.object.object !== "invoice") ||
+    (event.type === "customer.subscription.updated" && event.data.object.object !== "subscription")
+  )
+    reject("queue_object_type_mismatch");
+  if (
     event.type === "customer.subscription.updated" &&
     event.data.object.id !== stripeSubscriptionId
   )
@@ -182,7 +187,7 @@ export async function reconcileStripeDunningLifecycle(
       source.stripe_subscription_id,
     );
     if (raw.status !== "past_due" && raw.status !== "unpaid") reject("provider_status_changed");
-    const observation = validateStripeDunningObservation(raw, source, getCloudAwareEnv());
+    const observation = await retrieveStripeDunningObservation(source, raw, requireStripe());
     await finalizeDunningEvent({
       ...lease,
       subscriptionId: source.id,

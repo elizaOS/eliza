@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop power state ts behavior for app shell integration. */
 import * as fs from "node:fs";
 import path from "node:path";
 

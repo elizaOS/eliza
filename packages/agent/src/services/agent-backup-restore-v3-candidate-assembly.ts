@@ -13,9 +13,9 @@ import {
   type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3StagingSession,
   type AgentBackupRestoreV3StreamComponentName,
-  ElizaError,
   parseAgentBackupRestoreV3CandidateReceipt,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { materializeAgentBackupRestoreV3CandidateCharacter } from "./agent-backup-restore-v3-candidate-character";
 import {
   type AgentBackupRestoreV3CandidateDatabaseValidationReceipt,

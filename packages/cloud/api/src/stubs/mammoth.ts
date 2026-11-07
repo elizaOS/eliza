@@ -13,7 +13,7 @@
  */
 
 const NOT_AVAILABLE =
-  "mammoth is not available on Cloudflare Workers — DOCX text extraction runs on the Node sidecar (cloud/INFRA.md).";
+  "mammoth is not available on Cloudflare Workers — DOCX text extraction runs on the Node sidecar (plugins/plugin-assistant).";
 
 export function extractRawText(): never {
   throw new Error(NOT_AVAILABLE);

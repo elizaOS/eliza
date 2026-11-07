@@ -168,9 +168,9 @@ jobs:
     name: Build immutable candidate
     needs: authorize
     runs-on: ubuntu-24.04
-    # The capped turbo fan-out (RUN_TURBO_CONCURRENCY=3, needed to fit the
-    # hosted runner's memory) makes verify+test+build exceed two hours.
-    timeout-minutes: 210
+    # Verify runs one 8 GiB typecheck at a time to fit the 16 GiB hosted
+    # runner, so verify+test+build can exceed three hours.
+    timeout-minutes: 300
     permissions:
       actions: read
       contents: read
@@ -240,7 +240,7 @@ jobs:
 
       - name: Download prior immutable candidate
         if: inputs.candidate_run_id != 0
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ format('npm-release-candidate-{0}-{1}-{2}', inputs.source_sha, inputs.version, inputs.channel) }}
           path: ${{ runner.temp }}/release-candidate
@@ -250,16 +250,53 @@ jobs:
       - name: Verify release source before first pack
         if: inputs.candidate_run_id == 0
         env:
-          # verify's default typecheck fan-out (8 concurrent tsc processes)
-          # exceeds hosted-runner memory and gets the step SIGTERMed; cap it.
-          RUN_TURBO_CONCURRENCY: "3"
+          # Cloud API typecheck needs an 8 GiB heap. Three at once exceeds the
+          # 16 GiB hosted runner and the step exits 143; PR Validation uses 1.
+          RUN_TURBO_CONCURRENCY: "1"
         run: bun run verify
+
+      - name: Install Playwright browsers for release tests
+        if: inputs.candidate_run_id == 0
+        run: packages/scripts/github/install-playwright-browsers.sh chromium webkit
+
+      # The auth package's integration lane requires PostgreSQL, as in CI's
+      # "Login browser and PostgreSQL integration" job.
+      - name: Start owned PostgreSQL for login contracts
+        if: inputs.candidate_run_id == 0
+        shell: bash
+        env:
+          LOGIN_TEST_POSTGRES_CONTAINER: eliza-release-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
+          docker --config "$public_pull_config" run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
+            --env POSTGRES_PASSWORD=login_test --publish 5432:5432 \
+            --health-cmd "pg_isready -U postgres" --health-interval 10s \
+            --health-timeout 5s --health-retries 5 postgres:17
+          for ((attempt = 0; attempt < 45; attempt++)); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$LOGIN_TEST_POSTGRES_CONTAINER")"
+            if [ "$status" = healthy ]; then exit 0; fi
+            if [ "$status" = unhealthy ]; then break; fi
+            sleep 2
+          done
+          docker logs "$LOGIN_TEST_POSTGRES_CONTAINER"
+          echo "::error::Owned PostgreSQL container did not become healthy within 90 seconds."
+          exit 1
 
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0
         env:
           RUN_TURBO_CONCURRENCY: "3"
+          LOGIN_TEST_DATABASE_URL: postgres://postgres:login_test@127.0.0.1:5432/postgres
         run: bun run test
+
+      - name: Remove owned PostgreSQL
+        if: always() && inputs.candidate_run_id == 0
+        env:
+          LOGIN_TEST_POSTGRES_CONTAINER: eliza-release-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker rm --force --volumes "$LOGIN_TEST_POSTGRES_CONTAINER" >/dev/null 2>&1 || true
 
       - name: Rebind source immediately before pack
         if: inputs.candidate_run_id == 0
@@ -322,7 +359,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ format('npm-release-candidate-{0}-{1}-{2}', inputs.source_sha, inputs.version, inputs.channel) }}
           path: ${{ runner.temp }}/release-candidate
@@ -367,7 +404,7 @@ jobs:
           run-postinstall: "false"
 
       - name: Download verified tarball cohort
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}
           path: ${{ runner.temp }}/release-candidate
@@ -408,7 +445,7 @@ jobs:
             --token-env NODE_AUTH_TOKEN
 
       - name: Upload npm-verified candidate state
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}-npm-verified
           path: ${{ runner.temp }}/release-candidate
@@ -465,7 +502,7 @@ jobs:
           run-postinstall: "false"
 
       - name: Download npm-verified candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}-npm-verified
           path: ${{ runner.temp }}/release-candidate
@@ -521,7 +558,7 @@ jobs:
           --token-env GITHUB_TOKEN
 
       - name: Upload finalized transaction evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}-finalized
           path: ${{ runner.temp }}/release-candidate

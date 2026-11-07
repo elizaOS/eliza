@@ -42,10 +42,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from scripts.publish.hub_inventory import remote_lfs_shas
+from eliza_training.publish.hub_inventory import remote_lfs_shas
 DATA = ROOT / "data"
 DATASETS = ROOT / "datasets"
 

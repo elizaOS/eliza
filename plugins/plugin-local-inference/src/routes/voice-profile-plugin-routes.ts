@@ -15,8 +15,8 @@
  * unauthenticated callers before the handler runs.
  */
 import type * as http from "node:http";
-import { sendJsonError } from "@elizaos/core/api/http-helpers";
-import type { Route } from "@elizaos/core/api/http-plugin";
+import { sendJsonError } from "@elizaos/host";
+import type { Route } from "@elizaos/host/protocol";
 
 type VoicePrefixHandler = (
 	req: http.IncomingMessage,

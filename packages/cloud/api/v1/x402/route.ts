@@ -4,9 +4,9 @@
  * and signer addresses. Public; no auth required.
  */
 
+import { x402FacilitatorService } from "@elizaos/cloud-shared/lib/services/x402-facilitator";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

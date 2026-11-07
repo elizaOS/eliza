@@ -13,7 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { AgentRuntime } from '@elizaos/core';
-import { registerHttpPluginRoutes } from '@elizaos/core/api/http-plugin-runtime';
+import { registerHttpPluginRoutes } from '@elizaos/host/protocol';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';
@@ -184,15 +184,16 @@ function ownerArg(state: FakeServiceState, method: string): unknown {
 
 describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => {
   test('GET /api/workflow/status answers the Smithers engine descriptor', async () => {
-    const base = await startServer(makeRuntime());
+    const base = await startServer(makeRuntime({ embedded: makeWorkflowService({ calls: [] }) }));
 
     const res = await fetch(`${base}/api/workflow/status`);
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      mode: 'cloud',
+      mode: 'local',
       status: 'ready',
-      platform: 'cloud',
+      platform: 'runtime',
+      executionLocation: 'agent-runtime',
       engine: 'smthrs',
     });
   });
@@ -367,6 +368,7 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     ['GET', '/api/workflow/hosted/sources'],
     ['POST', '/api/workflow/hosted/sources'],
     ['POST', '/api/workflow/hosted/sources/revoke'],
+    ['POST', '/api/workflow/hosted/dossier'],
     ['GET', '/api/workflow/hosted/loops'],
     ['POST', '/api/workflow/hosted/loops'],
     ['GET', '/api/workflow/hosted/results'],

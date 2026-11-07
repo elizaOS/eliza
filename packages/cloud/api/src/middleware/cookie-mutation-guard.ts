@@ -12,10 +12,10 @@
  * session cookie into org mutations.
  */
 
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

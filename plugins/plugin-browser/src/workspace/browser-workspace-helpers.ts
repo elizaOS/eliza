@@ -19,6 +19,28 @@ import type {
 } from "./browser-workspace-types.js";
 
 export const DEFAULT_TIMEOUT_MS = 12_000;
+/** Transport budget for a command that runs in a real page (eval/Playwright). */
+export const BROWSER_COMMAND_TIMEOUT_MS = 30_000;
+export const BROWSER_COMMAND_TIMEOUT_GRACE_MS = 5_000;
+
+/** Keeps the transport alive long enough for commands with their own longer deadline. */
+export function resolveBrowserCommandTimeoutMs(
+  command: Pick<BrowserWorkspaceCommand, "timeoutMs">,
+  defaultTimeoutMs: number = BROWSER_COMMAND_TIMEOUT_MS,
+): number {
+  const requestedTimeoutMs = command.timeoutMs;
+  if (
+    typeof requestedTimeoutMs !== "number" ||
+    !Number.isFinite(requestedTimeoutMs) ||
+    requestedTimeoutMs < 0
+  ) {
+    return defaultTimeoutMs;
+  }
+  return Math.max(
+    defaultTimeoutMs,
+    requestedTimeoutMs + BROWSER_COMMAND_TIMEOUT_GRACE_MS,
+  );
+}
 export const DEFAULT_WAIT_INTERVAL_MS = 120;
 export const DEFAULT_WEB_PARTITION = "persist:eliza-browser";
 export const CONNECTOR_BROWSER_WORKSPACE_PARTITION_PREFIX =
@@ -61,16 +83,30 @@ export function normalizeBrowserWorkspaceText(value: unknown): string {
     .trim();
 }
 
+const BROWSER_WORKSPACE_BLOCK_SELECTOR =
+  "address, article, aside, blockquote, body, caption, dd, details, dialog, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, li, main, nav, ol, option, p, pre, section, summary, table, tbody, td, tfoot, th, thead, tr, ul";
+
 /** Page prose only; raw HTML remains available through the explicit html read. */
 export function readBrowserWorkspaceElementText(
   element: Element | null,
 ): string {
   if (!element || element.closest("script, style, template")) return "";
-  // SHOW_TEXT: walk without cloning or modifying the document being controlled.
-  const walker = element.ownerDocument.createTreeWalker(element, 4);
+  // SHOW_ELEMENT | SHOW_TEXT: walk without cloning or modifying the document being controlled.
+  const walker = element.ownerDocument.createTreeWalker(element, 5);
   const text: string[] = [];
+  let previousBlock: Element | null | undefined;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!node.parentElement?.closest("script, style, template")) {
+    if (node.parentElement?.closest("script, style, template")) continue;
+    if (node.nodeName === "BR" || node.nodeName === "HR") {
+      text.push(" ");
+    } else if (node.nodeType === 3) {
+      // Text in a different block than the preceding text starts a new line;
+      // inline elements share their block and stay unseparated.
+      const block = node.parentElement?.closest(
+        BROWSER_WORKSPACE_BLOCK_SELECTOR,
+      );
+      if (block !== previousBlock) text.push(" ");
+      previousBlock = block;
       text.push(node.nodeValue ?? "");
     }
   }

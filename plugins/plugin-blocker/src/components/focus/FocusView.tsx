@@ -9,11 +9,12 @@
  * surface today while the retained modality contract stays available for future
  * adapters.
  *
- * The default fetcher builds the URL from `client.getBaseUrl()`; tests inject a
+ * The default fetcher uses the authenticated `client.fetch`; tests inject a
  * `fetchStatus` / `releaseBlock` so they stay offline.
  */
 
-import { client } from "@elizaos/ui/api";
+import { ElizaError } from "@elizaos/core/protocol";
+import { client } from "@elizaos/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
@@ -33,33 +34,13 @@ interface FocusViewProps {
 /** Focus JSON GET is a short UI read — same 15s family as InboxView / HealthView. */
 export const FOCUS_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getFocusJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = FOCUS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Website blocker status request failed (${response.status}).`,
-    );
-  }
-  return (await response.json()) as T;
-}
-
 async function defaultFetchStatus(
   signal?: AbortSignal,
 ): Promise<SelfControlStatus> {
-  return getFocusJsonWithFetch<SelfControlStatus>(
-    `${client.getBaseUrl()}/api/website-blocker`,
-    globalThis.fetch,
-    FOCUS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<SelfControlStatus>(
+    "/api/website-blocker",
+    { method: "GET", signal },
+    { timeoutMs: FOCUS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
@@ -184,9 +165,22 @@ export function FocusView({
     requestPending.current = true;
     setRequest({ phase: "pending" });
     try {
-      const response = await client.sendChatRest(
+      const authority = client.getAuthorityRevision();
+      const assertCurrentAgent = () => {
+        if (client.getAuthorityRevision() !== authority) {
+          throw new ElizaError(
+            "The active agent changed. Request a focus session again.",
+            { code: "FOCUS_AGENT_CHANGED" },
+          );
+        }
+      };
+      const { conversation } = await client.createConversation("Focus session");
+      assertCurrentAgent();
+      const response = await client.sendConversationMessage(
+        conversation.id,
         "Start a focus session for me.",
       );
+      assertCurrentAgent();
       if (!response.text.trim()) {
         setRequest({
           phase: "error",

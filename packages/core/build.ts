@@ -1,19 +1,17 @@
-/** Emits the runtime and explicit protocol leaves without duplicating module state. */
+/** Emits the runtime and public protocol modules without duplicating module state. */
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import manifest from "./package.json" with { type: "json" };
 
 const root = fileURLToPath(new URL(".", import.meta.url));
-const assets = [
-	"catalog/generated.json",
-	"catalog/curated-app-definitions.json",
-	"catalog/channel-plugin-map.json",
-	"catalog/provider-plugin-map.json",
-	"catalog/short-id-plugin-map.json",
-	"restart-exit-code.json",
-];
+// Public data exports are the canonical list of runtime assets.
+const assets = Object.values(manifest.exports)
+	.map((entry) => (typeof entry === "string" ? entry : entry.default))
+	.filter((entry) => entry.endsWith(".json"))
+	.map((entry) => entry.replace(/^\.\/dist\//, ""));
 
 async function run(command: string, args: string[]): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
@@ -64,16 +62,18 @@ async function emitCore(): Promise<void> {
 		}
 		const files = await filesUnder(output);
 		// Publish dependencies before the root entry, retaining complete old files
-		// until each replacement is ready for concurrent package consumers.
+		// until each replacement is ready. This is per-file atomicity, not a
+		// whole-graph swap; hosts must restart after the build completes.
 		files.sort(
 			(a, b) =>
 				Number(a === "index.js" || a === "index.d.ts") -
 					Number(b === "index.js" || b === "index.d.ts") || a.localeCompare(b),
 		);
 		const dist = path.join(root, "dist");
-		await mkdir(dist, { recursive: true });
+		for (const directory of new Set(files.map((file) => path.dirname(file)))) {
+			await mkdir(path.join(dist, directory), { recursive: true });
+		}
 		for (const file of files) {
-			await mkdir(path.dirname(path.join(dist, file)), { recursive: true });
 			await rename(path.join(output, file), path.join(dist, file));
 		}
 		const emitted = new Set(files);

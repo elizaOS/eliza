@@ -89,10 +89,14 @@ or its restoration.
 The default `mode=load` enables the selected complete schemas in the next planner
 round. `mode=describe` reads descriptions and schemas without enabling them.
 Exact `names` load known operations or whole named families. `mode=describe`
-with `names=[]` reads the complete authorized catalog; an empty load searches
-for operations relevant to the current task. Exact-name and full-catalog requests
-are not limited to ten; no selected definition is truncated. Search and exact
-loads refresh permissions, and
+with `names=[]` reads the complete authorized catalog with full definitions while
+they fit core's action-result prompt-size threshold. A larger catalog returns an
+explicit complete index instead (`catalogDetail: "index"`,
+`completeDefinitions: false`): every family and child name, with its authored
+`descriptionCompressed` when it has one. Full definitions then come from exact
+names. An empty load searches for operations relevant to the current task.
+Exact-name and full-catalog requests are not limited to ten; no name or selected
+definition is truncated. Search and exact loads refresh permissions, and
 execution checks them again. Discovery does not execute domain work. There is
 one canonical planner discovery action. `SEARCH_ACTIONS` remains a cloud MCP
 simile for connector discovery, not a separate planner registry;
@@ -126,11 +130,101 @@ The same validated view reaches action field extraction through the existing
 request-bound dialogue handoff. Explicit full or invalid foreground selections
 retain full-context fallback. Canonical events and historical effect outcomes
 are unchanged. Explicit history
-reads and restoration recover complete originals before dependent work. Plain
+reads and restoration recover complete originals before dependent work. Initial
 replies do not acquire a source-classification field or an extra review call.
+After a successful native full-history read, the existing foreground selector
+and exact source labels are offered together. A complete valid selection can
+guide later stages; missing, stale or incomplete selections keep all originals.
 
 Historical observations qualify only through exact operation declarations on the
 registered action and canonical successful, non-replayed noop receipts. They
 follow their original request through source-bound history selection and full
 restoration. Mutation outcomes, undeclared operations and ambiguous bindings
 remain inline; stored receipts are unchanged.
+
+## Reviewed Clock handoffs
+
+`@elizaos/plugin-assistant/device-clock-review` exposes the renderer-safe review coordinator. The host supplies durable approved-journal checks, one-use native consent, dispatch and receipts. Await `retire()` before changing the session owner; failed cancellation remains retryable. An opened receipt confirms dispatch, not final alarm state. Set, dismiss and snooze may mutate alarms immediately after approval.
+
+`clock.handoff.v1` retains its one-off set payload without `days`. Explicit `days` requires `clock.handoff.v2`, including `[]` for one-off; daily is `[1,2,3,4,5,6,7]` and weekdays is `[2,3,4,5,6]`. Values follow [Android AlarmClock.EXTRA_DAYS](https://developer.android.com/reference/android/provider/AlarmClock#EXTRA_DAYS), Sunday=1 through Saturday=7. The exact unique integer array stays bound to the approved proposal; unsupported capabilities or repeat patterns are rejected instead of discarding recurrence.
+
+Run `bun run --cwd plugins/plugin-assistant test:clock-review-export` for source and packed-consumer checks. This uses a controlled host adapter and does not qualify Android Clock behavior.
+
+`clock.alarms.v1` adds Eliza-owned native alarms through `clock_alarm`: set,
+update, delete, enable, dismiss, snooze and show. It never opens an external Clock
+app. Set and update require exact time, label, phone timezone and repeat days;
+targeted changes require the current alarm UUID. The full authenticated phone
+snapshot supplies current alarms and explicit schedule/permission states. A
+stale or unavailable snapshot cannot prove the list is empty. Approval binds
+the durable store's `alarmsRevision` as `clockContextRevision`; native dispatch
+must recheck it. Applied typed receipts report actual saved or scheduled changes,
+not proof that a future alarm will ring. Historical receipt retrieval performs
+no new effect. Older `clock.handoff.v1/v2` clients retain their external handoff;
+owned-alarm clients receive only the owned operation schemas.
+
+## Authenticated device scope
+
+Device enrollment retains the authenticated subject for approval review, claims and receipts. The host may separately bind a verified local OWNER enrollment to the canonical workflow owner; external identities and USER/ADMIN subjects keep their own scope. Request JSON cannot choose that owner. Nullable `workflow_owner_id` preserves legacy enrollment fallback.
+
+An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
+
+Run `vitest run --config vitest.device-actions.config.ts` from this package for real HTTP/SQL device lifecycle, workflow-owner dispatch/receipt and additive-migration scenarios.
+
+The package root exports the memory, knowledge-delivery and notification actions.
+Hosts explicitly compose them; importing the package does not install those
+actions or change an existing host's selected behavior.
+
+Foreground device review supports Calendar free/busy, Notes content or title search,
+and name-targeted record edits. Each requires its negotiated capability. The phone
+owner selects records locally; receipts bind the exact approved fields and selected
+record revision. Reminder v2 timing is never sent to a v1 peer. No-match results are
+observations, not evidence of a completed edit.
+
+## Reviewed phone SMS
+
+The `sms.send.v1` device capability adds `sms_send` for the owner-approved
+[AlphaPhone communication scope](https://github.com/AlphaCompute/alphaphone/issues/421)
+and [MVP plan](https://github.com/AlphaCompute/alphaphone/blob/ef9825a6/docs/owner-approved-mvp-plan-2026-10-12.md).
+The host admits this capability only on its trusted AOSP image. The phone must
+review the exact recipients, text and active SIM on an unlocked screen before
+it sends. Use the execution claim's `providerIdempotencyKey` as the native
+operation ID. A repeated ID reads the journal; it must not send again.
+
+The receipt binds that ID, SIM and SHA-256 of `smsBindingText(operation)`.
+`submitted` proves only that the send API returned. `sent` requires all matching
+sent callbacks. `delivered` requires all matching delivery reports. The shared
+effect receipt proves submission only. Unknown and partial failures require
+reconciliation; they do not permit automatic retry. This contract does not
+implement MMS, native transport, SIM qualification or device delivery evidence.
+
+## Requested Camera capture
+
+The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.
+The renderer uses the existing Camera adapter to save one still image in Photos.
+It returns a bound receipt with the media ID and image dimensions; it does not
+send image bytes or a local file path to the agent. Browser media IDs remain
+strings and can contain 25 decimal digits.
+
+A request from Home uses the existing verified view handoff before capture.
+The current user message, device, foreground view and action preference must
+still match. A prior or uncertain request is not replayed. Camera permissions
+remain controlled by the device. Clients without this capability do not receive
+the operation in their tool schema.
+
+## Current-request Gmail policy
+
+A device that negotiates `gmail.request-policy.v1` may send the top-level
+`requestedActionPolicy: "initial-gmail-send-v1"` command with a new conversation
+request, or `"review-gmail-send-v1"` to require confirmation even for a known
+recipient. The authenticated request scope binds this choice to the canonical
+user message and conversation. Message metadata and model parameters cannot
+make this grant. Background, cancelled, revoked, copied, or older requests do
+not qualify.
+
+The generic policy selects a preference, not authority to send. Both modes
+currently retain exact later-turn send confirmation. A model-produced allow,
+message metadata, or a foreground request alone cannot bypass it. Cancellation,
+revocation, exact draft digest checks, and one-use approval remain enforced.
+Automatic text-only requested sends remain unimplemented until a host can bind
+a trusted user effect origin to the original request and exact message payload.
+This does not change Google scopes or permit replay of an uncertain send.

@@ -20,8 +20,8 @@ export function resolveKokoroTtfaBudgetMs(
 ): number {
 	const raw = env.KOKORO_SMOKE_TTFA_BUDGET_MS?.trim();
 	if (!raw) return KOKORO_MOBILE_TTFA_BUDGET_MS;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isFinite(parsed) || parsed <= 0) {
+	const parsed = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+	if (!Number.isSafeInteger(parsed) || parsed <= 0) {
 		throw new Error(
 			`[voice/kokoro] KOKORO_SMOKE_TTFA_BUDGET_MS must be a positive integer, got "${raw}"`,
 		);

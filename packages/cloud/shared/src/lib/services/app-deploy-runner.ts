@@ -6,27 +6,10 @@
  * runs the orchestration: ensure isolated tenant DB -> create container row
  * carrying that DSN -> enqueue CONTAINER_PROVISION -> link container to app.
  *
- * ── THE RUNTIME SPLIT (load-bearing) ─────────────────────────────────────────
- * `deployApp.ensureTenantDb` must run `CREATE DATABASE`/`CREATE ROLE` DDL, which
- * goes through `DirectPgExecutor` (node-`pg`). The cloud-api deploy route runs on
- * Cloudflare Workers (workerd) where `pg` does NOT load. So there are two ways to
- * wire `ensureTenantDb`, and the factory picks the right one by runtime:
- *
- *   (A) NODE runtime (the provisioning-worker daemon, or any node host of the
- *       deploy path): `ensureTenantDb` runs the real isolated provision inline
- *       via `userDatabaseService.provisionDatabase` backed by the injected
- *       `SqlTenantDbProvisioning` (DirectPgExecutor). Returns the per-tenant DSN.
- *
- *   (B) WORKER runtime (cloud-api): `ensureTenantDb` must NOT touch `pg`. The
- *       Worker-safe factory provisions in SHARED-DB fallback mode at request time
- *       (no DDL — just returns the shared DATABASE_URL the legacy path used), OR,
- *       once the daemon owns tenant-DB DDL, returns a placeholder the daemon
- *       overwrites before the container boots. Today's foundation keeps the
- *       isolated DDL on the node side, so the Worker factory uses the shared-DB
- *       provision (still isolated by app/agent UUID via plugin-sql) and leaves
- *       a TODO to move DDL into the CONTAINER_PROVISION executor when the daemon
- *       gains an ensure-tenant-db step. Either way the deploy route never calls
- *       `pg`, satisfying the workerd constraint.
+ * Tenant database provisioning runs on the Node provisioning worker through
+ * the injected isolated-database provisioner. Worker routes enqueue deployment;
+ * this runner fails closed when no provisioner is installed. It never substitutes
+ * the shared agent DATABASE_URL for a tenant database.
  *
  * The image is resolved from the app deploy source. `resolveImage` reads, in
  * order:
@@ -42,6 +25,7 @@
  * per-tenant DSN, never the shared agent URL — is asserted directly.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
@@ -232,93 +216,109 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       return;
     }
 
-    const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
-    const deployMetadata = {
-      ...appMetadata,
-      ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
-      ...(options.ref ? { ref: options.ref } : {}),
-      ...(options.dockerfile ? { dockerfile: options.dockerfile } : {}),
-    };
-    const image = await resolveImageRef(this.deps, {
-      id: app.id,
-      name: app.name,
-      metadata: deployMetadata,
-      repoUrl: app.github_repo ?? undefined,
-      organizationId: app.organization_id,
-    });
-    const containerName = containerNameForApp(appId, deploymentGeneration);
-
-    const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
-
-    // Retire the app's pre-existing container row(s) BEFORE creating the new one.
-    // Every deploy creates a fresh `containers` row under the same project key
-    // (project_name = appId); without retiring the old ones, their stale
-    // `stopped`/`failed` rows keep counting against the per-org container quota
-    // forever (the quota readers exclude only `deleting`/`deleted`). The atomic
-    // retirement transaction pairs each non-counting transition with the
-    // CONTAINER_DELETE job that owns teardown. Net effect: at most one active
-    // row per app without an unowned intermediate state.
-    await this.retirePriorContainers(app.organization_id, appId);
-
-    const createContainerRow =
-      this.deps.createContainerRow ??
-      (async (row: NewAppContainerRow) => {
-        // Enforce the per-org container quota atomically — the same cap
-        // (credit-balance-derived) the normal /v1/containers API uses. Without
-        // this, the apps deploy path bypassed quota entirely and one org could
-        // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
-        // QuotaExceededError when over cap; the deploy route surfaces it.
-        const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
-        return { containerId: created.id };
+    try {
+      if (!app.created_by_user_id) {
+        throw new ElizaError("The app's deployment principal is no longer available", {
+          code: "APP_DEPLOY_PRINCIPAL_UNAVAILABLE",
+          severity: "ephemeral",
+        });
+      }
+      const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
+      const deployMetadata = {
+        ...appMetadata,
+        ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
+        ...(options.ref ? { ref: options.ref } : {}),
+        ...(options.dockerfile ? { dockerfile: options.dockerfile } : {}),
+      };
+      const image = await resolveImageRef(this.deps, {
+        id: app.id,
+        name: app.name,
+        metadata: deployMetadata,
+        repoUrl: app.github_repo ?? undefined,
+        organizationId: app.organization_id,
       });
+      const containerName = containerNameForApp(appId, deploymentGeneration);
 
-    const orchestratorDeps: AppDeployDeps = {
-      ensureTenantDb: (id) => this.deps.ensureTenantDb(id, app.name),
-      createContainerRow,
-      enqueueProvision: (p) => enqueuer.enqueueProvision(p),
-      linkContainerToApp: async (id, containerId) => {
-        // Re-read for the freshest metadata before merging containerId in.
-        const current = await appsService.getById(id);
-        const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
-        // The public URL is deterministic from the container id (same ingress
-        // derivation as the agent path), so the deploy-status poll can surface
-        // it immediately. Skipped when no public base domain is configured.
-        const endpoint = deriveAppPublicUrl(containerId);
-        await appsService.updateDeploymentGeneration(
-          id,
+      const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
+
+      // Retire the app's pre-existing container row(s) BEFORE creating the new one.
+      // Every deploy creates a fresh `containers` row under the same project key
+      // (project_name = appId); without retiring the old ones, their stale
+      // `stopped`/`failed` rows keep counting against the per-org container quota
+      // forever (the quota readers exclude only `deleting`/`deleted`). The atomic
+      // retirement transaction pairs each non-counting transition with the
+      // CONTAINER_DELETE job that owns teardown. Net effect: at most one active
+      // row per app without an unowned intermediate state.
+      await this.retirePriorContainers(app.organization_id, appId);
+
+      const createContainerRow =
+        this.deps.createContainerRow ??
+        (async (row: NewAppContainerRow) => {
+          // Enforce the per-org container quota atomically — the same cap
+          // (credit-balance-derived) the normal /v1/containers API uses. Without
+          // this, the apps deploy path bypassed quota entirely and one org could
+          // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
+          // QuotaExceededError when over cap; the deploy route surfaces it.
+          const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
+          return { containerId: created.id };
+        });
+
+      const orchestratorDeps: AppDeployDeps = {
+        ensureTenantDb: (id) => this.deps.ensureTenantDb(id, app.name),
+        createContainerRow,
+        enqueueProvision: (p) => enqueuer.enqueueProvision(p),
+        linkContainerToApp: async (id, containerId) => {
+          // Re-read for the freshest metadata before merging containerId in.
+          const current = await appsService.getById(id);
+          const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
+          // The public URL is deterministic from the container id (same ingress
+          // derivation as the agent path), so the deploy-status poll can surface
+          // it immediately. Skipped when no public base domain is configured.
+          const endpoint = deriveAppPublicUrl(containerId);
+          await appsService.updateDeploymentGeneration(
+            id,
+            deploymentGeneration,
+            {
+              metadata: { ...existingMeta, containerId },
+              ...(endpoint ? { production_url: endpoint.url } : {}),
+            },
+            ["deploying"],
+          );
+        },
+      };
+
+      const result = await deployApp(
+        {
+          appId,
           deploymentGeneration,
-          {
-            metadata: { ...existingMeta, containerId },
-            ...(endpoint ? { production_url: endpoint.url } : {}),
-          },
-          ["deploying"],
-        );
-      },
-    };
+          organizationId: app.organization_id,
+          userId: app.created_by_user_id,
+          containerName,
+          image,
+          port: this.deps.port ?? 3000,
+          ...(options.env ? { env: options.env } : {}),
+          // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
+          // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
+          databaseMode: resolveAppDatabaseMode(appMetadata),
+        },
+        orchestratorDeps,
+      );
 
-    const result = await deployApp(
-      {
+      logger.info("[AppDeployRunner] deploy provisioned", {
+        appId,
+        containerId: result.containerId,
+        jobId: result.jobId,
+        image,
+      });
+    } catch (error) {
+      await appsService.updateDeploymentGeneration(
         appId,
         deploymentGeneration,
-        organizationId: app.organization_id,
-        userId: app.created_by_user_id,
-        containerName,
-        image,
-        port: this.deps.port ?? 3000,
-        ...(options.env ? { env: options.env } : {}),
-        // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
-        // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
-        databaseMode: resolveAppDatabaseMode(appMetadata),
-      },
-      orchestratorDeps,
-    );
-
-    logger.info("[AppDeployRunner] deploy provisioned", {
-      appId,
-      containerId: result.containerId,
-      jobId: result.jobId,
-      image,
-    });
+        { deployment_status: "failed" },
+        ["deploying"],
+      );
+      throw error;
+    }
   }
 
   /**

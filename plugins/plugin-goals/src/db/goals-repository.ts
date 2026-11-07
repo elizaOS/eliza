@@ -7,23 +7,23 @@
  * reminder/scheduling subsystem still reads + writes goal links
  * (`upsertGoalLink` / `deleteGoalLinksForLinked`), but through PA's own
  * repository, whose SQL was repointed to `app_goals` in the same carve — so a
- * single owner backs every reader. The `deleteGoal` cross-schema writes to
- * `app_lifeops.life_task_definitions` (spine FK-nullout) and
- * `app_lifeops.life_audit_events` (audit) stay on `app_lifeops`.
+ * single owner backs every reader. PA's own tables are written only by PA:
+ * it clears task references to a deleted goal and records goal audits through
+ * the hooks it passes to `GoalsService`.
  *
  * SQL execution + value encoding go through the self-contained {@link ./sql.ts}
  * helpers, so this repository has no dependency on plugin-personal-assistant.
  */
 
 import crypto from "node:crypto";
+import type {
+  LifeOpsActor,
+  LifeOpsAuditEventType,
+  LifeOpsGoalDefinition,
+  LifeOpsGoalLink,
+  LifeOpsOwnerType,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsActor,
-  type LifeOpsAuditEventType,
-  type LifeOpsGoalDefinition,
-  type LifeOpsGoalLink,
-  type LifeOpsOwnerType,
-} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   parseJsonRecord,
@@ -159,7 +159,22 @@ export class GoalsRepository {
   }
 
   async updateGoal(goal: LifeOpsGoalDefinition): Promise<void> {
-    await executeRawSql(
+    await this.writeGoal(goal);
+  }
+
+  /** Update only when the caller's source row is still current. */
+  async updateGoalIfUnchanged(
+    goal: LifeOpsGoalDefinition,
+    expectedUpdatedAt: string,
+  ): Promise<boolean> {
+    return this.writeGoal(goal, expectedUpdatedAt);
+  }
+
+  private async writeGoal(
+    goal: LifeOpsGoalDefinition,
+    expectedUpdatedAt?: string,
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_goals.life_goal_definitions
           SET domain = ${sqlQuote(goal.domain)},
@@ -177,7 +192,44 @@ export class GoalsRepository {
               metadata_json = ${sqlJson(goal.metadata)},
               updated_at = ${sqlQuote(goal.updatedAt)}
         WHERE id = ${sqlQuote(goal.id)}
-          AND agent_id = ${sqlQuote(goal.agentId)}`,
+          AND agent_id = ${sqlQuote(goal.agentId)}
+          ${
+            expectedUpdatedAt === undefined
+              ? ""
+              : `AND updated_at = ${sqlQuote(expectedUpdatedAt)}`
+          }
+      RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Record a computed review without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and the given top-level metadata keys change,
+   * merged into the stored metadata in SQL. A review computed from an earlier
+   * read (it can span an LLM call) must not revert a concurrent edit, status
+   * change or check-in written meanwhile.
+   */
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      metadataPatch: Record<string, unknown>;
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(review.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson(review.metadataPatch)}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(review.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
     );
   }
 
@@ -208,19 +260,41 @@ export class GoalsRepository {
     return rows.map(parseGoal);
   }
 
+  /**
+   * Record a check-in without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and `metadata.checkinLog` change, merged into
+   * the stored metadata in SQL, so an edit or review written while the
+   * check-in's task completion ran is kept.
+   */
+  async updateGoalCheckin(
+    agentId: string,
+    goalId: string,
+    checkin: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      checkinLog: readonly unknown[];
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(checkin.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson({ checkinLog: checkin.checkinLog })}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(checkin.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
+    );
+  }
+
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_goals.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND goal_id = ${sqlQuote(goalId)}`,
-    );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_task_definitions
-         SET goal_id = NULL
-       WHERE agent_id = ${sqlQuote(agentId)}
-         AND goal_id = ${sqlQuote(goalId)}`,
     );
     await executeRawSql(
       this.runtime,
@@ -277,10 +351,9 @@ export class GoalsRepository {
   }
 
   /**
-   * Append an audit event into PA's shared `app_lifeops.life_audit_events`
-   * table. Used by the standalone goals action's default `recordAudit` hook so
-   * goal creates/updates/deletes record exactly where PA records them. When PA
-   * is present it injects its own `recordAudit` (with the same SQL) instead.
+   * Append an audit event to this plugin's `app_goals.life_goal_audit_events`.
+   * Used by the standalone goals service's default `recordAudit` hook. When PA
+   * is present it injects its own `recordAudit` (into `app_lifeops`) instead.
    */
   async createAuditEvent(event: {
     id: string;
@@ -296,7 +369,7 @@ export class GoalsRepository {
   }): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_audit_events (
+      `INSERT INTO app_goals.life_goal_audit_events (
         id, agent_id, event_type, owner_type, owner_id, reason,
         inputs_json, decision_json, actor, created_at
       ) VALUES (

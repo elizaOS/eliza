@@ -1,0 +1,46 @@
+--- a/etc/prebuilt_etc.go
++++ b/etc/prebuilt_etc.go
+@@ -76,6 +76,7 @@
+ 	ctx.RegisterModuleType("prebuilt_bin", PrebuiltBinaryFactory)
+ 	ctx.RegisterModuleType("prebuilt_wallpaper", PrebuiltWallpaperFactory)
+ 	ctx.RegisterModuleType("prebuilt_priv_app", PrebuiltPrivAppFactory)
++	ctx.RegisterModuleType("prebuilt_app_native", PrebuiltAppNativeFactory)
+ 	ctx.RegisterModuleType("prebuilt_radio", PrebuiltRadioFactory)
+ 	ctx.RegisterModuleType("prebuilt_rfs", PrebuiltRfsFactory)
+ 	ctx.RegisterModuleType("prebuilt_framework", PrebuiltFrameworkFactory)
+@@ -1197,3 +1198,14 @@
+ 	android.InitDefaultableModule(module)
+ 	return module
+ }
++
++// PrebuiltAppNativeFactory installs admitted native APK payloads beside a prebuilt
++// application in <partition>/app/<relative_install_path>. APK import modules may
++// require these modules without relying on legacy Android.mk JNI installation.
++func PrebuiltAppNativeFactory() android.Module {
++	module := &PrebuiltEtc{}
++	InitPrebuiltEtcModule(module, "app")
++	android.InitAndroidArchModule(module, android.DeviceSupported, android.MultilibFirst)
++	android.InitDefaultableModule(module)
++	return module
++}
+--- a/etc/prebuilt_etc_test.go
++++ b/etc/prebuilt_etc_test.go
+@@ -634,3 +634,18 @@
+ 	expected := "out/target/product/test_device/product/media/alarms"
+ 	android.AssertPathRelativeToTopEquals(t, "install dir", expected, p.installDirPaths[0])
+ }
++
++func TestPrebuiltAppNativeProductInstallPath(t *testing.T) {
++	result := prepareForPrebuiltEtcTest.RunTestWithBp(t, `
++		prebuilt_app_native {
++			name: "alpha_native",
++			src: "foo.conf",
++			filename: "libalpha.so",
++			relative_install_path: "AlphaPhone/lib/arm64",
++			product_specific: true,
++		}
++	`)
++	p := result.Module("alpha_native", "android_arm64_armv8-a").(*PrebuiltEtc)
++	android.AssertPathRelativeToTopEquals(t, "install dir", "out/target/product/test_device/product/app/AlphaPhone/lib/arm64", p.installDirPaths[0])
++	android.AssertStringEquals(t, "installed filename", "libalpha.so", p.outputFilePaths[0].Base())
++}

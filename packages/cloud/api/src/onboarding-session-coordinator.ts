@@ -4,17 +4,17 @@
  * browser continuation-token lookup and migration from pre-coordinator data.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type {
   OnboardingChatInput,
   OnboardingChatMessage,
   OnboardingChatResult,
   OnboardingSession,
-} from "@/lib/services/eliza-app/onboarding-chat";
-import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { onboardingCoordinatorErrorResponse } from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-coordinator-transport";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface CoordinatorRequest {
   input: OnboardingChatInput;
@@ -394,7 +394,11 @@ export class OnboardingSessionCoordinator {
   }
 
   private async claimContinuation(request: Request): Promise<Response> {
-    const body = (await request.json()) as Record<string, unknown>;
+    const decodedClaim = await decodeRequestJson(request);
+    if (!decodedClaim.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body = decodedClaim.value as Record<string, unknown>;
     const claimId = typeof body.claimId === "string" ? body.claimId : "";
     const telegramId =
       typeof body.telegramId === "string" ? body.telegramId : "";
@@ -519,7 +523,11 @@ export class OnboardingSessionCoordinator {
   }
 
   private async completeContinuationClaim(request: Request): Promise<Response> {
-    const body = (await request.json()) as Record<string, unknown>;
+    const decodedComplete = await decodeRequestJson(request);
+    if (!decodedComplete.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body = decodedComplete.value as Record<string, unknown>;
     const claimId = typeof body.claimId === "string" ? body.claimId : "";
     const telegramId =
       typeof body.telegramId === "string" ? body.telegramId : "";
@@ -559,7 +567,11 @@ export class OnboardingSessionCoordinator {
    * coordinators, so one drain call claims the whole platform queue.
    */
   private async enqueueGreeting(request: Request): Promise<Response> {
-    const body: unknown = await request.json();
+    const decodedEnqueue = await decodeRequestJson(request);
+    if (!decodedEnqueue.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body: unknown = decodedEnqueue.value;
     if (!isValidGreeting(body)) {
       return Response.json({ error: "Invalid greeting" }, { status: 400 });
     }
@@ -575,7 +587,11 @@ export class OnboardingSessionCoordinator {
    * a crash or lost response therefore becomes recoverable after lease expiry.
    */
   private async drainGreetings(request: Request): Promise<Response> {
-    const body: unknown = await request.json();
+    const decodedDrain = await decodeRequestJson(request);
+    if (!decodedDrain.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body: unknown = decodedDrain.value;
     const requested =
       body && typeof body === "object" && "limit" in body
         ? Number((body as { limit?: unknown }).limit)
@@ -621,7 +637,11 @@ export class OnboardingSessionCoordinator {
 
   /** Deletes only greetings still owned by the acknowledging lease. */
   private async acknowledgeGreetings(request: Request): Promise<Response> {
-    const body: unknown = await request.json();
+    const decodedAck = await decodeRequestJson(request);
+    if (!decodedAck.ok) {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body: unknown = decodedAck.value;
     const acknowledgements =
       body && typeof body === "object" && "acknowledgements" in body
         ? (body as { acknowledgements?: unknown }).acknowledgements
@@ -662,7 +682,7 @@ export class OnboardingSessionCoordinator {
     // outage must not report a successful admission as a failed delivery.
     try {
       const { mirrorOnboardingSessionToCache } = await import(
-        "@/lib/services/eliza-app/onboarding-chat"
+        "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat"
       );
       await mirrorOnboardingSessionToCache(session);
     } catch (error) {
@@ -684,7 +704,9 @@ export class OnboardingSessionCoordinator {
       deliverCommittedProactiveGreeting,
       loadCachedOnboardingSession,
       runOnboardingChatWithStore,
-    } = await import("@/lib/services/eliza-app/onboarding-chat");
+    } = await import(
+      "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat"
+    );
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
     // A messaging turn is anonymous, so it can only ever name the platform
@@ -896,7 +918,14 @@ export class OnboardingSessionCoordinator {
               );
         }
         if (pathname === "/inspect") {
-          const body: unknown = await request.json();
+          const decodedInspect = await decodeRequestJson(request);
+          if (!decodedInspect.ok) {
+            return Response.json(
+              { error: "Invalid JSON body" },
+              { status: 400 },
+            );
+          }
+          const body: unknown = decodedInspect.value;
           const sessionId =
             body && typeof body === "object" && "sessionId" in body
               ? (body as { sessionId?: unknown }).sessionId
@@ -939,7 +968,14 @@ export class OnboardingSessionCoordinator {
           return Response.json({ error: "Session not found" }, { status: 404 });
         }
         if (pathname === "/bind") {
-          const body: unknown = await request.json();
+          const decodedBind = await decodeRequestJson(request);
+          if (!decodedBind.ok) {
+            return Response.json(
+              { error: "Invalid JSON body" },
+              { status: 400 },
+            );
+          }
+          const body: unknown = decodedBind.value;
           const sessionId =
             body && typeof body === "object" && "sessionId" in body
               ? (body as { sessionId?: unknown }).sessionId

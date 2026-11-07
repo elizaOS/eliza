@@ -1,6 +1,8 @@
 /** Exports the storage-neutral journal and production-derived controller composition. */
 
 export { LeaseFencedSyntheticCommandJournal } from "./command-journal";
+export type { SyntheticWorldControlAuthority } from "./control-authority.ts";
+export { createSyntheticWorldControlAuthority } from "./control-authority.ts";
 export type {
   SyntheticCommandJournalExpected,
   SyntheticCommandJournalIdentity,
@@ -18,7 +20,15 @@ export type {
   ProductionSyntheticWorldRuntimeProof,
 } from "./production-controller";
 export { bootProductionSyntheticWorldController } from "./production-controller";
-export { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
+export type {
+  SyntheticScenarioWorld,
+  SyntheticScenarioWorldOptions,
+  SyntheticSeedRequest,
+} from "./scenario-world.ts";
+export {
+  parseSyntheticScenarioManifest,
+  startSyntheticScenarioWorld,
+} from "./scenario-world.ts";
 export type {
   SyntheticCommandCheckpoint,
   SyntheticCommandExecution,

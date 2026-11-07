@@ -1,6 +1,6 @@
-/** Implements Electrobun desktop browser workspace bridge server ts behavior for app shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
+import { readJsonBody } from "./bridge-http.ts";
 import type { BrowserWorkspaceEventType } from "./native/browser-workspace";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
@@ -85,26 +85,6 @@ function json(
 	res.end(JSON.stringify(scrubStack(body)));
 }
 
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
-	const chunks: Buffer[] = [];
-	let size = 0;
-
-	for await (const chunk of req) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-		size += buffer.length;
-		if (size > MAX_BODY_BYTES) {
-			throw new Error("request body too large");
-		}
-		chunks.push(buffer);
-	}
-
-	if (chunks.length === 0) {
-		return null;
-	}
-
-	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
-}
-
 function isAuthorized(req: http.IncomingMessage, token: string): boolean {
 	// Always require a non-empty token. The caller generates a random token at
 	// startup, so an empty token here indicates a misconfiguration — reject.
@@ -125,7 +105,11 @@ function normalizeTabId(raw: string): string | null {
 function readIntegerSearchParam(url: URL, key: string): number | undefined {
 	const raw = url.searchParams.get(key)?.trim();
 	if (!raw) return undefined;
-	const parsed = Number.parseInt(raw, 10);
+	// Number.parseInt stops at the first non-digit, so "10junk" parsed to a
+	// finite 10 and was accepted as a deliberate value instead of being
+	// treated as absent. Require the whole trimmed value to be decimal,
+	// mirroring resolveGenerationTimeoutMs in the discord plugin.
+	const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -140,11 +124,14 @@ function readBrowserWorkspaceEventType(
 }
 
 export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
+	const rawPort = (process.env.ELIZA_BROWSER_WORKSPACE_PORT ?? "").trim();
 	const requestedPort =
-		Number.parseInt(
-			(process.env.ELIZA_BROWSER_WORKSPACE_PORT ?? "").trim(),
-			10,
-		) || DEFAULT_BRIDGE_PORT;
+		// Number.parseInt stops at the first non-digit, so "8080junk" parsed
+		// to 8080 and was accepted as the requested port instead of falling
+		// back to the default. Require the whole trimmed value to be decimal,
+		// mirroring resolveGenerationTimeoutMs in the discord plugin.
+		(/^\+?\d+$/.test(rawPort) ? Number(rawPort) : Number.NaN) ||
+		DEFAULT_BRIDGE_PORT;
 	const port = await findFirstAvailableLoopbackPort(requestedPort, {
 		host: "127.0.0.1",
 		maxHops: 32,
@@ -197,7 +184,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 
 			if (pathname === "/tabs" && method === "POST") {
 				const body =
-					(await readJsonBody<BrowserWorkspaceCreateBody>(req)) ?? {};
+					(await readJsonBody<BrowserWorkspaceCreateBody>(
+						req,
+						MAX_BODY_BYTES,
+					)) ?? {};
 				json(res, 200, {
 					tab: await manager.openTab({
 						url: body.url,
@@ -216,7 +206,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 
 			if (pathname === "/sessions/acquire" && method === "POST") {
 				const body =
-					(await readJsonBody<BrowserWorkspaceAcquireSessionBody>(req)) ?? {};
+					(await readJsonBody<BrowserWorkspaceAcquireSessionBody>(
+						req,
+						MAX_BODY_BYTES,
+					)) ?? {};
 				if (!body.provider?.trim() || !body.accountId?.trim()) {
 					json(res, 400, { error: "provider and accountId are required" });
 					return;
@@ -280,7 +273,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 			}
 
 			if (action === "navigate" && method === "POST") {
-				const body = await readJsonBody<BrowserWorkspaceNavigateBody>(req);
+				const body = await readJsonBody<BrowserWorkspaceNavigateBody>(
+					req,
+					MAX_BODY_BYTES,
+				);
 				if (!body?.url) {
 					json(res, 400, { error: "url is required" });
 					return;
@@ -291,7 +287,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 			}
 
 			if (action === "eval" && method === "POST") {
-				const body = await readJsonBody<BrowserWorkspaceEvalBody>(req);
+				const body = await readJsonBody<BrowserWorkspaceEvalBody>(
+					req,
+					MAX_BODY_BYTES,
+				);
 				if (!body?.script?.trim()) {
 					json(res, 400, { error: "script is required" });
 					return;

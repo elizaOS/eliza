@@ -16,14 +16,14 @@
  */
 
 import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 import {
   INBOX_CHANNEL_LABELS,
   INBOX_CHANNELS,

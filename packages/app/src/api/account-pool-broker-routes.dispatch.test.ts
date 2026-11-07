@@ -22,12 +22,12 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accounts";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { __resetDefaultAccountPoolForTests } from "../services/account-pool.js";
 import { __resetAccountPoolBrokerRoutesForTests } from "./account-pool-broker-routes.js";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleElizaCompatRoute } from "./server";
@@ -60,13 +60,13 @@ beforeEach(() => {
   process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED = "1";
   process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET = SECRET;
   delete process.env.ELIZA_ACCOUNT_POOL_BROKER_LEASE_TTL_MS;
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
   __resetAccountPoolBrokerRoutesForTests();
 });
 
 afterEach(() => {
   __resetAccountPoolBrokerRoutesForTests();
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
   for (const k of ENV_KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];

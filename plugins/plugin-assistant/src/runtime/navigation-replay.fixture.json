@@ -1,0 +1,66 @@
+{
+  "traceId": "d7ba485b2f56409e8848f629775c53c8",
+  "trajectory": {
+    "outcomeIntents": ["Open the Notes view"],
+    "archivedSteps": [],
+    "plannedQueue": [],
+    "steps": [
+      {
+        "toolCall": {
+          "name": "VIEWS",
+          "params": {
+            "action": "show",
+            "view": "notes"
+          }
+        },
+        "result": {
+          "success": true,
+          "transcriptVisibility": "internal",
+          "modelReplyRequired": true,
+          "data": {
+            "navigation": {
+              "effect": "view_navigation",
+              "status": "delivered",
+              "viewId": "notes",
+              "path": "/notes",
+              "label": "Notes",
+              "stepId": null,
+              "handoffId": "f0c43b4b-ae1d-4dcf-87af-20f7071fce75"
+            },
+            "view": {
+              "id": "notes",
+              "label": "Notes"
+            },
+            "values": {
+              "mode": "show",
+              "viewId": "notes",
+              "viewPath": "/notes",
+              "viewType": "gui",
+              "label": "Notes",
+              "completedActionDelivered": true,
+              "completedActionHandoffId": "f0c43b4b-ae1d-4dcf-87af-20f7071fce75"
+            }
+          }
+        }
+      }
+    ],
+    "evaluatorOutputs": [],
+    "context": {}
+  },
+  "rawEvaluator": {
+    "thought": "The requested outcome is met: this turn's VIEWS show for Notes returned success with a delivered navigation receipt (handoff f0c43b4b, completedActionDelivered=true), unlike prior false claims. No other clauses remain; reply briefly confirming the open view.",
+    "success": true,
+    "decision": "FINISH",
+    "requestFullyCovered": true,
+    "outcomeCoverage": [
+      {
+        "intentId": "intent:1",
+        "status": "completed",
+        "evidenceStepIds": ["step:1"]
+      }
+    ],
+    "messageToUser": "Notes is open this time for real.",
+    "replyEffectStatus": "applied",
+    "effectReceiptIds": ["f0c43b4b-ae1d-4dcf-87af-20f7071fce75"]
+  }
+}

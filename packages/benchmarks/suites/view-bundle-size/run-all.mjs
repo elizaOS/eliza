@@ -16,15 +16,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  HERE,
-  join,
-  kb,
-  mkdirSync,
-  RESULTS_ROOT,
-  readLatest,
-  writeFileSync,
-} from "./lib.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { HERE, kb, RESULTS_ROOT, readLatest } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");

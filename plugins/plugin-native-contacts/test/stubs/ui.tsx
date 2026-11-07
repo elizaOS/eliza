@@ -49,3 +49,17 @@ export function isElizaOS(): boolean {
 }
 
 export function registerOverlayApp(): void {}
+
+export { useAgentElement } from "../../../../packages/ui/src/agent-surface/useAgentElement.ts";
+export { PermissionRecoveryCallout } from "../../../../packages/ui/src/components/permissions/PermissionRecoveryCallout.tsx";
+export { dispatchNavigateViewEvent } from "../../../../packages/ui/src/events/index.ts";
+export {
+  Button as SpatialButton,
+  Card as SpatialCard,
+  Divider as SpatialDivider,
+  Field,
+  HStack as SpatialHStack,
+  List as SpatialList,
+  Text as SpatialText,
+  VStack as SpatialVStack,
+} from "../../../../packages/ui/src/spatial/primitives.tsx";

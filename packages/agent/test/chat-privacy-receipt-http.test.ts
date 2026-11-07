@@ -12,7 +12,7 @@ import {
   PRIVACY_DENIED_TEXT,
   type RunEventPayload,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { startApiServer } from "../src/api/server.ts";

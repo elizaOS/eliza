@@ -16,14 +16,14 @@
  */
 
 import {
-  Button,
-  Card,
+  SpatialButton as Button,
+  SpatialCard as Card,
   Escape,
   Field,
-  HStack,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialHStack as HStack,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 import type { CSSProperties } from "react";
 
 /** A single label/value summary row, already projected to display strings. */

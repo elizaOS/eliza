@@ -31,6 +31,7 @@ import type { AppCommandLease } from "./app-billing-command-runtime";
 import { requireAppBillingDeletionRecovery } from "./app-billing-deletion-authority";
 import { appBillingMembershipEnvironment } from "./app-billing-membership-scope";
 import { consumeAppBillingQuote } from "./app-billing-update-quotes";
+import { readAppPilotAccess } from "./app-pilot-access";
 import { ensureBillingIdentitySubject } from "./billing-identities";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -497,6 +498,10 @@ export class AppSubscriptionAuthorityRepository {
       try {
         if (!administrator.newWorkAllowed)
           appBillingConflict("The purchaser account cannot start new billing work");
+        if (input.kind === "checkout" && (await readAppPilotAccess(tx, scope)))
+          appBillingConflict(
+            "Pilot access is active; paid continuation requires a later explicit checkout",
+          );
         const plan = input.targetPlanRevisionId
           ? await planForScope(tx, scope, input.targetPlanRevisionId)
           : null;

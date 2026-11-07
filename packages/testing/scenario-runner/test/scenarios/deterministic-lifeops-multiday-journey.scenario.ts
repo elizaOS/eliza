@@ -42,14 +42,16 @@ import {
 } from "@elizaos/core";
 import type {
   CapturedAction,
-  RuntimeWithScenarioModelFixtures,
   ScenarioContext,
   ScenarioTurnExecution,
-  StrictActionRouteFixture,
 } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/testing/models";
 
-import { typedTurnEvaluationFixtures } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
+import { typedTurnEvaluationFixtures } from "@elizaos/testing/models";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 

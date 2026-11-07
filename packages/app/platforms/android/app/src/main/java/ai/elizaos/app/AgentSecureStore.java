@@ -24,7 +24,9 @@ import org.json.JSONObject;
 
 /** Same-UID agent bridge. Only ciphertext is persisted; keys never leave Android Keystore. */
 final class AgentSecureStore implements AutoCloseable {
-    private static final String KEY_ALIAS = "ai.elizaos.app.remote-target.v1";
+    /** Installed Keystore alias and no-backup directory; {@link ElizaDataResetStores} lists both. */
+    static final String KEY_ALIAS = "ai.elizaos.app.remote-target.v1";
+    static final String DIRECTORY_NAME = "remote-target-secrets";
     private static final int MAX_FRAME = 4 * 1024 * 1024;
     private final File directory;
     private final LocalServerSocket server;
@@ -32,7 +34,7 @@ final class AgentSecureStore implements AutoCloseable {
     private volatile LocalSocket active;
 
     AgentSecureStore(Context context) throws IOException {
-        directory = new File(context.getNoBackupFilesDir(), "remote-target-secrets");
+        directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create secure storage");
         server = new LocalServerSocket("ai.elizaos.app.secure-store");
         Thread worker = new Thread(this::serve, "ElizaSecureStore");
@@ -44,22 +46,25 @@ final class AgentSecureStore implements AutoCloseable {
         while (!closed) {
             try (LocalSocket socket = server.accept()) {
                 active = socket;
-                if (socket.getPeerCredentials().getUid() != Process.myUid()) continue;
+                int peerUid = socket.getPeerCredentials().getUid();
+                if (peerUid != Process.myUid()) continue;
                 socket.setSoTimeout(15000);
                 InputStream input = socket.getInputStream();
                 while (!closed) {
-                    byte[] header = input.readNBytes(4);
+                    byte[] header = SecureStoreFrameInput.readBounded(input, 4);
                     if (header.length == 0) break;
                     if (header.length != 4) throw new IOException("Incomplete secure-store frame");
                     long size = 0;
                     for (int i = 0; i < 4; i++) size |= ((long) header[i] & 255) << (i * 8);
                     if (size < 1 || size > MAX_FRAME) throw new IOException("Secure-store frame exceeds limit");
-                    byte[] bytes = input.readNBytes((int) size);
+                    byte[] bytes = SecureStoreFrameInput.readBounded(input, (int) size);
                     if (bytes.length != size) throw new IOException("Incomplete secure-store request");
                     JSONObject request = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
                     JSONObject response;
                     try {
-                        response = execute(request);
+                        response = execute(request, peerUid);
+                    } catch (NativeSourceHost.OwnerReminderContextUnavailable unavailable) {
+                        response = new JSONObject().put("ok", false).put("reason", "unavailable");
                     } catch (SecurityException error) {
                         response = new JSONObject().put("ok", false).put("reason", "denied");
                     } catch (Exception error) {
@@ -100,7 +105,13 @@ final class AgentSecureStore implements AutoCloseable {
         return (SecretKey) store.getKey(KEY_ALIAS, null);
     }
 
-    private JSONObject execute(JSONObject request) throws Exception {
+    private JSONObject execute(JSONObject request, int peerUid) throws Exception {
+        if (peerUid != Process.myUid()) throw new SecurityException("Unauthorized secure-store peer");
+        if ("nativeOwnerContext".equals(request.optString("operation"))) {
+            String id = request.optString("id");
+            if (request.length() != 2 || id.isEmpty() || id.length() > 128) throw new SecurityException("Invalid native owner request");
+            return new JSONObject().put("ok", true).put("context", NativeSourceHost.readOwnerReminderContext(peerUid, Process.myUid()));
+        }
         String vault = request.getString("vaultId");
         String kind = request.getString("secretKind");
         String operation = request.getString("operation");
@@ -156,6 +167,9 @@ final class AgentSecureStore implements AutoCloseable {
         try { if (active != null) active.close(); } catch (IOException error) {
             Log.w("ElizaSecureStore", "Could not close secure-store client");
         }
+        // close() alone leaves accept() blocked and the abstract address bound.
+        try { android.system.Os.shutdown(server.getFileDescriptor(), android.system.OsConstants.SHUT_RDWR); }
+        catch (android.system.ErrnoException ignored) { /* Already closed; close() below still runs. */ }
         try { server.close(); } catch (IOException error) {
             Log.w("ElizaSecureStore", "Could not close secure-store listener");
         }

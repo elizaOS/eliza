@@ -1,6 +1,7 @@
 // Coordinates cloud service credit balance response behavior behind route handlers.
+
+import type { CreditBalanceResponse } from "@elizaos/cloud-shared/types";
 import { ApiError, NotFoundError } from "../api/cloud-worker-errors";
-import type { CreditBalanceResponse } from "../types/cloud-api";
 import { organizationsService } from "./organizations";
 
 export async function getCreditBalanceResponse(

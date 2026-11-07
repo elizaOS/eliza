@@ -6,16 +6,16 @@
  * POST   /api/v1/advertising/accounts/[id]/reject  — reject/suspend an account (admin).
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
   requireAdmin,
   requireUserOrApiKeyWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import { UpdateAdAccountSchema } from "@/lib/services/advertising/schemas";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import { UpdateAdAccountSchema } from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

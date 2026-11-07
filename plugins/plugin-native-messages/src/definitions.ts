@@ -41,3 +41,25 @@ export interface MessagesPlugin {
 export interface MessagesPermissionStatus {
   sms: import("@capacitor/core").PermissionState;
 }
+
+/**
+ * The AOSP telephony profile: a host subclasses the native `TelephonyPlugin`
+ * (`ai.eliza.plugins.messages`) under its own plugin name and registers it only
+ * when its native admission proves the install is its AOSP image. Renderers use
+ * `createTelephonyClient` from `@elizaos/contracts/native-telephony` with that
+ * plugin; elsewhere every call is refused before it reaches native code.
+ */
+export type {
+  SmsMessage,
+  SmsReview,
+  SmsSendResult,
+  SmsThread,
+  TelephonyAccessKind,
+  TelephonyClient,
+  TelephonyContactCard,
+  TelephonyHandoffResult,
+  TelephonyNativePlugin,
+  TelephonyRole,
+  TelephonyStatus,
+  TelephonySubscription,
+} from "@elizaos/contracts/native-telephony";

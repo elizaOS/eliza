@@ -4,8 +4,23 @@
  * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
  * logic lives in the health plugin; this is a thin owner-access wrapper.
  */
+
+import type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+  SyncLifeOpsHealthConnectorRequest,
+} from "@elizaos/contracts";
+import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "@elizaos/contracts";
 import {
-  completeHealthConnectorOAuth,
   deleteStoredHealthToken,
   detectHealthBackend,
   getDailySummary,
@@ -19,34 +34,11 @@ import {
   type HealthDataPoint,
   HealthOAuthError,
   refreshStoredHealthToken,
-  startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
-import type {
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthDailySummary,
-  LifeOpsHealthMetric,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import {
-  createLifeOpsConnectorGrant,
-  createLifeOpsHealthSyncState,
-} from "../repository.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
+import { createLifeOpsHealthSyncState } from "../repository.js";
 import {
   fail,
   normalizeEnumValue,
@@ -57,7 +49,11 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
-import { parseLocalDateKey } from "../time.js";
+import {
+  getLocalDateKey,
+  getZonedDateParts,
+  parseLocalDateKey,
+} from "../time.js";
 import {
   getHealthDataConnectorStatus,
   getHealthDataConnectorStatuses,
@@ -112,31 +108,6 @@ function normalizeOptionalHealthProvider(
   return normalizeHealthProvider(value);
 }
 
-function normalizeHealthCapabilities(
-  value: unknown,
-): LifeOpsHealthConnectorCapability[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    fail(400, "capabilities must be an array");
-  }
-  const capabilities: LifeOpsHealthConnectorCapability[] = [];
-  const seen = new Set<LifeOpsHealthConnectorCapability>();
-  for (const candidate of value) {
-    const capability = normalizeEnumValue(
-      candidate,
-      "capabilities[]",
-      LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-    );
-    if (!seen.has(capability)) {
-      seen.add(capability);
-      capabilities.push(capability);
-    }
-  }
-  return capabilities;
-}
-
 function normalizeDateOnly(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -166,14 +137,32 @@ function dateOnlyFromMs(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function resolveHealthWindow(request: {
-  startDate?: string | null;
-  endDate?: string | null;
-  days?: number;
-}): { startDate: string; endDate: string; days: number } {
+/**
+ * The requested health window. Daily samples and sleep are keyed by the
+ * provider's local day, so the default `endDate` is the owner's local date
+ * (a UTC "today" is a day early or late away from UTC). Workouts and the
+ * connector APIs bound by instants, reading dates as UTC days; for them the
+ * default window ends on the later of the owner's and the UTC date
+ * (`instantEndDate`), so it still reaches the present for owners west of UTC.
+ */
+function resolveHealthWindow(
+  request: {
+    startDate?: string | null;
+    endDate?: string | null;
+    days?: number;
+  },
+  today: { owner: string; utc: string },
+): {
+  startDate: string;
+  endDate: string;
+  instantEndDate: string;
+  days: number;
+} {
   const days = normalizeDays(request.days);
-  const endDate =
-    normalizeDateOnly(request.endDate, "endDate") ?? dateOnlyFromMs(Date.now());
+  const explicitEnd = normalizeDateOnly(request.endDate, "endDate");
+  const endDate = explicitEnd ?? today.owner;
+  const instantEndDate =
+    explicitEnd ?? (today.owner > today.utc ? today.owner : today.utc);
   const startDate =
     normalizeDateOnly(request.startDate, "startDate") ??
     dateOnlyFromMs(
@@ -182,7 +171,20 @@ function resolveHealthWindow(request: {
   if (startDate > endDate) {
     fail(400, "startDate must be on or before endDate");
   }
-  return { startDate, endDate, days };
+  // The sample read has no row limit, so the window is its only bound. A
+  // window above the maximum is refused, not read in part.
+  const windowDays =
+    (Date.parse(`${endDate}T00:00:00.000Z`) -
+      Date.parse(`${startDate}T00:00:00.000Z`)) /
+      86_400_000 +
+    1;
+  if (windowDays > MAX_HEALTH_SUMMARY_DAYS) {
+    fail(
+      400,
+      `startDate to endDate must be ${MAX_HEALTH_SUMMARY_DAYS} days or less`,
+    );
+  }
+  return { startDate, endDate, instantEndDate, days };
 }
 
 function normalizeHealthMetrics(
@@ -378,124 +380,6 @@ export class HealthDomain {
     );
   }
 
-  async startHealthConnector(
-    request: StartLifeOpsHealthConnectorRequest,
-    requestUrl: URL,
-  ): Promise<StartLifeOpsHealthConnectorResponse> {
-    const provider = normalizeHealthProvider(request.provider);
-    const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    if (mode === "cloud_managed") {
-      fail(
-        501,
-        "Cloud-managed health OAuth is not wired for this provider yet.",
-      );
-    }
-    const side =
-      normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-    const capabilities = normalizeHealthCapabilities(request.capabilities);
-    try {
-      return startHealthConnectorOAuth({
-        provider,
-        agentId: this.ctx.agentId(),
-        side,
-        mode,
-        requestUrl,
-        redirectUrl: normalizeOptionalString(request.redirectUrl),
-        capabilities,
-      });
-    } catch (error) {
-      if (error instanceof HealthOAuthError) {
-        fail(error.status, error.message);
-      }
-      this.ctx.logLifeOpsError("health_connector_start", error, { provider });
-      throw error;
-    }
-  }
-
-  async completeHealthConnectorCallback(
-    callbackUrl: URL,
-  ): Promise<LifeOpsHealthConnectorStatus> {
-    try {
-      const result = await completeHealthConnectorOAuth(callbackUrl);
-      if (result.agentId !== this.ctx.agentId()) {
-        fail(
-          409,
-          "Health connector callback does not belong to the active agent.",
-        );
-      }
-      const existingGrant = await this.ctx.repository.getConnectorGrant(
-        this.ctx.agentId(),
-        result.provider,
-        result.mode,
-        result.side,
-      );
-      const nowIso = new Date().toISOString();
-      const grant = existingGrant
-        ? {
-            ...existingGrant,
-            identity: { ...result.identity },
-            grantedScopes: [...result.grantedScopes],
-            capabilities: [...result.grantedCapabilities],
-            tokenRef: result.tokenRef,
-            executionTarget: "local" as const,
-            sourceOfTruth: "local_storage" as const,
-            cloudConnectionId: null,
-            metadata: {
-              ...existingGrant.metadata,
-              authState: "connected",
-              expiresAt: result.expiresAt,
-              hasRefreshToken: result.hasRefreshToken,
-            },
-            lastRefreshAt: nowIso,
-            updatedAt: nowIso,
-          }
-        : createLifeOpsConnectorGrant({
-            agentId: this.ctx.agentId(),
-            provider: result.provider,
-            side: result.side,
-            identity: { ...result.identity },
-            grantedScopes: [...result.grantedScopes],
-            capabilities: [...result.grantedCapabilities],
-            tokenRef: result.tokenRef,
-            mode: result.mode,
-            executionTarget: "local",
-            sourceOfTruth: "local_storage",
-            metadata: {
-              authState: "connected",
-              expiresAt: result.expiresAt,
-              hasRefreshToken: result.hasRefreshToken,
-            },
-            lastRefreshAt: nowIso,
-          });
-      await this.ctx.repository.upsertConnectorGrant(grant);
-      await this.ctx.recordConnectorAudit(
-        `${result.provider}:${result.mode}`,
-        "health connector granted",
-        {
-          provider: result.provider,
-          side: result.side,
-          mode: result.mode,
-          capabilities: result.grantedCapabilities,
-        },
-        {
-          tokenRef: result.tokenRef,
-          expiresAt: result.expiresAt,
-        },
-      );
-      return this.getHealthDataConnectorStatus(
-        result.provider,
-        callbackUrl,
-        result.mode,
-        result.side,
-      );
-    } catch (error) {
-      if (error instanceof HealthOAuthError) {
-        fail(error.status, error.message);
-      }
-      throw error;
-    }
-  }
-
   async disconnectHealthConnector(
     request: DisconnectLifeOpsHealthConnectorRequest,
     requestUrl: URL,
@@ -538,6 +422,25 @@ export class HealthDomain {
     );
   }
 
+  /**
+   * Write a sync result onto the grant as it is now. A sync can take long; if
+   * the owner disconnected the connector meanwhile the grant is gone (or was
+   * replaced), and writing the copy read before the sync would bring it back.
+   */
+  private async updateSyncedGrant(
+    grant: LifeOpsConnectorGrant,
+    update: (current: LifeOpsConnectorGrant) => LifeOpsConnectorGrant,
+  ): Promise<void> {
+    const current = await this.ctx.repository.getConnectorGrant(
+      grant.agentId,
+      grant.provider,
+      grant.mode,
+      grant.side,
+    );
+    if (!current || current.id !== grant.id) return;
+    await this.ctx.repository.upsertConnectorGrant(update(current));
+  }
+
   async syncHealthConnectors(
     request: HealthSyncRequest = {},
   ): Promise<LifeOpsHealthSummaryResponse> {
@@ -545,7 +448,10 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, instantEndDate } = resolveHealthWindow(
+      request,
+      await this.today(),
+    );
     const requestUrl = new URL("http://127.0.0.1/");
     const statuses = provider
       ? [
@@ -574,7 +480,8 @@ export class HealthDomain {
           token,
           grantId: grant.id,
           startDate,
-          endDate,
+          endDate: instantEndDate,
+          timeZone: await resolveOwnerTimeZone(this.ctx.runtime, new Date()),
         });
         for (const sample of payload.samples) {
           await this.ctx.repository.upsertHealthMetricSample(sample);
@@ -602,17 +509,17 @@ export class HealthDomain {
             },
           }),
         );
-        await this.ctx.repository.upsertConnectorGrant({
-          ...grant,
-          identity: payload.identity ?? grant.identity,
+        await this.updateSyncedGrant(grant, (current) => ({
+          ...current,
+          identity: payload.identity ?? current.identity,
           metadata: {
-            ...grant.metadata,
+            ...current.metadata,
             authState: "connected",
             lastSyncAt: syncedAt,
           },
           lastRefreshAt: syncedAt,
           updatedAt: syncedAt,
-        });
+        }));
       } catch (error) {
         const failedAt = new Date().toISOString();
         await this.ctx.repository.upsertHealthSyncState(
@@ -629,17 +536,17 @@ export class HealthDomain {
           }),
         );
         if (healthReasonForAuthError(error)) {
-          await this.ctx.repository.upsertConnectorGrant({
-            ...grant,
+          await this.updateSyncedGrant(grant, (current) => ({
+            ...current,
             metadata: {
-              ...grant.metadata,
+              ...current.metadata,
               authState: "needs_reauth",
               lastAuthError:
                 error instanceof Error ? error.message : String(error),
               lastAuthErrorAt: failedAt,
             },
             updatedAt: failedAt,
-          });
+          }));
         }
         this.ctx.logLifeOpsWarn(
           "health_connector_sync",
@@ -657,14 +564,24 @@ export class HealthDomain {
         }
       }
     }
+    // The summary resolves the same window from the request itself, so its
+    // workouts keep the instant-bounded end.
     return this.getHealthSummary({
+      ...request,
       provider,
       side,
       mode,
-      startDate,
-      endDate,
       forceSync: false,
     });
+  }
+
+  private async today(): Promise<{ owner: string; utc: string }> {
+    const now = new Date();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
+    return {
+      owner: getLocalDateKey(getZonedDateParts(now, timeZone)),
+      utc: dateOnlyFromMs(now.getTime()),
+    };
   }
 
   async getHealthSummary(
@@ -674,14 +591,19 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, endDate, instantEndDate } = resolveHealthWindow(
+      request,
+      await this.today(),
+    );
     if (request.forceSync) {
+      // The request's own dates, so the sync resolves the same window and
+      // keeps its instant-bounded end.
       return this.syncHealthConnectors({
         provider,
         side,
         mode,
-        startDate,
-        endDate,
+        startDate: request.startDate,
+        endDate: request.endDate,
         days: request.days,
       });
     }
@@ -696,6 +618,9 @@ export class HealthDomain {
           ),
         ]
       : await this.getHealthDataConnectorStatuses(requestUrl, mode, side);
+    // No row limit: the date window bounds this read. A limit keeps only the
+    // newest rows, so the daily summaries and metric totals lose the older days
+    // (one provider can store a heart rate sample for each 5 minutes).
     const samples = await this.ctx.repository.listHealthMetricSamples(
       this.ctx.agentId(),
       {
@@ -703,14 +628,13 @@ export class HealthDomain {
         startDate,
         endDate,
         metrics: normalizeHealthMetrics(request.metrics),
-        limit: 2_000,
       },
     );
     const [workouts, sleepEpisodes] = await Promise.all([
       this.ctx.repository.listHealthWorkouts(this.ctx.agentId(), {
         provider,
         startDate,
-        endDate,
+        endDate: instantEndDate,
         limit: 500,
       }),
       this.ctx.repository.listHealthSleepEpisodes(this.ctx.agentId(), {
@@ -730,9 +654,17 @@ export class HealthDomain {
     };
   }
 
-  async getHealthDailySummary(date: string): Promise<HealthDailySummary> {
+  async getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
     try {
-      return await getDailySummary(date, resolveHealthConfig());
+      // `date` is the owner's local calendar day; the bridge bounds it in the
+      // same zone, as getHealthTrend does for its window.
+      return await getDailySummary(date, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
@@ -752,13 +684,20 @@ export class HealthDomain {
     }
   }
 
-  async getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
+  async getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
     try {
-      return await getDataPoints(opts, resolveHealthConfig());
+      // Sleep series are per local calendar day in the owner's zone.
+      return await getDataPoints(opts, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

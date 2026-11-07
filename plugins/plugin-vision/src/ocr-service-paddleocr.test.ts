@@ -1,117 +1,73 @@
 /**
- * Parser and mapper tests for the PaddleOCR Python wrapper JSON contract.
- *
- * CI exercises the pure conversion path without requiring a real PaddleOCR
- * install while keeping the wrapper and parser shape anchored.
+ * Unit coverage for the PaddleOCR JSON contract. The wrapper is ours, so a
+ * payload we cannot parse means the run failed; it must not be flattened into
+ * "no text on screen" for the caller. Runs without a PaddleOCR install.
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  mapPaddleOcrJsonToResult,
-  parsePaddleOcrJson,
-} from "./ocr-service-paddleocr.js";
+import { parsePaddleOcrJson } from "./ocr-service-paddleocr";
 
-describe("parsePaddleOcrJson (#9581)", () => {
-  it("parses well-formed detections", () => {
-    const json = JSON.stringify([
-      {
-        box: [
-          [24, 36],
-          [304, 34],
-          [304, 72],
-          [24, 74],
-        ],
-        text: "Hello World",
-        conf: 0.998,
-      },
-    ]);
-    const dets = parsePaddleOcrJson(json);
-    expect(dets).toHaveLength(1);
-    expect(dets[0].text).toBe("Hello World");
-    expect(dets[0].conf).toBeCloseTo(0.998);
-    expect(dets[0].box).toHaveLength(4);
+const QUAD = [
+  [10, 20],
+  [110, 20],
+  [110, 60],
+  [10, 60],
+];
+
+function errorCode(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (err) {
+    return (err as { code?: unknown }).code;
+  }
+  return undefined;
+}
+
+describe("parsePaddleOcrJson", () => {
+  it("rejects a non-JSON wrapper output instead of returning no text", () => {
+    expect(() => parsePaddleOcrJson("<html>502 Bad Gateway</html>")).toThrow(
+      /unreadable JSON/,
+    );
+    expect(() => parsePaddleOcrJson("")).toThrow(/unreadable JSON/);
+    expect(() => parsePaddleOcrJson("[] trailing garbage")).toThrow(
+      /unreadable JSON/,
+    );
+    expect(
+      errorCode(() => parsePaddleOcrJson("<html>502 Bad Gateway</html>")),
+    ).toBe("VISION_OCR_UNREADABLE_OUTPUT");
   });
 
-  it("drops malformed entries (no box / blank text / non-finite conf)", () => {
-    const json = JSON.stringify([
-      { box: [[0, 0]], text: "too few points", conf: 0.9 },
-      {
-        box: [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-        ],
-        text: "   ",
-        conf: 0.9,
-      },
-      {
-        box: [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-        ],
-        text: "no conf",
-        conf: "x",
-      },
-      {
-        box: [
-          [2, 2],
-          [3, 2],
-          [3, 3],
-          [2, 3],
-        ],
-        text: "keep",
-        conf: 0.5,
-      },
-    ]);
-    const dets = parsePaddleOcrJson(json);
-    expect(dets.map((d) => d.text)).toEqual(["keep"]);
+  it("rejects a JSON payload that is not a detection array", () => {
+    expect(() => parsePaddleOcrJson('{"error":"paddleocr crashed"}')).toThrow(
+      /non-array payload/,
+    );
+    expect(
+      errorCode(() => parsePaddleOcrJson('{"error":"paddleocr crashed"}')),
+    ).toBe("VISION_OCR_UNREADABLE_OUTPUT");
   });
 
-  it("returns [] for the empty wrapper result and for invalid JSON", () => {
+  it("keeps an empty array for a healthy run that found no text", () => {
     expect(parsePaddleOcrJson("[]")).toEqual([]);
-    expect(parsePaddleOcrJson("not json")).toEqual([]);
-    expect(parsePaddleOcrJson('{"not":"an array"}')).toEqual([]);
-  });
-});
-
-describe("mapPaddleOcrJsonToResult (#9581)", () => {
-  const json = JSON.stringify([
-    {
-      box: [
-        [24, 36],
-        [304, 34],
-        [304, 72],
-        [24, 74],
-      ],
-      text: "Hello World",
-      conf: 0.998,
-    },
-  ]);
-
-  it("maps a detection quad to an axis-aligned, display-shifted block", () => {
-    const result = mapPaddleOcrJsonToResult(json, 400, 400, 100, 200);
-    expect(result.blocks).toHaveLength(1);
-    const block = result.blocks[0];
-    expect(block.text).toBe("Hello World");
-    // Hull of the quad is x:24 y:34 w:280 h:40 (tile-relative), shifted by the
-    // source offset (100, 200) into display-absolute coordinates.
-    expect(block.bbox).toEqual({ x: 124, y: 234, width: 280, height: 40 });
-    // The single word is the line itself.
-    expect(block.words).toHaveLength(1);
-    expect(block.words[0].text).toBe("Hello World");
   });
 
-  it("labels semantic position against the tile thirds", () => {
-    // tile center of the hull is (164, 54) in a 400x400 tile → upper third
-    // (54 < 133) and center third (133 < 164 < 266).
-    const result = mapPaddleOcrJsonToResult(json, 400, 400, 0, 0);
-    expect(result.blocks[0].semantic_position).toBe("upper-center");
+  it("maps a valid detection to a typed line block", () => {
+    const dets = parsePaddleOcrJson(
+      JSON.stringify([{ box: QUAD, text: "Submit 4200", conf: 0.93 }]),
+    );
+    expect(dets).toHaveLength(1);
+    expect(dets[0]?.text).toBe("Submit 4200");
+    expect(dets[0]?.conf).toBeCloseTo(0.93);
   });
 
-  it("returns no blocks for the empty result", () => {
-    expect(mapPaddleOcrJsonToResult("[]", 400, 400, 0, 0).blocks).toEqual([]);
+  it("still drops individual entries that are not real detections", () => {
+    const dets = parsePaddleOcrJson(
+      JSON.stringify([
+        { box: QUAD, text: "keep", conf: 0.9 },
+        { box: [[0, 0]], text: "two-point box", conf: 0.9 },
+        { box: QUAD, text: "  ", conf: 0.9 },
+        { box: QUAD, text: "bad conf", conf: Number.NaN },
+      ]),
+    );
+    expect(dets.map((d) => d.text)).toEqual(["keep"]);
   });
 });

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop cloud auth window ts behavior for app shell integration. */
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,

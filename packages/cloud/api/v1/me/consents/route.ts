@@ -11,28 +11,28 @@
  * database transaction (a failed audit write records nothing).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
-import { dbWrite } from "@/db/client";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { describeModelCallRecording } from "@/lib/config/llm-trajectory-policy";
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/client";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { describeModelCallRecording } from "@elizaos/cloud-shared/lib/config/llm-trajectory-policy";
 import {
   getRequestIp,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   listLatestUserConsents,
   recordUserConsent,
   resolveEffectiveConsents,
   USER_CONSENT_PURPOSES,
   type UserConsentDto,
-} from "@/lib/services/user-consents";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/user-consents";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 
 const consentSchema = z.object({
   purpose: z.enum(USER_CONSENT_PURPOSES),

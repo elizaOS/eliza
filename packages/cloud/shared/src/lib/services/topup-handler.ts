@@ -15,6 +15,7 @@ import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
+import { x402TopupPaymentId } from "./x402-topup-identity";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
@@ -113,48 +114,40 @@ interface TopupRecipient {
 }
 
 /**
- * Resolve topup recipient: from wallet signature headers (if present) or from body.walletAddress.
+ * Resolve topup recipient from wallet signature headers (if present).
  */
-async function getTopupRecipient(
+async function getSignedTopupRecipient(
   request: Request,
-  body: {
-    walletAddress?: string;
-    ref?: string;
-    referral_code?: string;
-    appOwnerId?: string;
-  },
   rawBody?: string,
-): Promise<TopupRecipient> {
+): Promise<TopupRecipient | null> {
   const hasWalletSig =
-    !!request.headers.get("X-Wallet-Address") &&
-    !!request.headers.get("X-Timestamp") &&
+    !!request.headers.get("X-Wallet-Address") ||
+    !!request.headers.get("X-Timestamp") ||
     !!request.headers.get("X-Wallet-Signature");
 
-  if (hasWalletSig) {
-    const walletUser = await verifyWalletSignature(request, {
-      bodyText: rawBody,
-    });
-    if (!walletUser) throw new Error("Wallet signature verification failed");
-    return {
-      user: walletUser,
-      organizationId: walletUser.organization_id!,
-      walletAddress: walletUser.wallet_address ?? request.headers.get("X-Wallet-Address")!,
-    };
-  }
+  if (!hasWalletSig) return null;
 
-  if (!body?.walletAddress?.trim()) {
-    throw new Error("walletAddress is required (body or wallet signature headers)");
-  }
+  const walletUser = await verifyWalletSignature(request, {
+    bodyText: rawBody,
+  });
+  if (!walletUser) throw new Error("Wallet signature verification failed");
+  return {
+    user: walletUser,
+    organizationId: walletUser.organization_id!,
+    walletAddress: walletUser.wallet_address ?? request.headers.get("X-Wallet-Address")!,
+  };
+}
 
+async function getBodyTopupRecipient(walletAddress: string): Promise<TopupRecipient> {
   // No `walletProven`: this branch is the one with NO wallet signature — the
   // address came out of the request body, so the account it opens must not
   // claim the wallet was verified.
-  const { user } = await findOrCreateUserByWalletAddress(body.walletAddress);
+  const { user } = await findOrCreateUserByWalletAddress(walletAddress);
 
   return {
     user,
     organizationId: user.organization_id!,
-    walletAddress: body.walletAddress,
+    walletAddress,
   };
 }
 
@@ -167,7 +160,6 @@ type TopupBody = {
   walletAddress?: string;
   ref?: string;
   referral_code?: string;
-  appOwnerId?: string;
 };
 
 function readEnvString(env: TopupEnv, key: string): string | undefined {
@@ -398,6 +390,13 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       );
     }
 
+    let signedRecipient: TopupRecipient | null;
+    try {
+      signedRecipient = await getSignedTopupRecipient(req, rawBody);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return Response.json({ error: msg }, { status: 401 });
+    }
     const settlement = await x402FacilitatorService.settle(
       paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
       requirements as Parameters<typeof x402FacilitatorService.settle>[1],
@@ -415,15 +414,14 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       );
     }
 
-    let recipient;
-    try {
-      recipient = await getTopupRecipient(req, body, rawBody);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("walletAddress is required")) {
-        return Response.json({ error: msg }, { status: 400 });
+    let recipient = signedRecipient;
+    if (!recipient) {
+      try {
+        recipient = await getBodyTopupRecipient(body.walletAddress!);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return Response.json({ error: msg }, { status: 503 });
       }
-      return Response.json({ error: msg }, { status: 401 });
     }
 
     const { user, organizationId, walletAddress } = recipient;
@@ -432,18 +430,23 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       new URL(req.url).searchParams.get("referral_code") ||
       body.ref ||
       body.referral_code;
-    const appOwnerId = new URL(req.url).searchParams.get("appOwnerId") || body.appOwnerId;
 
-    if (ref && user) {
-      const result = await referralsService.applyReferralCode(user.id, organizationId, ref, {
-        appOwnerId: appOwnerId || undefined,
-      });
+    // A referral binds the recipient's future purchases to a revenue split for
+    // good, so only the recipient may accept one: the unsigned branch credits a
+    // wallet named in the body, which anyone can name. The app owner share is
+    // never taken from the request.
+    if (ref && user && signedRecipient) {
+      const result = await referralsService.applyReferralCode(user.id, organizationId, ref);
       if (result.success) {
         logger.info(`[x402] Successfully applied referral code ${ref} to user ${user.id}`);
       }
     }
 
-    const idempotencyId = `x402:${settlement.network}:${settlement.transaction}`;
+    const settlementPaymentId = x402TopupPaymentId(
+      settlement,
+      paymentPayload.payload.authorization,
+    );
+    const idempotencyId = `x402:${settlement.network}:${settlementPaymentId}`;
     const creditResult = await creditsService.addCredits({
       organizationId,
       amount,
@@ -468,7 +471,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       const { splits } = await referralsService.calculateRevenueSplits(user.id, amount);
       if (splits.length > 0) {
         logger.info(`[x402] Processing revenue splits for $${amount} purchase by user ${user.id}`);
-        const paymentId = settlement.transaction || paymentPayload.payload.authorization.nonce;
+        const paymentId = settlementPaymentId;
         const sourceIdBase = getSourceId(walletAddress, paymentId);
         for (const split of splits) {
           if (split.amount <= 0) continue;

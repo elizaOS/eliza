@@ -5,85 +5,73 @@
  */
 
 import type {
+  DropStatus,
+  MintResult,
+  ReleaseChannel,
+  WalletAddresses,
+  WalletBalancesResponse,
   WalletChainKind,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletEntry,
+  WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
-import type { Dispatch, SetStateAction } from "react";
+} from "@elizaos/contracts";
+import type { TriggerRunRecord } from "@elizaos/core";
 import type {
-  AgentStatus,
   AppRunSummary,
   AppSessionState,
   AppViewerAuthMessage,
-  BscTradeExecuteRequest,
-  BscTradeExecuteResponse,
-  BscTradePreflightResponse,
-  BscTradeQuoteRequest,
-  BscTradeQuoteResponse,
-  BscTradeTxStatusResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
-  CharacterData,
+  UiLanguage,
+} from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { Dispatch, SetStateAction } from "react";
+import type {
   ChatTokenUsage,
-  CodingAgentSession,
   Conversation,
   ConversationChannelType,
   ConversationMessage,
-  CreateTriggerRequest,
-  DropStatus,
-  FirstRunOptions,
   ImageAttachment,
-  LogEntry,
   McpMarketplaceResult,
   McpRegistryServerDetail,
   McpServerConfig,
   McpServerStatus,
-  MintResult,
+} from "../api/client-types-chat";
+import type {
+  CodingAgentSession,
+  WhitelistStatus,
+} from "../api/client-types-cloud";
+import type {
+  CharacterData,
   PluginInfo,
   RegistryPlugin,
-  RegistryStatus,
-  ReleaseChannel,
   SkillInfo,
   SkillScanReportSummary,
+  UpdateStatus,
+  WalletExportResult,
+  WorkbenchOverview,
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  CreateTriggerRequest,
+  LogEntry,
+  StreamEventEnvelope,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  UpdateTriggerRequest,
+} from "../api/client-types-core";
+import type {
   StewardApprovalActionResponse,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
-  StreamEventEnvelope,
-  TriggerHealthSnapshot,
-  TriggerRunRecord,
-  TriggerSummary,
-  UpdateStatus,
-  UpdateTriggerRequest,
-  WalletAddresses,
-  WalletBalancesResponse,
-  WalletConfigStatus,
-  WalletConfigUpdateRequest,
-  WalletExportResult,
-  WalletNftsResponse,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileWindow,
-  WhitelistStatus,
-  WorkbenchOverview,
-} from "../api/client";
+} from "../api/client-types-steward";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
-import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { ActionNotice, ActionTone } from "./action-notice";
 import type { AgentProfile } from "./agent-profile-types";
-import type {
-  BackgroundConfig,
-  UiShellMode,
-  UiTheme,
-  UiThemeMode,
-} from "./ui-preferences";
+import type { BackgroundConfig, UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 export type ShellView = "character" | "desktop";
@@ -292,7 +280,6 @@ export interface AppState {
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
-  uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
@@ -427,11 +414,6 @@ export interface AppState {
   walletPrimaryRestarting: Partial<Record<WalletChainKind, boolean>>;
   walletPrimaryPending: Partial<Record<WalletChainKind, boolean>>;
   cloudRefreshing: boolean;
-  // ERC-8004 Registry
-  registryStatus: RegistryStatus | null;
-  registryLoading: boolean;
-  registryRegistering: boolean;
-  registryError: string | null;
   // Drop / Mint
   dropStatus: DropStatus | null;
   dropLoading: boolean;
@@ -515,7 +497,6 @@ export interface AppState {
   // Workbench
   workbenchLoading: boolean;
   workbench: WorkbenchOverview | null;
-  workbenchTasksAvailable: boolean;
   workbenchTriggersAvailable: boolean;
   workbenchTodosAvailable: boolean;
   // Agent export/import
@@ -643,8 +624,6 @@ export interface AppActions {
   switchShellView: (view: ShellView) => void;
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
-  setUiTheme: (theme: UiTheme) => void;
-  setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
@@ -695,7 +674,10 @@ export interface AppActions {
   /** Restore the active personal conversation; null means recovery is unavailable. */
   ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: { onRejected: () => void },
+  ) => Promise<void>;
   /**
    * Replace the active thread with a window CENTERED on `messageId` so a
    * keyword-search jump can scroll to a hit older than the most-recent window
@@ -705,13 +687,19 @@ export interface AppActions {
   loadConversationMessagesAround: (
     conversationId: string,
     messageId: string,
+    options?: {
+      onMessages: (messages: readonly ConversationMessage[]) => void;
+    },
   ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */
   suggestConversationTitle: (id: string) => Promise<string | null>;
   /** Send a programmatic message (e.g. from a UiSpec action) without touching chatInput. */
-  sendActionMessage: (text: string) => Promise<void>;
+  sendActionMessage: (
+    text: string,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<boolean>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,
@@ -766,27 +754,7 @@ export interface AppActions {
   loadWalletConfig: () => Promise<void>;
   loadBalances: () => Promise<void>;
   loadNfts: () => Promise<void>;
-  executeBscTrade: (
-    request: BscTradeExecuteRequest,
-  ) => Promise<BscTradeExecuteResponse>;
-  executeBscTransfer: (
-    request: BscTransferExecuteRequest,
-  ) => Promise<BscTransferExecuteResponse>;
-  getBscTradePreflight: (
-    tokenAddress?: string,
-  ) => Promise<BscTradePreflightResponse>;
-  getBscTradeQuote: (
-    request: BscTradeQuoteRequest,
-  ) => Promise<BscTradeQuoteResponse>;
-  getBscTradeTxStatus: (hash: string) => Promise<BscTradeTxStatusResponse>;
   getStewardStatus: () => Promise<StewardStatusResponse>;
-  getStewardAddresses: () => Promise<StewardWalletAddressesResponse>;
-  getStewardBalance: (chainId?: number) => Promise<StewardBalanceResponse>;
-  getStewardTokens: (chainId?: number) => Promise<StewardTokenBalancesResponse>;
-  getStewardWebhookEvents: (opts?: {
-    event?: StewardWebhookEventType;
-    since?: number;
-  }) => Promise<StewardWebhookEventsResponse>;
   getStewardHistory: (opts?: {
     status?: string;
     limit?: number;
@@ -803,10 +771,6 @@ export interface AppActions {
     txId: string,
     reason?: string,
   ) => Promise<StewardApprovalActionResponse>;
-  loadWalletTradingProfile: (
-    window?: WalletTradingProfileWindow,
-    source?: WalletTradingProfileSourceFilter,
-  ) => Promise<WalletTradingProfileResponse>;
   handleWalletApiKeySave: (
     config: WalletConfigUpdateRequest,
   ) => Promise<boolean>;
@@ -816,10 +780,7 @@ export interface AppActions {
   ) => Promise<void>;
   refreshCloudWallets: () => Promise<void>;
   handleExportKeys: () => Promise<void>;
-  // Registry / Drop
-  loadRegistryStatus: () => Promise<void>;
-  registerOnChain: () => Promise<void>;
-  syncRegistryProfile: () => Promise<void>;
+  // Drop
   loadDropStatus: () => Promise<void>;
   mintFromDrop: (shiny: boolean) => Promise<void>;
   loadWhitelistStatus: () => Promise<void>;
@@ -900,4 +861,15 @@ export interface AppActions {
   // Translations
   t: (key: string, values?: Record<string, unknown>) => string;
 }
-export type AppContextValue = AppState & AppActions;
+export type AppContextValue = Omit<
+  AppState,
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "chatInput"
+  | "chatPendingImages"
+  | "chatSending"
+  | "conversationMessages"
+  | "ptySessions"
+> &
+  AppActions;

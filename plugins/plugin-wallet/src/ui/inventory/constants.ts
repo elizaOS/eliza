@@ -90,6 +90,10 @@ export function parseFiniteAmount(
 ): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value !== "string") return 0;
-  const parsed = Number.parseFloat(value);
+  const normalized = value.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(normalized)) {
+    return 0;
+  }
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }

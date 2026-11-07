@@ -4,7 +4,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
-import { __setAppValueForTests } from "../state";
+import { __setAppValueForTests } from "../state/app-store";
 import { WidgetHost } from "./WidgetHost";
 
 /**

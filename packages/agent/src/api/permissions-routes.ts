@@ -14,8 +14,13 @@
  */
 
 import {
-  type AgentRuntime,
   assertNativePersonalDataProjectionMetadataOnly,
+  PutPermissionsShellRequestSchema,
+  PutPermissionsStateRequestSchema,
+  projectNativePersonalDataCapabilities,
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
   getMacPermissionDeepLink,
   type IPermissionsRegistry,
   isPermissionId,
@@ -25,16 +30,12 @@ import {
   type PermissionState,
   type PermissionStatus,
   type Platform,
-  PutPermissionsShellRequestSchema,
-  PutPermissionsStateRequestSchema,
-  projectNativePersonalDataCapabilities,
-  type RouteRequestContext,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
 
-interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
+interface PermissionAutonomousConfigLike extends Record<string, unknown> {
   features?: {
     shellEnabled?: boolean;
   };

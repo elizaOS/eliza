@@ -32,7 +32,7 @@ import {
   ownerExclusiveDisclosureWasUsed,
   PRIVACY_DENIED_TEXT,
 } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../index.ts";

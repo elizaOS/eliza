@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop permissions shared ts behavior for app shell integration. */
 export type {
 	PermissionCheckResult,
 	PermissionId,
@@ -6,14 +5,14 @@ export type {
 	PermissionStatus,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 
 import type {
 	PermissionId,
 	PermissionState,
 	Platform,
 	SystemPermissionDefinition,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 export type SystemPermissionId = PermissionId;
 /** Local variant keeps a loose index signature for legacy Electrobun RPC code. */
 export interface AllPermissionsState {

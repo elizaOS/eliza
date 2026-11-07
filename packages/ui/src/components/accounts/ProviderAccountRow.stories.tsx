@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import type {
   AccountsListProvider,
   AccountWithCredentialFlag,
-} from "../../api/client-agent";
+} from "../../api/client-agent-accounts";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   type AccountProviderOption,

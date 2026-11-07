@@ -1,11 +1,12 @@
+import type { Memory } from "../types/memory";
+
 /**
  * Extracts the user's actual request text from a message `Memory`. Unwraps the
  * document-augmentation `<user_request>` envelope, strips a trailing
- * `[language instruction: ...]` suffix. Prefers a
+ * `[language instruction:...]` suffix. Prefers a
  * connector's `currentMessageText` over the rendered `text`, and offers a
  * lowercased, whitespace-collapsed variant for matching.
  */
-import type { Memory } from "../types/memory";
 
 const DOCUMENT_AUGMENTATION_PREFIX =
 	"Answer the user request using the contextual documents";
@@ -57,7 +58,7 @@ export function normalizeUserMessageText(
 /**
  * Returns true when a message's rendered `content.text` carries the document
  * augmentation envelope (the `Answer the user request using the contextual
- * documents ...` preamble wrapping the real text in `<user_request>` tags).
+ * documents...` preamble wrapping the real text in `<user_request>` tags).
  *
  * The envelope is a model-facing wrapper: it is added right before the LLM
  * prompt is assembled so retrieved document context reaches the model. It must
@@ -116,4 +117,21 @@ export function stripAugmentationForPersistence<
 			text: clean,
 		},
 	} as T;
+}
+
+/**
+ * Recovers the user's request from a message text that document
+ * augmentation wrapped in its instruction preamble. Augmentation (in the
+ * agent's API chat path) rewrites `content.text` into a preamble plus
+ * `<contextual_documents>` and a trailing `<user_request>` block; relevance
+ * and detection gates that run afterwards must score the request, not the
+ * wrapper (live 2026-09-06: the wrapper's own words matched a recall keyword
+ * on every API turn). Text without the wrapper is returned unchanged.
+ */
+
+const USER_REQUEST_BLOCK = /<user_request>\n?([\s\S]*?)\n?<\/user_request>\s*$/;
+
+export function userRequestFromAugmentedText(text: string): string {
+	const match = USER_REQUEST_BLOCK.exec(text);
+	return match ? match[1].trim() : text;
 }

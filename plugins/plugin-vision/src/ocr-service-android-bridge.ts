@@ -161,7 +161,7 @@ export class AndroidBridgeOcrService implements OcrWithCoordsService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return { blocks: [] };
+      throw error;
     }
   }
 }

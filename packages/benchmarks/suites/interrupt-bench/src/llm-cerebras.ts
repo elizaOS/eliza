@@ -10,7 +10,7 @@
  * scripted if cerebras mode fails — surface the error.
  */
 
-import type { JSONSchema, ResponseHandlerResult } from "./core-lite.ts";
+import type { JSONSchema, ResponseHandlerResult } from "@elizaos/core";
 
 const _CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const DEFAULT_MODEL = "gemma-4-31b";

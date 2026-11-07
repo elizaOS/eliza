@@ -15,7 +15,7 @@ const TODO_NOUN_PATTERNS: readonly RegExp[] = [
   /(?:待办事项|待辦事項|任务|任務)/u,
   /(?:タスク|やること)/u,
   /(?:할 일|작업)/u,
-  /\b(?:việc cần làm|nhiệm vụ)\b/iu,
+  /(?<![\p{L}\p{N}_])(?:việc cần làm|nhiệm vụ)(?![\p{L}\p{N}_])/iu,
   /\b(?:gawain|dapat gawin)\b/iu,
 ];
 

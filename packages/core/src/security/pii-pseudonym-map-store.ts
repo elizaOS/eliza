@@ -1,38 +1,8 @@
 /**
- * Protected persistence for the corpus pseudonym map (#14805).
- *
- * The alias→pseudonym map inverts the scrub, so **the map itself is a secret
- * artifact**: owner-only, never embedded, never indexed, never retrievable.
- * The issue mandates structural confidentiality — the map lives OUTSIDE the
- * retrievable corpus, in a store with NO ingestion path — plus at-rest
- * protection (the "vault-encrypted blob" option):
- *
- * - **Structural isolation.** The snapshot is persisted as a single value in
- *   the runtime cache (the adapter-backed durable KV the scrub done-markers
- *   already use, `./pii-scrub-markers.ts`) under the dedicated key
- *   {@link PII_PSEUDONYM_MAP_CACHE_KEY}. Cache rows are NEVER a document or
- *   memory row: they are not chunked into `document_fragments`, not embedded,
- *   and unreachable via `searchDocuments`, `searchMessages`, `searchMemories`,
- *   and the `SEARCH_KNOWLEDGE` action — there is no ingestion path from the
- *   cache into any retrieval surface. The cache table is additionally
- *   agent-scoped by the SQL adapter (owner's agent only).
- * - **Encrypted at rest, fail-closed.** The blob is AES-256-GCM ciphertext
- *   (v2 settings-secret scheme: key = SHA-256(salt), 12-byte IV, auth tag)
- *   under the dedicated AAD {@link PII_PSEUDONYM_MAP_AAD} — domain-separated
- *   from settings ciphertext so neither store can be coaxed into decrypting
- *   the other's blobs. `save` REFUSES to persist plaintext; `load` throws on
- *   a wrong key, tampered ciphertext, or a malformed snapshot rather than
- *   returning a partial map (a partial map would silently re-mint pseudonyms
- *   for already-mapped people — a corpus-wide consistency break). Note this is
- *   deliberately stricter than `decryptStringValue` in `../settings.ts`, which
- *   returns the raw value on failure — acceptable for settings, fail-open for
- *   a secret artifact.
- *
- * The encryption salt follows the canonical secret-settings lifecycle
- * (`getSalt()`, `SECRET_SALT`) so the map is protected by the same key
- * material and production non-default enforcement as every other at-rest
- * secret. The map's *mint* salt is a separate secret that lives INSIDE the
- * encrypted snapshot (see `./pii-pseudonym-map.ts`).
+ * Persists the reversible pseudonym map outside searchable content in agent-scoped cache
+ * storage. AES-256-GCM uses settings key material with dedicated AAD; plaintext persistence,
+ * invalid snapshots, wrong keys, and tampering fail explicitly. The encrypted snapshot
+ * contains a separate mint salt for stable pseudonyms.
  */
 
 import { getSalt } from "../settings.js";
@@ -57,6 +27,10 @@ export const PII_PSEUDONYM_MAP_CACHE_KEY = "pii:pseudonym-map:v1";
 
 /** Domain-separation AAD for the map ciphertext. */
 export const PII_PSEUDONYM_MAP_AAD = "elizaos:pii-pseudonym-map:v1";
+
+const PII_PSEUDONYM_MAP_AAD_BYTES = new TextEncoder().encode(
+	PII_PSEUDONYM_MAP_AAD,
+);
 
 /** Ciphertext format marker (mirrors the settings v2 layout). */
 const CIPHERTEXT_PREFIX = "v2";
@@ -134,8 +108,13 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-			const aad = new TextEncoder().encode(PII_PSEUDONYM_MAP_AAD);
-			const bytes = decryptAes256Gcm(this.key, iv, ciphertext, tag, aad);
+			const bytes = decryptAes256Gcm(
+				this.key,
+				iv,
+				ciphertext,
+				tag,
+				PII_PSEUDONYM_MAP_AAD_BYTES,
+			);
 			plaintext = BufferUtils.bufferToString(bytes, "utf8");
 		} catch (error) {
 			// error-policy:J2 Preserve decryption failure context at the artifact boundary.
@@ -164,12 +143,11 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 		assertValidSnapshot(snapshot);
 		const plaintext = JSON.stringify(snapshot);
 		const iv = BufferUtils.randomBytes(12);
-		const aad = new TextEncoder().encode(PII_PSEUDONYM_MAP_AAD);
 		const { ciphertext, tag } = encryptAes256Gcm(
 			this.key,
 			iv,
 			BufferUtils.fromString(plaintext, "utf8"),
-			aad,
+			PII_PSEUDONYM_MAP_AAD_BYTES,
 		);
 		const blob = `${CIPHERTEXT_PREFIX}:${BufferUtils.toHex(iv)}:${BufferUtils.toHex(
 			ciphertext,

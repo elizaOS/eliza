@@ -2,6 +2,13 @@
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
  */
+
+import type {
+  TranslateFn as AppTranslateFn,
+  ConfigUiHint,
+} from "@elizaos/contracts";
+import type { PluginParamDef } from "@elizaos/core/protocol";
+import type { JsonSchemaObject } from "@elizaos/host/protocol";
 import {
   Binary,
   Bird,
@@ -76,12 +83,10 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import type { PluginInfo, PluginParamDef } from "../../api";
-import type { JsonSchemaObject } from "../../config/config-catalog";
-import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import type { PluginInfo } from "../../api/client-types-config";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { autoLabel } from "../../utils/labels.js";
-import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
+import { SHOWCASE_PLUGIN } from "./plugin-showcase-data";
 
 const DISCORD_DEVELOPER_PORTAL_URL =
   "https://discord.com/developers/applications";
@@ -145,6 +150,17 @@ export function isAdvancedParam(param: PluginParamDef): boolean {
     d.includes("debug")
   );
 }
+
+/** Match a whole key token so TRANSPORT and ACCOUNT keep their declared types. */
+function hasKeyToken(keyUpper: string, token: string): boolean {
+  return (
+    keyUpper === token ||
+    keyUpper.startsWith(`${token}_`) ||
+    keyUpper.endsWith(`_${token}`) ||
+    keyUpper.includes(`_${token}_`)
+  );
+}
+
 /** Convert PluginParamDef[] to a JSON Schema + ConfigUiHints for ConfigRenderer. */
 export function paramsToSchema(
   params: PluginParamDef[],
@@ -189,7 +205,7 @@ export function paramsToSchema(
       prop.format = "date";
     }
     // Auto-detect number types from key patterns
-    if (keyUpper.includes("PORT") && prop.type === "string") {
+    if (hasKeyToken(keyUpper, "PORT") && prop.type === "string") {
       prop.type = "number";
     } else if (
       (keyUpper.includes("TIMEOUT") ||
@@ -199,7 +215,7 @@ export function paramsToSchema(
     ) {
       prop.type = "number";
     } else if (
-      (keyUpper.includes("COUNT") ||
+      (hasKeyToken(keyUpper, "COUNT") ||
         keyUpper.includes("LIMIT") ||
         keyUpper.startsWith("MAX_")) &&
       prop.type === "string"
@@ -316,7 +332,7 @@ export function paramsToSchema(
       advanced: isAdvancedParam(p),
     };
     // Port numbers — constrain range
-    if (keyUpper.includes("PORT")) {
+    if (hasKeyToken(keyUpper, "PORT")) {
       hint.min = 1;
       hint.max = 65535;
       prop.minimum = 1;
@@ -328,13 +344,18 @@ export function paramsToSchema(
       keyUpper.includes("INTERVAL") ||
       keyUpper.includes("_MS")
     ) {
-      hint.unit = "ms";
+      // The key's last token names its unit when it is not milliseconds.
+      hint.unit = /_(SECONDS|SECS|SEC)$/.test(keyUpper)
+        ? "s"
+        : /_(MINUTES|MINS)$/.test(keyUpper)
+          ? "min"
+          : "ms";
       prop.minimum = 0;
       hint.min = 0;
     }
     // Count/limit — non-negative
     if (
-      keyUpper.includes("COUNT") ||
+      hasKeyToken(keyUpper, "COUNT") ||
       keyUpper.includes("LIMIT") ||
       keyUpper.startsWith("MAX_")
     ) {
@@ -360,11 +381,9 @@ export function paramsToSchema(
     if (keyUpper.includes("MODEL") && p.options?.length) {
       hint.advanced = false;
     }
-    // Region/zone — suggest common cloud regions when no options provided
-    if (
-      (keyUpper.includes("REGION") || keyUpper.includes("ZONE")) &&
-      !p.options?.length
-    ) {
+    // Cloud region — suggest common regions when no options provided. ZONE
+    // is not matched: DEFAULT_TIMEZONE is a timezone, not a cloud region.
+    if (hasKeyToken(keyUpper, "REGION") && !p.options?.length) {
       hint.type = "select";
       hint.options = [
         { value: "us-east-1", label: "US East (N. Virginia)" },

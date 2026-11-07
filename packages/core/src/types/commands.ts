@@ -1,3 +1,58 @@
+import { Service } from "./service";
+
+/** Wire contract for GET /api/commands. Domain command types remain separate from their serialized transport representation. */
+
+/**
+ * Wire-safe argument shape produced by `serializeCommand`. Static `choices` are
+ * inlined; `dynamicChoices` names a live source the client resolves at render
+ * time (function-valued definition choices drop to their tagged source).
+ */
+export interface SerializedCommandArg {
+	name: string;
+	description: string;
+	required?: boolean;
+	choices?: string[];
+	dynamicChoices?: CommandArgSource;
+	captureRemaining?: boolean;
+}
+
+/** Where a serialized catalog item came from — drives menu grouping/labels. */
+export type SerializedCommandSource = "builtin" | "custom-action" | "saved";
+
+/**
+ * The wire shape `GET /api/commands` serves and every client renders. Produced
+ * by the command-service serializer with no field fabricated at
+ * the HTTP boundary. `target` is the `@elizaos/core` `CommandTarget` discriminant
+ * every surface routes on.
+ */
+export interface SerializedCommand {
+	key: string;
+	nativeName: string;
+	description: string;
+	textAliases: string[];
+	scope: CommandScope;
+	category?: CommandCategory;
+	acceptsArgs: boolean;
+	args: SerializedCommandArg[];
+	requiresAuth: boolean;
+	requiresElevated: boolean;
+	surfaces?: CommandSurface[];
+	target: CommandTarget;
+	icon?: string;
+	source: SerializedCommandSource;
+	/** View ids this command is scoped to; omitted when global. */
+	views?: string[];
+}
+
+/** Response body of `GET /api/commands`. */
+export interface CommandsCatalogResponse {
+	commands: SerializedCommand[];
+	surface: string | null;
+	activeViewId?: string | null;
+	agentId: string | null;
+	generatedAt: string;
+}
+
 /**
  * Command system contract.
  *
@@ -6,8 +61,6 @@
  * commands through the runtime service registry without depending on a
  * concrete parser, action collection, or route implementation.
  */
-
-import { Service } from "./service";
 
 export type CommandScope = "text" | "native" | "both";
 
@@ -54,11 +107,11 @@ export type ClientCommandAction =
 
 /**
  * Where a command executes — the single discriminant every surface routes on:
- *   - `agent`    → the command runs through the agent (a deterministic command
- *                  action handles it; `action` names that handler when known).
- *   - `navigate` → opens a destination in the Eliza app; `path` is the in-app
- *                  deep link, `tab`/`viewId`/`section` are routing hints.
- *   - `client`   → a GUI/TUI-only behavior with no remote surface.
+ * - `agent` → the command runs through the agent (a deterministic command
+ * action handles it; `action` names that handler when known).
+ * - `navigate` → opens a destination in the Eliza app; `path` is the in-app
+ * deep link, `tab`/`viewId`/`section` are routing hints.
+ * - `client` → a GUI/TUI-only behavior with no remote surface.
  */
 export type CommandTarget =
 	| { kind: "agent"; action?: string }
@@ -123,7 +176,7 @@ export interface CommandDefinition {
 	 * the command catalog while one of these views is the active (foreground)
 	 * surface. Omitted/undefined = globally available (the default). A non-empty
 	 * list scopes the command to those views — e.g. a `/calendar add` command that
-	 * only makes sense while the calendar view is open. (#8798)
+	 * only makes sense while the calendar view is open.
 	 */
 	views?: string[];
 }

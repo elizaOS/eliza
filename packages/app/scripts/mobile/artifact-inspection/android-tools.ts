@@ -1,9 +1,42 @@
 /** Invokes Android artifact inspection tools and decodes their manifest evidence. */
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
+
+import { parseXmlTree } from "../../lib/android-manifest-facts.mjs";
+
+const executeFile = promisify(execFile);
+
+/** Async inspection preserves caller cancellation and optional command deadlines. */
+export async function dumpAndroidArtifactBadgingAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(aapt, ["dump", "badging", artifact], {
+      ...options,
+      encoding: "utf8",
+    })
+  ).stdout;
+}
+
+export async function dumpAndroidArtifactManifestAsync(
+  aapt,
+  artifact,
+  options = {},
+) {
+  return (
+    await executeFile(
+      aapt,
+      ["dump", "xmltree", artifact, "AndroidManifest.xml"],
+      { ...options, encoding: "utf8" },
+    )
+  ).stdout;
+}
 
 export function resolveAndroidBuildTool(
   sdkRoot,
@@ -84,38 +117,44 @@ export function parseAaptAttributeValue(encodedValue) {
   return String(Number.parseInt(typedValue[2], 16));
 }
 
+function androidManifestTagsFromAapt(manifestText) {
+  const tree = parseXmlTree(String(manifestText), {
+    decodeAttribute: parseAaptAttributeValue,
+  });
+  const tags = [];
+  function visit(node, ancestors) {
+    for (const child of node.children) {
+      tags.push({
+        ancestors,
+        attributes: new Map(Object.entries(child.attrs)),
+        indent: child.indent,
+        name: child.name,
+      });
+      visit(child, [...ancestors, child.name]);
+    }
+  }
+  visit(tree, []);
+
+  return tags;
+}
+
+/** Instrumentation identity is checked before installing external consumer APKs. */
+export function androidInstrumentationEvidenceFromAapt(manifestText) {
+  return androidManifestTagsFromAapt(manifestText)
+    .filter(
+      (tag) =>
+        tag.name === "instrumentation" &&
+        tag.ancestors.join("/") === "manifest",
+    )
+    .map((tag) => ({
+      name: tag.attributes.get("name"),
+      targetPackage: tag.attributes.get("targetPackage"),
+    }));
+}
+
 /** Converts AAPT's indented xmltree output into the policy evidence shape. */
 export function androidPlayManifestEvidenceFromAapt(manifestText) {
-  const tags = [];
-  const stack = [];
-  for (const line of String(manifestText).split(/\r?\n/)) {
-    const element = line.match(/^(\s*)E: ([^\s(]+)(?:\s|$)/);
-    if (element) {
-      const indent = element[1].length;
-      while (stack.length > 0 && stack.at(-1).indent >= indent) stack.pop();
-      const tag = {
-        ancestors: stack.map((ancestor) => ancestor.name),
-        attributes: new Map(),
-        indent,
-        name: element[2],
-      };
-      tags.push(tag);
-      stack.push(tag);
-      continue;
-    }
-    const attribute = line.match(
-      /^(\s*)A: ([^=(]+?)(?:\(0x[0-9a-f]+\))?=(.*)$/i,
-    );
-    if (!attribute || stack.length === 0) continue;
-    const qualifiedName = attribute[2].trim();
-    stack
-      .at(-1)
-      .attributes.set(
-        qualifiedName.split(":").at(-1),
-        parseAaptAttributeValue(attribute[3]),
-      );
-  }
-
+  const tags = androidManifestTagsFromAapt(manifestText);
   const values = (names, attributeName = "name") =>
     [
       ...new Set(

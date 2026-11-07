@@ -31,18 +31,18 @@ export interface ElizaOsImage {
   minUsbSizeBytes: number;
   manifestVersion: 1;
   releaseNotesUrl?: string;
-  signatureUrl?: string;
-  /** Canonical mkosi release contract fields. Legacy fixtures may omit these. */
-  schemaVersion?: 1;
-  product?: "elizaOS";
-  sequence?: number;
-  expires?: string;
-  compressedSize?: number;
-  expandedSize?: number;
-  sha256Compressed?: string;
-  sha256Expanded?: string;
-  minDeviceBytes?: number;
-  format?: "raw.zst";
+  signatureUrl: string;
+  /** Signed mkosi release contract. */
+  schemaVersion: 1;
+  product: "elizaOS";
+  sequence: number;
+  expires: string;
+  compressedSize: number;
+  expandedSize: number;
+  sha256Compressed: string;
+  sha256Expanded: string;
+  minDeviceBytes: number;
+  format: "raw.zst";
 }
 
 export type InstallerStepId =

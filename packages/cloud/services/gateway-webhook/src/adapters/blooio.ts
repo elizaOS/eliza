@@ -3,10 +3,13 @@
  * and participant identities across one-to-one and group deliveries.
  */
 import crypto from "node:crypto";
+import { performance } from "node:perf_hooks";
 import {
   blooioRecipientIsolationViolation,
   classifyBlooioEnvironment,
 } from "@elizaos/cloud-services-common/blooio-environment";
+import { telegramReplyWithMedia } from "@elizaos/cloud-services-common/telegram";
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -23,6 +26,9 @@ const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
+// Replies have always carried at most this many attachments. Media past it
+// travels as HTTPS links in the text, so none is dropped.
+const BLOOIO_REPLY_ATTACHMENT_COUNT = 4;
 
 /**
  * The single bounded transport for every Blooio API hop — sends, read
@@ -296,63 +302,120 @@ async function sendBlooioMessage(
     if (from) body.from = from;
   }
 
-  const response = await blooioFetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  const responseText = await response.text();
-  if (!response.ok) {
-    throw new BlooioApiResponseError(
-      response.status,
-      `Blooio rejected delivery (${response.status})`,
-    );
-  }
-  if (!responseText) {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  let result: unknown;
+  let fetchStartedAt: number | undefined;
+  let headersAt: number | undefined;
+  let bufferedAt: number | undefined;
+  let outcome:
+    | "headers_failed"
+    | "body_failed"
+    | "receipt_failed"
+    | "accepted" = "headers_failed";
+  const timedFetch = Object.assign(
+    async (...args: Parameters<typeof fetch>) => {
+      fetchStartedAt = performance.now();
+      const response = await fetch(...args);
+      headersAt = performance.now();
+      outcome = "body_failed";
+      return response;
+    },
+    fetch,
+  );
   try {
-    result = JSON.parse(responseText);
-  } catch {
-    // error-policy:J3 accepted provider responses must still expose a durable
-    // message receipt before the scheduler records the occurrence as fired.
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a valid JSON receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
+    const response = await boundedGatewayFetch(
+      timedFetch,
+      url,
+      { method: "POST", headers, body: JSON.stringify(body) },
+      BLOOIO_REQUEST_TIMEOUT_MS,
+      BLOOIO_RESPONSE_MAX_BYTES,
     );
+    bufferedAt = performance.now();
+    outcome = "receipt_failed";
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new BlooioApiResponseError(
+        response.status,
+        `Blooio rejected delivery (${response.status})`,
+      );
+    }
+    if (!responseText) {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    let result: unknown;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      // error-policy:J3 accepted provider responses must still expose a durable
+      // message receipt before the scheduler records the occurrence as fired.
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a valid JSON receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    if (!result || typeof result !== "object") {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    const record = result as Record<string, unknown>;
+    const id =
+      typeof record.id === "string"
+        ? record.id
+        : typeof record.message_id === "string"
+          ? record.message_id
+          : undefined;
+    if (!id?.trim()) {
+      throw new PlatformDeliveryError(
+        "Blooio accepted delivery without a provider receipt",
+        "uncertain",
+        "DELIVERY_RECEIPT_INVALID",
+        false,
+      );
+    }
+    outcome = "accepted";
+    return [id.trim()];
+  } finally {
+    if (fetchStartedAt !== undefined) {
+      const completedAt = performance.now();
+      const milliseconds = (duration: number) =>
+        Math.min(60_000, Math.max(0, Math.round(duration)));
+      try {
+        logger.info("Blooio send timing", {
+          messageId: /^[A-Za-z0-9_-]{1,64}$/.test(event.messageId)
+            ? event.messageId
+            : null,
+          traceId:
+            event.traceId &&
+            /^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/.test(
+              event.traceId,
+            )
+              ? event.traceId
+              : null,
+          headersMs: milliseconds((headersAt ?? completedAt) - fetchStartedAt),
+          bodyMs:
+            headersAt === undefined
+              ? null
+              : milliseconds((bufferedAt ?? completedAt) - headersAt),
+          receiptMs:
+            bufferedAt === undefined
+              ? null
+              : milliseconds(completedAt - bufferedAt),
+          outcome,
+        });
+      } catch {
+        // error-policy:J6 Optional timing must not replace a send receipt or failure.
+      }
+    }
   }
-  if (!result || typeof result !== "object") {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  const record = result as Record<string, unknown>;
-  const id =
-    typeof record.id === "string"
-      ? record.id
-      : typeof record.message_id === "string"
-        ? record.message_id
-        : undefined;
-  if (!id?.trim()) {
-    throw new PlatformDeliveryError(
-      "Blooio accepted delivery without a provider receipt",
-      "uncertain",
-      "DELIVERY_RECEIPT_INVALID",
-      false,
-    );
-  }
-  return [id.trim()];
 }
 
 // Blooio's documented verification contract rejects deliveries older than
@@ -371,7 +434,7 @@ async function verifySignature(
   if (!signatureHeader || !secret) return false;
 
   try {
-    const parts = signatureHeader.split(",");
+    const parts = signatureHeader.split(",").map((part) => part.trim());
     const timestampPart = parts.find((p) => p.startsWith("t="));
     const signaturePart = parts.find((p) => p.startsWith("v1="));
     if (!timestampPart || !signaturePart) return false;
@@ -429,6 +492,29 @@ async function verifySignature(
   }
 }
 
+/** Cost: one bounded provider POST per accepted inbound private turn; no model call. */
+async function sendBlooioReadReceipt(
+  config: WebhookConfig,
+  event: ChatEvent,
+): Promise<void> {
+  const modern = /^chat_/i.test(event.chatId);
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.apiKey}`,
+  };
+  if (!modern && config.fromNumber)
+    headers["X-From-Number"] = config.fromNumber;
+  const base = modern ? BLOOIO_V4_CHATS_URL : `${BLOOIO_V2_API_BASE}/chats`;
+  const response = await blooioFetch(
+    `${base}/${encodeURIComponent(event.chatId)}/read`,
+    { method: "POST", headers },
+  );
+  if (!response.ok)
+    throw new BlooioApiResponseError(
+      response.status,
+      "Blooio read receipt was rejected",
+    );
+}
+
 export const blooioAdapter: PlatformAdapter = {
   platform: "blooio",
 
@@ -463,6 +549,11 @@ export const blooioAdapter: PlatformAdapter = {
       return null;
     }
 
+    if (event.event === "message.failed") {
+      logger.error("Blooio reported a failed delivery", {
+        messageId: event.message_id ?? null,
+      });
+    }
     if (event.event !== "message.received") return null;
 
     // Blooio documents message_id as the stable identifier for message
@@ -504,9 +595,12 @@ export const blooioAdapter: PlatformAdapter = {
     }
 
     const text = event.text ?? "";
-    if (!text && !event.attachments?.length) return null;
-
+    // Guard on the filtered media list, not the raw attachments: an
+    // attachment outside the media allowlist never reaches the turn, so
+    // a text-less message with only disallowed attachments must be
+    // dropped here instead of running an empty turn (mirrors Twilio).
     const mediaUrls = extractMediaUrls(event.attachments);
+    if (!text && mediaUrls.length === 0) return null;
 
     return {
       platform: "blooio",
@@ -514,6 +608,7 @@ export const blooioAdapter: PlatformAdapter = {
       chatId: event.chat_id ?? event.sender,
       chatType: event.is_group ? "group" : "private",
       channelId: event.channel_id ?? undefined,
+      receivingNumber: event.internal_id ?? undefined,
       channelType: event.channel_type ?? undefined,
       protocol: event.protocol ?? undefined,
       senderId: event.sender,
@@ -536,12 +631,21 @@ export const blooioAdapter: PlatformAdapter = {
     await sendBlooioMessage(config, event, text);
   },
 
-  async sendReplyWithReceipt(config, event, text, _deliveryHooks, mediaUrls) {
+  async sendReplyWithReceipt(
+    config,
+    event,
+    text,
+    _deliveryHooks,
+    mediaUrls = [],
+  ) {
     const providerMessageIds = await sendBlooioMessage(
       config,
       event,
-      text,
-      mediaUrls,
+      telegramReplyWithMedia(
+        text,
+        mediaUrls.slice(BLOOIO_REPLY_ATTACHMENT_COUNT),
+      ),
+      mediaUrls.slice(0, BLOOIO_REPLY_ATTACHMENT_COUNT),
     );
     if (providerMessageIds.length === 0) {
       throw new Error("Blooio accepted delivery without a message receipt");
@@ -549,9 +653,85 @@ export const blooioAdapter: PlatformAdapter = {
     return { providerMessageIds };
   },
 
+  async sendReadReceipt(
+    config: WebhookConfig,
+    event: ChatEvent,
+  ): Promise<void> {
+    if (!config.apiKey) return;
+    try {
+      await sendBlooioReadReceipt(config, event);
+    } catch (error) {
+      // Receipt feedback must never fail or replay the model turn.
+      logger.warn("Blooio read receipt failed", {
+        messageId: event.messageId,
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  },
+
+  async sendAcknowledgementReaction(config, event, reaction): Promise<void> {
+    const selected = parseImessageReaction(reaction);
+    // Never resolve arbitrary model-provided targets or fall back to a relative
+    // message index. Only current v4 private iMessages are addressable here.
+    if (
+      !selected ||
+      !config.apiKey ||
+      event.platform !== "blooio" ||
+      event.chatType !== "private" ||
+      event.protocol !== "imessage" ||
+      !/^chat_[A-Za-z0-9_-]{1,128}$/.test(event.chatId) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(event.messageId) ||
+      event.membershipChange
+    )
+      return;
+    const operation = `+${selected}`;
+    try {
+      const response = await blooioFetch(
+        `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages/${encodeURIComponent(event.messageId)}/reactions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `gw-ack-${event.messageId}`,
+          },
+          body: JSON.stringify({ reaction: operation }),
+        },
+        5_000,
+      );
+      const receipt: unknown = await response.json();
+      const data =
+        receipt && typeof receipt === "object" && "data" in receipt
+          ? receipt.data
+          : undefined;
+      if (
+        !response.ok ||
+        !data ||
+        typeof data !== "object" ||
+        !("message_id" in data) ||
+        data.message_id !== event.messageId ||
+        !("reaction" in data) ||
+        data.reaction !== operation
+      ) {
+        throw new Error("BLOOIO_ACKNOWLEDGEMENT_RECEIPT_UNCONFIRMED");
+      }
+      logger.info("Blooio acknowledgement accepted", {
+        messageId: event.messageId,
+      });
+    } catch (error) {
+      // Optional feedback must never become a failure reply or replay inference.
+      // Unknown provider outcomes are deliberately not retried.
+      logger.warn("Blooio acknowledgement not confirmed", {
+        messageId: event.messageId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  },
+
   async sendTypingIndicator(
     config: WebhookConfig,
     event: ChatEvent,
+    feedback?: { markRead: boolean },
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
@@ -561,30 +741,23 @@ export const blooioAdapter: PlatformAdapter = {
       };
       if (/^chat_/i.test(event.chatId)) {
         const chatBase = `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}`;
-        const [read, typing] = await Promise.all([
-          blooioFetch(`${chatBase}/read`, { method: "POST", headers }),
+        const [, typing] = await Promise.all([
+          feedback?.markRead === false
+            ? Promise.resolve()
+            : sendBlooioReadReceipt(config, event),
           blooioFetch(`${chatBase}/typing`, {
             method: "POST",
             headers,
             body: JSON.stringify({ state: "started" }),
           }),
         ]);
-        if (!read.ok || !typing.ok) {
+        if (!typing.ok)
           throw new BlooioApiResponseError(
-            !read.ok ? read.status : typing.status,
-            "Blooio chat feedback was rejected",
+            typing.status,
+            "Blooio typing feedback was rejected",
           );
-        }
-      } else {
-        const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
-        if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
-        const response = await blooioFetch(url, { method: "POST", headers });
-        if (!response.ok) {
-          throw new BlooioApiResponseError(
-            response.status,
-            "Blooio read receipt was rejected",
-          );
-        }
+      } else if (feedback?.markRead !== false) {
+        await sendBlooioReadReceipt(config, event);
       }
     } catch (error) {
       // error-policy:J4 typing is a non-critical UX affordance; a failed

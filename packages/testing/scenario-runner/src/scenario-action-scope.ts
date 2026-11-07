@@ -24,7 +24,7 @@
  */
 
 import type { Action, AgentRuntime } from "@elizaos/core";
-import type { ScenarioDefinition } from "@elizaos/testing";
+import type { ScenarioDefinition } from "../schema/index.ts";
 import {
   pluginMatchesScenarioPackage,
   resolveRequiredPluginPackages,

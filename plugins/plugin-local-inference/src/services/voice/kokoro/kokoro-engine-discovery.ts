@@ -169,7 +169,16 @@ function listStagedVoiceIds(voicesDir: string): string[] {
 		return KOKORO_VOICE_PACKS.filter((v) => present.has(v.file)).map(
 			(v) => v.id,
 		);
-	} catch {
-		return [];
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		// The dir was stat-ed before this call: ENOENT/ENOTDIR here means it
+		// vanished (or was replaced by a file) between the two syscalls, which
+		// is "no voice staged", not a read failure. Anything else (EACCES,
+		// EIO, EMFILE) means we could not look at all — do not let callers
+		// report a staged-but-unreadable install as "no Kokoro model staged".
+		if (code === "ENOENT" || code === "ENOTDIR") return [];
+		throw new Error(`failed to list Kokoro voices at ${voicesDir}`, {
+			cause: error,
+		});
 	}
 }

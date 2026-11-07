@@ -2,7 +2,7 @@
 
 import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback } from "react";
-import { useAppSelectorShallow } from "../state";
+import { useAppSelectorShallow } from "../state/app-store";
 import { openExternalUrl } from "../utils/openExternalUrl";
 import { AndroidCloudSettings } from "./AndroidCloudSettings";
 import {

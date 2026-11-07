@@ -35,13 +35,8 @@ export function useMediaQuery(
         onStoreChange();
       };
 
-      if (typeof mediaQuery.addEventListener === "function") {
-        mediaQuery.addEventListener("change", handleChange);
-        return () => mediaQuery.removeEventListener("change", handleChange);
-      }
-
-      mediaQuery.addListener(handleChange);
-      return () => mediaQuery.removeListener(handleChange);
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
     },
     [query],
   );

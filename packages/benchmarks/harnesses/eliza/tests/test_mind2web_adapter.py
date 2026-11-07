@@ -5,7 +5,7 @@ import asyncio
 from eliza_adapter.client import MessageResponse
 from eliza_adapter.mind2web import ElizaMind2WebAgent
 
-from benchmarks.mind2web.types import (
+from benchmarks.suites.mind2web.types import (
     Mind2WebActionStep,
     Mind2WebConfig,
     Mind2WebElement,

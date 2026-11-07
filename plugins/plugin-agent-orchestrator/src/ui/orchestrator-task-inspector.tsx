@@ -1,30 +1,6 @@
 /**
  * Renders orchestrator status and task-inspector controls while preserving task mutation boundaries.
  */
-
-import {
-  Badge,
-  Button,
-  Card,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Textarea,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type {
-  ChangeSetData,
-  CodingAgentAddAgentInput,
-  CodingAgentOrchestratorStatus,
-  CodingAgentRestartWithEditedPlanInput,
-  CodingAgentTaskArtifactRecord,
-  CodingAgentTaskSessionRecord,
-  CodingAgentTaskThreadDetail,
-  CodingAgentTaskUsageSummary,
-} from "@elizaos/ui/api/client-types-cloud";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,8 +11,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
+  Badge,
+  Button,
+  Card,
+  type ChangeSetData,
+  type CodingAgentAddAgentInput,
+  type CodingAgentOrchestratorStatus,
+  type CodingAgentRestartWithEditedPlanInput,
+  type CodingAgentTaskArtifactRecord,
+  type CodingAgentTaskSessionRecord,
+  type CodingAgentTaskThreadDetail,
+  type CodingAgentTaskUsageSummary,
   DiffReviewPanel,
-} from "@elizaos/ui/components";
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+  useAgentElement,
+} from "@elizaos/ui";
+
 import {
   Archive,
   Check,

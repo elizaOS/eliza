@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { parseNonNegativeInteger } from "@elizaos/core/utils/number-parsing";
+import { parseNonNegativeInteger } from "@elizaos/core/protocol";
 import { eq } from "drizzle-orm";
 import { dbRead } from "../db/helpers";
 import { userIdentities } from "../db/schemas/user-identities";

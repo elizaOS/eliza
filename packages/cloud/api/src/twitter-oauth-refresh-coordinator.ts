@@ -4,10 +4,10 @@
  * KV is eventually consistent and cannot safely lease a single-use token.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import type { TwitterBrokerCredentials } from "@/lib/services/twitter-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import type { TwitterBrokerCredentials } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface CredentialRequest {
   organizationId: string;
@@ -114,7 +114,12 @@ export class TwitterOAuthRefreshCoordinator {
         ) {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
         if (!isCredentialRequest(body)) {
           return Response.json(
             { error: "Invalid credential request" },
@@ -128,8 +133,11 @@ export class TwitterOAuthRefreshCoordinator {
             // when an unrelated Worker route or Durable Object starts.
             const broker =
               this.broker ??
-              (await import("@/lib/services/twitter-automation"))
-                .twitterAutomationService;
+              (
+                await import(
+                  "@elizaos/cloud-shared/lib/services/twitter-automation"
+                )
+              ).twitterAutomationService;
             return broker.getBrokerCredentials(
               body.organizationId,
               body.userId,

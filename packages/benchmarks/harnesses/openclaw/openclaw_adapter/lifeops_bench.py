@@ -18,6 +18,8 @@ but it is no longer loaded or embedded.
 
 from __future__ import annotations
 
+from benchmarks.lib import compute_cost_usd as _compute_cost_usd
+
 import json
 import logging
 import time
@@ -34,32 +36,6 @@ logger = logging.getLogger(__name__)
 # ``eliza_lifeops_bench.clients.cerebras.CEREBRAS_PRICING`` so that
 # the runner's total_cost_usd matches the cerebras-direct upper bound
 # when both adapters hit the same provider.
-_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
-    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
-}
-
-
-def _compute_cost_usd(
-    model: str | None, prompt_tokens: int, completion_tokens: int
-) -> float | None:
-    """Return USD cost for a Cerebras completion.
-
-    Returns :data:`None` when ``model`` is missing or unpriced — per
-    AGENTS.md Cmd #8, "unpriced" is distinct from "free" and a silent
-    ``0.0`` would conflate the two. The runner sums only non-None
-    per-turn costs into ``total_cost_usd``.
-    """
-    if not model:
-        return None
-    # Accept both bare ("gpt-oss-120b") and namespaced ("cerebras/gpt-oss-120b")
-    # model identifiers so callers can pass either form.
-    key = model.rsplit("/", 1)[-1]
-    pricing = _CEREBRAS_PRICING.get(key)
-    if pricing is None:
-        return None
-    return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
-        completion_tokens / 1_000_000.0
-    ) * pricing["output_per_million_usd"]
 
 
 DEFAULT_LIFEOPS_PREAMBLE = (

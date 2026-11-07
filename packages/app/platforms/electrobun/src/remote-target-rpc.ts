@@ -5,8 +5,8 @@
  */
 
 import { createHash } from "node:crypto";
+import type { RemoteTargetPublicIdentity } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { RemoteTargetPublicIdentity } from "@elizaos/core/contracts/remote-control";
 import { logger } from "./logger";
 import {
 	LoopbackRemoteTargetExecutor,
@@ -202,7 +202,7 @@ export class RemoteTargetDesktopService {
 		]);
 		const activeSessions = Object.values(state.sessions).filter(
 			(session) =>
-				session.activationState !== "staged" &&
+				session.activationState === "active" &&
 				session.stoppedAt === null &&
 				session.grant.revokedAt === null &&
 				(session.grant.expiresAt === null ||
@@ -675,7 +675,7 @@ export class RemoteTargetDesktopService {
 			enrolled: identity.enrolled,
 			activeSessions: Object.values(state.sessions).filter(
 				(session) =>
-					session.activationState !== "staged" &&
+					session.activationState === "active" &&
 					session.stoppedAt === null &&
 					session.grant.revokedAt === null,
 			).length,

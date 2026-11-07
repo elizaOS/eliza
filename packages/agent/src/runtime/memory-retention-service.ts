@@ -32,18 +32,6 @@ export const RETENTION_PARTITIONS = [
   "documents",
 ] as const;
 
-/** Legacy public adapter shape retained for existing type consumers; the service uses the canonical runtime contract. */
-export interface RetentionAdapter {
-  getMemories(params: {
-    agentId?: string;
-    tableName: string;
-    limit?: number;
-    orderBy?: "createdAt";
-    orderDirection?: "asc" | "desc";
-  }): Promise<Array<{ id?: string; roomId: string; createdAt?: number }>>;
-  deleteManyMemories(ids: string[]): Promise<void>;
-}
-
 export interface SweepResult {
   partition: string;
   scanned: number;

@@ -4,7 +4,7 @@
  * so disconnect appeared to do nothing.
  */
 
-import { resolveApiToken } from "@elizaos/core/runtime-env";
+import { resolveApiToken } from "@elizaos/host/protocol";
 import {
 	normalizeApiBase,
 	resolveDesktopRuntimeMode,

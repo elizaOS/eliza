@@ -413,7 +413,7 @@ function webFixture(root, tools) {
     summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
     cells: [
       {
-        id: "web.live.railway-roundtrip",
+        id: "web.live.cloudflare-roundtrip",
         platform: "web",
         status: "pass",
         probe: { available: true, code: "WEB_LIVE_READY" },
@@ -692,7 +692,7 @@ describeWithMedia("web voice media evidence", () => {
         summary: { pass: 1, fail: 0, pending: 0, skip: 0 },
         cells: [
           {
-            id: "web.live.railway-roundtrip",
+            id: "web.live.cloudflare-roundtrip",
             platform: "web",
             status: "pass",
             probe: { available: true, code: "WEB_LIVE_READY" },
@@ -709,7 +709,7 @@ describeWithMedia("web voice media evidence", () => {
       else matrix[field] = value;
 
       expect(() => assertLiveMatrixReport(matrix, revision, sessionId)).toThrow(
-        /revision- and session-bound Railway cell pass/,
+        /revision- and session-bound Cloudflare cell pass/,
       );
     },
     30_000,

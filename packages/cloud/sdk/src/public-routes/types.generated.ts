@@ -269,12 +269,6 @@ export interface PublicRoutePathParams {
     conversationId: string | number;
   };
   "GET /api/v1/eliza/agents/{agentId}/api/health": { agentId: string | number };
-  "GET /api/v1/eliza/agents/{agentId}/api/identity": {
-    agentId: string | number;
-  };
-  "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": {
-    agentId: string | number;
-  };
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
@@ -302,6 +296,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/google/accounts": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/calendars": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/feed": Record<never, never>;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/read": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/search": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/subscription-headers": Record<never, never>;
@@ -432,8 +427,17 @@ export interface PublicRoutePathParams {
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": {
     commandId: string | number;
   };
+  "GET /api/v1/subscriptions/cancel/undo/review": Record<never, never>;
+  "GET /api/v1/subscriptions/checkout/payer": Record<never, never>;
   "GET /api/v1/subscriptions/commands": Record<never, never>;
+  "GET /api/v1/subscriptions/downgrade/{commandId}": {
+    commandId: string | number;
+  };
+  "GET /api/v1/subscriptions/plan-change/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
+  "GET /api/v1/subscriptions/upgrade/{commandId}": {
+    commandId: string | number;
+  };
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
   "GET /api/v1/telegram/status": Record<never, never>;
@@ -674,9 +678,6 @@ export interface PublicRoutePathParams {
     agentId: string | number;
     conversationId: string | number;
   };
-  "POST /api/v1/eliza/agents/{agentId}/api/identity/register": {
-    agentId: string | number;
-  };
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
@@ -835,9 +836,17 @@ export interface PublicRoutePathParams {
   "POST /api/v1/stripe/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/cancel": Record<never, never>;
   "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": Record<never, never>;
   "POST /api/v1/subscriptions/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/downgrade/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/downgrade/review": Record<never, never>;
   "POST /api/v1/subscriptions/portal": Record<never, never>;
+  "POST /api/v1/subscriptions/upgrade/{commandId}/payment": {
+    commandId: string | number;
+  };
+  "POST /api/v1/subscriptions/upgrade/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/upgrade/review": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -861,6 +870,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/voice/stt": Record<never, never>;
   "POST /api/v1/voice/tts": Record<never, never>;
   "POST /api/v1/web-push/subscriptions": Record<never, never>;
+  "POST /api/v1/website-reputation/lookup": Record<never, never>;
   "POST /api/v1/whatsapp/connect": Record<never, never>;
   "POST /api/v1/whatsapp/disconnect": Record<never, never>;
   "POST /api/v1/x/dms/conversations/send": Record<never, never>;
@@ -889,9 +899,6 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/eliza/agents/{agentId}/api/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
-  };
-  "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
-    agentId: string | number;
   };
   "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
@@ -1089,8 +1096,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/agents/{agentId}/api/conversations": never;
   "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
   "GET /api/v1/eliza/agents/{agentId}/api/health": never;
-  "GET /api/v1/eliza/agents/{agentId}/api/identity": never;
-  "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": never;
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "GET /api/v1/eliza/agents/{agentId}/backups": never;
   "GET /api/v1/eliza/agents/{agentId}/discord": never;
@@ -1105,6 +1110,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/google/accounts": never;
   "GET /api/v1/eliza/google/calendar/calendars": never;
   "GET /api/v1/eliza/google/calendar/feed": never;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": never;
   "GET /api/v1/eliza/google/gmail/read": never;
   "GET /api/v1/eliza/google/gmail/search": never;
   "GET /api/v1/eliza/google/gmail/subscription-headers": never;
@@ -1190,8 +1196,13 @@ export interface PublicRouteHeaders {
   "GET /api/v1/steward/tenants/credentials": never;
   "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
+  "GET /api/v1/subscriptions/cancel/undo/review": never;
+  "GET /api/v1/subscriptions/checkout/payer": never;
   "GET /api/v1/subscriptions/commands": never;
+  "GET /api/v1/subscriptions/downgrade/{commandId}": never;
+  "GET /api/v1/subscriptions/plan-change/commands": never;
   "GET /api/v1/subscriptions/plans": never;
+  "GET /api/v1/subscriptions/upgrade/{commandId}": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
   "GET /api/v1/telegram/status": never;
@@ -1378,7 +1389,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/agents/{agentId}/api/conversations": never;
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream": never;
-  "POST /api/v1/eliza/agents/{agentId}/api/identity/register": never;
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "POST /api/v1/eliza/agents/{agentId}/bridge": never;
   "POST /api/v1/eliza/agents/{agentId}/discord/oauth": never;
@@ -1487,9 +1497,15 @@ export interface PublicRouteHeaders {
   "POST /api/v1/stripe/checkout": never;
   "POST /api/v1/subscriptions/cancel": never;
   "POST /api/v1/subscriptions/cancel/undo": never;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": never;
   "POST /api/v1/subscriptions/checkout": never;
   "POST /api/v1/subscriptions/checkout/confirm": never;
+  "POST /api/v1/subscriptions/downgrade/confirm": never;
+  "POST /api/v1/subscriptions/downgrade/review": never;
   "POST /api/v1/subscriptions/portal": never;
+  "POST /api/v1/subscriptions/upgrade/{commandId}/payment": never;
+  "POST /api/v1/subscriptions/upgrade/confirm": never;
+  "POST /api/v1/subscriptions/upgrade/review": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;
@@ -1513,6 +1529,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/voice/stt": never;
   "POST /api/v1/voice/tts": never;
   "POST /api/v1/web-push/subscriptions": never;
+  "POST /api/v1/website-reputation/lookup": never;
   "POST /api/v1/whatsapp/connect": never;
   "POST /api/v1/whatsapp/disconnect": never;
   "POST /api/v1/x/dms/conversations/send": never;
@@ -1542,7 +1559,6 @@ export interface PublicRouteHeaders {
   "PUT /api/v1/billing/settings": never;
   "PUT /api/v1/connections/{platform}": never;
   "PUT /api/v1/eliza/agents/{agentId}/api/{path}": never;
-  "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": never;
   "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "PUT /api/v1/mcps/{mcpId}": never;
   "PUT /api/v1/proxy/birdeye/{path}": never;

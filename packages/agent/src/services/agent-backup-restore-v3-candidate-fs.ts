@@ -4,7 +4,7 @@
  * tree proof/cleanup responsibilities.
  */
 
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFileTreeFileProof,
   type AgentBackupRestoreV3CandidateFileTreeFileSpec,

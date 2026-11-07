@@ -3,14 +3,14 @@
  * assistant, and PGlite runtime. Deterministic model fixtures and captured
  * Telegraf send calls replace external services; polling and Telegram are not run.
  */
-import { ModelType } from "@elizaos/core";
+import { type Content, ModelType } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { MessageManager } from "@elizaos/plugin-telegram";
+import type { DeterministicModelFixture } from "@elizaos/testing/models";
 import {
   createTestRuntimeWithModelProvider,
-  type DeterministicModelFixture,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,7 +41,13 @@ interface DeliveredTelegramMessage {
 async function driveTelegramTurn(options: {
   inboundText: string;
   fixtures?: DeterministicModelFixture[];
-}): Promise<{ delivered: DeliveredTelegramMessage[]; chatId: number }> {
+  /** Reply content the message service hands to the connector callback. */
+  replyContent?: Content;
+}): Promise<{
+  delivered: DeliveredTelegramMessage[];
+  photos: Array<{ chatId: number | string; filename?: string }>;
+  chatId: number;
+}> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
       plugins: [createAssistantPlugin()],
@@ -63,8 +69,16 @@ async function driveTelegramTurn(options: {
   // two methods; capturing them is the same surface that, in production, would
   // POST to `${apiRoot}/bot<token>/sendMessage`.
   const delivered: DeliveredTelegramMessage[] = [];
+  const photos: Array<{ chatId: number | string; filename?: string }> = [];
   const captureTelegram = {
     sendChatAction: async () => true,
+    sendPhoto: async (
+      chatId: number | string,
+      photo: { filename?: string },
+    ): Promise<unknown> => {
+      photos.push({ chatId, filename: photo.filename });
+      return { message_id: 900 + photos.length, chat: { id: chatId }, date: 0 };
+    },
     sendMessage: async (
       chatId: number | string,
       text: string,
@@ -101,9 +115,19 @@ async function driveTelegramTurn(options: {
 
   // `forceReply` is the explicit-invocation path (a slash command / mention):
   // it bypasses the default-off TELEGRAM_AUTO_REPLY gate so the agent replies.
+  const replyContent = options.replyContent;
+  const messageService = harness.runtime.messageService;
+  if (replyContent && messageService) {
+    // Stand in for an action that answers through the connector callback,
+    // as ATTACH_TO_CHAT does with `{ text: "", attachments }`.
+    messageService.handleMessage = async (_runtime, _memory, callback) => {
+      await callback?.(replyContent, "ATTACH_TO_CHAT");
+      return undefined as never;
+    };
+  }
   await manager.handleMessage(ctx, { forceReply: true });
 
-  return { delivered, chatId: chat.id };
+  return { delivered, photos, chatId: chat.id };
 }
 
 describe("telegram connector loop (keyless)", () => {
@@ -139,6 +163,42 @@ describe("telegram connector loop (keyless)", () => {
       delivered[0]?.chatId,
       "the reply went back to the inbound chat",
     ).toBe(chatId);
+  }, 60_000);
+
+  it("delivers escaped Markdown and adjacent emphasis without changing visible characters", async () => {
+    const cases = [
+      [String.raw`\*literal\*`, String.raw`\*literal\*`],
+      [String.raw`\\*italic*`, String.raw`\\_italic_`],
+      [String.raw`\**not bold**`, String.raw`\*_not bold_\*`],
+      [String.raw`**a\**`, String.raw`\*_a\*_`],
+      [
+        String.raw`\**not bold** then **bold**`,
+        String.raw`\*_not bold_\* then *bold*`,
+      ],
+      [String.raw`\\**bold**`, String.raw`\\*bold*`],
+      [String.raw`\\\*literal\*`, String.raw`\\\*literal\*`],
+      ["***nested***", "_*nested*_"],
+      [String.raw`\*literal\* and *real*`, String.raw`\*literal\* and _real_`],
+      ["2 * 3 * 4", String.raw`2 \* 3 \* 4`],
+    ];
+    const { delivered, chatId } = await driveTelegramTurn({
+      inboundText: "Send the requested formatting examples exactly.",
+      fixtures: [
+        {
+          name: "escaped-markdown-reply",
+          match: { modelType: ModelType.RESPONSE_HANDLER },
+          response: {
+            contexts: ["simple"],
+            intents: [],
+            candidateActionNames: [],
+            replyText: cases.map(([input]) => input).join("\n"),
+          },
+        },
+      ],
+    });
+    expect(delivered).toEqual([
+      { chatId, text: cases.map(([, output]) => output).join("\n") },
+    ]);
   }, 60_000);
 
   it("delivers a drifted tool-call reply to the Telegram wire seam already sanitized (#15888)", async () => {
@@ -178,5 +238,29 @@ describe("telegram connector loop (keyless)", () => {
     // asserted verbatim so the expectation pins the exact wire payload.
     expect(delivered[0]?.text).toBe("The forecast looks clear\\.");
     expect(delivered[0]?.chatId).toBe(chatId);
+  }, 60_000);
+
+  it("delivers an attachment-only reply instead of dropping it", async () => {
+    // 1x1 PNG.
+    const png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const { delivered, photos, chatId } = await driveTelegramTurn({
+      inboundText: "Attach the floor plan to this chat.",
+      replyContent: {
+        text: "",
+        attachments: [
+          {
+            id: "floor-plan",
+            url: png,
+            title: "Floor plan",
+            contentType: "image/png" as never,
+          },
+        ],
+      },
+    });
+
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.chatId).toBe(chatId);
+    expect(delivered).toEqual([]);
   }, 60_000);
 });

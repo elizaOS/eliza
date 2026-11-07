@@ -7,8 +7,7 @@ import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links.js";
-import { theme } from "../../terminal/theme.js";
+import { formatDocsLink, theme } from "../terminal.js";
 export function registerConfigureCommand(program: Command) {
   program
     .command("configure")

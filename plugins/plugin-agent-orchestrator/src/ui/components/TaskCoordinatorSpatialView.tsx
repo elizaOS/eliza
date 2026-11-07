@@ -17,27 +17,24 @@
  *              artifacts, decisions, events, and recent messages, with
  *              Delete/Reopen affordances.
  */
-
-import type {
-  CodingAgentTaskArtifactRecord,
-  CodingAgentTaskDecisionRecord,
-  CodingAgentTaskEventRecord,
-  CodingAgentTaskSessionRecord,
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-} from "@elizaos/ui/api/client-types-cloud";
 import {
-  Button,
-  Card,
-  Divider,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  type CodingAgentTaskArtifactRecord,
+  type CodingAgentTaskDecisionRecord,
+  type CodingAgentTaskEventRecord,
+  type CodingAgentTaskSessionRecord,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  SpatialDivider as Divider,
   Field,
-  HStack,
-  List,
+  SpatialHStack as HStack,
+  SpatialList as List,
   Spacer,
   type SpatialTone,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 
 type TaskStatus = CodingAgentTaskThread["status"];
 

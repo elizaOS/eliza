@@ -4,17 +4,20 @@
  * session cookie. Disabled outside test runs.
  */
 
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import {
   createPlaywrightTestSessionToken,
   isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
-} from "@/lib/auth/playwright-test-session";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { usersService } from "@/lib/services/users";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 
 function isEnabled(c: AppContext): boolean {
   return isPlaywrightTestAuthEnabled(testAuthEnv(c));

@@ -4,6 +4,7 @@
 self-hosted-runner:
   labels:
     - prod-ops
+    - x-canary
     - prod-ops-1
     - prod-ops-2
     - android-device

@@ -8,20 +8,23 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
-  getDefaultStylePreset,
+  ElizaError,
   normalizeCharacterLanguage,
-  type RouteHelpers,
-  type RouteRequestMeta,
+  resolveUserPath,
   type UUID,
 } from "@elizaos/core";
-
+import {
+  getDefaultStylePreset,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { resolveUserPath } from "../config/paths.ts";
+import { resolveEffectiveDbProvider } from "../runtime/database-selection.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { removeResetCredentialsFromVault } from "../runtime/operations/vault-bridge.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
@@ -36,7 +39,7 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-function resolveDefaultAgentName(config: AutonomousConfigLike): string {
+function resolveDefaultAgentName(config: Record<string, unknown>): string {
   const ui = config.ui as
     | { assistant?: { name?: string }; language?: string }
     | undefined;
@@ -54,7 +57,7 @@ function resolveDefaultAgentName(config: AutonomousConfigLike): string {
 
 export interface AgentAdminRouteState {
   runtime: AgentRuntime | null;
-  config: AutonomousConfigLike;
+  config: Record<string, unknown>;
   agentState: AgentStateStatus;
   agentName: string;
   model: string | undefined;
@@ -63,6 +66,7 @@ export interface AgentAdminRouteState {
   chatUserId: UUID | null;
   chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
   chatConnectionPromise: Promise<void> | null;
+  runtimeStopPromise: Promise<void> | null;
   pendingRestartReasons: string[];
   conversations?: Map<string, unknown>;
   activeConversationId?: string | null;
@@ -85,26 +89,41 @@ export interface AgentAdminRouteContext
   resolveStateDir: () => string;
   stateDirExists: (resolvedState: string) => boolean;
   removeStateDir: (resolvedState: string) => void;
-  logWarn: (message: string) => void;
 }
 
-function resolveResetPgliteDataDir(
+/**
+ * The local store that Reset deletes. Reset only erases the default PGlite
+ * directory; for any other store it throws before the runtime stops, so the
+ * route cannot report a reset that left conversations and memory in place.
+ */
+export function resolveResetPgliteDataDir(
   config: ReturnType<typeof loadElizaConfig>,
-  stateDir: string,
+  defaultWorkspaceDir: string,
 ): string {
+  const provider = resolveEffectiveDbProvider(config);
+  if (provider !== "pglite") {
+    throw new ElizaError(
+      `Reset cannot erase the ${provider} database. Erase it with your database tools, or switch to the local database before you reset.`,
+      { code: "AGENT_RESET_DATABASE_UNSUPPORTED" },
+    );
+  }
   const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  if (explicitDataDir) {
-    return resolveUserPath(explicitDataDir);
-  }
-
   const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) {
-    return resolveUserPath(configuredDataDir);
+  const dataDir = resolveUserPath(
+    explicitDataDir ||
+      configuredDataDir ||
+      path.join(
+        config.agents?.defaults?.workspace ?? defaultWorkspaceDir,
+        ".elizadb",
+      ),
+  );
+  if (path.basename(dataDir) !== ".elizadb") {
+    throw new ElizaError(
+      `Reset will not delete the custom database directory ${dataDir}. Erase it yourself before you reset.`,
+      { code: "AGENT_RESET_DATABASE_UNSUPPORTED" },
+    );
   }
-
-  const workspaceDir =
-    config.agents?.defaults?.workspace ?? `${stateDir}/workspace`;
-  return path.join(resolveUserPath(workspaceDir), ".elizadb");
+  return dataDir;
 }
 
 export async function handleAgentAdminRoutes(
@@ -123,10 +142,13 @@ export async function handleAgentAdminRoutes(
     resolveStateDir,
     stateDirExists,
     removeStateDir,
-    logWarn,
   } = ctx;
 
   if (method === "POST" && pathname === "/api/agent/restart") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     if (!onRestart) {
       error(
         res,
@@ -195,20 +217,22 @@ export async function handleAgentAdminRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/reset") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     try {
+      const stateDir = resolveStateDir();
+      const config = loadElizaConfig();
+      const dataDir = resolveResetPgliteDataDir(
+        config,
+        path.join(stateDir, "workspace"),
+      );
       if (state.runtime) {
         await state.runtime.stop({ fast: true });
         state.runtime = null;
       }
-
-      const stateDir = resolveStateDir();
-      const config = loadElizaConfig();
-      const dataDir = resolveResetPgliteDataDir(config, stateDir);
-      if (path.basename(dataDir) !== ".elizadb") {
-        logWarn(
-          `[eliza-api] Refusing to delete unexpected PGlite dir during reset: "${dataDir}"`,
-        );
-      } else if (stateDirExists(dataDir)) {
+      if (stateDirExists(dataDir)) {
         removeStateDir(dataDir);
       }
 
@@ -224,25 +248,7 @@ export async function handleAgentAdminRoutes(
       // ELIZAOS_CLOUD_API_KEY → vault-bootstrap rehydrates env on next start
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
-      try {
-        const vault = getAgentHostBridge().sharedVault();
-        const cloudKeys = [
-          "ELIZAOS_CLOUD_API_KEY",
-          "ELIZAOS_CLOUD_BASE_URL",
-          "ELIZAOS_CLOUD_ENABLED",
-        ];
-        for (const key of cloudKeys) {
-          try {
-            await vault.remove(key);
-          } catch {
-            // Entry may not exist — fine.
-          }
-        }
-      } catch (vaultErr) {
-        logWarn(
-          `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
-        );
-      }
+      await removeResetCredentialsFromVault(getAgentHostBridge().sharedVault());
 
       state.agentState = "stopped";
       state.agentName = resolveDefaultAgentName(config);
@@ -261,7 +267,10 @@ export async function handleAgentAdminRoutes(
       json(res, { ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      error(res, `Reset failed: ${message}`, 500);
+      const unsupported =
+        err instanceof ElizaError &&
+        err.code === "AGENT_RESET_DATABASE_UNSUPPORTED";
+      error(res, `Reset failed: ${message}`, unsupported ? 409 : 500);
     }
     return true;
   }

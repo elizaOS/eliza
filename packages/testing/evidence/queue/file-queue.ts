@@ -12,7 +12,9 @@
  * the pure functions in `state.ts`; this class only performs the moves.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { hostname } from "node:os";
 import path from "node:path";
 import type { ArtifactKind } from "../schema.ts";
 import {
@@ -21,6 +23,7 @@ import {
   type JobResult,
   makeJobId,
   parseJob,
+  parseJobResult,
   QUEUE_DIRS,
   QueueBackpressureError,
   type QueueJob,
@@ -34,7 +37,7 @@ export interface EnqueueParams {
   /** Artifact kind (`screenshot` | `keyframe`). */
   kind: ArtifactKind;
   /** Absolute path of the `analysis.json` the worker merges into. */
-  analysisPath: string;
+  analysisPath: string | null;
   /** Opaque analyzer params. */
   params?: Record<string, unknown>;
 }
@@ -53,6 +56,8 @@ export interface FileJobQueueOptions {
   now?: () => number;
   entropy?: () => string;
 }
+
+const LOCAL_OWNER_HOST = createHash("sha256").update(hostname()).digest("hex");
 
 export class FileJobQueue {
   readonly root: string;
@@ -103,7 +108,8 @@ export class FileJobQueue {
       imagePath: path.resolve(imagePath),
       artifact: params.artifact,
       kind: params.kind,
-      analysisPath: path.resolve(params.analysisPath),
+      analysisPath:
+        params.analysisPath === null ? null : path.resolve(params.analysisPath),
       params: params.params,
       enqueuedAt: new Date(nowMs).toISOString(),
     };
@@ -126,7 +132,10 @@ export class FileJobQueue {
   claim(onInvalid?: (result: JobResult) => void): ClaimedJob | null {
     for (const fileName of claimOrder(fs.readdirSync(this.dir("pending")))) {
       const from = path.join(this.dir("pending"), fileName);
-      const to = path.join(this.dir("processing"), fileName);
+      const to = path.join(
+        this.dir("processing"),
+        `${fileName.slice(0, -5)}.owner-${LOCAL_OWNER_HOST}-${process.pid}.json`,
+      );
       try {
         fs.renameSync(from, to);
       } catch (error) {
@@ -163,10 +172,7 @@ export class FileJobQueue {
    */
   complete(claimed: ClaimedJob, result: JobResult): void {
     this.writeResult(result);
-    const done = path.join(
-      this.dir("done"),
-      path.basename(claimed.processingPath),
-    );
+    const done = path.join(this.dir("done"), `${claimed.job.id}.json`);
     fs.renameSync(claimed.processingPath, done);
   }
 
@@ -177,15 +183,60 @@ export class FileJobQueue {
    * so the job keeps its original FIFO position.
    */
   unclaim(claimed: ClaimedJob): void {
-    const back = path.join(
-      this.dir("pending"),
-      path.basename(claimed.processingPath),
-    );
+    const back = path.join(this.dir("pending"), `${claimed.job.id}.json`);
     fs.renameSync(claimed.processingPath, back);
+  }
+
+  /** Recover only provably dead local workers. Remote and legacy ownership stays explicit. */
+  recoverAbandoned(): {
+    requeued: number;
+    completed: number;
+    unverifiable: number;
+  } {
+    const counts = { requeued: 0, completed: 0, unverifiable: 0 };
+    for (const name of claimOrder(fs.readdirSync(this.dir("processing")))) {
+      const owner = /^(.*)\.owner-([a-f0-9]{64})-([1-9][0-9]*)\.json$/.exec(
+        name,
+      );
+      if (!owner || owner[2] !== LOCAL_OWNER_HOST) {
+        counts.unverifiable++;
+        continue;
+      }
+      try {
+        process.kill(Number(owner[3]), 0);
+        continue;
+      } catch (error) {
+        // error-policy:J4 Only ESRCH proves this worker cannot publish another result.
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          counts.unverifiable++;
+          continue;
+        }
+      }
+      const from = path.join(this.dir("processing"), name);
+      const result = this.readResult(owner[1]);
+      const destination = result
+        ? path.join(this.dir("done"), `${owner[1]}.json`)
+        : path.join(this.dir("pending"), `${owner[1]}.json`);
+      try {
+        fs.renameSync(from, destination);
+      } catch (error) {
+        // error-policy:J6 Another recovery worker won the same atomic move.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      if (result) counts.completed++;
+      else counts.requeued++;
+    }
+    return counts;
   }
 
   /** Read a job's result record, or null when it has not completed. */
   readResult(id: string): JobResult | null {
+    if (!/^[a-zA-Z0-9._-]+$/.test(id) || id === "." || id === "..") {
+      throw new QueueJobInvalidError([
+        { path: "id", message: "invalid result identity" },
+      ]);
+    }
     const file = path.join(this.dir("results"), `${id}.json`);
     let raw: string;
     try {
@@ -196,7 +247,7 @@ export class FileJobQueue {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
     }
-    return JSON.parse(raw) as JobResult;
+    return parseJobResult(raw, id);
   }
 
   private writeResult(result: JobResult): void {
@@ -220,7 +271,7 @@ export class FileJobQueue {
       reason: error.message,
     };
     this.writeResult(result);
-    const done = path.join(this.dir("done"), path.basename(processingPath));
+    const done = path.join(this.dir("done"), `${id}.json`);
     fs.renameSync(processingPath, done);
     return result;
   }

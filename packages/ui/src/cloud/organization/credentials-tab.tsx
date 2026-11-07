@@ -18,7 +18,7 @@
 import { KeyRound, Loader2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "../../bridge/toast";
-import { Button } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ContributeCredentialDialog } from "./contribute-credential-dialog";
 import { CredentialsList } from "./credentials-list";

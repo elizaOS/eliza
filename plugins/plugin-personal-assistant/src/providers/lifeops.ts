@@ -8,9 +8,16 @@
  * structured `values`/`data` for the planner. Connector reads pass through the
  * privacy-egress guard so per-account privacy policies redact what surfaces;
  * connector/calendar/gmail fetch failures degrade to annotated lines rather
- * than aborting the whole context.
+ * than aborting the whole context. When the caller shows the model only
+ * `discoveryText` (`referenceBodyDeferred`), the next-event read is skipped and
+ * `text` states that instead; restoration composes again with the read.
  */
 
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsGoalDefinition,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   evaluateOwnerExclusiveDisclosure,
@@ -20,15 +27,12 @@ import {
   logger,
   type Memory,
   type Provider,
+  type ProviderExecutionContext,
   type ProviderResult,
   type State,
+  timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsGoalDefinition,
-  LifeOpsNextCalendarEventContext,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
@@ -56,6 +60,10 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { formatConnectorDegradationLines } from "./lifeops-connector-lines.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
+// error-policy:J4 a skipped read is stated in `text`, never rendered as an
+// empty calendar.
+const CALENDAR_READ_DEFERRED_LINE =
+  "Next calendar event: not read in this planning view. Restore the complete lifeops reference to check connected calendar sources; this does not mean the calendar is empty.";
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -192,7 +200,7 @@ function summarizeActiveGoals(
  * replies claiming an empty day while completions sat in the store (#16935).
  */
 function summarizeCompletedToday(
-  occurrences: Array<{ title: string; updatedAt: string }>,
+  occurrences: Array<{ title: string }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];
@@ -329,7 +337,7 @@ function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
+    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. On-demand morning/daily briefs and tracked-work recaps use BRIEF (compose_morning, compose_evening, compose_weekly). Automatic morning/night briefings run through existing scheduled tasks. Available in private owner conversations, including Discord.",
   descriptionCompressed:
     "Owner operations overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
@@ -368,6 +376,7 @@ export const lifeOpsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
+    context?: ProviderExecutionContext,
   ): Promise<ProviderResult> {
     // The destination decides the audience, never the sender's claim about
     // itself: an unattested turn (or one attested to a shared room) reads as
@@ -410,13 +419,20 @@ export const lifeOpsProvider: Provider = {
         googleAccountsRead,
         connectorDegradationLines,
       ] = await Promise.all([
-        readLifeOpsOwnerProfile(runtime),
-        resolveOwnerFactStore(runtime).read(),
-        service.getOverview().then(async (refreshed) => ({
-          overview: refreshed,
-          completedToday: await service.listOwnerOccurrencesCompletedToday(now),
-        })),
-        (async () => {
+        timeInferenceSpan("provider:lifeops:owner-profile", () =>
+          readLifeOpsOwnerProfile(runtime),
+        ),
+        timeInferenceSpan("provider:lifeops:owner-facts", () =>
+          resolveOwnerFactStore(runtime).read(),
+        ),
+        timeInferenceSpan("provider:lifeops:overview-completed", () =>
+          service.getOverview().then(async (refreshed) => ({
+            overview: refreshed,
+            completedToday:
+              await service.listOwnerOccurrencesCompletedToday(now),
+          })),
+        ),
+        timeInferenceSpan("provider:lifeops:connector-inventory", async () => {
           try {
             return await accountManager.listAccounts("google");
           } catch (cause) {
@@ -434,8 +450,8 @@ export const lifeOpsProvider: Provider = {
               context: { provider: "google" },
             });
           }
-        })(),
-        (async () => {
+        }),
+        timeInferenceSpan("provider:lifeops:account-privacy", async () => {
           try {
             return mapConnectorAccountPrivacyPolicies(
               await service.repository.listConnectorAccountPrivacy(
@@ -452,8 +468,8 @@ export const lifeOpsProvider: Provider = {
             });
             return mapConnectorAccountPrivacyPolicies([]);
           }
-        })(),
-        (async () => {
+        }),
+        timeInferenceSpan("provider:lifeops:google-accounts", async () => {
           // Captured, not thrown: the Google block below re-raises a failure
           // into its own catch so the degrade path stays exactly as it was.
           try {
@@ -464,8 +480,10 @@ export const lifeOpsProvider: Provider = {
           } catch (cause) {
             return { ok: false as const, cause };
           }
-        })(),
-        summarizeConnectorDegradation(runtime),
+        }),
+        timeInferenceSpan("provider:lifeops:connector-health", () =>
+          summarizeConnectorDegradation(runtime),
+        ),
       ]);
       const egressContext = createLifeOpsEgressContext({
         isOwner: true,
@@ -524,6 +542,7 @@ export const lifeOpsProvider: Provider = {
       const emailLines: string[] = [];
       const accountLines: string[] = [];
       let nextEventContext: LifeOpsNextCalendarEventContext | null = null;
+      let calendarReadDeferred = false;
       let gmailSummary: LifeOpsGmailTriageSummary | null = null;
 
       try {
@@ -632,10 +651,15 @@ export const lifeOpsProvider: Provider = {
               })
             ) {
               calendarLines.push("Calendar context hidden by privacy policy.");
+            } else if (context?.referenceBodyDeferred === true) {
+              calendarReadDeferred = true;
+              calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
             } else {
               try {
-                nextEventContext =
-                  await service.getNextCalendarEventContext(INTERNAL_URL);
+                nextEventContext = await timeInferenceSpan(
+                  "provider:lifeops:calendar-next",
+                  () => service.getNextCalendarEventContext(INTERNAL_URL),
+                );
                 calendarLines.push(...summarizeNextEvent(nextEventContext));
               } catch (cause) {
                 // error-policy:J4 the granted calendar read failed — degrade
@@ -666,9 +690,13 @@ export const lifeOpsProvider: Provider = {
               emailLines.push("Gmail context hidden by privacy policy.");
             } else {
               try {
-                const triage = await service.getGmailTriage(INTERNAL_URL, {
-                  maxResults: 5,
-                });
+                const triage = await timeInferenceSpan(
+                  "provider:lifeops:gmail-triage",
+                  () =>
+                    service.getGmailTriage(INTERNAL_URL, {
+                      maxResults: 5,
+                    }),
+                );
                 gmailSummary = triage.summary;
                 emailLines.push(...summarizeGmailTriage(triage.summary));
               } catch (cause) {
@@ -687,21 +715,28 @@ export const lifeOpsProvider: Provider = {
         }
 
         if (calendarLines.length === 0 && audience === "owner") {
-          try {
-            nextEventContext =
-              await service.getNextCalendarEventContext(INTERNAL_URL);
-            calendarLines.push(...summarizeNextEvent(nextEventContext));
-          } catch (cause) {
-            // error-policy:J4 designed absence — with no calendar source
-            // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
-            // every turn of a connector-less install, so it stays a
-            // debug-level omit rather than a reportError that would escalate
-            // an unconfigured install as a systemic failure; genuine failures
-            // on the capability-granted path are reported above.
-            logger.debug(
-              { err: cause },
-              "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
-            );
+          if (context?.referenceBodyDeferred === true) {
+            calendarReadDeferred = true;
+            calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
+          } else {
+            try {
+              nextEventContext = await timeInferenceSpan(
+                "provider:lifeops:calendar-next",
+                () => service.getNextCalendarEventContext(INTERNAL_URL),
+              );
+              calendarLines.push(...summarizeNextEvent(nextEventContext));
+            } catch (cause) {
+              // error-policy:J4 designed absence — with no calendar source
+              // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
+              // every turn of a connector-less install, so it stays a
+              // debug-level omit rather than a reportError that would escalate
+              // an unconfigured install as a systemic failure; genuine failures
+              // on the capability-granted path are reported above.
+              logger.debug(
+                { err: cause },
+                "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
+              );
+            }
           }
         }
       } catch (cause) {
@@ -752,6 +787,9 @@ export const lifeOpsProvider: Provider = {
         ...summarizeOwnerTimingFacts(ownerFacts),
       ];
       return {
+        ...(calendarReadDeferred
+          ? { referenceBodyDeferred: true as const }
+          : {}),
         discoveryText: [
           ...instructions,
           ...ownerContext,

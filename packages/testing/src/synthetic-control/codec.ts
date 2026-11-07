@@ -1,6 +1,6 @@
 /** Validates synthetic-control wire messages without accepting lossy or executable values. */
 
-import { isSyntheticEnvironmentNamespace } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { isSyntheticEnvironmentNamespace } from "@elizaos/contracts";
 import type {
   JsonValue,
   SyntheticControlCommand,

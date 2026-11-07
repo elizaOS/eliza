@@ -15,6 +15,7 @@ import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
 } from "./renderer-build-manifest.ts";
+import { startSingleDeviceAdb } from "./single-device-adb.ts";
 
 const IS_WINDOWS = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -177,19 +178,49 @@ export function resolveSerial(adbBin, requested) {
 }
 
 /**
- * Connect Playwright's Android driver to a single device, selected by the same
- * rules as resolveSerial (explicit serial → emulator → first), and close the
- * others. `android` is the `_android` export from @playwright/test, passed in
- * so this lib stays free of a Playwright import for the non-Playwright scripts.
+ * Connect Playwright's Android driver to a single device. `android` is the
+ * `_android` export from @playwright/test, passed in so this lib stays free of
+ * a Playwright import for the non-Playwright scripts.
+ *
+ * With a serial (argument or ANDROID_SERIAL), Playwright talks to a
+ * single-device adb proxy and never lists, shells into or installs its driver
+ * on other attached devices. The proxy closes with the device. With
+ * `endpoint`, Playwright uses that adb server instead of the default one.
+ * Without a serial, the first emulator (else the first device) is chosen and
+ * the others are closed.
  */
-export async function connectPlaywrightDevice(android, requestedSerial) {
-  const devices = await android.devices();
+export async function connectPlaywrightDevice(
+  android,
+  requestedSerial,
+  { endpoint }: { endpoint?: { host: string; port: number } } = {},
+) {
+  const wanted = requestedSerial ?? process.env.ANDROID_SERIAL ?? null;
+  if (wanted && !endpoint) {
+    const proxy = await startSingleDeviceAdb(wanted);
+    try {
+      const devices = await android.devices({
+        host: proxy.host,
+        port: proxy.port,
+      });
+      const chosen = devices.find((d) => d.serial() === wanted);
+      if (!chosen) {
+        throw new Error(
+          `No Playwright Android device with serial ${wanted} (is it attached and in \`device\` state?)`,
+        );
+      }
+      chosen.once("close", () => void proxy.close());
+      return chosen;
+    } catch (error) {
+      await proxy.close();
+      throw error;
+    }
+  }
+  const devices = await android.devices(endpoint ?? {});
   if (devices.length === 0) {
     throw new Error(
       "Playwright _android found no devices. Is adb on PATH / is a device attached?",
     );
   }
-  const wanted = requestedSerial ?? process.env.ANDROID_SERIAL ?? null;
   let chosen;
   if (wanted) {
     chosen = devices.find((d) => d.serial() === wanted);

@@ -12,13 +12,13 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { AgentBackupRestoreV3CandidateReceiptSchema } from "@elizaos/contracts";
 import {
   AgentBackupRestoreV3AttestationBodySchema,
   AgentBackupRestoreV3CommittedGenerationSchema,
   AgentBackupRestoreV3RootIdentitiesSchema,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
-import { AgentBackupRestoreV3CandidateReceiptSchema } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts/node";
 import { and, asc, eq, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { runtimeIdentitySchema } from "../../lib/services/sandbox-runtime-observation";

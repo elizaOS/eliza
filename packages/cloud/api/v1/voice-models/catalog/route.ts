@@ -7,7 +7,7 @@
  * and HuggingFace tree-listing sources are fall-backs.
  *
  * Response body matches `VoiceModelCatalogResponse` from
- * `@/packages/lib/services/voice-model-catalog`. The Ed25519 signature
+ * `@elizaos/cloud-shared/lib/services/voice-model-catalog`. The Ed25519 signature
  * is base64-encoded in the `X-Eliza-Signature` header — the runtime
  * verifies the EXACT response text against this header before parsing.
  *
@@ -17,15 +17,15 @@
  * Public — no auth required. The signature is the trust root.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   buildVoiceModelCatalogBody,
   fingerprintPublicKey,
   signVoiceModelCatalog,
-} from "@/lib/services/voice-model-catalog";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/voice-model-catalog";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -11,11 +11,13 @@ import type {
   DeterministicModelFixture,
   DeterministicModelFixtureRegistry,
   DeterministicTextMatcher,
+} from "../../src/deterministic-model-plugin.ts";
+import type {
   ScenarioDefinition,
   ScenarioModelFixture,
   ScenarioModelFixtureDeclaration,
   ScenarioModelTextMatcher,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 
 export type RuntimeWithScenarioModelFixtureRegistry = AgentRuntime & {
   scenarioModelFixtures?: DeterministicModelFixtureRegistry;
@@ -57,7 +59,10 @@ function compileResponse(
   if (
     response.toolCalls === undefined &&
     response.finishReason === undefined &&
-    response.usage === undefined
+    response.usage === undefined &&
+    response.thought === undefined &&
+    response.messageToUser === undefined &&
+    response.completed === undefined
   ) {
     return response.text ?? "";
   }
@@ -65,8 +70,8 @@ function compileResponse(
     ...(response.text !== undefined ? { text: response.text } : {}),
     ...(response.toolCalls !== undefined
       ? {
-          toolCalls: response.toolCalls.map((toolCall) => ({
-            id: toolCall.id ?? `call-${fixture.name}`,
+          toolCalls: response.toolCalls.map((toolCall, index) => ({
+            id: toolCall.id ?? `call-${fixture.name}-${index}`,
             name: toolCall.name,
             type: "function",
             arguments: toolCall.arguments,

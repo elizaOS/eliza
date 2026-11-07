@@ -604,18 +604,23 @@ export class CloudManagedGatewayRelayService extends Service {
     } as typeof message.metadata;
 
     const callbackTexts: string[] = [];
+    // Every callback is its own response memory. Numbering only the texted
+    // ones gave an attachment-only reply the id of the reply before it, and
+    // the store ignored it as a duplicate.
+    let callbackCount = 0;
     const callback: HandlerCallback = async (content: Content) => {
       const responseText = typeof content.text === "string" ? content.text : "";
       if (responseText.trim()) {
         callbackTexts.push(responseText);
       }
+      callbackCount += 1;
 
       const responseMemory = createMessageMemory({
         id: createUniqueUuid(
           this.runtime,
           `${payload.source}:${payload.roomKey}:${String(
             rpc.id ?? Date.now()
-          )}:response:${callbackTexts.length}`
+          )}:response:${callbackCount}`
         ),
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,

@@ -34,9 +34,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from training.model_registry import REGISTRY, get as registry_get  # noqa: E402
+from eliza_training.training.model_registry import REGISTRY, get as registry_get  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("abliterate")

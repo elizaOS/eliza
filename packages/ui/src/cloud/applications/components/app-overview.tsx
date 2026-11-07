@@ -28,7 +28,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
-import { DashboardStatCard } from "../../../cloud-ui/components/brand";
+import { DashboardStatCard } from "../../../cloud-ui/components/brand/dashboard-stat-card";
 import {
   AlertDialog,
   AlertDialogAction,

@@ -9,7 +9,8 @@ import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from '../services/embedded-workflow-service';
-import { digestId, digestKeys, digestRecord } from '../services/hosted-digest';
+import { digestId, digestKeys, digestRecord, digestText } from '../services/hosted-digest';
+import { hostedNativeSourcesAvailable } from '../services/hosted-native-source';
 import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type { WorkflowDefinition } from '../types/index';
@@ -26,17 +27,9 @@ export interface WorkflowRouteContext {
   json: (res: http.ServerResponse, body: unknown, status?: number) => void;
 }
 
-export interface WorkflowStatusResponse {
-  mode: 'cloud' | 'disabled';
-  host: string | null;
-  status: 'ready' | 'error';
-  cloudConnected: boolean;
-  localEnabled: boolean;
-  platform: 'cloud';
-  cloudHealth: 'healthy' | 'unknown';
-  engine: 'smthrs';
-  errorMessage?: string | null;
-}
+export type { WorkflowStatusResponse } from '../services/workflow-status';
+
+import { workflowRuntimeStatus } from '../services/workflow-status';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -179,6 +172,21 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         ctx.json(ctx.res, { loops: await embedded.listHostedDigests(owner) });
         return;
       }
+      if (ctx.method === 'POST' && path === '/hosted/dossier') {
+        const body = await readBody(ctx.req, 2000);
+        digestKeys(body, ['sourceId', 'sourceRevision', 'mutationId', 'confirmed']);
+        if (body.confirmed !== true)
+          throw new WorkflowApiError('Confirm this on-demand model execution', 400);
+        ctx.json(ctx.res, {
+          execution: await embedded.runHostedDossier(
+            owner,
+            digestId(body.sourceId),
+            digestText(body.sourceRevision, 64),
+            digestId(body.mutationId)
+          ),
+        });
+        return;
+      }
       if (ctx.method === 'POST' && path === '/hosted/loops') {
         const body = await readBody(ctx.req);
         digestKeys(body, ['spec', 'id', 'expectedVersionId', 'mutationId', 'confirmed']);
@@ -220,27 +228,61 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (ctx.method === 'GET' && path === '/status') {
       ctx.json(ctx.res, {
-        mode: 'cloud',
-        host: 'eliza-cloud',
-        status: 'ready',
-        cloudConnected: true,
-        localEnabled: false,
-        platform: 'cloud',
-        cloudHealth: 'healthy',
-        engine: 'smthrs',
+        ...workflowRuntimeStatus(
+          true,
+          Boolean(ctx.runtime?.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+        ),
         manualSubmissionProtocol: 1,
         approvalReceiptProtocol: 1,
         approvalPresentationProtocol: 1,
         metadataMutationProtocol: 1,
         lifecycleMutationProtocol: 1,
         typedAuthoringProtocol: 1,
+        // Typed local-time triggers: armed per reviewed version (activate with expectedVersionId),
+        // admitted at exact occurrences while the agent runs, missed occurrences recorded, never replayed.
+        typedScheduleProtocol: 1,
         hostedDigestProtocol: 1,
+        // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
+        hostedDigestSourcePauseProtocol: 1,
+        ...(hostedNativeSourcesAvailable()
+          ? {
+              hostedNativeSourceProtocol: 1,
+              hostedNativeEveningProtocol: 1,
+              // POST /hosted/dossier runs only against a reviewed native source.
+              hostedDossierProtocol: 1,
+            }
+          : {}),
       });
       return;
     }
 
     if (ctx.method === 'GET' && path === '/phone/catalog') {
       ctx.json(ctx.res, service.phoneCatalog());
+      return;
+    }
+    if (ctx.method === 'POST' && path === '/phone/generate') {
+      const body = await readBody(ctx.req, 75000);
+      if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 75000)
+        throw new WorkflowApiError('Generation request is too large', 413);
+      if (
+        Object.keys(body).some(
+          (key) =>
+            ![
+              'prompt',
+              'operations',
+              'device',
+              'existing',
+              'catalogRevision',
+              'compilerRevision',
+            ].includes(key)
+        )
+      )
+        throw new WorkflowApiError('Unsupported generation field', 400);
+      const { catalogRevision, compilerRevision, ...input } = body;
+      ctx.json(
+        ctx.res,
+        await service.generatePhoneDraft(input, catalogRevision, compilerRevision, owner)
+      );
       return;
     }
     const typedReceipt = /^\/phone\/mutations\/([0-9a-f-]+)$/.exec(path);
@@ -535,10 +577,19 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       return;
     }
     if (ctx.method === 'POST' && (match.suffix === '/activate' || match.suffix === '/deactivate')) {
+      const body = await readBody(ctx.req);
+      const expectedVersionId = body.expectedVersionId;
+      if (
+        expectedVersionId !== undefined &&
+        (typeof expectedVersionId !== 'string' ||
+          !expectedVersionId ||
+          expectedVersionId.length > 200)
+      )
+        throw new WorkflowApiError('Expected workflow version is invalid', 400);
       const workflow =
         match.suffix === '/activate'
-          ? await service.activateWorkflow(match.id, owner)
-          : await service.deactivateWorkflow(match.id, owner);
+          ? await service.activateWorkflow(match.id, owner, expectedVersionId)
+          : await service.deactivateWorkflow(match.id, owner, expectedVersionId);
       ctx.json(ctx.res, workflow);
       return;
     }
@@ -631,6 +682,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         'WORKFLOW_METADATA_NOT_APPLIED',
         'WORKFLOW_TYPED_NOT_APPLIED',
         'WORKFLOW_LIFECYCLE_NOT_APPLIED',
+        'WORKFLOW_ACTIVATION_NOT_APPLIED',
       ].includes(String(error.response.code)) &&
       (status === 409 || (status === 400 && error.response.code === 'HOSTED_SOURCE_NOT_SAVED'))
         ? error.response

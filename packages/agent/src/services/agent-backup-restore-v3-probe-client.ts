@@ -11,7 +11,7 @@ import path from "node:path";
 import {
   AgentBackupRestoreV3ProbeRequestSchema,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import {
   AGENT_BACKUP_RESTORE_V3_PROBE_TIMEOUT_MS,
   requestAgentBackupRestoreV3Probe,

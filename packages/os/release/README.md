@@ -8,7 +8,7 @@ recovered from elizaOS/os commit `735afc708eb3e7a76050c0c918c916bb5545b0bf`.
 URLs and checksums, not a published download list. Release assembly must supply
 measured bytes, signatures, and producer evidence before promotion.
 
-`eliza-source.lock.json` pins the application checkout used by standalone release
-builders. Embedded development uses the enclosing Eliza workspace. Confidential
+Release builders require desktop artifacts from the checked-out monorepo commit.
+Confidential
 measurement fixtures live only in `scripts/__tests__/fixtures`; confidential
 check commands require an explicit `--manifest` input.

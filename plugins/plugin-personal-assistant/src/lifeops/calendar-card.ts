@@ -10,6 +10,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import { isValidTimeZone } from "@elizaos/contracts";
 import {
   type IAgentRuntime,
   type IFileStorageService,
@@ -18,7 +19,6 @@ import {
   ServiceType,
   stableStringify,
 } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 import type {
   ApprovalPayload,
   CalendarCardApprovalCorrelation,

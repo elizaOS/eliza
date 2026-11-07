@@ -166,7 +166,13 @@ export function bytes32ToSolanaPubkey(bytes32: Hex): string {
     intVal /= 58n;
     result = ALPHABET[rem] + result;
   }
-  return result || "1";
+  // Base58 encodes each leading zero byte as a leading "1". The numeric
+  // loop above cannot see leading zero bytes, so restore them here.
+  let leadingOnes = "";
+  for (let i = 0; i < hex.length && hex.slice(i, i + 2) === "00"; i += 2) {
+    leadingOnes += "1";
+  }
+  return leadingOnes + result || "1";
 }
 
 // ─── EVM→Solana Bridge ───

@@ -55,7 +55,11 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
         .filter((r) => (excludeRollups ? !r.rolledUp : true))
         .filter((r) => (sinceIso ? r.occurredAtIso >= sinceIso : true))
         .filter((r) => (untilIso ? r.occurredAtIso < untilIso : true))
-        .sort((a, b) => (a.occurredAtIso < b.occurredAtIso ? -1 : 1));
+        .sort(
+          (a, b) =>
+            a.occurredAtIso.localeCompare(b.occurredAtIso) ||
+            a.logId.localeCompare(b.logId),
+        );
       if (typeof limit === "number" && limit > 0) {
         view = view.slice(0, limit);
       }
@@ -101,23 +105,40 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
         }
       }
       const summaries: ScheduledTaskLogEntry[] = [];
-      let counter = 0;
-      for (const [key, summary] of summaryByKey.entries()) {
-        counter += 1;
+      const replaced = new Set<ScheduledTaskLogEntry>();
+      for (const summary of summaryByKey.values()) {
+        // The summary identity carries no pass counter: one row per task, day
+        // and transition, exactly as the SQL and record stores key it. A later
+        // nightly pass therefore extends the row it already wrote instead of
+        // adding a second row under the same id.
+        const logId = `rollup:${JSON.stringify([
+          summary.taskId,
+          summary.dayIso,
+          summary.transition,
+        ])}`;
+        const previous = rows.find(
+          (row) => row.logId === logId && row.agentId === agentId,
+        );
+        if (previous) replaced.add(previous);
         summaries.push({
-          logId: `rollup:${key}:${counter}`,
+          logId,
           taskId: summary.taskId,
           agentId,
           occurredAtIso: `${summary.dayIso}T00:00:00.000Z`,
           transition: summary.transition,
           reason: summary.firstReason,
           rolledUp: true,
-          detail: { rollupCount: summary.count },
+          detail: {
+            rollupCount:
+              Number(previous?.detail?.rollupCount ?? 0) + summary.count,
+          },
         });
       }
-      // Replace the expired raw rows with the new rollup rows.
+      // Replace the expired raw rows and the summaries they fold into.
       const expiredIds = new Set(expired.map((r) => r.logId));
-      const remaining = rows.filter((r) => !expiredIds.has(r.logId));
+      const remaining = rows.filter(
+        (r) => !expiredIds.has(r.logId) && !replaced.has(r),
+      );
       rows.length = 0;
       rows.push(...remaining, ...summaries);
       return { rolledUp: summaries.length, deletedRaw: expired.length };

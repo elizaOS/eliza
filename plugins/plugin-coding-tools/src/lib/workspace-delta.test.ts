@@ -134,6 +134,57 @@ describe("local workspace delta observation", () => {
     ).toBe("");
   });
 
+  it("reports a read-only git status over a stat-only change as unchanged", async () => {
+    const root = await repository();
+    // Same bytes, newer mtime: what an editor save, a formatter, or a code
+    // generator that rewrites identical output leaves behind.
+    const later = new Date(Date.now() + 60_000);
+    await fs.utimes(path.join(root, "tracked.txt"), later, later);
+    const statDirty = async () =>
+      (
+        await execFileAsync("git", ["diff-files", "--name-only"], {
+          cwd: root,
+        })
+      ).stdout;
+    const idle = await beginLocalWorkspaceDeltaObservation(root);
+    expect((await finishLocalWorkspaceDeltaObservation(idle))?.outcome).toBe(
+      "unchanged",
+    );
+    // Observing must not refresh the index on the command's behalf.
+    expect(await statDirty()).toBe("tracked.txt\n");
+
+    const before = await beginLocalWorkspaceDeltaObservation(root);
+    // Porcelain status refreshes the index stat cache and writes it back.
+    expect(
+      (await execFileAsync("git", ["status", "--porcelain"], { cwd: root }))
+        .stdout,
+    ).toBe("");
+    expect(await statDirty()).toBe("");
+
+    expect((await finishLocalWorkspaceDeltaObservation(before))?.outcome).toBe(
+      "unchanged",
+    );
+  });
+
+  it("reports rewriting a tracked file with identical bytes as unchanged", async () => {
+    const root = await repository();
+    const tracked = path.join(root, "tracked.txt");
+    const before = await beginLocalWorkspaceDeltaObservation(root);
+    await fs.writeFile(tracked, "initial\n", "utf8");
+    const later = new Date(Date.now() + 60_000);
+    await fs.utimes(tracked, later, later);
+
+    expect((await finishLocalWorkspaceDeltaObservation(before))?.outcome).toBe(
+      "unchanged",
+    );
+
+    const afterRewrite = await beginLocalWorkspaceDeltaObservation(root);
+    await fs.writeFile(tracked, "edited\n", "utf8");
+    expect(
+      (await finishLocalWorkspaceDeltaObservation(afterRewrite))?.outcome,
+    ).toBe("changed");
+  });
+
   it.each(["--assume-unchanged", "--skip-worktree"])(
     "detects content changes hidden by %s",
     async (flag) => {

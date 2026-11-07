@@ -9,19 +9,22 @@
  * authorization or billing outcome. Protected by CRON_SECRET.
  */
 
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { sharedRuntimeHistoryRepository } from "@/db/repositories/shared-runtime-history";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { sharedRuntimeHistoryRepository } from "@elizaos/cloud-shared/db/repositories/shared-runtime-history";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   prewarmPersonalSharedRoom,
   prewarmSharedAgentTurnCaches,
-} from "@/lib/services/shared-runtime/prewarm-shared-agent";
-import { prewarmSharedElizaRuntime } from "@/lib/services/shared-runtime/shared-eliza-runtime";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
+import { prewarmSharedElizaRuntime } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -73,18 +76,20 @@ async function runKeepwarm(c: AppContext) {
     // turn-ingress modules. Sequential for the same flat-pressure reason.
     let personalRoomsWarmed = 0;
     let personalOrganizationsWarmed = 0;
-    if (rowlessPersonal > 0) {
+    // Select eligible personal rooms independently: the global agent hot set
+    // can be filled entirely by newer sandbox agents.
+    const rooms =
+      await sharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms(
+        since,
+        KEEPWARM_MAX_PERSONAL_ROOMS,
+      );
+    if (rooms.length > 0) {
       const namespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
       if (!namespace) {
         throw new Error(
           "SHARED_RUNTIME_CONVERSATIONS binding is required to warm Personal Shared rooms",
         );
       }
-      const rooms =
-        await sharedRuntimeHistoryRepository.listRecentlyActiveRooms(
-          since,
-          KEEPWARM_MAX_PERSONAL_ROOMS,
-        );
       // Each room reports its verified owner; the owning organization's
       // rate-limit gate is warmed once per sweep.
       const warmedOrganizations = new Set<string>();

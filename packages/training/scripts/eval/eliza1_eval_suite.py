@@ -29,7 +29,7 @@ Honesty rules (mirrors AGENTS.md §3/§7 — no fabricated passes):
 
 Run it::
 
-    uv run --extra train python -m scripts.eval.eliza1_eval_suite \
+    uv run --extra train python -m eliza_training.eval.eliza1_eval_suite \
         --bundle-dir ~/.eliza/local-inference/models/eliza-1-2b.bundle \
         --tier 2b
 
@@ -48,7 +48,6 @@ import platform
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -58,10 +57,8 @@ from typing import Any
 
 # .../packages/training/scripts/eval/eliza1_eval_suite.py → packages/training
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from benchmarks.eliza1_gates import (  # noqa: E402
+from eliza_training.release.gates import (  # noqa: E402
     GateReport,
     apply_gates,
     normalize_tier,

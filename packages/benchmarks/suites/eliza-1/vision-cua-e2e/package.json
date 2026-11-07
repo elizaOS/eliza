@@ -19,13 +19,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/plugin-vision": "workspace:*",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@elizaos/plugin-computeruse": "workspace:*",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
-    "vitest": "5.0.2"
+    "typescript": "^6.0.3"
   }
 }

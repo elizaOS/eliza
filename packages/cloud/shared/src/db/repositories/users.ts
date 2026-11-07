@@ -20,6 +20,7 @@ import {
 } from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
+import { assertNotNativeAppPublisher } from "./native-app-publishers";
 import { revokePersonalSharedGroupConsentForUser } from "./personal-shared-group-consent-lifecycle";
 import { phoneVerifiedProjectionMatches } from "./user-identity-projection";
 
@@ -2354,8 +2355,12 @@ export class UsersRepository {
   /**
    * Updates an existing user.
    */
-  async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
-    return dbWrite.transaction(async (tx) => {
+  async update(
+    id: string,
+    data: Partial<NewUser>,
+    transaction?: DbTransaction,
+  ): Promise<User | undefined> {
+    const run = async (tx: DbTransaction) => {
       const now = new Date();
       if (userMutationRevokesPersonalSharedConsent(data)) {
         await revokePersonalSharedGroupConsentForUser(tx, id, now);
@@ -2369,7 +2374,8 @@ export class UsersRepository {
         .where(eq(users.id, id))
         .returning();
       return updated;
-    });
+    };
+    return transaction ? run(transaction) : dbWrite.transaction(run);
   }
 
   /**
@@ -3041,9 +3047,13 @@ export class UsersRepository {
   /**
    * Upserts the Steward identity projection for a user.
    */
-  async upsertStewardIdentity(userId: string, stewardUserId: string): Promise<UserIdentity> {
+  async upsertStewardIdentity(
+    userId: string,
+    stewardUserId: string,
+    tx?: DbTransaction,
+  ): Promise<UserIdentity> {
     const rows = await sqlRows<UserIdentity>(
-      dbWrite,
+      tx ?? dbWrite,
       sql`
       INSERT INTO ${userIdentities} (
         user_id,
@@ -3137,6 +3147,7 @@ export class UsersRepository {
     organizationId: string,
   ): Promise<void> {
     await dbWrite.transaction(async (tx) => {
+      await assertNotNativeAppPublisher(organizationId, tx);
       const observedMembers = await tx
         .select({ id: users.id })
         .from(users)

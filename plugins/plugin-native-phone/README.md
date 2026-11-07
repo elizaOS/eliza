@@ -11,7 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-phone build  # build
-bun run --cwd plugins/plugin-native-phone test   # tests
 ```
 
 Native view and app-shell declarations share an ADMIN-gated capability catalog. Agents use named complete-or-error reads; mutations and generic renderer/DOM operations require human interaction. A bridge result at its non-paginated boundary is an explicit incomplete-read error. Device-status failures remain errors rather than fabricated empty state.
@@ -46,3 +45,14 @@ the bridge call; this covers rejection, not successful carrier calling.
 Calling capability requires both Telecom availability and `CALL_PHONE` permission.
 A missing Telecom service rejects call placement with `TELECOM_UNAVAILABLE`;
 status still reports unavailable capabilities and an explicit null dialer package.
+
+## Dialer role surfaces
+
+A host that holds the Android dialer role reuses the native call surfaces in
+`ai.eliza.plugins.phone`: `TelecomCallService` (InCallService: call registry,
+call-style notifications, answer/decline/end, hold, mute, audio route and DTMF),
+`TelecomCallActivity` (the call screen, shown over the lock screen) and
+`TelecomDialPadActivity` (a native dial pad for hosts without one). The host
+declares thin subclasses with its own component names, channel and title.
+`TelecomDial.originate` places calls through Telecom, which owns emergency
+routing; the system emergency dialer does not depend on the host.

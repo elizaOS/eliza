@@ -7,15 +7,10 @@
  * mode changes through injected helpers so the handler stays transport-agnostic.
  */
 import type http from "node:http";
-import {
-  type AgentAutomationMode,
-  logger,
-  type ReadJsonBodyOptions,
-  type TradePermissionMode,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
-import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
+import type { TradePermissionMode } from "@elizaos/contracts";
+import { type AgentAutomationMode, logger } from "@elizaos/core";
+import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
 // AgentAutomationMode is canonical in @elizaos/core (imported above).
 export interface PermissionsExtraRouteContext {
   req: http.IncomingMessage;

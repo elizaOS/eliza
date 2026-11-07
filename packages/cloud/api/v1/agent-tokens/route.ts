@@ -10,14 +10,17 @@
  * Response: { token, expiresAt }
  */
 
+import { getCurrentUser, requireAdmin } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { mintAgentToken } from "@elizaos/cloud-shared/lib/auth/agent-token";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { mintAgentToken } from "@/lib/auth/agent-token";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import { getCurrentUser, requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -1,23 +1,9 @@
 /**
- * Connector-account service: the runtime-side registry and policy engine for
- * external-account connectors (chat/social/OAuth providers). The
- * `ConnectorAccountManager` Service holds registered `ConnectorAccountProvider`s,
- * brokers their OAuth start/complete flows, and persists accounts + flow state
- * through a `ConnectorAccountStorage` backend — the in-memory fallback, or the
- * `DatabaseConnectorAccountStorage` bridge when a compatible database adapter is
- * installed on the runtime.
- *
- * `evaluateConnectorAccountPolicies` gates actions that carry a
- * `connectorAccountPolicy`: an action runs only when a stored or
- * provider-listed account satisfies the required status, role, purpose, and
- * access-gate. Role strings collapse to the canonical OWNER / AGENT / TEAM
- * triad (`types/connector-account-policy`); privacy levels live alongside in
- * `privacy.ts`.
- *
- * OAuth PKCE code verifiers are never persisted — they are held in a
- * process-local map and referenced by an opaque `codeVerifierRef` written to
- * flow metadata, so stored rows never carry the raw secret.
+ * Registers connector account providers, brokers OAuth flows, and persists account/flow
+ * state. Backend selection and fallback-to-durable handoff are serialized; credentials
+ * remain bound to their originating flow.
  */
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
@@ -28,7 +14,7 @@ import type {
 	ConnectorAccountRole,
 	ConnectorAccountStatus,
 } from "../types/connector-account-policy";
-import type { Memory, MemoryMetadata } from "../types/memory";
+import type { Memory } from "../types/memory";
 import type { Metadata } from "../types/primitives";
 import type {
 	IAgentRuntime,
@@ -36,15 +22,6 @@ import type {
 	PostConnectorRegistration,
 } from "../types/runtime";
 import { Service } from "../types/service";
-
-// Re-export the policy types whose canonical home is types/connector-account-policy.
-export type {
-	ConnectorAccountAccessGate,
-	ConnectorAccountPolicy,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAccountStatus,
-} from "../types/connector-account-policy";
 
 export const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 export const CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE =
@@ -63,24 +40,6 @@ export function selectDefaultConnectorAccountId(
 	return accountIds.includes(DEFAULT_CONNECTOR_ACCOUNT_ID)
 		? DEFAULT_CONNECTOR_ACCOUNT_ID
 		: (accountIds[0] ?? DEFAULT_CONNECTOR_ACCOUNT_ID);
-}
-
-export interface ConnectorCredentialCandidate<Source extends string> {
-	source: Source;
-	value?: string | null;
-}
-
-/** Selects the first channel-valid credential without logging or serializing it. */
-export function selectConnectorCredential<Source extends string>(
-	candidates: readonly ConnectorCredentialCandidate<Source>[],
-	normalize: (value?: string | null) => string | undefined,
-): { credential: string; source: Source } | undefined {
-	for (const candidate of candidates) {
-		const credential = normalize(candidate.value);
-		if (credential !== undefined)
-			return { credential, source: candidate.source };
-	}
-	return undefined;
 }
 
 export type ConnectorOAuthFlowStatus =
@@ -420,12 +379,11 @@ type ActionWithConnectorAccountPolicy = Action & {
 
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>();
 let standaloneManager: ConnectorAccountManager | null = null;
-const oauthCodeVerifierSecrets = new Map<string, string>();
+const oauthCodeVerifierSecrets = new Map<
+	string,
+	{ codeVerifier: string; expiresAt?: number }
+>();
 const oauthCompletionQueues = new Map<string, Promise<void>>();
-
-function nowMs(): number {
-	return Date.now();
-}
 
 function randomId(prefix: string): string {
 	return `${prefix}_${globalThis.crypto.randomUUID()}`;
@@ -533,7 +491,7 @@ function normalizeAccount(
 	provider: string,
 	accountId?: string,
 ): ConnectorAccount {
-	const now = nowMs();
+	const now = Date.now();
 	const full = input as Partial<ConnectorAccount>;
 	const id = (full.id ?? accountId ?? "").trim();
 	if (!id) {
@@ -658,7 +616,7 @@ export class InMemoryConnectorAccountStorage
 				return (
 					a.provider.localeCompare(b.provider) ||
 					aTime - bTime ||
-					a.id.localeCompare(b.id)
+					compareMemoryIds(a.id, b.id)
 				);
 			});
 	}
@@ -722,7 +680,7 @@ export class InMemoryConnectorAccountStorage
 			provider: existing.provider,
 			id: existing.id,
 			state: existing.state,
-			updatedAt: nowMs(),
+			updatedAt: Date.now(),
 			metadata:
 				patch.metadata !== undefined
 					? cloneMetadata(patch.metadata)
@@ -742,7 +700,7 @@ export class InMemoryConnectorAccountStorage
 		if (this.consumedFlows.has(key)) return null;
 		const flow = this.flows.get(key);
 		if (flow?.status !== "pending") return null;
-		if (flow.expiresAt && flow.expiresAt <= nowMs()) return null;
+		if (flow.expiresAt && flow.expiresAt <= Date.now()) return null;
 		this.consumedFlows.add(flowKey(flow.provider, flow.id));
 		this.consumedFlows.add(flowKey(flow.provider, flow.state));
 		return cloneFlow(flow);
@@ -773,6 +731,18 @@ export class InMemoryConnectorAccountStorage
 		return binding ? { ...binding } : null;
 	}
 
+	/**
+	 * Drop expired, unconsumed flows. A consumed flow is mid-completion and is
+	 * released by its terminal update.
+	 */
+	deleteExpiredOAuthFlows(now: number): void {
+		for (const [key, flow] of this.flows) {
+			if (!flow.expiresAt || flow.expiresAt > now) continue;
+			if (this.consumedFlows.has(flowKey(flow.provider, flow.id))) continue;
+			this.flows.delete(key);
+		}
+	}
+
 	/** True when this fallback holds boot-window state that must be handed off. */
 	hasStateForMigration(): boolean {
 		return this.accounts.size > 0 || this.flows.size > 0;
@@ -801,7 +771,7 @@ export class InMemoryConnectorAccountStorage
 			if (seen.has(key)) continue;
 			seen.add(key);
 			if (flow.status !== "pending") continue;
-			if (flow.expiresAt && flow.expiresAt <= nowMs()) continue;
+			if (flow.expiresAt && flow.expiresAt <= Date.now()) continue;
 			if (this.consumedFlows.has(key)) {
 				consumedPendingFlows.push(cloneFlow(flow));
 			} else {
@@ -904,7 +874,22 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		});
 	}
 
+	/**
+	 * True when the adapter persists flow state, so `oauthFallback` is only an
+	 * in-process mirror (raw PKCE verifier, original state) of live flows rather
+	 * than the flow store itself, and can release terminal or expired flows.
+	 */
+	private persistsOAuthFlows(): boolean {
+		return (
+			typeof this.adapter.getOAuthFlowState === "function" &&
+			typeof this.adapter.updateOAuthFlowState === "function"
+		);
+	}
+
 	async createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
+		if (this.persistsOAuthFlows()) {
+			this.oauthFallback.deleteExpiredOAuthFlows(Date.now());
+		}
 		await this.oauthFallback.createOAuthFlow(flow);
 		if (typeof this.adapter.createOAuthFlowState !== "function") {
 			return cloneFlow(flow);
@@ -919,6 +904,13 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			metadata: oauthFlowMetadata(flow),
 			expiresAt: flow.expiresAt,
 		});
+		if (record.expiresAt !== flow.expiresAt) {
+			// The store applies its default TTL; the mirror adopts it so the
+			// expired-flow sweep can release abandoned flows.
+			await this.oauthFallback.updateOAuthFlow(flow.provider, flow.id, {
+				expiresAt: record.expiresAt,
+			});
+		}
 		return databaseRecordToOAuthFlow(record, flow.state, flow);
 	}
 
@@ -976,6 +968,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 			normalizedProvider,
 			fallback?.id ?? flowIdOrState,
 			patch.codeVerifier,
+			patch.expiresAt ?? fallback?.expiresAt,
 		);
 		const codeVerifierRef = storedCodeVerifierRef ?? metadataCodeVerifierRef;
 		if (codeVerifierRef) {
@@ -1008,9 +1001,32 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 				...update,
 				state: flowIdOrState,
 			}));
-		return record
+		const flow = record
 			? databaseRecordToOAuthFlow(record, flowIdOrState, fallback ?? undefined)
 			: fallback;
+		if (flow && flow.status !== "pending" && this.persistsOAuthFlows()) {
+			// Terminal: a spent PKCE verifier has nothing left to serve. The
+			// in-process mirror goes too once the durable row carries the status;
+			// without that row the mirror is the only record of it.
+			if (record) {
+				await this.oauthFallback.deleteOAuthFlow(normalizedProvider, flow.id);
+			}
+			deleteOAuthCodeVerifier(
+				stringMetadataValue(flow.metadata, "codeVerifierRef"),
+			);
+		} else if (record?.expiresAt !== undefined) {
+			// A patch without expiresAt leaves the durable TTL in force; bound the
+			// mirror and the verifier by it so abandoned flows are swept.
+			if (fallback && fallback.expiresAt !== record.expiresAt) {
+				await this.oauthFallback.updateOAuthFlow(
+					normalizedProvider,
+					fallback.id,
+					{ expiresAt: record.expiresAt },
+				);
+			}
+			setOAuthCodeVerifierExpiry(storedCodeVerifierRef, record.expiresAt);
+		}
+		return flow;
 	}
 
 	async consumeOAuthFlow(
@@ -1094,12 +1110,20 @@ function storeOAuthCodeVerifier(
 	provider: string,
 	flowId: string,
 	codeVerifier: string | undefined,
+	expiresAt: number | undefined,
 ): string | undefined {
 	if (typeof codeVerifier !== "string" || !codeVerifier.trim()) {
 		return undefined;
 	}
+	// Abandoned flows never reach completion, so expired verifiers are swept here.
+	const now = Date.now();
+	for (const [ref, secret] of oauthCodeVerifierSecrets) {
+		if (secret.expiresAt && secret.expiresAt <= now) {
+			oauthCodeVerifierSecrets.delete(ref);
+		}
+	}
 	const ref = oauthCodeVerifierRef(provider, flowId);
-	oauthCodeVerifierSecrets.set(ref, codeVerifier);
+	oauthCodeVerifierSecrets.set(ref, { codeVerifier, expiresAt });
 	return ref;
 }
 
@@ -1107,8 +1131,15 @@ function readOAuthCodeVerifier(
 	ref: string | null | undefined,
 ): string | undefined {
 	if (!ref) return undefined;
-	const value = oauthCodeVerifierSecrets.get(ref);
-	return typeof value === "string" && value.trim() ? value : undefined;
+	return oauthCodeVerifierSecrets.get(ref)?.codeVerifier;
+}
+
+function setOAuthCodeVerifierExpiry(
+	ref: string | undefined,
+	expiresAt: number,
+): void {
+	const secret = ref ? oauthCodeVerifierSecrets.get(ref) : undefined;
+	if (secret) secret.expiresAt = expiresAt;
 }
 
 function deleteOAuthCodeVerifier(ref: string | null | undefined): void {
@@ -1153,7 +1184,7 @@ function oauthFlowPatchMetadata(
 ): Record<string, unknown> {
 	const metadata: Record<string, unknown> = {
 		...safeOAuthMetadata(patch.metadata),
-		updatedAt: nowMs(),
+		updatedAt: Date.now(),
 	};
 	if (patch.id) metadata.flowId = patch.id;
 	if (patch.status) metadata.status = patch.status;
@@ -1168,7 +1199,7 @@ function oauthFlowPatchMetadata(
 function databaseRecordToAccount(
 	record: ConnectorAccountDatabaseRecord,
 ): ConnectorAccount {
-	const now = nowMs();
+	const now = Date.now();
 	const status =
 		record.status === "active"
 			? "connected"
@@ -1204,7 +1235,7 @@ function databaseRecordToOAuthFlow(
 	lookupValue?: string,
 	fallback?: ConnectorOAuthFlow,
 ): ConnectorOAuthFlow {
-	const now = nowMs();
+	const now = Date.now();
 	const metadata = (record.metadata ?? {}) as Metadata;
 	const flowId =
 		stringMetadataValue(metadata, "flowId") ??
@@ -1281,7 +1312,7 @@ export class ConnectorAccountManager extends Service {
 	/**
 	 * Serializes the full backend-selection + operation-invocation sequence so
 	 * that concurrent facade calls cannot interleave across the fallback→durable
-	 * transition (#18110). Without this, a write queued on the fallback backend
+	 * transition. Without this, a write queued on the fallback backend
 	 * can land after a concurrent read has already selected the durable backend,
 	 * stranding the write in a soon-to-be-cleared fallback.
 	 */
@@ -1341,11 +1372,11 @@ export class ConnectorAccountManager extends Service {
 			}
 			const adapter = (runtime as { adapter?: unknown }).adapter;
 			if (isConnectorAccountDatabaseAdapter(adapter)) {
-				if (this.databaseStorageAdapter !== adapter) {
+				if (!this.databaseStorage || this.databaseStorageAdapter !== adapter) {
 					this.databaseStorage = new DatabaseConnectorAccountStorage(adapter);
 					this.databaseStorageAdapter = adapter;
 				}
-				return this.databaseStorage as DatabaseConnectorAccountStorage;
+				return this.databaseStorage;
 			}
 			if (!this.warnedFallback) {
 				this.warnedFallback = true;
@@ -1422,7 +1453,7 @@ export class ConnectorAccountManager extends Service {
 	private createStorageFacade(): ConnectorAccountStorage {
 		/**
 		 * Run a storage operation through the serialized operation queue so that
-		 * backend resolution + invocation are atomic (#18110). Each operation
+		 * backend resolution + invocation are atomic. Each operation
 		 * resolves its backend and executes the call within the same queue
 		 * boundary — no concurrent operation can interleave between selection
 		 * and invocation.
@@ -1441,25 +1472,24 @@ export class ConnectorAccountManager extends Service {
 		};
 
 		return {
-			listAccounts: async (provider) =>
+			listAccounts: (provider) =>
 				runSerialized((b) => b.listAccounts(provider)),
-			getAccount: async (provider, accountId) =>
+			getAccount: (provider, accountId) =>
 				runSerialized((b) => b.getAccount(provider, accountId)),
-			upsertAccount: async (account) =>
+			upsertAccount: (account) =>
 				runSerialized((b) => b.upsertAccount(account)),
-			deleteAccount: async (provider, accountId) =>
+			deleteAccount: (provider, accountId) =>
 				runSerialized((b) => b.deleteAccount(provider, accountId)),
-			createOAuthFlow: async (flow) =>
-				runSerialized((b) => b.createOAuthFlow(flow)),
-			getOAuthFlow: async (provider, flowIdOrState) =>
+			createOAuthFlow: (flow) => runSerialized((b) => b.createOAuthFlow(flow)),
+			getOAuthFlow: (provider, flowIdOrState) =>
 				runSerialized((b) => b.getOAuthFlow(provider, flowIdOrState)),
-			updateOAuthFlow: async (provider, flowIdOrState, patch) =>
+			updateOAuthFlow: (provider, flowIdOrState, patch) =>
 				runSerialized((b) => b.updateOAuthFlow(provider, flowIdOrState, patch)),
-			consumeOAuthFlow: async (provider, state, consumedBy) =>
+			consumeOAuthFlow: (provider, state, consumedBy) =>
 				runSerialized((b) => b.consumeOAuthFlow(provider, state, consumedBy)),
-			deleteOAuthFlow: async (provider, flowIdOrState) =>
+			deleteOAuthFlow: (provider, flowIdOrState) =>
 				runSerialized((b) => b.deleteOAuthFlow(provider, flowIdOrState)),
-			findOwnerBinding: async (lookup) =>
+			findOwnerBinding: (lookup) =>
 				runSerialized(async (b) =>
 					typeof b.findOwnerBinding === "function"
 						? b.findOwnerBinding(lookup)
@@ -1656,10 +1686,10 @@ export class ConnectorAccountManager extends Service {
 	): Promise<ConnectorAccount> {
 		const providerId = normalizeProvider(provider);
 		const registered = this.providers.get(providerId);
+		const requestedId = (input as Partial<ConnectorAccount>).id;
 		const accountId =
-			typeof (input as Partial<ConnectorAccount>).id === "string" &&
-			(input as Partial<ConnectorAccount>).id?.trim()
-				? (input as Partial<ConnectorAccount>).id
+			typeof requestedId === "string" && requestedId.trim()
+				? requestedId
 				: randomId(`acct_${providerId}`);
 		if (registered?.createAccount) {
 			const created = await registered.createAccount(input, this);
@@ -1717,7 +1747,7 @@ export class ConnectorAccountManager extends Service {
 			);
 		}
 
-		const now = nowMs();
+		const now = Date.now();
 		const flow: ConnectorOAuthFlow = {
 			id: randomId("oauth"),
 			provider: providerId,
@@ -2057,13 +2087,16 @@ export class ConnectorAccountManager extends Service {
 		// (e.g. connectors that expose accounts via registerProvider instead of
 		// persisting them), so a policy on an explicit accountId can actually find
 		// it. Reading storage directly would silently miss provider accounts.
-		const accounts = explicitAccountId
-			? [await this.getAccount(providerId, explicitAccountId)].filter(Boolean)
-			: await this.listAccounts(providerId);
+		let accounts: ConnectorAccount[];
+		if (explicitAccountId) {
+			const account = await this.getAccount(providerId, explicitAccountId);
+			accounts = account ? [account] : [];
+		} else {
+			accounts = await this.listAccounts(providerId);
+		}
 
 		let lastFailure: string | undefined;
 		for (const account of accounts) {
-			if (!account) continue;
 			const failure = await this.accountPolicyFailure(account, policy, context);
 			if (!failure) {
 				return { allowed: true, provider: providerId, account, policy };
@@ -2239,15 +2272,4 @@ function resolveAccountIdFromParameters(
 	}
 	const value = context.parameters[policy.accountIdParam];
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export function getUntrustedMessageMetadataAccountId(
-	message: Memory | undefined,
-): string | undefined {
-	const metadata = message?.content?.metadata as MemoryMetadata | undefined;
-	const value =
-		metadata && typeof metadata === "object"
-			? (metadata as Record<string, unknown>).accountId
-			: undefined;
-	return typeof value === "string" ? value : undefined;
 }

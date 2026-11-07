@@ -15,7 +15,7 @@ export const walletAppPlugin: Plugin = {
     icon: "Wallet",
     visibleInAppStore: true,
     viewKind: "system",
-    developerOnly: false,
+
     navTabs: [
       {
         id: "wallet.inventory",

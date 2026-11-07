@@ -70,10 +70,8 @@ from typing import Any
 
 # Make sibling-package imports work when invoked as a script.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
-from packages.training.scripts.emotion import distill_wav2small as dw  # noqa: E402
+from eliza_training.emotion import distill_wav2small as dw  # noqa: E402
 
 LOG = logging.getLogger("run_distill_ravdess")
 
@@ -392,7 +390,7 @@ def train_eval(
     from torch.utils.data import DataLoader, TensorDataset
 
     try:
-        from packages.training.scripts.training.optimizer import (
+        from eliza_training.training.optimizer import (
             build_apollo_mini_optimizer,
             build_apollo_optimizer,
         )

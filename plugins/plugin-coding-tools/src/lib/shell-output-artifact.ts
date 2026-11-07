@@ -385,6 +385,8 @@ class ShellOutputStreamWriter {
       this.metrics.lines += newlines;
       if (this.endedWithNewline && !text.endsWith("\n"))
         this.metrics.lines += 1;
+      if (!this.endedWithNewline && text.endsWith("\n"))
+        this.metrics.lines -= 1;
     }
     this.endedWithNewline = text.endsWith("\n");
     this.hasher.update(bytes);

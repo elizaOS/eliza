@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop inbox rpc ts behavior for app shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { finiteNumber } from "./rpc-parse-utils";
 import type {

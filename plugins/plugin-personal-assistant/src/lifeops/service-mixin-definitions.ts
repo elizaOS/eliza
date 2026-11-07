@@ -14,7 +14,7 @@ import type {
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 
 export interface LifeOpsDefinitionService {

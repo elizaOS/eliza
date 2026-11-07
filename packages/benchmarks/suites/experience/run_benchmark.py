@@ -421,34 +421,6 @@ async def run_eliza_bridge(args: argparse.Namespace) -> None:
         print(json.dumps(result, indent=2, default=str))
 
 
-def _serialize_agent_result(result: "BenchmarkResult") -> dict:
-    """Serialize agent benchmark result to JSON-friendly dict."""
-    out: dict = {
-        "mode": "eliza_agent",
-        "total_experiences": result.total_experiences,
-    }
-    if result.eliza_agent:
-        out["eliza_agent"] = {
-            "learning_success_rate": result.eliza_agent.learning_success_rate,
-            "total_experiences_recorded": result.eliza_agent.total_experiences_recorded,
-            "total_experiences_in_service": result.eliza_agent.total_experiences_in_service,
-            "avg_learning_latency_ms": result.eliza_agent.avg_learning_latency_ms,
-            "agent_recall_rate": result.eliza_agent.agent_recall_rate,
-            "agent_keyword_incorporation_rate": result.eliza_agent.agent_keyword_incorporation_rate,
-            "avg_retrieval_latency_ms": result.eliza_agent.avg_retrieval_latency_ms,
-            "direct_recall_rate": result.eliza_agent.direct_recall_rate,
-            "direct_mrr": result.eliza_agent.direct_mrr,
-        }
-    if result.retrieval:
-        out["direct_retrieval"] = {
-            "precision_at_k": result.retrieval.precision_at_k,
-            "recall_at_k": result.retrieval.recall_at_k,
-            "mean_reciprocal_rank": result.retrieval.mean_reciprocal_rank,
-            "hit_rate_at_k": result.retrieval.hit_rate_at_k,
-        }
-    return out
-
-
 def main() -> None:
     """Parse arguments and run the selected benchmark mode."""
     parser = argparse.ArgumentParser(description="Experience Plugin Benchmark")

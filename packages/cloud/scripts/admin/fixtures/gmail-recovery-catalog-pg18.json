@@ -1,0 +1,405 @@
+{
+  "sources": [
+    {
+      "tag": "0509_managed_gmail_operation_receipts",
+      "sha256": "64d86e3a03e8ea2aed9e5da3ec96d6c1ecf0cb954521136a4124358fce6d6049"
+    },
+    {
+      "tag": "0535_managed_gmail_read_state_operations",
+      "sha256": "506220a7a7e4b208c56c4210c3cc9798a64547e8a3ad8935d653c5f0ce9a59ba"
+    }
+  ],
+  "fixtureEngine": {
+    "major": 18,
+    "image": "pgvector/pgvector@sha256:ad249f9fb9572979643a47694e59b9a8cdcdf6abc6accebf49bb80ad5f20ff9b",
+    "origin": "synthetic canonical370 baseline plus authentic0509 and0535"
+  },
+  "catalog": {
+    "rules": [],
+    "table": {
+      "kind": "r",
+      "partition": false,
+      "defaultAcl": true,
+      "persistence": "p",
+      "rowSecurity": false,
+      "forceRowSecurity": false,
+      "ownedByExpectedRole": true
+    },
+    "columns": [
+      {
+        "name": "organization_id",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "user_id",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "grant_id",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "request_id",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "kind",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "\"default\"",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "review_digest",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "identity": "",
+        "collation": "\"default\"",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "state",
+        "type": "text",
+        "default": "'prepared'::text",
+        "notNull": true,
+        "identity": "",
+        "collation": "\"default\"",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "provider_result",
+        "type": "jsonb",
+        "default": null,
+        "notNull": false,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "rejection_code",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "identity": "",
+        "collation": "\"default\"",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "dispatched_at",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      },
+      {
+        "name": "finished_at",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "identity": "",
+        "collation": "-",
+        "generated": "",
+        "defaultAcl": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "managed_gmail_operation_receipts_pkey",
+        "ready": true,
+        "valid": true,
+        "unique": true,
+        "definition": "CREATE UNIQUE INDEX managed_gmail_operation_receipts_pkey ON public.managed_gmail_operation_receipts USING btree (organization_id, user_id, grant_id, request_id)"
+      }
+    ],
+    "policies": [],
+    "triggers": [
+      {
+        "name": "managed_gmail_operation_receipt_guard",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER managed_gmail_operation_receipt_guard BEFORE UPDATE ON public.managed_gmail_operation_receipts FOR EACH ROW EXECUTE FUNCTION guard_managed_gmail_operation_receipt()"
+      }
+    ],
+    "functions": [
+      {
+        "defaultAcl": true,
+        "definition": "CREATE OR REPLACE FUNCTION public.guard_managed_gmail_operation_receipt()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n  IF (NEW.organization_id,NEW.user_id,NEW.grant_id,NEW.request_id,NEW.kind,NEW.review_digest,NEW.created_at)\n     IS DISTINCT FROM (OLD.organization_id,OLD.user_id,OLD.grant_id,OLD.request_id,OLD.kind,OLD.review_digest,OLD.created_at) THEN\n    RAISE EXCEPTION 'Gmail operation identity and review are immutable' USING ERRCODE='55000';\n  END IF;\n  IF NOT ((OLD.state='prepared' AND NEW.state='dispatched')\n      OR (OLD.state='dispatched' AND NEW.state IN ('succeeded','rejected','outcome-unknown'))) THEN\n    RAISE EXCEPTION 'Gmail operation cannot be redispatched or rewritten' USING ERRCODE='55000';\n  END IF;\n  IF OLD.dispatched_at IS NOT NULL AND NEW.dispatched_at IS DISTINCT FROM OLD.dispatched_at THEN\n    RAISE EXCEPTION 'Gmail dispatch identity is immutable' USING ERRCODE='55000';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n",
+        "ownedByExpectedRole": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "managed_gmail_operation_receipts_check",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK ((((state = 'prepared'::text) AND (dispatched_at IS NULL) AND (finished_at IS NULL)) OR ((state = 'dispatched'::text) AND (dispatched_at IS NOT NULL) AND (finished_at IS NULL)) OR ((state = ANY (ARRAY['succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])) AND (dispatched_at IS NOT NULL) AND (finished_at IS NOT NULL))))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_check1",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK (((state = 'succeeded'::text) = (provider_result IS NOT NULL)))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_check2",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK (((rejection_code IS NULL) OR (state = 'rejected'::text)))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_created_at_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL created_at",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_grant_id_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL grant_id",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_kind_check",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK ((kind = ANY (ARRAY['send'::text, 'draft-create'::text, 'draft-replace'::text, 'draft-delete'::text, 'archive'::text, 'unarchive'::text, 'trash'::text, 'untrash'::text, 'mark-read'::text, 'mark-unread'::text])))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_kind_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL kind",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_organization_id_fkey",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_organization_id_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL organization_id",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_pkey",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "PRIMARY KEY (organization_id, user_id, grant_id, request_id)",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_request_id_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL request_id",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_review_digest_check",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK ((review_digest ~ '^[a-f0-9]{64}$'::text))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_review_digest_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL review_digest",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_state_check",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "CHECK ((state = ANY (ARRAY['prepared'::text, 'dispatched'::text, 'succeeded'::text, 'rejected'::text, 'outcome-unknown'::text])))",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_state_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL state",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_user_id_fkey",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "enforced": true
+      },
+      {
+        "name": "managed_gmail_operation_receipts_user_id_not_null",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "definition": "NOT NULL user_id",
+        "enforced": true
+      }
+    ],
+    "inheritance": [],
+    "internalTriggers": [
+      {
+        "args": "",
+        "qual": null,
+        "type": 5,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_check_ins\"()",
+        "relation": "managed_gmail_operation_receipts",
+        "constraint": "managed_gmail_operation_receipts_organization_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 17,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_check_upd\"()",
+        "relation": "managed_gmail_operation_receipts",
+        "constraint": "managed_gmail_operation_receipts_organization_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 5,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_check_ins\"()",
+        "relation": "managed_gmail_operation_receipts",
+        "constraint": "managed_gmail_operation_receipts_user_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 17,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_check_upd\"()",
+        "relation": "managed_gmail_operation_receipts",
+        "constraint": "managed_gmail_operation_receipts_user_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 9,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_cascade_del\"()",
+        "relation": "organizations",
+        "constraint": "managed_gmail_operation_receipts_organization_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 17,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_noaction_upd\"()",
+        "relation": "organizations",
+        "constraint": "managed_gmail_operation_receipts_organization_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 9,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_cascade_del\"()",
+        "relation": "users",
+        "constraint": "managed_gmail_operation_receipts_user_id_fkey",
+        "deferrable": false
+      },
+      {
+        "args": "",
+        "qual": null,
+        "type": 17,
+        "enabled": "O",
+        "deferred": false,
+        "function": "\"RI_FKey_noaction_upd\"()",
+        "relation": "users",
+        "constraint": "managed_gmail_operation_receipts_user_id_fkey",
+        "deferrable": false
+      }
+    ],
+    "incomingConstraints": []
+  }
+}

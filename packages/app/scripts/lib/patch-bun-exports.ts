@@ -269,8 +269,8 @@ export function pruneNestedElizaPluginCoreCopies(root, log = console.log) {
  * upstream publishes multiple versions with identical (stale) build artifacts,
  * they share a hash and Bun serves stale content. We can't safely remove
  * entries during postinstall (symlinks break), so we detect the condition
- * and tell the user to run `bun run repair` which does:
- *   rm -rf node_modules/.bun && bun install
+ * and tell the user to run `rm -rf node_modules/.bun && bun install`, the same
+ * command the warning below prints.
  *
  * Runs once per package.json version (stamp-guarded).
  *

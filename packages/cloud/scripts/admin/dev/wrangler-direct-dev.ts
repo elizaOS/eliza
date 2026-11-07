@@ -169,38 +169,14 @@ async function main() {
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
 
-  await devEnv.startWorker({
-    config: path.resolve("wrangler.toml"),
-    envFiles: options.envFiles.length > 0 ? options.envFiles : undefined,
-    bindings: Object.fromEntries(
-      Object.entries(options.vars).map(([key, value]) => [
-        key,
-        { type: "plain_text", value },
-      ]),
-    ),
-    dev: {
-      remote: false,
-      watch: false,
-      // Wrangler's ProxyWorker still starts, but on an ephemeral port that
-      // receives no traffic.
-      server: { hostname: "127.0.0.1", port: 0 },
-      inspector:
-        options.inspectorPort === undefined
-          ? false
-          : { hostname: options.inspectorIp, port: options.inspectorPort },
-      persist: options.persistTo,
-    },
-  });
-  const proxyData = await firstReload;
-  const overrides = proxyData.userWorkerInnerUrlOverrides ?? {};
-  if (overrides.hostname !== undefined || overrides.port !== undefined) {
-    // The ProxyWorker would also rewrite URL-bearing headers in this case.
-    throw new Error(
-      "wrangler-direct-dev does not support inner URL host overrides",
-    );
-  }
+  let proxyData = null;
 
   server = createServer((req, res) => {
+    if (!proxyData) {
+      res.writeHead(503, { "Content-Type": "text/plain;charset=UTF-8" });
+      res.end("Worker is starting");
+      return;
+    }
     const startedAt = performance.now();
     res.on("finish", () => {
       const durationMs = Math.round(performance.now() - startedAt);
@@ -254,6 +230,12 @@ async function main() {
   server.headersTimeout = 0;
   server.requestTimeout = 0;
   server.on("upgrade", (req, socket, head) => {
+    if (!proxyData) {
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n",
+      );
+      return;
+    }
     const target = userWorkerTarget(proxyData, req);
     const upstream = connect(target.port, target.hostname, () => {
       const headerLines = [
@@ -274,6 +256,38 @@ async function main() {
     server.once("error", reject);
     server.listen(options.port, options.ip, resolve);
   });
+  // Claim the public port before Wrangler allocates any ephemeral listeners.
+  await devEnv.startWorker({
+    config: path.resolve("wrangler.toml"),
+    envFiles: options.envFiles.length > 0 ? options.envFiles : undefined,
+    bindings: Object.fromEntries(
+      Object.entries(options.vars).map(([key, value]) => [
+        key,
+        { type: "plain_text", value },
+      ]),
+    ),
+    dev: {
+      remote: false,
+      watch: false,
+      // Wrangler's ProxyWorker still starts, but on an ephemeral port that
+      // receives no traffic.
+      server: { hostname: "127.0.0.1", port: 0 },
+      inspector:
+        options.inspectorPort === undefined
+          ? false
+          : { hostname: options.inspectorIp, port: options.inspectorPort },
+      persist: options.persistTo,
+    },
+  });
+  proxyData = await firstReload;
+  const overrides = proxyData.userWorkerInnerUrlOverrides ?? {};
+  if (overrides.hostname !== undefined || overrides.port !== undefined) {
+    // The ProxyWorker would also rewrite URL-bearing headers in this case.
+    throw new Error(
+      "wrangler-direct-dev does not support inner URL host overrides",
+    );
+  }
+
   console.log(
     `[wrangler-direct-dev] UserWorker ${proxyData.userWorkerUrl.hostname}:${proxyData.userWorkerUrl.port}`,
   );

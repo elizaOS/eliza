@@ -16,6 +16,7 @@
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
 import type http from "node:http";
+import { CLIENT_TURN_OBSERVATION_SUPPORT } from "@elizaos/contracts/client-turn-observation";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
@@ -24,22 +25,30 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
-import type { ElizaConfig } from "../config/config.ts";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
+import {
+  isSensitiveConfigKey,
+  redactSensitiveLeaf,
+} from "../config/sensitive-keys.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
-import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
+import { readNativeInferenceTiming } from "./native-inference-timing.ts";
+import {
+  getPairingInstanceId,
+  isTrustedLocalRequest,
+} from "./server-helpers-auth.ts";
 
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).
 type CloudApiKeyResolver = {
+  getCloudInferenceFailure?: (runtime: AgentRuntime) => unknown;
   resolveCloudApiKey: (
     config: ElizaConfig,
     runtime: AgentRuntime | null,
@@ -80,7 +89,15 @@ export interface HealthRouteState {
   pendingRestartReasons: string[];
   connectorHealthMonitor: ConnectorHealthMonitor | null;
 }
+/** Trusted host composition before status JSON is serialized. */
+export type ApiStatusComposer = (
+  payload: Record<string, unknown>,
+) => Record<string, unknown>;
+
 export interface HealthRouteContext {
+  /** Already verified by the existing request gate; diagnostics never resolve authority. */
+  ownerDiagnostics?: boolean;
+  composeStatus?: ApiStatusComposer;
   req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
@@ -104,6 +121,7 @@ interface RuntimeDebugSerializeOptions {
   maxObjectEntries: number;
   maxStringLength: number;
 }
+
 /**
  * /api/runtime serializes the entire runtime object graph (six deep reflective
  * walks). RuntimeView re-requests on depth/cap changes and may revalidate
@@ -220,9 +238,17 @@ export function serializeForRuntimeDebug(
   options: RuntimeDebugSerializeOptions,
 ): unknown {
   const seen = new WeakMap<object, string>();
-  const visit = (current: unknown, path: string, depth: number): unknown => {
+  const visit = (
+    current: unknown,
+    path: string,
+    depth: number,
+    redactAll = false,
+  ): unknown => {
     if (current === null) return null;
     const kind = typeof current;
+    if (redactAll && kind !== "object") {
+      return redactSensitiveLeaf(current);
+    }
     if (kind === "string") {
       if ((current as string).length <= options.maxStringLength) return current;
       const wellFormedString = toWellFormedUnicode(current as string);
@@ -260,6 +286,16 @@ export function serializeForRuntimeDebug(
       };
     }
     const obj = current as object;
+    if (
+      redactAll &&
+      (obj instanceof Date ||
+        obj instanceof RegExp ||
+        Buffer.isBuffer(obj) ||
+        ArrayBuffer.isView(obj) ||
+        obj instanceof ArrayBuffer)
+    ) {
+      return "[REDACTED]";
+    }
     if (obj instanceof Date) {
       return { __type: "date", value: obj.toISOString() };
     }
@@ -291,7 +327,7 @@ export function serializeForRuntimeDebug(
         }
       }
       if (err.cause !== undefined) {
-        out.cause = visit(err.cause, `${path}.cause`, depth + 1);
+        out.cause = visit(err.cause, `${path}.cause`, depth + 1, redactAll);
       }
       return out;
     }
@@ -340,7 +376,7 @@ export function serializeForRuntimeDebug(
       const limit = Math.min(arr.length, options.maxArrayLength);
       const items = new Array<unknown>(limit);
       for (let i = 0; i < limit; i++) {
-        items[i] = visit(arr[i], `${path}[${i}]`, depth + 1);
+        items[i] = visit(arr[i], `${path}[${i}]`, depth + 1, redactAll);
       }
       const out: Record<string, unknown> = {
         __type: "array",
@@ -358,9 +394,16 @@ export function serializeForRuntimeDebug(
       let i = 0;
       for (const [entryKey, entryValue] of obj.entries()) {
         if (i >= options.maxObjectEntries) break;
+        const keyIsSensitive =
+          typeof entryKey === "string" && isSensitiveConfigKey(entryKey);
         entries.push({
-          key: visit(entryKey, `${path}.<key:${i}>`, depth + 1),
-          value: visit(entryValue, `${path}.<value:${i}>`, depth + 1),
+          key: visit(entryKey, `${path}.<key:${i}>`, depth + 1, false),
+          value: visit(
+            entryValue,
+            `${path}.<value:${i}>`,
+            depth + 1,
+            redactAll || keyIsSensitive,
+          ),
         });
         i += 1;
       }
@@ -379,7 +422,7 @@ export function serializeForRuntimeDebug(
       let i = 0;
       for (const entry of obj.values()) {
         if (i >= options.maxArrayLength) break;
-        values.push(visit(entry, `${path}.<set:${i}>`, depth + 1));
+        values.push(visit(entry, `${path}.<set:${i}>`, depth + 1, redactAll));
         i += 1;
       }
       const out: Record<string, unknown> = {
@@ -414,10 +457,15 @@ export function serializeForRuntimeDebug(
       const descriptor = Object.getOwnPropertyDescriptor(obj, propertyKey);
       if (!descriptor) continue;
       if ("value" in descriptor) {
+        const childRedactAll =
+          redactAll ||
+          (typeof propertyKey === "string" &&
+            isSensitiveConfigKey(propertyKey));
         properties[keyLabel] = visit(
           descriptor.value,
           `${path}.${keyLabel}`,
           depth + 1,
+          childRedactAll,
         );
       } else {
         properties[keyLabel] = {
@@ -455,6 +503,10 @@ export function serializeForRuntimeDebug(
  * `true` at the exact moment the agent can answer a first turn. This is the
  * signal the UI uses to fade in first-turn capability: the shell paints early
  * (agentState "starting"), and the composer goes live when this flips.
+ *
+ * The local-inference router counts as a handler to the runtime, but it only
+ * dispatches to the other registered text handlers, so a runtime whose text
+ * slots hold nothing but the router cannot answer a turn.
  */
 export function computeCanRespond(
   runtime: AgentRuntime | null,
@@ -466,6 +518,7 @@ export function computeCanRespond(
   }
   try {
     if (!hasTextGenerationHandler(runtime)) return false;
+    if (!textRegistrationsBehindRouter(runtime).length) return false;
     if (localModelReadiness?.status === "model_not_loaded") return false;
   } catch {
     return false;
@@ -474,6 +527,35 @@ export function computeCanRespond(
 }
 
 const LOCAL_INFERENCE_ROUTER_PROVIDER = "eliza-router";
+
+const TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_MEGA,
+  ModelType.ACTION_PLANNER,
+  ModelType.RESPONSE_HANDLER,
+]);
+
+/**
+ * Text-slot registrations that can serve a turn. The local-inference plugin
+ * fronts its text slots with a prefer-local router (`ROUTER_PROVIDER` in
+ * router-handler.ts). It dispatches to the other registered handlers and
+ * serves nothing itself, so it neither makes a runtime "mixed" nor needs
+ * weights of its own, and it is left out here.
+ */
+function textRegistrationsBehindRouter(
+  runtime: AgentRuntime,
+): Array<{ modelType: string; provider: string }> {
+  return runtime
+    .getModelRegistrations()
+    .filter(
+      (entry) =>
+        TEXT_MODEL_TYPES.has(entry.modelType) &&
+        entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
+    );
+}
 
 /** Readiness of this runtime's sole local text provider, without loading models. */
 export async function readLocalTextModelReadiness(
@@ -484,26 +566,7 @@ export async function readLocalTextModelReadiness(
 } | null> {
   if (!runtime) return null;
   try {
-    const textTypes: ReadonlySet<string> = new Set([
-      ModelType.TEXT_LARGE,
-      ModelType.TEXT_SMALL,
-      ModelType.TEXT_MEDIUM,
-      ModelType.TEXT_NANO,
-      ModelType.TEXT_MEGA,
-      ModelType.ACTION_PLANNER,
-      ModelType.RESPONSE_HANDLER,
-    ]);
-    // The local-inference plugin fronts its text slots with a prefer-local
-    // router (`ROUTER_PROVIDER` in router-handler.ts). It dispatches to the
-    // other registered handlers and serves nothing itself, so it neither
-    // makes a runtime "mixed" nor needs weights of its own.
-    const registrations = runtime
-      .getModelRegistrations()
-      .filter(
-        (entry) =>
-          textTypes.has(entry.modelType) &&
-          entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
-      );
+    const registrations = textRegistrationsBehindRouter(runtime);
     if (
       !registrations.length ||
       registrations.some((entry) => entry.provider !== "eliza-local-inference")
@@ -624,7 +687,8 @@ export function readCloudModelReadiness(
  * True only on a positive catalog answer that a configured Cloud text model id
  * is not listed AND Eliza Cloud is the sole registered provider for that model
  * type, so no failover can serve it. Catalog outages stay `unknown` and never
- * gate chat (#30228).
+ * gate chat (#30228). The local-inference router is not a failover: it can
+ * only dispatch to the providers counted here.
  */
 function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
   const readiness = readCloudModelReadiness(runtime);
@@ -637,7 +701,11 @@ function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
   }
   return readiness.missing.some(({ modelType }) => {
     const providers = registrations
-      .filter((entry) => entry.modelType === modelType)
+      .filter(
+        (entry) =>
+          entry.modelType === modelType &&
+          entry.provider !== LOCAL_INFERENCE_ROUTER_PROVIDER,
+      )
       .map((entry) => entry.provider);
     return (
       providers.length > 0 &&
@@ -693,11 +761,19 @@ export async function handleHealthRoutes(
     // — never 500 the status endpoint for optional cloud status fields.
     const cloudProvisioned = isCloudProvisionedContainer();
     let hasCloudApiKey = false;
+    let cloudInferenceFailure: unknown;
     try {
-      const { resolveCloudApiKey } = await getCloudApiKeyResolver();
+      const { resolveCloudApiKey, getCloudInferenceFailure } =
+        await getCloudApiKeyResolver();
       hasCloudApiKey = Boolean(
         resolveCloudApiKey(effectiveConfig, state.runtime),
       );
+      try {
+        if (state.runtime)
+          cloudInferenceFailure = getCloudInferenceFailure?.(state.runtime);
+      } catch {
+        // Diagnostics must not alter Cloud connection readiness.
+      }
     } catch {
       // error-policy:J4 optional cloud API-key probe must not fail /api/status
     }
@@ -708,18 +784,38 @@ export async function handleHealthRoutes(
       cloudProvisioned,
       hasApiKey: hasCloudApiKey,
     };
-    json(res, {
+    const payload = {
+      // Schema support only; action admission and permissions are unchanged.
+      clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT,
+      // Existing API-process format lifetime; not runtime identity or access.
+      serverInstanceId: getPairingInstanceId(),
       state: state.agentState,
       agentName: state.agentName,
       model,
       ...(await responseReadinessFields(state.runtime, state.agentState)),
+      // Registration only: turn authorization and provider acceptance are separate.
+      // Project before serialization; never include action metadata or the runtime graph.
+      deviceActionRegistration: !state.runtime
+        ? "runtime_unavailable"
+        : state.runtime.actions.some(
+              (action) => action.name === "PROPOSE_DEVICE_ACTION",
+            )
+          ? "registered"
+          : "missing",
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
       cloud: cloudStatus,
+      ...(cloudInferenceFailure ? { cloudInferenceFailure } : {}),
+      ...(ctx.ownerDiagnostics &&
+      state.runtime &&
+      state.agentState === "running"
+        ? { nativeInferenceTiming: readNativeInferenceTiming(state.runtime) }
+        : {}),
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
-    });
+    };
+    json(res, ctx.composeStatus ? ctx.composeStatus(payload) : payload);
     return true;
   }
   // ── GET /api/health ──────────────────────────────────────────────────────

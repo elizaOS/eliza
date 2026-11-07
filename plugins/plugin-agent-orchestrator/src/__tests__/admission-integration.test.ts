@@ -295,6 +295,37 @@ describe("admission queue integration (#13772)", () => {
     expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
   });
 
+  it("marks a queued task failed when its replayed spawn fails, instead of leaving it open", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const runtime = makeRuntime(acp);
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    expect((await service.spawnAgentForTask(b))?.admission?.state).toBe(
+      "queued",
+    );
+
+    // The slot frees, but launching B's agent fails (e.g. a transport error).
+    vi.spyOn(acp, "spawnSession").mockRejectedValueOnce(
+      new Error("spawn transport failed"),
+    );
+    const running = acp.listSessions().find((s) => s.status === "running");
+    if (running) acp.complete(running.id);
+    await waitUntil(
+      () =>
+        (runtime.reportError as ReturnType<typeof vi.fn>).mock.calls.length > 0,
+    );
+
+    const doc = await store.getTask(b);
+    expect(doc?.task.status).toBe("failed");
+    expect(doc?.task.metadata?.admission).toBeUndefined();
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
+  });
+
   it("reclaims an idle keepAlive session whose task is terminal to free a slot", async () => {
     const acp = new FakeAcp(1);
     const store = new OrchestratorTaskStore({ backend: "memory" });
@@ -424,10 +455,28 @@ describe("admission queue integration (#13772)", () => {
     const low = await newTask(store, "low", "low");
     const urgent = await newTask(store, "urgent", "urgent");
     const normal = await newTask(store, "normal", "normal");
-    for (const id of [low, urgent, normal]) {
+    const corrupt = await newTask(store, "corrupt", "normal");
+    for (const id of [low, urgent, normal, corrupt]) {
       await service.spawnAgentForTask(id);
     }
-    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(3);
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(4);
+    for (const [id, enqueuedAt] of [
+      [normal, new Date(Date.now() - 1000).toISOString()],
+      [corrupt, "invalid-timestamp"],
+    ]) {
+      const doc = await store.getTask(id);
+      if (!doc) throw new Error("Queued task is missing");
+      const admission = doc.task.metadata?.admission;
+      if (!admission || typeof admission !== "object") {
+        throw new Error("Queued task has no admission record");
+      }
+      await store.updateTask(id, {
+        metadata: {
+          ...doc.task.metadata,
+          admission: { ...admission, enqueuedAt },
+        },
+      });
+    }
 
     // Simulate a restart: a fresh service over the SAME store rebuilds the order.
     await service.stop();
@@ -436,10 +485,9 @@ describe("admission queue integration (#13772)", () => {
     });
     await restarted.start();
     const snapshot = await restarted.getAdmissionSnapshot();
-    expect(snapshot.queueDepth).toBe(3);
-    // Priority order: urgent first, then the two normals/low by band.
-    expect(snapshot.queuedTaskIds[0]).toBe(urgent);
-    expect(snapshot.queuedTaskIds[2]).toBe(low);
+    expect(snapshot.queueDepth).toBe(4);
+    // Corrupt timestamps get no seniority within the normal-priority band.
+    expect(snapshot.queuedTaskIds).toEqual([urgent, normal, corrupt, low]);
     await restarted.stop();
   });
 

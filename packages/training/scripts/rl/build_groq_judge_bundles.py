@@ -8,15 +8,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-if str(PYTHON_ROOT) not in sys.path:
-    sys.path.insert(0, str(PYTHON_ROOT))
 
 from scam_defense_exchange import (
     canonical_record_from_row,
@@ -24,7 +19,7 @@ from scam_defense_exchange import (
     write_reprocessed_formats,
 )
 
-from src.training.groq_judge_bundles import (
+from eliza_training.rl.groq_judge_bundles import (
     GROQ_BASE_URL,
     attach_bundles_to_best_cots,
     attach_bundles_to_training_rows,

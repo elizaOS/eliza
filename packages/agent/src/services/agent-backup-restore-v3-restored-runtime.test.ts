@@ -10,12 +10,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentBackupRestoreV3ProbeRequest } from "@elizaos/contracts/node";
 import {
-  type AgentBackupRestoreV3ProbeRequest,
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
   verifyAgentBackupRestoreV3Attestation,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import { afterEach, expect, it } from "vitest";
 import {
   type AgentBackupRestoreV3ConsumedGrant,

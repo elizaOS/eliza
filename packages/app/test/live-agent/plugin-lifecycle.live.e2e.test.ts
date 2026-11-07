@@ -8,18 +8,18 @@
  */
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { config as loadDotenv } from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../helpers/conditional-tests.ts";
+import { getFreePort } from "@elizaos/testing/fixtures";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../helpers/http.ts";
+} from "@elizaos/testing/runtime";
+import { config as loadDotenv } from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../helpers/conditional-tests.ts";
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 import {
@@ -176,22 +176,6 @@ if (
   throw new Error(
     `ELIZA_PLUGIN_LIFECYCLE_FILTER=${FILTER_TOKENS.join(",")} matched no local workspace plugins.`,
   );
-}
-
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        server.close();
-        reject(new Error("no port"));
-        return;
-      }
-      server.close((e) => (e ? reject(e) : resolve(addr.port)));
-    });
-  });
 }
 
 const RETRYABLE_RM_ERROR_CODES = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);

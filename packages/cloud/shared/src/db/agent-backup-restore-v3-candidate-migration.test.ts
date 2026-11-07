@@ -15,7 +15,7 @@ import {
   type AgentBackupRestoreV3SourceAuthority,
   canonicalizeAgentBackupRestoreV3CandidateReceipt,
   canonicalizeAgentBackupRestoreV3SourceAuthority,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts";
 import { AGENT_BACKUP_RESTORE_V3_CANDIDATE_COMPONENTS } from "./schemas/agent-backup-restore-v3-candidates";
 
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");

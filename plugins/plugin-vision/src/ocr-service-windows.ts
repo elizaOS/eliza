@@ -76,7 +76,7 @@ $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Wind
 $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
 $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
 $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
-if ($null -eq $engine) { Write-Output '{"width":0,"height":0,"lines":[]}'; exit 0 }
+if ($null -eq $engine) { Write-Output '{"width":0,"height":0,"lines":[],"error":"no-ocr-language"}'; exit 0 }
 $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
 $lines = @()
 foreach ($line in $result.Lines) {
@@ -204,6 +204,23 @@ function lineToBlock(
   };
 }
 
+/**
+ * Parse the JSON line of the OCR host or the one-shot script. Empty output, an
+ * `error` field (failed recognition, no OCR language) or a missing `lines`
+ * array is a failed run, not a screen without text.
+ */
+function parseWinOcrOutput(stdout: string): WinOcrRaw {
+  const raw = JSON.parse(stdout.trim() || "null") as
+    | (WinOcrRaw & { error?: string })
+    | null;
+  if (!raw || raw.error || !Array.isArray(raw.lines)) {
+    throw new Error(
+      `windows-ocr failed: ${raw?.error ?? (stdout.trim() || "no output")}`,
+    );
+  }
+  return raw;
+}
+
 /** Pure mapper (exported for cross-platform unit tests). */
 export function mapWinOcrToResult(
   raw: WinOcrRaw,
@@ -245,15 +262,17 @@ export class WindowsMediaOcrService implements OcrWithCoordsService {
       } else {
         stdout = await runPowerShell(ensureScriptOnDisk(), imgPath);
       }
-      const raw = JSON.parse(
-        stdout.trim() || '{"width":0,"height":0,"lines":[]}',
-      ) as WinOcrRaw;
-      return mapWinOcrToResult(raw, input.sourceX, input.sourceY);
+      return mapWinOcrToResult(
+        parseWinOcrOutput(stdout),
+        input.sourceX,
+        input.sourceY,
+      );
     } catch (err) {
       logger.warn(
         `[WindowsMediaOcr] OCR failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return { blocks: [] };
+      // A failed run is not an empty screen: callers report or skip it.
+      throw err;
     } finally {
       // Clean up the per-call temp image. The warm host disposes its file
       // handle each iteration and the one-shot process has exited, so the file

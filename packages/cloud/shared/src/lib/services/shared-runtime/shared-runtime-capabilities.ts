@@ -22,7 +22,7 @@ import {
   type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   findAgentCapability,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 import {
   buildSharedCapabilityCatalog,
   formatSharedCapabilityCatalogForPrompt,
@@ -37,6 +37,7 @@ export interface SharedRuntimeCapabilityOptions {
   reminders: boolean;
   todos: boolean;
   media: boolean;
+  googleContext?: boolean;
   transport?: AgentCapabilityTransport;
 }
 

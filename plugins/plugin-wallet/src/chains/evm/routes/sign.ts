@@ -13,15 +13,21 @@ import { createWalletClient } from "viem";
 import { http } from "viem";
 import { logger } from "@elizaos/core";
 import { publicActions } from "viem";
+import { browserSignTokenMatches } from "../../browser-sign-token";
+import {
+    evmPersonalSignInput,
+    normalizeEvmCalldata,
+    parseEvmChainId,
+} from "./evm-hex.js";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import { type Address } from "viem";
 import { type Chain } from "viem";
 import { type Hex } from "viem";
 import { type IAgentRuntime } from "@elizaos/core";
-import { type LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { type RouteRequest } from "@elizaos/core/api/http-plugin";
-import { type RouteResponse } from "@elizaos/core/api/http-plugin";
+import { type LegacyRouteHandler } from "@elizaos/host/protocol";
+import { type Route } from "@elizaos/host/protocol";
+import { type RouteRequest } from "@elizaos/host/protocol";
+import { type RouteResponse } from "@elizaos/host/protocol";
 import { type TypedDataDefinition } from "viem";
 import * as viemChains from "viem/chains";
 class EvmSignInputError extends Error {
@@ -88,7 +94,8 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
         res.status(503).json({ error: "WALLET_BROWSER_SIGN_TOKEN not configured" });
         return false;
     }
-    if (readBearer(req) !== expected) {
+    const got = readBearer(req);
+    if (!got || !browserSignTokenMatches(expected, got)) {
         res.status(401).json({ error: "invalid sign token" });
         return false;
     }
@@ -120,22 +127,9 @@ function readChainId(body: unknown): number {
     const c = (body as {
         chainId?: unknown;
     }).chainId;
-    if (typeof c === "number" && Number.isSafeInteger(c) && c > 0)
-        return c;
-    if (typeof c === "string") {
-        const raw = c.trim();
-        // Browser signing accepts canonical unsigned decimal or 0x-prefixed hex.
-        if (/^0x[0-9a-fA-F]+$/.test(raw)) {
-            const n = Number.parseInt(raw.slice(2), 16);
-            if (Number.isSafeInteger(n) && n > 0)
-                return n;
-        }
-        else if (/^[1-9]\d*$/.test(raw)) {
-            const n = Number(raw);
-            if (Number.isSafeInteger(n))
-                return n;
-        }
-    }
+    const parsed = parseEvmChainId(c);
+    if (parsed !== null)
+        return parsed;
     throw new EvmSignInputError("chainId must be a number or hex string");
 }
 const addressHandler: LegacyRouteHandler = async (req, res, runtime) => {
@@ -168,11 +162,7 @@ const personalSignHandler: LegacyRouteHandler = async (req, res, runtime) => {
         }
         const backend = await resolveWalletBackend(runtime);
         const account = backend.getEvmAccount(1);
-        const messageInput: {
-            raw: Hex;
-        } | string = body.message.startsWith("0x")
-            ? { raw: body.message as Hex }
-            : body.message;
+        const messageInput = evmPersonalSignInput(body.message);
         const signature = await account.signMessage!({
             message: typeof messageInput === "string" ? messageInput : messageInput,
         });
@@ -221,8 +211,11 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
         return undefined;
     if (typeof value === "bigint")
         return value;
-    if (typeof value === "number")
+    if (typeof value === "number") {
+        if (!Number.isSafeInteger(value))
+            throw new EvmSignInputError(`invalid bigint value: ${value}`);
         return BigInt(value);
+    }
     if (typeof value === "string") {
         if (value.length === 0)
             return undefined;
@@ -262,7 +255,7 @@ const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
             chain,
             to: tx.to,
             value: hexOrIntToBigInt(tx.value),
-            data: tx.data,
+            data: normalizeEvmCalldata(tx.data),
             gas: hexOrIntToBigInt(tx.gas),
             maxFeePerGas: hexOrIntToBigInt(tx.maxFeePerGas),
             maxPriorityFeePerGas: hexOrIntToBigInt(tx.maxPriorityFeePerGas),
@@ -306,7 +299,7 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
             chain,
             to: tx.to,
             value: hexOrIntToBigInt(tx.value),
-            data: tx.data,
+            data: normalizeEvmCalldata(tx.data),
             gas: hexOrIntToBigInt(tx.gas),
             maxFeePerGas: hexOrIntToBigInt(tx.maxFeePerGas),
             maxPriorityFeePerGas: hexOrIntToBigInt(tx.maxPriorityFeePerGas),

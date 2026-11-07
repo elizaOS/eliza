@@ -22,6 +22,7 @@ import {
   type ActionExample,
   type ActionResult,
   type EffectReceipt,
+  extractUserText,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -48,12 +49,14 @@ import {
   describeCronSchedule,
   describeIntervalMs,
   describeOnceAt,
+  zonedIsoTimestamp,
 } from "../triggers/humanize.ts";
 import {
   executeTriggerTask,
   readTriggerConfig,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
+  triggersFeatureEnabled,
 } from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
@@ -62,6 +65,7 @@ import {
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
+  resolveScheduledAtIsoInTimeZone,
 } from "../triggers/scheduling.ts";
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
 
@@ -84,9 +88,19 @@ const TRIGGER_OPS = [
   "list",
 ] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
+const TRIGGER_SCHEDULE_OPS: readonly TriggerOp[] = ["create", "update"];
+const TRIGGER_NAMED_OPS: readonly TriggerOp[] = [
+  "create",
+  "update",
+  "delete",
+  "run",
+  "toggle",
+];
 
 const TRIGGER_ACTION = "TRIGGER";
 const MAX_TRIGGERS_PER_CREATOR = 100;
+/** A planner retry of a relative-delay reminder lands within this window. */
+const RELATIVE_DELAY_REPLAY_WINDOW_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 12 * 60 * 60 * 1000;
 // Cap for delaySeconds/delayMinutes. Far-future one-offs should use an
 // absolute scheduledAtIso; unbounded delays overflow Date math (RangeError).
@@ -263,6 +277,24 @@ function okCommitted(
   };
 }
 
+function missingSchedule(text: string): ActionResult {
+  return {
+    ...failed("create", text, "MISSING_SCHEDULE", {
+      acceptance: "rejected",
+      executionStatus: "not_started",
+    }),
+    // No write has started: corrected schedule parameters can safely retry.
+    // Keep this validation rejection in the trace without giving it authority
+    // over a later committed creation with those corrected parameters.
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code: "MISSING_SCHEDULE",
+      retryable: true,
+    },
+  };
+}
+
 function deriveTriggerType(p: TriggerParameters): TriggerType {
   const t = p.triggerType?.trim().toLowerCase();
   if (t === "interval" || t === "once" || t === "cron") return t;
@@ -294,9 +326,24 @@ function buildTriggerDedupeKey(input: {
   );
 }
 
+// Delay-derived once triggers hash the RELATIVE delay, not the absolute fire
+// time: a planner retry/double-emit of the same tool call lands milliseconds
+// apart and must dedupe to one reminder. This single helper feeds both the
+// create-path key and the persisted key, so an update can never silently swap
+// schemes and re-open the duplicate window. Triggers that were never
+// delay-derived fall back to the absolute timestamp.
+function onceScheduleDedupeKey(trigger: {
+  delayMs?: number;
+  scheduledAtIso?: string;
+}): string {
+  return trigger.delayMs !== undefined
+    ? `+${trigger.delayMs}`
+    : (trigger.scheduledAtIso ?? "");
+}
+
 function persistedScheduleDedupeKey(trigger: TriggerConfig): string {
   if (trigger.triggerType === "once") {
-    return trigger.scheduledAtIso ?? "";
+    return onceScheduleDedupeKey(trigger);
   }
   if (trigger.triggerType === "interval") {
     return `every:${trigger.intervalMs ?? ""}`;
@@ -360,13 +407,6 @@ function displayLabel(name: string): string {
   return stripped.length > 0 ? stripped : name;
 }
 
-function triggersDisabled(runtime: IAgentRuntime): boolean {
-  const setting = runtime.getSetting("ELIZA_TRIGGERS_ENABLED");
-  if (setting === false || setting === "false" || setting === "0") return true;
-  const env = process.env.ELIZA_TRIGGERS_ENABLED;
-  return env === "0" || env === "false";
-}
-
 async function loadTriggerTask(
   runtime: IAgentRuntime,
   taskId: UUID,
@@ -377,8 +417,25 @@ async function loadTriggerTask(
   return trigger ? { task, trigger } : null;
 }
 
+async function loadTriggerByTriggerId(
+  runtime: IAgentRuntime,
+  triggerId: string,
+): Promise<{ task: Task; trigger: TriggerConfig } | null> {
+  const tasks = await runtime.getTasks({
+    tags: [...TRIGGER_TASK_TAGS],
+    agentIds: [runtime.agentId],
+  });
+  for (const task of tasks) {
+    const trigger = readTriggerConfig(task);
+    if (trigger && task.id && String(trigger.triggerId) === triggerId) {
+      return { task, trigger };
+    }
+  }
+  return null;
+}
+
 /**
- * Resolve which trigger an update/delete/run/toggle refers to. Accepts a task
+ * Resolve which trigger a delete/run/toggle refers to. Accepts a task
  * UUID, the triggerId, or — the way a person actually refers to one — a name
  * fragment matched against displayName/instructions. Users never see task
  * UUIDs, so demanding one made every "delete the X reminder" turn fail.
@@ -417,6 +474,51 @@ export function impliedTriggerQuery(
   return /[a-z]{3,}/i.test(query) ? query : undefined;
 }
 
+function normalizeTriggerName(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/^trigger:\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const WORD_CHAR = "[\\p{L}\\p{M}\\p{N}]";
+// These scripts attach particles without a space ("운동을"), so a name inside
+// a query stays a substring match there.
+const PARTICLE_SCRIPT_PATTERN =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+function containsWholePhrase(text: string, phrase: string): boolean {
+  if (!phrase) return false;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<!${WORD_CHAR})${escaped}(?!${WORD_CHAR})`, "u").test(
+    text,
+  );
+}
+
+/**
+ * 0 = exact name, 1 = whole word/phrase either way, 2 = substring (a name
+ * inside the query only for particle scripts), undefined = no match.
+ */
+function triggerNameMatchTier(
+  name: string,
+  query: string,
+): 0 | 1 | 2 | undefined {
+  if (!name || !query) return undefined;
+  if (name === query) return 0;
+  if (containsWholePhrase(name, query) || containsWholePhrase(query, name)) {
+    return 1;
+  }
+  if (
+    name.includes(query) ||
+    (PARTICLE_SCRIPT_PATTERN.test(name) && query.includes(name))
+  ) {
+    return 2;
+  }
+  return undefined;
+}
+
 async function resolveTriggerRef(
   runtime: IAgentRuntime,
   op: TriggerOp,
@@ -437,18 +539,12 @@ async function resolveTriggerRef(
           ? readString(params.displayName)
           : undefined;
       if (referenceName) {
-        const normalize = (value: string) =>
-          value
-            .toLowerCase()
-            .replace(/^trigger:\s*/, "")
-            .trim();
-        const actual = normalize(loaded.trigger.displayName);
-        const stated = normalize(referenceName);
+        const actual = normalizeTriggerName(loaded.trigger.displayName);
+        const stated = normalizeTriggerName(referenceName);
         if (
           stated &&
           actual &&
-          !actual.includes(stated) &&
-          !stated.includes(actual)
+          triggerNameMatchTier(actual, stated) === undefined
         ) {
           return failed(
             op,
@@ -470,7 +566,7 @@ async function resolveTriggerRef(
     readString(params.instructions) ??
     (rawId && !readUuid(params.taskId) ? rawId : undefined) ??
     impliedTriggerQuery(message);
-  const query = querySource?.toLowerCase().replace(/^trigger:\s*/, "");
+  const query = querySource ? normalizeTriggerName(querySource) : undefined;
 
   const tasks = await runtime.getTasks({
     tags: [...TRIGGER_TASK_TAGS],
@@ -486,18 +582,26 @@ async function resolveTriggerRef(
     : undefined;
   if (byTriggerId) return byTriggerId;
 
-  const matches = query
-    ? all.filter((c) => {
-        const name = c.trigger.displayName
-          .toLowerCase()
-          .replace(/^trigger:\s*/, "");
-        return (
-          name.includes(query) ||
-          query.includes(name) ||
-          c.trigger.instructions.toLowerCase().includes(query)
-        );
-      })
-    : [];
+  // The first tier with any hit wins, so "Standup" is not ambiguous with
+  // "Standup notes" and "Gym" is not hit by "gymnastics".
+  const tiers: Array<Array<{ task: Task; trigger: TriggerConfig }>> = [
+    [],
+    [],
+    [],
+  ];
+  if (query) {
+    for (const c of all) {
+      const name = normalizeTriggerName(c.trigger.displayName);
+      const instructions = normalizeTriggerName(c.trigger.instructions);
+      let tier = triggerNameMatchTier(name, query);
+      if (tier === undefined || tier > 1) {
+        if (containsWholePhrase(instructions, query)) tier = 1;
+        else if (tier === undefined && instructions.includes(query)) tier = 2;
+      }
+      if (tier !== undefined) tiers[tier].push(c);
+    }
+  }
+  const matches = tiers.find((tier) => tier.length > 0) ?? [];
   if (matches.length === 1) return matches[0];
 
   const names = all.map((c) => `"${c.trigger.displayName}"`).join(", ");
@@ -549,7 +653,7 @@ async function opCreate(
   message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
-  if (triggersDisabled(runtime)) {
+  if (!triggersFeatureEnabled(runtime)) {
     return failed("create", "Triggers are disabled.", "TRIGGERS_OFF");
   }
   // A workflow trigger dispatches a workflow autonomously, so it needs the
@@ -561,7 +665,10 @@ async function opCreate(
   if (isWorkflowTrigger && !runtime.enableAutonomy) {
     return failed("create", "Autonomy is disabled.", "AUTONOMY_OFF");
   }
-  const text = readString(message.content.text) ?? "";
+  // The user's words, not chat augmentation's help-document envelope: this
+  // text becomes the prompt a reminder fires with when instructions are
+  // omitted. The external-content envelope stays on untrusted text.
+  const text = extractUserText(readString(message.content.text) ?? "");
   const instructions = readString(params.instructions) ?? text;
   if (!instructions) {
     return failed(
@@ -578,23 +685,33 @@ async function opCreate(
   // explicit one-shot/interval `triggerType` — a typed statement, not a
   // sprayed number — outranks a provided cronExpression.
   const explicitType = params.triggerType?.trim().toLowerCase();
+  // A triggerType alone names a kind, not a time. The rejection names the
+  // field for each phrasing: "Provide an explicit schedule" named none, and
+  // the planner resent the same unscheduled call four times (live
+  // tj-7471737298abb6). interval keeps its own intervalMs rejection below.
   if (
-    !["once", "interval", "cron"].includes(explicitType ?? "") &&
+    explicitType !== "interval" &&
     params.delaySeconds === undefined &&
     params.delayMinutes === undefined &&
     params.intervalMs === undefined &&
     !readString(params.scheduledAtIso) &&
     !readString(params.cronExpression)
   ) {
-    return failed(
-      "create",
-      "Provide an explicit schedule before creating a trigger.",
-      "MISSING_SCHEDULE",
+    return missingSchedule(
+      "No schedule was sent, so nothing was created. Send delayMinutes or delaySeconds as a number for a relative delay, scheduledAtIso for a clock time, or cronExpression for a repeat.",
     );
   }
 
   const cronExpression = readString(params.cronExpression);
-  const explicitScheduledAtIso = readString(params.scheduledAtIso);
+  // The planner works from CURRENT_TIME in the user's zone, so a timestamp it
+  // sends without an offset is that zone's wall clock — the same zone the cron
+  // path stores — not the host process zone `Date.parse` would assume.
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  const explicitScheduledAtIso =
+    rawScheduledAtIso === undefined
+      ? undefined
+      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
   const wantsCron =
     explicitType === "cron" ||
     (cronExpression !== undefined &&
@@ -608,8 +725,14 @@ async function opCreate(
   // cannot block a valid recurring create.
   const hasDelayInput =
     params.delaySeconds !== undefined || params.delayMinutes !== undefined;
+  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // An explicit triggerType=interval with a usable intervalMs is a typed
+  // statement like a cron: the delay beside it is the planner's echo of the
+  // first fire, not a second schedule.
+  const wantsInterval =
+    explicitType === "interval" && parsedIntervalMs !== undefined;
   const parsedDelayMs =
-    wantsCron || explicitScheduledAtIso !== undefined
+    wantsCron || wantsInterval || explicitScheduledAtIso !== undefined
       ? undefined
       : readRelativeDelayMs(params);
   const delayGiven =
@@ -640,9 +763,9 @@ async function opCreate(
       ? new Date(Date.now() + delayMs).toISOString()
       : undefined;
   const scheduledAtIso = explicitScheduledAtIso ?? scheduledFromDelay;
-  // A relative delay is one-shot by definition; a contradictory explicit
-  // triggerType (e.g. "interval") must not silently drop it. Cron resolved
-  // above, so a delay can no longer demote a recurring schedule to one-shot.
+  // A relative delay that survived to here is one-shot by definition. Cron and
+  // an explicit interval with a usable intervalMs resolved above and discarded
+  // it, so a delay can no longer demote a recurring schedule to one-shot.
   const triggerType: TriggerType = wantsCron
     ? "cron"
     : delayMs !== undefined
@@ -656,8 +779,26 @@ async function opCreate(
       ? "next_autonomy_cycle"
       : "inject_now";
   const creatorId = String(message.entityId);
-  const messageTimeZone = resolveMessageTimeZone(runtime, message);
-  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // A repeat period sent with a one-off time and no triggerType names two
+  // schedules. Writing the one-off dropped the period and turned "every 2
+  // hours" into one committed reminder.
+  if (
+    triggerType === "once" &&
+    explicitType !== "once" &&
+    parsedIntervalMs !== undefined
+  ) {
+    return missingSchedule(
+      "intervalMs (repeating) was sent with a one-off delay or scheduledAtIso. Nothing was created. Send intervalMs alone for a repeating trigger, or the delay or scheduledAtIso alone for a one-off.",
+    );
+  }
+  // triggerType=interval names the schedule kind, not the cadence. Writing the
+  // 12-hour default here turned "every 2 hours" with the number omitted into a
+  // committed 12-hour reminder; once and cron already refuse a missing value.
+  if (triggerType === "interval" && params.intervalMs === undefined) {
+    return missingSchedule(
+      "Interval trigger requires intervalMs (the repeat period in milliseconds).",
+    );
+  }
   if (
     triggerType === "interval" &&
     params.intervalMs !== undefined &&
@@ -725,9 +866,10 @@ async function opCreate(
   // no-op.
   const scheduleKey =
     triggerType === "once"
-      ? usedDelay
-        ? `+${delayMs}`
-        : (scheduledAtIso ?? "")
+      ? onceScheduleDedupeKey({
+          delayMs: usedDelay ? delayMs : undefined,
+          scheduledAtIso,
+        })
       : triggerType === "interval"
         ? `every:${intervalMs}`
         : `cron:${normalizeCronDedupeExpression(cronExpression ?? "")}@${messageTimeZone}`;
@@ -776,23 +918,21 @@ async function opCreate(
     );
   }
 
-  // Two duplicate tiers with different evidentiary strength. A dedupeKey
-  // match hashes the FULL request (type, instructions, schedule, workflow),
-  // so it proves the desired state is already true and may mint a replayed
-  // receipt. The legacy fallback matches instructions+type only — it ignores
-  // the schedule, so a stored 8am reminder "matches" a new 9am request; that
-  // is a hint, never proof, and must not become a verified "you're covered".
-  // The createdBy equality is load-bearing even though the key already hashes
-  // the creator: dedupeHash is a 32-bit djb2, so a collision across users is
-  // possible — and a cross-recipient false match here silently swallows a
-  // distinct recipient's delivery. The structural guard makes that class of
-  // suppression impossible regardless of hash width.
+  // Match the complete request and creator before replaying a committed receipt.
+  // A relative-delay key names the delay, not the fire time, so it is a replay
+  // only while the stored fire time is within the retry window: the same "in
+  // 1 hour" asked 40 minutes later is a new reminder.
   const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
     return Boolean(
       cfg?.enabled &&
         cfg.createdBy === creatorId &&
-        cfg.dedupeKey === dedupeKey,
+        cfg.dedupeKey === dedupeKey &&
+        (!usedDelay ||
+          Math.abs(
+            Date.parse(cfg.scheduledAtIso ?? "") -
+              Date.parse(scheduledFromDelay ?? ""),
+          ) <= RELATIVE_DELAY_REPLAY_WINDOW_MS),
     );
   });
   if (exactDuplicate?.id) {
@@ -812,28 +952,6 @@ async function opCreate(
       { duplicateTaskId: exactDuplicate.id, dedupeKey },
     );
   }
-  const legacyDuplicate = existingTasks.find((t) => {
-    const cfg = readTriggerConfig(t);
-    if (!cfg?.enabled || cfg.dedupeKey) return false;
-    // Same recipient only: another user's identical wording is a different
-    // delivery, not a near-duplicate — steering them to "delete it first"
-    // would suppress their own reminder in favor of someone else's.
-    if (cfg.createdBy !== creatorId) return false;
-    return (
-      cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
-      cfg.triggerType === triggerType
-    );
-  });
-  if (legacyDuplicate?.id) {
-    // Un-receipted: the fuzzy match cannot prove the schedule matches, so
-    // this reports the near-duplicate without claiming verified success.
-    return ok(
-      "create",
-      `A similar ${triggerType} trigger already exists ("${readTriggerConfig(legacyDuplicate)?.instructions ?? "unknown"}"). Confirm whether that covers this, or delete it first to create the new one.`,
-      { duplicateTaskId: legacyDuplicate.id, legacyFuzzyMatch: true },
-    );
-  }
-
   // A trigger with a workflowId dispatches that workflow; without one it is a
   // "prompt automation" (a reminder) that injects `instructions` as an agent
   // turn when it fires. Both are first-class TriggerConfig kinds — a reminder
@@ -855,6 +973,9 @@ async function opCreate(
     runCount: 0,
     intervalMs: triggerType === "interval" ? intervalMs : undefined,
     scheduledAtIso: triggerType === "once" ? scheduledAtIso : undefined,
+    // Delay-derived once triggers keep the relative delay so the persisted
+    // dedupe key uses the same relative scheme as the create-path key.
+    delayMs: usedDelay ? delayMs : undefined,
     cronExpression: triggerType === "cron" ? cronExpression : undefined,
     maxRuns,
     dedupeKey,
@@ -910,13 +1031,38 @@ async function opCreate(
       kind: triggerConfig.kind,
       workflowId,
       workflowName,
-      scheduledAtIso: triggerConfig.scheduledAtIso,
+      // Read by the reply model, so in the sender's zone; the stored config
+      // and the trigger API keep their own form.
+      scheduledAtIso:
+        triggerConfig.scheduledAtIso &&
+        zonedIsoTimestamp(triggerConfig.scheduledAtIso, messageTimeZone),
       cronExpression: triggerConfig.cronExpression,
       intervalMs: triggerConfig.intervalMs,
       timezone: triggerConfig.timezone,
     },
     { triggerId, taskId, workflowId },
   );
+}
+
+/**
+ * A disabled trigger has no next fire by definition — `resolveTriggerTiming`
+ * returns null for `enabled === false`, so `buildTriggerMetadata` can never
+ * schedule one. Park it on the far-future disabled interval instead, the same
+ * shape event triggers already use, so the row persists as paused and a later
+ * resume recomputes a real schedule.
+ */
+function pausedTriggerMetadata(
+  task: Task,
+  trigger: TriggerConfig,
+  nowMs: number,
+): TriggerTaskMetadata {
+  return {
+    ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
+    blocking: true,
+    updatedAt: nowMs,
+    updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+    trigger: { ...trigger, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
+  };
 }
 
 async function opUpdate(
@@ -930,11 +1076,21 @@ async function opUpdate(
   // delete and a create that applied, and the turn was forced through a
   // "do not claim success" compose pass).
   const taskId = readUuid(params.taskId);
-  if (!taskId)
-    return failed("update", "taskId is required.", "MISSING_TASK_ID", {
-      readOnlyOperation: true,
-    });
-  const loaded = await loadTriggerTask(runtime, taskId);
+  if (!taskId) {
+    const rawId = readString(params.taskId);
+    return failed(
+      "update",
+      rawId
+        ? `update needs the trigger task UUID or triggerId in taskId; got "${rawId}".`
+        : "taskId is required.",
+      "MISSING_TASK_ID",
+      { readOnlyOperation: true },
+    );
+  }
+  // create returns both ids and the schema accepts either one here.
+  const loaded =
+    (await loadTriggerTask(runtime, taskId)) ??
+    (await loadTriggerByTriggerId(runtime, taskId));
   if (!loaded)
     return failed(
       "update",
@@ -949,15 +1105,110 @@ async function opUpdate(
     });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
 
+  // update patches the stored schedule in place. A field it cannot apply used
+  // to be dropped, and the unchanged trigger came back with an applied receipt.
+  const unusable: string[] = [];
+  const requestedType = readString(params.triggerType)?.toLowerCase();
+  if (requestedType !== undefined && requestedType !== trigger.triggerType) {
+    unusable.push(
+      `triggerType cannot change (stored: ${trigger.triggerType}); delete the trigger and create a new one`,
+    );
+  }
+  if (
+    params.enabled !== undefined &&
+    readBool(params.enabled, trigger.enabled) !== trigger.enabled
+  ) {
+    unusable.push("enabled is changed with action=toggle");
+  }
+  const scheduleFields = [
+    ["intervalMs", "interval"],
+    ["delaySeconds", "once"],
+    ["delayMinutes", "once"],
+    ["scheduledAtIso", "once"],
+    ["cronExpression", "cron"],
+  ] as const;
+  for (const [field, type] of scheduleFields) {
+    const supplied =
+      field === "scheduledAtIso" || field === "cronExpression"
+        ? readString(params[field]) !== undefined
+        : params[field] !== undefined;
+    if (supplied && trigger.triggerType !== type) {
+      unusable.push(
+        `${field} applies to a ${type} trigger; this trigger is ${trigger.triggerType}`,
+      );
+    }
+  }
+  if (
+    params.intervalMs !== undefined &&
+    parsePositiveInt(params.intervalMs) === undefined
+  ) {
+    unusable.push("intervalMs must be a positive integer");
+  }
+  // A relative delay moves a once trigger to that long from now, read as on
+  // create: delaySeconds wins over delayMinutes and an explicit scheduledAtIso
+  // wins over both. Refused here, "actually make it 30 minutes" cost a planner
+  // round (live tj-9f09a0f51d65aa: INVALID_UPDATE on delayMinutes, then the
+  // same move again as scheduledAtIso).
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  const delayMs =
+    rawScheduledAtIso === undefined ? readRelativeDelayMs(params) : undefined;
+  if (
+    trigger.triggerType === "once" &&
+    rawScheduledAtIso === undefined &&
+    (params.delaySeconds !== undefined || params.delayMinutes !== undefined)
+  ) {
+    if (delayMs === undefined) {
+      unusable.push(
+        "delaySeconds/delayMinutes must be a positive whole number",
+      );
+    } else if (delayMs > MAX_RELATIVE_DELAY_MS) {
+      unusable.push(
+        "relative delay too large; use scheduledAtIso for far-future triggers",
+      );
+    }
+  }
+  if (unusable.length > 0) {
+    return failed(
+      "update",
+      `Nothing was changed. ${unusable.join(". ")}.`,
+      "INVALID_UPDATE",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
+
   const next: TriggerConfig = { ...trigger };
   const displayName = readString(params.displayName);
   const instructions = readString(params.instructions);
   const intervalMs = parsePositiveInt(params.intervalMs);
-  const scheduledAtIso = readString(params.scheduledAtIso);
+  // Same rule as create: no offset means the user's wall clock.
+  const scheduledAtIso =
+    rawScheduledAtIso !== undefined
+      ? resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone)
+      : delayMs !== undefined
+        ? new Date(Date.now() + delayMs).toISOString()
+        : undefined;
   const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
   let dedupeIdentityChanged = false;
+
+  if (
+    displayName === undefined &&
+    instructions === undefined &&
+    intervalMs === undefined &&
+    scheduledAtIso === undefined &&
+    cronExpression === undefined &&
+    maxRuns === undefined &&
+    wakeModeRaw !== "inject_now" &&
+    wakeModeRaw !== "next_autonomy_cycle"
+  ) {
+    return failed(
+      "update",
+      "Nothing was changed. Pass displayName, instructions, wakeMode, maxRuns, or the schedule field for this trigger type.",
+      "NO_UPDATE_FIELDS",
+      { readOnlyOperation: true, taskId: String(task.id) },
+    );
+  }
 
   if (displayName) next.displayName = displayName;
   if (instructions) {
@@ -973,11 +1224,23 @@ async function opUpdate(
     next.intervalMs = normalizedIntervalMs;
   }
   if (scheduledAtIso !== undefined && next.triggerType === "once") {
-    if (parseScheduledAtIso(scheduledAtIso) === null) {
-      return failed("update", "Invalid scheduledAtIso.", "INVALID_SCHEDULE");
+    const atMs = parseScheduledAtIso(scheduledAtIso);
+    // Same rule as create: a past once-time becomes updateInterval 0, and the
+    // scheduler then treats the repeat task as invalid and never fires it.
+    if (atMs === null || atMs <= Date.now()) {
+      return failed(
+        "update",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
+    // A relative move keeps create's relative dedupe identity. An explicit
+    // move replaces the original relative schedule identity; replaying the
+    // existing time must keep the original retry identity.
+    if (delayMs !== undefined) next.delayMs = delayMs;
+    else if (scheduledAtIso !== trigger.scheduledAtIso) delete next.delayMs;
     next.scheduledAtIso = scheduledAtIso;
   }
   if (cronExpression !== undefined && next.triggerType === "cron") {
@@ -1015,11 +1278,15 @@ async function opUpdate(
     });
   }
 
-  const metadata = buildTriggerMetadata({
-    trigger: next,
-    nowMs: Date.now(),
-    existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
-  });
+  // An edit keeps a paused trigger paused, like the PUT route; resume
+  // recomputes the edited schedule.
+  const metadata = next.enabled
+    ? buildTriggerMetadata({
+        trigger: next,
+        nowMs: Date.now(),
+        existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
+      })
+    : pausedTriggerMetadata(task, next, Date.now());
   if (!metadata) {
     return failed(
       "update",
@@ -1037,14 +1304,17 @@ async function opUpdate(
       next,
       messageTimeZone,
       Date.now(),
-      metadata.trigger?.nextRunAtMs,
-    )}.`,
+      // A paused row holds the far-future parked time, not a real fire time.
+      next.enabled ? metadata.trigger?.nextRunAtMs : undefined,
+    )}${next.enabled ? "" : " (paused)"}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
       taskId: String(task.id),
       triggerId: next.triggerId,
       triggerType: next.triggerType,
-      scheduledAtIso: next.scheduledAtIso,
+      scheduledAtIso:
+        next.scheduledAtIso &&
+        zonedIsoTimestamp(next.scheduledAtIso, messageTimeZone),
       cronExpression: next.cronExpression,
       intervalMs: next.intervalMs,
       timezone: next.timezone,
@@ -1108,6 +1378,10 @@ async function opList(
   });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
   const lines: string[] = [];
+  // update takes only an id, and no other read returns one. The ids travel in
+  // the result data (model-facing), not in the user-facing lines.
+  const entries: { taskId: string; triggerId: string; displayName: string }[] =
+    [];
   // Rows tagged as triggers whose metadata will not parse are dropped here.
   // Silently dropping them turned "what reminders do I have" into a flat "none
   // are set" for a user whose reminder rows failed the parse, so the count of
@@ -1123,6 +1397,11 @@ async function opList(
     // it unmarked answers "when does my next reminder fire" with something
     // that never will, so the paused state travels with the line.
     const paused = trigger.enabled === false ? " (paused)" : "";
+    entries.push({
+      taskId: String(task.id),
+      triggerId: trigger.triggerId,
+      displayName: trigger.displayName,
+    });
     lines.push(
       `- "${displayLabel(trigger.displayName)}" — ${describeSchedule(
         trigger,
@@ -1148,7 +1427,7 @@ async function opList(
   return ok(
     "list",
     `${lines.length} scheduled item${lines.length === 1 ? "" : "s"}${skippedNote}:\n${lines.join("\n")}`,
-    { count: lines.length, unreadable },
+    { count: lines.length, unreadable, entries },
   );
 }
 
@@ -1165,26 +1444,30 @@ async function opToggle(
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
   const nowMs = Date.now();
-  // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
-  // returns null for `enabled === false`, so recomputing timing for the
-  // about-to-be-paused config ALWAYS failed and pausing was structurally
-  // impossible ("Failed to recompute trigger schedule." on every pause; live
-  // capture). Park it on the far-future disabled interval instead, the same
-  // shape event triggers already use, so the row persists as paused and a
-  // later resume recomputes a real schedule.
+  if (enabled && next.triggerType === "once") {
+    const atMs = next.scheduledAtIso
+      ? parseScheduledAtIso(next.scheduledAtIso)
+      : null;
+    // Resuming after the fire time used to persist updateInterval 0 and
+    // report success. The scheduler skips that repeat task forever.
+    if (atMs === null || atMs <= nowMs) {
+      return failed(
+        "toggle",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
+    }
+  }
+  // Recomputing timing for the about-to-be-paused config always failed, so
+  // pausing was structurally impossible ("Failed to recompute trigger
+  // schedule." on every pause; live capture). See pausedTriggerMetadata.
   const metadata = enabled
     ? buildTriggerMetadata({
         trigger: next,
         nowMs,
         existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
       })
-    : {
-        ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
-        blocking: true,
-        updatedAt: nowMs,
-        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
-        trigger: { ...next, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
-      };
+    : pausedTriggerMetadata(task, next, nowMs);
   if (!metadata) {
     return failed(
       "toggle",
@@ -1221,12 +1504,15 @@ export const triggerAction: Action = {
     "ENABLE_REMINDER",
     "STOP_REMINDER",
   ],
+  // Routing only; what each operation needs lives once in the description.
+  // Both render beside every exposed TRIGGER tool, and the schedule rules
+  // used to be stated in both, plus again in four parameter descriptions.
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this is the core fallback when OWNER_REMINDERS is unavailable. When OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to OWNER_REMINDERS instead. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME: 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle, which keeps the trigger (not delete). This is the core fallback when OWNER_REMINDERS is unavailable; when OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to it, and a reminder it created (its id is in an OWNER_REMINDERS receipt, never a TRIGGER taskId) is updated, toggled or deleted through OWNER_REMINDERS, not TRIGGER. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
+    "User reminders and scheduled prompts: create, update, delete, run, toggle, list. Every create needs one schedule field or nothing is created: delayMinutes or delaySeconds for 'in N minutes', scheduledAtIso for a clock time, cronExpression for a repeat ('every …'), intervalMs for a fixed period. A repeat takes cronExpression alone, never a delay. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'), not by deleting it and creating it again; only a switch between one-off and recurring needs a new trigger. update, delete, run and toggle act only on triggers this action created or listed; a reminder saved through OWNER_REMINDERS is changed with OWNER_REMINDERS. toggle pauses (enabled:false) or resumes (enabled:true) a reminder and keeps it. Use list for 'what reminders do I have' / 'when does my next reminder fire'; reminders are not calendar events and never appear in the calendar feed.",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change a trigger's time/name in place: 'make it 30 minutes'; an OWNER_REMINDERS reminder updates there) delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -1284,6 +1570,14 @@ export const triggerAction: Action = {
     }
   },
 
+  // Each promoted TRIGGER_<OP> carries only the fields its operation reads.
+  // Schedule descriptions stay shorter than the planner's cross-tool
+  // "Use the identical full description ... on tool TRIGGER" pointer, so
+  // TRIGGER_CREATE keeps them when TRIGGER is exposed beside it.
+  // The schedule fields come last: every live TRIGGER_CREATE call wrote its
+  // fields in schema order, and none that opened with displayName or
+  // instructions sent the delay listed before them (live tj-7471737298abb6
+  // and tj-6eff78bef6be90 errored that way with full descriptions shown).
   parameters: [
     {
       name: "action",
@@ -1294,32 +1588,22 @@ export const triggerAction: Action = {
     {
       name: "taskId",
       description:
-        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted.",
+        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId). An OWNER_REMINDERS reminder id is not a taskId.",
       required: false,
+      // opUpdate rejects a call without it (MISSING_TASK_ID). Optional on
+      // TRIGGER_UPDATE, the planner sent it bare three times before a fourth
+      // round supplied the id (live 2026-10-30, tj-6e8277ba0331ca).
+      requiredForSubactions: ["update"],
+      subactions: ["update", "delete", "run", "toggle"],
       aliases: ["triggerId", "id"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "delaySeconds",
-      description:
-        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
-      required: false,
-      aliases: ["inSeconds", "seconds"],
-      schema: { type: "number" as const, minimum: 0 },
-    },
-    {
-      name: "delayMinutes",
-      description:
-        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
-      required: false,
-      aliases: ["inMinutes", "minutes"],
-      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "triggerType",
       description:
         "Trigger schedule type for create — usually inferred: cronExpression -> cron (recurring), delay/scheduledAtIso -> once. Set it explicitly only to resolve a conflict; an explicit 'once' or 'interval' outranks a provided cronExpression.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: {
         type: "string" as const,
         enum: ["interval", "once", "cron"],
@@ -1330,6 +1614,7 @@ export const triggerAction: Action = {
       description:
         "Trigger display name (create / update). For delete / run / toggle, a name fragment that identifies the trigger.",
       required: false,
+      subactions: TRIGGER_NAMED_OPS,
       aliases: ["name", "title", "query"],
       schema: { type: "string" as const },
     },
@@ -1337,6 +1622,8 @@ export const triggerAction: Action = {
       name: "instructions",
       description: "Trigger instructions (create / update).",
       required: false,
+      // delete/run/toggle fall back to it as a name fragment.
+      subactions: TRIGGER_NAMED_OPS,
       aliases: ["description", "message", "prompt", "body"],
       schema: { type: "string" as const },
     },
@@ -1344,42 +1631,67 @@ export const triggerAction: Action = {
       name: "wakeMode",
       description: "How the trigger wakes the agent.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: {
         type: "string" as const,
         enum: ["inject_now", "next_autonomy_cycle"],
       },
     },
     {
-      name: "intervalMs",
-      description: "Interval frequency in ms.",
+      name: "maxRuns",
+      description: "Optional max runs for a trigger.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "delaySeconds",
+      description:
+        "Schedule: fire once this many seconds from now ('in 90 seconds').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inSeconds", "seconds"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
+      name: "delayMinutes",
+      description:
+        "Schedule: fire once this many minutes from now ('in 20 minutes').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inMinutes", "minutes"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
+      name: "intervalMs",
+      description: "Schedule: repeat period in milliseconds.",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "scheduledAtIso",
-      description: "ISO timestamp for once-triggers.",
+      description:
+        "Schedule: one-off ISO time; with no Z or offset it is the user's local time.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       aliases: ["scheduledFor", "when", "at", "datetime"],
       schema: { type: "string" as const },
     },
     {
       name: "cronExpression",
       description:
-        "Five-field cron expression — THE param for RECURRING schedules ('every morning at 9' -> '0 9 * * *'). Pass it ALONE: do not also send delaySeconds/delayMinutes/scheduledAtIso (those describe a single fire and are ignored when a cron is present). Never for a one-off relative delay; use delaySeconds/delayMinutes for 'in N seconds/minutes'.",
+        "Schedule: five-field cron for a repeat ('every day at 9' is '0 9 * * *').",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       aliases: ["schedule", "cron", "recurrence"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "maxRuns",
-      description: "Optional max runs for a trigger.",
-      required: false,
-      schema: { type: "number" as const, minimum: 1 },
     },
     {
       name: "enabled",
       description: "Enable or disable a trigger (toggle).",
       required: false,
+      subactions: ["toggle"],
       schema: { type: "boolean" as const },
     },
   ],

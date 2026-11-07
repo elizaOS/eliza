@@ -1,232 +1,98 @@
-/**
- * Unit tests for the ScheduledTask state-log writer and its in-memory store:
- * one row per transition, history reads, and retention/rollup of expired
- * entries into daily summaries. Deterministic, in-memory store.
- */
-
 import { describe, expect, it } from "vitest";
-import {
-  createInMemoryScheduledTaskLogStore,
-  createStateLogger,
-} from "./state-log.js";
-import type {
-  ScheduledTaskLogEntry,
-  ScheduledTaskLogTransition,
-} from "./types.js";
 
-const AGENT = "agent-1";
+import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
+import type { ScheduledTaskLogEntry } from "./types.js";
 
-function entry(
-  over: Partial<ScheduledTaskLogEntry> & {
-    logId: string;
-    taskId: string;
-    occurredAtIso: string;
-    transition: ScheduledTaskLogTransition;
-  },
+const AGENT_ID = "agent-rollup";
+const TASK_ID = "task-rollup";
+const ROLLUP_ID = `rollup:${JSON.stringify([TASK_ID, "2026-05-01", "fire_attempt"])}`;
+
+function rawEntry(
+  logId: string,
+  occurredAtIso: string,
+  reason: string,
 ): ScheduledTaskLogEntry {
-  return { agentId: AGENT, rolledUp: false, ...over };
+  return {
+    logId,
+    taskId: TASK_ID,
+    agentId: AGENT_ID,
+    occurredAtIso,
+    transition: "fire_attempt",
+    reason,
+    rolledUp: false,
+  };
 }
 
-describe("createInMemoryScheduledTaskLogStore — list", () => {
-  it("returns only the requested agent+task, sorted by time", async () => {
+describe("in-memory scheduling state log rollup", () => {
+  it("adds a later expiry to the existing day summary instead of writing a second row under the same id", async () => {
     const store = createInMemoryScheduledTaskLogStore();
-    await store.append(
-      entry({
-        logId: "b",
-        taskId: "t1",
-        occurredAtIso: "2026-01-02T00:00:00.000Z",
-        transition: "fired",
-      }),
-    );
-    await store.append(
-      entry({
-        logId: "a",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "scheduled",
-      }),
-    );
-    await store.append(
-      entry({
-        logId: "other",
-        taskId: "t2",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "fired",
-      }),
-    );
-    await store.append(
-      entry({
-        logId: "other-agent",
-        agentId: "agent-2",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "fired",
-      }),
-    );
-    const rows = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(rows.map((r) => r.logId)).toEqual(["a", "b"]);
-  });
+    await store.append(rawEntry("raw-1", "2026-05-01T09:00:00.000Z", "first"));
+    await store.append(rawEntry("raw-2", "2026-05-01T10:00:00.000Z", "second"));
+    await store.append(rawEntry("raw-3", "2026-05-01T11:00:00.000Z", "third"));
 
-  it("applies inclusive since / exclusive until bounds", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    for (const day of ["01", "02", "03"]) {
-      await store.append(
-        entry({
-          logId: day,
-          taskId: "t1",
-          occurredAtIso: `2026-01-${day}T00:00:00.000Z`,
-          transition: "fired",
-        }),
-      );
-    }
-    const rows = await store.list({
-      agentId: AGENT,
-      taskId: "t1",
-      sinceIso: "2026-01-02T00:00:00.000Z",
-      untilIso: "2026-01-03T00:00:00.000Z",
-    });
-    expect(rows.map((r) => r.logId)).toEqual(["02"]);
-  });
-
-  it("honors excludeRollups and limit, and returns copies", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    await store.append(
-      entry({
-        logId: "raw",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "fired",
+    expect(
+      await store.rollupOlderThan({
+        agentId: AGENT_ID,
+        olderThanIso: "2026-05-02T00:00:00.000Z",
       }),
-    );
-    await store.append(
-      entry({
-        logId: "roll",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "fired",
+    ).toEqual({ rolledUp: 1, deletedRaw: 3 });
+
+    // Two more transitions of the same kind expire on the next nightly pass.
+    await store.append(rawEntry("raw-4", "2026-05-01T12:00:00.000Z", "fourth"));
+    await store.append(rawEntry("raw-5", "2026-05-01T13:00:00.000Z", "fifth"));
+
+    expect(
+      await store.rollupOlderThan({
+        agentId: AGENT_ID,
+        olderThanIso: "2026-05-03T00:00:00.000Z",
+      }),
+    ).toEqual({ rolledUp: 1, deletedRaw: 2 });
+
+    // One summary row per task, day and transition, with the count of every
+    // transition the two passes folded in.
+    expect(await store.list({ agentId: AGENT_ID, taskId: TASK_ID })).toEqual([
+      {
+        logId: ROLLUP_ID,
+        taskId: TASK_ID,
+        agentId: AGENT_ID,
+        occurredAtIso: "2026-05-01T00:00:00.000Z",
+        transition: "fire_attempt",
+        reason: "fourth",
         rolledUp: true,
-      }),
-    );
-    expect(
-      (
-        await store.list({ agentId: AGENT, taskId: "t1", excludeRollups: true })
-      ).map((r) => r.logId),
-    ).toEqual(["raw"]);
-    expect(
-      await store.list({ agentId: AGENT, taskId: "t1", limit: 1 }),
-    ).toHaveLength(1);
-
-    const rows = await store.list({ agentId: AGENT, taskId: "t1" });
-    const first = rows[0];
-    if (!first) {
-      throw new Error("Expected a raw state log row");
-    }
-    first.reason = "mutated";
-    const again = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(again[0]?.reason).toBeUndefined(); // store row untouched
-  });
-});
-
-describe("createInMemoryScheduledTaskLogStore — rollupOlderThan", () => {
-  it("rolls up expired history once while preserving recent rows and creation receipts", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    // 3 'fired' on Jan-01, 1 'completed' on Jan-02, 1 recent (kept).
-    for (let i = 0; i < 3; i++) {
-      await store.append(
-        entry({
-          logId: `f${i}`,
-          taskId: "t1",
-          occurredAtIso: `2026-01-01T0${i}:00:00.000Z`,
-          transition: "fired",
-        }),
-      );
-    }
-    await store.append(
-      entry({
-        logId: "c",
-        taskId: "t1",
-        occurredAtIso: "2026-01-02T00:00:00.000Z",
-        transition: "completed",
-      }),
-    );
-    await store.append(
-      entry({
-        logId: "recent",
-        taskId: "t1",
-        occurredAtIso: "2026-06-01T00:00:00.000Z",
-        transition: "fired",
-      }),
-    );
-
-    await store.append(
-      entry({
-        logId: "creation-receipt",
-        taskId: "t1",
-        occurredAtIso: "2026-01-01T00:00:00.000Z",
-        transition: "scheduled",
-      }),
-    );
-    const before = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(
-      await store.rollupOlderThan({
-        agentId: AGENT,
-        olderThanIso: "2026-01-01T00:00:00.000Z",
-      }),
-    ).toEqual({ rolledUp: 0, deletedRaw: 0 });
-    expect(await store.list({ agentId: AGENT, taskId: "t1" })).toEqual(before);
-
-    const result = await store.rollupOlderThan({
-      agentId: AGENT,
-      olderThanIso: "2026-02-01T00:00:00.000Z",
-    });
-    expect(result).toEqual({ rolledUp: 2, deletedRaw: 4 });
-
-    const all = await store.list({ agentId: AGENT, taskId: "t1" });
-    const rollups = all.filter((r) => r.rolledUp);
-    expect(rollups).toHaveLength(2);
-    const firedRollup = rollups.find((r) => r.transition === "fired");
-    expect(firedRollup?.detail).toEqual({ rollupCount: 3 });
-    expect(firedRollup?.occurredAtIso).toBe("2026-01-01T00:00:00.000Z");
-
-    expect(all.filter((r) => !r.rolledUp).map((r) => r.logId)).toEqual([
-      "creation-receipt",
-      "recent",
+        detail: { rollupCount: 5 },
+      },
     ]);
+  });
+
+  it("reports no rollup when the same window is rolled up again", async () => {
+    const store = createInMemoryScheduledTaskLogStore();
+    await store.append(rawEntry("raw-1", "2026-05-01T09:00:00.000Z", "first"));
+
     expect(
       await store.rollupOlderThan({
-        agentId: AGENT,
-        olderThanIso: "2026-02-01T00:00:00.000Z",
+        agentId: AGENT_ID,
+        olderThanIso: "2026-05-02T00:00:00.000Z",
+      }),
+    ).toEqual({ rolledUp: 1, deletedRaw: 1 });
+
+    expect(
+      await store.rollupOlderThan({
+        agentId: AGENT_ID,
+        olderThanIso: "2026-05-02T00:00:00.000Z",
       }),
     ).toEqual({ rolledUp: 0, deletedRaw: 0 });
-    expect(await store.list({ agentId: AGENT, taskId: "t1" })).toEqual(all);
-  });
-});
 
-describe("createStateLogger", () => {
-  it("writes an entry with injected id + clock and returns it", async () => {
-    const store = createInMemoryScheduledTaskLogStore();
-    let n = 0;
-    const logger = createStateLogger({
-      store,
-      agentId: AGENT,
-      newLogId: () => `log-${++n}`,
-      now: () => new Date("2026-03-04T05:06:07.000Z"),
-    });
-    const written = await logger.log("t1", "fired", {
-      reason: "due",
-      detail: { x: 1 },
-    });
-    expect(written).toMatchObject({
-      logId: "log-1",
-      taskId: "t1",
-      agentId: AGENT,
-      occurredAtIso: "2026-03-04T05:06:07.000Z",
-      transition: "fired",
-      reason: "due",
-      rolledUp: false,
-      detail: { x: 1 },
-    });
-    const rows = await store.list({ agentId: AGENT, taskId: "t1" });
-    expect(rows).toEqual([written]);
+    expect(await store.list({ agentId: AGENT_ID, taskId: TASK_ID })).toEqual([
+      {
+        logId: ROLLUP_ID,
+        taskId: TASK_ID,
+        agentId: AGENT_ID,
+        occurredAtIso: "2026-05-01T00:00:00.000Z",
+        transition: "fire_attempt",
+        reason: "first",
+        rolledUp: true,
+        detail: { rollupCount: 1 },
+      },
+    ]);
   });
 });

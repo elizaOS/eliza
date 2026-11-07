@@ -109,6 +109,11 @@ it("loads canonical workspace errors before package installation", () => {
     new URL("../../../core/src/errors.ts", import.meta.url),
     path.join(coreDir, "errors.ts"),
   );
+  mkdirSync(path.join(coreDir, "utils"), { recursive: true });
+  copyFileSync(
+    new URL("../../../core/src/utils/errors.ts", import.meta.url),
+    path.join(coreDir, "utils", "errors.ts"),
+  );
   const probe = path.join(root, "probe.ts");
   writeFileSync(
     probe,

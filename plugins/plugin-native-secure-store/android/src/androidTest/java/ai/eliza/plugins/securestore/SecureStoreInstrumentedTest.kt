@@ -7,6 +7,8 @@ package ai.eliza.plugins.securestore
 
 import android.content.Intent
 import android.util.AtomicFile
+import android.util.Base64
+import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -14,9 +16,14 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import java.io.File
 import java.security.KeyStore
+import java.nio.ByteBuffer
+import javax.crypto.Cipher
+import javax.crypto.SecretKey
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -43,7 +50,7 @@ class SecureStoreInstrumentedTest {
     }
 
     private fun clearFixtures() {
-        for (key in listOf(first, second, "runtime.active_server", "runtime.agent_profiles")) AtomicFile(file(key)).delete()
+        for (key in listOf(first, second, "runtime.active_server", "runtime.agent_profiles", "native.clock_device")) AtomicFile(file(key)).delete()
     }
 
     private fun call(method: String, key: String? = null, value: String? = null): JSObject {
@@ -73,6 +80,85 @@ class SecureStoreInstrumentedTest {
     }
 
     private fun set(key: String, value: String) { assertTrue(call("set", key, value).getBoolean("ok")) }
+
+    /** Only the host's retirement wait is supplied; set/remove and Keystore effects are production. */
+    private class GuardedPlugin : SecureStorePlugin() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        private val intent = AtomicLong()
+        private val first = AtomicBoolean(true)
+        override fun useCredentialWorker(key: String) = true
+        override fun reserveCredentialMutation(key: String): Runnable {
+            val mine = intent.incrementAndGet()
+            return Runnable { check(intent.get() == mine) { "Credential intent changed" } }
+        }
+        override fun <T> mutateCredential(key: String, value: String?, guard: Runnable, effect: NativeSecureStore.Effect<T>): T {
+            if (first.compareAndSet(true, false)) {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS)) { "Host retirement wait timed out" }
+            }
+            return super.mutateCredential(key, value, guard, effect)
+        }
+        fun closeBridge() { handleOnDestroy() }
+        fun reservations() = intent.get()
+    }
+
+    @Test fun newerRemoveAndSetFenceOlderQueuedMutationsBeforeKeystoreEffects() {
+        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        for (olderMethod in listOf("set", "remove")) {
+            native.set(second, "test-only original")
+            val plugin = GuardedPlugin()
+            scenario.onActivity { plugin.setBridge(it.bridge) }
+            val oldDone = CountDownLatch(1)
+            val newDone = CountDownLatch(1)
+            var oldResult: JSObject? = null
+            var newResult: JSObject? = null
+            fun dispatch(method: String, result: (JSObject) -> Unit) {
+                val data = JSObject().put("key", second).put("value", "test-only replacement")
+                val call = object : PluginCall(null, "ElizaSecureStore", "guarded-test", method, data) {
+                    override fun resolve(data: JSObject) { result(data) }
+                }
+                if (method == "set") plugin.set(call) else plugin.remove(call)
+            }
+            try {
+                dispatch(olderMethod) { oldResult = it; oldDone.countDown() }
+                assertTrue("first mutation entered the host wait", plugin.entered.await(5, TimeUnit.SECONDS))
+                val newerMethod = if (olderMethod == "set") "remove" else "set"
+                dispatch(newerMethod) { newResult = it; newDone.countDown() }
+                plugin.release.countDown()
+                assertTrue(oldDone.await(5, TimeUnit.SECONDS)); assertTrue(newDone.await(5, TimeUnit.SECONDS))
+                assertEquals("native_error", requireNotNull(oldResult).getString("error"))
+                assertTrue(requireNotNull(newResult).getBoolean("ok"))
+                assertEquals(if (newerMethod == "set") "test-only replacement" else null, native.get(second))
+            } finally { plugin.release.countDown(); plugin.closeBridge() }
+        }
+    }
+
+    @Test fun closedBridgeCannotReserveAnotherCredentialIntent() {
+        val plugin = GuardedPlugin()
+        plugin.closeBridge()
+        var result: JSObject? = null
+        val call = object : PluginCall(null, "ElizaSecureStore", "closed-test", "remove", JSObject().put("key", second)) {
+            override fun resolve(data: JSObject) { result = data }
+        }
+        plugin.remove(call)
+        assertEquals("native_error", requireNotNull(result).getString("error"))
+        assertEquals(0L, plugin.reservations())
+    }
+
+    private fun writeLegacyEnvelope(slot: String, value: String) {
+        assertTrue(call("status").getBoolean("available"))
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val key = keyStore.getKey("ai.elizaos.secure-store.v1", null) as SecretKey
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        cipher.updateAAD(slot.toByteArray(Charsets.UTF_8))
+        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        val iv = cipher.iv
+        val envelope = ByteBuffer.allocate(2 + iv.size + encrypted.size)
+            .put(1).put(iv.size.toByte()).put(iv).put(encrypted).array()
+        file(slot).writeBytes(Base64.encode(envelope, Base64.NO_WRAP))
+    }
 
     @Test fun completeUnicodeValueSurvivesActivityRecreation_andOversizeWriteLeavesItIntact() {
         val value = "🙂".repeat(65_536)
@@ -146,6 +232,112 @@ class SecureStoreInstrumentedTest {
         assertEquals("invalid_input", call("set", "../untrusted", "test-only").getString("error"))
         assertEquals("invalid_input", call("set", first, "").getString("error"))
         assertEquals("not_found", call("get", first).getString("error"))
+    }
+
+    @Test fun nativeSnapshotReadsLegacyEnvelopeAndBridgeReadsNativeWrite() {
+        val legacyValue = "test-only legacy device credential"
+        writeLegacyEnvelope(first, legacyValue)
+        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        val snapshot = native.snapshot()
+        assertEquals(legacyValue, snapshot.require(first))
+        assertEquals(legacyValue, call("get", first).getString("value"))
+        native.set(first, "test-only native replacement")
+        assertEquals("test-only native replacement", call("get", first).getString("value"))
+    }
+
+    @Test fun nativeSnapshotsFenceBridgeMutationAndRemovalAcrossInstances() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val native = NativeSecureStore(context)
+        set(first, "test-only initial owner")
+        val original = native.snapshot()
+        assertEquals("test-only initial owner", original.require(first))
+        native.assertCurrent(original)
+        set(second, "test-only replacement session")
+        assertTrue(NativeSecureStore(context).generation > original.generation)
+        try { native.assertCurrent(original); fail("Bridge mutation retained stale snapshot") }
+        catch (_: SecurityException) {}
+        val current = native.snapshot()
+        assertTrue(call("remove", first).getBoolean("ok"))
+        var dispatched = false
+        try { native.withSnapshot(current) { dispatched = true; null }; fail("Stale effect dispatched") }
+        catch (_: SecurityException) {}
+        assertFalse(dispatched)
+        assertEquals("test-only initial owner", original.require(first))
+    }
+
+    @Test fun nativeSnapshotDistinguishesMissingSlotsAndRejectsCorruptSlots() {
+        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        val missing = native.snapshot()
+        assertNull(missing.get(first))
+        try { missing.require(first); fail("Missing native credential admitted") }
+        catch (_: IllegalStateException) {}
+        set(first, "test-only complete credential")
+        file(first).writeText("test-only malformed ciphertext")
+        try { native.snapshot(); fail("Corrupt credential admitted") }
+        catch (_: Exception) {}
+    }
+
+    @Test fun finalNativeEffectExcludesConcurrentCredentialMutation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val native = NativeSecureStore(context)
+        set(first, "test-only effect owner")
+        val snapshot = native.snapshot()
+        val started = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val mutation = native.withSnapshot(snapshot) {
+                val future = executor.submit {
+                    started.countDown()
+                    try { NativeSecureStore(context).remove(first) }
+                    finally { finished.countDown() }
+                }
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                assertFalse("Owner cannot change during the final effect", finished.await(100, TimeUnit.MILLISECONDS))
+                native.assertCurrent(snapshot)
+                future
+            }
+            mutation.get(5, TimeUnit.SECONDS)
+            try { native.assertCurrent(snapshot); fail("Completed mutation retained owner") }
+            catch (_: SecurityException) {}
+        } finally { executor.shutdownNow() }
+    }
+
+    @Test fun clockIdentityIsStableNativeOnlyAndNeverRotatesMalformedExistingState() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val native = NativeSecureStore(context)
+        val before = native.snapshot()
+        val identity = native.ensureClockDevice()
+        assertTrue(identity.installationId.matches(Regex("[a-f0-9-]{36}")))
+        assertTrue(identity.deviceKey.matches(Regex("[a-f0-9]{64}")))
+        try { native.assertCurrent(before); fail("Native enrollment did not invalidate old snapshot") }
+        catch (_: SecurityException) {}
+        val generation = native.generation
+        val reopened = NativeSecureStore(context).ensureClockDevice()
+        assertEquals(identity.installationId, reopened.installationId)
+        assertEquals(identity.deviceKey, reopened.deviceKey)
+        assertEquals(generation, native.generation)
+        assertEquals(identity.deviceKey, native.snapshot().requireClockDevice().deviceKey)
+        assertFalse(file("native.clock_device").readText().contains(identity.deviceKey))
+        for (method in listOf("get", "set", "remove")) {
+            assertEquals("invalid_input", call(method, "native.clock_device", "test-only unauthorized replacement").getString("error"))
+        }
+        writeLegacyEnvelope("native.clock_device", "{\"version\":1,\"installationId\":\"malformed\",\"deviceKey\":\"malformed\"}")
+        val malformed = file("native.clock_device").readBytes()
+        try { native.ensureClockDevice(); fail("Malformed identity rotated silently") }
+        catch (_: Exception) {}
+        assertTrue(malformed.contentEquals(file("native.clock_device").readBytes()))
+    }
+
+    @Test fun interruptedClockIdentityInitializationRequiresRecoveryInsteadOfReplacement() {
+        val native = NativeSecureStore(InstrumentationRegistry.getInstrumentation().targetContext)
+        val pending = File(file("native.clock_device").path + ".new")
+        pending.parentFile!!.mkdirs()
+        pending.writeText("test-only interrupted ciphertext")
+        try { native.ensureClockDevice(); fail("Interrupted identity replaced silently") }
+        catch (_: IllegalStateException) {}
+        assertTrue(pending.exists())
+        assertFalse(file("native.clock_device").exists())
     }
     @Test fun concurrentBridgeInstancesPreserveBothValuesDuringColdKeystoreCreation() {
         lateinit var firstPlugin: SecureStorePlugin

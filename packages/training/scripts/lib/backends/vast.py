@@ -21,8 +21,8 @@ import time
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from scripts.lib import vast as _vast_cli
-from scripts.lib.backends.base import (
+from eliza_training.lib import vast as _vast_cli
+from eliza_training.lib.backends.base import (
     BackendError,
     ExitCode,
     InstanceHandle,
@@ -403,5 +403,5 @@ class VastBackend:
             ) from e
 
 
-# Re-export for ``from scripts.lib.backends.vast import VastBackend`` callers.
+# Re-export for ``from eliza_training.lib.backends.vast import VastBackend`` callers.
 __all__ = ["VastBackend"]

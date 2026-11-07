@@ -31,6 +31,24 @@ interface SetFollowupThresholdParams {
   thresholdDays?: unknown;
 }
 
+// Han/Kana/Hangul letters do not count as word characters so names can abut
+// particles ("김민준은"). Mirrors the whole-word matcher merged for app-block
+// (#35709) in this plugin.
+const WORD_CHAR_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const words = phrase.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const body = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<!${WORD_CHAR_SOURCE})${body}(?!${WORD_CHAR_SOURCE})`,
+    "iu",
+  ).test(text);
+}
+
 async function resolveDisplayName(
   runtime: IAgentRuntime,
   contact: ContactInfo,
@@ -50,7 +68,6 @@ export const setFollowupThresholdAction: Action = {
     "CHANGE_FOLLOWUP_INTERVAL",
     "SET_CONTACT_FREQUENCY_DAYS",
     // PRD action-catalog alias.
-    // See packages/docs/action-prd-map.md.
     "FOLLOWUP_CREATE_RULE",
   ],
   description:
@@ -81,13 +98,12 @@ export const setFollowupThresholdAction: Action = {
           ? Number(rawThreshold)
           : Number.NaN;
 
-    if (!Number.isFinite(thresholdDays) || thresholdDays <= 0) {
+    if (!Number.isInteger(thresholdDays) || thresholdDays < 1) {
       return {
         success: false,
         text: "SET_FOLLOWUP_THRESHOLD requires a positive integer thresholdDays.",
       };
     }
-    const thresholdInt = Math.floor(thresholdDays);
 
     const service = getRelationshipsServiceLike(runtime);
     if (!service) {
@@ -121,13 +137,29 @@ export const setFollowupThresholdAction: Action = {
     } else if (contactName.trim().length > 0) {
       const needle = contactName.trim().toLowerCase();
       const contacts = await service.searchContacts({});
-      const matches: Array<{ contact: ContactInfo; displayName: string }> = [];
+      const substringMatches: Array<{
+        contact: ContactInfo;
+        displayName: string;
+      }> = [];
+      const wholeWordMatches: Array<{
+        contact: ContactInfo;
+        displayName: string;
+      }> = [];
       for (const contact of contacts) {
         const displayName = await resolveDisplayName(runtime, contact);
         if (displayName.toLowerCase().includes(needle)) {
-          matches.push({ contact, displayName });
+          const match = { contact, displayName };
+          substringMatches.push(match);
+          if (includesWholePhrase(displayName, needle)) {
+            wholeWordMatches.push(match);
+          }
         }
       }
+      // A whole-word hit outranks substring hits ("Ann" names Ann Lee, not
+      // Joanne Park), mirroring merged #35741/#35729; the substring tier
+      // stays for genuine fragments ("Joann") when no whole-word hit exists.
+      const matches =
+        wholeWordMatches.length > 0 ? wholeWordMatches : substringMatches;
       if (matches.length === 0) {
         return {
           success: false,
@@ -171,23 +203,23 @@ export const setFollowupThresholdAction: Action = {
 
     const nextFields: Record<string, string | number> = {
       ...(resolvedContact.customFields as Record<string, string | number>),
-      followupThresholdDays: thresholdInt,
+      followupThresholdDays: thresholdDays,
     };
     await service.updateContact(resolvedContact.entityId, {
       customFields: nextFields,
     });
 
     logger.info(
-      `[SET_FOLLOWUP_THRESHOLD] Set ${resolvedDisplayName} (${resolvedContact.entityId}) threshold to ${thresholdInt} days`,
+      `[SET_FOLLOWUP_THRESHOLD] Set ${resolvedDisplayName} (${resolvedContact.entityId}) threshold to ${thresholdDays} days`,
     );
 
     return {
       success: true,
-      text: `Set follow-up threshold for ${resolvedDisplayName} to ${thresholdInt} days.`,
+      text: `Set follow-up threshold for ${resolvedDisplayName} to ${thresholdDays} days.`,
       data: {
         entityId: String(resolvedContact.entityId),
         displayName: resolvedDisplayName,
-        thresholdDays: thresholdInt,
+        thresholdDays: thresholdDays,
       },
     };
   },
@@ -208,9 +240,9 @@ export const setFollowupThresholdAction: Action = {
     {
       name: "thresholdDays",
       description:
-        "Number of days after last contact before this contact is considered overdue.",
+        "Whole number of days (1 or more) after last contact before this contact is considered overdue.",
       required: true,
-      schema: { type: "number" as const },
+      schema: { type: "integer" as const, minimum: 1 },
     },
   ],
   examples: [

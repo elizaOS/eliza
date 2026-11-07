@@ -1,8 +1,11 @@
 // Handles admin cloud API v1 admin orgs orgid rate limits route traffic with privileged auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin endpoint for per-organization rate limit overrides.
@@ -15,15 +18,15 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * There are no tenant-scoped admin roles in the current system.
  */
 
-import { z } from "zod";
-import { orgRateLimitOverridesRepository } from "@/db/repositories/org-rate-limit-overrides";
-import { organizationsRepository } from "@/db/repositories/organizations";
-import { requireAdminWithResponse } from "@/lib/auth/admin";
+import { orgRateLimitOverridesRepository } from "@elizaos/cloud-shared/db/repositories/org-rate-limit-overrides";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { requireAdminWithResponse } from "@elizaos/cloud-shared/lib/auth/admin";
 import {
   getOrgTier,
   invalidateOrgTierCache,
-} from "@/lib/services/org-rate-limits";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,11 +39,11 @@ function validateOrgId(orgId: string): Response | null {
 }
 
 async function __hono_GET(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -76,11 +79,11 @@ const PatchSchema = z.object({
 });
 
 async function __hono_PATCH(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -91,7 +94,7 @@ async function __hono_PATCH(
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await c.req.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -165,11 +168,11 @@ async function __hono_PATCH(
 }
 
 async function __hono_DELETE(
-  request: Request,
+  c: AppContext,
   context: RouteContext<{ orgId: string }>,
 ) {
   const authResult = await requireAdminWithResponse(
-    request,
+    c,
     "[Admin] Org rate limits auth error",
   );
   if (authResult instanceof Response) return authResult;
@@ -199,17 +202,17 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
+  __hono_GET(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, {
+  __hono_PATCH(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, {
+  __hono_DELETE(c, {
     params: Promise.resolve({ orgId: c.req.param("orgId")! }),
   }),
 );

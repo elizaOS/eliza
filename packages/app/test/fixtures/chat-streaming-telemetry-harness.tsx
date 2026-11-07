@@ -5,6 +5,13 @@
  */
 
 import {
+  type CodingAgentSession,
+  type Conversation,
+  type ConversationMessage,
+  client,
+  type ImageAttachment,
+} from "@elizaos/ui";
+import {
   Profiler,
   type ProfilerOnRenderCallback,
   useCallback,
@@ -13,13 +20,6 @@ import {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  type CodingAgentSession,
-  type Conversation,
-  type ConversationMessage,
-  client,
-  type ImageAttachment,
-} from "../../../ui/src/api";
 import { ChatTranscript } from "../../../ui/src/components/composites/chat/chat-transcript";
 import {
   type UseChatSendDeps,

@@ -3,9 +3,19 @@ import { WebPlugin } from "@capacitor/core";
 import type {
   AndroidRoleName,
   AndroidRoleRequestResult,
+  DefaultAppRole,
+  DefaultAppStatus,
   DeviceSettingsStatus,
   FlashlightStatus,
+  LauncherApp,
+  NotificationShadeOutcome,
+  SystemBuildInfo,
+  SystemFacts,
+  SystemLaunchInfo,
+  SystemLocaleInfo,
   SystemPlugin,
+  SystemSettingsPage,
+  SystemSettingsPageResult,
   SystemStatus,
   SystemVolumeStatus,
   SystemVolumeStream,
@@ -46,7 +56,70 @@ function validateVolumeStream(stream: unknown): SystemVolumeStream {
   return stream as SystemVolumeStream;
 }
 
+function validateDefaultRole(role: unknown): DefaultAppRole {
+  if (role !== "dial") throw new Error("role must be dial");
+  return role;
+}
+
+/** The browser's locale and whether its default time format uses a 24-hour cycle. */
+export function webLocaleInfo(
+  format: () => Intl.ResolvedDateTimeFormatOptions = () =>
+    new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions(),
+): SystemLocaleInfo {
+  const options = format();
+  const cycle = options.hourCycle;
+  return {
+    locale: options.locale,
+    hour24:
+      cycle === "h23" || cycle === "h24"
+        ? true
+        : cycle === "h11" || cycle === "h12"
+          ? false
+          : options.hour12 === false,
+  };
+}
+
 export class SystemWeb extends WebPlugin implements SystemPlugin {
+  async listLauncherApps(): Promise<{ apps: LauncherApp[] }> {
+    // A browser exposes no installed apps; an empty list is the honest answer.
+    return { apps: [] };
+  }
+
+  async launchApp(options: {
+    packageName: string;
+    activityName?: string;
+    user?: string;
+  }): Promise<void> {
+    if (typeof options?.packageName !== "string" || !options.packageName) {
+      throw new Error("Choose an installed app");
+    }
+    throw new Error("Launching installed apps is only available on Android.");
+  }
+
+  async resolveDefaultApp(options: {
+    role: DefaultAppRole;
+  }): Promise<DefaultAppStatus> {
+    return { role: validateDefaultRole(options?.role), available: false };
+  }
+
+  async openDefaultApp(options: { role: DefaultAppRole }): Promise<void> {
+    const role = validateDefaultRole(options?.role);
+    throw new Error(`The default ${role} app is only available on Android.`);
+  }
+
+  async getBuildInfo(): Promise<SystemBuildInfo> {
+    // A browser is never the launcher distribution and carries no native version.
+    return { launcher: false, version: "web" };
+  }
+
+  async getLaunchInfo(): Promise<SystemLaunchInfo> {
+    return { assistant: false };
+  }
+
+  async getLocaleInfo(): Promise<SystemLocaleInfo> {
+    return webLocaleInfo();
+  }
+
   async getStatus(): Promise<SystemStatus> {
     return {
       packageName: "web",
@@ -72,6 +145,21 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
 
   async openSoundSettings(): Promise<void> {
     throw new Error("Sound settings are only available on Android.");
+  }
+
+  async getSystemFacts(): Promise<SystemFacts> {
+    // A browser reports no Android switch: every fact is unknown, never off.
+    return {};
+  }
+
+  async openSettingsPage(_options: {
+    page: SystemSettingsPage;
+  }): Promise<SystemSettingsPageResult> {
+    throw new Error("Android settings pages are only available on Android.");
+  }
+
+  async openNotificationShade(): Promise<{ status: NotificationShadeOutcome }> {
+    return { status: "unsupported" };
   }
 
   async requestRole(options: {

@@ -21,7 +21,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "../components/ui/tabs";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 import { routeElizaGenUiAction } from "./actions";
 import {
   ELIZA_GENUI_DOMAIN_COMPONENTS,

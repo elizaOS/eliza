@@ -167,8 +167,7 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 	parse?(
 		output: unknown,
 		context?: EvaluatorPromptContext<TPrepared> & {
-			/** Runtime provenance lets evolved parsers enforce new model contracts
-			 * without changing already-staged replay or direct legacy callers. */
+			/** Runtime provenance identifies the model contract for parser admission. */
 			outputSource?: "model" | "staged" | "resolved";
 		},
 	): TOutput | null;
@@ -183,7 +182,7 @@ export interface Evaluator<TOutput = JsonValue, TPrepared = unknown> {
 
 /**
  * Heterogeneous evaluators on the runtime or from plugins. Output/prepared
- * generics are erased to `unknown` so concrete `Evaluator<YourOutput, ...>`
+ * generics are erased to `unknown` so concrete `Evaluator<YourOutput,...>`
  * instances are assignable without `any`.
  */
 export type RegisteredEvaluator = Evaluator<unknown, unknown>;
@@ -200,6 +199,8 @@ export interface EvaluatorRunResult {
 		processorName?: string;
 		/** Provider retry deadline, retained without transporting raw errors/secrets. */
 		retryAt?: number;
+		/** False when retrying the same input cannot succeed. */
+		retryable?: boolean;
 		error: string;
 	}>;
 }

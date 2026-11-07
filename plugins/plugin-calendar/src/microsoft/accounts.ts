@@ -4,6 +4,11 @@
  * account identity; durable credential refs point at the runtime secret store.
  */
 import { createHash } from "node:crypto";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorSide,
+  LifeOpsMicrosoftCapability,
+} from "@elizaos/contracts";
 import {
   type ConnectorAccount,
   ElizaError,
@@ -11,11 +16,6 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsMicrosoftCapability,
-} from "@elizaos/core/contracts/personal-assistant";
 import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 
 export const MICROSOFT_CALENDAR_PROVIDER = "microsoft";

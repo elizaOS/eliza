@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from benchmarks.orchestrator_lifecycle.dataset import (
+from benchmarks.suites.orchestrator_lifecycle.dataset import (
     LifecycleDataset,
     scenario_corpus_sha256,
 )

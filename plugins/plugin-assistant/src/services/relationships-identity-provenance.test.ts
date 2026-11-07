@@ -1,11 +1,14 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { AgentRuntime, stringToUuid as sqliteTestAgentId } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
-import { RelationshipsService } from "./relationships.ts";
+import {
+  RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+  RelationshipsService,
+} from "./relationships.ts";
 
 const AGENT = "00000000-0000-4000-8000-000000000001" as UUID;
 const ENTITY = "00000000-0000-4000-8000-000000000002" as UUID;
@@ -298,6 +301,50 @@ describe("Identity merge provenance", () => {
       }
     },
   );
+});
+
+describe("Merge candidate lookup", () => {
+  it("reports an unknown candidate as a typed not-found for accept and reject", async () => {
+    const client = new PGlite();
+    try {
+      await createIdentityTables(client);
+      const adapter = Object.assign(
+        SQLiteDatabaseAdapter.create(
+          ":memory:",
+          sqliteTestAgentId("MergeLookupQA"),
+        ),
+        { db: drizzle(client) },
+      );
+      const runtime = new AgentRuntime({
+        plugins: [createAssistantPlugin()],
+        character: { name: "MergeLookupQA", bio: "test" },
+        adapter,
+        logLevel: "fatal",
+      });
+      await runtime.createEntities([
+        { id: ENTITY, agentId: runtime.agentId, names: ["Primary"] },
+        { id: SECOND, agentId: runtime.agentId, names: ["Secondary"] },
+      ]);
+      const service = new RelationshipsService(runtime);
+      const unknown = "00000000-0000-4000-8000-0000000000ff" as UUID;
+
+      await expect(service.acceptMerge(unknown)).rejects.toMatchObject({
+        code: RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+      });
+      await expect(service.rejectMerge(unknown)).rejects.toMatchObject({
+        code: RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+      });
+
+      const candidate = await service.proposeMerge(ENTITY, SECOND, {
+        platform: "github",
+        handle: "example",
+      });
+      await service.rejectMerge(candidate);
+      expect(await service.getCandidateMerges()).toEqual([]);
+    } finally {
+      await client.close();
+    }
+  });
 });
 
 describe("Source-owned identity reconciliation", () => {

@@ -8,7 +8,7 @@
  */
 
 import { type IAgentRuntime, logger } from '@elizaos/core';
-import type { HttpPlugin as Plugin } from '@elizaos/core/api/http-plugin';
+import type { HttpPlugin as Plugin } from '@elizaos/host/protocol';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
 import { activeWorkflowsProvider, workflowStatusProvider } from './providers/index';

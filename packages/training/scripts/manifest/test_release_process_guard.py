@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.release_process_guard import find_blocked_processes  # noqa: E402
+from eliza_training.manifest.release_process_guard import find_blocked_processes  # noqa: E402
 
 
 def test_find_blocked_processes_flags_model_and_benchmark_residents() -> None:

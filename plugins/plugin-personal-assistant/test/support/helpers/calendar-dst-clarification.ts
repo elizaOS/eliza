@@ -5,8 +5,8 @@
  * The runner's surrounding connector fixtures are not provider certification.
  */
 import { isDeepStrictEqual } from "node:util";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { AgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import type { CalendarService } from "@elizaos/plugin-calendar";
 import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { CalendarRepository } from "../../../../plugin-calendar/src/service/CalendarRepository.ts";

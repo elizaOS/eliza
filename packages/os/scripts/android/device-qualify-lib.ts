@@ -318,7 +318,21 @@ const pass = (observed) => ({ result: "pass", observed });
 const fail = (observed) => ({ result: "fail", observed });
 const unknown = (observed = null) => ({ result: "unknown", observed });
 
+const identityFields = [
+  "manufacturer",
+  "model",
+  "device",
+  "fingerprint",
+  "vendorFingerprint",
+] as const;
+
 const checks = {
+  identity: (f, r) => {
+    const value = f[r.field];
+    return value == null || value === ""
+      ? unknown()
+      : (value === r.equals ? pass : fail)(value);
+  },
   androidRelease: (f, r) =>
     f.androidRelease == null
       ? unknown()
@@ -428,6 +442,15 @@ export function validateRequirements(requirements) {
       if (!["required", "preferred"].includes(req.level))
         throw new Error(
           `requirements: ${req.id} level must be required or preferred`,
+        );
+      if (
+        req.check === "identity" &&
+        (!identityFields.includes(req.field) ||
+          typeof req.equals !== "string" ||
+          !req.equals.trim())
+      )
+        throw new Error(
+          `requirements: ${req.id} needs a supported identity field and nonempty equals`,
         );
       if (!Object.hasOwn(checks, req.check))
         throw new Error(

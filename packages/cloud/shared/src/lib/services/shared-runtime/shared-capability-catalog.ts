@@ -10,13 +10,14 @@ import {
   type AgentCapabilityId,
   type AgentCapabilityNextAction,
   type AgentCapabilityTransport,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 
 export interface SharedCapabilityFlags {
   webSearch: boolean;
   reminders: boolean;
   todos: boolean;
   media: boolean;
+  googleContext?: boolean;
   transport?: AgentCapabilityTransport;
 }
 
@@ -269,29 +270,48 @@ export function buildSharedCapabilityCatalog(flags: SharedCapabilityFlags): Agen
       flags.media,
     ],
   ];
-  const personal = PERSONAL_CAPABILITIES.map<AgentCapabilityDescriptor>((definition) => ({
-    ...definition,
-    availability: "needs_workspace",
-    currentTier: "shared",
-    requiredTier: "personal",
-    transports: ALL_TRANSPORTS,
-    prerequisites: [
-      {
-        kind: "workspace",
-        id: "personal",
-        label: "Personal workspace",
-      },
-      ...(definition.connection
-        ? [
-            {
-              kind: "connection" as const,
-              id: definition.connection,
-              label: `Connect ${definition.connection}`,
-            },
-          ]
-        : []),
-    ],
-  }));
+  const personal = PERSONAL_CAPABILITIES.map<AgentCapabilityDescriptor>((definition) => {
+    if (flags.googleContext && (definition.id === "cloud-apps" || definition.id === "calendar")) {
+      return availableCapability(
+        {
+          ...definition,
+          label:
+            definition.id === "calendar"
+              ? "Google Calendar reads (owner permission required)"
+              : "Google connection and Gmail reads (owner permission required)",
+          examples:
+            definition.id === "calendar" ? ["Show my calendar"] : ["Connect Gmail", "Search Gmail"],
+          consequence: "read_only",
+          requiresConfirmation: false,
+          nextAction: "none",
+        },
+        transport,
+      );
+    }
+    return {
+      ...definition,
+      availability: "needs_workspace",
+      currentTier: "shared",
+      requiredTier: "personal",
+      transports: ALL_TRANSPORTS,
+      prerequisites: [
+        {
+          kind: "workspace",
+          id: "personal",
+          label: "Personal workspace",
+        },
+        ...(definition.connection
+          ? [
+              {
+                kind: "connection" as const,
+                id: definition.connection,
+                label: `Connect ${definition.connection}`,
+              },
+            ]
+          : []),
+      ],
+    };
+  });
   return {
     version: 1,
     tier: "shared",
@@ -316,15 +336,23 @@ export function formatSharedCapabilityCatalogForPrompt(catalog: AgentCapabilityC
     const prerequisites = capability.prerequisites.length
       ? capability.prerequisites.map((item) => item.label).join(", ")
       : "none";
+    // Public search is selected by the current public-information intent. Its
+    // absence on a conversation turn is not a provider outage or setup need.
+    const searchNotSelected =
+      capability.id === "web-search" && capability.availability === "unavailable";
     return [
       `- ${capability.label} (${capability.id})`,
-      `availability: ${humanize(capability.availability)}`,
+      searchNotSelected
+        ? "selection: not needed for this request; supported for fresh public questions"
+        : `availability: ${humanize(capability.availability)}`,
       `tier: ${capability.currentTier} -> ${capability.requiredTier}`,
       `examples: ${capability.examples.join("; ")}`,
       `prerequisites: ${prerequisites}`,
       `consequence: ${humanize(capability.consequence)}`,
       `confirmation: ${capability.requiresConfirmation ? "required before effect" : "not required"}`,
-      `next: ${humanize(capability.nextAction)}`,
+      searchNotSelected
+        ? "next: no setup needed; select only for fresh public information"
+        : `next: ${humanize(capability.nextAction)}`,
     ].join("; ");
   });
   return [

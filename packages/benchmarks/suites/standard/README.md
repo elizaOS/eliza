@@ -9,7 +9,7 @@ With Python 3.11+ and the benchmark dependencies installed, run from the reposit
 
 ```bash
 # Run a benchmark (requires provider credentials)
-PYTHONPATH=packages python3 -m benchmarks.standard.mmlu --provider openai --model <model> --output /tmp/mmlu-out
+PYTHONPATH=packages python3 -m benchmarks.suites.standard.mmlu --provider openai --model <model> --output /tmp/mmlu-out
 # Test the adapters
 PYTHONPATH=packages python3 -m pytest packages/benchmarks/suites/standard/tests
 ```

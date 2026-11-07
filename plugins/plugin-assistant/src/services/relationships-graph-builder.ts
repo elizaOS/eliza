@@ -1070,9 +1070,12 @@ async function countFacts(
   const counts = new Map<UUID, number>();
   await awaitGraphReads(
     entityIds.map(async (entityId) => {
+      // `entityId` is the isolation principal, not the author: without the
+      // author filter every fact in the person's rooms would be counted.
       const facts = await runtime.getMemories({
         tableName: "facts",
         entityId,
+        authorEntityIds: [entityId],
       });
       counts.set(entityId, facts.length);
     }),
@@ -1758,6 +1761,7 @@ async function buildFacts(
       const memories = await runtime.getMemories({
         tableName: "facts",
         entityId,
+        authorEntityIds: [entityId],
       });
       for (const memory of memories) {
         const metadata = asRecord(memory.metadata) ?? {};
@@ -1890,6 +1894,8 @@ async function buildRelevantMemories(
       runtime.getMemories({
         tableName: "messages",
         entityId,
+        // `entityId` names the isolation principal; this selects the author.
+        authorEntityIds: [entityId],
         orderBy: "createdAt",
         orderDirection: "desc",
       }),
@@ -1955,6 +1961,7 @@ async function buildUserPersonalityPreferences(
       runtime.getMemories({
         tableName: USER_PERSONALITY_PREFERENCES_TABLE,
         entityId,
+        authorEntityIds: [entityId],
         roomId: runtime.agentId,
         orderBy: "createdAt",
         orderDirection: "desc",
@@ -2504,6 +2511,7 @@ export async function getMemoriesForCluster(
       runtime.getMemories({
         ...params,
         entityId,
+        authorEntityIds: [entityId],
       }),
     ),
   );

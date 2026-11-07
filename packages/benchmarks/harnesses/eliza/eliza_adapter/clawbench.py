@@ -33,6 +33,8 @@ returning a dict shaped like::
 
 from __future__ import annotations
 
+from benchmarks.lib import compute_cost_usd as _compute_cost_usd
+
 import json
 import logging
 import os
@@ -47,35 +49,15 @@ logger = logging.getLogger(__name__)
 # Per-million-token USD pricing for Cerebras gpt-oss-120b. Mirrors the table
 # in ``hermes_adapter.lifeops_bench`` and ``openclaw_adapter`` so multi-harness
 # ClawBench numbers are directly comparable.
-_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
-    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
-}
-
-
-def _compute_cost_usd(
-    model: str | None, prompt_tokens: int, completion_tokens: int
-) -> float | None:
-    """Return USD cost for a Cerebras completion, or :data:`None` when unpriced."""
-    if not model:
-        return None
-    pricing = _CEREBRAS_PRICING.get(model)
-    if pricing is None:
-        return None
-    return (
-        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
-        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
-    )
 
 
 def _last_user_text(conversation_history: list[Any]) -> str:
     for turn in reversed(conversation_history):
-        role = (
-            getattr(turn, "role", None)
-            or (turn.get("role") if isinstance(turn, dict) else None)
+        role = getattr(turn, "role", None) or (
+            turn.get("role") if isinstance(turn, dict) else None
         )
-        content = (
-            getattr(turn, "content", None)
-            or (turn.get("content") if isinstance(turn, dict) else "")
+        content = getattr(turn, "content", None) or (
+            turn.get("content") if isinstance(turn, dict) else ""
         )
         if role == "user":
             return str(content or "")
@@ -126,10 +108,14 @@ def build_clawbench_agent_fn(
         model_name: Optional label propagated into the returned dict for cost
             attribution.
     """
-    scenario_prompt = scenario_yaml.get("prompt") if isinstance(scenario_yaml, dict) else None
+    scenario_prompt = (
+        scenario_yaml.get("prompt") if isinstance(scenario_yaml, dict) else None
+    )
     if not isinstance(scenario_prompt, str):
         scenario_prompt = ""
-    system_prompt = scenario_yaml.get("system_prompt") if isinstance(scenario_yaml, dict) else None
+    system_prompt = (
+        scenario_yaml.get("system_prompt") if isinstance(scenario_yaml, dict) else None
+    )
     if not isinstance(system_prompt, str):
         system_prompt = None
     fixtures_dict: dict[str, Any] = dict(fixtures or {})
@@ -143,10 +129,14 @@ def build_clawbench_agent_fn(
     else:
         bridge = ElizaClient()
         harness = (
-            os.environ.get("ELIZA_BENCH_HARNESS")
-            or os.environ.get("BENCHMARK_HARNESS")
-            or "eliza"
-        ).strip().lower()
+            (
+                os.environ.get("ELIZA_BENCH_HARNESS")
+                or os.environ.get("BENCHMARK_HARNESS")
+                or "eliza"
+            )
+            .strip()
+            .lower()
+        )
         if (
             getattr(bridge, "_delegate", None) is None
             and not os.environ.get("ELIZA_BENCH_URL")
@@ -160,9 +150,7 @@ def build_clawbench_agent_fn(
     bridge.wait_until_ready(timeout=120)
 
     scenario_name = (
-        scenario_yaml.get("name")
-        if isinstance(scenario_yaml, dict)
-        else None
+        scenario_yaml.get("name") if isinstance(scenario_yaml, dict) else None
     )
     if not isinstance(scenario_name, str) or not scenario_name:
         scenario_name = "clawbench"
@@ -194,7 +182,9 @@ def build_clawbench_agent_fn(
             except Exception:
                 # The TS server doesn't necessarily require a reset for the
                 # generic /message route — log and continue.
-                logger.debug("[eliza-clawbench] reset failed (continuing)", exc_info=True)
+                logger.debug(
+                    "[eliza-clawbench] reset failed (continuing)", exc_info=True
+                )
                 reset_done = True
 
         context: dict[str, object] = {
@@ -221,7 +211,9 @@ def build_clawbench_agent_fn(
             raise RuntimeError("Eliza ClawBench send_message failed") from exc
 
         # Normalize tool calls into the shape the multi-harness runner reads.
-        raw_tool_calls = resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        raw_tool_calls = (
+            resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
+        )
         tool_calls: list[dict[str, Any]] = []
         if isinstance(raw_tool_calls, list):
             for entry in raw_tool_calls:
@@ -229,7 +221,11 @@ def build_clawbench_agent_fn(
                     continue
                 # Tool calls from eliza can be either flat ({"name", "arguments"})
                 # or OpenAI-shaped ({"function": {"name", "arguments"}}).
-                fn = entry.get("function") if isinstance(entry.get("function"), dict) else {}
+                fn = (
+                    entry.get("function")
+                    if isinstance(entry.get("function"), dict)
+                    else {}
+                )
                 name = (
                     entry.get("name")
                     or entry.get("tool")
@@ -294,7 +290,9 @@ def build_clawbench_agent_fn(
             if usage.get("completion_tokens") is not None
             else usage.get("completionTokens")
         )
-        prompt_tokens = int(prompt_tokens_raw) if isinstance(prompt_tokens_raw, (int, float)) else 0
+        prompt_tokens = (
+            int(prompt_tokens_raw) if isinstance(prompt_tokens_raw, (int, float)) else 0
+        )
         completion_tokens = (
             int(completion_tokens_raw)
             if isinstance(completion_tokens_raw, (int, float))

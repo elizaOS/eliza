@@ -19,7 +19,7 @@ export function browserWorkspacePatternMatches(
     return false;
   }
   if (!trimmed.includes("*")) {
-    return value.includes(trimmed);
+    return value.toLowerCase().includes(trimmed.toLowerCase());
   }
   let wildcardPattern = "";
   for (let index = 0; index < trimmed.length; index += 1) {
@@ -30,7 +30,7 @@ export function browserWorkspacePatternMatches(
         wildcardPattern += ".*";
         index += 1;
       } else {
-        wildcardPattern += ".*";
+        wildcardPattern += "[^/]*";
       }
       continue;
     }
@@ -122,7 +122,7 @@ export async function fetchBrowserWorkspaceTrackedResponse(
       route.status !== null ||
       Object.keys(route.headers).length > 0)
   ) {
-    const response = new Response(route?.body ?? "", {
+    const response = new Response(route.body, {
       headers: route?.headers,
       status: route?.status ?? 200,
     });

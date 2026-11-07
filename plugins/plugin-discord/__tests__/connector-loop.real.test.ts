@@ -15,11 +15,11 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import type { DeterministicModelFixture } from "@elizaos/testing/models";
 import {
 	createTestRuntimeWithModelProvider,
-	type DeterministicModelFixture,
 	type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveElizaOwnerEntityId } from "../identity.ts";

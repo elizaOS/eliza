@@ -1,24 +1,31 @@
 /**
- * Revokes only the first-party mobile credential authenticating this request.
+ * Revokes only the credential proven by the secret in this request.
  * The presented mobile-prefixed secret and authenticated database row must
  * agree on one exact identity; a response-loss retry can recover only that
  * credential's durable tombstone.
  */
-import { Hono } from "hono";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
+
+import { requireApiKeyCredential } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   AuthenticationError,
   failureResponse,
-} from "@/lib/api/cloud-worker-errors";
-import { requireApiKeyCredential } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService, isMobileApiKeySecret } from "@/lib/services/api-keys";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  apiKeysService,
+  isMobileApiKeySecret,
+} from "@elizaos/cloud-shared/lib/services/api-keys";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
@@ -64,6 +71,18 @@ function selfRevocationAudit(c: AppContext) {
 
 app.delete("/", async (c) => {
   try {
+    const standardSecret = readSinglePresentedApiKey(c);
+    if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
+      const selfAudit = selfRevocationAudit(c);
+      const result = await apiKeysService.revokePresentedStandardCredential(
+        standardSecret,
+        selfAudit.write,
+      );
+      if (!result)
+        throw AuthenticationError("API key identity could not be proven");
+      await selfAudit.audit.publish();
+      return c.json({ success: true, ...result.receipt });
+    }
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
     try {
       credential = await requireApiKeyCredential(c);

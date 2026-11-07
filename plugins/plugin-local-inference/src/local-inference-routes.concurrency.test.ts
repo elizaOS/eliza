@@ -239,4 +239,51 @@ describe("local-inference concurrent config mutations (#25123)", () => {
 		expect(file.version).toBe(1);
 		expect(file.assignments.TEXT_SMALL).toBe("eliza-1-2b");
 	});
+
+	it("fails POST /api/local-inference/assignments and keeps an unreadable file byte-identical", async () => {
+		// The route's read fell back to an empty map on any error, so one slot
+		// change rewrote a truncated file with only that slot and returned 200.
+		const file = path.join(localInferenceRoot(), "assignments.json");
+		const corrupt = '{"version":1,"assignments":{"TEXT_LARGE":"eliza-1-7';
+		writeFileSync(file, corrupt, "utf8");
+		const server = http.createServer((req, res) => {
+			void handleLocalInferenceRoutes(req, res).then((handled) => {
+				if (!handled && !res.writableEnded) {
+					res.statusCode = 404;
+					res.end();
+				}
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const address = server.address() as { port: number };
+		const url = `http://127.0.0.1:${address.port}/api/local-inference/assignments`;
+		try {
+			const post = await fetch(url, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ slot: "TEXT_SMALL", modelId: "eliza-1-2b" }),
+			});
+			expect(post.status).toBe(500);
+			expect(await post.json()).toMatchObject({
+				code: "ASSIGNMENTS_UNREADABLE",
+			});
+			expect(readFileSync(file, "utf8")).toBe(corrupt);
+
+			const get = await fetch(url);
+			expect(get.status).toBe(500);
+
+			await expect(
+				applyLocalInferenceManagementMutation({
+					op: "set_assignment",
+					slot: "TEXT_SMALL",
+					modelId: "eliza-1-2b",
+				}),
+			).rejects.toThrow(/assignments\.json/);
+			expect(readFileSync(file, "utf8")).toBe(corrupt);
+		} finally {
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
+	});
 });

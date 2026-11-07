@@ -184,7 +184,10 @@ function roleFromMetadata(
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
       : {};
-  const raw = nonEmptyString(record.role ?? record.accountRole);
+  // The local connector UI sends `requestedRole`; keep the older keys too.
+  const raw = nonEmptyString(
+    record.role ?? record.accountRole ?? record.requestedRole,
+  );
   const normalized = raw?.toUpperCase();
   if (
     normalized === "OWNER" ||

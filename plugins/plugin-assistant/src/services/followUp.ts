@@ -544,7 +544,10 @@ export class FollowUpService extends Service {
       // tracked execution, so its effects complete before teardown returns.
 
       const memory: Memory = {
-        id: createUniqueUuid(runtime, `followup-memory-${Date.now()}`),
+        id: createUniqueUuid(
+          runtime,
+          `followup-memory-${task.id}-${Date.now()}`,
+        ),
         entityId: runtime.agentId,
         agentId: runtime.agentId,
         roomId: stringToUuid(`relationships-${runtime.agentId}`),

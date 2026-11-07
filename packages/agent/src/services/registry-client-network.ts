@@ -127,7 +127,7 @@ async function fetchGeneratedRegistry(
             uiExtension: entry.app.uiExtension,
             viewer: entry.app.viewer,
             session: entry.app.session,
-            developerOnly: entry.app.developerOnly,
+            viewKind: entry.app.viewKind,
             visibleInAppStore: entry.app.visibleInAppStore,
             mainTab: entry.app.mainTab,
             catalogSection: entry.app.catalogSection,
@@ -243,9 +243,9 @@ export async function fetchFromNetwork(
 
   const generatedResult = fetchGeneratedRegistry(params);
   const indexResult = fetchIndexRegistry(params);
-  // Prevent an unhandled rejection if the generated registry wins the race and
-  // we never await the index attempt; its failure is only relevant as a
-  // fallback when the generated registry is absent.
+  // error-policy:J5 prevent an unhandled rejection if the generated registry
+  // wins and we never await the index attempt; its failure is only relevant as
+  // the fallback when the generated registry is absent and indexResult is awaited.
   indexResult.catch(() => {});
 
   const generated = await generatedResult;

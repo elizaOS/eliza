@@ -125,14 +125,13 @@ export const replyContextProvider: Provider = {
     if (!target?.id || target.roomId !== roomId) return EMPTY_RESULT;
 
     const targetCreatedAt = target.createdAt ?? 0;
-    const recentWindowLength = runtime.getConversationLength();
     const [recentWindow, olderOrAt, newerOrAt] = await Promise.all([
-      // The same window RECENT_MESSAGES renders, fetched for dedupe: any
-      // surrounding turn already in it is visible in the transcript above.
+      // The same window RECENT_MESSAGES renders (every retained row, with no
+      // conversation-length limit), fetched for dedupe: any surrounding turn in
+      // it is already visible in the transcript above.
       runtime.getMemories({
         tableName: "messages",
         roomId,
-        limit: recentWindowLength,
         unique: false,
       }),
       // Every retained turn at or before the target (end is inclusive).

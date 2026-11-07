@@ -1,0 +1,7 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+def repositoryRoot = new File(settingsDir, '../../../..').canonicalFile
+include ':calendar', ':capacitor-android'
+def calendarPath = providers.gradleProperty('calendarLibraryDir').orNull
+def capacitorPath = providers.gradleProperty('capacitorAndroidDir').orNull
+project(':calendar').projectDir = calendarPath ? new File(calendarPath) : new File(settingsDir, '../../android')
+project(':capacitor-android').projectDir = capacitorPath ? new File(capacitorPath) : new File(repositoryRoot, 'packages/app/node_modules/@capacitor/android/capacitor')

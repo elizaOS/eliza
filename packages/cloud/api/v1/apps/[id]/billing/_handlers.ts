@@ -1,14 +1,12 @@
 /** Translates generic buyer billing HTTP requests into scoped identity and billing use-cases. */
-import { ElizaError } from "@elizaos/core";
-import { Hono } from "hono";
-import { z } from "zod";
-import { appBillingCommandRuntimeRepository } from "@/db/repositories/app-billing-command-runtime";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAppBillingActor } from "@/lib/auth/app-delegation-auth";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
-import { AppDelegationError } from "@/lib/services/app-delegation";
-import { appDelegationService } from "@/lib/services/app-delegation-adapter";
+
+import { appBillingCommandRuntimeRepository } from "@elizaos/cloud-shared/db/repositories/app-billing-command-runtime";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAppBillingActor } from "@elizaos/cloud-shared/lib/auth/app-delegation-auth";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { AppDelegationError } from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appDelegationService } from "@elizaos/cloud-shared/lib/services/app-delegation-adapter";
 import {
   appBillingCommandInput,
   appBillingScopeInput,
@@ -19,13 +17,19 @@ import {
   resolveAppBillingAccountInput,
   startAppBillingTrialInput,
   updateAppBillingSubscriptionInput,
-} from "@/lib/services/generic-billing-input";
-import { genericBillingReadService } from "@/lib/services/generic-billing-read";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-input";
+import { genericBillingReadService } from "@elizaos/cloud-shared/lib/services/generic-billing-read";
 import {
   type BuyerBillingIdentity,
   genericBillingRuntime,
-} from "@/lib/services/generic-billing-runtime";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-runtime";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ElizaError } from "@elizaos/core";
+import { Hono } from "hono";
+import { z } from "zod";
 
 function nativeBillingEnvironment(): "test" | "live" {
   const value = getCloudAwareEnv().APP_BILLING_ENVIRONMENT;
@@ -314,7 +318,7 @@ export async function getBillingOperation(c: AppContext) {
     actorUserId: actor.userId,
   });
   const { appBillingOperationDto } = await import(
-    "@/lib/services/generic-billing-operation"
+    "@elizaos/cloud-shared/lib/services/generic-billing-operation"
   );
   return c.json({
     success: true,

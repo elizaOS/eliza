@@ -16,11 +16,11 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   filterInitFilesForSession,
   isDefaultBoilerplate,
   loadWorkspaceInitFiles,
-  resolveDefaultAgentWorkspaceDir,
   type WorkspaceInitFile,
 } from "./workspace.ts";
 

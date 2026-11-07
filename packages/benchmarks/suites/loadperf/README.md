@@ -4,14 +4,10 @@ Four standalone Node ESM KPI scripts that measure app load performance (bundle s
 
 This directory is part of `packages/benchmarks`.
 
-Build from the repository root:
-
-```bash
-bun run --cwd packages/benchmarks build:plugin
-```
+This harness runs from source.
 
 Test from the repository root:
 
 ```bash
-bun run --cwd packages/benchmarks test:py
+bunx vitest run packages/benchmarks/suites/loadperf/frontend-kpi.test.mjs
 ```

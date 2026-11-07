@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-anthropic",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -16,7 +16,13 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./direct-media": {
+      "eliza-source": "./direct-media.ts",
+      "types": "./dist/direct-media.d.ts",
+      "import": "./dist/direct-media.js",
+      "default": "./dist/direct-media.js"
+    }
   },
   "files": [
     "registry-entry.json",
@@ -39,18 +45,20 @@
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
-    "ai": "^6.0.23"
+    "ai": "^6.0.23",
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/host": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
-    "tsup": "^8.5.1"
+    "tsup": "^9.0.0"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -62,8 +70,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
-    "test:unit": "bunx vitest run --config vitest.config.ts",
-    "test:integration": "bunx vitest run --config vitest.real-runtime.config.ts",
+    "test:integration": "bun run test && bun run test:real-runtime",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

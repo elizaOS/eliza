@@ -1,4 +1,7 @@
 {
+  "plugin-native-action-journal": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-agent": {
     "name": "Agent",
     "class": "ai.eliza.plugins.agent.AgentPlugin"
@@ -14,6 +17,9 @@
   "plugin-native-bun-runtime": {
     "name": "ElizaBunRuntime",
     "class": "ai.elizaos.plugins.bunruntime.ElizaBunRuntimePlugin"
+  },
+  "plugin-native-calendar": {
+    "kind": "host-configured-library"
   },
   "plugin-native-camera": {
     "name": "ElizaCamera",
@@ -39,6 +45,9 @@
     "name": "ElizaLocation",
     "class": "ai.eliza.plugins.location.LocationPlugin"
   },
+  "plugin-native-media": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-messages": {
     "name": "ElizaMessages",
     "class": "ai.eliza.plugins.messages.MessagesPlugin"
@@ -51,9 +60,18 @@
     "name": "ElizaNetworkPolicy",
     "class": "ai.eliza.plugins.networkpolicy.NetworkPolicyPlugin"
   },
+  "plugin-native-notifications": {
+    "kind": "host-configured-library"
+  },
+  "plugin-native-passwords": {
+    "kind": "host-configured-library"
+  },
   "plugin-native-phone": {
     "name": "ElizaPhone",
     "class": "ai.eliza.plugins.phone.PhonePlugin"
+  },
+  "plugin-native-reminders": {
+    "kind": "host-configured-library"
   },
   "plugin-native-secure-store": {
     "name": "ElizaSecureStore",

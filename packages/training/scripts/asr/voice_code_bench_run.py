@@ -29,9 +29,8 @@ from typing import Any, Callable, Iterable
 ASR_DIR = Path(__file__).resolve().parent
 REPO_ROOT = ASR_DIR.parents[3]
 REGISTRY_PATH = ASR_DIR / "voice_code_bench_registry.json"
-sys.path.insert(0, str(ASR_DIR))
 
-import voice_code_bench_gate as gate  # noqa: E402
+import eliza_training.asr.voice_code_bench_gate as gate  # noqa: E402
 
 
 class VoiceCodeBenchError(RuntimeError):

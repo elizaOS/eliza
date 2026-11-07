@@ -1,0 +1,9 @@
+// Compatibility entry point for existing Android consumers.
+// Native sources and model pins are owned by plugin-local-inference.
+def legacySource = project.hasProperty('elizaParadeeSourceDir') ? file(project.elizaParadeeSourceDir) : project.projectDir
+ext.elizaParadeeSourceDir = new File(legacySource, '../../../../../plugins/plugin-local-inference/native/android').canonicalFile
+// Reuse already-staged native outputs while consumers move to the canonical path.
+if (!project.hasProperty('elizaParadeeNativeDir') && new File(legacySource, 'native/build-record.json').isFile()) {
+    ext.elizaParadeeNativeDir = new File(legacySource, 'native')
+}
+apply from: new File(project.elizaParadeeSourceDir, 'consumer.gradle')

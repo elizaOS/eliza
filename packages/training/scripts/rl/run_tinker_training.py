@@ -24,9 +24,8 @@ from pathlib import Path
 
 # Add python root to path for local development
 python_root = Path(__file__).parent.parent
-sys.path.insert(0, str(python_root))
 
-from src.training.tinker_client import (
+from eliza_training.rl.tinker.tinker_client import (
     DEFAULT_TINKER_BASE_MODEL,
     TINKER_API_KEY_ENV_VARS,
     ensure_tinker_api_key_env,
@@ -148,7 +147,7 @@ Examples:
         return 0
 
     # Import trainer (after environment check)
-    from src.training.tinker_trainer import (
+    from eliza_training.rl.tinker.tinker_trainer import (
         FeedTinkerTrainer,
         TinkerTrainingConfig,
     )

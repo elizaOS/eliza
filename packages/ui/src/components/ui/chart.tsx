@@ -12,7 +12,7 @@
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Badge } from "./badge";
 import { Card } from "./card";
 

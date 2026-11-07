@@ -313,18 +313,13 @@ export class VoiceProfileStore {
 
 	private async readIndex(): Promise<IndexFile> {
 		if (this.indexCache) return this.indexCache;
-		try {
-			const raw = await fsp.readFile(this.indexPath, "utf8");
-			const parsed = JSON.parse(raw) as IndexFile;
-			if (!parsed.entries) parsed.entries = [];
-			if (!parsed.nextLruRank) parsed.nextLruRank = 1;
-			parsed.version = 1;
-			this.indexCache = parsed;
-			return parsed;
-		} catch {
-			this.indexCache = { ...INITIAL_INDEX, entries: [] };
-			return this.indexCache;
-		}
+		const raw = await fsp.readFile(this.indexPath, "utf8");
+		const parsed = JSON.parse(raw) as IndexFile;
+		if (!parsed.entries) parsed.entries = [];
+		if (!parsed.nextLruRank) parsed.nextLruRank = 1;
+		parsed.version = 1;
+		this.indexCache = parsed;
+		return parsed;
 	}
 
 	private async writeIndex(index: IndexFile): Promise<void> {
@@ -345,8 +340,13 @@ export class VoiceProfileStore {
 		try {
 			const raw = await fsp.readFile(this.profilePath(profileId), "utf8");
 			return JSON.parse(raw) as VoiceProfileRecord;
-		} catch {
-			return null;
+		} catch (error) {
+			// A record that was never written is the only legal "absent" answer.
+			// Everything else (EACCES, EIO, truncated JSON) is a fault the caller
+			// must not read as "no profile": eviction unlinks a record it cannot
+			// read, so swallowing the error deletes a recoverable profile.
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+			throw error;
 		}
 	}
 

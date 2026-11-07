@@ -422,7 +422,11 @@ class AgentGatewayRelayService {
     timeoutMs = DEFAULT_RESPONSE_TIMEOUT_MS,
   ): Promise<BridgeResponse> {
     const store = this.getStore();
-    const activeSession = await this.refreshSession(session.id);
+    // Read, do not refresh: only the runtime's own register/poll/respond calls
+    // keep a session alive. Refreshing here let a dead runtime look online for
+    // as long as inbound traffic arrived, and every message waited the full
+    // response timeout instead of getting the offline answer.
+    const activeSession = await this.getSession(session.id);
     if (!activeSession) {
       return {
         jsonrpc: "2.0",

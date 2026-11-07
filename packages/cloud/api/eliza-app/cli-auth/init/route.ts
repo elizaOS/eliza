@@ -3,14 +3,32 @@
  * Creates a new pending CLI auth session (15-minute TTL).
  */
 
+import { db } from "@elizaos/cloud-shared/db/client";
+import { cliAuthSessions } from "@elizaos/cloud-shared/db/schemas/cli-auth-sessions";
+import {
+  getIpKey,
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "@/db/client";
-import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+// This public route creates a database row. Keep login available during a
+// Redis outage, but bound row creation per Worker isolate and source IP.
+app.use(
+  rateLimit({
+    ...RateLimitPresets.STRICT,
+    keyGenerator: getIpKey,
+    failClosed: true,
+    redisUnavailableFallback: {
+      namespace: "eliza-app-cli-auth-init",
+    },
+  }),
+);
 
 app.post("/", async (c) => {
   try {

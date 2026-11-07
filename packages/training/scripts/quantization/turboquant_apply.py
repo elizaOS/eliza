@@ -20,17 +20,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 
 import torch.nn as nn
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     add_quantization_cli_args,
     get_text_config,
     head_dim_of,

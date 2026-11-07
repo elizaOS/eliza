@@ -9,6 +9,7 @@
 
 import {
   type Component,
+  createUniqueUuid,
   ElizaError,
   type IAgentRuntime,
   Service,
@@ -32,6 +33,10 @@ const EVALUATOR_ID = "00000000-0000-4000-8000-0000000000b2" as UUID;
 const SUBJECT_ID = "00000000-0000-4000-8000-0000000000c3" as UUID;
 const WORLD_ID = "00000000-0000-4000-8000-0000000000d4" as UUID;
 const ROOM_ID = "00000000-0000-4000-8000-0000000000e5" as UUID;
+const DEFAULT_TRUST_WORLD_ID = createUniqueUuid(
+  { agentId: AGENT_ID } as IAgentRuntime,
+  "trust-world",
+);
 
 let componentSeq = 0;
 
@@ -80,7 +85,10 @@ function makeDb(state: HarnessState) {
   };
 }
 
-async function makeHarness(options?: { omitDb?: boolean }): Promise<Harness> {
+async function makeHarness(options?: {
+  omitDb?: boolean;
+  agentId?: UUID;
+}): Promise<Harness> {
   const state: HarnessState = {
     components: [],
     created: [],
@@ -93,7 +101,7 @@ async function makeHarness(options?: { omitDb?: boolean }): Promise<Harness> {
   };
 
   const runtime = {
-    agentId: AGENT_ID,
+    agentId: options?.agentId ?? AGENT_ID,
     ...(options?.omitDb ? {} : { db: makeDb(state) }),
     getComponents: async (entityId: UUID) =>
       state.components.filter((c) => c.entityId === entityId),
@@ -121,13 +129,7 @@ async function makeHarness(options?: { omitDb?: boolean }): Promise<Harness> {
     },
     updateComponent: async (component: Component) => {
       state.updated.push(component);
-      const index = state.components.findIndex(
-        (c) =>
-          c.entityId === component.entityId &&
-          c.type === component.type &&
-          c.worldId === component.worldId &&
-          c.agentId === component.agentId,
-      );
+      const index = state.components.findIndex((c) => c.id === component.id);
       if (index >= 0) state.components[index] = component;
       else state.components.push(component);
       return true;
@@ -219,7 +221,7 @@ function profileComponent(
     entityId: SUBJECT_ID,
     agentId: EVALUATOR_ID,
     roomId: ROOM_ID,
-    worldId: stringToUuid("trust-world"),
+    worldId: DEFAULT_TRUST_WORLD_ID,
     sourceEntityId: EVALUATOR_ID,
     createdAt: FROZEN_NOW,
     data,
@@ -900,13 +902,57 @@ describe("TrustEngine.calculateTrust trend analysis", () => {
 });
 
 describe("TrustEngine profile persistence", () => {
+  it("derives the default trust world per agent so agents sharing a database do not collide", async () => {
+    const otherAgentId = "00000000-0000-4000-8000-0000000000a9" as UUID;
+    const first = await makeHarness();
+    const second = await makeHarness({ agentId: otherAgentId });
+    await first.engine.calculateTrust(SUBJECT_ID, {
+      evaluatorId: EVALUATOR_ID,
+    });
+    await second.engine.calculateTrust(SUBJECT_ID, {
+      evaluatorId: EVALUATOR_ID,
+    });
+
+    const firstWorld = first.state.ensuredWorlds[0];
+    const secondWorld = second.state.ensuredWorlds[0];
+    expect(firstWorld.id).toBe(DEFAULT_TRUST_WORLD_ID);
+    expect(secondWorld.id).toBe(
+      createUniqueUuid(
+        { agentId: otherAgentId } as IAgentRuntime,
+        "trust-world",
+      ),
+    );
+    expect(secondWorld.id).not.toBe(firstWorld.id);
+    expect(firstWorld.id).not.toBe(stringToUuid("trust-world"));
+    expect(secondWorld.agentId).toBe(otherAgentId);
+  });
+
+  it("updates a profile stored under the legacy shared trust world instead of re-inserting it", async () => {
+    const h = await makeHarness();
+    const legacy = profileComponent(profileData({}), {
+      id: stringToUuid(`trust-profile-${SUBJECT_ID}-${EVALUATOR_ID}`),
+      worldId: stringToUuid("trust-world"),
+      createdAt: FROZEN_NOW - DAY_MS,
+    });
+    h.state.components.push(legacy);
+
+    await h.engine.calculateTrust(SUBJECT_ID, { evaluatorId: EVALUATOR_ID });
+
+    expect(h.state.created).toEqual([]);
+    expect(h.state.updated.length).toBe(1);
+    const updated = h.state.updated[0];
+    expect(updated.id).toBe(legacy.id);
+    expect(updated.worldId).toBe(DEFAULT_TRUST_WORLD_ID);
+    expect(updated.createdAt).toBe(FROZEN_NOW - DAY_MS);
+  });
+
   it("creates a deterministic trust_profile component in a default trust world", async () => {
     const h = await makeHarness();
     await h.engine.calculateTrust(SUBJECT_ID, { evaluatorId: EVALUATOR_ID });
 
     expect(h.state.ensuredWorlds).toEqual([
       {
-        id: stringToUuid("trust-world"),
+        id: DEFAULT_TRUST_WORLD_ID,
         name: "trust-world",
         agentId: AGENT_ID,
         messageServerId: stringToUuid("default"),
@@ -922,7 +968,7 @@ describe("TrustEngine profile persistence", () => {
     expect(component.agentId).toBe(EVALUATOR_ID);
     expect(component.entityId).toBe(SUBJECT_ID);
     expect(component.roomId).toBe(stringToUuid("trust-global"));
-    expect(component.worldId).toBe(stringToUuid("trust-world"));
+    expect(component.worldId).toBe(DEFAULT_TRUST_WORLD_ID);
     expect(component.createdAt).toBe(FROZEN_NOW);
     const data = component.data as Record<string, unknown>;
     expect(data.overallTrust).toBe(50);
@@ -1056,12 +1102,13 @@ describe("TrustEngine.recordInteraction rate limiting", () => {
     expect(h.state.inserted.map((r) => r.weight)).toEqual([1, 0.75, 0.5, 0.25]);
   });
 
-  it("accepts ten interactions per entity per hour and silently drops the eleventh", async () => {
+  it("accepts ten interactions per entity per hour and drops the eleventh, reporting it", async () => {
     const { h, record } = await recordedHarness();
     for (let i = 0; i < 10; i++) {
-      await record();
+      await expect(record()).resolves.toBe(true);
     }
-    await record(); // eleventh — rate limited, neither persisted nor retained
+    // eleventh — rate limited, neither persisted nor retained, and reported
+    await expect(record()).resolves.toBe(false);
     expect(h.state.inserted.length).toBe(10);
     const recent = await h.engine.getRecentInteractions(SUBJECT_ID);
     expect(recent.length).toBe(10);

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import benchmark_vs_cerebras as bench
+import eliza_training.benchmark_vs_cerebras as bench
 
 
 class _RegistryEntry:

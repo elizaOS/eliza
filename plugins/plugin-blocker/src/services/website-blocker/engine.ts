@@ -7,6 +7,8 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/host/protocol";
+import { getDomain } from "tldts";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
@@ -253,11 +255,15 @@ export function buildSelfControlBlockPolicy(
   for (const website of normalizedRequestedWebsites) {
     blockedWebsites.add(website);
 
-    if (shouldAddWwwVariant(website)) {
-      blockedWebsites.add(`www.${website}`);
+    // A registrable domain and its `www.` host are the same site to the user:
+    // block both whichever one was named, and apply the site's policy group.
+    const registrable = registrableWebsiteBase(website);
+    if (registrable) {
+      blockedWebsites.add(registrable);
+      blockedWebsites.add(`www.${registrable}`);
     }
 
-    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(website);
+    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(registrable ?? website);
     if (policyGroup) {
       for (const blockedHost of policyGroup.blockedHosts) {
         blockedWebsites.add(blockedHost);
@@ -312,6 +318,8 @@ export function cancelSelfControlExpiryTimer(): void {
 export async function resolveSelfControlHostsFilePath(
   config: SelfControlPluginConfig = currentConfig,
 ): Promise<string | null> {
+  // A phone's hosts file is not the app's to edit; only a native backend blocks there.
+  if (isMobilePlatform()) return null;
   const override =
     config.hostsFilePath?.trim() ||
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ||
@@ -347,7 +355,9 @@ export async function reconcileSelfControlBlockState(
       platform: process.platform,
       supportsElevationPrompt,
       elevationPromptMethod,
-      reason: "Could not find the system hosts file on this machine.",
+      reason: isMobilePlatform()
+        ? "Website blocking on this device needs the native blocker, which is not connected."
+        : "Could not find the system hosts file on this machine.",
     };
   }
 
@@ -562,11 +572,22 @@ export async function getCachedSelfControlStatus(
   }
 
   const promise = getSelfControlStatus(config);
-  statusCache = {
+  const entry: StatusCacheEntry = {
     expiresAt: Date.now() + ttlMs,
     promise,
   };
-  return await promise;
+  statusCache = entry;
+  try {
+    return await promise;
+  } catch (error) {
+    // A failed read must not be replayed to later callers until the TTL
+    // expires: drop the entry so the next call retries the read. The
+    // app-blocker engine caches only fulfilled statuses the same way.
+    if (statusCache === entry) {
+      statusCache = undefined;
+    }
+    throw error;
+  }
 }
 
 export async function getSelfControlPermissionState(
@@ -689,7 +710,12 @@ export async function startSelfControlBlock(
   const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
-    return await nativeBackend.startBlock(request);
+    try {
+      return await nativeBackend.startBlock(request);
+    } finally {
+      // A status read made while the native call ran must not stay cached.
+      resetSelfControlStatusCache();
+    }
   }
 
   const normalizedRequest = normalizeSelfControlBlockRequest(request);
@@ -851,7 +877,11 @@ export async function stopSelfControlBlock(
   const nativeBackend = getNativeWebsiteBlockerBackend();
   if (nativeBackend) {
     resetSelfControlStatusCache();
-    return await nativeBackend.stopBlock();
+    try {
+      return await nativeBackend.stopBlock();
+    } finally {
+      resetSelfControlStatusCache();
+    }
   }
 
   const status = await reconcileSelfControlBlockState(config);
@@ -1007,9 +1037,12 @@ export function normalizeWebsiteTargets(
   return [...deduped];
 }
 
-function shouldAddWwwVariant(target: string): boolean {
-  const labels = target.split(".");
-  return labels.length === 2 && labels[0] !== "www";
+/** Only a registrable domain or its www host expands to the site's pair. */
+function registrableWebsiteBase(target: string): string | null {
+  const domain = getDomain(target, { allowPrivateDomains: true });
+  return domain && (target === domain || target === `www.${domain}`)
+    ? domain
+    : null;
 }
 
 export function formatWebsiteList(websites: readonly string[]): string {
@@ -1725,6 +1758,20 @@ function normalizeStringList(
   return null;
 }
 
+/** Minute multipliers for the units an owner may append to a duration. */
+const DURATION_UNIT_MINUTES: Readonly<Record<string, number>> = {
+  m: 1,
+  min: 1,
+  mins: 1,
+  minute: 1,
+  minutes: 1,
+  h: 60,
+  hr: 60,
+  hrs: 60,
+  hour: 60,
+  hours: 60,
+};
+
 function parseDurationMinutes(
   value: number | string | null | undefined,
 ): number | null | undefined {
@@ -1745,10 +1792,16 @@ function parseDurationMinutes(
       return null;
     }
 
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isFinite(parsed)) {
-      return Math.round(parsed);
-    }
+    // The whole string must be `<amount>` or `<amount> <unit>`. A prefix parse
+    // read "2 hours" as two minutes and started a block that ended 118 minutes
+    // early, so an unreadable unit is rejected instead.
+    const match = /^(\d+(?:\.\d+)?)\s*([a-z]+)?$/.exec(trimmed);
+    if (!match) return undefined;
+    const amount = Number.parseFloat(match[1]);
+    const unit = match[2];
+    const multiplier = unit === undefined ? 1 : DURATION_UNIT_MINUTES[unit];
+    if (multiplier === undefined) return undefined;
+    return Math.round(amount * multiplier);
   }
 
   return undefined;

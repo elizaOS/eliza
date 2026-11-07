@@ -11,7 +11,7 @@ import { testOutputPath } from "../scripts/lib/test-output.ts";
 // The committed source of truth for the known-phrase audio is the data-URL .ts
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
-import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/known-phrase";
 import {
   resolveRequestedAuditProjects,
   UI_SMOKE_AUDIT_PROJECTS_ENV,
@@ -265,7 +265,7 @@ export default defineConfig({
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(live-agent-chat|apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
+        /(cli-auth-completion|live-agent-chat|apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
       use: { ...devices["Pixel 7"], ...withLaunchOptions() },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a

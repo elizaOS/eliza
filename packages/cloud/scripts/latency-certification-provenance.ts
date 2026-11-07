@@ -1,15 +1,16 @@
 /**
- * Binds a trusted staging verifier to a served ancestor without checking out
+ * Binds a trusted environment verifier to a served ancestor without checking out
  * older code. Changed verifier contracts require an exact operator acknowledgement;
  * source and deployment identities remain distinct throughout the evidence.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/;
 const CONTRACT_PATHS = [
+  "packages/cloud/api/wrangler.toml",
   ".github/workflows/cloud-latency-certification.yml",
   "packages/cloud/scripts/chat-latency.ts",
   "packages/cloud/scripts/inference-auth-latency.ts",
@@ -17,6 +18,110 @@ const CONTRACT_PATHS = [
   "packages/cloud/scripts/cloudflare-inference-trace-evidence.ts",
   "packages/cloud/scripts/latency-certification-provenance.ts",
 ];
+
+/** Closed destinations prevent a credentialed probe from reaching an arbitrary host. */
+export function certificationTarget(environment = "staging") {
+  if (environment === "staging")
+    return {
+      environment,
+      sourceRef: "refs/heads/staging",
+      baseUrl: "https://api-staging.eliza.app",
+    };
+  if (environment === "production")
+    return {
+      environment,
+      sourceRef: "refs/heads/main",
+      baseUrl: "https://api.eliza.app",
+    };
+  throw new Error("Unsupported certification environment");
+}
+
+/** Read deployment policy from committed bytes, never from the newer checkout. */
+export async function readDeploymentPlacement(
+  deploySha,
+  { cwd = process.cwd(), environment = "staging" } = {},
+) {
+  certificationTarget(environment);
+  if (!SHA.test(deploySha))
+    throw new Error("Invalid placement deployment identity");
+  const source = await git(
+    ["show", `${deploySha}:packages/cloud/api/wrangler.toml`],
+    cwd,
+  );
+  let config: {
+    targetPresent: boolean;
+    worker: unknown;
+    placement: { mode: string; region: string } | null;
+    rootPlacement: unknown;
+  };
+  try {
+    // The certification workflow already pins Bun. Use its TOML parser without
+    // installing dependencies or executing code from the deployed revision.
+    config = JSON.parse(
+      execFileSync(
+        "bun",
+        [
+          "--eval",
+          `
+      const config = Bun.TOML.parse(await Bun.stdin.text());
+      // Canonical releases pass --env for both environments. Root settings
+      // must not replace the selected profile's identity or placement policy.
+      const target = config.env?.[${JSON.stringify(environment)}];
+      console.log(JSON.stringify({
+        targetPresent: Boolean(target),
+        worker: target?.name,
+        placement: target?.placement ?? null,
+        rootPlacement: config.placement ?? null,
+      }));
+    `,
+        ],
+        {
+          cwd,
+          input: source,
+          encoding: "utf8",
+          timeout: 30_000,
+          maxBuffer: 64 * 1024,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      ),
+    );
+  } catch (cause) {
+    // error-policy:J2 parsing failures must not expose the deployment configuration.
+    throw new Error("Deployment placement configuration could not be parsed", {
+      cause,
+    });
+  }
+  if (
+    config.targetPresent !== true ||
+    (config.placement === null && config.rootPlacement !== null)
+  )
+    throw new Error(
+      "Deployment requires an explicit environment placement policy",
+    );
+  if (
+    typeof config.worker !== "string" ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(config.worker)
+  )
+    throw new Error("Deployment requires an explicit environment Worker name");
+  const placement = config.placement;
+  if (
+    placement !== null &&
+    (typeof placement !== "object" ||
+      Array.isArray(placement) ||
+      placement.mode !== "targeted" ||
+      typeof placement.region !== "string" ||
+      !/^[a-z0-9]+:[a-z0-9-]+$/.test(placement.region) ||
+      Object.keys(placement).some((key) => key !== "mode" && key !== "region"))
+  )
+    throw new Error("Unsupported deployment placement policy");
+  return {
+    kind: "deployment_placement",
+    deploySha,
+    worker: config.worker,
+    configSha256: createHash("sha256").update(source).digest("hex"),
+    ...(placement === null ? { mode: "default" } : placement),
+  };
+}
 
 async function git(args, cwd) {
   try {
@@ -36,16 +141,22 @@ async function git(args, cwd) {
 }
 
 export async function verifyCertificationSource(
-  { sourceRef, sourceSha, deploySha, acknowledgedContractDigest = "" },
+  {
+    sourceRef,
+    sourceSha,
+    deploySha,
+    acknowledgedContractDigest = "",
+    environment = "staging",
+  },
   { cwd = process.cwd() } = {},
 ) {
   if (
-    sourceRef !== "refs/heads/staging" ||
+    sourceRef !== certificationTarget(environment).sourceRef ||
     !SHA.test(sourceSha) ||
     !SHA.test(deploySha)
   ) {
     throw new Error(
-      "Certification requires trusted staging source and exact commit identities",
+      "Certification requires trusted environment source and exact commit identities",
     );
   }
   if (

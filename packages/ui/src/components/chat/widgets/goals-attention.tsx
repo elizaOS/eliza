@@ -9,10 +9,9 @@
  * and is shared with the Today card so both stay in lock-step.
  */
 import { Target } from "lucide-react";
-import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useRole } from "../../../hooks/useRole";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -113,11 +112,3 @@ export function GoalsAttentionWidget({
     </div>
   );
 }
-
-export const GOALS_HOME_WIDGET = {
-  pluginId: "goals",
-  id: "goals.attention",
-  order: 120,
-  signalKinds: ["escalation", "reminder"],
-  Component: GoalsAttentionWidget satisfies ComponentType<WidgetProps>,
-} as const;

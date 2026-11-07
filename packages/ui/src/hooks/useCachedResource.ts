@@ -22,11 +22,19 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { getCached, revalidate, setCached, subscribe } from "./resource-cache";
+import {
+  getCached,
+  getRevalidationError,
+  revalidate,
+  setCached,
+  subscribe,
+} from "./resource-cache";
 import type { FetchMutator, FetchState } from "./useFetchData";
 
 export interface CachedResourceOptions {
@@ -55,6 +63,8 @@ export type UseCachedResourceResult<T> = FetchState<T> & {
   mutate: FetchMutator<T>;
   /** True while a background revalidation is running over cached data. */
   isValidating: boolean;
+  /** Most recent revalidation failure, also available while showing stale data. */
+  revalidationError: Error | null;
 };
 
 const DEFAULT_STALE_TIME_MS = 30_000;
@@ -63,25 +73,30 @@ function isUpdaterFn<T>(value: T | ((prev: T) => T)): value is (prev: T) => T {
   return typeof value === "function";
 }
 
-function toError(value: unknown): Error {
-  if (value instanceof Error) return value;
-  return new Error(typeof value === "string" ? value : String(value));
-}
-
 export function useCachedResource<T>(
-  key: string | null,
+  requestedKey: string | null,
   fetcher: (signal: AbortSignal) => Promise<T>,
   options?: CachedResourceOptions,
 ): UseCachedResourceResult<T> {
   const staleTime = options?.staleTime ?? DEFAULT_STALE_TIME_MS;
   const enabled = options?.enabled ?? true;
   const persist = options?.persist ?? false;
+  const key = enabled ? requestedKey : null;
+  const scope = useMemo(() => ({ key, persist }), [key, persist]);
+  const currentScope = useRef(scope);
+  const requestId = useRef(0);
 
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  useLayoutEffect(() => {
+    currentScope.current = scope;
+    fetcherRef.current = fetcher;
+  }, [scope, fetcher]);
 
-  const [error, setError] = useState<Error | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
+  const [validation, setValidation] = useState<{
+    scope: object;
+    pending: boolean;
+  }>({ scope, pending: false });
+  const isValidating = validation.scope === scope && validation.pending;
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -100,30 +115,38 @@ export function useCachedResource<T>(
     [key, persist],
   );
   const cached = useSyncExternalStore(subscribeFn, getSnapshot, getSnapshot);
+  const getErrorSnapshot = useCallback(
+    () => (key ? getRevalidationError(key) : null),
+    [key],
+  );
+  const error = useSyncExternalStore(
+    subscribeFn,
+    getErrorSnapshot,
+    getErrorSnapshot,
+  );
 
   // Run a shared revalidation. `force` issues a fresh request even when one is
   // in-flight (for explicit refetch); background runs de-dup onto it.
   const doRevalidate = useCallback(
     (force: boolean): Promise<void> => {
       if (!key) return Promise.resolve();
-      setIsValidating(true);
+      const id = ++requestId.current;
+      const isCurrent = () =>
+        mountedRef.current &&
+        currentScope.current === scope &&
+        requestId.current === id;
+      setValidation({ scope, pending: true });
+      const settle = () => {
+        if (isCurrent()) setValidation({ scope, pending: false });
+      };
       return revalidate<T>(
         key,
         () => fetcherRef.current(new AbortController().signal),
         persist,
         force,
-      )
-        .then(() => {
-          if (mountedRef.current) setError(null);
-        })
-        .catch((err: unknown) => {
-          if (mountedRef.current) setError(toError(err));
-        })
-        .finally(() => {
-          if (mountedRef.current) setIsValidating(false);
-        });
+      ).then(settle, settle);
     },
-    [key, persist],
+    [key, persist, scope],
   );
 
   // Mount / key-change revalidation honors staleTime: a value younger than
@@ -170,5 +193,5 @@ export function useCachedResource<T>(
     state = { status: "loading" };
   }
 
-  return { ...state, refetch, mutate, isValidating };
+  return { ...state, refetch, mutate, isValidating, revalidationError: error };
 }

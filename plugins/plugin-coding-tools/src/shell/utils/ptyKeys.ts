@@ -169,6 +169,10 @@ function encodeKeyToken(raw: string, warnings: string[]): string {
     return `${ESC}[Z`;
   }
 
+  if (baseLower === "space" && parsed.mods.ctrl) {
+    return parsed.mods.alt ? `${ESC}\x00` : "\x00";
+  }
+
   const baseSeq = namedKeyMap.get(baseLower);
   if (baseSeq) {
     let seq = baseSeq;

@@ -14,9 +14,9 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
-import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
+import { isRetryableChatFailureKind } from "@elizaos/contracts";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
+import type { UiSpec } from "@elizaos/host/protocol";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
@@ -34,15 +34,15 @@ import type { PluginInfo } from "../../api/client-types-config";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { cn } from "../../lib/utils";
-import { isDesktopPlatform, isNative } from "../../platform";
+import { isDesktopPlatform, isNative } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { canNavigateSameTabForBlockedPopup } from "../../state/cloud-login-launch";
+import { cn } from "../../utils/cn";
 import {
   createClientPermissionsRegistry,
   type PermissionCardPayload,
@@ -89,6 +89,8 @@ import "./widgets/inline-builtins";
 interface MessageContentProps {
   message: ConversationMessage;
   analysisMode?: boolean;
+  /** True only while this assistant message is still arriving. */
+  streaming?: boolean;
 }
 /**
  * Render a text run, wrapping any inline `` `code` `` spans in the CodeBlock
@@ -1322,6 +1324,7 @@ function OAuthRequestPanel({
 export function MessageContent({
   message,
   analysisMode = false,
+  streaming = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
   const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
@@ -1348,7 +1351,11 @@ export function MessageContent({
     message.role === "assistant"
       ? stripUnclaimedInteractionMarkup(message.text)
       : message.text;
-  const segments = useParsedSegments(displayText, analysisMode);
+  const segments = useParsedSegments(
+    displayText,
+    analysisMode,
+    streaming && message.role === "assistant",
+  );
   // Handlers handed to every inline widget at render: the SAME shared contract
   // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
   // chip / FORM submit behaves identically on both. Self-contained widgets (the
@@ -1356,6 +1363,8 @@ export function MessageContent({
   const inlineWidgetCtx = useInlineWidgetContext(
     sendActionMessage,
     setChatInput,
+    message.id,
+    message.role === "assistant" ? message.source : undefined,
   );
   const handleOpenSettings = useCallback(() => {
     setTab?.("settings");
@@ -1537,6 +1546,7 @@ export function MessageContent({
     Boolean(message.reasoning?.trim() || message.toolEvents?.length);
   if (
     !hasAssistantExtras &&
+    !message.attachments?.length &&
     segments.length === 1 &&
     segments[0].kind === "text"
   ) {

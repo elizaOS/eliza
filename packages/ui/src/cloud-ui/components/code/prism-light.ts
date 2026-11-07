@@ -3,7 +3,7 @@
  * highlighter used by native imports and bundled application views.
  */
 
-/// <reference path="../../types/react-syntax-highlighter.d.ts" />
+/// <reference path="../../react-syntax-highlighter.d.ts" />
 
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash.js";
 import css from "react-syntax-highlighter/dist/esm/languages/prism/css.js";

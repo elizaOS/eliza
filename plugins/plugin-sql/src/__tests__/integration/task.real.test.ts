@@ -93,6 +93,7 @@ describe("Task Integration Tests", () => {
       expect(retrieved?.agentId).toBe(testAgentId);
       expect(retrieved?.entityId).toBe(testEntityId);
       expect(retrieved?.dueAt).toBe(1_900_000_005_000);
+      expect(typeof retrieved?.createdAt).toBe("number");
       expect(retrieved?.metadata).toMatchObject({
         status: "pending",
         scheduledAt: "2030-03-17T17:46:45.000Z",

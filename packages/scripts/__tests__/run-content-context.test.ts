@@ -7,35 +7,33 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  PROGRESSIVE_CONTENT_ANCHOR_TIME,
-  PROGRESSIVE_CONTENT_SCHEMA_VERSION,
-  progressiveContentManifestDigest,
-} from "../../testing/corpus/progressive-content.ts";
-import {
-  CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
-  CONTENT_CONTEXT_PERFORMANCE_POLICY,
-} from "../../testing/corpus/progressive-content-evidence.ts";
-import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../testing/corpus/progressive-content-realization.ts";
-import { createProgressiveContentLiveTrajectoryEvidenceFixture } from "../../testing/corpus/testing/progressive-content-live-trajectory-evidence-fixture.ts";
-import { createProgressiveContentPostgresEvidenceFixture } from "../../testing/corpus/testing/progressive-content-postgres-evidence-fixture.ts";
-import { createProgressiveContentScenarioNativeEvidenceFixture } from "../../testing/corpus/testing/progressive-content-scenario-native-evidence-fixture.ts";
-import { createProgressiveContentSoakEvidenceFixture } from "../../testing/corpus/testing/progressive-content-soak-evidence-fixture.ts";
-import { createBundle } from "../../testing/evidence/bundle.ts";
 import {
   captureSiloSnapshot,
+  createBundle,
   ingestAllSilos,
-} from "../../testing/evidence/ingest.ts";
+} from "@elizaos/testing/evidence";
 import {
   PROGRESSIVE_CONTENT_FAULT_CASES,
   PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
-} from "../../testing/src/progressive-content-faults.ts";
-import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
-} from "../../testing/src/progressive-content-mutants.ts";
+} from "@elizaos/testing/progressive-content";
+import {
+  CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
+  CONTENT_CONTEXT_PERFORMANCE_POLICY,
+  PROGRESSIVE_CONTENT_ANCHOR_TIME,
+  PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+  progressiveContentManifestDigest,
+} from "elizaos-benchmarks/content-context";
+import {
+  createProgressiveContentLiveTrajectoryEvidenceFixture,
+  createProgressiveContentPostgresEvidenceFixture,
+  createProgressiveContentScenarioNativeEvidenceFixture,
+  createProgressiveContentSoakEvidenceFixture,
+} from "elizaos-benchmarks/content-context/fixtures";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   parseContentContextArgs,
   publishContentContextEvidence,

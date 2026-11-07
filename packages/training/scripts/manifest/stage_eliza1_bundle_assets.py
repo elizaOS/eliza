@@ -23,6 +23,8 @@ Default sources:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file
+
 import argparse
 import hashlib
 import json
@@ -53,7 +55,7 @@ try:
         validate_manifest,
     )
 except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import (
+    from eliza_training.manifest.eliza1_manifest import (
         ELIZA_1_HF_REPO,
         ELIZA_1_TIERS,
         VOICE_BACKENDS_BY_TIER,
@@ -185,12 +187,6 @@ def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     raise last_error
 
 
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def bundle_relpath(bundle_dir: Path, path: Path) -> str:

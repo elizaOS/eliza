@@ -5,7 +5,7 @@
  * API keys, sessions, and other auth headers (not browser origin).
  *
  * For first-party flows that need cookies cross-origin, use
- * `getCorsHeaders` in `packages/lib/utils/cors.ts` (origin allowlist +
+ * `getCorsHeaders` in `packages/cloud/shared/src/lib/utils/cors.ts` (origin allowlist +
  * `Access-Control-Allow-Credentials: true`).
  */
 
@@ -74,6 +74,8 @@ export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
 
 /** Browser-visible response headers used by the latency harness and app. */
 export const CORS_EXPOSE_HEADER_NAMES = [
+  // Refusals whose body carries no wait (the Anthropic-style /messages body).
+  "Retry-After",
   "Server-Timing",
   "X-Request-ID",
   "X-Eliza-Trace-Id",
@@ -86,6 +88,8 @@ export const CORS_EXPOSE_HEADER_NAMES = [
   "X-Eliza-Stream-Parse-Ms",
   "X-Eliza-Stream-Bridge-Ms",
   "X-Eliza-TTS-Provider",
+  "X-Eliza-TTS-Speed",
+  "X-Eliza-TTS-Timing",
 ] as const;
 
 export const CORS_ALLOW_METHOD_NAMES = [

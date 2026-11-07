@@ -21,20 +21,12 @@ import type {
   DesktopActionType,
 } from "../types.js";
 import {
+  approvalOwnerIdFromMemory,
   buildScreenshotAttachment,
   resolveActionParams,
   toComputerUseActionResult,
 } from "./helpers.js";
 import { withApprovalRelay } from "./progress.js";
-
-function approvalOwnerIdFromMemory(message: Memory): string | undefined {
-  const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object") return undefined;
-  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
-  return typeof telegramUserId === "string" && telegramUserId.length > 0
-    ? telegramUserId
-    : undefined;
-}
 
 function getComputerUseService(
   runtime: IAgentRuntime,
@@ -313,7 +305,23 @@ export const useComputerAction: Action = {
       description:
         "Modifier keys for click_with_modifiers, e.g. ['cmd','shift'] or ['ctrl'].",
       required: false,
-      schema: { type: "array", items: { type: "string" } },
+      schema: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: [
+            "cmd",
+            "command",
+            "meta",
+            "super",
+            "ctrl",
+            "control",
+            "alt",
+            "option",
+            "shift",
+          ],
+        },
+      },
     },
     {
       name: "key",
@@ -324,15 +332,9 @@ export const useComputerAction: Action = {
     {
       name: "button",
       description:
-        "Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
+        "Mouse button for mouse_down/mouse_up (default left). click_with_modifiers always clicks the left button once.",
       required: false,
       schema: { type: "string", enum: ["left", "middle", "right"] },
-    },
-    {
-      name: "clicks",
-      description: "Number of clicks for click_with_modifiers.",
-      required: false,
-      schema: { type: "number", minimum: 1, maximum: 5 },
     },
     {
       name: "scrollDirection",
@@ -476,6 +478,22 @@ export const useComputerAction: Action = {
       };
     }
 
+    if (params.action === "resolve_approval") {
+      // parseApprovalDecision returned null: the decision is incomplete.
+      const text =
+        "resolve_approval requires approvalId (string) and approved (boolean).";
+      return {
+        success: false,
+        error: text,
+        text,
+        data: {
+          source: "computeruse",
+          computerUseAction: "COMPUTER_USE",
+          errorCode: "COMPUTER_USE_APPROVAL_ARGS_MISSING",
+        },
+      };
+    }
+
     const desktopParams = toDesktopActionParams(params);
     if (!desktopParams) {
       return {
@@ -492,7 +510,7 @@ export const useComputerAction: Action = {
     const result: ComputerActionResult = await withApprovalRelay(
       service,
       callback,
-      () => service.executeDesktopAction(desktopParams),
+      () => service.executeDesktopAction(desktopParams, options?.abortSignal),
       { ownerId: approvalOwnerIdFromMemory(message) },
     );
     const text = formatDesktopResultText(desktopParams, result);

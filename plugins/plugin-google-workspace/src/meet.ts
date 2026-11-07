@@ -84,9 +84,16 @@ export class GoogleMeetClient {
         config: params.accessType ? { accessType: params.accessType } : undefined,
       },
     });
+    const spaceName = response.data.name?.trim();
+    if (!spaceName) {
+      throw new ElizaError("Google Meet space creation returned no provider space name.", {
+        code: "GOOGLE_MEET_CREATE_RECEIPT_MISSING",
+        severity: "fatal",
+      });
+    }
 
     return {
-      ...mapSpace(response.data, params.title),
+      ...mapSpace({ ...response.data, name: spaceName }, params.title),
       title: params.title,
       startTime: new Date().toISOString(),
       participants: [],
@@ -147,9 +154,11 @@ export class GoogleMeetClient {
       });
       participants.push(...(response.data.participants ?? []).map(mapParticipant));
       pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "participants");
-    } while (pageToken && (!params.limit || participants.length < params.limit));
+    } while (pageToken && (params.limit === undefined || participants.length < params.limit));
 
-    return params.limit ? participants.slice(0, params.limit) : participants;
+    return params.limit === undefined
+      ? participants
+      : participants.slice(0, Math.max(0, params.limit));
   }
 
   async listMeetingParticipantSessions(
@@ -180,9 +189,9 @@ export class GoogleMeetClient {
         pagination,
         "participant sessions"
       );
-    } while (pageToken && (!params.limit || sessions.length < params.limit));
+    } while (pageToken && (params.limit === undefined || sessions.length < params.limit));
 
-    return params.limit ? sessions.slice(0, params.limit) : sessions;
+    return params.limit === undefined ? sessions : sessions.slice(0, Math.max(0, params.limit));
   }
 
   async listMeetingTranscripts(
@@ -467,7 +476,6 @@ function mapTranscriptEntry(entry: meet_v2.Schema$TranscriptEntry): GoogleMeetTr
     startTime: entry.startTime ?? undefined,
     endTime: entry.endTime ?? undefined,
     languageCode: entry.languageCode ?? undefined,
-    confidence: 1,
   };
 }
 

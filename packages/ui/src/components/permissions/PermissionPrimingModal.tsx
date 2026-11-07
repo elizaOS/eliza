@@ -3,18 +3,21 @@
  * seam for tests and stories.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,
+  Calendar,
   Camera,
+  Images,
   type LucideIcon,
   MapPin,
   Mic,
   ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -27,6 +30,7 @@ import {
 } from "../ui/dialog";
 import { PermissionRecoveryCallout } from "./PermissionRecoveryCallout";
 import { PRIMING_COPY } from "./permission-priming";
+import type { WalkthroughMemoryStore } from "./permission-walkthrough";
 import {
   type PermissionPrimingController,
   usePermissionPriming,
@@ -47,6 +51,8 @@ const ICONS: Record<string, LucideIcon> = {
   "map-pin": MapPin,
   bell: Bell,
   camera: Camera,
+  calendar: Calendar,
+  images: Images,
 };
 export interface PermissionPrimingModalProps {
   /** Ordered permissions to prime; resolved per-platform by the caller. */
@@ -56,6 +62,11 @@ export interface PermissionPrimingModalProps {
   onComplete: () => void;
   /** Test/story seam to inject a controller instead of the live hook. */
   controllerOverride?: PermissionPrimingController;
+  /**
+   * Walkthrough memory (see `primingWalkthroughMemory`): an OS prompt already shown is never
+   * fired again; its card routes to system settings. Omitted, every Enable tap may prompt.
+   */
+  memory?: WalkthroughMemoryStore;
 }
 /**
  * Container: routes to the live hook, or an injected controller for
@@ -79,8 +90,9 @@ function PermissionPrimingModalLive({
   ids,
   open,
   onComplete,
+  memory,
 }: PermissionPrimingModalProps): React.JSX.Element {
-  const controller = usePermissionPriming(ids);
+  const controller = usePermissionPriming(ids, { memory });
   return (
     <PermissionPrimingModalView
       controller={controller}
@@ -172,10 +184,12 @@ function PermissionPrimingModalView({
             key={active.id}
             id={active.id}
             status={active.status}
+            reason={active.reason}
             canRequest={active.canRequest}
             requesting={active.requesting}
             requestError={active.requestError}
             recheckError={active.recheckError}
+            promptShown={active.promptShown === true}
             currentStep={currentStep}
             totalSteps={totalSteps}
             onEnable={() => void request(active.id)}
@@ -200,10 +214,12 @@ function PermissionPrimingModalView({
 interface PrimingCardProps {
   id: PermissionId;
   status: PermissionPrimingController["items"][number]["status"];
+  reason?: string;
   canRequest: boolean;
   requesting: boolean;
   requestError: boolean;
   recheckError: boolean;
+  promptShown: boolean;
   currentStep: number;
   totalSteps: number;
   onEnable: () => void;
@@ -216,10 +232,12 @@ interface PrimingCardProps {
 function PrimingCard({
   id,
   status,
+  reason,
   canRequest,
   requesting,
   requestError,
   recheckError,
+  promptShown,
   currentStep,
   totalSteps,
   onEnable,
@@ -257,7 +275,12 @@ function PrimingCard({
         permission: fallbackName,
       });
   const denied = status === "denied";
-  const needsRecovery = denied || requestError || recheckError;
+  const limited = status === "limited";
+  const currentAccess = limited || status === "granted";
+  // A prompt this walkthrough already showed is never fired again: recover through settings.
+  const needsRecovery =
+    !currentAccess &&
+    (denied || requestError || recheckError || (promptShown && !canRequest));
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">
@@ -271,6 +294,16 @@ function PrimingCard({
           <p className="mt-1 text-sm leading-snug text-txt">{rationale}</p>
         </div>
       </div>
+
+      {reason ? (
+        <p
+          className="text-sm text-txt"
+          role="status"
+          data-testid={`priming-scope-${id}`}
+        >
+          {reason}
+        </p>
+      ) : null}
 
       {needsRecovery ? (
         <PermissionRecoveryCallout
@@ -345,7 +378,18 @@ function PrimingCard({
           })}
         </span>
         <div className="flex items-center gap-2">
-          {needsRecovery ? (
+          {currentAccess ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSkip}
+              data-testid={`priming-continue-${id}`}
+            >
+              {t("permissionpriming.continueCurrentAccess", {
+                defaultValue: "Continue with current access",
+              })}
+            </Button>
+          ) : needsRecovery ? (
             <Button
               type="button"
               size="sm"

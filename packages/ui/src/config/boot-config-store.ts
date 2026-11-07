@@ -11,10 +11,10 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
-import type { BrandingConfig } from "./branding";
+import type { BrandingConfig } from "./branding-base";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -135,14 +135,14 @@ export interface AppBootConfig {
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
   /**
-   * Legacy host override for the retired shared-first onboarding experiment.
-   * Signed-in app and Cloud entry points ignore this preference and require a
-   * Dedicated runtime. Shared remains valid for public and connector ingress.
+   * Legacy tier preference for explicit compatibility-agent provisioning.
+   * Account-native entry ignores this preference and resolves the existing
+   * Shared or Dedicated destination from Cloud.
    */
   preferSharedCloudTier?: boolean;
   /**
-   * Legacy recovery switch for a Shared profile saved by an older app build.
-   * New signed-in sessions complete Dedicated activation before persistence.
+   * Legacy recovery switch for an interrupted compatibility-agent handoff.
+   * Account-native entry does not activate Dedicated compute.
    */
   autoUpgradeSharedToDedicated?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -154,6 +154,14 @@ export interface AppBootConfig {
   envAliases?: readonly (readonly [string, string])[];
   /** Client middleware flags — replaces the post-construction patches. */
   clientMiddleware?: ClientMiddleware;
+  /**
+   * Whether the workflow surface may be served by a linked Cloud agent when the
+   * bundled mobile runtime cannot host plugin-workflow (default true). A host
+   * whose agent orchestration must stay on the device sets false: its workflow,
+   * schedule, approval and run-history requests then stay on the active local
+   * agent and never fall back to a Cloud agent.
+   */
+  workflowSurfaceCloudFallback?: boolean;
 }
 // ---------------------------------------------------------------------------
 // Defaults (brand-agnostic — no product-specific references)

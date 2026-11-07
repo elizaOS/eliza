@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   closeOcrEngines,
   ocrImage,
+  ocrImageRegion,
   resetTesseractProbe,
 } from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
@@ -25,9 +26,13 @@ import {
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// Archived launcher capture, kept as an explicit fixture. It used to be read out
+// of the visual baseline store through the `mobile-portrait/builtin-rolodex`
+// state; the store no longer holds that state, because the audit registry stopped
+// rendering that view, and the pixels have not changed.
 const LAUNCHER_CAPTURE = resolve(
   HERE,
-  "mvp-visual-verify/baseline/mobile-portrait/builtin-rolodex.png",
+  "../test/ui-smoke/fixtures/launcher-capture-mobile-portrait.png",
 );
 const dir = mkdtempSync(join(tmpdir(), "ocr-real-engine-"));
 const previousEngine = process.env.ELIZA_MVP_OCR_ENGINE;
@@ -72,6 +77,35 @@ afterAll(async () => {
 });
 
 describe("real OCR blank-vs-unreadable classification", () => {
+  it.each(["dark", "light"])(
+    "reads both lines of a small %s control from its pixels",
+    async (theme) => {
+      const background = theme === "dark" ? "#482310" : "#f5e8db";
+      const foreground = theme === "dark" ? "#ffffff" : "#111111";
+      const pixels = await sharp(
+        Buffer.from(`
+        <svg width="180" height="60" xmlns="http://www.w3.org/2000/svg">
+          <rect width="180" height="60" fill="${background}" />
+          <text x="24" y="25" font-family="Arial, sans-serif" font-size="14" fill="${foreground}">Desert Dusk</text>
+          <text x="24" y="43" font-family="Arial, sans-serif" font-size="12" fill="${foreground}">warm landscape</text>
+        </svg>
+      `),
+      )
+        .png()
+        .toBuffer();
+      const result = await ocrImageRegion(pixels, {
+        left: 10,
+        top: 5,
+        width: 160,
+        height: 50,
+      });
+      expect(result.text).toMatch(/Desert Dusk/i);
+      expect(result.text).toMatch(/warm landscape/i);
+      expect(result.meanConfidence).toBeGreaterThanOrEqual(0.55);
+    },
+    60_000,
+  );
+
   it.each(["dark", "light"])(
     "preserves muted labels on a %s interface without inventing missing content",
     async (theme) => {

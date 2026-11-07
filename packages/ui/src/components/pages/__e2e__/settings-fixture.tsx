@@ -5,9 +5,13 @@
  * exercised by the walkthrough.
  */
 
+// Seed the real selector store before mounting; production selectors bypass
+// the state barrel, so its lazy fixture alias cannot own initialization.
+import "./settings-fixture-state-stub.cts";
+
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import type { AccountsListProvider } from "../../../api/client-agent";
+import type { AccountsListProvider } from "../../../api/client-agent-accounts";
 import { TranslationProvider } from "../../../state/TranslationProvider";
 import { getAccountProviderOption } from "../../accounts/account-provider-options";
 import { ProviderAccountRow } from "../../accounts/ProviderAccountRow";

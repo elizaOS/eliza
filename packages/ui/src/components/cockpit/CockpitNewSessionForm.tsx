@@ -6,7 +6,7 @@ import { useId, useState } from "react";
 
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type { CodingAgentCreateTaskInput } from "../../api/client-types-cloud";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";

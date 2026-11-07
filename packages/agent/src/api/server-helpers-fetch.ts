@@ -28,7 +28,12 @@ export function responseContentLength(
 ): number | null {
   const raw = headers.get("content-length");
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
+  // Number.parseInt stops at the first non-digit, so "123junk" parsed to a
+  // finite 123 and was accepted as a declared length instead of being
+  // treated as unknown. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return parsed;
 }
@@ -51,44 +56,33 @@ export async function fetchWithTimeoutGuard(
   init: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  const controller = new AbortController();
   const upstreamSignal = init.signal;
-  let timedOut = false;
-
-  const onAbort = () => {
-    controller.abort();
-  };
-
-  if (upstreamSignal) {
-    if (upstreamSignal.aborted) {
-      controller.abort();
-    } else {
-      upstreamSignal.addEventListener("abort", onAbort, { once: true });
-    }
-  }
-
-  const timeoutHandle = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
+  // Use the platform timeout signal so the deadline stays active while the
+  // caller consumes the response body. A manual timer cleared when fetch
+  // resolves would end the deadline at the response headers, and a stalled
+  // body could then keep the caller waiting without bound — the same defect
+  // fixed for the Google MCP fetch in #35403.
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = upstreamSignal
+    ? AbortSignal.any([upstreamSignal, timeoutSignal])
+    : timeoutSignal;
 
   try {
     return await fetch(input, {
       ...init,
-      signal: controller.signal,
+      signal,
     });
   } catch (err) {
-    if (timedOut && isAbortError(err)) {
+    if (
+      timeoutSignal.aborted &&
+      !upstreamSignal?.aborted &&
+      isAbortError(err)
+    ) {
       throw createTimeoutError(
         `Upstream request timed out after ${timeoutMs}ms`,
       );
     }
     throw err;
-  } finally {
-    clearTimeout(timeoutHandle);
-    if (upstreamSignal) {
-      upstreamSignal.removeEventListener("abort", onAbort);
-    }
   }
 }
 

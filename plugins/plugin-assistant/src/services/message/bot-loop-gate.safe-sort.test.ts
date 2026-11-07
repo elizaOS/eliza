@@ -4,7 +4,7 @@
 
 import type { Memory, UUID } from "@elizaos/core";
 import { AgentRuntime, ChannelType, createCharacter } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAssistantPlugin } from "../../index.ts";
 import { runBotLoopGate } from "./bot-loop-gate.ts";

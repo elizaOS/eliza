@@ -19,12 +19,12 @@
  * consults the registry.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_TELEMETRY_FAMILIES,
   type LifeOpsBusFamily,
   type LifeOpsTelemetryFamily,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 
 export interface BusFamilyContribution {
   /** Open-string family identifier (built-in or namespaced). */

@@ -9,14 +9,14 @@ import {
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
   MAX_CHAT_UPLOAD_ATTACHMENTS,
-} from "@elizaos/core/chat-upload-limits";
+} from "@elizaos/core/protocol";
 import type {
   ImageAttachment,
   TransientClientMediaInput,
 } from "../api/client-types-chat";
 /**
  * Per-message attachment count cap. Sourced from the SAME shared constant the
- * server's validateChatImages enforces (@elizaos/core/chat-upload-limits) so
+ * server's validateChatImages enforces (@elizaos/core/protocol) so
  * client and server cannot drift. Applies to all attachment kinds, not just
  * images.
  */

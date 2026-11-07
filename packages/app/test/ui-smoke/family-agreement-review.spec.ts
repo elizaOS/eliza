@@ -1,4 +1,3 @@
-/** Exercises owner review preparation, provider failure, decisions and reload through the full app and production HTTP adapter; synthetic responses isolate browser behavior from live-model and database acceptance. */
 import { expect } from "@playwright/test";
 import type {
   ParentingAgreementView,

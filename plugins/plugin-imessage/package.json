@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-imessage",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,15 +44,16 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^22.19.17",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "eliza": {
     "platforms": [

@@ -148,6 +148,29 @@ describe("calendar view server capabilities (real PGlite)", {
     expect(readData.events.map((event) => event.id)).toEqual([data.event.id]);
   });
 
+  it("create-event treats a planner time zone of Z as UTC", async () => {
+    const result = await interact(
+      "create-event",
+      {
+        title: "Zulu sync",
+        startAt: "2026-08-27T15:00:00Z",
+        timeZone: "Z",
+      },
+      service,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { event: Record<string, unknown> };
+    expect(data.event).toMatchObject({
+      title: "Zulu sync",
+      timezone: "UTC",
+    });
+    expect(Date.parse(String(data.event.startAt))).toBe(
+      Date.parse("2026-08-27T15:00:00Z"),
+    );
+    expect(await eventRowCount()).toBe(1);
+  });
+
   it("get-events reports an empty day honestly", async () => {
     const result = await interact(
       "get-events",
@@ -244,6 +267,46 @@ describe("calendar view server capabilities (real PGlite)", {
     expect(result.text).toBe(result.error?.message);
     expect(await eventRowCount()).toBe(0);
   });
+
+  it.each([
+    {
+      label: "repeated",
+      startAt: "2026-11-01T01:30",
+      code: "CALENDAR_LOCAL_TIME_AMBIGUOUS",
+      possibleInstants: [
+        "2026-11-01T05:30:00.000Z",
+        "2026-11-01T06:30:00.000Z",
+      ],
+    },
+    {
+      label: "skipped",
+      startAt: "2026-03-08T02:30",
+      code: "CALENDAR_LOCAL_TIME_NONEXISTENT",
+      possibleInstants: [],
+    },
+  ])(
+    "asks for clarification on a $label local time without writing",
+    async ({ startAt, code, possibleInstants }) => {
+      const result = await interact(
+        "create-event",
+        { title: "Call", startAt, timeZone: "America/New_York" },
+        service,
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: { code },
+        data: {
+          requiresInput: true,
+          timeClarification: {
+            timeZone: "America/New_York",
+            possibleInstants,
+          },
+        },
+      });
+      expect(result.text).toBe(result.error?.message);
+      expect(await eventRowCount()).toBe(0);
+    },
+  );
 
   it("escalates unknown capabilities to the route boundary", async () => {
     await expect(

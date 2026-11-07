@@ -27,7 +27,12 @@ import {
   writeClipboard as driverWriteClipboard,
 } from "../platform/clipboard.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import { resolveActionParams, toComputerUseActionResult } from "./helpers.js";
+import {
+  approvalOwnerIdFromMemory,
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+import { withApprovalRelay } from "./progress.js";
 
 const CLIPBOARD_ACTIONS = ["read", "write"] as const;
 export type ClipboardActionType = (typeof CLIPBOARD_ACTIONS)[number];
@@ -84,8 +89,16 @@ function resolveClipboardAction(
 
 async function runClipboardAction(
   params: ClipboardActionParams,
+  service: ComputerUseService,
+  signal?: AbortSignal,
 ): Promise<ClipboardActionResult> {
   if (params.action === "read") {
+    const approvalError = await service.awaitApproval(
+      "clipboard_read",
+      {},
+      signal,
+    );
+    if (approvalError) return { success: false, error: approvalError };
     const text = toWellFormedUnicode(await driverReadClipboard());
     const preview =
       text.length > CLIPBOARD_PREVIEW_CODE_UNITS
@@ -107,6 +120,12 @@ async function runClipboardAction(
         error: "text is required for clipboard write",
       };
     }
+    const approvalError = await service.awaitApproval(
+      "clipboard_write",
+      { text: params.text },
+      signal,
+    );
+    if (approvalError) return { success: false, error: approvalError };
     await driverWriteClipboard(params.text);
     return {
       success: true,
@@ -180,10 +199,22 @@ export const clipboardAction: Action = {
 
     let result: ClipboardActionResult;
     try {
-      result = await runClipboardAction({
-        ...params,
-        action,
-      } satisfies ClipboardActionParams);
+      // The relay sends the pending approval to the chat, so a connector user
+      // gets Approve/Deny controls instead of a turn that never completes.
+      result = await withApprovalRelay(
+        service,
+        callback,
+        () =>
+          runClipboardAction(
+            {
+              ...params,
+              action,
+            } satisfies ClipboardActionParams,
+            service,
+            options?.abortSignal,
+          ),
+        { ownerId: approvalOwnerIdFromMemory(message) },
+      );
     } catch (error) {
       // error-policy:J1 action boundary — the platform failure becomes a
       // structured {success:false,error} ActionResult the model sees.

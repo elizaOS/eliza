@@ -4,10 +4,14 @@
  * bounded per-isolate fallback so a platform stall cannot delay inference.
  */
 
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  RuntimeRateLimitBinding,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, RuntimeRateLimitBinding } from "@/types/cloud-worker-env";
+import { recordInferenceEntryPhase } from "./inference-entry-timing";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 600;
@@ -81,6 +85,16 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
       return;
     }
 
+    const ingressStartedAt = performance.now();
+    recordInferenceEntryPhase({
+      environment: c.env?.ENVIRONMENT,
+      traceId: c.get("traceId"),
+      path: c.req.path,
+      phase: "ingress_enter",
+      durationMs: 0,
+      outcome: "entered",
+    });
+    let ingress: "decision" | "failure" | "timeout" | "absent" = "absent";
     const key = `inference:${getRequestIp(c) ?? "unknown"}`;
     const binding = c.env?.GLOBAL_RATE_LIMITER;
     let policy = "cloudflare-native";
@@ -89,6 +103,7 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
 
     if (binding) {
       const outcome = await nativeDecision(binding, key);
+      ingress = outcome.kind;
       if (outcome.kind === "decision") {
         allowed = outcome.success;
       } else {
@@ -121,6 +136,15 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
       );
     }
 
+    recordInferenceEntryPhase({
+      environment: c.env?.ENVIRONMENT,
+      traceId: c.get("traceId"),
+      path: c.req.path,
+      phase: "ingress_decision",
+      durationMs: performance.now() - ingressStartedAt,
+      outcome: allowed ? "allowed" : "denied",
+      ingress,
+    });
     if (allowed) {
       await next();
       return;
@@ -133,6 +157,7 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
         code: "rate_limit_exceeded" as const,
         message: `Inference ingress limit exceeded. Maximum ${MAX_REQUESTS} requests per minute.`,
         retryAfter,
+        retryAfterSeconds: retryAfter,
       },
       429,
       {

@@ -10,14 +10,15 @@
  */
 
 import { System } from "@elizaos/capacitor-system";
-import type {
-  ConnectResult,
-  WiFiNetwork,
-  WifiStateResult,
+import {
+  type ConnectResult,
+  WiFi,
+  type WiFiNetwork,
+  type WifiStateResult,
 } from "@elizaos/plugin-native-wifi/bridge";
-import { WiFi } from "@elizaos/plugin-native-wifi/bridge";
-import { Badge, Button, Input } from "@elizaos/ui";
-import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
+
+import { Badge, Button, Input, type OverlayAppContext } from "@elizaos/ui";
+
 import {
   CheckCircle2,
   ChevronLeft,
@@ -268,8 +269,15 @@ export function WifiAppView(props: OverlayAppContext) {
     setBusy(true);
     setError(null);
     try {
-      await WiFi.disconnectFromNetwork();
-      await refreshState();
+      // disconnectFromNetwork resolves a ConnectResult like connect does;
+      // a resolved failure must surface its message, as handleConnect
+      // does, instead of refreshing as if the disconnect had worked.
+      const result: ConnectResult = await WiFi.disconnectFromNetwork();
+      if (!result.success) {
+        setError(result.message ?? "Failed to disconnect");
+      } else {
+        await refreshState();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

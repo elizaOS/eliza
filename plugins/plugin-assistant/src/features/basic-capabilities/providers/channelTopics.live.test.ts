@@ -9,8 +9,8 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
+import { describeLive } from "@elizaos/testing/live";
 import { describe, expect, it } from "vitest";
-import { describeLive } from "../../../../../../packages/app/test/helpers/live-agent-test.ts";
 
 import { channelTopicsProvider } from "./channelTopics.ts";
 

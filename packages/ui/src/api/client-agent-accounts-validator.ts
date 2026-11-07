@@ -4,21 +4,22 @@
  * The accounts endpoint may carry additional feature-detected metadata, but its
  * provider and linked-account fields are required and must fail closed.
  */
+
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core/protocol";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/core/contracts/service-routing-types";
-import { ElizaError } from "@elizaos/core/errors";
-import type { AccountsListResponse } from "./client-agent";
+} from "@elizaos/host/protocol";
+import type { AccountsListResponse } from "./client-agent-accounts";
 /** Stable classification for malformed account inventory responses. */
 export const ACCOUNTS_RESPONSE_INVALID_CODE = "ACCOUNTS_RESPONSE_INVALID";
 function isRecord(value: unknown): value is Record<string, unknown> {

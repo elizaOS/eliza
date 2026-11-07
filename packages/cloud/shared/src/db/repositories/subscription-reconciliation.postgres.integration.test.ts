@@ -111,6 +111,8 @@ async function connect() {
         {
           ...identity,
           source,
+          observedAt: (await setup.query("SELECT clock_timestamp() AS observed_at")).rows[0]
+            .observed_at,
           organizationCustomerId: f.source.stripe_customer_id,
           expectedProjectionRevision: 1,
         },

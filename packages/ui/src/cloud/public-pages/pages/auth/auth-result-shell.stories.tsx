@@ -2,7 +2,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
 import { AuthResultShell } from "./auth-result-shell";
 
 const meta = {

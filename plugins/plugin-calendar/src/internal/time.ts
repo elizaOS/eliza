@@ -5,7 +5,7 @@
  * supports calendar arithmetic; mutation callers can
  * reject repeated and skipped wall times until the user resolves them.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 
 export class CalendarLocalTimeError extends ElizaError {
   readonly status = 409;
@@ -35,6 +35,14 @@ export class CalendarLocalTimeError extends ElizaError {
       },
     );
   }
+}
+
+/** Input request shared by every surface that refuses a skipped or repeated local time. */
+export function calendarLocalTimeClarification(error: CalendarLocalTimeError): {
+  requiresInput: true;
+  timeClarification: CalendarLocalTimeError["context"];
+} {
+  return { requiresInput: true, timeClarification: error.context };
 }
 
 export interface ZonedDateParts {
@@ -241,4 +249,71 @@ export function getWeekdayForLocalDate(
 
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
+}
+
+export function isRealCalendarDay(
+  year: number,
+  month: number,
+  day: number,
+): boolean {
+  const candidate = new Date(0);
+  candidate.setUTCFullYear(year, month - 1, day);
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= 31 &&
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() + 1 === month &&
+    candidate.getUTCDate() === day
+  );
+}
+
+/** Finite reviewed wall-clock span, preserving civil days across DST changes. */
+export function calendarRangeFitsLocalDays(
+  start: string,
+  end: string,
+  timeZone: string,
+  days = 7,
+): boolean {
+  if (!Number.isInteger(days) || days < 1 || days > 7) return false;
+  const first = new Date(start),
+    last = new Date(end),
+    elapsed = last.getTime() - first.getTime();
+  if (
+    !Number.isFinite(elapsed) ||
+    elapsed <= 0 ||
+    elapsed > (days + 1) * 86400000
+  )
+    return false;
+  try {
+    const a = getZonedDateParts(first, timeZone),
+      b = getZonedDateParts(last, timeZone),
+      limit = addDaysToLocalDate(a, days);
+    // A civil increment cannot jump years; fail closed on unsupported historical arithmetic.
+    if (Math.abs(limit.year - a.year) > 1) return false;
+    const bound = [
+      limit.year,
+      limit.month,
+      limit.day,
+      a.hour,
+      a.minute,
+      a.second,
+      first.getUTCMilliseconds(),
+    ];
+    const actual = [
+      b.year,
+      b.month,
+      b.day,
+      b.hour,
+      b.minute,
+      b.second,
+      last.getUTCMilliseconds(),
+    ];
+    for (let index = 0; index < bound.length; index++)
+      if (actual[index] !== bound[index]) return actual[index] < bound[index];
+    return true;
+  } catch {
+    return false;
+  }
 }

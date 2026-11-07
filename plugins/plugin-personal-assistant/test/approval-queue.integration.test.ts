@@ -19,6 +19,8 @@ import {
   AgentEventService,
   getConnectorAccountManager,
   parseInteractionBlocks,
+  promoteSubactionsToActions,
+  validateToolArgs,
 } from "@elizaos/core";
 import { ApprovalDispatchControlStore } from "@elizaos/plugin-assistant";
 import {
@@ -32,6 +34,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import {
   createApprovalQueue,
@@ -47,6 +50,10 @@ import {
   type SchedulingApprovalTransportChannel,
 } from "../src/lifeops/approval-queue.types.js";
 import { getChannelRegistry } from "../src/lifeops/channels/index.js";
+import {
+  readLifeOpsMeetingPreferences,
+  updateLifeOpsMeetingPreferences,
+} from "../src/lifeops/owner-profile.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import {
   attachSchedulingApprovalCorrelation,
@@ -934,7 +941,34 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       idempotencyKey: approval.idempotencyKey,
     });
 
-    const proposed = await runSchedulingNegotiationHandler(
+    // Propose and respond go through the planner-facing promoted action: the
+    // arguments must pass the tool-argument validator and reach the handler.
+    const schedulingAction = promoteSubactionsToActions(
+      personalAssistantAction,
+    ).find((action) => action.name === "PERSONAL_ASSISTANT_SCHEDULING");
+    if (!schedulingAction) {
+      throw new Error("PERSONAL_ASSISTANT_SCHEDULING is not promoted");
+    }
+    // A zone name that identifies no zone is refused before anything is stored.
+    const unknownZone = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "start",
+          subject: "School conference",
+          timezone: "Not/AZone",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(unknownZone).toMatchObject({
+      success: false,
+      data: { error: "UNKNOWN_TIMEZONE" },
+    });
+    // A proposal time that names no instant is refused before the transaction.
+    const unreadable = await runSchedulingNegotiationHandler(
       runtime,
       message,
       undefined,
@@ -942,13 +976,37 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         parameters: {
           subaction: "propose",
           negotiationId: data.negotiation.id,
-          startAt: "2026-08-10T23:00:00.000Z",
-          endAt: "2026-08-10T23:30:00.000Z",
-          proposedBy: "owner",
+          startAt: "next Monday at 4",
+          endAt: "2026-08-10T16:30:00",
         },
       } as never,
       async () => [],
     );
+    expect(unreadable).toMatchObject({
+      success: false,
+      data: { error: "INVALID_PROPOSAL_TIME", field: "startAt" },
+    });
+    expect(await service.listProposals(data.negotiation.id)).toEqual([]);
+    // Offset-less clocks are local times in the negotiation's zone
+    // (America/Los_Angeles, UTC-7 on this date), not in the server's.
+    const proposeArgs = validateToolArgs(schedulingAction, {
+      schedulingOp: "propose",
+      negotiationId: data.negotiation.id,
+      startAt: "2026-08-10T16:00:00",
+      endAt: "2026-08-10T16:30:00",
+      proposedBy: "owner",
+    });
+    expect(proposeArgs.errors).toEqual([]);
+    const proposed = await schedulingAction.handler(
+      runtime,
+      message,
+      undefined,
+      { parameters: proposeArgs.args } as never,
+      async () => [],
+    );
+    if (!proposed) {
+      throw new Error("propose returned no result");
+    }
     expect(proposed).toMatchObject({
       success: true,
       data: {
@@ -959,9 +1017,11 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       },
     });
     const proposedData = proposed.data as {
-      proposal: { id: string };
+      proposal: { id: string; startAt: string; endAt: string };
       approvalRequestId: string;
     };
+    expect(proposedData.proposal.startAt).toBe("2026-08-10T23:00:00.000Z");
+    expect(proposedData.proposal.endAt).toBe("2026-08-10T23:30:00.000Z");
     const proposalApproval = await queue.byId(
       proposedData.approvalRequestId,
       subjectUserId,
@@ -980,17 +1040,17 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       verifySchedulingApprovalContent(proposalApproval.payload)?.matches,
     ).toBe(true);
 
-    const responded = await runSchedulingNegotiationHandler(
+    const respondArgs = validateToolArgs(schedulingAction, {
+      schedulingOp: "respond",
+      proposalId: proposedData.proposal.id,
+      response: "accepted",
+    });
+    expect(respondArgs.errors).toEqual([]);
+    const responded = await schedulingAction.handler(
       runtime,
       message,
       undefined,
-      {
-        parameters: {
-          subaction: "respond",
-          proposalId: proposedData.proposal.id,
-          response: "accepted",
-        },
-      } as never,
+      { parameters: respondArgs.args } as never,
       async () => [],
     );
     expect(responded).toMatchObject({
@@ -1085,6 +1145,104 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       verifySchedulingApprovalContent(cancellationApproval.payload)?.matches,
     ).toBe(true);
     expect(sendEmail).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it("reads proposal clocks in the owner's meeting zone when start names no timezone", async () => {
+    const previous = await readLifeOpsMeetingPreferences(runtime);
+    await updateLifeOpsMeetingPreferences(runtime, {
+      timeZone: "America/New_York",
+    });
+    try {
+      const message = {
+        id: runtime.agentId,
+        entityId: String(runtime.agentId),
+        roomId: runtime.agentId,
+        content: { text: "Start scheduling a dentist visit" },
+      } as never;
+      const started = await runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "start",
+            subject: "Dentist visit",
+            durationMinutes: 30,
+          },
+        } as never,
+        async () => [],
+      );
+      expect(started.success).toBe(true);
+      const negotiation = (
+        started.data as { negotiation: { id: string; timezone: string } }
+      ).negotiation;
+      expect(negotiation.timezone).toBe("America/New_York");
+      const proposed = await runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "propose",
+            negotiationId: negotiation.id,
+            startAt: "2026-08-10T15:00:00",
+            endAt: "2026-08-10T15:30:00",
+            proposedBy: "counterparty",
+          },
+        } as never,
+        async () => [],
+      );
+      expect(proposed.success).toBe(true);
+      // 3pm in America/New_York (UTC-4 on this date) is 19:00Z.
+      expect(
+        (proposed.data as { proposal: { startAt: string } }).proposal.startAt,
+      ).toBe("2026-08-10T19:00:00.000Z");
+    } finally {
+      await updateLifeOpsMeetingPreferences(runtime, {
+        timeZone: previous.timeZone,
+      });
+    }
+  }, 60_000);
+
+  it("refuses a start without a timezone when the saved meeting zone is unknown", async () => {
+    const previous = await readLifeOpsMeetingPreferences(runtime);
+    await updateLifeOpsMeetingPreferences(runtime, { timeZone: "Not/AZone" });
+    try {
+      const started = await runSchedulingNegotiationHandler(
+        runtime,
+        {
+          id: runtime.agentId,
+          entityId: String(runtime.agentId),
+          roomId: runtime.agentId,
+          content: { text: "Start scheduling a tax review" },
+        } as never,
+        undefined,
+        {
+          parameters: {
+            subaction: "start",
+            subject: "Tax review",
+            durationMinutes: 30,
+          },
+        } as never,
+        async () => [],
+      );
+      expect(started.success).toBe(false);
+      expect(started.data).toMatchObject({
+        error: "UNKNOWN_TIMEZONE",
+        timezone: "Not/AZone",
+      });
+      expect(
+        (
+          await new LifeOpsService(runtime).listActiveNegotiations({
+            limit: 100,
+          })
+        ).some((negotiation) => negotiation.subject === "Tax review"),
+      ).toBe(false);
+    } finally {
+      await updateLifeOpsMeetingPreferences(runtime, {
+        timeZone: previous.timeZone,
+      });
+    }
   }, 60_000);
 
   it("keeps scheduling delivery unclaimed during a handoff pause and sends once after resume", async () => {
@@ -1882,7 +2040,16 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     let failedCleanup: (() => Promise<void>) | null = null;
     try {
       const result = await createRealTestRuntime({
-        plugins: [personalAssistantPlugin],
+        // This negative boundary needs the real approval tables but deliberately
+        // no scheduler. Starting the whole plugin would fail first on unrelated
+        // household service prerequisites, before enqueue can test rollback.
+        plugins: [
+          {
+            name: "approval-rollback-schema",
+            description: "Real approval storage without a scheduling service.",
+            schema: personalAssistantPlugin.schema,
+          },
+        ],
       });
       failedCleanup = result.cleanup;
       const failedQueue = createApprovalQueue(result.runtime, {
@@ -1923,6 +2090,43 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       rmSync(failedStateDir, { recursive: true, force: true });
     }
   }, 180_000);
+
+  it("refuses a sign_document deadline the scheduler cannot parse before queueing the approval", async () => {
+    const subjectUserId = String(runtime.agentId);
+    const signDocuments = () =>
+      queue.list({
+        subjectUserId,
+        state: null,
+        action: "sign_document",
+        limit: 100,
+      });
+    const before = (await signDocuments()).length;
+    const args = validateToolArgs(personalAssistantAction, {
+      action: "sign_document",
+      documentName: "NDA",
+      deadline: "next Friday",
+    });
+    expect(args.errors).toEqual([]);
+
+    const result = await personalAssistantAction.handler(
+      runtime,
+      {
+        id: runtime.agentId,
+        entityId: subjectUserId,
+        roomId: runtime.agentId,
+        content: { text: "Send the NDA for signature" },
+      } as never,
+      undefined,
+      { parameters: args.args } as never,
+      async () => [],
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { action: "sign_document", error: "INVALID_DEADLINE" },
+    });
+    expect(await signDocuments()).toHaveLength(before);
+  }, 60_000);
 
   it("enqueue → reject records resolver", async () => {
     const enqueued = await queue.enqueue(

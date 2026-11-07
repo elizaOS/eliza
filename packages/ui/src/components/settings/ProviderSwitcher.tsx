@@ -4,16 +4,16 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import { VOICE_PROVIDERS } from "@elizaos/core/voice";
-import { Mic } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelectorShallow } from "../../state";
+  VOICE_PROVIDERS,
+} from "@elizaos/host/protocol";
+import { Mic } from "lucide-react";
+import { useCallback, useMemo } from "react";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import {
   isRealtimeVoiceForceEnabled,

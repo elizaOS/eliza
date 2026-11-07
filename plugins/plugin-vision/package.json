@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-vision",
   "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -64,17 +64,19 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "jimp": "^1.6.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@elizaos/plugin-computeruse": "workspace:*"

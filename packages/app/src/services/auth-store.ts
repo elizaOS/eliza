@@ -1,3 +1,14 @@
+import type {
+  AppendAuditEventInput,
+  AuthAuditEventRow,
+  AuthIdentityRow,
+  AuthOwnerBindingRow,
+  AuthOwnerLoginTokenRow,
+  AuthRepository,
+  AuthSessionRow,
+  CreateIdentityInput,
+  CreateSessionInput,
+} from "./auth-repository";
 /**
  * pglite-backed repositories for the auth subsystem.
  *
@@ -88,96 +99,6 @@ async function getAuthSqlTables(): Promise<AuthSqlTables> {
   return authSqlTablesPromise;
 }
 
-export interface AuthIdentityRow {
-  id: string;
-  kind: "owner" | "machine";
-  displayName: string;
-  createdAt: number;
-  passwordHash: string | null;
-  cloudUserId: string | null;
-}
-
-export interface AuthSessionRow {
-  id: string;
-  identityId: string;
-  kind: "browser" | "machine";
-  createdAt: number;
-  lastSeenAt: number;
-  expiresAt: number;
-  rememberDevice: boolean;
-  csrfSecret: string;
-  ip: string | null;
-  userAgent: string | null;
-  scopes: string[];
-  revokedAt: number | null;
-}
-
-export interface AuthOwnerBindingRow {
-  id: string;
-  identityId: string;
-  connector: string;
-  externalId: string;
-  displayHandle: string;
-  instanceId: string;
-  verifiedAt: number;
-  pendingCodeHash: string | null;
-  pendingExpiresAt: number | null;
-}
-
-export interface AuthOwnerLoginTokenRow {
-  tokenHash: string;
-  identityId: string;
-  bindingId: string;
-  issuedAt: number;
-  expiresAt: number;
-  consumedAt: number | null;
-}
-
-export interface AuthAuditEventRow {
-  id: string;
-  ts: number;
-  actorIdentityId: string | null;
-  ip: string | null;
-  userAgent: string | null;
-  action: string;
-  outcome: "success" | "failure";
-  metadata: Record<string, string | number | boolean>;
-}
-
-export interface CreateIdentityInput {
-  id: string;
-  kind: "owner" | "machine";
-  displayName: string;
-  createdAt: number;
-  passwordHash?: string | null;
-  cloudUserId?: string | null;
-}
-
-export interface CreateSessionInput {
-  id: string;
-  identityId: string;
-  kind: "browser" | "machine";
-  createdAt: number;
-  lastSeenAt: number;
-  expiresAt: number;
-  rememberDevice: boolean;
-  csrfSecret: string;
-  ip: string | null;
-  userAgent: string | null;
-  scopes: string[];
-}
-
-export interface AppendAuditEventInput {
-  id: string;
-  ts: number;
-  actorIdentityId: string | null;
-  ip: string | null;
-  userAgent: string | null;
-  action: string;
-  outcome: "success" | "failure";
-  metadata: Record<string, string | number | boolean>;
-}
-
 interface DrizzleRunResult {
   /** node-postgres. */
   rowCount?: number | null;
@@ -237,7 +158,7 @@ function rowToSession(row: AuthSqlRow): AuthSessionRow {
   };
 }
 
-export class AuthStore {
+export class AuthStore implements AuthRepository {
   constructor(private readonly db: DrizzleDatabase) {}
 
   async createIdentity(input: CreateIdentityInput): Promise<AuthIdentityRow> {
@@ -738,9 +659,6 @@ function rowToOwnerLoginToken(row: AuthSqlRow): AuthOwnerLoginTokenRow {
   };
 }
 
-/** Public authentication operations independent of the storage implementation. */
-export type AuthRepository = Pick<AuthStore, keyof AuthStore>;
-
 /** Runtime capabilities used by the shared auth selector; SQL hosts need no record store. */
 export interface AuthRuntimeSource {
   agentId?: UUID;
@@ -759,6 +677,18 @@ function isAuthDrizzleDatabase(value: unknown): value is DrizzleDatabase {
     "delete" in value &&
     typeof value.delete === "function"
   );
+}
+/** Select only authentication storage explicitly retained by this host. */
+export function authStoreForHost(
+  state:
+    | {
+        current: AuthRuntimeSource | null;
+        stoppedAuthRuntime?: AuthRuntimeSource | null;
+      }
+    | null
+    | undefined,
+): AuthRepository | null {
+  return authStoreForRuntime(state?.current ?? state?.stoppedAuthRuntime);
 }
 /** Select the existing auth contract from the agent's own persistent database. */
 export function authStoreForRuntime(

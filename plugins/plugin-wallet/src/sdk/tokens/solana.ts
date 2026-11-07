@@ -11,6 +11,7 @@
  *   - Raydium: https://docs.raydium.io/raydium/token-pairs-and-liquidity
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { toHuman } from "./decimals.js";
@@ -161,6 +162,45 @@ export function formatSplBalance(rawBalance: bigint, decimals: number): string {
 }
 
 /**
+ * Convert a decimal amount string into base units with `decimals` places.
+ * An extra dot, a sign, precision past `decimals` or a value over u64 is an
+ * error, not a smaller transfer.
+ */
+export function parseSolanaBaseUnits(
+  amount: string,
+  decimals: number,
+  unit = "token",
+): bigint {
+  if (!/^(?:\d+\.\d*|\d+|\.\d+)$/.test(amount)) {
+    throw new ElizaError(`invalid ${unit} amount "${amount}"`, {
+      code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+    });
+  }
+  const [whole, fraction = ""] = amount.split(".");
+  if (/[1-9]/.test(fraction.slice(decimals))) {
+    throw new ElizaError(
+      `${unit} amount must be exactly representable in ${decimals} decimal places.`,
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  const units =
+    BigInt(whole || "0") * 10n ** BigInt(decimals) +
+    BigInt(fraction.slice(0, decimals).padEnd(decimals, "0") || "0");
+  if (units > 18_446_744_073_709_551_615n) {
+    throw new ElizaError(
+      `${unit} amount exceeds the unsigned 64-bit transfer range.`,
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return units;
+}
+
+/** Convert a SOL amount string into lamports (nine decimal places). */
+export function parseSolLamports(amount: string): bigint {
+  return parseSolanaBaseUnits(amount, 9, "SOL");
+}
+
+/**
  * Solana wallet for native SOL and SPL token operations.
  * Uses @solana/web3.js (optional peer dependency, dynamically imported).
  */
@@ -285,27 +325,23 @@ export class SolanaWallet {
    * @param amount - Lamports (bigint) OR SOL amount as string (e.g. "1.5")
    */
   async sendSol(to: string, amount: string | bigint): Promise<SolanaTxResult> {
+    const lamports =
+      typeof amount === "string" ? parseSolLamports(amount) : amount;
+    if (lamports < 0n || lamports > 18_446_744_073_709_551_615n) {
+      throw new ElizaError("SOL lamports must be an unsigned 64-bit amount.", {
+        code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+      });
+    }
     const { PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } =
       await loadSolanaWeb3();
     const connection = await this.getConnection();
     const keypair = await this.getKeypair();
 
-    let lamports: bigint;
-    if (typeof amount === "string") {
-      // Parse SOL string (9 decimals)
-      const parts = amount.split(".");
-      const intPart = BigInt(parts[0] || "0");
-      const fracStr = (parts[1] ?? "").padEnd(9, "0").slice(0, 9);
-      lamports = intPart * 1_000_000_000n + BigInt(fracStr);
-    } else {
-      lamports = amount;
-    }
-
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: keypair.publicKey,
         toPubkey: new PublicKey(to),
-        lamports: Number(lamports),
+        lamports,
       }),
     );
 
@@ -343,10 +379,7 @@ export class SolanaWallet {
     // Parse amount
     let rawAmount: bigint;
     if (typeof amount === "string") {
-      const parts = amount.split(".");
-      const intPart = BigInt(parts[0] || "0");
-      const fracStr = (parts[1] ?? "").padEnd(decimals, "0").slice(0, decimals);
-      rawAmount = intPart * 10n ** BigInt(decimals) + BigInt(fracStr);
+      rawAmount = parseSolanaBaseUnits(amount, decimals);
     } else {
       rawAmount = amount;
     }

@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { formEvaluator } from "./evaluators/extractor";
 import { formContextProvider } from "./providers/context";
 import { FormService } from "./service";
-import { getSessionById } from "./storage";
+import { getAutofillData, getSessionById, getSubmissions } from "./storage";
 
 const prepare = formEvaluator.prepare;
 const shouldRun = formEvaluator.shouldRun;
@@ -98,6 +98,118 @@ describe("form lifecycle outcomes", () => {
       controls: [{ key: "name", label: "Name", type: "text", required: true }],
     });
   });
+
+  it("requires confirmation before persisting or submitting an uncertain optional value", async () => {
+    service.registerForm({
+      id: "optional-note",
+      name: "Optional note",
+      controls: [{ key: "note", label: "Note", type: "text" }],
+    });
+    const session = await service.startSession(
+      "optional-note",
+      entityId,
+      roomId,
+    );
+    await service.updateField(
+      session.id,
+      entityId,
+      "note",
+      "Preserve this exact note",
+      0.3,
+      "extraction",
+    );
+    await expect(service.submit(session.id, entityId)).rejects.toMatchObject({
+      code: "FORM_FIELD_CONFIRMATION_REQUIRED",
+      context: { formId: "optional-note", field: "note" },
+    });
+    expect(await getSubmissions(runtime, entityId, "optional-note")).toEqual(
+      [],
+    );
+    expect(
+      await getAutofillData(runtime, entityId, "optional-note"),
+    ).toBeNull();
+    expect(
+      (await getSessionById(runtime, entityId, session.id))?.fields.note.status,
+    ).toBe("uncertain");
+    await service.confirmField(session.id, entityId, "note", true);
+    const submitted = await service.submit(session.id, entityId);
+    expect(submitted.values.note).toBe("Preserve this exact note");
+    expect(
+      await getSubmissions(runtime, entityId, "optional-note"),
+    ).toHaveLength(1);
+  });
+
+  it("still submits a form when its optional field was omitted", async () => {
+    service.registerForm({
+      id: "optional-note",
+      name: "Optional note",
+      controls: [{ key: "note", label: "Note", type: "text" }],
+    });
+    const session = await service.startSession(
+      "optional-note",
+      entityId,
+      roomId,
+    );
+    const submitted = await service.submit(session.id, entityId);
+    expect(submitted.values).not.toHaveProperty("note");
+  });
+
+  it.each([
+    { name: "enum without options", enum: ["red", "blue"] },
+    { name: "enum with empty options", enum: ["red", "blue"], options: [] },
+    { name: "empty enum", enum: [] },
+  ])(
+    "persists invalid enum selections and waits for correction: $name",
+    async (choice) => {
+      service.registerForm({
+        id: "color-choice",
+        name: "Color choice",
+        controls: [
+          {
+            key: "color",
+            type: "select",
+            required: true,
+            enum: choice.enum,
+            options: "options" in choice ? choice.options : undefined,
+          },
+        ],
+      });
+      const session = await service.startSession(
+        "color-choice",
+        entityId,
+        roomId,
+      );
+      await service.updateField(
+        session.id,
+        entityId,
+        "color",
+        "green",
+        1,
+        "manual",
+      );
+      const invalid = await getSessionById(runtime, entityId, session.id);
+      expect(invalid?.fields.color.status).toBe("invalid");
+      expect(invalid?.fields.color.error).toBe(
+        `Must be one of: ${choice.enum.join(", ")}`,
+      );
+      expect(invalid?.status).toBe("active");
+      if (choice.enum.length > 0) {
+        await service.updateField(
+          session.id,
+          entityId,
+          "color",
+          "red",
+          1,
+          "manual",
+        );
+        const corrected = await getSessionById(runtime, entityId, session.id);
+        expect(corrected?.fields.color.status).toBe("filled");
+        expect(corrected?.fields.color.value).toBe("red");
+        expect(corrected?.fields.color.error).toBeUndefined();
+        expect(corrected?.status).toBe("ready");
+      }
+    },
+  );
 
   async function cancelThroughEvaluator() {
     const context = { runtime, message, state, options: {} };

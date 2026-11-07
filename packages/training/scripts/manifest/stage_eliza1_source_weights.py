@@ -11,8 +11,9 @@ weights until the training/eval/publish gates emit the required ``text/`` and
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file
+
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -40,7 +41,7 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
 try:
     from .eliza1_manifest import ELIZA_1_TIERS
 except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import ELIZA_1_TIERS
+    from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS
 
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
@@ -302,12 +303,6 @@ def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     raise last_error
 
 
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def materialize(cached: Path, destination: Path, link_mode: str) -> None:

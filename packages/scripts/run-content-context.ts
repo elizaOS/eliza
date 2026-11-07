@@ -130,7 +130,7 @@ export async function publishContentContextEvidence(options) {
     buildContentContextResult,
     CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
     contentContextE2EArtifactDeclarations,
-  } = await import("../testing/corpus/progressive-content-evidence.ts");
+  } = await import("elizaos-benchmarks/content-context");
   const artifactBytes = {};
   for (const name of CONTENT_CONTEXT_REQUIRED_ARTIFACTS) {
     artifactBytes[name] = await readRegularFile(path.join(source, name));

@@ -98,6 +98,30 @@ class DomainPurchaseAttemptsRepository {
     return deleted.length === 1;
   }
 
+  /**
+   * Deletes a failed attempt that never charged once its replay window ends,
+   * so a later purchase of the same domain starts a new attempt.
+   */
+  async deleteExpiredUnchargedFailure(input: {
+    key: string;
+    organizationId: string;
+    now: Date;
+  }): Promise<boolean> {
+    const deleted = await dbWrite
+      .delete(domainPurchaseIdempotency)
+      .where(
+        and(
+          eq(domainPurchaseIdempotency.key, input.key),
+          eq(domainPurchaseIdempotency.organization_id, input.organizationId),
+          eq(domainPurchaseIdempotency.status, "failed"),
+          sql`${domainPurchaseIdempotency.charge_id} IS NULL`,
+          lte(domainPurchaseIdempotency.expires_at, input.now),
+        ),
+      )
+      .returning({ id: domainPurchaseIdempotency.id });
+    return deleted.length === 1;
+  }
+
   async createOrRead(
     input: CreateDomainPurchaseAttemptInput,
   ): Promise<{ attempt: DomainPurchaseIdempotency; created: boolean }> {

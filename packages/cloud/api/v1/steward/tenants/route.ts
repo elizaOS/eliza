@@ -14,14 +14,14 @@
  * Returns: { tenantId: string; isNew: boolean }
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isStewardPlatformConfigured } from "@elizaos/cloud-shared/lib/services/steward-platform-users";
+import { ensureStewardTenant } from "@elizaos/cloud-shared/lib/services/steward-tenant-config";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
-import { ensureStewardTenant } from "@/lib/services/steward-tenant-config";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

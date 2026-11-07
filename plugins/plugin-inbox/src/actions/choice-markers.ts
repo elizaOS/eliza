@@ -20,7 +20,7 @@ export function appendInboxDraftChoiceMarker(
   return `${text}
 [CHOICE:inbox-draft-${entryId} id=${entryId}]
 inbox approve ${entryId}=Send
-inbox archive ${entryId}=Discard
+inbox archive ${entryId}=Archive
 [/CHOICE]`;
 }
 

@@ -13,7 +13,8 @@
  *      the supported subset (DAILY / WEEKLY / MONTHLY / YEARLY with INTERVAL,
  *      BYDAY, BYMONTHDAY, COUNT, UNTIL). Occurrences keep the event's local
  *      wall-clock time in its IANA timezone across DST transitions — one fire
- *      per local day, never a double-fire or a skip.
+ *      per local day, never a double-fire. A wall-clock time inside a
+ *      spring-forward gap shifts past it or is skipped, as the caller chooses.
  *   3. **Human-readable descriptions** — "weekly on Monday", "every 2 weeks on
  *      Mon and Wed, 10 times" for grounded action replies.
  *
@@ -21,10 +22,12 @@
  * `./time.js` (the same care as the scheduled-task cron DST fix).
  */
 
+import { isValidTimeZone } from "./constants.js";
 import { CalendarServiceError } from "./errors.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
   getWeekdayForLocalDate,
   getZonedDateParts,
   type ZonedDateParts,
@@ -69,12 +72,50 @@ export interface ParsedCalendarRecurrenceRule {
   interval: number;
   /** JS weekday indexes (0 = Sunday … 6 = Saturday). WEEKLY rules only. */
   byDay?: number[];
+  /**
+   * WKST as a JS weekday index. It sets the day that starts a week, which
+   * selects the weeks of a WEEKLY rule with INTERVAL above 1. Absent means
+   * Monday (RFC 5545 default).
+   */
+  weekStart?: number;
   /** Days of month (1..31 or -31..-1 counting from month end). MONTHLY only. */
   byMonthDay?: number[];
+  /**
+   * BYDAY of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, set only
+   * when the caller asks for it: `2TU` is the second Tuesday of the month,
+   * `-1FR` the last Friday, and `TU` (null ordinal) each Tuesday of the month.
+   */
+  byDayOfMonth?: Array<{ ordinal: number | null; weekday: number }>;
+  /**
+   * BYMONTH of a YEARLY rule (1..12, ascending), set only when the caller
+   * asks for it. The series has an occurrence in each listed month: on the
+   * BYDAY weekdays, on the BYMONTHDAY days, or on the day of DTSTART.
+   */
+  byMonthOfYear?: number[];
+  /**
+   * BYSETPOS of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, set
+   * only when the caller asks for it. Each value selects one date from the
+   * dates of one month (MONTHLY) or one year (YEARLY): `1` is the first
+   * date and `-1` the last.
+   */
+  bySetPos?: number[];
   /** Total occurrence count including the first occurrence (DTSTART). */
   count?: number;
   /** Inclusive UTC cutoff for occurrences. */
   untilMs?: number;
+  /**
+   * Set when UNTIL is a DATE (`UNTIL=20261215`). A DATE names a calendar day,
+   * so the series ends with that day in the series time zone. `untilMs` is
+   * then the end of that day in UTC, for a caller that needs an instant.
+   */
+  untilDate?: { year: number; month: number; day: number };
+  /**
+   * Set with `untilDate` when UNTIL is a local date and time
+   * (`UNTIL=20261215T180000`, the form RFC 5545 requires for a local
+   * DTSTART). The series ends at this clock time of that day in the series
+   * time zone.
+   */
+  untilTime?: { hour: number; minute: number; second: number };
   /**
    * True when the rule uses RFC 5545 parts that are valid for the provider but
    * outside this module's local expansion subset (ordinal BYDAY like `2MO`,
@@ -92,7 +133,14 @@ function invalidRecurrence(detail: string): never {
   );
 }
 
-function parseUntilValue(value: string): number {
+function parseUntilValue(
+  value: string,
+  allowLocalTime: boolean,
+): {
+  ms: number;
+  date?: { year: number; month: number; day: number };
+  time?: { hour: number; minute: number; second: number };
+} {
   const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (dateOnly) {
     const y = Number(dateOnly[1]);
@@ -111,12 +159,12 @@ function parseUntilValue(value: string): number {
     ) {
       invalidRecurrence(`UNTIL=${value}`);
     }
-    return ms;
+    return { ms, date: { year: y, month: mo, day: d0 } };
   }
   const dateTime = value.match(
-    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/,
   );
-  if (dateTime) {
+  if (dateTime && (dateTime[7] || allowLocalTime)) {
     const second = Number(dateTime[6]);
     // ECMAScript cannot represent leap seconds. RFC 5545 directs
     // implementations without that support to interpret second 60 as 59.
@@ -142,7 +190,12 @@ function parseUntilValue(value: string): number {
     ) {
       invalidRecurrence(`UNTIL=${value}`);
     }
-    return ms;
+    if (dateTime[7]) return { ms };
+    return {
+      ms,
+      date: { year: dtY, month: dtMo, day: dtD },
+      time: { hour: dtH, minute: dtMi, second: representedSecond },
+    };
   }
   invalidRecurrence(
     `UNTIL must be YYYYMMDD or YYYYMMDDTHHMMSSZ, got "${value}"`,
@@ -161,12 +214,19 @@ function parsePositiveInt(value: string, part: string): number {
 /**
  * Parse and validate one RRULE line (with or without the `RRULE:` prefix).
  * Throws `CalendarServiceError(400)` on anything malformed. Rules using parts
- * outside the local expansion subset (ordinal BYDAY, BYSETPOS, BYMONTH, WKST,
+ * outside the local expansion subset (ordinal BYDAY, BYSETPOS, BYMONTH,
  * BYHOUR, BYMINUTE) still validate — they are provider-supported RFC 5545 —
  * and come back flagged `beyondExpansionSubset`.
  */
 export function parseRecurrenceRule(
   value: string,
+  options: {
+    localUntil?: boolean;
+    monthlyByDay?: boolean;
+    yearlyByMonth?: boolean;
+    bySetPos?: boolean;
+    dailyByDay?: boolean;
+  } = {},
 ): ParsedCalendarRecurrenceRule {
   const body = value.trim().replace(/^RRULE:/i, "");
   if (body.length === 0) invalidRecurrence("empty rule");
@@ -174,9 +234,15 @@ export function parseRecurrenceRule(
   let freq: CalendarRecurrenceFrequency | undefined;
   let interval = 1;
   let byDay: number[] | undefined;
+  let byDayTokens: ParsedCalendarRecurrenceRule["byDayOfMonth"];
   let byMonthDay: number[] | undefined;
+  let byMonthRaw: string | undefined;
+  let bySetPosRaw: string | undefined;
+  let weekStart: number | undefined;
   let count: number | undefined;
   let untilMs: number | undefined;
+  let untilDate: ParsedCalendarRecurrenceRule["untilDate"];
+  let untilTime: ParsedCalendarRecurrenceRule["untilTime"];
   let beyondExpansionSubset = false;
 
   for (const segment of body.split(";")) {
@@ -206,30 +272,33 @@ export function parseRecurrenceRule(
       case "COUNT":
         count = parsePositiveInt(raw, "COUNT");
         break;
-      case "UNTIL":
-        untilMs = parseUntilValue(raw);
+      case "UNTIL": {
+        const until = parseUntilValue(raw, options.localUntil === true);
+        untilMs = until.ms;
+        untilDate = until.date;
+        untilTime = until.time;
         break;
+      }
       case "BYDAY": {
         const days: number[] = [];
+        const tokens: NonNullable<typeof byDayTokens> = [];
         for (const token of raw.split(",")) {
           const match = token
             .trim()
             .match(/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/);
           if (!match) invalidRecurrence(`BYDAY token "${token}"`);
-          if (match[1]) {
-            // Ordinal weekday (e.g. 2MO = second Monday): provider-valid,
-            // outside the local expansion subset.
-            beyondExpansionSubset = true;
-          }
           const weekdayToken = match[2];
           if (!weekdayToken) invalidRecurrence(`BYDAY token "${token}"`);
           const weekday = BYDAY_TOKEN_TO_WEEKDAY[weekdayToken];
           if (weekday === undefined)
             invalidRecurrence(`BYDAY token "${token}"`);
+          // An ordinal weekday (2MO = second Monday) is provider-valid.
+          tokens.push({ ordinal: match[1] ? Number(match[1]) : null, weekday });
           if (!days.includes(weekday)) days.push(weekday);
         }
         if (days.length === 0) invalidRecurrence("BYDAY has no days");
         byDay = days;
+        byDayTokens = tokens;
         break;
       }
       case "BYMONTHDAY": {
@@ -247,9 +316,18 @@ export function parseRecurrenceRule(
         byMonthDay = days;
         break;
       }
-      case "BYMONTH":
-      case "BYSETPOS":
       case "WKST":
+        // WKST has an effect only on a WEEKLY rule (and on BYWEEKNO, which
+        // stays outside the subset), so a rule that has it can be expanded.
+        weekStart = BYDAY_TOKEN_TO_WEEKDAY[raw];
+        if (weekStart === undefined) invalidRecurrence(`WKST=${raw}`);
+        break;
+      case "BYMONTH":
+        byMonthRaw = raw;
+        break;
+      case "BYSETPOS":
+        bySetPosRaw = raw;
+        break;
       case "BYHOUR":
       case "BYMINUTE":
       case "BYSECOND":
@@ -266,16 +344,76 @@ export function parseRecurrenceRule(
   if (count !== undefined && untilMs !== undefined) {
     invalidRecurrence("COUNT and UNTIL are mutually exclusive");
   }
-  if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
-  if (byMonthDay && freq !== "MONTHLY") beyondExpansionSubset = true;
+  // BYMONTH of a YEARLY rule lists the months of the year that have an
+  // occurrence. Other uses of BYMONTH stay outside the subset.
+  const months = /^\d{1,2}(?:,\d{1,2})*$/.test(byMonthRaw ?? "")
+    ? [...new Set((byMonthRaw ?? "").split(",").map(Number))]
+    : [];
+  const byMonthOfYear =
+    options.yearlyByMonth === true &&
+    freq === "YEARLY" &&
+    months.length > 0 &&
+    months.every((month) => month >= 1 && month <= 12)
+      ? months.sort((a, b) => a - b)
+      : undefined;
+  // BYDAY of a MONTHLY rule, or of a YEARLY rule that has BYMONTH, names
+  // weekdays of the month. A month has at most five of one weekday. Other
+  // ordinal weekdays stay outside the subset.
+  const byDayOfMonth =
+    ((options.monthlyByDay === true && freq === "MONTHLY") || byMonthOfYear) &&
+    byMonthDay === undefined &&
+    byDayTokens?.every(
+      ({ ordinal }) =>
+        ordinal === null || (ordinal !== 0 && Math.abs(ordinal) <= 5),
+    )
+      ? byDayTokens
+      : undefined;
+  if (!byDayOfMonth) {
+    if (byDayTokens?.some(({ ordinal }) => ordinal !== null)) {
+      beyondExpansionSubset = true;
+    }
+    // BYDAY of a DAILY rule keeps the days that are on the listed weekdays
+    // ("every weekday"), when the caller asks for it.
+    const dailyByDay = options.dailyByDay === true && freq === "DAILY";
+    if (byDay && freq !== "WEEKLY" && !dailyByDay) {
+      beyondExpansionSubset = true;
+    }
+  }
+  if (byMonthRaw !== undefined && !byMonthOfYear) beyondExpansionSubset = true;
+  // BYSETPOS selects dates from the dates of one month or one year. The
+  // dates of other periods (a week, a day) stay outside the subset.
+  const setPositions = /^[+-]?\d{1,3}(?:,[+-]?\d{1,3})*$/.test(
+    bySetPosRaw ?? "",
+  )
+    ? [...new Set((bySetPosRaw ?? "").split(",").map(Number))]
+    : [];
+  const bySetPos =
+    options.bySetPos === true &&
+    (freq === "MONTHLY" || byMonthOfYear) &&
+    setPositions.length > 0 &&
+    setPositions.every(
+      (position) => position !== 0 && Math.abs(position) <= 366,
+    )
+      ? setPositions
+      : undefined;
+  if (bySetPosRaw !== undefined && !bySetPos) beyondExpansionSubset = true;
+  if (byMonthDay && freq !== "MONTHLY" && !byMonthOfYear) {
+    beyondExpansionSubset = true;
+  }
 
   return {
     freq,
     interval,
     byDay,
     byMonthDay,
+    byDayOfMonth,
+    byMonthOfYear,
+    bySetPos,
+    weekStart,
     count,
     untilMs,
+    untilDate,
+    untilTime,
     beyondExpansionSubset,
   };
 }
@@ -321,12 +459,19 @@ export function normalizeRecurrence(value: unknown): string[] | undefined {
 /** First RRULE line from a recurrence line set, parsed; null when none. */
 export function firstRecurrenceRule(
   recurrence: readonly string[] | null | undefined,
+  options: {
+    localUntil?: boolean;
+    monthlyByDay?: boolean;
+    yearlyByMonth?: boolean;
+    bySetPos?: boolean;
+    dailyByDay?: boolean;
+  } = {},
 ): ParsedCalendarRecurrenceRule | null {
   if (!recurrence) return null;
   for (const line of recurrence) {
     if (NON_RRULE_RECURRENCE_LINE.test(line.trim())) continue;
     try {
-      return parseRecurrenceRule(line);
+      return parseRecurrenceRule(line, options);
     } catch {
       // error-policy:J3 unparseable RRULE line -> "no usable rule" (null).
       return null;
@@ -364,7 +509,89 @@ function daysInMonth(year: number, month: number): number {
   return d.getUTCDate();
 }
 
-const MAX_GENERATED_OCCURRENCES = 1000;
+/** Days of one month that a MONTHLY BYDAY list names, in ascending order. */
+function daysOfMonthForWeekdays(
+  year: number,
+  month: number,
+  byDayOfMonth: NonNullable<ParsedCalendarRecurrenceRule["byDayOfMonth"]>,
+): number[] {
+  const monthLength = daysInMonth(year, month);
+  const firstWeekday = getWeekdayForLocalDate({ year, month, day: 1 });
+  const days = new Set<number>();
+  for (const { ordinal, weekday } of byDayOfMonth) {
+    const matches: number[] = [];
+    const first = 1 + ((weekday - firstWeekday + 7) % 7);
+    for (let day = first; day <= monthLength; day += 7) matches.push(day);
+    // A month without a fifth such weekday has no occurrence for 5 or -5.
+    const picked =
+      ordinal === null
+        ? matches
+        : [matches.at(ordinal > 0 ? ordinal - 1 : ordinal)];
+    for (const day of picked) {
+      if (day !== undefined) days.add(day);
+    }
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+export const MAX_EXPANDED_RECURRENCE_OCCURRENCES = 1000;
+const MAX_ICS_RECURRENCE_INSTANT = new Date("9999-12-31T23:59:59.999Z");
+
+function invalidExpansionDate(detail: string, cause?: unknown): never {
+  throw new CalendarServiceError(
+    400,
+    `Recurrence expansion produced an invalid date: ${detail}`,
+    "CALENDAR_RECURRENCE_EXPANSION_INVALID_DATE",
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function assertValidLocalDate(date: LocalDateOnly): void {
+  if (
+    !Number.isSafeInteger(date.year) ||
+    !Number.isSafeInteger(date.month) ||
+    !Number.isSafeInteger(date.day) ||
+    date.month < 1 ||
+    date.month > 12 ||
+    date.day < 1 ||
+    date.day > 31
+  ) {
+    invalidExpansionDate(
+      "the candidate local date is outside the supported range",
+    );
+  }
+  const probe = new Date(0);
+  probe.setUTCFullYear(date.year, date.month - 1, date.day);
+  probe.setUTCHours(12, 0, 0, 0);
+  if (
+    !Number.isFinite(probe.getTime()) ||
+    probe.getUTCFullYear() !== date.year ||
+    probe.getUTCMonth() !== date.month - 1 ||
+    probe.getUTCDate() !== date.day
+  ) {
+    invalidExpansionDate("the candidate local date cannot be represented");
+  }
+}
+
+function compareLocalDates(left: LocalDateOnly, right: LocalDateOnly): number {
+  return (
+    left.year - right.year || left.month - right.month || left.day - right.day
+  );
+}
+
+/**
+ * How a generated occurrence whose DTSTART wall-clock time does not exist on
+ * its date (a spring-forward gap) is handled.
+ *
+ * - `"shift-forward"`: the occurrence keeps its date and moves past the gap
+ *   (02:30 becomes 03:30), and it counts toward COUNT. This is RFC 5545
+ *   §3.3.5 DATE-TIME resolution, as libical and provider calendars expand
+ *   series, so provider-backed series (split plans) use it to keep
+ *   occurrence indexes aligned with the provider's instances.
+ * - `"skip"`: RFC 5545 §3.3.10 — the occurrence is ignored and does not count
+ *   toward COUNT, so the series gains one occurrence at its end instead.
+ */
+export type NonexistentLocalTimePolicy = "shift-forward" | "skip";
 
 /**
  * Generate occurrence instants for a rule, DST-correct: every occurrence keeps
@@ -375,8 +602,12 @@ function* generateOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
+  rangeEnd: Date;
+  nonexistentLocalTime?: NonexistentLocalTimePolicy;
 }): Generator<Date> {
-  const { rule, startAt, timeZone } = args;
+  const { rule, startAt, timeZone, rangeStart, rangeEnd } = args;
+  const skipNonexistent = args.nonexistentLocalTime === "skip";
   if (rule.beyondExpansionSubset) {
     throw new CalendarServiceError(
       400,
@@ -384,7 +615,21 @@ function* generateOccurrences(args: {
       "CALENDAR_RECURRENCE_EXPANSION_UNSUPPORTED",
     );
   }
-  const anchor = getZonedDateParts(startAt, timeZone);
+  const startMs = startAt.getTime();
+  const rangeEndMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(rangeEndMs)) {
+    invalidExpansionDate("DTSTART or the expansion boundary is invalid");
+  }
+  let anchor: ZonedDateParts;
+  let rangeEndParts: ZonedDateParts;
+  let rangeStartParts: ZonedDateParts | undefined;
+  try {
+    anchor = getZonedDateParts(startAt, timeZone);
+    rangeEndParts = getZonedDateParts(rangeEnd, timeZone);
+    if (rangeStart) rangeStartParts = getZonedDateParts(rangeStart, timeZone);
+  } catch (error) {
+    invalidExpansionDate("the timezone boundary cannot be resolved", error);
+  }
   const anchorDate: LocalDateOnly = {
     year: anchor.year,
     month: anchor.month,
@@ -395,36 +640,142 @@ function* generateOccurrences(args: {
     minute: anchor.minute,
     second: anchor.second,
   };
-  const startMs = startAt.getTime();
+  const rangeEndDate: LocalDateOnly = {
+    year: rangeEndParts.year,
+    month: rangeEndParts.month,
+    day: rangeEndParts.day,
+  };
+  // An occurrence on a local date before this one ends more than a day before
+  // `rangeStart`, so the caller discards it. Such dates still count toward
+  // COUNT, but their instant is never resolved: an old daily series costs
+  // date arithmetic only, not one time zone lookup per past day. When
+  // nonexistent local times are skipped, a COUNT rule must resolve every
+  // date, because a skipped gap date does not count toward COUNT.
+  const skipBeforeDate = rangeStartParts
+    ? addDaysToLocalDate(
+        {
+          year: rangeStartParts.year,
+          month: rangeStartParts.month,
+          day: rangeStartParts.day,
+        },
+        -1,
+      )
+    : undefined;
 
   let emitted = 0;
-  const emitBudget = Math.min(
-    rule.count ?? MAX_GENERATED_OCCURRENCES,
-    MAX_GENERATED_OCCURRENCES,
-  );
+  const emitBudget = rule.count ?? Number.POSITIVE_INFINITY;
 
-  function toInstant(date: LocalDateOnly): Date {
-    return buildUtcDateFromLocalParts(timeZone, { ...date, ...timeOfDay });
+  // Null when the DTSTART wall-clock time does not exist on `date` and the
+  // policy skips such occurrences.
+  function toInstant(date: LocalDateOnly): Date | null {
+    assertValidLocalDate(date);
+    const parts = { ...date, ...timeOfDay };
+    try {
+      let instant: Date;
+      if (skipNonexistent) {
+        try {
+          instant = buildUtcDateFromLocalParts(timeZone, parts, "reject");
+        } catch (error) {
+          if (!(error instanceof CalendarLocalTimeError)) throw error;
+          if (error.code === "CALENDAR_LOCAL_TIME_NONEXISTENT") return null;
+          // A repeated fall-back time is a real occurrence; it resolves to
+          // the earlier instant exactly as the shift-forward policy does.
+          instant = buildUtcDateFromLocalParts(timeZone, parts);
+        }
+      } else {
+        instant = buildUtcDateFromLocalParts(timeZone, parts);
+      }
+      if (!Number.isFinite(instant.getTime())) {
+        invalidExpansionDate("the candidate instant cannot be represented");
+      }
+      return instant;
+    } catch (error) {
+      if (error instanceof CalendarServiceError) throw error;
+      invalidExpansionDate("the candidate instant cannot be resolved", error);
+    }
+  }
+
+  function beyondRangeEnd(date: LocalDateOnly): boolean {
+    assertValidLocalDate(date);
+    return compareLocalDates(date, rangeEndDate) > 0;
+  }
+
+  // Days of one month in ascending order: the weekdays that BYDAY names, or
+  // the BYMONTHDAY days. A day that the month does not have is skipped per
+  // RFC 5545 (Feb 29 in non-leap years). A positive day and a negative day
+  // can name the same date (31 and -1 in a 31-day month); it is emitted once.
+  function daysOfMonth(
+    year: number,
+    month: number,
+    byMonthDay: number[],
+  ): number[] {
+    if (rule.byDayOfMonth) {
+      return daysOfMonthForWeekdays(year, month, rule.byDayOfMonth);
+    }
+    const monthLength = daysInMonth(year, month);
+    return [
+      ...new Set(
+        byMonthDay
+          .map((day) => (day < 0 ? monthLength + day + 1 : day))
+          .filter((day) => day >= 1 && day <= monthLength),
+      ),
+    ].sort((a, b) => a - b);
+  }
+
+  // The dates of one month or one year that BYSETPOS selects, in ascending
+  // order. Without BYSETPOS, all the dates.
+  function selectSetPositions(dates: LocalDateOnly[]): LocalDateOnly[] {
+    const positions = rule.bySetPos;
+    if (!positions) return dates;
+    const selected = new Set(
+      positions.map((position) =>
+        position > 0 ? position - 1 : dates.length + position,
+      ),
+    );
+    return dates.filter((_, index) => selected.has(index));
   }
 
   function* localDates(): Generator<LocalDateOnly> {
     switch (rule.freq) {
       case "DAILY": {
         for (let index = 0; ; index += 1) {
-          yield addDaysToLocalDate(anchorDate, index * rule.interval);
+          const dayDelta = index * rule.interval;
+          if (!Number.isSafeInteger(dayDelta)) {
+            invalidExpansionDate("the DAILY interval exceeds date arithmetic");
+          }
+          const date = addDaysToLocalDate(anchorDate, dayDelta);
+          if (beyondRangeEnd(date)) return;
+          if (
+            rule.byDay &&
+            !rule.byDay.includes(getWeekdayForLocalDate(date))
+          ) {
+            continue;
+          }
+          yield date;
         }
       }
       case "WEEKLY": {
         const byDay = [...(rule.byDay ?? [getWeekdayForLocalDate(anchorDate)])];
-        // Monday-based week start (RFC 5545 default WKST=MO).
-        const mondayOffset = (getWeekdayForLocalDate(anchorDate) + 6) % 7;
-        const anchorWeekStart = addDaysToLocalDate(anchorDate, -mondayOffset);
-        const dayOffsets = byDay
-          .map((weekday) => (weekday + 6) % 7)
-          .sort((a, b) => a - b);
+        // Weeks start on WKST (RFC 5545 default MO). With INTERVAL above 1,
+        // this day decides which days are in the same week as DTSTART.
+        const weekStart = rule.weekStart ?? 1;
+        const offsetInWeek = (weekday: number) => (weekday - weekStart + 7) % 7;
+        const anchorWeekStart = addDaysToLocalDate(
+          anchorDate,
+          -offsetInWeek(getWeekdayForLocalDate(anchorDate)),
+        );
+        const dayOffsets = byDay.map(offsetInWeek).sort((a, b) => a - b);
         for (let week = 0; ; week += rule.interval) {
           for (const offset of dayOffsets) {
-            yield addDaysToLocalDate(anchorWeekStart, week * 7 + offset);
+            const dayDelta = week * 7 + offset;
+            if (!Number.isSafeInteger(dayDelta)) {
+              invalidExpansionDate(
+                "the WEEKLY interval exceeds date arithmetic",
+              );
+            }
+            const date = addDaysToLocalDate(anchorWeekStart, dayDelta);
+            if (beyondRangeEnd(date)) return;
+            yield date;
           }
         }
       }
@@ -432,38 +783,93 @@ function* generateOccurrences(args: {
         const byMonthDay = rule.byMonthDay ?? [anchorDate.day];
         for (let step = 0; ; step += rule.interval) {
           const { year, month } = addMonthsToLocalMonth(anchorDate, step);
-          const monthLength = daysInMonth(year, month);
-          const days = byMonthDay
-            .map((day) => (day < 0 ? monthLength + day + 1 : day))
-            .filter((day) => day >= 1 && day <= monthLength)
-            .sort((a, b) => a - b);
-          for (const day of days) {
-            yield { year, month, day };
-          }
+          const monthStart = { year, month, day: 1 };
+          if (beyondRangeEnd(monthStart)) return;
+          yield* selectSetPositions(
+            daysOfMonth(year, month, byMonthDay).map((day) => ({
+              year,
+              month,
+              day,
+            })),
+          );
         }
       }
       case "YEARLY": {
+        const months = rule.byMonthOfYear ?? [anchorDate.month];
+        const byMonthDay =
+          rule.byMonthOfYear && rule.byMonthDay
+            ? rule.byMonthDay
+            : [anchorDate.day];
         for (let step = 0; ; step += rule.interval) {
           const year = anchorDate.year + step;
-          // Skip invalid anniversaries (Feb 29 in non-leap years) per RFC 5545.
-          if (anchorDate.day > daysInMonth(year, anchorDate.month)) continue;
-          yield { year, month: anchorDate.month, day: anchorDate.day };
+          const yearStart = { year, month: 1, day: 1 };
+          if (beyondRangeEnd(yearStart)) return;
+          yield* selectSetPositions(
+            months.flatMap((month) =>
+              daysOfMonth(year, month, byMonthDay).map((day) => ({
+                year,
+                month,
+                day,
+              })),
+            ),
+          );
         }
       }
     }
   }
 
+  // A DATE UNTIL ends with its calendar day in the series time zone. A
+  // comparison of instants ends it with that day in UTC, which drops the last
+  // evening occurrence west of UTC and adds a morning one east of UTC.
+  const untilDate = rule.untilDate;
+  const untilTime = rule.untilTime;
+  const pastUntil = (instantMs: number, date: LocalDateOnly): boolean => {
+    if (!untilDate) {
+      return rule.untilMs !== undefined && instantMs > rule.untilMs;
+    }
+    const days = compareLocalDates(date, untilDate);
+    if (days !== 0 || !untilTime) return days > 0;
+    // A local UNTIL also has a clock time. Each occurrence has the clock
+    // time of DTSTART, so that time decides the last day.
+    return (
+      (timeOfDay.hour - untilTime.hour ||
+        timeOfDay.minute - untilTime.minute ||
+        timeOfDay.second - untilTime.second) > 0
+    );
+  };
+
   // DTSTART is always the first occurrence.
-  if (rule.untilMs !== undefined && startMs > rule.untilMs) return;
+  if (pastUntil(startMs, anchorDate)) return;
+  if (startMs >= rangeEndMs) return;
   yield new Date(startMs);
   emitted += 1;
   if (emitted >= emitBudget) return;
 
   for (const date of localDates()) {
-    if (daysBetweenLocalDates(anchorDate, date) < 0) continue;
+    const daysAfterAnchor = daysBetweenLocalDates(anchorDate, date);
+    if (daysAfterAnchor < 0) continue;
+    if (
+      skipBeforeDate &&
+      daysAfterAnchor > 0 &&
+      compareLocalDates(date, skipBeforeDate) < 0
+    ) {
+      // A skipped gap date before the range does not count toward COUNT.
+      const counts =
+        !skipNonexistent ||
+        rule.count === undefined ||
+        toInstant(date) !== null;
+      if (counts) {
+        emitted += 1;
+        if (emitted >= emitBudget) return;
+      }
+      continue;
+    }
     const instant = toInstant(date);
+    // RFC 5545 §3.3.10: a nonexistent local time is ignored, not counted.
+    if (instant === null) continue;
+    if (instant.getTime() >= rangeEndMs) return;
     if (instant.getTime() <= startMs) continue;
-    if (rule.untilMs !== undefined && instant.getTime() > rule.untilMs) return;
+    if (pastUntil(instant.getTime(), date)) return;
     yield instant;
     emitted += 1;
     if (emitted >= emitBudget) return;
@@ -472,23 +878,29 @@ function* generateOccurrences(args: {
 
 /**
  * Expand a rule's occurrences from DTSTART up to `rangeEnd` (exclusive),
- * honoring COUNT/UNTIL termination. DST-correct: occurrences keep the DTSTART
- * wall-clock time in `timeZone` across transitions.
+ * honoring COUNT/UNTIL termination. With `rangeStart`, earlier occurrences
+ * count toward COUNT but are not returned and do not use the output cap.
+ * DST-correct: occurrences keep the DTSTART wall-clock time in `timeZone`
+ * across transitions. `nonexistentLocalTime` decides whether an occurrence in
+ * a spring-forward gap shifts past it or is skipped without counting.
  */
 export function expandRecurrenceOccurrences(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
+  rangeStart?: Date;
   rangeEnd: Date;
   maxOccurrences?: number;
+  nonexistentLocalTime: NonexistentLocalTimePolicy;
 }): Date[] {
   const cap = Math.min(
-    args.maxOccurrences ?? MAX_GENERATED_OCCURRENCES,
-    MAX_GENERATED_OCCURRENCES,
+    args.maxOccurrences ?? MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+    MAX_EXPANDED_RECURRENCE_OCCURRENCES,
   );
+  const rangeStartMs = args.rangeStart?.getTime() ?? Number.NEGATIVE_INFINITY;
   const occurrences: Date[] = [];
   for (const instant of generateOccurrences(args)) {
-    if (instant.getTime() >= args.rangeEnd.getTime()) break;
+    if (instant.getTime() < rangeStartMs) continue;
     occurrences.push(instant);
     if (occurrences.length >= cap) break;
   }
@@ -497,16 +909,29 @@ export function expandRecurrenceOccurrences(args: {
 
 /**
  * First occurrence strictly after `after`; null when the series has terminated
- * (COUNT/UNTIL) or the rule is outside the local expansion subset.
+ * (COUNT/UNTIL) or the rule is outside the local expansion subset. A
+ * spring-forward gap occurrence shifts past the gap unless
+ * `nonexistentLocalTime` is `"skip"`.
  */
 export function nextRecurrenceOccurrence(args: {
   rule: ParsedCalendarRecurrenceRule;
   startAt: Date;
   timeZone: string;
   after: Date;
+  nonexistentLocalTime?: NonexistentLocalTimePolicy;
 }): Date | null {
   if (args.rule.beyondExpansionSubset) return null;
-  for (const instant of generateOccurrences(args)) {
+  const ruleEnd =
+    args.rule.untilMs === undefined
+      ? MAX_ICS_RECURRENCE_INSTANT
+      : new Date(
+          Math.min(args.rule.untilMs + 1, MAX_ICS_RECURRENCE_INSTANT.getTime()),
+        );
+  for (const instant of generateOccurrences({
+    ...args,
+    rangeStart: args.after,
+    rangeEnd: ruleEnd,
+  })) {
     if (instant.getTime() > args.after.getTime()) return instant;
   }
   return null;
@@ -598,7 +1023,9 @@ export function assertRecurrenceStartMatchesRule(args: {
       day < 0 ? monthLength + day + 1 === local.day : day === local.day,
     );
   const byDayMatches = rule.byDay === undefined || rule.byDay.includes(weekday);
-  const untilMatches = rule.untilMs === undefined || startMs <= rule.untilMs;
+  const untilMatches = rule.untilDate
+    ? compareLocalDates(localDate, rule.untilDate) <= 0
+    : rule.untilMs === undefined || startMs <= rule.untilMs;
   if (!byMonthDayMatches || !byDayMatches || !untilMatches) {
     invalidRecurrenceSplit(
       "The following series start does not satisfy its recurrence rule. Supply a replacement RRULE aligned with the new start.",
@@ -667,15 +1094,19 @@ export function buildRecurrenceSplitPlan(args: {
     startAt: args.seriesStartAt,
     timeZone: args.timeZone,
     rangeEnd: new Date(targetStartMs + 1),
-    maxOccurrences: MAX_GENERATED_OCCURRENCES,
+    maxOccurrences: MAX_EXPANDED_RECURRENCE_OCCURRENCES,
+    // The provider series keeps a spring-forward gap occurrence and moves it
+    // past the gap (RFC 5545 §3.3.5); the split index must count it the same
+    // way or the truncated and following COUNTs drop or add an occurrence.
+    nonexistentLocalTime: "shift-forward",
   });
   const targetOccurrenceIndex = occurrences.findIndex(
     (occurrence) => occurrence.getTime() === targetStartMs,
   );
   if (targetOccurrenceIndex < 0) {
     invalidRecurrenceSplit(
-      occurrences.length >= MAX_GENERATED_OCCURRENCES
-        ? `The selected occurrence is beyond the ${MAX_GENERATED_OCCURRENCES}-occurrence verified split horizon.`
+      occurrences.length >= MAX_EXPANDED_RECURRENCE_OCCURRENCES
+        ? `The selected occurrence is beyond the ${MAX_EXPANDED_RECURRENCE_OCCURRENCES}-occurrence verified split horizon.`
         : "The selected time is not an occurrence generated by the series rule.",
       "CALENDAR_RECURRENCE_SPLIT_TARGET_INVALID",
     );
@@ -719,9 +1150,11 @@ export function buildRecurrenceSplitPlan(args: {
   };
 }
 
-function formatUntilLabel(untilMs: number): string {
+const DATE_ONLY_UNTIL = /(?:^|[;:])\s*UNTIL\s*=\s*\d{8}\s*(?:;|$)/i;
+
+function formatUntilLabel(untilMs: number, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -732,10 +1165,13 @@ function formatUntilLabel(untilMs: number): string {
  * Human-readable summary of a recurrence line set for action replies, e.g.
  * "weekly on Monday", "every 2 weeks on Monday and Wednesday, 10 times".
  * Falls back to the raw first rule body for provider-valid rules outside the
- * describable subset.
+ * describable subset. `timeZone` is the event's IANA zone: a date-time UNTIL
+ * is a UTC instant (Google stores "ends Jun 16" in Los Angeles as
+ * `20110617T065959Z`), so its date is read in that zone.
  */
 export function describeRecurrence(
   recurrence: readonly string[] | null | undefined,
+  timeZone?: string | null,
 ): string | null {
   if (!recurrence || recurrence.length === 0) return null;
   const firstLine = recurrence.find(
@@ -789,7 +1225,12 @@ export function describeRecurrence(
   if (rule.count !== undefined) {
     base += `, ${rule.count} times`;
   } else if (rule.untilMs !== undefined) {
-    base += ` until ${formatUntilLabel(rule.untilMs)}`;
+    // A date-only UNTIL already names a calendar date (parsed as 23:59:59Z).
+    const untilZone =
+      !DATE_ONLY_UNTIL.test(firstLine) && timeZone && isValidTimeZone(timeZone)
+        ? timeZone
+        : "UTC";
+    base += ` until ${formatUntilLabel(rule.untilMs, untilZone)}`;
   }
   return base;
 }

@@ -11,8 +11,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/core/type-guards";
-import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
@@ -22,6 +21,7 @@ import {
   type BrowserDispatchFailure,
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
+import { isNativeBrowserRequest } from "../native-browser-request.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -715,6 +715,7 @@ async function executeBrowserWaitForUrl(
   params: BrowserActionParameters | undefined,
   messageText: string,
   callback: HandlerCallback | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
   const pattern = (params?.pattern ?? "").trim();
   if (!pattern) {
@@ -746,6 +747,7 @@ async function executeBrowserWaitForUrl(
       subaction: tabId ? "navigate" : "open",
       url: startUrl,
       id: tabId,
+      show: tabId ? undefined : true,
     };
     try {
       const opened = browserService
@@ -783,6 +785,7 @@ async function executeBrowserWaitForUrl(
       emitStatus: async (text) => {
         await callback?.({ text });
       },
+      signal,
     },
   );
 
@@ -807,6 +810,7 @@ async function executeBrowserWaitForUrl(
 
 export const browserAction: Action = {
   name: "BROWSER",
+  egress: ["owner-device", "public-network"],
   contexts: ["browser", "web", "automation", "secrets"],
   roleGate: { minRole: "OWNER" },
   similes: [
@@ -840,7 +844,12 @@ export const browserAction: Action = {
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
-  validate: async () => true,
+  // The requesting native Browser is its own target.
+  validate: async (runtime, message) => {
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    if (!service) return false;
+    return isNativeBrowserRequest(message) || service.hasActionableTarget();
+  },
   handler: async (
     runtime,
     message,
@@ -853,8 +862,7 @@ export const browserAction: Action = {
       | undefined;
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
-    const nativePage =
-      asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+    const nativePage = isNativeBrowserRequest(message);
 
     if (
       nativePage &&
@@ -889,11 +897,21 @@ export const browserAction: Action = {
     }
 
     if (subaction === "wait-for-url") {
-      return executeBrowserWaitForUrl(runtime, params, messageText, callback);
+      return executeBrowserWaitForUrl(
+        runtime,
+        params,
+        messageText,
+        callback,
+        (options as HandlerOptions | undefined)?.abortSignal,
+      );
     }
 
+    // A wait treats url as a condition ("tab URL contains"), so a URL quoted
+    // in the user's message must not turn a timed delay into a URL wait.
     const url =
-      params?.url?.trim() || extractFirstUrl(messageText) || undefined;
+      params?.url?.trim() ||
+      (subaction === "wait" ? undefined : extractFirstUrl(messageText)) ||
+      undefined;
 
     // `clear` arrives as fill; blank the value so the workspace replaces the
     // control's contents instead of appending. Drag carries its drop target
@@ -966,14 +984,28 @@ export const browserAction: Action = {
       }
 
       const text = formatBrowserSessionResult(command, result);
+      // A native client navigation is a frame sent to the requesting app,
+      // which never acknowledges it. The reply may claim only the send.
+      const unconfirmedNativeOpen =
+        result.targetId === "native-client" &&
+        (command.subaction === "open" || command.subaction === "navigate") &&
+        command.url
+          ? `I sent ${formatBrowserDestination(command.url)} to your browser, but it hasn't confirmed that it opened.`
+          : undefined;
       return {
         text,
-        ...(ownsTerminalReply
+        ...(unconfirmedNativeOpen
           ? {
+              userFacingText: unconfirmedNativeOpen,
+              verifiedUserFacing: true,
               turnComplete: true,
-              modelReplyRequired: true,
             }
-          : {}),
+          : ownsTerminalReply
+            ? {
+                turnComplete: true,
+                modelReplyRequired: true,
+              }
+            : {}),
         success: true,
         ...(pageRead ? { transcriptVisibility: "internal" as const } : {}),
         values: {
@@ -1295,14 +1327,15 @@ export const browserAction: Action = {
     {
       name: "script",
       subactions: ["wait"],
-      description: "Script for eval",
+      description:
+        "For action=wait: JavaScript condition expression polled in the page. Rejected unless the desktop browser workspace runs with ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT=1; prefer selector, text, or url conditions.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "watchMode",
       description:
-        "User watching hint; prefer realistic-* click/fill, visible cursor, pointer events.",
+        "Only when action is omitted: a selector infers realistic_click (realistic_fill with text) instead of click/type. Ignored with an explicit action; for a watched session pass action=realistic_click, realistic_fill, realistic_type or realistic_press.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -1333,8 +1366,9 @@ export const browserAction: Action = {
     },
     {
       name: "replace",
-      subactions: ["fill", "clear", "type", "realistic_fill", "realistic_type"],
-      description: "For realistic-fill: replace existing input, not append.",
+      subactions: ["realistic_type"],
+      description:
+        "realistic_type only: replace the existing value instead of appending. fill and realistic_fill always replace; type always appends.",
       required: false,
       schema: { type: "boolean" as const },
     },

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "description": "Eliza Pixel 10a (stallion) Android 17 release descriptor for the shared eliza_stallion_phone composition (android/products/pixel10a-eliza.json). Production staging and scripts/android/sign-pixel10a-release.mjs refuse while any value here is UNSET, while sourceLock.sha256 does not pin android/sources/pixel10a-stallion.json, or while that lock is developmentOnly. Values are reviewed public identities only (certificate and key digests), never key material. releaseQualified and deviceAcceptanceVerified are recorded by release evidence, never by software.",
+  "product": "eliza_stallion_phone",
+  "target": "pixel10a",
+  "device": {
+    "codename": "stallion",
+    "androidRelease": "17"
+  },
+  "lunch": {
+    "development": "eliza_stallion_phone-cp2a-userdebug",
+    "production": "eliza_stallion_phone-cp2a-user"
+  },
+  "sourceLock": {
+    "file": "android/sources/pixel10a-stallion.json",
+    "sha256": "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3"
+  },
+  "signer": {
+    "applicationCertificateSha256": "UNSET",
+    "platformCertificateSha256": "UNSET",
+    "releaseCertificates": {
+      "shared": "UNSET",
+      "media": "UNSET",
+      "networkstack": "UNSET",
+      "sdk_sandbox": "UNSET",
+      "bluetooth": "UNSET",
+      "nfc": "UNSET",
+      "apex": "UNSET"
+    }
+  },
+  "avb": {
+    "algorithm": "SHA256_RSA4096",
+    "vbmetaKey": "avb.pem",
+    "chainedPartitions": ["vbmeta_system", "vbmeta_vendor"],
+    "publicKeyMetadata": "avb_pkmd.bin",
+    "publicKeySha256": "UNSET"
+  },
+  "ota": {
+    "channel": "android/releases/pixel10a-eliza-ota-channel.json"
+  },
+  "releaseQualified": false,
+  "deviceAcceptanceVerified": false
+}

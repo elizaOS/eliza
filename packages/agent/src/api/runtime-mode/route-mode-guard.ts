@@ -9,7 +9,8 @@
  * Config-load failures propagate to the runtime error handler.
  */
 import type http from "node:http";
-import { getHttpRuntime, type Route, sendJsonError } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
+import { getHttpRuntime, type Route } from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "../plugin-route-path.ts";
 import {

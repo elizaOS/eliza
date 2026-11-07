@@ -16,7 +16,7 @@
  */
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
-import type { ProcessingModality } from "../runtime/model-dispatch/modality";
+import type { ProcessingModality } from "../runtime/model-modality";
 import { getTrajectoryContext } from "../trajectory-context";
 
 export const PROCESSING_POLICY_DENIED = "PROCESSING_POLICY_DENIED";

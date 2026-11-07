@@ -7,21 +7,25 @@ import {
   type Action,
   type ActionResult,
   findWorldsForOwner,
-  getFirstRunProviderOption,
   getSalt,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
   ModelType,
-  normalizeFirstRunProviderId,
   type Setting,
   saltWorldSettings,
   toWellFormedUnicode,
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
+import {
+  FIRST_RUN_PROVIDER_CATALOG,
+  getFirstRunProviderOption,
+  normalizeFirstRunProviderId,
+} from "@elizaos/host/protocol";
 
 import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
@@ -47,14 +51,34 @@ export type SettingsOp = (typeof SETTINGS_OPS)[number];
 // Coding sub-agent adapters the orchestrator can route to. Mirrors
 // KNOWN_ADAPTER_TYPES in plugin-agent-orchestrator (kept as a literal here so
 // @elizaos/agent does not depend on the orchestrator plugin).
-const CODING_BACKENDS = ["elizaos", "pi-agent", "claude", "codex"] as const;
+// Keep in sync with CODING_AGENT_BACKENDS and normalizeTaskAgentAdapter in
+// the orchestrator: kimi and grok were added there but this mirror was not
+// updated, so set_backend rejected backends the orchestrator can route to.
+const CODING_BACKENDS = [
+  "elizaos",
+  "pi-agent",
+  "claude",
+  "codex",
+  "kimi",
+  "grok",
+] as const;
 const CODING_BACKEND_ALIASES: Record<string, string> = {
   "eliza-os": "elizaos",
   eliza: "elizaos",
   pi: "pi-agent",
+  "pi agent": "pi-agent",
   "claude-code": "claude",
+  "claude code": "claude",
   openai: "codex",
   "openai-codex": "codex",
+  "openai codex": "codex",
+  "kimi-code": "kimi",
+  "kimi code": "kimi",
+  moonshot: "kimi",
+  "grok-build": "grok",
+  "grok build": "grok",
+  xai: "grok",
+  "x-ai": "grok",
 };
 const DIFFICULTY_TAGS = ["simple", "moderate", "hard"] as const;
 const BRAIN_MODEL_KEYS = [
@@ -131,6 +155,17 @@ function readParams(
 
 // ── op: update_ai_provider ────────────────────────────────────────────────
 
+/**
+ * The chat provider ids `normalizeFirstRunProviderId` accepts, as advertised
+ * to the planner. Subscription entries are coding-agent credentials and do not
+ * set the chat route, so they are not offered as an AI provider.
+ */
+const AI_PROVIDER_IDS = FIRST_RUN_PROVIDER_CATALOG.filter(
+  (provider) => provider.authMode !== "subscription",
+)
+  .map((provider) => provider.id)
+  .join(", ");
+
 async function handleUpdateAiProvider(
   params: Record<string, unknown>,
 ): Promise<ActionResult> {
@@ -146,7 +181,7 @@ async function handleUpdateAiProvider(
   if (!normalizedProvider) {
     return fail(
       "UNKNOWN_PROVIDER",
-      `Unknown AI provider: ${rawProvider}. Use one from the first-run catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
+      `Unknown AI provider: ${rawProvider}. Use one from the first-run catalog (${AI_PROVIDER_IDS}).`,
       { provider: rawProvider },
     );
   }
@@ -205,6 +240,7 @@ async function handleUpdateAiProvider(
     }
 
     saveElizaConfig(config);
+    mirrorSavedConfigToLive(config);
   } catch (err) {
     logger.error(
       { error: err instanceof Error ? err.stack : String(err) },
@@ -257,6 +293,7 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
     ui.capabilities = capabilities;
     config.ui = ui;
     saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+    mirrorSavedConfigToLive(config as Parameters<typeof saveElizaConfig>[0]);
   } catch (err) {
     logger.error(
       { error: err instanceof Error ? err.stack : String(err) },
@@ -618,10 +655,11 @@ function handleSetBackend(
     const config = loadElizaConfig() as { env?: Record<string, unknown> };
     config.env = { ...(config.env ?? {}), ELIZA_BRAIN_PROVIDER: provider };
     saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+    mirrorSavedConfigToLive(config as Parameters<typeof saveElizaConfig>[0]);
     // Immediate effect: the runtime's useModel override reads this via getSetting.
     runtime.setSetting?.("ELIZA_BRAIN_PROVIDER", provider);
     return ok(
-      `Chat brain provider set to \`${provider}\`. It takes effect on the next message (it falls back to the default if that provider has no loaded handler).`,
+      `Chat brain provider set to \`${provider}\`. It takes effect on the next message and stays until the AI provider is changed.`,
       { op: "set_backend", axis: "brain", provider },
     );
   }
@@ -668,6 +706,7 @@ function handleSetBackend(
     ELIZA_BACKEND_ROUTING: JSON.stringify({ coding }),
   };
   saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+  mirrorSavedConfigToLive(config as Parameters<typeof saveElizaConfig>[0]);
 
   // Also write through to the in-memory character at the HIGHEST precedence the
   // orchestrator reads. Without this, a character that already declares
@@ -740,8 +779,7 @@ export const settingsAction: Action = {
     },
     {
       name: "provider",
-      description:
-        "[update_ai_provider] AI provider id (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).",
+      description: `[update_ai_provider] AI provider id (${AI_PROVIDER_IDS}).`,
       required: false,
       schema: { type: "string" as const },
     },
@@ -756,7 +794,15 @@ export const settingsAction: Action = {
       description:
         "[update_ai_provider] Optional model slot overrides — `nano|small|medium|large|mega` or `primary`.",
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        properties: Object.fromEntries(
+          ["primary", ...MODEL_SLOTS].map((slot) => [
+            slot,
+            { type: "string" as const },
+          ]),
+        ),
+      },
     },
     {
       name: "capability",
@@ -787,7 +833,7 @@ export const settingsAction: Action = {
     {
       name: "backend",
       description:
-        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, or codex. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
+        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, kimi, or grok. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -808,13 +854,35 @@ export const settingsAction: Action = {
       name: "value",
       description: "[set] Setting value (string | boolean | number).",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        anyOf: [
+          { type: "string" as const },
+          { type: "number" as const },
+          { type: "boolean" as const },
+        ],
+      },
     },
     {
       name: "updates",
       description: "[set] Optional array of `{ key, value }` for bulk writes.",
       required: false,
-      schema: { type: "array" as const },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            key: { type: "string" as const },
+            value: {
+              anyOf: [
+                { type: "string" as const },
+                { type: "number" as const },
+                { type: "boolean" as const },
+              ],
+            },
+          },
+          required: ["key", "value"],
+        },
+      },
     },
   ],
 

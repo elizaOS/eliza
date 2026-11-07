@@ -15,7 +15,10 @@ import {
 } from "./account-storage.ts";
 
 const probe = fileURLToPath(
-  new URL("./account-storage-subprocess-probe.ts", import.meta.url),
+  new URL(
+    "../../test/fixtures/account-storage-subprocess-probe.ts",
+    import.meta.url,
+  ),
 );
 let container: string;
 

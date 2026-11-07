@@ -13,6 +13,12 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGoogleConnectorAccountProvider } from "../../../plugin-google-workspace/src/connector-account-provider.js";
+import {
+  __resetConnectorRegistryForTests,
+  createConnectorRegistry,
+  registerConnectorRegistry,
+  registerDefaultConnectorPack,
+} from "../lifeops/connectors/index.js";
 import { connectorAction } from "./connector.js";
 
 vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
@@ -125,6 +131,102 @@ describe("CONNECTOR Google capability selection", () => {
       await expect(connect(parameters)).rejects.toMatchObject({
         code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
       });
+    },
+  );
+
+  it.each(["cloud_managed", "remote"])(
+    "names the mode argument when Google is asked for mode %s",
+    async (mode) => {
+      for (const parameters of [
+        {
+          connector: "google",
+          action: "connect",
+          mode,
+          capabilities: ["google.calendar.read"],
+        },
+        { connector: "google", action: "disconnect", mode },
+      ]) {
+        expect(validateToolArgs(connectorAction, parameters).valid).toBe(true);
+        const result = (await connectorAction.handler(
+          runtime,
+          {
+            agentId: runtime.agentId,
+            entityId: runtime.agentId,
+            roomId: runtime.agentId,
+            content: { text: `${parameters.action} my Google account` },
+          },
+          undefined,
+          { parameters },
+        )) as { success: boolean; text: string; data: Record<string, unknown> };
+        expect(result.success).toBe(false);
+        expect(result.data.error).toBe("GOOGLE_MODE_UNSUPPORTED");
+        expect(result.text).toContain(`mode "${mode}"`);
+        expect(result.data.requiresConfirmation).toBeUndefined();
+      }
+    },
+  );
+
+  it("refuses a disconnect that can only fail without first asking the owner to confirm", async () => {
+    const disconnect = async (connector: string) => {
+      const parameters = { action: "disconnect", connector };
+      expect(validateToolArgs(connectorAction, parameters).valid).toBe(true);
+      const result = await connectorAction.handler(
+        runtime,
+        {
+          agentId: runtime.agentId,
+          entityId: runtime.agentId,
+          roomId: runtime.agentId,
+          content: { text: `disconnect my ${connector}` },
+        },
+        undefined,
+        { parameters },
+      );
+      return result as {
+        success: boolean;
+        data: Record<string, unknown>;
+      };
+    };
+
+    const unknown = await disconnect("slack");
+    expect(unknown.success).toBe(false);
+    expect(unknown.data.error).toBe("UNKNOWN_CONNECTOR");
+    expect(unknown.data.requiresConfirmation).toBeUndefined();
+
+    const unsupported = await disconnect("wechat");
+    expect(unsupported.success).toBe(false);
+    expect(unsupported.data.error).toBe("UNSUPPORTED_OPERATION");
+    expect(unsupported.data.requiresConfirmation).toBeUndefined();
+
+    const google = await disconnect("google");
+    expect(google.success).toBe(false);
+    expect(google.data.requiresConfirmation).toBe(true);
+  });
+
+  it.each(["twilio", "duffel"])(
+    "refuses to report %s as disconnected while its environment credentials stay in place",
+    async (connector) => {
+      const registry = createConnectorRegistry();
+      registerDefaultConnectorPack(registry, runtime);
+      registerConnectorRegistry(runtime, registry);
+      try {
+        const parameters = { action: "disconnect", connector };
+        const result = (await connectorAction.handler(
+          runtime,
+          {
+            agentId: runtime.agentId,
+            entityId: runtime.agentId,
+            roomId: runtime.agentId,
+            content: { text: `yes, disconnect my ${connector}` },
+          },
+          undefined,
+          { parameters },
+        )) as { success: boolean; data: Record<string, unknown> };
+
+        expect(result.success).toBe(false);
+        expect(result.data.error).toBe("UNSUPPORTED_OPERATION");
+      } finally {
+        __resetConnectorRegistryForTests(runtime);
+      }
     },
   );
 });

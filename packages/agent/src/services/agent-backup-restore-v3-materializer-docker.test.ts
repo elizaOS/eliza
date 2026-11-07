@@ -16,7 +16,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagedRecord,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { candidateFsCanonicalJson } from "./agent-backup-restore-v3-candidate-fs-json";
 import { snapshotAgentBackupRestoreV3CandidateRecord } from "./agent-backup-restore-v3-candidate-records";

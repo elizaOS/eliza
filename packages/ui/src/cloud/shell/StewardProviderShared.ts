@@ -3,7 +3,7 @@
  * session/refresh endpoints the Steward auth provider uses.
  */
 
-import { clearElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { clearElizaApiToken } from "@elizaos/host/protocol";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -12,7 +12,7 @@ import {
   StewardTokenRemovalError,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { createContext } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   removeManagedSharedCloudAgentProfiles,
   scrubPersistedAgentProfileTokens,

@@ -10,6 +10,7 @@
  */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+import type { CaptureLifeOpsActivitySignalRequest } from "@elizaos/contracts";
 import {
   AgentRuntime,
   type Character,
@@ -28,7 +29,6 @@ import {
 } from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CaptureLifeOpsActivitySignalRequest } from "../contracts/index.js";
 import {
   activateLifeOpsActivitySignals,
   deactivateLifeOpsActivitySignals,

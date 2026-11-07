@@ -398,15 +398,15 @@ export function resolveAlmanacWindow(input: {
     };
   }
   if (entry.trigger.kind === "annual_window") {
+    // Of the windows that have not ended, the earliest opening is the one
+    // open now, else the next to open. Ranking by distance to the opening
+    // skipped a long window (October to April) once more than half of it had
+    // passed, because next year's opening was then closer.
     const candidate = annualCandidates(entry, asOf)
       .filter((window) => window.endsAt.getTime() > asOf.getTime())
-      .sort((left, right) => {
-        const leftDistance = Math.abs(left.startsAt.getTime() - asOf.getTime());
-        const rightDistance = Math.abs(
-          right.startsAt.getTime() - asOf.getTime(),
-        );
-        return leftDistance - rightDistance;
-      })[0];
+      .sort(
+        (left, right) => left.startsAt.getTime() - right.startsAt.getTime(),
+      )[0];
     if (!candidate) {
       return {
         state: "unknown",

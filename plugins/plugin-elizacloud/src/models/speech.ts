@@ -8,8 +8,9 @@ import {
   resolveCloudTimeoutMs,
 } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
-import { warmingRetryWaitSeconds } from "../utils/warming";
 import { createElizaCloudClient } from "../utils/sdk-client";
+import { isOpenAiVoiceAlias } from "../utils/voice-aliases.js";
+import { warmingRetryWaitSeconds } from "../utils/warming";
 
 /**
  * Narrow client interface the speech handler actually exercises. Lets tests
@@ -20,6 +21,7 @@ export interface CloudTtsClient {
     postApiV1VoiceTts<T = unknown>(options: {
       headers?: Record<string, unknown>;
       json: { text: string; voiceId?: string; modelId?: string };
+      signal?: AbortSignal;
       timeoutMs?: number;
     }): Promise<T>;
   };
@@ -81,18 +83,20 @@ function normalizeTextInput(
 /**
  * Pull an ElevenLabs `modelId` out of (in order):
  *   1. options.modelId — explicit ElevenLabs model id
- *   2. options.model with `elevenlabs/` prefix or `eleven_*` shape
+ *   2. options.model, else the ELIZAOS_CLOUD_TTS_MODEL setting, with an
+ *      `elevenlabs/` prefix or `eleven_*` shape
  *
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default (currently `eleven_flash_v2_5`).
  */
 function resolveModelId(
   options: CloudTextToSpeechParams,
+  setting: string | undefined,
 ): string | undefined {
   if (options.modelId && options.modelId.trim()) {
     return options.modelId.trim();
   }
-  const model = options.model?.trim();
+  const model = options.model?.trim() || setting?.trim();
   if (!model) return undefined;
   if (model.startsWith("elevenlabs/")) {
     return model.split("/").slice(1).join("/");
@@ -106,23 +110,23 @@ function resolveModelId(
 /**
  * Pull an ElevenLabs `voiceId` out of (in order):
  *   1. options.voiceId — explicit ElevenLabs voice id (preferred)
- *   2. options.voice — OpenAI-style voice name (rejected unless it looks
- *      like an ElevenLabs id, i.e. neither an OpenAI alias nor "nova")
+ *   2. options.voice, else the ELIZAOS_CLOUD_TTS_VOICE setting — rejected
+ *      when it is a known OpenAI voice alias
  *
  * Returns `undefined` when nothing usable was provided so the upstream
  * can apply its own default voice.
  */
 function resolveVoiceId(
   options: CloudTextToSpeechParams,
+  setting: string | undefined,
 ): string | undefined {
   if (options.voiceId && options.voiceId.trim()) {
     return options.voiceId.trim();
   }
-  const voice = options.voice?.trim();
+  const voice = options.voice?.trim() || setting?.trim();
   if (!voice) return undefined;
-  // "nova" is the OpenAI default — treat as unset so the upstream falls back
-  // to the cloud default voice instead of being forwarded as an opaque alias.
-  if (voice === "nova") return undefined;
+  // Let the upstream choose its default for provider-specific aliases.
+  if (isOpenAiVoiceAlias(voice)) return undefined;
   return voice;
 }
 
@@ -131,13 +135,18 @@ async function fetchTextToSpeech(
   options: CloudTextToSpeechParams,
 ): Promise<ReadableStream<Uint8Array> | Readable> {
   const format = options.format || "mp3";
-  const modelId = resolveModelId(options);
-  const voiceId = resolveVoiceId(options);
+  const modelId = resolveModelId(
+    options,
+    getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL"),
+  );
+  const voiceId = resolveVoiceId(
+    options,
+    getSetting(runtime, "ELIZAOS_CLOUD_TTS_VOICE"),
+  );
 
   try {
-    // Ride through the cloud's transient cold-cache warming 503 — the
-    // raw-Response companion to the throw-shaped retries in image/video/music
-    // (#18323/#18325/#18333). A non-warming failure still throws immediately.
+    // Retry the cloud's typed transient 503 (see utils/warming.ts); any other
+    // failure throws immediately.
     let res: Response;
     let warmingRetries = 0;
     for (;;) {
@@ -150,14 +159,18 @@ async function fetchTextToSpeech(
           ...(voiceId ? { voiceId } : {}),
           ...(modelId ? { modelId } : {}),
         },
-        timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
+        signal: options.signal,
+        timeoutMs: resolveCloudTimeoutMs(
+          "ELIZAOS_CLOUD_TTS_TIMEOUT_MS",
+          60_000,
+        ),
       })) as Response;
       if (warmingRetries < 2) {
         const waitSeconds = await warmingRetryWaitSeconds(res);
         if (waitSeconds !== null) {
           warmingRetries++;
           logger.warn(
-            `[ELIZAOS_CLOUD] TTS cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`,
+            `[ELIZAOS_CLOUD] TTS transient unavailability (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`,
           );
           await new Promise((r) => setTimeout(r, waitSeconds * 1000));
           continue;
@@ -178,7 +191,9 @@ async function fetchTextToSpeech(
     return await webStreamToNodeStream(res.body);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to fetch speech from ElizaOS Cloud TTS: ${message}`);
+    throw new Error(
+      `Failed to fetch speech from ElizaOS Cloud TTS: ${message}`,
+    );
   }
 }
 
@@ -326,11 +341,6 @@ export async function handleTextToSpeech(
     input !== null &&
     (input as { audioStream?: boolean }).audioStream === true;
 
-  const resolvedModel =
-    options.modelId ||
-    options.model ||
-    (getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "eleven_flash_v2_5") as string);
-  logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
     if (wantsStream) {
@@ -338,7 +348,14 @@ export async function handleTextToSpeech(
       const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
       return buildAudioStreamResult(speechStream, mimeType);
     }
-    return ttsStreamToBytes(speechStream);
+    const bytes = await ttsStreamToBytes(speechStream);
+    // A 200 with an empty body is a failed synthesis, not a silent clip.
+    // Returning it as audio makes byte-expecting callers write or play a
+    // zero-byte file while reporting success.
+    if (bytes.byteLength === 0) {
+      throw new Error("ElizaOS Cloud TTS returned an empty audio response");
+    }
+    return bytes;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error in TEXT_TO_SPEECH: ${message}`);

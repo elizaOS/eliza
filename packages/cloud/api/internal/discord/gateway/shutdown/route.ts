@@ -1,10 +1,12 @@
 // Handles internal cloud API internal discord gateway shutdown route traffic with service-to-service auth.
+
+import { discordConnectionsRepository } from "@elizaos/cloud-shared/db/repositories/discord-connections";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 
 const shutdownSchema = z.object({
@@ -24,7 +26,11 @@ app.post("/", async (c) => {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
 
-    const body = shutdownSchema.parse(await c.req.json().catch(() => ({})));
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const body = shutdownSchema.parse(decodedBody.value);
     const podName = body.pod_name ?? auth.podName;
     const released =
       await discordConnectionsRepository.clearPodAssignments(podName);

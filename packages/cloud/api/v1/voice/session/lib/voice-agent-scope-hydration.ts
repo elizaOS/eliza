@@ -5,21 +5,21 @@
  * response-facing voice turn module and its warm dependency graph.
  */
 
-import { runWithDbCacheAsync } from "@/db/client";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   warmInferenceAdmissionGate,
   warmInferenceRateLimitGate,
-} from "@/lib/services/inference-admission-gate";
-import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
-import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import { logger } from "@/lib/utils/logger";
-import type { Bindings } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { warmInferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import { coordinateSharedConversationPrewarm } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
 
 export async function hydrateVoiceSharedAgentScope(
@@ -74,8 +74,8 @@ export async function hydrateVoiceSharedAgentScope(
         };
         const warmVoiceModelPricing = async (): Promise<void> => {
           const [pricing, voiceConfig] = await Promise.all([
-            import("@/lib/pricing"),
-            import("@/lib/voice-session/config"),
+            import("@elizaos/cloud-shared/lib/pricing"),
+            import("@elizaos/cloud-shared/lib/voice-session/config"),
           ]);
           const { calculateCost, getProviderFromModel, normalizeModelName } =
             pricing;

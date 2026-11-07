@@ -7,11 +7,6 @@
 import type { Content, MetadataValue, UUID } from "./primitives.js";
 
 /**
- * Memory type enumeration for built-in memory types
- */
-export type MemoryTypeAlias = string;
-
-/**
  * Enumerates the built-in types of memories that can be stored and retrieved.
  * - `DOCUMENT`: Represents a whole document or a large piece of text.
  * - `FRAGMENT`: A chunk or segment of a `DOCUMENT`, often created for embedding and search.
@@ -95,7 +90,7 @@ export interface ArtifactShareMetadata {
  * Base interface for all memory metadata types.
  */
 export interface BaseMetadata {
-	type: MemoryTypeAlias;
+	type: string;
 	source?: string;
 	sourceId?: string;
 	scope?: MemoryScope;
@@ -107,7 +102,7 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
-	/** Legacy agent-wide discovery pin, used only when pinTargets is absent. */
+	/** Agent-wide discovery pin, used only when pinTargets is absent. */
 	pinned?: boolean;
 	/** Discovery placement only; every reader must independently satisfy document access. */
 	pinTargets?: { agent: boolean; roomIds: UUID[] };
@@ -229,10 +224,6 @@ export interface SessionOrigin {
 	threadId?: string | number;
 }
 
-// =========================================================================
-// Session Context - First-class session support for filtering and state
-// =========================================================================
-
 export interface SessionModelOverride {
 	provider?: string;
 	model?: string;
@@ -321,7 +312,7 @@ export interface MessageMetadata {
 		/**
 		 * Stable platform id of the sender, mirroring `userId` — role
 		 * resolution's connector identity matching compares the `userId`/`id`
-		 * pair (#14711).
+		 * pair.
 		 */
 		id?: string | number;
 		chatId?: string | number;
@@ -454,7 +445,7 @@ export interface MessageMetadata {
 	/**
 	 * Short topic labels extracted for this turn at Stage-1 (the `topics`
 	 * field-evaluator). Stamped onto the inbound message so the dashboard can
-	 * group the transcript by topic and surface a topic chips bar (#8928).
+	 * group the transcript by topic and surface a topic chips bar.
 	 * Mirrors the per-room LRU in `ChannelTopicsService`.
 	 */
 	topics?: string[];
@@ -473,7 +464,7 @@ export interface DescriptionMetadata {
 export interface CustomMetadata {
 	base?: BaseMetadata;
 	type?: "custom";
-	[key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
+	[key: string]: MetadataValue | BaseMetadata | undefined;
 }
 
 /**
@@ -520,7 +511,7 @@ interface MemoryMetadataBase {
 	doNotPersist?: boolean;
 	skipMemory?: boolean;
 	transient?: boolean;
-	type?: MemoryTypeAlias;
+	type?: string;
 	source?: string;
 	scope?: MemoryScope;
 	timestamp?: number;

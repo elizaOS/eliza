@@ -51,3 +51,7 @@ __all__ = [
     "create_tau_agent",
     "TauBenchRunner",
 ]
+
+from .protocol import strip_cerebras_quirks, scrub_history_for_cerebras
+
+__all__ += ["strip_cerebras_quirks", "scrub_history_for_cerebras"]

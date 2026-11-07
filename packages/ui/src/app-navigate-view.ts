@@ -3,7 +3,7 @@
  * entry the agent's view actions and the shell use to switch views.
  */
 
-import type { NavigateViewDetail } from "@elizaos/core/events";
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { logger } from "./logger.ts";
 import { type Tab, tabFromPath } from "./navigation";

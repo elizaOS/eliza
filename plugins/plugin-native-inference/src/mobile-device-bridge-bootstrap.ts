@@ -36,6 +36,7 @@ import {
   type IAgentRuntime,
   identifyEmbeddingVector,
   inferenceRamClassFromEnv,
+  isTruthyEnvValue,
   type LocalInferencePriority,
   logger,
   MobileDeviceBridgeService,
@@ -48,6 +49,7 @@ import {
   ServiceType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { imageUrlToBase64 } from "./image-url-to-base64.ts";
 import { BGE_EMBEDDING_MODEL } from "./model-catalog/bge-embedding-model.js";
 import {
@@ -2116,7 +2118,15 @@ function extractEmbeddingText(
 }
 function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
   let readiness: Promise<void> | undefined;
+  const assertEnabled = () => {
+    if (isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")))
+      throw new ElizaError(
+        "Local embeddings are disabled by the host provider policy",
+        { code: "LOCAL_EMBEDDING_DISABLED" },
+      );
+  };
   return async (_runtime, params) => {
+    assertEnabled();
     const dimensions = resolveEmbeddingDimension();
     if (params === null) {
       // Runtime initialization uses a null embedding request only to size
@@ -2139,6 +2149,7 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
     } finally {
       if (!admitted && readiness === pending) readiness = undefined;
     }
+    assertEnabled();
     let loadArgs: LocalInferenceLoadArgs | null =
       resolveLocalLoadArgs("TEXT_EMBEDDING");
     let modelPath = loadArgs?.modelPath ?? null;
@@ -2156,6 +2167,7 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
         `[mobile-device-bridge] No local GGUF embedding model resolved for ${modelsDir()}.`,
       );
     }
+    assertEnabled();
     const prepared = prepareBgeEmbeddingInput(extractEmbeddingText(params));
     const bionicSock = bionicSocketName();
     if (bionicSock) {
@@ -2189,6 +2201,7 @@ function makeEmbeddingHandler(runtime: AgentRuntime): EmbeddingHandler {
       return validateBgeResponse(res, prepared);
     }
     await mobileDeviceBridge.loadModel(loadArgs);
+    assertEnabled();
     return mobileDeviceBridge.embed({
       input: prepared.text,
     });
@@ -2462,16 +2475,15 @@ function registerMobileDeviceBridgeModels(
       ),
     );
   }
-  // Always register the TEXT_EMBEDDING handler. If the GGUF isn't on disk
-  // yet, the handler itself will trigger the auto-downloader on first
-  // real call (the null-params startup probe still returns zeros). This
-  // way the embedding slot becomes available without an agent restart.
-  runtimeWithRegistration.registerModel(
-    ModelType.TEXT_EMBEDDING,
-    makeEmbeddingHandler(runtime),
-    PROVIDER,
-    LOCAL_INFERENCE_PRIORITY,
-  );
+  // Host-selected Cloud embeddings must never fall back into local dispatch.
+  if (!isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS"))) {
+    runtimeWithRegistration.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      makeEmbeddingHandler(runtime),
+      PROVIDER,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+  }
   // On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
   // bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
   // instead of degrading to the cloud handler. Only meaningful when bionic
@@ -2491,6 +2503,7 @@ function registerMobileDeviceBridgeModels(
   }
   const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
   if (
+    !isTruthyEnvValue(readAliasedEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) &&
     !embeddingModelPath &&
     process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
   ) {

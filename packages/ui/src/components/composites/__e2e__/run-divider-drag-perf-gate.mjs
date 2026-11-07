@@ -18,11 +18,8 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  runBrowserFixtureE2E,
-  stubElizaCore,
-  stubNodeBuiltins,
-} from "../../../testing/e2e-runner/index.ts";
+import { runBrowserFixtureE2E } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import { summarizeFrameSamples } from "../../../hooks/frame-budget.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));

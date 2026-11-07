@@ -18,7 +18,6 @@ __pycache__/
 **/Pods/
 **/DerivedData/
 toolchains/bun-riscv64/dist/
-.eliza-source/
 
 # OS image and release build output
 out/

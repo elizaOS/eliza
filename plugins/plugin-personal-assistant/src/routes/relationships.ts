@@ -177,14 +177,12 @@ export async function handleRelationshipRoutes(
     }
     const store = makeStore(ctx);
     if (!store) return true;
-    const existing = await store.get(relationshipId);
-    if (!existing) {
-      ctx.error(res, "relationship not found", 404);
-      return true;
-    }
+    // The body is read before the edge, and the merge runs under the edge's
+    // serialization: a stale copy written back after a slow request body would
+    // undo interactions observed or a retirement made in the meantime.
     const body = await readJsonBody<Partial<Relationship>>(req, res);
     if (!body) return true;
-    const updated = await store.upsert({
+    const updated = await store.patch(relationshipId, (existing) => ({
       ...existing,
       relationshipId: existing.relationshipId,
       ...(body.fromEntityId ? { fromEntityId: body.fromEntityId } : {}),
@@ -199,7 +197,11 @@ export async function handleRelationshipRoutes(
         ? { confidence: body.confidence }
         : {}),
       ...(body.source ? { source: body.source } : {}),
-    });
+    }));
+    if (!updated) {
+      ctx.error(res, "relationship not found", 404);
+      return true;
+    }
     json(res, { relationship: updated });
     return true;
   }

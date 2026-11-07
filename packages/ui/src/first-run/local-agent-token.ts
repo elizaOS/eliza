@@ -3,12 +3,9 @@
  * agent plugin and boot config, and detects local-agent URLs.
  */
 import { Capacitor } from "@capacitor/core";
-import {
-  getElizaApiToken,
-  setElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
+import { getElizaApiToken, setElizaApiToken } from "@elizaos/host/protocol";
 import { getAgentPlugin } from "../bridge/native-plugins";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { isMobileLocalAgentUrl } from "./mobile-runtime-mode";
 export function isAndroidLocalAgentUrl(value: string): boolean {
   return isMobileLocalAgentUrl(value);

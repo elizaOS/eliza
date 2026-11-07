@@ -14,6 +14,11 @@
     public static java.lang.String localAgentToken();
     public static java.lang.String requestLocalAgent(java.lang.String);
     public static void requestLocalAgentStream(java.lang.String, java.util.function.Consumer);
+    public static void subscribeLocalAgentEvents(java.lang.String, java.util.function.Consumer, ai.elizaos.app.ElizaAgentService$LocalStreamHandle);
+}
+-keep class ai.elizaos.app.ElizaAgentService$LocalStreamHandle {
+    public <init>();
+    public void cancel();
 }
 
 # Background Runner's bundled JS engine resolves this namespace from native
@@ -37,6 +42,8 @@
 # ClassNotFoundException. Keep the whole native-plugin namespace.
 -keep class ai.elizaos.plugins.** { *; }
 -keep class ai.eliza.plugins.** { *; }
+# Capacitor reflects over the inherited @PluginMethod methods of ElizaCloudSignInPlugin.
+-keep class ai.eliza.auth.cloud.** { *; }
 -keep class app.eliza.** { *; }
 
 # WebView JavaScript interface

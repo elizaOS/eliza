@@ -36,6 +36,10 @@ import {
   loadElizaInferenceFfi,
 } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
 import { resolveKokoroEngineConfig } from "../../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-engine-discovery";
+import { createParadeeTtsBackend } from "../../../../plugins/plugin-local-inference/src/services/voice/paradee/paradee-backend";
+import { discoverParadeeEngine } from "../../../../plugins/plugin-local-inference/src/services/voice/paradee/paradee-engine-discovery";
+import { resampleLinear } from "../../../../plugins/plugin-local-inference/src/services/voice/transcriber";
+import { encodeMonoPcm16Wav } from "../../../../plugins/plugin-local-inference/src/services/voice/wav-codec";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -218,6 +222,74 @@ export async function ensureKokoroCorpus(
     }
     return { ...e, wavPath, pcm, seconds: pcm.length / sampleRate };
   });
+}
+
+/**
+ * The agent's own voice for the real lanes: Paradee-8M v1.1 through the host
+ * TTS worker, the product on-device TTS the desktop agent speaks with. Paradee
+ * has one voice, so `voiceId` is ignored. Synthesized every run (Paradee is
+ * deterministic and fast) and written next to the Kokoro corpus for
+ * inspection. Skips when Paradee is not staged.
+ */
+export async function synthesizeParadeeAgentTurns(
+  name: string,
+  entries: readonly Omit<BenchCorpusEntry, "voiceId">[],
+  gates: BenchGates,
+  log: (msg: string) => void,
+): Promise<CorpusItem[]> {
+  const found = discoverParadeeEngine();
+  if (!found.ok) gates.skip(`agent voice ${name}: ${found.reason}`);
+  const dir = path.join(corpusRoot(), `${name}-paradee`);
+  mkdirSync(dir, { recursive: true });
+  const backend = createParadeeTtsBackend(found.config, {
+    workerPath: path.resolve(
+      __dirname,
+      "../../../../plugins/plugin-local-inference/src/host-tts-worker.ts",
+    ),
+  });
+  try {
+    const items: CorpusItem[] = [];
+    for (const [index, entry] of entries.entries()) {
+      const audio = await backend.synthesize({
+        phrase: {
+          id: index + 1,
+          text: entry.text,
+          fromIndex: 0,
+          toIndex: entry.text.length,
+          terminator: "punctuation",
+        },
+        preset: {
+          voiceId: "paradee",
+          embedding: new Float32Array(0),
+          bytes: new Uint8Array(0),
+        },
+        cancelSignal: { cancelled: false },
+      });
+      if (audio.pcm.length === 0) {
+        gates.fail(
+          `agent voice ${name}: Paradee produced no audio for ${entry.id}`,
+        );
+      }
+      const pcm = resampleLinear(
+        audio.pcm,
+        audio.sampleRate,
+        BENCH_SAMPLE_RATE,
+      );
+      const wavPath = path.join(dir, `${entry.id}.wav`);
+      writeFileSync(wavPath, encodeMonoPcm16Wav(pcm, BENCH_SAMPLE_RATE));
+      log(`agent voice ${name}: ${entry.id} synthesized with Paradee v1.1`);
+      items.push({
+        ...entry,
+        voiceId: "paradee",
+        wavPath,
+        pcm,
+        seconds: pcm.length / BENCH_SAMPLE_RATE,
+      });
+    }
+    return items;
+  } finally {
+    backend.dispose();
+  }
 }
 
 function runSynthWorker(

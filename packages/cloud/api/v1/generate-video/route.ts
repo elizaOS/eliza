@@ -1,6 +1,48 @@
 /** Handles authenticated video generation, billing, and pending-job reconciliation. */
 
 import {
+  ApiError,
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  collectVideoProviderApiKeys,
+  getConfiguredVideoProviderCandidates,
+} from "@elizaos/cloud-shared/lib/providers/video/registry";
+import {
+  type GeneratedVideo,
+  VIDEO_PENDING_SETTLEMENT_MARKER,
+  VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER,
+  VideoGenerationPendingError,
+  VideoGenerationSubmissionUnknownError,
+  VideoGenerationTerminalError,
+  type VideoProvider,
+  type VideoSubmissionUnknownSettlement,
+} from "@elizaos/cloud-shared/lib/providers/video/types";
+import {
+  type BillingContext,
+  billFlatUsage,
+  type FlatBillingCost,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import {
+  calculateVideoGenerationCostFromCatalog,
+  getDefaultVideoBillingDimensions,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS,
+  DEFAULT_VIDEO_MODEL_IDS,
+  getSupportedVideoModelDefinition,
+  SUPPORTED_VIDEO_MODEL_IDS,
+  type SupportedVideoModelDefinition,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { persistPendingVideoSettlement } from "@elizaos/cloud-shared/lib/services/pending-video-settlement";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
   ElizaError,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -14,48 +56,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import {
-  ApiError,
-  failureResponse,
-  jsonError,
-} from "@/lib/api/cloud-worker-errors";
-import {
-  collectVideoProviderApiKeys,
-  getConfiguredVideoProviderCandidates,
-} from "@/lib/providers/video/registry";
-import {
-  type GeneratedVideo,
-  VIDEO_PENDING_SETTLEMENT_MARKER,
-  VIDEO_SUBMISSION_UNKNOWN_SETTLEMENT_MARKER,
-  VideoGenerationPendingError,
-  VideoGenerationSubmissionUnknownError,
-  VideoGenerationTerminalError,
-  type VideoProvider,
-  type VideoSubmissionUnknownSettlement,
-} from "@/lib/providers/video/types";
-import {
-  type BillingContext,
-  billFlatUsage,
-  type FlatBillingCost,
-} from "@/lib/services/ai-billing";
-import {
-  calculateVideoGenerationCostFromCatalog,
-  getDefaultVideoBillingDimensions,
-} from "@/lib/services/ai-pricing";
-import {
-  DEFAULT_IMAGE_TO_VIDEO_MODEL_IDS,
-  DEFAULT_VIDEO_MODEL_IDS,
-  getSupportedVideoModelDefinition,
-  SUPPORTED_VIDEO_MODEL_IDS,
-  type SupportedVideoModelDefinition,
-} from "@/lib/services/ai-pricing-definitions";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import { persistPendingVideoSettlement } from "@/lib/services/pending-video-settlement";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_PROMPT_LENGTH = 4000;
 

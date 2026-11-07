@@ -1,0 +1,75 @@
+name: Staging session exchange identity
+
+# Prints the non-secret identity of the protected staging ELIZAOS_CLOUD_API_KEY
+# (API key id, user id, organization id) so the operator can align the
+# STAGING_SESSION_EXCHANGE_ALLOWED_* allowlists after a key rotation. Read-only;
+# never prints the key or any other credential.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-session-exchange-identity
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    name: Resolve staging API key identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    steps:
+      - name: Require staging source
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [ "$SOURCE_REF" = "refs/heads/staging" ] || {
+            echo "::error::Run from refs/heads/staging"
+            exit 1
+          }
+
+      - name: Read identity
+        env:
+          API_URL: https://api-staging.eliza.app
+          API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          ALLOWED_API_KEY_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS }}
+          ALLOWED_USER_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS }}
+          ALLOWED_ORGANIZATION_IDS: ${{ vars.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS }}
+        run: |
+          set -euo pipefail
+          [ -n "$API_KEY" ] || { echo "::error::ELIZAOS_CLOUD_API_KEY is not set"; exit 1; }
+          get() {
+            curl -fsS --max-time 20 -H "Authorization: Bearer $API_KEY" "$API_URL$1"
+          }
+          user=$(get /api/v1/user) || { echo "::error::/api/v1/user rejected the key"; exit 1; }
+          user_id=$(jq -r '.data.id // .id // empty' <<<"$user")
+          org_id=$(jq -r '.data.organization_id // .organization_id // empty' <<<"$user")
+          key_id=""
+          if keys=$(get /api/v1/api-keys); then
+            key_id=$(jq -r --arg key "$API_KEY" \
+              '[.keys[] | select(.key_prefix != null and ($key | startswith(.key_prefix)))] | if length == 1 then .[0].id else empty end' \
+              <<<"$keys")
+          else
+            echo "::warning::/api/v1/api-keys is not available to API-key auth"
+          fi
+          uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          for value in "$user_id" "$org_id"; do
+            [[ "$value" =~ $uuid ]] || { echo "::error::Unexpected identity shape"; exit 1; }
+          done
+          [ -z "$key_id" ] || [[ "$key_id" =~ $uuid ]] || { echo "::error::Unexpected key id shape"; exit 1; }
+          check() {
+            if [[ ",$2," == *",$1,"* ]]; then echo allowed; else echo NOT-ALLOWED; fi
+          }
+          {
+            echo "## Staging API key identity"
+            echo
+            echo "| Field | Value | In allowlist |"
+            echo "|---|---|---|"
+            echo "| API key id | ${key_id:-unresolved} | $( [ -n "$key_id" ] && check "$key_id" "$ALLOWED_API_KEY_IDS" || echo n/a ) |"
+            echo "| User id | $user_id | $(check "$user_id" "$ALLOWED_USER_IDS") |"
+            echo "| Organization id | $org_id | $(check "$org_id" "$ALLOWED_ORGANIZATION_IDS") |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

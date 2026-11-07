@@ -30,11 +30,11 @@ from typing import Any
 
 import numpy as np
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from .deterministic_eval import (
+from ..deterministic_eval import (
     ACTION_REASON_ALIGNMENT_SAMPLES,
     ACTION_REASON_SYSTEM_PROMPT,
     CONCRETE_CUE_PATTERN,
@@ -1197,7 +1197,7 @@ Your goal is to make profitable trading decisions based on market analysis."""
 
         # DAPO-inspired zero-variance filtering: skip groups where all
         # trajectories received the same reward (no gradient signal).
-        from .rewards import is_zero_variance_group
+        from ..rewards import is_zero_variance_group
 
         if is_zero_variance_group(scores):
             logger.info(

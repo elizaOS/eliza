@@ -4,14 +4,14 @@ import {
   blooioSenderIsolationViolation,
   classifyBlooioEnvironment,
 } from "@elizaos/cloud-services-common/blooio-environment";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
 import {
   appendServerTiming,
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
-} from "@/lib/observability/http-telemetry";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 type GatewayPlatform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
@@ -175,7 +175,7 @@ async function verifyBlooioSignature(
   secret: string,
 ): Promise<boolean> {
   const signatureHeader = request.headers.get("x-blooio-signature") ?? "";
-  const parts = signatureHeader.split(",");
+  const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestampPart = parts.find((p) => p.startsWith("t="));
   const signaturePart = parts.find((p) => p.startsWith("v1="));
   if (!timestampPart || !signaturePart) return false;

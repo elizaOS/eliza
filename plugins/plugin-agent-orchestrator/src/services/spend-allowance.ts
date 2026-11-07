@@ -25,16 +25,16 @@
  *      ops the *payer* funds, e.g.    (e.g. `x402.requests.create` creates a
  *      `x402.requests.create`)        request that someone else pays us).
  *
- * The cap is a SAFETY THROTTLE, not a durable accounting ledger: the running
- * total is tracked in-memory per child session and resets on process restart.
- * Real money is still ultimately gated server-side (credit balance, atomic
+ * The cap is a SAFETY THROTTLE, not an accounting ledger. When the orchestrator
+ * task store is available, each session total is persisted there before a
+ * command is auto-authorized, so the throttle survives a process restart. Real
+ * money is still ultimately gated server-side (credit balance, atomic
  * debit/refund in the buy/charge routes). Default cap of `0` preserves the
  * original "confirm everything" behavior exactly.
  *
  * @module services/spend-allowance
  */
 
-import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
 /** Mirror of the broker's `CloudCommandRisk` union (kept local to avoid a
@@ -285,11 +285,10 @@ export async function hydrateSessionSpendUsd(
 ): Promise<number> {
   if (!ledgerBackend) return getSessionSpendUsd(sessionId);
   const persisted = await ledgerBackend.load(sessionId);
-  // Never lower the in-memory total: a debit committed this run may not have
-  // been persisted yet (the write-through `save` is fire-and-forget), so a
-  // lagging durable read must not erase it — that would let the next command
-  // re-authorize spend already consumed (cap bypass). Spend only grows, so MAX
-  // is correct and also folds in another instance's higher durable total.
+  // Never lower the in-memory total: a stale durable read from another instance
+  // must not erase a debit committed in this process. That would let the next
+  // command re-authorize spend already consumed. Spend only grows, so MAX is
+  // correct and also folds in another instance's higher durable total.
   const merged = Math.max(getSessionSpendUsd(sessionId), persisted);
   sessionSpendUsd.set(sessionId, merged);
   return merged;
@@ -329,26 +328,20 @@ export function withSessionSpendLock<T>(
   return result;
 }
 
-/** Add to a session's running total; returns the new total. Negative/NaN
- * amounts are ignored. With a durable backend the new total is persisted
- * write-through; persistence failures are logged, never thrown (the cap stays
- * enforced from the in-memory total). */
-export function addSessionSpendUsd(
+/** Add to a session's running total and return the new total. Negative/NaN
+ * amounts are ignored. With a durable backend, the write must finish before the
+ * in-memory total commits. A failed write rejects the authorization path, so a
+ * process exit cannot lose an auto-authorized debit. */
+export async function addSessionSpendUsd(
   sessionId: string,
   amountUsd: number,
-): number {
+): Promise<number> {
   const safe = Number.isFinite(amountUsd) && amountUsd > 0 ? amountUsd : 0;
   const next = getSessionSpendUsd(sessionId) + safe;
-  sessionSpendUsd.set(sessionId, next);
   if (safe > 0 && ledgerBackend) {
-    void ledgerBackend.save(sessionId, next).catch((err) => {
-      // error-policy:J4 persist best-effort; cap still enforced from in-memory total; logged
-      logger.warn(
-        { src: "spend-allowance", sessionId, err: errorMessage(err) },
-        "[spend-allowance] failed to persist session spend",
-      );
-    });
+    await ledgerBackend.save(sessionId, next);
   }
+  sessionSpendUsd.set(sessionId, next);
   return next;
 }
 
@@ -361,10 +354,6 @@ export function resetSessionSpendUsd(sessionId?: string): void {
     return;
   }
   sessionSpendUsd.delete(sessionId);
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** Minimal structural view of the OrchestratorTaskStore the ledger needs —

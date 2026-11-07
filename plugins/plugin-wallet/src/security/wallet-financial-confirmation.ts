@@ -24,6 +24,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { requireConfirmation } from "@elizaos/core";
+import { getChainConfig } from "../lp/types.js";
 import type { WalletRouterParams } from "../types/wallet-router.js";
 import { ON_CHAIN_WRITE_SUBACTIONS } from "./wallet-context-safety.js";
 
@@ -45,6 +46,8 @@ export type WalletFinancialWriteParams = Omit<
   "subaction"
 > & {
   readonly subaction: string;
+  /** EVM network the LP write signs on; bound and shown like every other economic parameter. */
+  readonly chainId?: number;
   readonly pool?: string;
   readonly position?: string;
   readonly dex?: string;
@@ -92,6 +95,7 @@ export function walletFinancialPendingKey(
     WalletFinancialWriteParams,
     | "subaction"
     | "chain"
+    | "chainId"
     | "toChain"
     | "amount"
     | "recipient"
@@ -101,6 +105,11 @@ export function walletFinancialPendingKey(
     | "op"
     | "governor"
     | "proposalId"
+    | "support"
+    | "targets"
+    | "values"
+    | "calldatas"
+    | "description"
     | "pool"
     | "position"
     | "dex"
@@ -115,9 +124,9 @@ export function walletFinancialPendingKey(
     ["chain", (params.chain ?? "").toLowerCase()],
     ["toChain", (params.toChain ?? "").toLowerCase()],
     ["amount", params.amount ?? ""],
-    ["recipient", (params.recipient ?? "").toLowerCase()],
-    ["fromToken", (params.fromToken ?? "").toLowerCase()],
-    ["toToken", (params.toToken ?? "").toLowerCase()],
+    ["recipient", addressKey(params.recipient)],
+    ["fromToken", addressKey(params.fromToken)],
+    ["toToken", addressKey(params.toToken)],
     [
       "slippageBps",
       params.slippageBps === undefined ? "" : String(params.slippageBps),
@@ -126,11 +135,32 @@ export function walletFinancialPendingKey(
     ["governor", (params.governor ?? "").toLowerCase()],
     ["proposalId", params.proposalId ?? ""],
   ];
+  // Governance payload binds only when present so non-gov pending keys keep
+  // their exact shape. A "yes" must not authorize a different vote direction
+  // or a different proposal payload than the one previewed.
+  if (params.support !== undefined) {
+    entries.push(["support", String(params.support)]);
+  }
+  if (params.targets !== undefined) {
+    entries.push(["targets", params.targets.join(",").toLowerCase()]);
+  }
+  if (params.values !== undefined) {
+    entries.push(["values", params.values.join(",")]);
+  }
+  if (params.calldatas !== undefined) {
+    entries.push(["calldatas", params.calldatas.join(",").toLowerCase()]);
+  }
+  if (params.description !== undefined) {
+    entries.push(["description", params.description]);
+  }
   // LP identifiers bind only when present so existing wallet pending keys
   // keep their exact shape; pool/position stay case-sensitive because Solana
   // mints and position ids are base58. dex/range/tokens/feeTier bind the LP
   // economic parameters so a confirmation cannot be replayed onto a
   // different protocol or range for the same pool id.
+  if (params.chainId !== undefined) {
+    entries.push(["chainId", String(params.chainId)]);
+  }
   if (params.pool !== undefined) {
     entries.push(["pool", params.pool]);
   }
@@ -161,6 +191,13 @@ export function walletFinancialPendingKey(
 // identically. The unstated default is not a single chain-agnostic number
 // (EVM swaps escalate 1% -> 1.5% -> 2%, bridges hold 1%, Solana uses dynamic
 // slippage), so it is labeled rather than numbered.
+// EVM hex addresses are case-insensitive; Solana base58 addresses are not, so
+// two case variants are different accounts and must not share a key.
+function addressKey(value: string | undefined): string {
+  const text = value ?? "";
+  return /^0x/i.test(text) ? text.toLowerCase() : text;
+}
+
 function slippagePreviewClause(slippageBps: number | undefined): string {
   if (slippageBps === undefined) {
     return " with default slippage";
@@ -173,6 +210,7 @@ export function walletFinancialPreview(
     WalletFinancialWriteParams,
     | "subaction"
     | "chain"
+    | "chainId"
     | "toChain"
     | "amount"
     | "recipient"
@@ -180,6 +218,13 @@ export function walletFinancialPreview(
     | "toToken"
     | "slippageBps"
     | "op"
+    | "governor"
+    | "proposalId"
+    | "support"
+    | "targets"
+    | "values"
+    | "calldatas"
+    | "description"
     | "pool"
     | "position"
     | "dex"
@@ -189,7 +234,13 @@ export function walletFinancialPreview(
     | "range"
   >,
 ): string {
-  const chainLabel = params.chain ?? params.toChain ?? "the selected chain";
+  // An LP write names the EVM network it signs on: "evm" alone does not
+  // tell the user whether the position opens on Base or Ethereum.
+  const network =
+    params.chainId === undefined
+      ? ""
+      : ` (${getChainConfig(params.chainId)?.name ?? "chain"} ${params.chainId})`;
+  const chainLabel = `${params.chain ?? params.toChain ?? "the selected chain"}${network}`;
   const dexClause = params.dex ? ` via ${params.dex}` : "";
   const pairClause =
     params.tokenA || params.tokenB
@@ -212,23 +263,56 @@ export function walletFinancialPreview(
       // must see it before confirming; with no recipient the bridge returns
       // funds to the sender on the destination chain.
       const destination = params.recipient ? ` to ${params.recipient}` : "";
-      return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${destination}${slippage}? Reply yes to submit or no to cancel.`;
+      // A different toToken makes the bridge a swap into that token; the
+      // confirmation key binds it, so the user must see it too.
+      const receive =
+        params.toToken &&
+        params.toToken.toLowerCase() !== (params.fromToken ?? "").toLowerCase()
+          ? ` as ${params.toToken}`
+          : "";
+      return `Bridge ${params.amount ?? "?"} ${params.fromToken ?? "?"} from ${params.chain ?? "?"} to ${params.toChain ?? "?"}${receive}${destination}${slippage}? Reply yes to submit or no to cancel.`;
     }
-    case "gov":
-      return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    case "gov": {
+      // The governor is the contract the wallet signs a call to, and the
+      // vote direction / proposal targets, values and calldatas are what that
+      // call does, so the user must see them before confirming.
+      const proposal = params.proposalId
+        ? ` proposal ${params.proposalId}`
+        : "";
+      const support =
+        params.support === undefined
+          ? ""
+          : ` ${["against", "for", "abstain"][params.support] ?? `support=${params.support}`}`;
+      const targets = params.targets?.length
+        ? ` targets ${params.targets.join(", ")}`
+        : "";
+      const values = params.values?.length
+        ? ` values (wei) ${params.values.join(", ")}`
+        : "";
+      const calldatas = params.calldatas?.length
+        ? ` calldatas ${params.calldatas.join(", ")}`
+        : "";
+      const description = params.description ? ` "${params.description}"` : "";
+      return `Governance ${params.op ?? "operation"}${proposal}${support}${targets}${values}${calldatas}${description} at governor ${params.governor ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    }
     case "pump_fun_buy":
-      return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}? Reply yes to submit or no to cancel.`;
+      return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
     case "open":
-      return `Open a liquidity position in pool ${params.pool ?? "?"}${pairClause}${dexClause} on ${chainLabel}${feeClause}${rangeClause} with ${params.amount ?? "?"}? Reply yes to submit or no to cancel.`;
+      return `Open a liquidity position in pool ${params.pool ?? "?"}${pairClause}${dexClause} on ${chainLabel}${feeClause}${rangeClause} with ${params.amount ?? "?"}${slippage}? Reply yes to submit or no to cancel.`;
     case "close":
     case "reposition": {
       const poolClause = params.pool ? ` in pool ${params.pool}` : "";
       const verb = params.subaction === "close" ? "Close" : "Reposition";
+      // A close/reposition can remove only part of the position: Aerodrome's
+      // close accepts an LP-token amount and reposition passes one through.
+      // `amount` binds the pending key, so the owner must see the amount they
+      // are authorizing — the open prompt already names it.
+      const amountClause = params.amount ? ` with ${params.amount}` : "";
       const repositionExtras =
         params.subaction === "reposition"
           ? `${dexClause}${feeClause}${rangeClause}`
           : dexClause;
-      return `${verb} liquidity position ${params.position ?? "?"}${poolClause}${pairClause}${repositionExtras} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+      return `${verb} liquidity position ${params.position ?? "?"}${poolClause}${pairClause}${amountClause}${repositionExtras} on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
     }
     default:
       return `Submit wallet ${params.subaction} on ${chainLabel}? Reply yes to confirm or no to cancel.`;

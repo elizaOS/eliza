@@ -11,7 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-websiteblocker build  # build
-bun run --cwd plugins/plugin-native-websiteblocker test   # tests
 ```
 
 ## Android device verification

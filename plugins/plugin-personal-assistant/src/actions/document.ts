@@ -35,12 +35,14 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveScheduledAtIsoInTimeZone } from "@elizaos/core";
+import { resolveMessageTimeZone } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   applyCommitmentClassGuarantees,
   createDocumentObligationLedgerRecord,
+  guaranteeWarnDays,
   installCommitmentClassGuarantee,
   normalizeObligationClass,
 } from "../lifeops/commitments/index.js";
@@ -120,8 +122,6 @@ interface DocActionParameters {
   assetKind?: string;
   /** Optional signing portal URL (DocuSign / HelloSign / etc.). */
   signatureUrl?: string;
-  /** Approval-class label for `request_approval`. */
-  approvalReason?: string;
   /** Free-form note recorded on the DocumentRequest. */
   note?: string;
   /** close_request: outcome ("completed" | "expired" | "cancelled"). */
@@ -182,6 +182,18 @@ function getParams(options: HandlerOptions | undefined): DocActionParameters {
   return {};
 }
 
+/**
+ * The planner writes a deadline without an offset as a wall clock (or a
+ * calendar day) in the user's zone; Date.parse would read it in the host zone,
+ * and a bare day as UTC midnight. A bare day becomes the start of that day.
+ */
+function deadlineInTimeZone(deadline: string, timeZone: string): string {
+  const wallClock = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+    ? `${deadline}T00:00:00`
+    : deadline;
+  return resolveScheduledAtIsoInTimeZone(wallClock, timeZone);
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -209,6 +221,41 @@ function missing(name: string, subaction: Subaction): ActionResult {
     success: false,
     text: `I need ${name} to ${subaction.replace("_", " ")}.`,
     data: { subaction, error: `MISSING_${name.toUpperCase()}` },
+  };
+}
+
+/** Operations that store `deadline` and schedule its watcher. */
+const DEADLINE_SUBACTIONS: ReadonlySet<Subaction> = new Set([
+  "request_signature",
+  "request_approval",
+  "track_deadline",
+  "upload_asset",
+  "collect_id",
+]);
+
+/**
+ * The deadline becomes a `once` trigger, which the scheduler refuses unless it
+ * parses as a timestamp. That refusal arrives after the approval row is queued
+ * or the stored request is patched, so an unparseable deadline is refused here,
+ * by the scheduler's own test, before any of those writes.
+ */
+export function unschedulableDeadlineText(deadline: string): string | null {
+  if (!Number.isNaN(new Date(deadline).getTime())) return null;
+  return `"${deadline}" is not a deadline I can schedule. Give the deadline as an ISO-8601 timestamp, for example 2026-11-06T17:00:00Z.`;
+}
+
+function invalidDeadline(
+  params: DocActionParameters,
+  subaction: Subaction,
+): ActionResult | null {
+  if (!DEADLINE_SUBACTIONS.has(subaction)) return null;
+  const deadline = params.deadline?.trim();
+  const text = deadline ? unschedulableDeadlineText(deadline) : null;
+  if (!text) return null;
+  return {
+    success: false,
+    text,
+    data: { subaction, error: "INVALID_DEADLINE" },
   };
 }
 
@@ -334,6 +381,25 @@ async function scheduleDeadlineTask(
   return task.taskId;
 }
 
+async function replaceDeadlineTask(
+  scope: RunnerScope,
+  doc: DocumentRequest,
+): Promise<string | undefined> {
+  if (!doc.deadline) return undefined;
+  if (doc.scheduledTaskId) {
+    const activeTask = (await scope.runner.list({ status: "scheduled" })).find(
+      (task) => task.taskId === doc.scheduledTaskId,
+    );
+    if (activeTask) {
+      const edited = await scope.runner.apply(activeTask.taskId, "edit", {
+        trigger: { kind: "once", atIso: doc.deadline },
+      });
+      return edited.taskId;
+    }
+  }
+  return scheduleDeadlineTask(scope, doc);
+}
+
 async function persistDocumentObligation(
   scope: RunnerScope,
   doc: DocumentRequest,
@@ -397,14 +463,19 @@ async function handleGuaranteeClass(
     ...(warnDaysBefore ? { warnDaysBefore } : {}),
   });
 
-  const effectiveWarnDays = warnDaysBefore ?? 60;
+  // An existing guarantee for this class is reused as is, so report the
+  // warning period it actually has.
+  const effectiveWarnDays = guaranteeWarnDays(task);
   logger.info(
     `[OWNER_DOCUMENTS] guarantee_class class=${obligationClass} warnDays=${effectiveWarnDays} task=${task.taskId}`,
   );
 
   return {
     success: true,
-    text: `Standing guarantee installed: every new ${obligationClass} obligation will be tracked automatically with a ${effectiveWarnDays}-day warning before its deadline.`,
+    text:
+      warnDaysBefore !== undefined && warnDaysBefore !== effectiveWarnDays
+        ? `A standing guarantee for ${obligationClass} obligations already exists with a ${effectiveWarnDays}-day warning before each deadline. Its warning period was not changed.`
+        : `Standing guarantee installed: every new ${obligationClass} obligation will be tracked automatically with a ${effectiveWarnDays}-day warning before its deadline.`,
     data: {
       subaction,
       obligationClass,
@@ -416,51 +487,71 @@ async function handleGuaranteeClass(
 
 // ── Subaction handlers ───────────────────────────────────
 
-async function handleRequestSignature(
-  scope: RunnerScope,
-  params: DocActionParameters,
-): Promise<ActionResult> {
-  const subaction: Subaction = "request_signature";
-  const requesteeEntityId = params.requesteeEntityId?.trim();
-  if (!requesteeEntityId) return missing("requesteeEntityId", subaction);
-  const documentTitle = params.documentTitle?.trim();
-  if (!documentTitle) return missing("documentTitle", subaction);
-  const deadline = params.deadline?.trim();
-  if (!deadline) return missing("deadline", subaction);
+interface SignatureRequestInput {
+  /** The counterparty who signs; absent when the caller does not know it. */
+  requesteeEntityId?: string;
+  documentTitle: string;
+  deadline: string;
+  signatureUrl?: string;
+  note?: string;
+  /** Action name recorded on the approval row. */
+  requestedBy: string;
+  /** Owner-facing approval reason. */
+  reason: string;
+}
 
+/**
+ * Approval expiry for a signature request. A deadline at the Unix epoch is a
+ * real instant. `Date.parse(...) || now + 24h` turned it into a day-long window.
+ */
+function signatureApprovalExpiresAt(deadline: string, now = Date.now()): Date {
+  const parsed = Date.parse(deadline);
+  if (Number.isFinite(parsed)) return new Date(parsed);
+  return new Date(now + 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Create the signature DocumentRequest, queue its owner approval, and schedule
+ * its deadline watcher. RESOLVE_REQUEST dispatches an approved `sign_document`
+ * row by flipping this DocumentRequest, so every enqueue path must create it.
+ */
+async function createSignatureRequest(
+  scope: RunnerScope,
+  input: SignatureRequestInput,
+): Promise<{ documentRequest: DocumentRequest; approvalRequestId: string }> {
   const now = nowIso();
   const doc: DocumentRequest = {
     id: newDocumentRequestId(),
     kind: "signature",
-    requesteeEntityId,
-    title: documentTitle,
-    deadline,
+    ...(input.requesteeEntityId
+      ? { requesteeEntityId: input.requesteeEntityId }
+      : {}),
+    title: input.documentTitle,
+    deadline: input.deadline,
     status: "draft",
     createdAt: now,
     updatedAt: now,
     createdBy: scope.agentId,
-    ...(params.note ? { note: params.note } : {}),
+    ...(input.note ? { note: input.note } : {}),
   };
 
   // Owner approval gate. The actual signing dispatch waits for
   // RESOLVE_REQUEST approve to flip the approval queue entry to `done`.
   const queue = createApprovalQueue(scope.runtime, { agentId: scope.agentId });
   const approvalRequest = await queue.enqueue({
-    requestedBy: ACTION_NAME,
+    requestedBy: input.requestedBy,
     subjectUserId: scope.subjectUserId,
     action: "sign_document",
     payload: {
       action: "sign_document",
       documentId: doc.id,
       documentName: doc.title,
-      signatureUrl: params.signatureUrl?.trim() ?? "",
-      deadline,
+      signatureUrl: input.signatureUrl?.trim() ?? "",
+      deadline: input.deadline,
     },
     channel: "internal",
-    reason: `Request signature from ${requesteeEntityId} on "${doc.title}" by ${deadline}`,
-    expiresAt: new Date(
-      Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000,
-    ),
+    reason: input.reason,
+    expiresAt: signatureApprovalExpiresAt(input.deadline),
   });
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even
@@ -477,8 +568,42 @@ async function handleRequestSignature(
   });
 
   logger.info(
-    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${input.requesteeEntityId ?? "unknown"} deadline=${input.deadline} approval=${approvalRequest.id}`,
   );
+  return { documentRequest: saved, approvalRequestId: approvalRequest.id };
+}
+
+/** Signature request entry point for actions outside OWNER_DOCUMENTS. */
+export function enqueueSignatureRequest(
+  runtime: IAgentRuntime,
+  message: Memory,
+  input: SignatureRequestInput,
+): Promise<{ documentRequest: DocumentRequest; approvalRequestId: string }> {
+  return createSignatureRequest(makeScope(runtime, message), input);
+}
+
+async function handleRequestSignature(
+  scope: RunnerScope,
+  params: DocActionParameters,
+): Promise<ActionResult> {
+  const subaction: Subaction = "request_signature";
+  const requesteeEntityId = params.requesteeEntityId?.trim();
+  if (!requesteeEntityId) return missing("requesteeEntityId", subaction);
+  const documentTitle = params.documentTitle?.trim();
+  if (!documentTitle) return missing("documentTitle", subaction);
+  const deadline = params.deadline?.trim();
+  if (!deadline) return missing("deadline", subaction);
+
+  const { documentRequest: saved, approvalRequestId } =
+    await createSignatureRequest(scope, {
+      requesteeEntityId,
+      documentTitle,
+      deadline,
+      signatureUrl: params.signatureUrl,
+      note: params.note,
+      requestedBy: ACTION_NAME,
+      reason: `Request signature from ${requesteeEntityId} on "${documentTitle}" by ${deadline}`,
+    });
 
   return {
     success: true,
@@ -488,7 +613,7 @@ async function handleRequestSignature(
       documentRequest: saved,
       documentRequestId: saved.id,
       status: saved.status,
-      approvalRequestId: approvalRequest.id,
+      approvalRequestId,
       scheduledTaskId: saved.scheduledTaskId ?? null,
     },
   };
@@ -526,7 +651,7 @@ async function handleRequestApproval(
   });
 
   logger.info(
-    `[OWNER_DOCUMENTS] request_approval id=${saved.id} title="${documentTitle}" reason=${params.approvalReason ?? "(none)"}`,
+    `[OWNER_DOCUMENTS] request_approval id=${saved.id} title="${documentTitle}"`,
   );
 
   return {
@@ -561,7 +686,10 @@ async function handleTrackDeadline(
     status: existing.status === "draft" ? "pending" : existing.status,
   });
   if (!patched) return notFound(documentRequestId, subaction);
-  const scheduledTaskId = await scheduleDeadlineTask(scope, patched);
+  // A pending watcher is the durable identity of this deadline. Edit it in
+  // place so the previous date cannot still notify the owner. A terminal or
+  // missing watcher cannot fire again, so replace only that settled row.
+  const scheduledTaskId = await replaceDeadlineTask(scope, patched);
   await persistDocumentObligation(scope, patched, scheduledTaskId);
   const next = patchDocument(scope.runtime, documentRequestId, {
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
@@ -879,12 +1007,14 @@ export const ownerDocumentsAction: Action & {
     },
     {
       name: "documentTitle",
-      description: "Short doc label.",
+      description:
+        "Short doc label; required request_signature/request_approval.",
       schema: { type: "string" as const },
     },
     {
       name: "deadline",
-      description: "Deadline ISO-8601.",
+      description:
+        "Deadline as an ISO-8601 timestamp, e.g. 2026-11-06T17:00:00Z; required request_signature, and track_deadline when the stored request has none. A relative phrase such as 'next Friday' fails with INVALID_DEADLINE.",
       schema: { type: "string" as const },
     },
     {
@@ -909,13 +1039,9 @@ export const ownerDocumentsAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "approvalReason",
-      description: "request_approval reason label.",
-      schema: { type: "string" as const },
-    },
-    {
       name: "note",
-      description: "Free-form DocumentRequest note.",
+      description:
+        "Free-form DocumentRequest note, e.g. why an approval is needed.",
       schema: { type: "string" as const },
     },
     {
@@ -957,7 +1083,17 @@ export const ownerDocumentsAction: Action & {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const params = getParams(options);
+    const rawParams = getParams(options);
+    const params =
+      typeof rawParams.deadline === "string" && rawParams.deadline.trim()
+        ? {
+            ...rawParams,
+            deadline: deadlineInTimeZone(
+              rawParams.deadline.trim(),
+              resolveMessageTimeZone(runtime, message),
+            ),
+          }
+        : rawParams;
     const subaction = resolveSubaction(params);
     if (!subaction) {
       return {
@@ -965,6 +1101,16 @@ export const ownerDocumentsAction: Action & {
         text: "Tell me which document operation: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request, or guarantee_class.",
         data: { error: "MISSING_SUBACTION" },
       };
+    }
+
+    const deadlineFailure = invalidDeadline(params, subaction);
+    if (deadlineFailure) {
+      await callback?.({
+        text: deadlineFailure.text,
+        source: "action",
+        action: ACTION_NAME,
+      });
+      return deadlineFailure;
     }
 
     const scope = makeScope(runtime, message);

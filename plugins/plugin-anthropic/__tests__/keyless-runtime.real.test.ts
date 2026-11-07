@@ -4,7 +4,7 @@
  * The Anthropic plugin registers model handlers for every text `ModelType`,
  * which in production POST to `api.anthropic.com` and require `ANTHROPIC_API_KEY`.
  * This e2e loads the REAL `anthropicPlugin` under `createTestRuntimeWithModelProvider()` with NO
- * API key set, and proves the deterministic deterministic-model-provider proxy (registered at
+ * API key set, and proves the deterministic-model-provider proxy (registered at
  * `priority: 1000`) wins model dispatch over the provider's handlers — so a
  * provider plugin can be driven end-to-end with zero network and zero secrets.
  *
@@ -18,7 +18,7 @@ import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core"
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { anthropicPlugin } from "../index.ts";
 

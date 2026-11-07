@@ -1,17 +1,25 @@
 package ai.elizaos.app;
 
+import ai.eliza.plugins.messages.ReviewedSmsSend;
 import android.app.Service;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.IBinder;
-import android.provider.Telephony;
-import android.telephony.SmsManager;
+import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.util.Log;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.UUID;
 
+/**
+ * RESPOND_VIA_MESSAGE: the quick reply the owner picks or types in the incoming-call screen. Only the
+ * system's call UI can start it (the service requires SEND_RESPOND_VIA_MESSAGE), and the reply text
+ * and recipient are the owner's own choice there, so that choice is the review: no second dialog is
+ * shown. The send still goes through the shared reviewed send ({@link ReviewedSmsSend}): journaled
+ * before the platform call, receipts per part, a missing receipt reads unknown and is never retried,
+ * and one quick reply is one operation, so it can never be sent twice. Android or this app writes the
+ * provider row (see {@link ReviewedSmsSend}); this service writes none itself. An outcome other than
+ * sent or submitted is shown as a notice, never as a resend prompt.
+ */
 public class ElizaRespondViaMessageService extends Service {
 
     private static final String TAG = "ElizaRespondViaMsg";
@@ -24,42 +32,41 @@ public class ElizaRespondViaMessageService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent == null || !ACTION_RESPOND_VIA_MESSAGE.equals(intent.getAction())) {
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
+        String message = firstNonEmpty(intent.getStringExtra(Intent.EXTRA_TEXT), intent.getStringExtra("sms_body"));
+        Uri data = intent.getData();
+        String[] recipients = ElizaSmsReplyProposals.recipients(data == null ? null : data.getSchemeSpecificPart());
+        int subscriptionId = intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX, -1);
+        if (subscriptionId < 0) subscriptionId = ElizaSmsReviewedSend.defaultSubscription();
+        // One operation per quick reply: a repeat of this ID reads its record and never sends again.
+        final String operationId = "quick-reply-" + UUID.randomUUID();
+        if (TextUtils.isEmpty(message) || recipients == null || subscriptionId < 0) {
+            Log.w(TAG, "Respond-via-message request was incomplete; nothing was sent.");
+            notSent(operationId, "The quick reply had no text, no usable number or no SIM.");
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         try {
-            handleIntent(intent);
-        } catch (RuntimeException error) {
-            Log.e(TAG, "Respond-via-message request failed.", error);
-            throw error;
-        } finally {
+            ReviewedSmsSend.send(this, ElizaSmsReviewedSend.HOST, operationId, recipients, message, subscriptionId, status -> {
+                Log.i(TAG, "Quick reply finished with status " + status + ".");
+                if (!"sent".equals(status) && !"submitted".equals(status) && !"delivered".equals(status)) {
+                    ElizaSmsReviewedSend.showOutcomeNotice(this, operationId, "Quick reply", ElizaSmsReviewedSend.label(status));
+                }
+                stopSelf(startId);
+            });
+        } catch (IllegalArgumentException invalid) {
+            Log.w(TAG, "Respond-via-message request is not a valid SMS; nothing was sent.");
+            notSent(operationId, "The quick reply could not be sent as a text message.");
             stopSelf(startId);
         }
         return START_NOT_STICKY;
     }
 
-    private void handleIntent(Intent intent) {
-        if (intent == null || !ACTION_RESPOND_VIA_MESSAGE.equals(intent.getAction())) {
-            return;
-        }
-
-        String message = firstNonEmpty(
-                intent.getStringExtra(Intent.EXTRA_TEXT),
-                intent.getStringExtra("sms_body")
-        );
-        if (TextUtils.isEmpty(message)) {
-            Log.w(TAG, "Respond-via-message request did not include message text.");
-            return;
-        }
-
-        List<String> recipients = parseRecipients(intent.getData());
-        if (recipients.isEmpty()) {
-            Log.w(TAG, "Respond-via-message request did not include recipients.");
-            return;
-        }
-
-        SmsManager smsManager = SmsManager.getDefault();
-        for (String recipient : recipients) {
-            sendTextMessage(smsManager, recipient, message);
-            persistSentMessage(recipient, message);
-        }
+    private void notSent(String operationId, String reason) {
+        ElizaSmsReviewedSend.showOutcomeNotice(this, operationId, "Quick reply not sent", reason + " Nothing was sent.");
     }
 
     private static String firstNonEmpty(String first, String second) {
@@ -67,53 +74,5 @@ public class ElizaRespondViaMessageService extends Service {
             return first;
         }
         return second;
-    }
-
-    private static List<String> parseRecipients(Uri uri) {
-        List<String> recipients = new ArrayList<>();
-        if (uri == null || TextUtils.isEmpty(uri.getSchemeSpecificPart())) {
-            return recipients;
-        }
-
-        String value = uri.getSchemeSpecificPart();
-        int queryIndex = value.indexOf('?');
-        if (queryIndex >= 0) {
-            value = value.substring(0, queryIndex);
-        }
-        value = Uri.decode(value);
-
-        for (String rawRecipient : value.split("[,;]")) {
-            String recipient = rawRecipient.trim();
-            if (!recipient.isEmpty()) {
-                recipients.add(recipient);
-            }
-        }
-        return recipients;
-    }
-
-    private static void sendTextMessage(SmsManager smsManager, String recipient, String message) {
-        ArrayList<String> parts = smsManager.divideMessage(message);
-        if (parts.size() > 1) {
-            smsManager.sendMultipartTextMessage(recipient, null, parts, null, null);
-        } else {
-            smsManager.sendTextMessage(recipient, null, message, null, null);
-        }
-    }
-
-    private void persistSentMessage(String recipient, String message) {
-        long sentAt = System.currentTimeMillis();
-        ContentValues values = new ContentValues();
-        values.put(Telephony.Sms.ADDRESS, recipient);
-        values.put(Telephony.Sms.BODY, message);
-        values.put(Telephony.Sms.DATE, sentAt);
-        values.put(Telephony.Sms.DATE_SENT, sentAt);
-        values.put(Telephony.Sms.READ, 1);
-        values.put(Telephony.Sms.SEEN, 1);
-        values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT);
-
-        Uri inserted = getContentResolver().insert(Telephony.Sms.Sent.CONTENT_URI, values);
-        if (inserted == null) {
-            throw new IllegalStateException("SMS provider returned no sent row URI.");
-        }
     }
 }

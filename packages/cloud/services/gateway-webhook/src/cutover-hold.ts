@@ -12,6 +12,13 @@
  */
 
 import { randomUUID } from "node:crypto";
+import {
+  HOLD_INDEX_KEY,
+  HOLD_LEASE_PREFIX,
+  HOLD_RECORD_PREFIX,
+  HOLD_REMOVE_SCRIPT,
+  HOLD_SAVE_SCRIPT,
+} from "@elizaos/cloud-services-common/webhook-ingress";
 import type { ChatEvent, Platform } from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -34,9 +41,6 @@ export const CONNECTOR_HELD = "held";
  */
 export const CUTOVER_HOLD_MAX_MS = 60 * 60_000;
 const HOLD_LEASE_SECONDS = 180;
-const HOLD_INDEX_KEY = "webhook:cutover-holds";
-const HOLD_RECORD_PREFIX = "webhook:cutover-hold:";
-const HOLD_LEASE_PREFIX = "webhook:cutover-hold-lease:";
 const MIN_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 
@@ -136,11 +140,7 @@ export async function holdWebhookForCutover(
     code: signal.code,
   };
   const stored = await redis.eval(
-    `if ARGV[5] ~= '' and redis.call('GET', KEYS[4]) ~= ARGV[5] then return 0 end
-     redis.call('SET', KEYS[1], ARGV[1])
-     redis.call('ZADD', KEYS[2], ARGV[2], ARGV[3])
-     redis.call('SET', KEYS[3], ARGV[4])
-     return 1`,
+    HOLD_SAVE_SCRIPT,
     [
       recordKey(held.dedupKey),
       HOLD_INDEX_KEY,
@@ -254,12 +254,7 @@ export async function drainCutoverHolds(
     const removeHeldRecord = async (settledOnly = false): Promise<boolean> =>
       Number(
         await redis.eval(
-          `local owner = redis.call('GET', KEYS[1])
-       if owner and owner ~= ARGV[1] then return 0 end
-       if ARGV[3] ~= '' and redis.call('GET', KEYS[4]) == ARGV[3] then return 0 end
-       redis.call('DEL', KEYS[2])
-       redis.call('ZREM', KEYS[3], ARGV[2])
-       return 1`,
+          HOLD_REMOVE_SCRIPT,
           [leaseKey, recordKey(dedupKey), HOLD_INDEX_KEY, dedupKey],
           [leaseToken, dedupKey, settledOnly ? CONNECTOR_HELD : ""],
         ),

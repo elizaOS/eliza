@@ -544,19 +544,68 @@ export const creativeDraftAction: Action & {
       name: "request",
       description:
         "Draft request: { title, targetForm: essay|launch_thread|narrative|memo, ownerAsk, requestedVoice? }. Required for compose.",
-      schema: { type: "object" as const, additionalProperties: true },
+      schema: {
+        type: "object" as const,
+        properties: {
+          title: { type: "string" as const, minLength: 1 },
+          targetForm: {
+            type: "string" as const,
+            enum: ["essay", "launch_thread", "narrative", "memo"],
+          },
+          ownerAsk: { type: "string" as const, minLength: 1 },
+          requestedVoice: { type: "string" as const },
+        },
+        required: ["title", "targetForm", "ownerAsk"],
+      },
     },
     {
       name: "memos",
       description:
         "Transcribed voice memos: [{ id, transcript, affect?, toneDirective?, capturedAt? }]. Required for compose.",
-      schema: { type: "array" as const, items: { type: "object" as const } },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            id: { type: "string" as const },
+            transcript: { type: "string" as const },
+            affect: {
+              type: "string" as const,
+              enum: [
+                "angry",
+                "urgent",
+                "tender",
+                "reflective",
+                "excited",
+                "neutral",
+              ],
+            },
+            toneDirective: { type: "string" as const },
+            capturedAt: { type: "string" as const },
+          },
+          required: ["id", "transcript"],
+        },
+      },
     },
     {
       name: "ownerSources",
       description:
         "Owner-authored exemplars used to build the voice style card: [{ id, text, source: sent_mail|essay|thread|note }].",
-      schema: { type: "array" as const, items: { type: "object" as const } },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            id: { type: "string" as const },
+            text: { type: "string" as const },
+            source: {
+              type: "string" as const,
+              enum: ["sent_mail", "essay", "thread", "note"],
+            },
+          },
+          required: ["id", "text", "source"],
+        },
+      },
     },
     {
       name: "draftDocumentId",
@@ -573,8 +622,20 @@ export const creativeDraftAction: Action & {
     {
       name: "revision",
       description:
-        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise.",
-      schema: { type: "object" as const, additionalProperties: true },
+        "Revision to apply: { instruction, acceptedEdit?, vetoedPhrase?, replacementText?, sectionId?, sectionIndex?, revisedAt }. Required for revise. instruction is the owner's requested change in their words and is given to the drafting model. sectionId or sectionIndex (0-based) names the section that replacementText rewrites.",
+      schema: {
+        type: "object" as const,
+        properties: {
+          instruction: { type: "string" as const, minLength: 1 },
+          acceptedEdit: { type: "string" as const },
+          vetoedPhrase: { type: "string" as const },
+          replacementText: { type: "string" as const },
+          sectionId: { type: "string" as const },
+          sectionIndex: { type: "integer" as const, minimum: 0 },
+          revisedAt: { type: "string" as const },
+        },
+        required: ["instruction"],
+      },
     },
   ],
   examples,
@@ -652,7 +713,7 @@ export const creativeDraftAction: Action & {
         const styleCard = buildOwnerVoiceStyleCard(ownerSources);
         const narrative = await composeDraftNarrative({
           runtime,
-          request: reconstructRequest(revisedBase),
+          request: reconstructRequest(revisedBase, params.revision),
           memos: [],
           styleCard,
           currentDraft: revisedBase,
@@ -788,14 +849,17 @@ export const creativeDraftAction: Action & {
 
 /**
  * A revise turn no longer carries the original request, but the compose pass
- * needs one. Reconstruct it from the durable fields the artifact preserves.
+ * needs one. Reconstruct it from the durable fields the artifact preserves and
+ * the owner's instruction for this revision, so the drafting model receives
+ * the change the owner asked for.
  */
 function reconstructRequest(
   draft: CreativeDraftArtifact,
+  revision: CreativeDraftRevision,
 ): CreativeDraftRequest {
   return {
     title: draft.title,
     targetForm: draft.targetForm,
-    ownerAsk: `Revise the standing "${draft.title}" draft, keeping accepted edits and honoring vetoed phrasing.`,
+    ownerAsk: `Revise the standing "${draft.title}" draft, keeping accepted edits and honoring vetoed phrasing. Owner's revision instruction: ${revision.instruction}`,
   };
 }

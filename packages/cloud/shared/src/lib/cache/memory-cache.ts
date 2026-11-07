@@ -52,6 +52,20 @@ export interface SearchResult {
 /**
  * Cache manager for Eliza agent memories and conversation contexts.
  */
+/**
+ * Canonical room-context cache tiers. `getRoomContext` only probes these
+ * depths, so writes must snap to one of them or the entry can never be read.
+ */
+const ROOM_CONTEXT_DEPTH_TIERS = [20, 50, 100] as const;
+
+/** Snap a requested depth up to the nearest readable cache tier. */
+function roomContextDepthTier(depth: number): number {
+  return (
+    ROOM_CONTEXT_DEPTH_TIERS.find((tier) => tier >= depth) ??
+    ROOM_CONTEXT_DEPTH_TIERS[ROOM_CONTEXT_DEPTH_TIERS.length - 1]
+  );
+}
+
 export class MemoryCache {
   /**
    * Caches a single memory.
@@ -106,7 +120,7 @@ export class MemoryCache {
     context: MemoryRoomContext,
     ttl: number,
   ): Promise<void> {
-    const key = `memory:${organizationId}:room:${roomId}:context:${context.depth}:v1`;
+    const key = `memory:${organizationId}:room:${roomId}:context:${roomContextDepthTier(context.depth)}:v1`;
     await cache.set(
       key,
       {
@@ -294,11 +308,9 @@ export class MemoryCache {
   }
 
   private async getRoomContextKeys(roomId: string, organizationId: string): Promise<string[]> {
-    return [
-      `memory:${organizationId}:room:${roomId}:context:20:v1`,
-      `memory:${organizationId}:room:${roomId}:context:50:v1`,
-      `memory:${organizationId}:room:${roomId}:context:100:v1`,
-    ];
+    return ROOM_CONTEXT_DEPTH_TIERS.map(
+      (tier) => `memory:${organizationId}:room:${roomId}:context:${tier}:v1`,
+    );
   }
 }
 

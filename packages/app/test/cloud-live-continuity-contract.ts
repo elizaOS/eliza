@@ -51,7 +51,43 @@ export interface CloudLiveBoundedResponseBody {
   read(maxBytes: number): Promise<Uint8Array | null>;
 }
 
+export const CLOUD_LIVE_DEDICATED_QUOTE_TERM_KEYS = [
+  "hourlyRateUsd",
+  "minimumActivationChargeUsd",
+  "dailyRateUsd",
+  "minimumBalanceUsd",
+  "minimumRunwayDays",
+  "balanceUsd",
+  "deficitUsd",
+] as const;
+export type CloudLiveDedicatedQuoteTerms = Record<
+  (typeof CLOUD_LIVE_DEDICATED_QUOTE_TERM_KEYS)[number],
+  number
+>;
+
+/** Keep only the actual observed quote's economic terms; never retain IDs or raw copy. */
+export function projectCloudLiveDedicatedQuoteTerms(
+  value: unknown,
+): CloudLiveDedicatedQuoteTerms | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const terms = {} as CloudLiveDedicatedQuoteTerms;
+  for (const key of CLOUD_LIVE_DEDICATED_QUOTE_TERM_KEYS) {
+    const number = source[key];
+    if (
+      typeof number !== "number" ||
+      !Number.isFinite(number) ||
+      (key !== "balanceUsd" && number < 0)
+    )
+      return null;
+    terms[key] = number;
+  }
+  if (!Number.isSafeInteger(terms.minimumRunwayDays)) return null;
+  return terms;
+}
+
 export interface CloudLiveNetworkAuditSnapshot {
+  dedicatedQuoteTerms?: CloudLiveDedicatedQuoteTerms | null;
   forbiddenAgentMutationCount: number;
   chatSendAttemptCount: number;
   logicalChatSendCount: number;
@@ -756,6 +792,7 @@ async function inspectPersonalIdentityResponse(
 }
 
 interface DedicatedControlPlaneResponseInspection {
+  quoteTerms?: CloudLiveDedicatedQuoteTerms | null;
   bodyCompleted: boolean;
   parsed: boolean;
   decoded: boolean;
@@ -825,15 +862,20 @@ async function inspectDedicatedControlPlaneResponse(
           ? (activation as Record<string, unknown>)
           : null;
       const state = activationRecord?.state;
+      const decoded =
+        status >= 200 &&
+        status < 300 &&
+        root.success === true &&
+        typeof dataRecord?.quoteId === "string" &&
+        dataRecord.quoteId.trim().length > 0 &&
+        (state === "available" || state === "in_progress");
       return {
+        quoteTerms: decoded
+          ? projectCloudLiveDedicatedQuoteTerms(dataRecord)
+          : null,
         bodyCompleted: true,
         parsed: true,
-        decoded:
-          status >= 200 &&
-          status < 300 &&
-          root.success === true &&
-          typeof dataRecord?.quoteId === "string" &&
-          (state === "available" || state === "in_progress"),
+        decoded,
         pending: false,
         final: false,
         quoteId:
@@ -1294,20 +1336,22 @@ export function installCloudLiveAnchoredRetryChipObserver(
 }
 
 /**
- * Emits only counts while keeping lifecycle IDs in memory long enough to prove
- * every permitted request is bound to the one rendered approval.
+ * Emits counts and observed quote terms while keeping lifecycle IDs in memory
+ * long enough to prove each permitted request binds to the rendered approval.
  */
 export interface CloudLiveNetworkAudit {
   observeRequest(
     method: string,
     rawUrl: string,
     postData?: string | null,
+    requestIdentity?: object,
   ): void;
   observeResponse(
     method: string,
     rawUrl: string,
     status: number,
     responseBody?: CloudLiveBoundedResponseBody,
+    requestIdentity?: object,
   ): void;
   observeRequestFailure(
     method: string,
@@ -1343,6 +1387,9 @@ export function createCloudLiveNetworkAudit(
   let decodedSharedPersonalIdentityResponseCount = 0;
   let decodedDedicatedPersonalIdentityResponseCount = 0;
   let uninspectablePersonalIdentityResponseBodyCount = 0;
+  let dedicatedQuoteTerms: CloudLiveDedicatedQuoteTerms | null = null;
+  // Keep the originating network object private; header and body arrival can reorder.
+  let latestDedicatedQuoteRequest: object | undefined;
   let dedicatedAdoptionQuoteGetRequestCount = 0;
   let successfulDedicatedAdoptionQuoteGetResponseCount = 0;
   let clientErrorDedicatedAdoptionQuoteGetResponseCount = 0;
@@ -1463,7 +1510,7 @@ export function createCloudLiveNetworkAudit(
   };
 
   return {
-    observeRequest(method, rawUrl, postData) {
+    observeRequest(method, rawUrl, postData, requestIdentity) {
       if (classifyForbiddenAgentMutation(method, rawUrl)) {
         forbiddenAgentMutationCount += 1;
       }
@@ -1484,6 +1531,10 @@ export function createCloudLiveNetworkAudit(
       const dedicatedRequest = dedicatedControlPlaneRequest(method, rawUrl);
       if (dedicatedRequest)
         dedicatedControlPlane[dedicatedRequest].request += 1;
+      if (dedicatedRequest === "quote") {
+        dedicatedQuoteTerms = null;
+        latestDedicatedQuoteRequest = requestIdentity;
+      }
       const adoptionRequest = dedicatedAdoptionRequest(method, rawUrl);
       if (adoptionRequest === "quote") {
         dedicatedAdoptionQuoteGetRequestCount += 1;
@@ -1508,7 +1559,7 @@ export function createCloudLiveNetworkAudit(
       );
       if (lifecycleBinding) dedicatedLifecycleRequests.push(lifecycleBinding);
     },
-    observeResponse(method, rawUrl, status, responseBody) {
+    observeResponse(method, rawUrl, status, responseBody, requestIdentity) {
       const chatScope = chatSendScope(method, rawUrl);
       if (chatScope) {
         if (status >= 200 && status < 300) {
@@ -1623,6 +1674,12 @@ export function createCloudLiveNetworkAudit(
             counters.bodyCompleted += 1;
             if (!inspection.parsed) return;
             counters.parsed += 1;
+            if (
+              dedicatedRequest === "quote" &&
+              requestIdentity !== undefined &&
+              requestIdentity === latestDedicatedQuoteRequest
+            )
+              dedicatedQuoteTerms = inspection.quoteTerms ?? null;
             if (inspection.decoded) counters.decoded += 1;
             if (inspection.pending) counters.pendingDecoded += 1;
             if (inspection.final) counters.finalDecoded += 1;
@@ -1631,6 +1688,8 @@ export function createCloudLiveNetworkAudit(
             }
             if (
               dedicatedRequest === "quote" &&
+              (requestIdentity === undefined ||
+                requestIdentity === latestDedicatedQuoteRequest) &&
               sourceAgentId &&
               inspection.quoteId
             ) {
@@ -1939,6 +1998,7 @@ export function createCloudLiveNetworkAudit(
         decodedSharedPersonalIdentityResponseCount,
         decodedDedicatedPersonalIdentityResponseCount,
         uninspectablePersonalIdentityResponseBodyCount,
+        dedicatedQuoteTerms,
         dedicatedQuoteGetRequestCount: dedicatedControlPlane.quote.request,
         successfulDedicatedQuoteGetResponseCount:
           dedicatedControlPlane.quote.success,

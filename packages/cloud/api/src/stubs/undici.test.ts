@@ -1,5 +1,5 @@
 /** Exercises native fetch delegation and unsupported undici operations through the real Worker shim. */
-import { expect, test } from "vitest";
+import { expect, test } from "bun:test";
 import * as undici from "./undici";
 
 test("reads a response through the shim Request and native fetch", async () => {
@@ -40,14 +40,16 @@ test.each([
   );
 });
 
-test("does not install a custom global dispatcher", () => {
-  Reflect.apply(undici.setGlobalDispatcher, undefined, [{}]);
-  expect(undici.getGlobalDispatcher).toThrow(
-    /not available on Cloudflare Workers/,
-  );
-});
-
-test("does not retain a custom global origin", () => {
-  Reflect.apply(undici.setGlobalOrigin, undefined, ["https://example.com"]);
-  expect(undici.getGlobalOrigin()).toBeUndefined();
-});
+test.each([
+  "setGlobalDispatcher",
+  "getGlobalDispatcher",
+  "setGlobalOrigin",
+  "getGlobalOrigin",
+] as const)(
+  "undici %s explicitly rejects unsupported global configuration",
+  (name) => {
+    expect(() => Reflect.apply(undici[name], undefined, [{}])).toThrow(
+      /not available on Cloudflare Workers/,
+    );
+  },
+);

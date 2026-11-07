@@ -4,7 +4,7 @@
  * episodes (non-nap, sufficient duration, ended before now).
  */
 
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs } from "@elizaos/contracts";
 import type {
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,
@@ -28,15 +28,24 @@ function round(value: number): number {
 function durationMinutes(startMs: number, endMs: number): number {
   return Math.max(0, Math.round((endMs - startMs) / 60000));
 }
+// A night counts when it ended inside the window, so callers that load a
+// longer history get the same result as a load of exactly `windowDays`.
 function isRegularityEpisode(
   episode: SleepRegularityEpisodeLike,
   nowMs: number,
+  windowDays: number,
 ): episode is SleepRegularityEpisodeLike & {
   endAt: string;
 } {
   const startMs = parseIsoMs(episode.startAt);
   const endMs = parseIsoMs(episode.endAt);
-  if (startMs === null || endMs === null || endMs <= startMs || endMs > nowMs) {
+  if (
+    startMs === null ||
+    endMs === null ||
+    endMs <= startMs ||
+    endMs > nowMs ||
+    endMs <= nowMs - windowDays * 86_400_000
+  ) {
     return false;
   }
   if (episode.cycleType === "nap") {
@@ -76,12 +85,12 @@ function occupancyVector(args: {
     }
   >;
   nowMs: number;
-  windowDays: number;
+  totalMinutes: number;
 }): {
   occupied: boolean[];
   windowStartMs: number;
 } {
-  const totalMinutes = args.windowDays * 24 * 60;
+  const totalMinutes = args.totalMinutes;
   const windowEndMs = args.nowMs;
   const windowStartMs = windowEndMs - totalMinutes * 60000;
   const deltas = new Int16Array(totalMinutes + 1);
@@ -124,11 +133,23 @@ function computeSleepRegularityIndex(args: {
   nowMs: number;
   windowDays: number;
 }): number {
-  const totalMinutes = args.windowDays * 24 * 60;
+  // Compare only the span that has data: minutes before the first recorded
+  // episode are unknown, and counting them as awake on both days scores a
+  // short history as regular whatever it holds.
+  let earliestStartMs = args.nowMs;
+  for (const episode of args.episodes) {
+    const startMs = parseIsoMs(episode.startAt);
+    if (startMs !== null && startMs < earliestStartMs)
+      earliestStartMs = startMs;
+  }
+  const totalMinutes = Math.min(
+    args.windowDays * 24 * 60,
+    Math.floor((args.nowMs - earliestStartMs) / 60000),
+  );
   if (totalMinutes <= 24 * 60) {
     return 0;
   }
-  const { occupied } = occupancyVector(args);
+  const { occupied } = occupancyVector({ ...args, totalMinutes });
   let matches = 0;
   let comparisons = 0;
   const oneDayMinutes = 24 * 60;
@@ -171,7 +192,7 @@ export function computeSleepRegularity(args: {
 }): LifeOpsScheduleRegularity {
   const windowDays = args.windowDays ?? 28;
   const relevant = args.episodes.filter((episode) =>
-    isRegularityEpisode(episode, args.nowMs),
+    isRegularityEpisode(episode, args.nowMs, windowDays),
   );
   if (relevant.length === 0) {
     return {
@@ -263,7 +284,7 @@ export function computePersonalBaseline(args: {
 }): LifeOpsPersonalBaseline | null {
   const windowDays = args.windowDays ?? 28;
   const relevant = args.episodes.filter((episode) =>
-    isRegularityEpisode(episode, args.nowMs),
+    isRegularityEpisode(episode, args.nowMs, windowDays),
   );
   if (relevant.length < BASELINE_MIN_SAMPLE_COUNT) {
     return null;

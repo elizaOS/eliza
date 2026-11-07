@@ -43,6 +43,8 @@ export interface GetScreenResult {
   lastChangeTime: number;
   /** True when a coord-OCR provider was available and ran. */
   ocrAvailable: boolean;
+  /** Set when the OCR provider ran and failed; no text was read. */
+  ocrError?: string;
   ocrText: string;
   elements: GetScreenElement[];
   elementCount: number;
@@ -79,16 +81,24 @@ export async function buildGetScreen(
   let elements: GetScreenElement[] = [];
   let ocrText = "";
   let ocrAvailable = false;
+  let ocrError: string | undefined;
 
   if (includeOcr && service && opts.pngBytes.byteLength > 0) {
     ocrAvailable = true;
-    const result = await service.describe({
-      displayId: String(displayId),
-      sourceX: 0,
-      sourceY: 0,
-      pngBytes: opts.pngBytes,
-    });
-    elements = result.blocks.map((block, i) => ({
+    let blocks: Awaited<ReturnType<typeof service.describe>>["blocks"] = [];
+    try {
+      blocks = (
+        await service.describe({
+          displayId: String(displayId),
+          sourceX: 0,
+          sourceY: 0,
+          pngBytes: opts.pngBytes,
+        })
+      ).blocks;
+    } catch (err) {
+      ocrError = err instanceof Error ? err.message : String(err);
+    }
+    elements = blocks.map((block, i) => ({
       index: i + 1,
       id: `el-${i + 1}`,
       text: block.text,
@@ -110,6 +120,7 @@ export async function buildGetScreen(
     height: dims.height,
     lastChangeTime: capturedAt,
     ocrAvailable,
+    ...(ocrError !== undefined ? { ocrError } : {}),
     ocrText,
     elements,
     elementCount: elements.length,
@@ -124,6 +135,9 @@ export async function buildGetScreen(
 export function summarizeGetScreen(r: GetScreenResult): string {
   if (!r.ocrAvailable) {
     return `Screen captured (${r.width}x${r.height}). No OCR provider is registered, so no text was extracted.`;
+  }
+  if (r.ocrError !== undefined) {
+    return `Screen captured (${r.width}x${r.height}), but OCR failed, so its text was not read: ${r.ocrError}`;
   }
   if (r.elementCount === 0) {
     return `Screen captured (${r.width}x${r.height}); no text was detected on it.`;

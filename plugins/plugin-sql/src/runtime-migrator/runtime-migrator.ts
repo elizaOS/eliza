@@ -12,6 +12,8 @@
  */
 import { isExactTrueEnvFlag, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import { getRow } from "../types";
 import { stringToBigInt } from "./crypto-utils";
 import { DatabaseIntrospector } from "./drizzle-adapters/database-introspector";
@@ -316,6 +318,32 @@ export class RuntimeMigrator {
       throw new Error(`Invalid advisory lock ID generated for plugin ${pluginName}`);
     }
 
+    // On a node-postgres pool every execute() may take a different
+    // connection, so BEGIN/COMMIT and the session advisory lock would not
+    // cover the migration: other queries could join the open transaction and
+    // be rolled back with it. The whole migration runs on one checked-out
+    // connection instead.
+    const client = (this.db as { $client?: unknown }).$client;
+    if (client instanceof Pool) {
+      const connection = await client.connect();
+      try {
+        await new RuntimeMigrator(
+          drizzle(connection, { casing: "snake_case" })
+        ).migrateOnConnection(pluginName, schema, options, lockId);
+      } finally {
+        connection.release();
+      }
+      return;
+    }
+    await this.migrateOnConnection(pluginName, schema, options, lockId);
+  }
+
+  private async migrateOnConnection(
+    pluginName: string,
+    schema: Record<string, unknown>,
+    options: RuntimeMigrationOptions,
+    lockId: bigint
+  ): Promise<void> {
     let lockAcquired = false;
 
     try {

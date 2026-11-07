@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "composite": false,
+    "types": ["node"],
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

@@ -15,6 +15,7 @@
 
 import {
   type Component,
+  createUniqueUuid,
   ElizaError,
   type IAgentRuntime,
   isObjectRecord as isRecord,
@@ -443,9 +444,10 @@ export class TrustEngine extends Service {
   }
 
   /**
-   * Records a trust interaction
+   * Records a trust interaction. Resolves `false` when the hourly per-entity
+   * limit drops it, so callers do not report it as recorded.
    */
-  async recordInteraction(interaction: TrustInteraction): Promise<void> {
+  async recordInteraction(interaction: TrustInteraction): Promise<boolean> {
     // Rate limit check
     const rateCheck = this.checkRateLimit(
       interaction.targetEntityId,
@@ -456,7 +458,7 @@ export class TrustEngine extends Service {
         { entityId: interaction.targetEntityId, type: interaction.type },
         "[TrustEngine] Rate limit exceeded, skipping interaction recording",
       );
-      return;
+      return false;
     }
 
     // Apply diminishing returns weight to impact
@@ -517,6 +519,7 @@ export class TrustEngine extends Service {
       });
       throw err;
     }
+    return true;
   }
 
   /**
@@ -904,7 +907,11 @@ export class TrustEngine extends Service {
       `trust-profile-${profile.entityId}-${context.evaluatorId}`,
     );
 
-    const worldId = context.worldId ?? stringToUuid("trust-world");
+    // World rows are agent-scoped, so the default trust world id must be
+    // derived per agent; a shared constant id would collide with another
+    // agent's world on a shared database (WORLD_OWNED_BY_OTHER_AGENT).
+    const worldId =
+      context.worldId ?? createUniqueUuid(this.runtime, "trust-world");
     await this.runtime.ensureWorldExists({
       id: worldId,
       name: "trust-world",
@@ -913,13 +920,20 @@ export class TrustEngine extends Service {
       metadata: {},
     });
 
-    // Check if component already exists
-    const existingComponent = await this.runtime.getComponent(
-      profile.entityId,
-      "trust_profile",
-      worldId,
-      context.evaluatorId,
-    );
+    // Check if component already exists. The component id is deterministic
+    // and globally unique, so a profile stored under an earlier (legacy
+    // shared) trust world is found by id and updated in place, moving it to
+    // the current world instead of colliding on insert.
+    const existingComponent =
+      (await this.runtime.getComponent(
+        profile.entityId,
+        "trust_profile",
+        worldId,
+        context.evaluatorId,
+      )) ??
+      (await this.runtime.getComponents(profile.entityId)).find(
+        (c) => c.id === componentId,
+      );
 
     const component: Component = {
       id: componentId,

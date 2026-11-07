@@ -16,8 +16,8 @@ import {
   type Memory,
   nodeLookupFn,
   nodePinnedFetch,
-  type Route,
 } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
 
 import {
   ensureThumbnailForStoredFile,

@@ -1,6 +1,6 @@
 /**
  * Connector source registry: canonicalizes and classifies the `source` tag
- * carried on inbound messages (discord, telegram, farcaster, ...). Owners
+ * carried on inbound messages (discord, telegram, farcaster,...). Owners
  * register a canonical source with aliases and metadata (`sourceKind`
  * active/passive, `isPassive`); lookups normalize a raw source to its canonical
  * form, expand a source filter across all known aliases, and report whether a
@@ -13,13 +13,7 @@
 export type ConnectorSourceKind = "passive" | "active";
 
 /**
- * Declares how a connector projects the flat identity fields it stamps on a
- * Memory's top-level metadata into the nested `metadata[source]` identity object
- * that role resolution consumes (`{ userId, id, name, username }`). Owning this
- * mapping on the connector's registered source metadata is what lets core stop
- * special-casing individual connectors (e.g. Discord's `fromId`/`entityName`)
- * inside `roles.ts` — the projection lives with the connector, not in a trunk
- * `source === "discord"` branch (#12090 item 22 / #12087).
+ * Connector-owned mapping from flat memory metadata to normalized source identity fields.
  */
 export interface ConnectorIdentityMetadataMapping {
 	/** Flat metadata key holding the stable platform user id (maps to `userId` + `id`). */
@@ -58,6 +52,23 @@ const registeredMetadataByOwner = new Map<
 	Map<string, ConnectorSourceMetadata>
 >();
 const rawToCanonical = new Map<string, string>();
+/**
+ * Owner-merged metadata per registered canonical source, rebuilt on every
+ * registration change so per-message lookups do not re-merge every owner.
+ */
+const mergedByCanonical = new Map<string, ConnectorSourceMetadata>();
+/** What an unregistered source merges to while any owner is registered. */
+const UNREGISTERED_SOURCE_METADATA = freezeMetadata(
+	mergeMetadata(undefined, undefined),
+);
+
+/** Cached metadata is shared by every reader, so it is read-only. */
+function freezeMetadata(
+	metadata: ConnectorSourceMetadata,
+): ConnectorSourceMetadata {
+	if (metadata.aliases) Object.freeze(metadata.aliases);
+	return Object.freeze(metadata);
+}
 
 function mergeMetadata(
 	base: ConnectorSourceMetadata | undefined,
@@ -76,17 +87,7 @@ function mergeMetadata(
 	};
 }
 
-function listRegisteredCanonicalSources(): string[] {
-	const sources = new Set<string>();
-	for (const ownerMetadata of registeredMetadataByOwner.values()) {
-		for (const canonical of ownerMetadata.keys()) {
-			sources.add(canonical);
-		}
-	}
-	return [...sources];
-}
-
-function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
+function mergeOwners(canonical: string): ConnectorSourceMetadata {
 	let merged: ConnectorSourceMetadata | undefined;
 	for (const ownerMetadata of registeredMetadataByOwner.values()) {
 		merged = mergeMetadata(merged, ownerMetadata.get(canonical));
@@ -94,11 +95,29 @@ function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
 	return merged ?? {};
 }
 
+function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
+	return (
+		mergedByCanonical.get(canonical) ??
+		(registeredMetadataByOwner.size > 0 ? UNREGISTERED_SOURCE_METADATA : {})
+	);
+}
+
 function rebuildRawToCanonical(): void {
 	rawToCanonical.clear();
+	mergedByCanonical.clear();
 
-	for (const canonical of listRegisteredCanonicalSources()) {
-		for (const alias of getMergedMetadata(canonical).aliases ?? [canonical]) {
+	for (const ownerMetadata of registeredMetadataByOwner.values()) {
+		for (const canonical of ownerMetadata.keys()) {
+			if (!mergedByCanonical.has(canonical)) {
+				mergedByCanonical.set(
+					canonical,
+					freezeMetadata(mergeOwners(canonical)),
+				);
+			}
+		}
+	}
+	for (const [canonical, metadata] of mergedByCanonical) {
+		for (const alias of metadata.aliases ?? [canonical]) {
 			rawToCanonical.set(alias, canonical);
 		}
 	}
@@ -263,25 +282,11 @@ export function expandConnectorSourceFilter(
 	return expanded;
 }
 
-/**
- * Owner key for the built-in, legacy Discord connector-source metadata registered
- * below. The Discord plugin lives outside this monorepo, so the flat-field →
- * identity / world-id projection it needs is registered here as an explicit,
- * grep-able legacy default instead of remaining as `source === "discord"`
- * literal branches inside core's `roles.ts` (#12090 item 22 / #12087). When the
- * Discord plugin registers its own `connectorSources` mapping at runtime, that
- * owner-scoped registration merges over this default (registered metadata wins in
- * {@link mergeMetadata}); this default only backstops back-compat.
- */
+/** Owner key for the built-in Discord source metadata projection. */
 export const LEGACY_DISCORD_CONNECTOR_SOURCE_OWNER =
 	"core:legacy-discord-metadata";
 
-/**
- * The Discord identity/world-id field projection previously hardcoded in
- * `roles.ts`. Declared here as connector-owned registry metadata so core reads it
- * generically. `fromId`/`entityName` were the flat Memory metadata keys Discord
- * stamps; `discordServerId`/`discordChannelId` were the world-id derivation keys.
- */
+/** Discord source-field mappings for identity and world derivation. Core resolves connector metadata through the registry. */
 export const LEGACY_DISCORD_CONNECTOR_SOURCE_METADATA: ConnectorSourceMetadata =
 	{
 		identityMetadataMapping: {

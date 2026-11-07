@@ -15,11 +15,13 @@
  */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app/scripts/coverage-policy.ts";
-import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
-import { repoRoot } from "./repo-root";
-import { buildWorkspaceSourceAliases } from "./source-aliases";
-import { getElizaWorkspaceRoot, type ModuleAlias } from "./workspace-aliases";
+import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger.ts";
+import { repoRoot } from "./repo-root.ts";
+import { buildWorkspaceSourceAliases } from "./source-aliases.ts";
+import {
+  getElizaWorkspaceRoot,
+  type ModuleAlias,
+} from "./workspace-aliases.ts";
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
@@ -51,15 +53,12 @@ export default defineConfig({
     alias: vitestResolveAlias,
   },
   test: {
+    fsModuleCache: true,
     testTimeout: 120_000,
     hookTimeout: isCI ? 300_000 : isWindows ? 180_000 : 120_000,
     pool: "forks",
     maxWorkers: isCI ? ciWorkers : localWorkers,
     restoreMocks: true,
-    // Some shard patterns (for example packages/agent/test) hold only test
-    // infrastructure, not *.test.ts files. Tolerate empty matches so those
-    // shards pass instead of aborting the whole suite.
-    passWithNoTests: true,
     // Give worker forks more heap to survive jsdom-heavy suites.
     execArgv: ["--max-old-space-size=4096"],
     include: [
@@ -103,7 +102,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      reporter: [...coverageSummaryReporters],
+      reporter: ["text", "json-summary", "lcov"],
       include: ["src/**/*.ts"],
       exclude: [
         "src/**/*.test.ts",

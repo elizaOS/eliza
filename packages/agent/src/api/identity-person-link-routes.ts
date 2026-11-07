@@ -5,15 +5,17 @@
  */
 import {
   ElizaError,
-  type HttpPlugin,
   type IdentityPersonLinkActorRole,
   PrincipalService,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type {
+  HttpPlugin,
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/host/protocol";
 
 import { computeIdentityPersonLinkRequestDigest } from "@elizaos/plugin-sql";
 

@@ -15,6 +15,3 @@ export const navActiveClassVertical =
 /** Active marker for horizontal navigation (bottom accent edge). */
 export const navActiveClassHorizontal =
   "bg-accent/12 text-txt border-b-[3px] border-b-accent";
-
-/** Default alias — vertical is the common case across the shell. */
-export const navActiveClass = navActiveClassVertical;

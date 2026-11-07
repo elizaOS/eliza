@@ -1,3 +1,4 @@
+import { parseBooleanValue } from "@elizaos/core";
 /**
  * Server-side web search injection for every provider that supports it.
  *
@@ -27,21 +28,9 @@ import { logger } from "@elizaos/core";
 
 const require = createRequire(import.meta.url);
 
-function readBooleanEnv(name: string): boolean | undefined {
-  const raw = process.env[name]?.trim().toLowerCase();
-  if (raw === undefined || raw.length === 0) return undefined;
-  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
-    return false;
-  }
-  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
-    return true;
-  }
-  return undefined;
-}
-
 export function isServerSideWebSearchEnabled(): boolean {
-  if (readBooleanEnv("ELIZA_WEB_SEARCH") === false) return false;
-  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") === true;
+  if (parseBooleanValue(process.env.ELIZA_WEB_SEARCH) === false) return false;
+  return parseBooleanValue(process.env.ELIZA_SERVER_WEB_SEARCH) === true;
 }
 
 // ---------------------------------------------------------------------------

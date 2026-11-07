@@ -1,5 +1,5 @@
 /**
- * Audio PII redaction — span production (#14807).
+ * Audio PII redaction — span production.
  *
  * Pure, browser- + node-safe span math for the corpus PII scrub's audio lane:
  * text-PII verdicts (the matched surface strings from the tier-0 detectors /
@@ -11,27 +11,27 @@
  *
  * Design constraints this module honors:
  *
- *  - **Raw word spans in, no anchor seam dependency.** Input is the raw timed
- *    ASR word list (any producer that satisfies the {@link TranscriptWord}
- *    contract — fused `eliza_inference_asr_transcribe_timed`, an
- *    OpenAI-compatible STT with `timestamp_granularities=word`, …), not a
- *    transcript-fragment anchor record.
- *  - **Fail-closed on unlocatable PII.** A PII span that cannot be located in
- *    the word stream is returned in `unmatched` — the caller MUST treat a
- *    non-empty `unmatched` as a hard failure (typed error, quarantined item),
- *    never as "nothing to mute". Silence here would leak audible PII.
- *  - **Over-redaction is the safe direction.** Matching is
- *    separator-insensitive (normalized concatenation), so "555 0123" in the
- *    verdict matches an ASR word "5550123." and vice versa; a rare over-broad
- *    match mutes a little extra audio, never leaks any.
- *  - **Labels are plain input.** Pseudonym/cluster labels (corpus map,
- *    #14805) ride through untouched for observability; they never influence
- *    the produced windows.
+ * - **Raw word spans in, no anchor seam dependency.** Input is the raw timed
+ * ASR word list (any producer that satisfies the {@link TranscriptWord}
+ * contract — fused `eliza_inference_asr_transcribe_timed`, an
+ * OpenAI-compatible STT with `timestamp_granularities=word`, …), not a
+ * transcript-fragment anchor record.
+ * - **Fail-closed on unlocatable PII.** A PII span that cannot be located in
+ * the word stream is returned in `unmatched` — the caller MUST treat a
+ * non-empty `unmatched` as a hard failure (typed error, quarantined item),
+ * never as "nothing to mute". Silence here would leak audible PII.
+ * - **Over-redaction is the safe direction.** Matching is
+ * separator-insensitive (normalized concatenation), so "555 0123" in the
+ * verdict matches an ASR word "5550123." and vice versa; a rare over-broad
+ * match mutes a little extra audio, never leaks any.
+ * - **Labels are plain input.** Pseudonym/cluster labels (corpus map,
+ * ) ride through untouched for observability; they never influence
+ * the produced windows.
  *
  * The re-transcribe verifier is deliberately a SEPARATE module
  * (`audio-redaction-verify.ts`) with its own provider contract, so the span
  * producer and the verifier can run on different ASR backends (see the
- * acceptance note on #14807).
+ * acceptance note on ).
  */
 
 import { ElizaError } from "./errors.js";
@@ -49,7 +49,7 @@ export interface AudioRedactionSpan {
 export interface PiiTextSpan {
 	/** The matched PII surface text (`Tier0Span.span` / `PiiScrubVerdict.span`). */
 	text: string;
-	/** Pseudonym/cluster label from the corpus map (#14805) — plain input. */
+	/** Pseudonym/cluster label from the corpus map — plain input. */
 	label?: string;
 }
 
@@ -104,15 +104,17 @@ function buildWordStream(
 	const kept: TranscriptWord[] = [];
 	const charToWord: number[] = [];
 	let concat = "";
-	for (const word of ordered) {
+	// Errors name the word by position, never by its text: the text is the
+	// speech being redacted.
+	for (const [position, word] of ordered.entries()) {
 		if (!Number.isFinite(word.startMs) || !Number.isFinite(word.endMs)) {
 			throw new RedactionSpanError(
-				`word "${word.text}" has non-finite timing (${word.startMs}..${word.endMs})`,
+				`word ${position} has non-finite timing (${word.startMs}..${word.endMs})`,
 			);
 		}
 		if (word.endMs <= word.startMs) {
 			throw new RedactionSpanError(
-				`word "${word.text}" ends (${word.endMs}) before it starts (${word.startMs})`,
+				`word ${position} ends (${word.endMs}) before it starts (${word.startMs})`,
 			);
 		}
 		const normalized = normalizeSpokenText(word.text);
@@ -280,12 +282,6 @@ export function mergeRedactionSpans(
 	}));
 }
 
-/** Options for {@link buildAudioRedactionSpans}. */
-export interface BuildRedactionSpanOptions
-	extends Omit<MergeRedactionSpanOptions, "durationMs"> {
-	durationMs: number;
-}
-
 /** Result of the full text-PII → timestamp-window derivation. */
 export interface AudioRedactionSpanPlan {
 	/** Padded, merged, non-overlapping windows ready for the executor. */
@@ -305,7 +301,7 @@ export interface AudioRedactionSpanPlan {
 export function buildAudioRedactionSpans(
 	words: readonly TranscriptWord[],
 	piiSpans: readonly PiiTextSpan[],
-	options: BuildRedactionSpanOptions,
+	options: MergeRedactionSpanOptions,
 ): AudioRedactionSpanPlan {
 	const { matches, unmatched } = matchPiiSpansToWords(words, piiSpans);
 	const spans = mergeRedactionSpans(matches, options);
@@ -318,9 +314,10 @@ export function assertCompleteAudioRedactionPlan(
 ): void {
 	if (plan.unmatched.length > 0) {
 		throw new RedactionSpanError(
-			`PII text could not be located in timed words: ${plan.unmatched
-				.map((span) => JSON.stringify(span.text))
-				.join(", ")}`,
+			// Never echo the PII itself: errors reach logs and telemetry.
+			`${plan.unmatched.length} PII span(s) could not be located in timed words (text lengths: ${plan.unmatched
+				.map((span) => span.text.length)
+				.join(", ")})`,
 		);
 	}
 	if (plan.spans.length === 0) {

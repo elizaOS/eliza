@@ -1,4 +1,3 @@
-/** Exercises voice interactive behavior with deterministic app test fixtures. */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

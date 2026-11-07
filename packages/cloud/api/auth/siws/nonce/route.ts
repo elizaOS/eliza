@@ -4,16 +4,16 @@
  * Mirrors siwe/nonce/route.ts; see it for the per-request Redis rationale.
  */
 
-import { Hono } from "hono";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getAppHost, getAppUrl } from "@/lib/utils/app-url";
-import { logger } from "@/lib/utils/logger";
-import { issueSiwsNonce } from "@/lib/utils/siws-helpers";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getAppHost, getAppUrl } from "@elizaos/cloud-shared/lib/utils/app-url";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { issueSiwsNonce } from "@elizaos/cloud-shared/lib/utils/siws-helpers";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * SIWS `chainId` uses the Wallet Standard Solana aliases exposed by the
@@ -57,7 +57,7 @@ app.get("/", async (c) => {
   }
   const chainId = parsedChainId.chainId;
 
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }

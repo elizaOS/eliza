@@ -5,7 +5,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { runProgressiveContentTargetConformance } from "@elizaos/testing";
+import { runProgressiveContentTargetConformance } from "@elizaos/testing/progressive-content";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createProgressivePostgresSqlTargetFactories } from "../support/progressive-content-sql-targets";

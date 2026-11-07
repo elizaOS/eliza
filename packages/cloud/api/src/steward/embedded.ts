@@ -1,10 +1,15 @@
+import {
+  sha256TextHex,
+  signStewardClientIp,
+  signStewardMutatingRequest,
+} from "@elizaos/cloud-shared/lib/steward/sign";
 /** Proxies the first-party login service with signed mutations and bounded public discovery. */
+
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const REQUEST_TTL_SECONDS = 60;
 // Keep in lockstep with STEWARD_AUTH_UPSTREAM_TIMEOUT_MS in
 // packages/cloud/shared/src/lib/auth/steward-client.ts. Inlined so this module
 // (and the thin login path that loads it) does not pull the JWT/jose graph.
@@ -15,90 +20,6 @@ const MAX_PROVIDERS_CONTAINER_ENTRIES = 256;
 const MAX_PROVIDERS_JSON_NODES = 2_048;
 const MAX_PROVIDERS_CACHE_ENTRIES = 8;
 const DANGEROUS_JSON_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-
-function bytesToHex(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    out += bytes[i].toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-async function sha256Hex(input: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return bytesToHex(new Uint8Array(digest));
-}
-
-async function sha256TextHex(value: string): Promise<string> {
-  return sha256Hex(new TextEncoder().encode(value).buffer);
-}
-
-async function hmacSha256Hex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(message),
-  );
-  return bytesToHex(new Uint8Array(signature));
-}
-
-/**
- * Steward's request-signature middleware HMACs this exact ordered list with a
- * shared secret and compares against `X-Steward-Signature: v1=<hex>`. Keep
- * this in lockstep with `canonicalRequest` in
- * Steward-Fi/steward:packages/api/src/middleware/authorization-signature.ts —
- * the upstream is authoritative; if it grows a new header or reorders, this
- * proxy starts shipping 401s and Magic Link / sensitive auth flows break.
- */
-async function buildStewardCanonicalRequest(
-  method: string,
-  pathAndSearch: string,
-  headers: Headers,
-  body: ArrayBuffer,
-): Promise<string> {
-  const bodyHash = await sha256Hex(body);
-  const authHash = await sha256TextHex(headers.get("authorization") ?? "");
-  const apiKeyHash = await sha256TextHex(headers.get("x-steward-key") ?? "");
-  const platformKeyHash = await sha256TextHex(
-    headers.get("x-steward-platform-key") ?? "",
-  );
-  const signerIdHash = await sha256TextHex(
-    headers.get("x-steward-signer-id") ?? "",
-  );
-  const signerSecretHash = await sha256TextHex(
-    headers.get("x-steward-signer-secret") ?? "",
-  );
-  const quorumIdHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-id") ?? "",
-  );
-  const quorumCredentialsHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-credentials") ?? "",
-  );
-  return [
-    "steward-request-signature-v1",
-    method.toUpperCase(),
-    pathAndSearch,
-    headers.get("x-steward-tenant") ?? "",
-    authHash,
-    apiKeyHash,
-    platformKeyHash,
-    signerIdHash,
-    signerSecretHash,
-    quorumIdHash,
-    quorumCredentialsHash,
-    headers.get("x-steward-request-timestamp") ?? "",
-    headers.get("x-steward-request-expires-at") ?? "",
-    headers.get("idempotency-key") ?? "",
-    bodyHash,
-  ].join("\n");
-}
 
 function stripStewardPrefix(pathname: string): string {
   if (pathname === "/steward") return "/";
@@ -238,31 +159,58 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
-async function readBoundedBody(response: Response): Promise<string | null> {
+async function readBoundedBody(
+  response: Response,
+  maxBytes = MAX_PROVIDERS_BODY_BYTES,
+  signal?: AbortSignal,
+): Promise<string | null> {
   if (!response.body) return null;
   const reader = response.body.getReader();
+  let onAbort: (() => void) | undefined;
+  const aborted = signal
+    ? new Promise<null>((resolve) => {
+        onAbort = () => {
+          void reader.cancel().catch(() => undefined);
+          resolve(null);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      })
+    : undefined;
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_PROVIDERS_BODY_BYTES) {
-      await reader.cancel();
+  try {
+    while (true) {
+      const next = aborted
+        ? await Promise.race([reader.read(), aborted])
+        : await reader.read();
+      if (next === null || signal?.aborted) return null;
+      const { done, value } = next;
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        if (signal) void reader.cancel().catch(() => undefined);
+        else await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
       return null;
     }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
+  } finally {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      reader.releaseLock();
+    }
   }
 }
 
@@ -557,7 +505,10 @@ async function providersCacheKey(
  */
 export function providersCacheControlForAgeMs(ageMs: number): string {
   const remainingMs = Math.max(0, PROVIDERS_CACHE_TTL_MS - Math.max(0, ageMs));
-  const maxAgeSec = Math.ceil(remainingMs / 1000);
+  // Floor, not ceil: rounding the remaining lifetime up lets isolate age +
+  // downstream max-age compose past the 60s ceiling above for any
+  // non-whole-second age (a hit at 59.5s would emit max-age=1).
+  const maxAgeSec = Math.floor(remainingMs / 1000);
   return `public, max-age=${maxAgeSec}`;
 }
 
@@ -721,6 +672,20 @@ async function patchProvidersResponse(
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
   const requestMethod = c.req.method.toUpperCase();
+  const path = stripStewardPrefix(url.pathname);
+  const ownerPhonePrefix = "/cloud-owner-phone";
+  const isOwnerPhoneLogin =
+    path === ownerPhonePrefix || path.startsWith(`${ownerPhonePrefix}/`);
+  const upstreamPath = isOwnerPhoneLogin
+    ? path.slice(ownerPhonePrefix.length)
+    : path;
+  if (
+    isOwnerPhoneLogin &&
+    (requestMethod !== "POST" ||
+      !["/auth/sms/send", "/auth/sms/verify"].includes(upstreamPath))
+  ) {
+    return c.json({ ok: false, error: "Phone sign-in route not found" }, 404);
+  }
   const isReadMethod = requestMethod === "GET" || requestMethod === "HEAD";
   const isProvidersRequest = isReadMethod && isAuthProvidersPath(url.pathname);
   const providerCacheKey = isProvidersRequest
@@ -751,7 +716,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     );
   }
 
-  const upstreamUrl = new URL(`${upstream}${stripStewardPrefix(url.pathname)}`);
+  const upstreamUrl = new URL(`${upstream}${upstreamPath}`);
   upstreamUrl.search = url.search;
 
   // The Steward backend gates mutating sensitive paths (/auth, /agents,
@@ -774,7 +739,50 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
 
   let bodyBytes: ArrayBuffer | null = null;
   if (isMutating) {
-    bodyBytes = await c.req.raw.clone().arrayBuffer();
+    if (isOwnerPhoneLogin) {
+      const deadline = new AbortController();
+      const timer = setTimeout(() => deadline.abort(), 5_000);
+      const bodySignal = AbortSignal.any([c.req.raw.signal, deadline.signal]);
+      let personalBodyText: string | null;
+      try {
+        personalBodyText = await readBoundedBody(
+          new Response(c.req.raw.body),
+          16_384,
+          bodySignal,
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+      if (bodySignal.aborted)
+        return c.json(
+          { ok: false, error: "Phone sign-in request timed out" },
+          408,
+        );
+      if (personalBodyText === null)
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      let body: unknown;
+      try {
+        body = JSON.parse(personalBodyText);
+      } catch {
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        return c.json(
+          { ok: false, error: "Invalid phone sign-in request" },
+          400,
+        );
+      const personalBody = { ...body } as Record<string, unknown>;
+      delete personalBody.tenantId;
+      bodyBytes = new TextEncoder().encode(JSON.stringify(personalBody)).buffer;
+    } else {
+      bodyBytes = await c.req.raw.clone().arrayBuffer();
+    }
   }
 
   const init: RequestInit = {
@@ -792,6 +800,21 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const headers = init.headers as Headers;
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+  // Steward rate-limits auth sends per client IP. A caller-supplied
+  // x-forwarded-for chain must not reach it: forward only the address the
+  // Cloudflare edge observed, which the caller cannot set.
+  const edgeClientIp = c.req.header("cf-connecting-ip")?.trim();
+  for (const name of ["x-forwarded-for", "x-real-ip", "forwarded"]) {
+    headers.delete(name);
+  }
+  if (edgeClientIp) headers.set("x-forwarded-for", edgeClientIp);
+  await signStewardClientIp(
+    signingSecret,
+    method,
+    `${upstreamUrl.pathname}${upstreamUrl.search}`,
+    headers,
+    edgeClientIp,
+  );
   // Strip the host header that Workers carries from the inbound request — the
   // upstream fetch sets its own.
   headers.delete("host");
@@ -843,29 +866,24 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // separately via `NEXT_PUBLIC_STEWARD_TENANT_ID` in cloud-frontend's
   // wrangler.toml `[env.preview.vars]`.
   const pinnedTenantId = c.env.STEWARD_TENANT_ID;
-  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+  if (isOwnerPhoneLogin) {
+    headers.delete("x-steward-tenant");
+    headers.delete("content-length");
+  } else if (
+    typeof pinnedTenantId === "string" &&
+    pinnedTenantId.trim().length > 0
+  ) {
     headers.set("x-steward-tenant", pinnedTenantId.trim());
   }
 
   if (isMutating && signingSecret && bodyBytes) {
-    const expiresAt = Math.floor(Date.now() / 1000) + REQUEST_TTL_SECONDS;
-    headers.set("x-steward-request-expires-at", String(expiresAt));
-    // Steward's idempotency middleware requires Idempotency-Key on every
-    // signed mutating request. Use the SPA-supplied value when present so
-    // retries dedup, otherwise stamp a fresh UUID v4 just to satisfy the
-    // gate — without it Steward rejects with "Signed requests require an
-    // Idempotency-Key header" (packages/api/src/middleware/idempotency.ts).
-    if (!headers.get("idempotency-key")) {
-      headers.set("idempotency-key", crypto.randomUUID());
-    }
-    const canonical = await buildStewardCanonicalRequest(
+    await signStewardMutatingRequest(
+      signingSecret,
       method,
       `${upstreamUrl.pathname}${upstreamUrl.search}`,
       headers,
       bodyBytes,
     );
-    const signature = await hmacSha256Hex(signingSecret, canonical);
-    headers.set("x-steward-signature", `v1=${signature}`);
   }
 
   if (isProvidersRequest && providerCacheKey) {

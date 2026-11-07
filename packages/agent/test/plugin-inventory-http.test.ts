@@ -6,8 +6,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createTestRuntime } from "@elizaos/testing";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { ComputerUseApprovalManager } from "../../../plugins/plugin-computeruse/src/approval-manager.ts";
+import { computerUsePlugin } from "../../../plugins/plugin-computeruse/src/index.ts";
 import { discoverPluginsFromManifest } from "../src/api/plugin-discovery-helpers.ts";
 import { handlePluginInventoryRoutes } from "../src/api/plugin-inventory-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -235,5 +238,129 @@ it("preserves failed registration diagnostics across catalog refresh without lea
     await new Promise<void>((resolve, reject) =>
       listener.close((error) => (error ? reject(error) : resolve())),
     );
+  }
+});
+
+it("returns errors for absent capabilities and serves routes after plugin registration", async () => {
+  for (const route of [
+    "/api/voice/profiles",
+    "/api/discord-local/status",
+    "/api/lifeops/connectors/imessage/status",
+    "/api/signal/status",
+    "/api/setup/telegram-account/status",
+    "/api/whatsapp/status",
+    "/api/coding-agents/preflight",
+    "/api/lifeops/activity-signals",
+    "/api/catalog/apps",
+    "/api/drop/status",
+    "/api/computer-use/approvals",
+  ]) {
+    const response = await request(route);
+    expect(response.status, route).toBe(404);
+    expect(await response.json(), route).toHaveProperty("error");
+  }
+  const rejectedWrite = await fetch(
+    `http://127.0.0.1:${server.port}/api/lifeops/activity-signals`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ signal: "must not report a fabricated receipt" }),
+    },
+  );
+  expect(rejectedWrite.status).toBe(404);
+  expect(await rejectedWrite.json()).toHaveProperty("error");
+
+  registerHttpPluginRoutes(fixture.runtime, {
+    name: "inventory-route-registration",
+    description: "HTTP registration acceptance",
+    routes: [
+      {
+        type: "GET",
+        path: "/api/voice/profiles",
+        rawPath: true,
+        handler: async (_req, res) => {
+          res.json({ agentId: fixture.runtime.agentId });
+        },
+      },
+    ],
+  });
+  const registered = await request("/api/voice/profiles");
+  expect(registered.status).toBe(200);
+  expect(await registered.json()).toEqual({ agentId: fixture.runtime.agentId });
+  expect((await request("/api/voice/profiles", false)).status).toBe(401);
+});
+
+function post(route: string, body: unknown) {
+  return fetch(`http://127.0.0.1:${server.port}${route}`, {
+    method: "POST",
+    headers: {
+      "x-forwarded-for": "203.0.113.10",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+it("serves computer-use approvals from the registered plugin routes instead of a host stub", async () => {
+  // Without the plugin the mode change must fail, not report a mode it never set.
+  const absentMode = await post("/api/computer-use/approval-mode", {
+    mode: "full_control",
+  });
+  expect(absentMode.status).toBe(404);
+
+  const approvals = new ComputerUseApprovalManager();
+  const getService = fixture.runtime.getService.bind(fixture.runtime);
+  const service = vi.spyOn(fixture.runtime, "getService").mockImplementation(((
+    name: string,
+  ) =>
+    name === "computeruse"
+      ? {
+          getApprovalSnapshot: () => approvals.getSnapshot(),
+          setApprovalMode: (mode: string) => approvals.setMode(mode),
+          resolveApproval: (id: string, approved: boolean, reason?: string) =>
+            approvals.resolveApproval(id, approved, reason),
+        }
+      : getService(name)) as typeof fixture.runtime.getService);
+  try {
+    registerHttpPluginRoutes(fixture.runtime, {
+      name: "computer-use-route-registration",
+      description: "Computer-use approval route acceptance",
+      routes: computerUsePlugin.routes,
+    });
+    const decision = approvals.requestApproval("click", { x: 1, y: 2 });
+    const snapshot = (await (
+      await request("/api/computer-use/approvals")
+    ).json()) as {
+      pendingCount: number;
+      pendingApprovals: Array<{ id: string; command: string }>;
+    };
+    expect(snapshot.pendingCount).toBe(1);
+    expect(snapshot.pendingApprovals[0]?.command).toBe("click");
+    const id = snapshot.pendingApprovals[0]?.id ?? "";
+
+    expect((await request("/api/computer-use/approvals", false)).status).toBe(
+      401,
+    );
+    const resolved = await post(
+      `/api/computer-use/approvals/${encodeURIComponent(id)}`,
+      { approved: true },
+    );
+    expect(resolved.status).toBe(200);
+    expect(await resolved.json()).toMatchObject({ id, approved: true });
+    expect(await decision).toMatchObject({ id, approved: true });
+    expect(approvals.getSnapshot().pendingCount).toBe(0);
+    expect(
+      (
+        await post(`/api/computer-use/approvals/${encodeURIComponent(id)}`, {
+          approved: true,
+        })
+      ).status,
+    ).toBe(404);
+  } finally {
+    service.mockRestore();
   }
 });

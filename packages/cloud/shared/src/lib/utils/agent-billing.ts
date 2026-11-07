@@ -140,8 +140,11 @@ export async function preCheckBilling(context: BillingContext): Promise<PreBillR
   let balance = Number(org.credit_balance);
   if (balance < estimatedCost && (await isAllowanceFirstOrganization(organizationId))) {
     // A subscriber's spendable allowance funds agent operations before
-    // purchased credit, so it counts toward admission.
-    const account = await readAgentFundingAccount(organizationId);
+    // purchased credit, so it counts toward admission. Post-bill funds these
+    // operations as managed agent compute, so admission reads the same grace.
+    const account = await readAgentFundingAccount(organizationId, {
+      managedComputePaymentGrace: true,
+    });
     if (account) {
       balance = new Decimal(account.credit_balance)
         .plus(account.eligible_subscription_allowance)

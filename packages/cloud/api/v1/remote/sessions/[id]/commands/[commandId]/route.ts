@@ -1,11 +1,11 @@
 /** Returns an owner-scoped command status and opaque start/result envelopes. */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
+import { remoteCommandEnvelopesRepository } from "@elizaos/cloud-shared/db/repositories/remote-command-envelopes";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
-import { remoteCommandEnvelopesRepository } from "@/db/repositories/remote-command-envelopes";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -1,12 +1,16 @@
 // Shared wallet data helpers for InventoryView and the `interact` capability
 // handler. Kept out of the .tsx so that file exports only React components and
 // stays Fast-Refresh-compatible in dev.
-import {
-  type WalletAddresses,
-  type WalletBalancesResponse,
-  type WalletConfigStatus,
-} from "@elizaos/core/contracts/wallet-types";
-import { client } from "@elizaos/ui/api";
+// Shared wallet data helpers for InventoryView and the `interact` capability
+// handler. Kept out of the .tsx so that file exports only React components and
+// stays Fast-Refresh-compatible in dev.
+import type {
+  WalletAddresses,
+  WalletBalancesResponse,
+  WalletConfigStatus,
+} from "@elizaos/contracts";
+import { client } from "@elizaos/ui";
+import { parseFiniteAmount } from "./inventory/constants.ts";
 
 export function resolveWalletAddresses({
   walletAddresses,
@@ -26,10 +30,7 @@ export function resolveWalletAddresses({
 }
 
 export function parseUsd(value: string | number | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value !== "string") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseFiniteAmount(value);
 }
 
 export function summarizeWalletBalances(

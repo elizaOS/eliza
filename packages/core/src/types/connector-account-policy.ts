@@ -1,9 +1,5 @@
 /**
- * Connector account primitive types extracted here so that types/components.ts
- * can reference ConnectorAccountPolicy without a circular import through
- * connectors/account-manager.ts.
- *
- * connectors/account-manager.ts re-exports everything from this module.
+ * Connector account policy primitives shared without importing component implementations.
  */
 
 export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM" | (string & {});

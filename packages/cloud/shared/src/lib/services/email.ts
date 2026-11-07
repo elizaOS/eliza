@@ -323,7 +323,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendWelcomeEmail(data: WelcomeEmailData): Promise<boolean> {
-    const { renderWelcomeTemplate } = await import("../email/utils/template-renderer");
+    const { renderWelcomeTemplate } = await import("../email/template-renderer");
     const { html, text } = renderWelcomeTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -342,7 +342,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendLowCreditsEmail(data: LowCreditsEmailData): Promise<boolean> {
-    const { renderLowCreditsTemplate } = await import("../email/utils/template-renderer");
+    const { renderLowCreditsTemplate } = await import("../email/template-renderer");
     const { html, text } = renderLowCreditsTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -361,7 +361,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendInviteEmail(data: InviteEmailData): Promise<boolean> {
-    const { renderInviteTemplate } = await import("../email/utils/template-renderer");
+    const { renderInviteTemplate } = await import("../email/template-renderer");
     const { html, text } = renderInviteTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -382,7 +382,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendAutoTopUpSuccessEmail(data: AutoTopUpSuccessEmailData): Promise<boolean> {
-    const { renderAutoTopUpSuccessTemplate } = await import("../email/utils/template-renderer");
+    const { renderAutoTopUpSuccessTemplate } = await import("../email/template-renderer");
     const { html, text } = renderAutoTopUpSuccessTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -401,7 +401,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendAutoTopUpDisabledEmail(data: AutoTopUpDisabledEmailData): Promise<boolean> {
-    const { renderAutoTopUpDisabledTemplate } = await import("../email/utils/template-renderer");
+    const { renderAutoTopUpDisabledTemplate } = await import("../email/template-renderer");
     const { html, text } = renderAutoTopUpDisabledTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -420,7 +420,7 @@ export class EmailService {
    * @returns True if sent successfully.
    */
   async sendPurchaseConfirmationEmail(data: PurchaseConfirmationEmailData): Promise<boolean> {
-    const { renderPurchaseConfirmationTemplate } = await import("../email/utils/template-renderer");
+    const { renderPurchaseConfirmationTemplate } = await import("../email/template-renderer");
     const { html, text } = renderPurchaseConfirmationTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -441,9 +441,7 @@ export class EmailService {
   async sendContainerShutdownWarningEmail(
     data: ContainerShutdownWarningEmailData,
   ): Promise<boolean> {
-    const { renderContainerShutdownWarningTemplate } = await import(
-      "../email/utils/template-renderer"
-    );
+    const { renderContainerShutdownWarningTemplate } = await import("../email/template-renderer");
     const { html, text } = renderContainerShutdownWarningTemplate(data);
     const messages = getEmailMessages(data.locale);
 
@@ -466,7 +464,7 @@ export class EmailService {
     data: AgentRetentionDeletionNoticeEmailData,
   ): Promise<boolean> {
     const { renderAgentRetentionDeletionNoticeTemplate } = await import(
-      "../email/utils/template-renderer"
+      "../email/template-renderer"
     );
     const { html, text } = renderAgentRetentionDeletionNoticeTemplate(data);
     const messages = getEmailMessages(data.locale);

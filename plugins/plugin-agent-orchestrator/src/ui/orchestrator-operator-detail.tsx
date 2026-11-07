@@ -1,17 +1,18 @@
 /**
  * Renders inspectable timeline and session detail without owning task state or mutations.
  */
+import {
+  Button,
+  Card,
+  type CodingAgentRerunFromEventInput,
+  type CodingAgentRetryTurnInput,
+  type CodingAgentTaskEventRecord,
+  type CodingAgentTaskMessageRecord,
+  type CodingAgentTaskSessionRecord,
+  type CodingAgentTaskUsageSummary,
+  useAgentElement,
+} from "@elizaos/ui";
 
-import { Button, Card } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type {
-  CodingAgentRerunFromEventInput,
-  CodingAgentRetryTurnInput,
-  CodingAgentTaskEventRecord,
-  CodingAgentTaskMessageRecord,
-  CodingAgentTaskSessionRecord,
-  CodingAgentTaskUsageSummary,
-} from "@elizaos/ui/api/client-types-cloud";
 import { ChevronsUp, RotateCcw, X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { type ConversationBlock, ToolBody } from "./orchestrator-stream";

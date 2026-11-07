@@ -6,32 +6,31 @@
  * payout RPCs are actually reachable from the worker.
  */
 
-import { Hono } from "hono";
-import { type Address, createPublicClient, http } from "viem";
-
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
 import {
   type EvmPayoutNetwork,
   listEvmPayoutNetworks,
   resolveEvmRpc,
-} from "@/lib/config/evm-rpc";
+} from "@elizaos/cloud-shared/lib/config/evm-rpc";
 import {
   ELIZA_DECIMALS,
   ERC20_ABI,
   EVM_CHAINS,
-} from "@/lib/config/token-constants";
+} from "@elizaos/cloud-shared/lib/config/token-constants";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   ELIZA_TOKEN_ADDRESSES,
   type SupportedNetwork,
-} from "@/lib/services/eliza-token-price";
-import { getHotWalletAddresses } from "@/lib/services/payout-status";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-token-price";
+import { getHotWalletAddresses } from "@elizaos/cloud-shared/lib/services/payout-status";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { type Address, createPublicClient, http } from "viem";
 
 const PROBE_TIMEOUT_MS = 5000;
 

@@ -26,7 +26,7 @@
  * background-task model breaks long-running local inference (iOS jetsam
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import {
 	type Eliza1Fit,
 	selectBestEliza1Fit as resolveBestEliza1FitForRam,

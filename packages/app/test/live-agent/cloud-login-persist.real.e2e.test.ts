@@ -1,8 +1,7 @@
-/** Exercises cloud login persist real e2e behavior with deterministic app test fixtures. */
 import fs from "node:fs/promises";
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startApiServer } from "../../src/api/server";
-import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 

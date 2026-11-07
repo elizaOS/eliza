@@ -9,13 +9,13 @@
  * tests opt out so a rejection still fails the test.
  */
 import process from "node:process";
+import { getLogPrefix } from "@elizaos/core";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
-} from "@elizaos/core/error-classification";
-import { installProcessCrashGuards } from "@elizaos/core/process-guards";
-import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/core/restart";
-import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+} from "@elizaos/core/protocol";
+import { installProcessCrashGuards } from "@elizaos/host";
+import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/host/protocol";
 import { getPrimaryCommand } from "./argv";
 
 /** Commands that boot a long-running server we must keep alive across faults. */

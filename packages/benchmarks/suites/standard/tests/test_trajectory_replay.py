@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from benchmarks.standard._base import MockClient
-from benchmarks.standard._cli import main_entry
-from benchmarks.standard.trajectory_replay import (
+from benchmarks.suites.standard._base import MockClient
+from benchmarks.suites.standard._cli import main_entry
+from benchmarks.suites.standard.trajectory_replay import (
     BENCHMARK_ID,
     DATASET_VERSION,
     BaselineToolCall,
@@ -591,7 +591,7 @@ def test_runner_records_per_stage_error_without_crashing(tmp_path: Path) -> None
 def test_cli_smoke_end_to_end(tmp_path: Path) -> None:
     """Drive the CLI in --mock mode against the bundled smoke fixture.
 
-    Mirrors what `python -m benchmarks.standard.trajectory_replay --mock`
+    Mirrors what `python -m benchmarks.suites.standard.trajectory_replay --mock`
     would produce in CI: an end-to-end pass with one trajectory and one
     stage, scoring 0.5 (final-state matches via string equality, but the
     MockClient can't emit tool_calls so the action sequence is empty).
@@ -692,7 +692,7 @@ def test_trajectory_replay_registered_in_top_level_registry() -> None:
             "max_tokens": 256,
         },
     )
-    assert "benchmarks.standard.trajectory_replay" in cmd
+    assert "benchmarks.suites.standard.trajectory_replay" in cmd
     assert "--traj-set" in cmd and "/tmp/traj" in cmd
     assert "--baseline" in cmd and "base" in cmd
     assert "--reward-threshold" in cmd and "0.25" in cmd

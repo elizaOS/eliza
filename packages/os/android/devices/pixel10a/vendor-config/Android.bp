@@ -1,0 +1,9 @@
+android_app {
+    name: "AlphaPixelConfig",
+    manifest: "AndroidManifest.xml",
+    srcs: ["src/**/*.java"],
+    sdk_version: "current",
+    min_sdk_version: "26",
+    system_ext_specific: true,
+    optimize: { enabled: false },
+}

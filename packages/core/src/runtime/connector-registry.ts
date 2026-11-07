@@ -5,6 +5,7 @@ import { ElizaError } from "../errors.ts";
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
 import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
 import { ensureAgentVoice } from "../security/voice-gate.ts";
+import { getTrajectoryContext } from "../trajectory-context.ts";
 import type { Memory } from "../types/memory.js";
 import {
 	SEND_HANDLER_NOT_FOUND,
@@ -15,6 +16,7 @@ import {
 import type { Content } from "../types/primitives.js";
 import type {
 	ConnectorPostIdentity,
+	ConnectorUnregisterOptions,
 	IAgentRuntime,
 	MessageConnector,
 	MessageConnectorCreateThreadParams,
@@ -32,6 +34,25 @@ import {
 	normalizeMessageConnector,
 	normalizePostConnector,
 } from "./connector-registration.js";
+
+/** Registrations arrive from plugin JavaScript, so a non-string source is rejected as empty. */
+function normalizeSource(source: unknown): string {
+	return typeof source === "string" ? source.trim() : "";
+}
+
+function compareConnectors(
+	a: { source: string; accountId?: string },
+	b: { source: string; accountId?: string },
+): number {
+	return (
+		a.source.localeCompare(b.source) ||
+		(a.accountId ?? "").localeCompare(b.accountId ?? "")
+	);
+}
+
+type ConnectorWithHook<K extends keyof MessageConnector> = MessageConnector &
+	Required<Pick<MessageConnector, K>>;
+
 export class RuntimeConnectorRegistry {
 	constructor(
 		private readonly runtime: IAgentRuntime,
@@ -43,40 +64,25 @@ export class RuntimeConnectorRegistry {
 	private postConnectors = new Map<string, PostConnector>();
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void {
-		const normalized = typeof source === "string" ? source.trim() : "";
-		if (!normalized) {
-			throw new Error("Send handler registration requires a source");
-		}
-		const routeKey = connectorRouteKey(normalized);
-		if (this.sendHandlers.has(routeKey)) {
-			this.runtime.logger.warn(
-				{
-					src: "agent",
-					agentId: this.runtime.agentId,
-					handlerSource: normalized,
-				},
-				"Send handler already registered, overwriting",
-			);
-		}
-		this.sendHandlers.set(routeKey, handler);
-		this.messageConnectors.set(routeKey, normalizeMessageConnector(normalized));
-		this.runtime.logger.debug(
-			{
-				src: "agent",
-				agentId: this.runtime.agentId,
-				handlerSource: normalized,
-			},
-			"Send handler registered",
-		);
+		this.setSendHandler(source, handler, "Send handler");
 	}
 
 	registerInternalSendHandler(
 		source: string,
 		handler: SendHandlerFunction,
 	): void {
-		const normalized = typeof source === "string" ? source.trim() : "";
+		this.setSendHandler(source, handler, "Internal send handler");
+	}
+
+	/** Internal handlers route sends without publishing a connector descriptor. */
+	private setSendHandler(
+		source: string,
+		handler: SendHandlerFunction,
+		kind: "Send handler" | "Internal send handler",
+	): void {
+		const normalized = normalizeSource(source);
 		if (!normalized) {
-			throw new Error("Internal send handler registration requires a source");
+			throw new Error(`${kind} registration requires a source`);
 		}
 		const routeKey = connectorRouteKey(normalized);
 		if (this.sendHandlers.has(routeKey)) {
@@ -86,23 +92,28 @@ export class RuntimeConnectorRegistry {
 					agentId: this.runtime.agentId,
 					handlerSource: normalized,
 				},
-				"Internal send handler already registered, overwriting",
+				`${kind} already registered, overwriting`,
 			);
 		}
 		this.sendHandlers.set(routeKey, handler);
+		if (kind === "Send handler") {
+			this.messageConnectors.set(
+				routeKey,
+				normalizeMessageConnector(normalized),
+			);
+		}
 		this.runtime.logger.debug(
 			{
 				src: "agent",
 				agentId: this.runtime.agentId,
 				handlerSource: normalized,
 			},
-			"Internal send handler registered",
+			`${kind} registered`,
 		);
 	}
 
 	registerMessageConnector(registration: MessageConnectorRegistration): void {
-		const source =
-			typeof registration.source === "string" ? registration.source.trim() : "";
+		const source = normalizeSource(registration.source);
 		if (!source) {
 			throw new Error("Message connector registration requires a source");
 		}
@@ -146,13 +157,17 @@ export class RuntimeConnectorRegistry {
 		);
 	}
 
-	unregisterMessageConnector(source: string, accountId?: string): boolean {
-		const normalized = typeof source === "string" ? source.trim() : "";
+	unregisterMessageConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean {
+		const normalized = normalizeSource(source);
 		if (!normalized) return false;
 		const normalizedAccountId = normalizeConnectorAccountId(accountId);
 		let removedConnector = false;
 		let removedHandler = false;
-		if (normalizedAccountId) {
+		if (normalizedAccountId || options?.exactAccount) {
 			const routeKey = connectorRouteKey(normalized, normalizedAccountId);
 			removedConnector = this.messageConnectors.delete(routeKey);
 			removedHandler = this.sendHandlers.delete(routeKey);
@@ -186,16 +201,11 @@ export class RuntimeConnectorRegistry {
 	getMessageConnectors(): MessageConnector[] {
 		return Array.from(this.messageConnectors.values())
 			.map(cloneMessageConnector)
-			.sort(
-				(a, b) =>
-					a.source.localeCompare(b.source) ||
-					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
-			);
+			.sort(compareConnectors);
 	}
 
 	registerPostConnector(registration: PostConnectorRegistration): void {
-		const source =
-			typeof registration.source === "string" ? registration.source.trim() : "";
+		const source = normalizeSource(registration.source);
 		if (!source) {
 			throw new Error("Post connector registration requires a source");
 		}
@@ -232,12 +242,16 @@ export class RuntimeConnectorRegistry {
 		);
 	}
 
-	unregisterPostConnector(source: string, accountId?: string): boolean {
-		const normalized = typeof source === "string" ? source.trim() : "";
+	unregisterPostConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean {
+		const normalized = normalizeSource(source);
 		if (!normalized) return false;
 		const normalizedAccountId = normalizeConnectorAccountId(accountId);
 		let removed = false;
-		if (normalizedAccountId) {
+		if (normalizedAccountId || options?.exactAccount) {
 			removed = this.postConnectors.delete(
 				connectorRouteKey(normalized, normalizedAccountId),
 			);
@@ -265,19 +279,14 @@ export class RuntimeConnectorRegistry {
 	getPostConnectors(): PostConnector[] {
 		return Array.from(this.postConnectors.values())
 			.map(clonePostConnector)
-			.sort(
-				(a, b) =>
-					a.source.localeCompare(b.source) ||
-					(a.accountId ?? "").localeCompare(b.accountId ?? ""),
-			);
+			.sort(compareConnectors);
 	}
 
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
 	): SendHandlerResult {
-		const source =
-			typeof target.source === "string" ? target.source.trim() : "";
+		const source = normalizeSource(target.source);
 		const accountId = normalizeConnectorAccountId(target.accountId);
 		const handler =
 			this.sendHandlers.get(connectorRouteKey(source, accountId)) ??
@@ -300,7 +309,7 @@ export class RuntimeConnectorRegistry {
 				context: { source, ...(accountId ? { accountId } : {}) },
 			});
 		}
-		// Humanness voice gate (#14873): this is the connector-transport chokepoint
+		// Humanness voice gate: this is the connector-transport chokepoint
 		// for every agent-initiated outbound message (scheduled dispatches,
 		// escalations, task-agent routing, raw error strings). Rephrase the literal
 		// into the agent's own voice unless it is already model-voiced
@@ -310,15 +319,22 @@ export class RuntimeConnectorRegistry {
 			source,
 		});
 		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer (#15888) and the fail-closed envelope guard
-		// apply here — after the voice gate, whose rephrase is itself model text.
+		// machine-syntax sanitizer, the fail-closed envelope guard, and the
+		// secret-swap reply policy (an in-turn MESSAGE send carries values the
+		// execution boundary restored) apply here — after the voice gate, whose
+		// rephrase is itself model text.
+		const secretSession = getTrajectoryContext()?.secretSwapSession;
 		const outboundContent =
 			typeof voicedContent.text === "string"
 				? {
 						...voicedContent,
 						text: guardOutboundEnvelopeText(
 							this.runtime,
-							sanitizeOutboundText(voicedContent.text),
+							sanitizeOutboundText(
+								secretSession
+									? secretSession.redactRestoredSecretValues(voicedContent.text)
+									: voicedContent.text,
+							),
 							"sendMessageToTarget",
 						),
 					}
@@ -331,8 +347,7 @@ export class RuntimeConnectorRegistry {
 		source: string;
 		accountId: string | undefined;
 	} {
-		const source =
-			typeof target.source === "string" ? target.source.trim() : "";
+		const source = normalizeSource(target.source);
 		const accountId = normalizeConnectorAccountId(target.accountId);
 		const connector =
 			this.messageConnectors.get(connectorRouteKey(source, accountId)) ??
@@ -351,7 +366,7 @@ export class RuntimeConnectorRegistry {
 		target: TargetInfo,
 		hook: K,
 		capability: string,
-	): MessageConnector {
+	): ConnectorWithHook<K> {
 		const { connector, source, accountId } =
 			this.resolveMessageConnector(target);
 		if (!connector[hook]) {
@@ -360,7 +375,7 @@ export class RuntimeConnectorRegistry {
 				: `source: ${source}`;
 			throw new Error(`Connector does not support ${capability} (${detail})`);
 		}
-		return connector;
+		return connector as ConnectorWithHook<K>;
 	}
 
 	async editMessageOnTarget(
@@ -374,9 +389,6 @@ export class RuntimeConnectorRegistry {
 			"edit_message",
 		);
 		const handler = connector.editHandler;
-		if (!handler) {
-			throw new Error("Connector does not support edit_message");
-		}
 		return (
 			(await handler(this.runtime, { target, messageId, content })) ?? undefined
 		);
@@ -388,7 +400,7 @@ export class RuntimeConnectorRegistry {
 			"typingHandler",
 			"typing_indicator",
 		);
-		await connector.typingHandler?.(this.runtime, { target });
+		await connector.typingHandler(this.runtime, { target });
 	}
 
 	async stopTypingOnTarget(target: TargetInfo): Promise<void> {
@@ -397,7 +409,7 @@ export class RuntimeConnectorRegistry {
 			"stopTypingHandler",
 			"typing_indicator",
 		);
-		await connector.stopTypingHandler?.(this.runtime, { target });
+		await connector.stopTypingHandler(this.runtime, { target });
 	}
 
 	async createThreadOnTarget(
@@ -410,9 +422,6 @@ export class RuntimeConnectorRegistry {
 			"create_thread",
 		);
 		const handler = connector.createThreadHandler;
-		if (!handler) {
-			throw new Error("Connector does not support create_thread");
-		}
 		return handler(this.runtime, { target, ...params });
 	}
 
@@ -427,7 +436,7 @@ export class RuntimeConnectorRegistry {
 			"postToThreadHandler",
 			"post_to_thread",
 		);
-		return connector.postToThreadHandler?.(this.runtime, {
+		return connector.postToThreadHandler(this.runtime, {
 			target,
 			thread,
 			content,
@@ -445,6 +454,6 @@ export class RuntimeConnectorRegistry {
 			"reactHandler",
 			"react_message",
 		);
-		await connector.reactHandler?.(this.runtime, { target, messageId, emoji });
+		await connector.reactHandler(this.runtime, { target, messageId, emoji });
 	}
 }

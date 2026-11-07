@@ -10,7 +10,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { OAuthCredentials } from "./types.ts";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: strips terminal ANSI color sequences from CLI output.

@@ -20,7 +20,7 @@ The default lane generates a patch through a harness bridge. To exercise Eliza's
 production message loop and READ/WRITE/EDIT/SHELL tools in an isolated task checkout:
 
 ```bash
-PYTHONPATH=packages python -m benchmarks.swe_bench.cli --variant verified \
+PYTHONPATH=packages python -m benchmarks.suites.swe_bench.cli --variant verified \
   --harness eliza --execution-mode native_direct --provider cerebras \
   --model MODEL --max-instances 1 \
   --workspace test-results/swe-native/workspaces --output test-results/swe-native

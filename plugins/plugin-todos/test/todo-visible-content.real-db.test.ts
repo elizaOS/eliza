@@ -73,9 +73,11 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
   async function run(
     message: Memory,
     parameters: Record<string, unknown>,
+    previousResults?: ActionResult[],
   ): Promise<ActionResult> {
     const result = await todoAction.handler?.(runtime, message, undefined, {
       parameters,
+      ...(previousResults ? { actionContext: { previousResults } } : {}),
     } as HandlerOptions);
     if (!result) throw new Error("TODO action returned no result");
     return result;
@@ -88,6 +90,25 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
   async function seed(entityId: UUID, content: string) {
     return service.create({ entityId, agentId: runtime.agentId, content });
   }
+
+  it.each([
+    ["Buy 12 bolts and 24 nuts", "Buy 24 bolts and 12 nuts"],
+    ["Buy 1.5 kg rice and 2.5 kg flour", "Buy 2.5 kg rice and 1.5 kg flour"],
+  ])(
+    "keeps different quantities as separate todos: %s",
+    async (first, second) => {
+      const entityId = newEntity();
+      await seed(entityId, first);
+      const added = await run(say(entityId, `add ${second}`), {
+        action: "create",
+        content: second,
+      });
+      expect(added.data?.duplicate).not.toBe(true);
+      expect((await rows(entityId)).map((todo) => todo.content).sort()).toEqual(
+        [first, second].sort(),
+      );
+    },
+  );
 
   it("completes a todo named by a paraphrase of its listed content, across turns, without ids", async () => {
     const entityId = newEntity();
@@ -228,6 +249,22 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(result.effectReceipts?.[0]?.resource.id).toBe(open.id);
   });
 
+  it("prefers an exact finished match over a paraphrase of an open todo", async () => {
+    const entityId = newEntity();
+    const water = await seed(entityId, "Pay water bill");
+    await service.update({ agentId: runtime.agentId, entityId }, water.id, {
+      status: "completed",
+    });
+    const electricity = await seed(entityId, "Pay electricity bill");
+    const result = await run(say(entityId, "delete pay water bill"), {
+      action: "delete",
+      target: "Pay water bill",
+    });
+    expect(result.effectReceipts?.[0]?.resource.id).toBe(water.id);
+    const state = await rows(entityId);
+    expect(state.map((todo) => todo.id)).toEqual([electricity.id]);
+  });
+
   it("keeps update's target separate from its replacement content, and a retry replays the original rename", async () => {
     const entityId = newEntity();
     const memo = await seed(entityId, "Draft memo");
@@ -281,6 +318,35 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(await rows(entityId)).toEqual([]);
   });
 
+  it("keeps positive and negative numeric todos distinct through create and completion", async () => {
+    const entityId = newEntity();
+    const positive = await seed(entityId, "Set target to 5");
+    const created = await run(say(entityId, "add Set target to -5"), {
+      action: "create",
+      content: "Set target to -5",
+    });
+    expect(created.effectReceipts?.[0]?.outcome).toBe("applied");
+    expect(await rows(entityId)).toHaveLength(2);
+    const duplicate = await run(say(entityId, "add Set target to −5"), {
+      action: "create",
+      content: "Set target to −5",
+    });
+    expect(duplicate.data).toMatchObject({ duplicate: true });
+    expect(await rows(entityId)).toHaveLength(2);
+    const completed = await run(say(entityId, "complete Set target to -5"), {
+      action: "complete",
+      target: "Set target to -5",
+    });
+    expect(completed.effectReceipts?.[0]?.outcome).toBe("applied");
+    const persisted = await rows(entityId);
+    expect(persisted.find((todo) => todo.id === positive.id)?.status).toBe(
+      "pending",
+    );
+    expect(
+      persisted.find((todo) => todo.content === "Set target to -5")?.status,
+    ).toBe("completed");
+  });
+
   it("asks before duplicating an open todo and creates it only after the user's yes", async () => {
     const entityId = newEntity();
     const existing = await seed(entityId, "Call mom");
@@ -314,6 +380,40 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(confirmed.text).toBe('Added "Call mom" to your list.');
     expect(confirmed.effectReceipts?.[0]?.outcome).toBe("applied");
     expect(await rows(entityId)).toHaveLength(2);
+  });
+
+  it("one yes to two duplicate questions from one turn creates both, once", async () => {
+    const entityId = newEntity();
+    await seed(entityId, "Buy milk");
+    await seed(entityId, "Buy eggs");
+    const count = async (content: string) =>
+      (await rows(entityId)).filter((todo) => todo.content === content).length;
+
+    const ask = say(entityId, "add buy milk and buy eggs");
+    const askMilk = await run(ask, { action: "create", content: "Buy milk" });
+    const askEggs = await run(ask, { action: "create", content: "Buy eggs" }, [
+      askMilk,
+    ]);
+    expect(askMilk.data).toMatchObject({ duplicate: true });
+    expect(askEggs.data).toMatchObject({ duplicate: true });
+
+    const yes = say(entityId, "yes");
+    const milk = await run(yes, { action: "create", content: "Buy milk" });
+    const eggs = await run(yes, { action: "create", content: "Buy eggs" }, [
+      milk,
+    ]);
+    expect(milk.text).toBe('Added "Buy milk" to your list.');
+    expect(eggs.text).toBe('Added "Buy eggs" to your list.');
+    expect(await count("Buy milk")).toBe(2);
+    expect(await count("Buy eggs")).toBe(2);
+
+    // Both questions are answered: a later yes does not add a third copy.
+    const again = await run(say(entityId, "yes"), {
+      action: "create",
+      content: "Buy milk",
+    });
+    expect(again.data).toMatchObject({ duplicate: true });
+    expect(await count("Buy milk")).toBe(2);
   });
 
   it("does not treat a completed todo as a duplicate", async () => {
@@ -411,5 +511,30 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     const answer = await run(say(entityId, "yes"), { action: "clear" });
     expect(answer.data).toMatchObject({ requiresConfirmation: true });
     expect(await rows(entityId)).toHaveLength(1);
+  });
+
+  it("counts a not-found miss as a turn step, so the next change in that turn still applies", async () => {
+    const entityId = newEntity();
+    const message = say(entityId, "mark buy milk done and add call mom");
+    const miss = await todoAction.handler?.(runtime, message, undefined, {
+      parameters: { action: "complete", target: "buy milk" },
+    } as HandlerOptions);
+    expect(miss?.success).toBe(false);
+
+    // The planner hands earlier steps to the next one with the tool name
+    // added to their data (collectPreviousActionResults).
+    const created = await todoAction.handler?.(runtime, message, undefined, {
+      parameters: { action: "create", content: "Call mom" },
+      actionContext: {
+        previousResults: [
+          { ...miss, data: { ...(miss?.data ?? {}), actionName: "TODO" } },
+        ],
+      },
+    } as unknown as HandlerOptions);
+
+    expect(created?.success).toBe(true);
+    expect((await rows(entityId)).map((todo) => todo.content)).toEqual([
+      "Call mom",
+    ]);
   });
 });

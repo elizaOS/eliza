@@ -8,6 +8,10 @@ import { readFile } from "node:fs/promises";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
 import { Client } from "pg";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 import type { AppEnv } from "../../types/cloud-worker-env";
 
 const postgresUrl = process.env.APP_FUNDING_TEST_POSTGRES_URL;
@@ -21,7 +25,6 @@ process.env.LOCAL_PG_POOL_MAX = "4";
 process.env.NODE_ENV = "test";
 process.env.CACHE_BACKEND = "memory";
 process.env.ELIZA_KMS_BACKEND = "memory";
-process.env.INFERENCE_AUTH_CACHE_ENABLED = "false";
 setDefaultTimeout(120_000);
 let client: {
   exec(statement: string): Promise<unknown>;
@@ -107,6 +110,7 @@ beforeAll(async () => {
     "0508_app_notification_secret_envelope_v2",
     "0414_app_subscription_outbox_delivery",
     "0415_app_billing_webhook_recovery",
+    "0555_stripe_delivery_outbox",
     "0416_app_billing_checkout_expiry",
     "0417_app_billing_membership_authority",
     "0419_app_billing_application_slots",
@@ -115,6 +119,12 @@ beforeAll(async () => {
     "0428_billing_identity_anchors",
     "0429_billing_identity_backfill",
     "0430_billing_identity_references",
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0542_subscription_grant_codes",
+    "0543_app_pilot_allowance",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -123,6 +133,8 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
+  await installSubscriptionGrantTestSchema((statement) => client.exec(statement));
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,livemode,enabled) VALUES ($1,$2,'platform',false,true)`,
     [merchant, org],

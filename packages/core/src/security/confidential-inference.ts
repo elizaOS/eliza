@@ -284,7 +284,10 @@ export async function fetchWithConfidentialInference(
 		...init,
 		headers: new Headers(init.headers),
 		body: init.body,
-		redirect: "error" as const,
+		// Never follow a redirect off the admitted route. "manual" rather than
+		// "error" because the Cloudflare Workers runtime rejects "error"; a
+		// redirect response is refused below as a transport failure.
+		redirect: "manual" as const,
 	};
 	const profile = await currentProfile(scope);
 	const route = profile.routes.find(
@@ -374,6 +377,20 @@ export async function fetchWithConfidentialInference(
 		} else {
 			await beforeDispatch();
 			response = await transport(endpoint.href, request);
+		}
+		if (
+			response.type === "opaqueredirect" ||
+			(response.status >= 300 && response.status < 400)
+		) {
+			await response.body?.cancel().catch(() => {
+				// error-policy:J6 The redirect is already refused; body disposal is
+				// best-effort teardown of an unused response.
+			});
+			// Same outcome the former redirect: "error" produced: a rejected
+			// transport, audited as transport_error once authorized.
+			throw new TypeError(
+				`Confidential inference refused a redirect (HTTP ${response.status})`,
+			);
 		}
 		if (!authorized) {
 			if (response.body) await response.body.cancel();

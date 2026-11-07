@@ -13,7 +13,7 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useSyncExternalStore } from "react";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useAuthStatus } from "../../hooks/useAuthStatus";
 import { hasUsableStoredStewardToken } from "../../state/cloud-steward-login";
 import { deriveShellAuthGate, type ShellAuthGate } from "./shell-auth-gate";

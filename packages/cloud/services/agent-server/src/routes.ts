@@ -432,7 +432,7 @@ async function withWorkflowService<T>(
  *   DELETE /agents/:id        - Delete an agent (auth required)
  *   POST /agents/:id/message  - Forward a user message to an agent (auth required)
  *   POST /agents/:id/event    - Forward a structured event to an agent (auth required, ticket #54)
- *   /agents/:id/workflows/*   - Manage in-process workflows workflows for the agent runtime
+ *   /agents/:id/workflows/*   - Manage in-process workflows for the agent runtime
  *   POST /drain               - Initiate graceful drain (auth required)
  */
 export function createRoutes(manager: AgentManager, sharedSecret: string) {
@@ -483,7 +483,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
-        set.status = message === "At capacity" ? 503 : 409;
+        set.status =
+          message === "At capacity" ||
+          (err instanceof ElizaError && err.code === "AGENT_SERVER_DRAINING")
+            ? 503
+            : 409;
         return { error: message };
       }
     })
@@ -503,7 +507,10 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
-        set.status = 404;
+        set.status =
+          err instanceof ElizaError && err.code === "AGENT_INITIALIZING"
+            ? 503
+            : 404;
         return { error: message };
       }
     })
@@ -523,7 +530,10 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
-        set.status = 404;
+        set.status =
+          err instanceof ElizaError && err.code === "AGENT_INITIALIZING"
+            ? 503
+            : 404;
         return { error: message };
       }
     })
@@ -579,13 +589,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           : undefined;
 
       try {
-        const response = await manager.handleMessage(
-          params.id,
-          userId,
-          text,
-          metadata,
-        );
-        return { response };
+        return await manager.handleMessage(params.id, userId, text, metadata);
       } catch (err: unknown) {
         // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);

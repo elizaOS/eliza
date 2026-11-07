@@ -63,18 +63,18 @@ export function registerOverlayApp(): void {}
 
 export function registerAppShellPage(): void {}
 
-const pendingNavigateViewPayloads = new Map<string, unknown>();
-
-export function __setNavigateViewPayloadForTests(
-  viewId: string,
-  payload: unknown,
-): void {
-  pendingNavigateViewPayloads.set(viewId, payload);
-}
-
-export function consumeNavigateViewPayload(viewId: string): unknown | null {
-  if (!pendingNavigateViewPayloads.has(viewId)) return null;
-  const payload = pendingNavigateViewPayloads.get(viewId);
-  pendingNavigateViewPayloads.delete(viewId);
-  return payload;
-}
+export {
+  __setNavigateViewPayloadForTests,
+  consumeNavigateViewPayload,
+} from "../../../../packages/ui/src/app-navigate-view.ts";
+export { dispatchNavigateViewEvent } from "../../../../packages/ui/src/events/index.ts";
+export {
+  Button as SpatialButton,
+  Card as SpatialCard,
+  Divider as SpatialDivider,
+  Field,
+  HStack as SpatialHStack,
+  List as SpatialList,
+  Text as SpatialText,
+  VStack as SpatialVStack,
+} from "../../../../packages/ui/src/spatial/primitives.tsx";

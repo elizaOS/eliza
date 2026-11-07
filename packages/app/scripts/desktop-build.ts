@@ -51,7 +51,6 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_DIR = resolveMainAppDir(ROOT, appName);
-const LEGACY_ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
 const ELECTROBUN_DIR = resolveElectrobunDir(ROOT);
 const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   ELECTROBUN_DIR,
@@ -1102,10 +1101,16 @@ function assertRuntimeCopyDiskHeadroom() {
 
   const stat = fs.statfsSync(ROOT);
   const availableBytes = Number(stat.bavail) * Number(stat.bsize);
-  const minimumBytes = Number.parseInt(
-    process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? `${4 * 1024 * 1024 * 1024}`,
-    10,
-  );
+  const minimumBytes = (() => {
+    // parseInt stops at the first non-digit ("1e9junk" -> 1), so a typo
+    // silently shrank or disabled the disk headroom check instead of
+    // falling back to the 4 GiB default. Require the whole trimmed value
+    // to be decimal; malformed -> default, mirroring
+    // resolveGenerationTimeoutMs in the discord plugin.
+    const raw = (process.env.ELIZA_DESKTOP_MIN_FREE_BYTES ?? "").trim();
+    const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : 4 * 1024 * 1024 * 1024;
+  })();
   if (!Number.isFinite(minimumBytes) || minimumBytes <= 0) return;
   if (availableBytes >= minimumBytes) return;
 
@@ -1661,76 +1666,6 @@ function embedWindowsIcons() {
   }
 }
 
-function mirrorTreePreservingSymlinks(src, dst) {
-  const srcStat = fs.lstatSync(src);
-  if (srcStat.isSymbolicLink()) {
-    const linkTarget = fs.readlinkSync(src);
-    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
-    if (dstLstat) {
-      try {
-        if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
-          removePathRecursive(dst, "desktop mirror directory cleanup");
-        } else {
-          fs.unlinkSync(dst);
-        }
-      } catch {}
-    }
-    try {
-      fs.symlinkSync(linkTarget, dst);
-    } catch {
-      try {
-        fs.cpSync(src, dst, {
-          recursive: true,
-          force: true,
-          dereference: true,
-        });
-      } catch {}
-    }
-    return;
-  }
-  if (srcStat.isDirectory()) {
-    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
-    if (dstLstat?.isSymbolicLink()) {
-      fs.unlinkSync(dst);
-    }
-    fs.mkdirSync(dst, { recursive: true });
-    for (const entry of fs.readdirSync(src)) {
-      mirrorTreePreservingSymlinks(
-        path.join(src, entry),
-        path.join(dst, entry),
-      );
-    }
-    return;
-  }
-  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
-  if (dstLstat) {
-    try {
-      fs.unlinkSync(dst);
-    } catch {}
-  }
-  try {
-    fs.linkSync(src, dst);
-  } catch {
-    fs.copyFileSync(src, dst);
-  }
-}
-
-function mirrorCanonicalToLegacy(name) {
-  if (LEGACY_ELECTROBUN_DIR === ELECTROBUN_DIR) return;
-  const src = path.join(ELECTROBUN_DIR, name);
-  const dst = path.join(LEGACY_ELECTROBUN_DIR, name);
-  if (!fs.existsSync(src)) return;
-  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
-  if (dstLstat?.isSymbolicLink()) {
-    fs.unlinkSync(dst);
-  }
-  fs.mkdirSync(LEGACY_ELECTROBUN_DIR, { recursive: true });
-  console.log(
-    `[desktop-build] Mirroring electrobun ${name}/ from canonical to legacy compatibility path`,
-  );
-  mirrorTreePreservingSymlinks(src, dst);
-}
-
 function packageDesktopBuild() {
   ensureAppDirs();
   hardenInstalledElectrobunRpc();
@@ -1811,17 +1746,6 @@ function packageDesktopBuild() {
   // bundle rather than an intermediate bundle that may have been replaced.
   if (process.platform === "darwin") {
     verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
-  }
-
-  // The legacy compatibility path (APP_DIR/electrobun) is not read by any
-  // production code — only docs and this mirror fn reference it (the inno
-  // installer takes BuildDir as a param; copy-runtime-node-modules reads the
-  // canonical platforms/electrobun path). Mirroring the entire ~2.3 GB /
-  // ~110k-file build tree on every package build is pure waste, so make it
-  // opt-in (default off). Set ELIZA_ELECTROBUN_MIRROR_LEGACY=1 to restore it.
-  if (process.env.ELIZA_ELECTROBUN_MIRROR_LEGACY === "1") {
-    mirrorCanonicalToLegacy("build");
-    mirrorCanonicalToLegacy("artifacts");
   }
 
   // Re-embed the icon from a locally resolved rcedit as a post-build repair

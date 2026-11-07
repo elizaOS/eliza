@@ -6,6 +6,8 @@
  */
 import type {
   LifeOpsActivitySignal,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
   LifeOpsReminderAttempt,
   LifeOpsReminderAttemptOutcome,
   LifeOpsReminderChannel,
@@ -16,14 +18,14 @@ import type {
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_REMINDER_INTENSITIES,
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   DEFAULT_MORNING_WINDOW,
   DEFAULT_NIGHT_WINDOW,
@@ -31,6 +33,7 @@ import {
   getCurrentEnforcementWindow,
   minutesPastWindowStart,
 } from "./enforcement-windows.js";
+import type { LifeOpsRepository } from "./repository.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
   REMINDER_ACTIVITY_GATES,
@@ -57,6 +60,39 @@ import type {
   ReminderActivityProfileSnapshot,
   ReminderAttemptLifecycle,
 } from "./service-types.js";
+
+// Providers whose events plugin-calendar gives a reminder plan (Google,
+// Microsoft and Apple sync, and the built-in calendar). ICS imports create no
+// plans, so they are not read here.
+const REMINDER_CALENDAR_PROVIDERS = [
+  "eliza",
+  "google",
+  "microsoft",
+  "apple_calendar",
+] as const satisfies readonly LifeOpsCalendarProvider[];
+
+/**
+ * Calendar events of every provider that has reminder plans, earliest start
+ * first. Reminder dispatch stops at a per-tick limit, so the merged list must
+ * keep one start order across providers.
+ */
+export async function listReminderCalendarEvents(
+  repository: Pick<LifeOpsRepository, "listCalendarEvents">,
+  agentId: string,
+  timeMin?: string,
+  timeMax?: string,
+): Promise<LifeOpsCalendarEvent[]> {
+  const events = await Promise.all(
+    REMINDER_CALENDAR_PROVIDERS.map((provider) =>
+      repository.listCalendarEvents(agentId, provider, timeMin, timeMax),
+    ),
+  );
+  return events
+    .flat()
+    .sort(
+      (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+    );
+}
 
 export function _isReminderIntensity(
   value: unknown,
@@ -1524,6 +1560,19 @@ export async function classifyReminderOwnerResponse(args: {
       snoozeRequest: null,
       confidence: 0,
       reason: "empty_response",
+      classifierSource: "deterministic",
+    };
+  }
+  if (
+    args.context?.allowStandaloneResolution === false &&
+    classifyExactReminderReply(cleaned)
+  ) {
+    return {
+      decision: "unrelated",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 1,
+      reason: "standalone_resolution_not_allowed",
       classifierSource: "deterministic",
     };
   }

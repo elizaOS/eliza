@@ -6,12 +6,20 @@
  * hostnames to end users is an unnecessary information leak).
  */
 
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key";
+import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { validateServiceKey } from "@/lib/auth/service-key";
-import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
 
@@ -75,12 +83,14 @@ app.get("/", async (c) => {
       CORS_METHODS,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    logger.error("[Compat] Failed to fetch availability", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return applyCorsHeaders(
       new Response(
         JSON.stringify({
           success: false,
-          error: `Failed to fetch availability: ${message}`,
+          error: safeUnknownErrorMessage(err),
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       ),

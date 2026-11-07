@@ -91,7 +91,7 @@ export async function handleTextEmbedding(
   }
 
   const baseURL = getEmbeddingBaseURL(runtime);
-  const url = `${baseURL}/embeddings`;
+  const url = `${baseURL.replace(/\/+$/, "")}/embeddings`;
   const timeoutSignal = AbortSignal.timeout(TEXT_EMBEDDING_TIMEOUT_MS);
   const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 

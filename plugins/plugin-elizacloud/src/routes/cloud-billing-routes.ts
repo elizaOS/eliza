@@ -139,6 +139,12 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function readIdempotencyKey(req: http.IncomingMessage): string | undefined {
+  const raw = req.headers["idempotency-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return readString(value)?.trim();
+}
+
 function readNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -674,6 +680,12 @@ export async function handleCloudBillingRoute(
       return true;
     }
 
+    const idempotencyKey = readIdempotencyKey(req);
+    if (!idempotencyKey) {
+      sendJsonError(res, "Idempotency-Key header is required", 400);
+      return true;
+    }
+
     const upstreamBody = JSON.stringify({
       credits: amountUsd,
       success_url: buildRedirectUrl(baseUrl, "/cloud/billing/success", {
@@ -689,7 +701,7 @@ export async function handleCloudBillingRoute(
     const checkoutResponse = await fetchUpstream(
       `${baseUrl}/api/v1/credits/checkout`,
       "POST",
-      headers,
+      { ...headers, "Idempotency-Key": idempotencyKey },
       upstreamBody,
     );
     const checkoutPayload = await readJsonResponse(checkoutResponse);

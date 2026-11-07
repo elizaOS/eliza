@@ -2,6 +2,14 @@
  * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
+import { encodeMonoPcm16Wav } from "./pcm-wave";
+import {
+  createVoiceActivityDetector,
+  DEFAULT_VOICE_ACTIVITY,
+} from "./voice-activity";
+
+export { encodeMonoPcm16Wav } from "./pcm-wave";
+
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { logger } from "../logger.ts";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
@@ -9,6 +17,7 @@ import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
   isTtsEchoGateActive as sharedTtsEchoGateActive,
 } from "./tts-playback-activity";
+import { concatPcm } from "./voice-session-pcm";
 
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
@@ -203,17 +212,6 @@ export async function queryMicrophonePermission(): Promise<MicrophonePermissionS
   }
 }
 
-function concatPcm(chunks: Float32Array[]): Float32Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const out = new Float32Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
-}
-
 function appendBoundedPcmFrame(
   chunks: Float32Array[],
   frame: Float32Array,
@@ -241,17 +239,6 @@ function appendBoundedPcmFrame(
     }
     return;
   }
-}
-
-function writeAscii(view: DataView, offset: number, value: string): void {
-  for (let index = 0; index < value.length; index += 1) {
-    view.setUint8(offset + index, value.charCodeAt(index));
-  }
-}
-
-function clampPcm16(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(-1, Math.min(1, value));
 }
 
 function nowMs(): number {
@@ -293,126 +280,33 @@ export function isSilentPcmAudio(pcm: Float32Array): boolean {
  * barge-in) still clears the raised bar. 4x lifts the default RMS gate from
  * 0.003 to 0.012 and the peak gate from 0.012 to 0.048.
  */
-export const POST_TTS_ECHO_THRESHOLD_MULTIPLIER = 4;
+export { POST_TTS_ECHO_THRESHOLD_MULTIPLIER } from "./voice-activity";
+
 const AUTO_STOP_PRE_ROLL_MS = 200;
-
-export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
-  startGraceMs: 250,
-  minSpeechMs: 180,
-  // Trailing-silence window that ends a hands-free turn (#voice-V6). 900 → 650:
-  // still shaves ~250ms off every turn's speech-end → capture-stop leg, but keeps
-  // headroom for natural inter-clause pauses (per review on #15267: 550 risks
-  // clipping slow/deliberate speakers, and mid-sentence pauses routinely exceed
-  // 550ms). The user override still wins: `loadVadAutoStop()` reads a persisted
-  // `silenceMs` first and only falls back to this default. On-device tuning can
-  // move this again once false-cutoff behavior is verified on the installed PWA.
-  silenceMs: 650,
-  maxSpeechMs: 12_000,
-  speechRmsThreshold: 0.003,
-  speechPeakThreshold: 0.012,
-};
-
+export const DEFAULT_LOCAL_ASR_AUTO_STOP = DEFAULT_VOICE_ACTIVITY;
 export function createLocalAsrAutoStopDetector(
   options: LocalAsrAutoStopOptions | undefined,
   startedAtMs = nowMs(),
 ):
   | ((pcm: Float32Array, sampleTimeMs?: number) => LocalAsrAutoStopUpdate)
   | null {
-  if (!options) return null;
-
-  const config: LocalAsrAutoStopConfig = {
-    ...DEFAULT_LOCAL_ASR_AUTO_STOP,
-    ...options,
-  };
-  const cooldownMs = options.postTtsCooldownMs ?? DEFAULT_POST_TTS_COOLDOWN_MS;
-  const echoGateActive =
-    options.isTtsEchoGateActive ??
-    ((atMs: number) => sharedTtsEchoGateActive(atMs, cooldownMs));
-  let firstSpeechAtMs: number | null = null;
-  let lastSpeechAtMs: number | null = null;
-  let stopped = false;
-
-  return (pcm: Float32Array, sampleTimeMs = nowMs()) => {
-    if (stopped) return { shouldBuffer: false, shouldStop: false };
-
-    const elapsedMs = Math.max(0, sampleTimeMs - startedAtMs);
-    if (elapsedMs < config.startGraceMs) {
-      return { shouldBuffer: false, shouldStop: false };
-    }
-
-    const stats = measurePcmAudio(pcm);
-    // Echo gate (#12256 layer 1): while the agent's TTS is playing (and for a
-    // short cooldown after), demand louder speech before treating the frame as
-    // a turn — the agent's own tail must not self-trigger an ASR submission,
-    // but a loud, close interjection (real barge-in) still clears the bar.
-    const gateMultiplier = echoGateActive(sampleTimeMs)
-      ? POST_TTS_ECHO_THRESHOLD_MULTIPLIER
-      : 1;
-    const speechDetected =
-      stats.rms >= config.speechRmsThreshold * gateMultiplier ||
-      stats.peak >= config.speechPeakThreshold * gateMultiplier;
-
-    if (speechDetected) {
-      if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
-      lastSpeechAtMs = sampleTimeMs;
-      if (sampleTimeMs - firstSpeechAtMs >= config.maxSpeechMs) {
-        stopped = true;
-        return { shouldBuffer: true, shouldStop: true };
-      }
-      return { shouldBuffer: true, shouldStop: false };
-    }
-
-    if (firstSpeechAtMs === null || lastSpeechAtMs === null) {
-      return { shouldBuffer: false, shouldStop: false };
-    }
-
-    const speechDurationMs = lastSpeechAtMs - firstSpeechAtMs;
-    const silenceDurationMs = sampleTimeMs - lastSpeechAtMs;
-    if (
-      speechDurationMs >= config.minSpeechMs &&
-      silenceDurationMs >= config.silenceMs
-    ) {
-      stopped = true;
-      return { shouldBuffer: false, shouldStop: true };
-    }
-
-    return { shouldBuffer: true, shouldStop: false };
-  };
-}
-
-export function encodeMonoPcm16Wav(
-  pcm: Float32Array,
-  sampleRateHz: number,
-): Uint8Array {
-  const sampleRate = Math.max(1, Math.round(sampleRateHz));
-  const bytesPerSample = 2;
-  const dataBytes = pcm.length * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataBytes);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataBytes, true);
-  writeAscii(view, 8, "WAVE");
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 8 * bytesPerSample, true);
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataBytes, true);
-
-  let offset = 44;
-  for (const sample of pcm) {
-    const clamped = clampPcm16(sample);
-    const int16 = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
-    view.setInt16(offset, Math.round(int16), true);
-    offset += bytesPerSample;
-  }
-
-  return new Uint8Array(buffer);
+  const detector = createVoiceActivityDetector(
+    options
+      ? {
+          ...options,
+          isTtsEchoGateActive:
+            options.isTtsEchoGateActive ??
+            ((at) =>
+              sharedTtsEchoGateActive(
+                at,
+                options.postTtsCooldownMs ?? DEFAULT_POST_TTS_COOLDOWN_MS,
+              )),
+        }
+      : undefined,
+    startedAtMs,
+    nowMs,
+  );
+  return detector ? (pcm, at) => detector(measurePcmAudio(pcm), at) : null;
 }
 
 /**
@@ -509,7 +403,7 @@ export async function startLocalAsrRecorder(
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // Gemma ASR ingests 16 kHz mono; request it at capture so the
+        // Phonon-2 ASR ingests 16 kHz mono; request it at capture so the
         // browser resamples once instead of us downsampling a 48 kHz buffer.
         sampleRate: 16000,
         echoCancellation: true,
@@ -561,7 +455,18 @@ export async function startLocalAsrRecorder(
     context.state === "running" ? "ctx:running" : `ctx:${context.state}`,
     { state: context.state },
   );
-  if (context.state === "suspended") {
+  // A start that cannot wire the graph must release the microphone: the
+  // caller never receives a recorder, so nothing else can stop the tracks.
+  const releaseFailedStart = async (cause: unknown): Promise<never> => {
+    for (const track of stream.getTracks()) track.stop();
+    // error-policy:J6 teardown — the context may already be closed
+    await context.close().catch(() => undefined);
+    throw cause;
+  };
+  if (
+    context.state === "suspended" ||
+    (context.state as AudioContextState) === "interrupted"
+  ) {
     // A context that cannot resume produces silence (all-zero PCM → the WAV
     // reads as silent → a quiet no-op → the user sees crickets). Surface the
     // failure to the caller (voice-capture-factory setState("error")) instead
@@ -574,15 +479,12 @@ export async function startLocalAsrRecorder(
     // therefore isn't proof the graph is live; re-check the state and retry a
     // couple of times before giving up, so a context that just needed a beat to
     // actually resume after the dialog dismissed isn't misread as dead.
-    const failResume = async (cause: unknown): Promise<never> => {
-      // error-policy:J2 release the hot mic, then rethrow with context
-      for (const track of stream.getTracks()) track.stop();
-      // error-policy:J6 teardown — the context may already be closed
-      await context.close().catch(() => undefined);
-      throw new Error("AudioContext could not resume for local ASR capture", {
-        cause,
-      });
-    };
+    const failResume = (cause: unknown): Promise<never> =>
+      releaseFailedStart(
+        new Error("AudioContext could not resume for local ASR capture", {
+          cause,
+        }),
+      );
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         await context.resume();
@@ -595,7 +497,7 @@ export async function startLocalAsrRecorder(
       // "running". The cast widens the read back to the full union so the
       // comparison reflects the mutated value instead of the stale narrow.
       const liveState = context.state as AudioContextState;
-      if (liveState !== "suspended") {
+      if (liveState === "running") {
         voiceCaptureDebug("ctx:resumed", { state: liveState, attempt });
         break;
       }
@@ -611,13 +513,30 @@ export async function startLocalAsrRecorder(
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+  // "interrupted" and "closed" also produce no frames. Capture silence only
+  // when the graph is live.
+  if ((context.state as AudioContextState) !== "running") {
+    return releaseFailedStart(
+      new Error(
+        `AudioContext is not running for local ASR capture (${context.state})`,
+      ),
+    );
+  }
 
-  const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(4096, 1, 1);
-  let analyser: AnalyserNode | null = context.createAnalyser();
-  analyser.fftSize = 256;
-  analyser.smoothingTimeConstant = 0.8;
-  source.connect(analyser);
+  let source: MediaStreamAudioSourceNode;
+  let processor: ScriptProcessorNode;
+  let analyser: AnalyserNode | null;
+  try {
+    source = context.createMediaStreamSource(stream);
+    processor = context.createScriptProcessor(4096, 1, 1);
+    analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+  } catch (error) {
+    // error-policy:J6 teardown — the graph is unusable, release the device.
+    return releaseFailedStart(error);
+  }
   const chunks: Float32Array[] = [];
   const preRollChunks: Float32Array[] = [];
   const preRollMaxSamples = Math.round(
@@ -669,8 +588,14 @@ export async function startLocalAsrRecorder(
     }
   };
 
-  source.connect(processor);
-  processor.connect(context.destination);
+  try {
+    source.connect(processor);
+    processor.connect(context.destination);
+  } catch (error) {
+    // error-policy:J6 teardown — the graph is unusable, release the device.
+    processor.onaudioprocess = null;
+    return releaseFailedStart(error);
+  }
 
   const cleanup = async () => {
     if (stopped) return;

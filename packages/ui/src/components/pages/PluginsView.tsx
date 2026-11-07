@@ -19,16 +19,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { PluginInfo } from "../../api";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { PluginInfo } from "../../api/client-types-config";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
-import { useAppSelectorShallow } from "../../state";
+import { PageLayoutHeader } from "../../layouts/page-layout";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { Avatar, AvatarImage } from "../ui/avatar";

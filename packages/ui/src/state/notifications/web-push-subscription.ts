@@ -17,7 +17,7 @@
  * testable without a real ServiceWorker/PushManager.
  */
 
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 
 declare const __ELIZA_WEB_PUSH__: boolean | undefined;
 
@@ -120,16 +120,6 @@ export async function getWebPushState(
   if (existing) return "subscribed";
 
   return "default";
-}
-
-/** Read the active subscription (or null). Never prompts. */
-export async function getWebPushSubscription(
-  deps: WebPushDeps = defaultWebPushDeps,
-): Promise<PushSubscription | null> {
-  if (!isWebPushSupported(deps)) return null;
-  const reg = await deps.getRegistration();
-  if (!reg) return null;
-  return reg.pushManager.getSubscription();
 }
 
 /**

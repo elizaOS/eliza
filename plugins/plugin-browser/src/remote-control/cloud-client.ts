@@ -7,12 +7,12 @@ import type {
   EncryptedRemoteControlEnvelope,
   RemoteControllerPlatform,
   RemoteControllerPublicIdentity,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import {
   isEncryptedRemoteControlEnvelope,
   isRemoteControlIdentifier,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { resolveDirectCloudAuthApiBase } from "./cloud-endpoints";
 
 export interface RemoteHostSummary {

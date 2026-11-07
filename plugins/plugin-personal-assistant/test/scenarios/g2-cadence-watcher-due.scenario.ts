@@ -118,6 +118,7 @@ export default scenario({
           action: "list",
           kind: "followup",
           subjectKind: "relationship",
+          subjectId: "rel-g2-zane",
           dueWindow: "overdue",
         },
       },

@@ -827,16 +827,21 @@ async function resolveLinuxDeviceIdentity(devicePath: string): Promise<string> {
       "Linux inventory stable ID does not resolve to a block device.",
     );
   }
-  const diskSequence = (
-    await readFile(
-      join("/sys/class/block", basename(devicePath), "diskseq"),
-      "utf8",
+  const name = basename(devicePath);
+  const [majorMinorText, diskSequence] = (
+    await Promise.all(
+      ["dev", "diskseq"].map((entry) =>
+        readFile(join("/sys/class/block", name, entry), "utf8"),
+      ),
     )
-  ).trim();
-  if (!/^\d+$/.test(diskSequence)) {
-    throw new Error("Linux inventory block-device sequence is invalid.");
+  ).map((text) => text.trim());
+  if (
+    !/^(0|[1-9]\d*):(0|[1-9]\d*)$/.test(majorMinorText) ||
+    !/^\d+$/.test(diskSequence)
+  ) {
+    throw new Error("Linux inventory block-device identity is invalid.");
   }
-  return `${status.rdev.toString()}:${diskSequence}`;
+  return `${majorMinorText}:${diskSequence}`;
 }
 
 export function assertLinuxInventorySnapshotUnchanged(

@@ -170,14 +170,3 @@ export function applyElizaGenUiPatch(
   }
   return { ok: true, spec: validated.spec };
 }
-
-export function resetElizaGenUiSpec(spec: ElizaGenUiSpec): ElizaGenUiSpec {
-  return structuredClone(spec) as ElizaGenUiSpec;
-}
-
-export function abortElizaGenUiStream(reason: string): ElizaGenUiPatchResult {
-  return {
-    ok: false,
-    errors: [{ code: "invalid_spec", message: reason }],
-  };
-}

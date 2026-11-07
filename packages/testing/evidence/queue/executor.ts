@@ -7,17 +7,13 @@
  * analyzer above the run tier are delegated to the wrapped inline executor
  * unchanged, so behaviour is identical except for where the GPU work executes.
  *
- * For a routed analyzer the executor enqueues a job against a private scratch
- * `analysis.json`, then polls for the worker's result. If no worker produces a
+ * For a routed analyzer the executor enqueues a result-only job, then polls for the worker's result. If no worker produces a
  * result within `resultTimeoutMs` (no GPU box attached, worker crashed) it
  * returns an honest `skipped-missing-tool` record naming the missing worker —
  * NEVER a fabricated empty analysis. The runner writes whatever record comes
  * back into the real bundle document as usual.
  */
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type {
   Analyzer,
   AnalyzerContext,
@@ -35,8 +31,6 @@ export interface QueueExecutorOptions {
   resultTimeoutMs?: number;
   /** Poll interval while waiting for a worker result. */
   pollMs?: number;
-  /** Directory for the per-job scratch `analysis.json`. Default: os tmp. */
-  scratchDir?: string;
   /** Injectable clock (tests). */
   now?: () => number;
   /** Injectable sleeper (tests). */
@@ -53,7 +47,6 @@ export class QueueExecutor implements AnalyzerExecutor {
   private readonly inline: AnalyzerExecutor;
   private readonly resultTimeoutMs: number;
   private readonly pollMs: number;
-  private readonly scratchDir: string;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
 
@@ -62,13 +55,9 @@ export class QueueExecutor implements AnalyzerExecutor {
     this.inline = options.inline ?? INLINE_EXECUTOR;
     this.resultTimeoutMs = options.resultTimeoutMs ?? 300_000;
     this.pollMs = options.pollMs ?? 250;
-    this.scratchDir =
-      options.scratchDir ??
-      fs.mkdtempSync(path.join(os.tmpdir(), "evidence-queue-exec-"));
     this.now = options.now ?? Date.now;
     this.sleep =
       options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-    fs.mkdirSync(this.scratchDir, { recursive: true });
   }
 
   async execute(
@@ -83,22 +72,18 @@ export class QueueExecutor implements AnalyzerExecutor {
       return this.inline.execute(analyzer, input, ctx);
     }
 
-    const analysisPath = path.join(
-      this.scratchDir,
-      `${sanitize(analyzer.name)}-${this.now()}-${Math.random().toString(36).slice(2, 8)}.json`,
-    );
     const job = this.queue.enqueue(input.absolutePath, analyzer.name, {
       artifact: input.entry.path,
       kind: input.entry.kind,
-      analysisPath,
+      analysisPath: null,
     });
 
     const deadline = this.now() + this.resultTimeoutMs;
     while (this.now() < deadline) {
+      ctx.signal?.throwIfAborted();
       const record = this.queue.readResult(job.id);
       if (record) {
-        // The worker already merged the analyzer record; hand it straight back
-        // so the runner writes it into the real bundle document.
+        // The owning runner publishes the result into its real bundle document.
         if (record.analyzer) return record.analyzer;
         return {
           status: "skipped-missing-tool",
@@ -118,8 +103,4 @@ export class QueueExecutor implements AnalyzerExecutor {
       durationMs: this.resultTimeoutMs,
     };
   }
-}
-
-function sanitize(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

@@ -19,29 +19,32 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   asObjectRecord as asRecord,
+  logger,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import {
   type DeploymentTargetConfig,
+  type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
-  logger,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PostFirstRunRequestSchema,
+  prepareFirstRunConnectors,
   type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
   captureDevCloudEnvAuthority,
   restoreDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import { prepareFirstRunConnectors } from "../first-run-config.js";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { syncDirectProviderCredentials } from "./accounts-routes.ts";
 import {
@@ -103,6 +106,26 @@ function normalizeCanonicalRuntimeConfigForCurrentServer(args: {
       },
     },
   };
+}
+
+/** The 409 text for a Cloud inference first-run on an agent with no Cloud key. */
+export const CLOUD_INFERENCE_NO_API_KEY_ERROR =
+  "Eliza Cloud inference is not available on this agent: it has no Eliza Cloud API key, so it cannot reach Cloud models. Choose another provider.";
+
+/**
+ * True when this agent holds the credential plugin-elizacloud authenticates
+ * with: the linked key in config, a config env entry, the sealed login secret,
+ * or the process environment. Exported for the iOS bridge, which answers
+ * `POST /api/first-run` itself and must apply the same check.
+ */
+export function hasCloudApiKeyForInference(config: ElizaConfig): boolean {
+  const configEnv = asRecord(config.env);
+  return [
+    config.cloud?.apiKey,
+    configEnv?.ELIZAOS_CLOUD_API_KEY,
+    asRecord(configEnv?.vars)?.ELIZAOS_CLOUD_API_KEY,
+    getCloudSecret("ELIZAOS_CLOUD_API_KEY"),
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
 }
 
 function ensureCloudContainerCharacterDefaults(
@@ -205,6 +228,13 @@ function ensureCloudContainerCharacterDefaults(
 
   try {
     ctx.saveElizaConfig(config);
+    // Keep the live server config in step so the next full save of
+    // state.config does not drop these defaults from disk.
+    const live = ctx.state.config as Record<string, unknown>;
+    const saved = config as Record<string, unknown>;
+    for (const key of ["ui", "messages", "serviceRouting", "agents"]) {
+      if (saved[key] !== undefined) live[key] = saved[key];
+    }
     logger.info(
       `[first-run] Applied default character preset "${defaultPreset.id}" for cloud container`,
     );
@@ -237,7 +267,7 @@ export interface FirstRunRouteContext {
   // Server.ts helpers
   isCloudProvisionedContainer: () => boolean;
   hasPersistedFirstRunState: (config: ElizaConfig) => boolean;
-  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
+  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => Promise<boolean>;
   getWalletAddresses: () => {
     evmAddress?: string | null;
     solanaAddress?: string | null;
@@ -273,12 +303,6 @@ export interface FirstRunServerState {
   chatConnectionReady: unknown;
   chatConnectionPromise: Promise<void> | null;
 }
-
-export {
-  type BlooioFirstRunResolution,
-  type CanonicalBlooioConnectorConfig,
-  resolveBlooioFirstRunConfig,
-} from "../first-run-config.js";
 
 function restoreProcessEnvironment(
   snapshot: NodeJS.ProcessEnv,
@@ -358,11 +382,28 @@ export async function handleFirstRunRoutes(
       `[eliza-api] Wallet keys requested during first-run (ip=${req.socket.remoteAddress ?? "unknown"})`,
     );
 
-    ctx.ensureWalletKeysInEnvAndConfig(state.config);
+    const walletEnvBefore = Object.fromEntries(
+      [
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ].map((name) => [name, process.env[name]]),
+    );
     try {
-      ctx.saveElizaConfig(state.config);
-    } catch {
-      // Non-fatal
+      if (await ctx.ensureWalletKeysInEnvAndConfig(state.config)) {
+        ctx.saveElizaConfig(state.config);
+      }
+    } catch (err) {
+      for (const [name, value] of Object.entries(walletEnvBefore)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      logger.error(
+        `[eliza-api] Failed to persist first-run wallet keys: ${err}`,
+      );
+      json(res, { error: "Failed to persist wallet keys" }, 500);
+      return true;
     }
 
     const evmPrivateKey = process.env.EVM_PRIVATE_KEY ?? "";
@@ -453,6 +494,11 @@ export async function handleFirstRunRoutes(
     }
     const agent = config.agents.list[0] as Record<string, unknown>;
     agent.name = (body.name as string).trim();
+    // A running agent keeps its id and chat ids when first-run renames it;
+    // save the name they came from so the next boot derives the same ids.
+    if (state.runtime && !agent.identityName) {
+      agent.identityName = agentIdentityName(state.runtime.character);
+    }
     agent.workspace = resolveDefaultAgentWorkspaceDir();
     let normalizedMessageExamples:
       | Array<{
@@ -653,6 +699,24 @@ export async function handleFirstRunRoutes(
         }
       }
 
+      // Selecting Cloud inference is intent, not proof it can serve. A local
+      // agent only reaches Cloud models with its own API key; a renderer-held
+      // Cloud session (native direct sign-in) never gives it one. Saving
+      // `firstRunComplete` here would report a finished setup whose first chat
+      // has no text provider. A Cloud-hosted agent is provisioned with its key.
+      if (
+        explicitServiceRoutingRequested &&
+        isCloudInferenceSelectedInConfig(config as Record<string, unknown>) &&
+        normalizeDeploymentTargetConfig(config.deploymentTarget)?.runtime !==
+          "cloud" &&
+        !ctx.isCloudProvisionedContainer() &&
+        !hasCloudApiKeyForInference(config)
+      ) {
+        restoreProcessEnvironment(preCommitEnvironment, { ...process.env });
+        error(res, CLOUD_INFERENCE_NO_API_KEY_ERROR, 409);
+        return true;
+      }
+
       if (config.models && typeof config.models === "object") {
         const legacyModels = config.models as Record<string, unknown>;
         delete legacyModels.nano;
@@ -718,7 +782,16 @@ export async function handleFirstRunRoutes(
     }
 
     // ── Ensure wallet keys exist so inventory can resolve addresses ───────
-    ctx.ensureWalletKeysInEnvAndConfig(config);
+    try {
+      await ctx.ensureWalletKeysInEnvAndConfig(config);
+    } catch (err) {
+      restoreProcessEnvironment(preCommitEnvironment, { ...process.env });
+      logger.error(
+        `[eliza-api] Failed to persist first-run wallet keys: ${err}`,
+      );
+      error(res, "Failed to persist wallet keys", 500);
+      return true;
+    }
 
     if (!config.meta) {
       config.meta = {};

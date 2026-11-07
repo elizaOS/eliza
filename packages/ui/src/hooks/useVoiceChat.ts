@@ -3,7 +3,7 @@
  *
  * TTS providers:
  *  - Eliza Cloud Kokoro through `/api/tts/cloud` for web/cloud defaults.
- *  - Local-inference Kokoro for provisioned local/native runtimes.
+ *  - Local-inference Paradee v1.1 for provisioned local/native runtimes.
  *  - ElevenLabs for opt-in/custom voices.
  *  - Browser SpeechSynthesis only when it is the configured provider.
  *
@@ -12,8 +12,8 @@
  */
 
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core/errors";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import { ElizaError } from "@elizaos/core/protocol";
+import { getElizaApiToken, hasConfiguredApiKey } from "@elizaos/host/protocol";
 import {
   useCallback,
   useEffect,
@@ -22,8 +22,8 @@ import {
   useRef,
   useState,
 } from "react";
-import type { VoiceConfig } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
+import type { VoiceConfig } from "../api/client-types-config";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -38,7 +38,7 @@ import {
 } from "../bridge/native-plugins";
 import { APP_PAUSE_EVENT } from "../events";
 import { logger } from "../logger.ts";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,
@@ -46,7 +46,6 @@ import {
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
-import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
@@ -2540,7 +2539,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:local-inference-failed", {
                 err: formatNamedVoiceError(error),
               });
-              // FAIL CLOSED (#12253): local-inference (Kokoro) is the configured
+              // FAIL CLOSED (#12253): local-inference (Paradee) is the configured
               // voice. Do not silently swap to browser SpeechSynthesis — stop the
               // queue and surface the error so the user hears silence + sees why,
               // not a stranger's voice.

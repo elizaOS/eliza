@@ -1,4 +1,12 @@
 /** Declares the legacy browser history and stored-session surface used by LifeOps. New automation uses the browser workspace action. */
+
+import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserSession,
+  UpdateLifeOpsBrowserSessionProgressRequest,
+} from "@elizaos/contracts";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -6,13 +14,6 @@ import type {
   BrowserBridgeTabSummary,
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserSession,
-  UpdateLifeOpsBrowserSessionProgressRequest,
-} from "../contracts/index.js";
 
 export interface BrowserBridgeService {
   getBrowserSettings(): Promise<BrowserBridgeSettings>;

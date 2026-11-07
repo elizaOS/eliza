@@ -45,6 +45,7 @@ export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./people.js";
 export * from "./scopes.js";
+export type { GoogleWorkspaceServiceOptions } from "./service.js";
 export * from "./task-code-resolver.js";
 export * from "./types.js";
 export { GoogleChatService, GoogleWorkspaceService };

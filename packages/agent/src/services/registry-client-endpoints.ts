@@ -16,8 +16,8 @@ import {
   isPrivateIpAddress,
   logger,
   normalizeHostLike,
-  type RegistryEndpoint,
 } from "@elizaos/core";
+import type { RegistryEndpoint } from "@elizaos/host/protocol";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 /** Raw shape of a single entry returned by a registry endpoint's JSON response. */

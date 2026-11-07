@@ -8,9 +8,6 @@ import { existsSync } from "node:fs";
 const localPackHotspotPaths = [
   "dist",
   "dist/node_modules",
-  "apps/app/web-dist",
-  "apps/app/web-dist/vrms",
-  "apps/app/web-dist/animations",
   "packages/app/web-dist",
   "packages/app/web-dist/vrms",
   "packages/app/web-dist/animations",

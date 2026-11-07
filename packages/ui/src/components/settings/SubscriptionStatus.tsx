@@ -7,6 +7,9 @@
  * start login, submit the callback code, sign out — against the shared client.
  * Mounted by SubscriptionPanel (ProviderPanels.tsx).
  */
+
+import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
+import { getStoredSubscriptionProvider } from "@elizaos/host/protocol";
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
@@ -15,15 +18,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { useTimeout } from "../../hooks/useTimeout";
+import { useAppSelector } from "../../state/app-store";
+import { runAsPrivilegedShell } from "../../surface-realm-channel";
 import {
-  getStoredSubscriptionProvider,
-  type SubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelector } from "../../state";
-import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+  navigatePreOpenedWindow,
+  preOpenWindow,
+} from "../../utils/openExternalUrl";
 import { formatSubscriptionRequestError } from "../../utils/subscription-auth.js";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -79,15 +82,17 @@ function readOAuthActive(storageKey: string): boolean {
 function rememberOAuthActive(storageKey: string, active: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    if (active) window.localStorage.setItem(storageKey, "1");
-    else window.localStorage.removeItem(storageKey);
-    // `setup=oauth` is the established Anthropic deep link.
-    if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
-      const url = new URL(window.location.href);
-      if (active) url.searchParams.set("setup", "oauth");
-      else url.searchParams.delete("setup");
-      window.history.replaceState(null, "", url);
-    }
+    runAsPrivilegedShell(() => {
+      if (active) window.localStorage.setItem(storageKey, "1");
+      else window.localStorage.removeItem(storageKey);
+      // `setup=oauth` is the established Anthropic deep link.
+      if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
+        const url = new URL(window.location.href);
+        if (active) url.searchParams.set("setup", "oauth");
+        else url.searchParams.delete("setup");
+        window.history.replaceState(null, "", url);
+      }
+    });
   } catch {
     // error-policy:J4 OAuth remains usable for this session when persistence is unavailable.
     return;

@@ -1,7 +1,7 @@
 /** Resolves signed Twilio webhook URLs from the canonical configured origin. */
 
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
-import type { AppContext } from "@/types/cloud-worker-env";
 
 export function resolveTwilioPublicUrl(c: AppContext, pathname: string): URL {
   const configured = (c.env.TWILIO_PUBLIC_URL as string | undefined)?.trim();

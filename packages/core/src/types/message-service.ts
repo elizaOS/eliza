@@ -6,6 +6,7 @@
 
 import type { InferenceTurnSummary } from "../inference-timing";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
+import type { ProviderRateLimit } from "../utils/model-retry";
 import type { CodingActionProfile } from "./coding";
 import type {
 	ActionResult,
@@ -27,10 +28,27 @@ import type {
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
+export type {
+	TypedReadEgressReceipt,
+	TypedReadFact,
+	TypedReadReplyBinding,
+	TypedReadReplyPart,
+	TypedReadReplyPolicy,
+	TypedReadReplyResolver,
+	TypedReadReplyVerdict,
+	TypedReadRequirement,
+} from "../runtime/typed-read-contract";
+
 /**
  * Configuration options for message processing
  */
 export interface MessageProcessingOptions {
+	/** Trusted host projection from this turn's admitted producer receipts; never populated by RPC input. */
+	resolveTypedReadReply?: import("../runtime/typed-read-contract").TypedReadReplyResolver;
+	/** In-process proof of exact producer-backed terminal text, not a model-authored success flag. */
+	onTypedReadEgress?: (
+		receipt: import("../runtime/typed-read-contract").TypedReadEgressReceipt,
+	) => void;
 	maxRetries?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
@@ -49,7 +67,23 @@ export interface MessageProcessingOptions {
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/** Transient progress from existing inference; never a persisted or final reply. */
-	onPlanningAcknowledgment?: (text: string) => void;
+	onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
+	/**
+	 * Transient, content-free status for each activity the turn starts, in
+	 * order. The label comes from the action's registered category, never its
+	 * arguments or results, and owner-exclusive turns publish it only to a
+	 * revalidated audience. Never reply text, history or a delivery receipt.
+	 */
+	onActivityStatus?: (activity: {
+		actionName: string;
+		label: string;
+	}) => void | Promise<void>;
+	/**
+	 * Called at most once when Stage 1 commits the turn to a response; never
+	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and
+	 * persists nothing. Hosts may start a typing indicator.
+	 */
+	onResponseDecision?: () => void;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.
@@ -100,6 +134,8 @@ export interface RuntimeFailure {
 	transient: boolean;
 	/** Complete user-facing explanation of why the turn did not complete. */
 	message: string;
+	/** Typed provider 429 detail when `kind` is `rate_limited`. */
+	rateLimit?: ProviderRateLimit;
 }
 
 /** Server-only evidence for regenerating prose without executing a turn again. */
@@ -203,22 +239,22 @@ export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
  * ```typescript
  * // Custom implementation
  * class CustomMessageService implements IMessageService {
- *   async handleMessage(runtime, message, callback) {
- *     // Your custom message handling logic
- *     return {
- *       outcome: { status: "completed", effects: [] },
- *       didRespond: true,
- *       responseContent: { text: "Custom response" },
- *       responseMessages: [],
- *       state: {},
- *       mode: 'simple'
- *     };
- *   }
+ * async handleMessage(runtime, message, callback) {
+ * // Your custom message handling logic
+ * return {
+ * outcome: { status: "completed", effects: [] },
+ * didRespond: true,
+ * responseContent: { text: "Custom response" },
+ * responseMessages: [],
+ * state: {},
+ * mode: 'simple'
+ * };
+ * }
  *
- *   shouldRespond(runtime, message, room, mentionContext) {
- *     // Your custom response decision logic
- *     return { shouldRespond: true, skipEvaluation: true, reason: "custom" };
- *   }
+ * shouldRespond(runtime, message, room, mentionContext) {
+ * // Your custom response decision logic
+ * return { shouldRespond: true, skipEvaluation: true, reason: "custom" };
+ * }
  * }
  *
  * // Register in runtime
@@ -273,14 +309,7 @@ export interface IMessageService {
 		attachments: Media[],
 	): Promise<Media[]>;
 
-	/**
-	 * Deletes a message from the agent's memory.
-	 * This method handles the actual deletion logic that was previously in event handlers.
-	 *
-	 * @param runtime - The agent runtime instance
-	 * @param message - The message memory to delete
-	 * @returns Promise resolving when deletion is complete
-	 */
+	/** Deletes the message from the agent’s memory. */
 	deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void>;
 
 	/**

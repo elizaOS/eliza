@@ -1,8 +1,8 @@
 // Handles compatibility cloud API compat agents id suspend route traffic through route-local auth checks.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/compat/agents/[id]/suspend
@@ -13,15 +13,16 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * failed from Cloudflare Workers (no SSH).
  */
 
-import { z } from "zod";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
 import {
   envelope,
   errorEnvelope,
   toCompatOpResult,
-} from "@/lib/api/compat-envelope";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";
@@ -41,11 +42,21 @@ async function __hono_POST(
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
 
-    const body = await request.json().catch(() => ({}));
-    const parsed = suspendSchema.safeParse(body);
-    const reason = parsed.success
-      ? parsed.data.reason
-      : "owner requested suspension";
+    const decodedBody = await decodeOptionalRequestJson(request);
+    if (!decodedBody.ok) {
+      return withCompatCors(
+        Response.json(errorEnvelope("Invalid JSON body"), { status: 400 }),
+        CORS_METHODS,
+      );
+    }
+    const parsed = suspendSchema.safeParse(decodedBody.value);
+    if (!parsed.success) {
+      return withCompatCors(
+        Response.json(errorEnvelope("Invalid request data"), { status: 400 }),
+        CORS_METHODS,
+      );
+    }
+    const { reason } = parsed.data;
 
     logger.info("[compat] Suspend requested", { agentId, reason });
 

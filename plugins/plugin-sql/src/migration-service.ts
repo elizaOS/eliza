@@ -154,7 +154,18 @@ export class DatabaseMigrationService {
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
 
-      if (!migrationOptions.dryRun && !this.membershipAuthorityTtlConstraintsSettled) {
+      // A dry run must not change the database. The RuntimeMigrator skips schema
+      // statements in dry-run mode, so the object installs below must not run
+      // either. The settled flags stay false, so a later real run installs them.
+      if (migrationOptions.dryRun) {
+        logger.info(
+          { src: "plugin:sql" },
+          "Dry run: skipping post-migration object installs (constraints, identity guard, message search objects, RLS)"
+        );
+        return;
+      }
+
+      if (!this.membershipAuthorityTtlConstraintsSettled) {
         this.membershipAuthorityTtlConstraintsSettled =
           await applyMembershipAuthorityTtlConstraints(this.db, this.databaseBackend);
       }

@@ -10,9 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as shell from "../shell/utils/terminalCapabilities.js";
 import * as coding from "./terminal-capabilities.js";
 
-vi.mock("@elizaos/core/host-execution-env", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@elizaos/core/host-execution-env")>();
+vi.mock("@elizaos/host", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/host")>();
   const { accessSync, constants } = await import("node:fs");
   const pathApi = await import("node:path");
   return {

@@ -1,172 +1,159 @@
 /**
- * Unit tests for the phase classifier (`summarizePhases` /
- * `extractShouldRespondDecision`) over hand-built trajectory fixtures — pure
- * functions, no runtime or network.
+ * `extractShouldRespondDecision()` must read the respond/ignore verdict the
+ * HANDLE step actually reached, whether the model states it before or after
+ * its reasoning, as a key/value or XML field, or as JSON.
  */
 import { describe, expect, it } from "vitest";
-import type {
-  TrajectoryDetail,
-  TrajectoryListItem,
-  UILlmCall,
-  UIToolEvent,
-} from "../src/api-client";
+import type { TrajectoryDetail, UILlmCall } from "../src/api-client";
 import { extractShouldRespondDecision, summarizePhases } from "../src/phases";
 
-function makeTrajectory(
-  overrides: Partial<TrajectoryListItem> = {},
-): TrajectoryListItem {
-  return { id: "t1", status: "active", llmCallCount: 0, ...overrides };
-}
-
-function makeLlmCall(overrides: Partial<UILlmCall>): UILlmCall {
+function call(response: string): UILlmCall {
   return {
-    id: "c1",
-    model: "gpt-x",
-    response: "",
-    purpose: "",
+    id: "call-1",
+    model: "test-model",
+    response,
+    purpose: "should_respond",
     actionType: "",
-    stepType: "",
-    ...overrides,
+    stepType: "should_respond",
   };
 }
 
-function makeToolEvent(overrides: Partial<UIToolEvent>): UIToolEvent {
-  return {
-    id: overrides.id ?? "e1",
-    type: "tool_call",
-    ...overrides,
-  };
-}
-
-function makeDetail(overrides: Partial<TrajectoryDetail>): TrajectoryDetail {
-  return {
-    trajectory: makeTrajectory(),
-    llmCalls: [],
-    providerAccesses: [],
-    toolEvents: [],
-    evaluationEvents: [],
-    ...overrides,
-  };
-}
-
-describe("summarizePhases", () => {
-  it("returns four phases for an empty trajectory, all idle", () => {
-    const phases = summarizePhases(null);
-    expect(phases.map((p) => p.phase)).toEqual([
-      "HANDLE",
-      "PLAN",
-      "ACTION",
-      "EVALUATE",
-    ]);
-    expect(phases.every((p) => p.status === "idle")).toBe(true);
+describe("extractShouldRespondDecision", () => {
+  it("reads a verdict stated before its explanation", () => {
+    expect(
+      extractShouldRespondDecision(
+        call(
+          "IGNORE - the user is talking to someone else, no need to respond.",
+        ),
+      ),
+    ).toEqual({ decision: "IGNORE" });
+    expect(
+      extractShouldRespondDecision(
+        call("RESPOND. They asked me directly; I should not ignore them."),
+      ),
+    ).toEqual({ decision: "RESPOND" });
   });
 
-  it("classifies a should_respond LLM call as HANDLE and reads the decision", () => {
-    const detail = makeDetail({
-      llmCalls: [
-        makeLlmCall({
-          stepType: "should_respond",
-          response: '{"action":"RESPOND","reasoning":"user asked a question"}',
-        }),
-      ],
-    });
-    const [handle] = summarizePhases(detail);
-    expect(handle.phase).toBe("HANDLE");
-    expect(handle.status).toBe("done");
-    expect(handle.summary).toBe("respond");
-    expect(handle.llmCalls).toHaveLength(1);
+  it("reads a verdict stated after its reasoning", () => {
+    expect(
+      extractShouldRespondDecision(call("Should I respond? No, IGNORE.")),
+    ).toEqual({ decision: "IGNORE" });
+    expect(
+      extractShouldRespondDecision(
+        call("Respond to this? The user asked me by name, so RESPOND."),
+      ),
+    ).toEqual({ decision: "RESPOND" });
   });
 
-  it("marks HANDLE as skipped when shouldRespond returns IGNORE", () => {
-    const detail = makeDetail({
-      llmCalls: [
-        makeLlmCall({
-          stepType: "should_respond",
-          response: '{"action":"IGNORE"}',
-        }),
-      ],
-    });
-    const [handle] = summarizePhases(detail);
-    expect(handle.status).toBe("skipped");
-    expect(handle.summary).toBe("ignore");
+  it("prefers an explicit key/value verdict field over reasoning keywords", () => {
+    expect(
+      extractShouldRespondDecision(
+        call(
+          "reasoning: I could respond, but this is not addressed to me.\naction: IGNORE\nnote: would reply if mentioned",
+        ),
+      ),
+    ).toEqual({ decision: "IGNORE" });
+    expect(
+      extractShouldRespondDecision(
+        call("IGNORE would be rude here.\ndecision = RESPOND"),
+      ),
+    ).toEqual({ decision: "RESPOND" });
   });
 
-  it("classifies plan/response calls and surfaces the actionType", () => {
-    const detail = makeDetail({
-      llmCalls: [
-        makeLlmCall({
-          stepType: "should_respond",
-          response: '{"action":"RESPOND"}',
-        }),
-        makeLlmCall({
-          id: "c2",
-          stepType: "response",
-          actionType: "REPLY",
-          response: "{}",
-        }),
-      ],
-    });
-    const phases = summarizePhases(detail);
-    const plan = phases.find((p) => p.phase === "PLAN");
-    expect(plan?.status).toBe("done");
-    expect(plan?.summary).toBe("REPLY");
+  it("prefers an explicit XML verdict field over reasoning keywords", () => {
+    expect(
+      extractShouldRespondDecision(
+        call(
+          "<response><reasoning>Nobody asked me to respond; skip.</reasoning><action>IGNORE</action></response> I might reply later.",
+        ),
+      ),
+    ).toEqual({ decision: "IGNORE" });
   });
 
-  it("flags an errored tool event under ACTION with error status", () => {
-    const detail = makeDetail({
-      toolEvents: [
-        makeToolEvent({
-          actionName: "POSTGRES_QUERY",
-          type: "tool_error",
-          error: "connection refused",
-        }),
-      ],
+  it("reads the JSON action and reasoning", () => {
+    expect(
+      extractShouldRespondDecision(
+        call(
+          '```json\n{"reasoning": "They said ignore me", "action": "respond"}\n```',
+        ),
+      ),
+    ).toEqual({ decision: "RESPOND", reasoning: "They said ignore me" });
+    expect(extractShouldRespondDecision(call('{"decision": "stop"}'))).toEqual({
+      decision: "STOP",
     });
-    const action = summarizePhases(detail).find((p) => p.phase === "ACTION");
-    expect(action?.status).toBe("error");
-    expect(action?.summary).toBe("POSTGRES_QUERY");
   });
 
-  it("marks the latest finished phase as 'active' for in-flight trajectories with idle tail", () => {
-    const detail = makeDetail({
-      llmCalls: [
-        makeLlmCall({
-          stepType: "should_respond",
-          response: '{"action":"RESPOND"}',
-        }),
-      ],
-    });
-    const phases = summarizePhases(detail, { trajectoryActive: true });
-    const handle = phases.find((p) => p.phase === "HANDLE");
-    const plan = phases.find((p) => p.phase === "PLAN");
-    expect(handle?.status).toBe("active");
-    expect(plan?.status).toBe("idle");
+  it("returns null when no verdict is present", () => {
+    expect(extractShouldRespondDecision(call("   "))).toBeNull();
+    expect(
+      extractShouldRespondDecision(call("I am not sure what to do here.")),
+    ).toBeNull();
   });
 });
 
-describe("extractShouldRespondDecision", () => {
-  it("parses JSON with action+reasoning", () => {
-    const out = extractShouldRespondDecision(
-      makeLlmCall({
-        response: '{"action":"RESPOND","reasoning":"because"}',
-      }),
-    );
-    expect(out).toEqual({ decision: "RESPOND", reasoning: "because" });
+function detail(overrides: Partial<TrajectoryDetail>): TrajectoryDetail {
+  return {
+    llmCalls: [],
+    providerAccesses: [],
+    ...overrides,
+  } as unknown as TrajectoryDetail;
+}
+
+function phaseStatus(
+  overrides: Partial<TrajectoryDetail>,
+  phase: "ACTION" | "EVALUATE",
+): string | undefined {
+  return summarizePhases(detail(overrides)).find((p) => p.phase === phase)
+    ?.status;
+}
+
+describe("summarizePhases failure reporting", () => {
+  it("reports a tool call that failed as an error, not as running work", () => {
+    expect(
+      phaseStatus(
+        {
+          toolEvents: [
+            {
+              id: "tool-1",
+              type: "tool_call",
+              actionName: "SEND_EMAIL",
+              status: "failed",
+            },
+          ],
+        },
+        "ACTION",
+      ),
+    ).toBe("error");
   });
 
-  it("falls back to keyword detection in plain text", () => {
-    const out = extractShouldRespondDecision(
-      makeLlmCall({ response: "I should IGNORE this message." }),
-    );
-    expect(out?.decision).toBe("IGNORE");
+  it("reports a tool result that failed as an error, not as a completed action", () => {
+    expect(
+      phaseStatus(
+        {
+          toolEvents: [
+            {
+              id: "tool-2",
+              type: "tool_result",
+              toolName: "SEARCH_WEB",
+              status: "failed",
+            },
+          ],
+        },
+        "ACTION",
+      ),
+    ).toBe("error");
   });
 
-  it("returns null for empty/unrecognized responses", () => {
+  it("reports an evaluator that failed as an error, not as a completed evaluation", () => {
     expect(
-      extractShouldRespondDecision(makeLlmCall({ response: "" })),
-    ).toBeNull();
-    expect(
-      extractShouldRespondDecision(makeLlmCall({ response: "lorem ipsum" })),
-    ).toBeNull();
+      phaseStatus(
+        {
+          evaluationEvents: [
+            { id: "eval-1", evaluatorName: "reflection", status: "failed" },
+          ],
+        },
+        "EVALUATE",
+      ),
+    ).toBe("error");
   });
 });

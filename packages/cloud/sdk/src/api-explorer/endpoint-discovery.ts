@@ -1,3 +1,5 @@
+import type { HttpMethod } from "../types.js";
+
 /**
  * API Endpoint Discovery System
  *
@@ -1140,4 +1142,26 @@ export function searchEndpoints(query: string): ApiEndpoint[] {
       endpoint.description.toLowerCase().includes(searchTerm) ||
       endpoint.path.toLowerCase().includes(searchTerm),
   );
+}
+
+/** Wire metadata returned by the Cloud route-discovery endpoint. */
+export interface ApiRouteMetaDto {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  requiresAuth: boolean;
+  pricing?: string | { type?: string; [key: string]: unknown };
+  rateLimit?:
+    | string
+    | { requests: number; window: string; [key: string]: unknown };
+  tags?: string[];
+}
+
+export interface DiscoveredApiRouteDto {
+  path: string;
+  methods: HttpMethod[];
+  filePath: string;
+  meta?: ApiRouteMetaDto;
+  metaByMethod?: Partial<Record<HttpMethod, ApiRouteMetaDto>>;
 }

@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http";
-import * as uiSessions from "@elizaos/ui/api/auth/sessions";
+import * as uiSessions from "@elizaos/auth";
 import { expect, it } from "vitest";
 import { readCookie as authReadCookie, getSessionCookieName } from "../auth";
 import {

@@ -16,7 +16,7 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_review_comment",
   "pull_request_target",
 ]);
-const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
+const CANONICAL_ADMISSION_WORKFLOW = "pr-validation.yml";
 const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
 const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "staging", "main"];

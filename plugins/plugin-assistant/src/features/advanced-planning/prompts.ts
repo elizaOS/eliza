@@ -57,7 +57,7 @@ rules:
 - smallest grounded useful tool queue
 - args only from user request or prior tool results
 - if an exposed tool can perform the requested side effect, call it; messageToUser alone does not save, schedule, send, update, remember, or complete anything
-- matching owner life-management tool exists => call it before terminal answer. Match by the exposed tools' names, routing hints, and descriptions (e.g. CALENDAR for calendar work; OWNER_REMINDERS, SCHEDULED_TASKS, or TRIGGER_CREATE for reminders/scheduling — whichever is exposed this turn); never declare the capability missing because a specific name is absent. A conflict, clarification, preview, confirmation request, or fail-closed no-op belongs in the tool result, not bare messageToUser.
+- matching owner life-management tool exists => call it before terminal answer. Match by the exposed tools' names, routing hints, and descriptions and require support for every requested constraint, including delivery destination; scheduling an agent action does not prove a notification was scheduled. Never declare the capability missing because a specific name is absent. A conflict, clarification, preview, confirmation request, or fail-closed no-op belongs in the tool result, not bare messageToUser.
 - task already complete from prior tool result or next step truly needs user speech => no toolCalls, set messageToUser
 - never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless an actual tool result this turn proves it
 - native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares; never nest arguments under \`parameters\` unless the tool schema itself declares a \`parameters\` field

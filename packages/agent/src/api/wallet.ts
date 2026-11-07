@@ -4,10 +4,11 @@
  * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
  * and Helius (Solana) REST APIs.
  *
- * DEX price oracle logic lives in ./wallet-dex-prices.ts.
+ * DEX price oracle logic lives in @elizaos/plugin-wallet/read.
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
 import fs from "node:fs";
+import { rpcJsonRequest } from "@elizaos/plugin-wallet/read";
 import {
   decodeSolanaBase58,
   decodeSolanaPrivateKey,
@@ -26,20 +27,18 @@ export {
   syncSolanaPublicKeyEnv,
 } from "./wallet-keygen.ts";
 
-import {
-  type KeyValidationResult,
-  logger,
-  type SolanaTokenBalance,
-  toWellFormedUnicode,
-  truncateWellFormed,
-  type WalletAddresses,
-  type WalletChain,
-  type WalletImportResult,
-} from "@elizaos/core";
+import type {
+  KeyValidationResult,
+  SolanaTokenBalance,
+  WalletAddresses,
+  WalletChain,
+  WalletImportResult,
+} from "@elizaos/contracts";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { computeValueUsd } from "@elizaos/plugin-wallet/read";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
-import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -80,7 +79,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 
@@ -95,7 +94,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "./wallet-dex-prices.ts";
+} from "@elizaos/plugin-wallet/read";
 
 export {
   type AnkrTokenAsset,
@@ -475,7 +474,7 @@ function resolveSolanaAddressForConfiguredSource(
 const HEX_RE = /^[0-9a-fA-F]+$/;
 
 export function validateEvmPrivateKey(key: string): KeyValidationResult {
-  const cleaned = key.startsWith("0x") ? key.slice(2) : key;
+  const cleaned = /^0x/i.test(key) ? key.slice(2) : key;
   if (cleaned.length !== 64)
     return {
       valid: false,
@@ -537,10 +536,7 @@ export function validateSolanaPrivateKey(key: string): KeyValidationResult {
 /** Auto-detect chain from key format and validate. */
 export function validatePrivateKey(key: string): KeyValidationResult {
   const trimmed = key.trim();
-  if (
-    trimmed.startsWith("0x") ||
-    (trimmed.length === 64 && HEX_RE.test(trimmed))
-  )
+  if (/^0x/i.test(trimmed) || (trimmed.length === 64 && HEX_RE.test(trimmed)))
     return validateEvmPrivateKey(trimmed);
   return validateSolanaPrivateKey(trimmed);
 }
@@ -561,9 +557,8 @@ export function importWallet(
     const v = validateEvmPrivateKey(trimmed);
     if (!v.valid)
       return { success: false, chain, address: null, error: v.error };
-    process.env.EVM_PRIVATE_KEY = trimmed.startsWith("0x")
-      ? trimmed
-      : `0x${trimmed}`;
+    const hexBody = /^0x/i.test(trimmed) ? trimmed.slice(2) : trimmed;
+    process.env.EVM_PRIVATE_KEY = `0x${hexBody}`;
     logger.info(`[wallet] Imported EVM wallet: ${v.address}`);
     return { success: true, chain, address: v.address, error: null };
   }
@@ -1025,15 +1020,6 @@ function buildSolanaTokenBalance(
   };
 }
 
-function rpcJsonRequest(body: string): RequestInit {
-  return {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    body,
-  };
-}
-
 function describeRpcEndpoint(url: string): string {
   try {
     return new URL(url).host;
@@ -1058,6 +1044,9 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
     );
   }
 }
+
+/** Helius DAS maximum page size for getAssetsByOwner. */
+const HELIUS_ASSETS_PAGE_LIMIT = 1000;
 
 export async function fetchSolanaBalances(
   address: string,
@@ -1095,29 +1084,38 @@ export async function fetchSolanaBalances(
   if (balanceData.error?.message) throw new Error(balanceData.error.message);
   solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
 
-  const tokenData = await jsonOrThrow<{
-    result?: { items?: HeliusAsset[] };
-    error?: { message?: string };
-  }>(
-    await fetch(
-      url,
-      rpc(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 2,
-          method: "getAssetsByOwner",
-          params: {
-            ownerAddress: address,
-            displayOptions: { showFungible: true, showNativeBalance: true },
-            page: 1,
-            limit: 100,
-          },
-        }),
+  // getAssetsByOwner pages include every NFT and compressed NFT, so a wallet
+  // with many of them pushes fungible tokens past the first page. Read every
+  // page; a short page is the last one.
+  const ownerAssets: HeliusAsset[] = [];
+  for (let page = 1; ; page++) {
+    const tokenData = await jsonOrThrow<{
+      result?: { items?: HeliusAsset[] };
+      error?: { message?: string };
+    }>(
+      await fetch(
+        url,
+        rpc(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: address,
+              displayOptions: { showFungible: true, showNativeBalance: true },
+              page,
+              limit: HELIUS_ASSETS_PAGE_LIMIT,
+            },
+          }),
+        ),
       ),
-    ),
-  );
-  if (tokenData.error?.message) throw new Error(tokenData.error.message);
-  const fungibleAssets = (tokenData.result?.items ?? []).filter(
+    );
+    if (tokenData.error?.message) throw new Error(tokenData.error.message);
+    const items = tokenData.result?.items ?? [];
+    ownerAssets.push(...items);
+    if (items.length < HELIUS_ASSETS_PAGE_LIMIT) break;
+  }
+  const fungibleAssets = ownerAssets.filter(
     (item) =>
       item.interface === "FungibleToken" || item.interface === "FungibleAsset",
   );
@@ -1126,12 +1124,7 @@ export async function fetchSolanaBalances(
     ...fungibleAssets.map((item) => item.id),
   ]);
   const tokens: SolanaTokenBalance[] = [];
-  for (const item of tokenData.result?.items ?? []) {
-    if (
-      item.interface !== "FungibleToken" &&
-      item.interface !== "FungibleAsset"
-    )
-      continue;
+  for (const item of fungibleAssets) {
     const decimals = item.token_info?.decimals ?? 0;
     const rawBalance = item.token_info?.balance ?? 0;
     const balance =
@@ -1183,6 +1176,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 1,
@@ -1199,6 +1193,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 2,

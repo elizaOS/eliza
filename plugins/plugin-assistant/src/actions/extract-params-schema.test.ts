@@ -4,7 +4,7 @@
  * adapter deterministically selects a value from the schema it actually receives.
  */
 import { type Action, ModelType, validateToolArgs } from "@elizaos/core";
-import { createRealTestRuntime } from "@elizaos/testing";
+import { createRealTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { extractActionParamsViaLlm } from "./extract-params.ts";
 

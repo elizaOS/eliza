@@ -7,6 +7,7 @@ import {
   evaluateCloudTextModelReadiness,
 } from "./cloud-model-readiness";
 import type { CloudAuthService } from "./cloud-auth";
+import { cloudCatalogModelIdentity, isCloudCatalogModelAvailable } from "./cloud-model-identity";
 
 interface ModelListEntry {
   id: string;
@@ -34,38 +35,6 @@ export interface ModelsByProvider {
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 /** Minimum spacing between catalog retries after a failed fetch. */
 const FAILED_FETCH_RETRY_MS = 60 * 1000;
-
-const PROVIDER_PREFIXES: ReadonlyArray<[string, string]> = [
-  ["gpt-", "openai"],
-  ["o1", "openai"],
-  ["o3", "openai"],
-  ["o4", "openai"],
-  ["dall-e", "openai"],
-  ["whisper", "openai"],
-  ["tts", "openai"],
-  ["claude-", "anthropic"],
-  ["gemini-", "google"],
-  ["llama", "meta"],
-  ["deepseek", "deepseek"],
-  ["grok", "xai"],
-  ["kimi", "moonshot"],
-];
-
-function extractProvider(modelId: string): string {
-  if (modelId.includes("/")) return modelId.split("/")[0];
-  const lower = modelId.toLowerCase();
-  for (const [prefix, provider] of PROVIDER_PREFIXES) {
-    if (lower.startsWith(prefix)) return provider;
-  }
-  return "unknown";
-}
-
-function stripProvider(modelId: string): string {
-  if (modelId.includes("/")) {
-    return modelId.split("/").slice(1).join("/");
-  }
-  return modelId;
-}
 
 export class CloudModelRegistryService extends Service {
   static serviceType = "CLOUD_MODEL_REGISTRY";
@@ -178,12 +147,15 @@ export class CloudModelRegistryService extends Service {
     const response = await client.requestData<ModelListResponse>("GET", "/models");
     const entries: ModelListEntry[] = response.data ?? [];
 
-    this.models = entries.map((entry) => ({
-      id: entry.id,
-      provider: extractProvider(entry.id),
-      name: stripProvider(entry.id),
-      createdAt: entry.created,
-    }));
+    this.models = entries.map((entry) => {
+      const identity = cloudCatalogModelIdentity(entry.id, entry.owned_by);
+      return {
+        id: entry.id,
+        provider: identity?.provider ?? "unknown",
+        name: identity?.model ?? entry.id,
+        createdAt: entry.created,
+      };
+    });
 
     this.byProvider = {};
     for (const model of this.models) {
@@ -203,9 +175,6 @@ export class CloudModelRegistryService extends Service {
 
   private validateConfiguredModels(): void {
     if (this.models.length === 0) return;
-
-    const modelIds = new Set(this.models.map((m) => m.id));
-    const nameSet = new Set(this.models.map((m) => m.name));
 
     const settingsToCheck = [
       { key: "ELIZAOS_CLOUD_NANO_MODEL", label: "nano model" },
@@ -237,7 +206,7 @@ export class CloudModelRegistryService extends Service {
     for (const { key, label } of settingsToCheck) {
       const value = this.runtime.getSetting(key);
       if (value && typeof value === "string") {
-        const found = modelIds.has(value) || nameSet.has(value);
+        const found = isCloudCatalogModelAvailable(value, this.models);
         if (!found) {
           logger.warn(
             `[CloudModelRegistry] Configured ${label} "${value}" not found in available models. ` +

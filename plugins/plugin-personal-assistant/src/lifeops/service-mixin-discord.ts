@@ -4,11 +4,11 @@
  * connector-verification methods onto the LifeOpsService base.
  */
 
-import {
-  type LifeOpsConnectorSide,
-  type LifeOpsDiscordConnectorStatus,
-  type LifeOpsOwnerBrowserAccessSource,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsConnectorSide,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsOwnerBrowserAccessSource,
+} from "@elizaos/contracts";
 import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord";
 import type {
   DiscordConnectorVerification,

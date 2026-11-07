@@ -1,10 +1,10 @@
 /**
- * Storybook layouts for the Knowledge hub across full-page, modal, standalone,
+ * Storybook layouts for the Knowledge hub across full-page, modal,
  * external-file-input, and controlled-selection surfaces.
  */
 
-import { withMockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
 import type { Meta, StoryObj } from "@storybook/react";
+import { withMockApp } from "../../../../../packages/ui/src/storybook/mock-providers.helpers";
 import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView.js";
 
 /**
@@ -48,16 +48,6 @@ export const Default: Story = {};
 export const InModal: Story = {
   args: {
     inModal: true,
-  },
-};
-
-/**
- * Standalone variant renders its own ViewHeader; the default (non-standalone)
- * mode is headerless, embedded under another view's chrome.
- */
-export const Standalone: Story = {
-  args: {
-    standalone: true,
   },
 };
 

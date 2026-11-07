@@ -11,7 +11,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StageRecordReceipt,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts";
 
 export const AGENT_BACKUP_RESTORE_V3_CANDIDATE_COMMAND_CONTEXT =
   "elizaos.agent-backup.restore-v3-candidate-command.v1" as const;

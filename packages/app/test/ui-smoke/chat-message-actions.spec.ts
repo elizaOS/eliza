@@ -4,6 +4,7 @@
  * transcript containment can clip an otherwise visible, interactive element.
  */
 
+import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
@@ -22,9 +23,16 @@ const USER_TEXT = "draft me an action row";
 const EDITED_TEXT = "draft me a polished action row";
 const OUT_DIR = testOutputPath("app", "10713-message-actions");
 
+const PHOTO_DATA = readFileSync(
+  new URL("../../public/favicon-180x180.png", import.meta.url),
+).toString("base64");
+const PHOTO_URL = `/api/media/${"a".repeat(64)}.png`;
 type StreamCall = Record<string, unknown>;
 
-async function installMessageActionConversationRoutes(page: Page): Promise<{
+async function installMessageActionConversationRoutes(
+  page: Page,
+  failed = false,
+): Promise<{
   streamCalls: StreamCall[];
   truncateCalls: StreamCall[];
 }> {
@@ -41,6 +49,15 @@ async function installMessageActionConversationRoutes(page: Page): Promise<{
       id: "seed-user-action-row",
       role: "user" as const,
       text: USER_TEXT,
+      attachments: [
+        {
+          id: "photo",
+          url: PHOTO_URL,
+          title: "photo.png",
+          mimeType: "image/png",
+          contentType: "image",
+        },
+      ],
       source: "eliza",
       roomId: ROOM_ID,
       timestamp: now - 5_000,
@@ -49,11 +66,19 @@ async function installMessageActionConversationRoutes(page: Page): Promise<{
       id: "seed-assistant-action-row",
       role: "assistant" as const,
       text: ASSISTANT_TEXT,
+      ...(failed ? { failureKind: "provider_issue" } : {}),
       source: "eliza",
       roomId: ROOM_ID,
       timestamp: now - 2_000,
     },
   ];
+  await page.route(`**${PHOTO_URL}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from(PHOTO_DATA, "base64"),
+    }),
+  );
   const streamCalls: StreamCall[] = [];
   const truncateCalls: StreamCall[] = [];
 
@@ -110,7 +135,12 @@ async function installMessageActionConversationRoutes(page: Page): Promise<{
   await page.route(
     `**/api/conversations/${CONVERSATION_ID}/messages/truncate`,
     async (route) => {
-      truncateCalls.push(JSON.parse(route.request().postData() ?? "{}"));
+      const request = JSON.parse(route.request().postData() ?? "{}");
+      truncateCalls.push(request);
+      const index = messages.findIndex(
+        (message) => message.id === request.messageId,
+      );
+      if (index >= 0) messages.splice(index);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -194,7 +224,9 @@ async function revealActionRow(
     await target.hover();
     return;
   }
-  await target.click();
+  // The text wrapper also contains the image. Tap its text edge so the
+  // attachment preview does not intercept a center tap.
+  await target.tap({ position: { x: 8, y: 8 } });
 }
 
 async function expectFullyPaintableActionSurface(row: Locator): Promise<void> {
@@ -238,7 +270,12 @@ async function expectFullyPaintableActionSurface(row: Locator): Promise<void> {
             centerHitsSurface: Boolean(
               centerElement && element.contains(centerElement),
             ),
-            clearsBubble: surfaceRect.top >= bubbleRect.bottom + 3.5,
+            // Touch controls fill the 44px lane; fine-pointer controls
+            // leave a 4px gap in their 24px lane. Both must avoid overlap.
+            clearsBubble:
+              surfaceRect.top >=
+              bubbleRect.bottom +
+                (window.matchMedia("(pointer: coarse)").matches ? -0.5 : 3.5),
           };
         }),
       { timeout: 2_000 },
@@ -255,93 +292,136 @@ for (const viewport of [
   { name: "desktop", size: { width: 1280, height: 900 } },
   { name: "mobile", size: { width: 390, height: 844 } },
 ] as const) {
-  test(`chat overlay message action row works on ${viewport.name}`, async ({
-    page,
-    context,
-  }) => {
-    const consoleLines: string[] = [];
-    const pageErrors: string[] = [];
-    page.on("console", (msg) => consoleLines.push(msg.text()));
-    page.on("pageerror", (err) => pageErrors.push(err.message));
+  test.describe(viewport.name, () => {
+    test.use({ hasTouch: viewport.name === "mobile" });
+    test(`chat overlay message action row works on ${viewport.name}`, async ({
+      page,
+      context,
+    }) => {
+      const consoleLines: string[] = [];
+      const pageErrors: string[] = [];
+      page.on("console", (msg) => consoleLines.push(msg.text()));
+      page.on("pageerror", (err) => pageErrors.push(err.message));
 
-    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.setViewportSize(viewport.size);
-    await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
-    await installDefaultAppRoutes(page);
-    const { streamCalls, truncateCalls } =
-      await installMessageActionConversationRoutes(page);
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+      await page.setViewportSize(viewport.size);
+      await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+      await installDefaultAppRoutes(page);
+      const { streamCalls, truncateCalls } =
+        await installMessageActionConversationRoutes(page);
 
-    await openAppPath(page, "/chat");
-    await openThread(page);
-    await screenshot(page, `${viewport.name}-chat-open`);
+      await openAppPath(page, "/chat");
+      await openThread(page);
+      await screenshot(page, `${viewport.name}-chat-open`);
 
-    const assistantRow = messageRowFor(page, ASSISTANT_TEXT);
-    await revealActionRow(assistantRow, ASSISTANT_TEXT, viewport.name);
-    await expectFullyPaintableActionSurface(assistantRow);
-    await expect(assistantRow.getByTestId("thread-line-reply")).toBeVisible();
-    await expect(assistantRow.getByTestId("thread-line-copy")).toBeVisible();
-    await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
-    await expect(assistantRow.getByTestId("thread-line-edit")).toHaveCount(0);
-    await expect(assistantRow.getByTestId("thread-line-delete")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: /copy conversation/i }),
-    ).toHaveCount(0);
-    await screenshot(page, `${viewport.name}-assistant-actions`);
+      const assistantRow = messageRowFor(page, ASSISTANT_TEXT);
+      await revealActionRow(assistantRow, ASSISTANT_TEXT, viewport.name);
+      await expectFullyPaintableActionSurface(assistantRow);
+      await expect(assistantRow.getByTestId("thread-line-reply")).toBeVisible();
+      await expect(assistantRow.getByTestId("thread-line-copy")).toBeVisible();
+      await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
+      await expect(assistantRow.getByTestId("thread-line-edit")).toHaveCount(0);
+      await expect(assistantRow.getByTestId("thread-line-delete")).toHaveCount(
+        0,
+      );
+      await expect(
+        page.getByRole("button", { name: /copy conversation/i }),
+      ).toHaveCount(0);
+      await screenshot(page, `${viewport.name}-assistant-actions`);
 
-    await assistantRow.getByTestId("thread-line-copy").click();
-    await expect(assistantRow.getByTestId("thread-line-copy")).toHaveAttribute(
-      "aria-label",
-      "Copied!",
-      {
+      await assistantRow.getByTestId("thread-line-copy").click();
+      await expect(
+        assistantRow.getByTestId("thread-line-copy"),
+      ).toHaveAttribute("aria-label", "Copied!", {
         timeout: 5_000,
-      },
-    );
-    // #10713: the "Copied" affordance flipping is necessary but not sufficient —
-    // prove the assistant text actually reached the system clipboard. The context
-    // grants clipboard-read above, so read the bytes back and compare.
-    const copiedClipboardText = await page.evaluate(() =>
-      navigator.clipboard.readText(),
-    );
-    expect(copiedClipboardText).toBe(ASSISTANT_TEXT);
-    await screenshot(page, `${viewport.name}-assistant-copied`);
+      });
+      // #10713: the "Copied" affordance flipping is necessary but not sufficient —
+      // prove the assistant text actually reached the system clipboard. The context
+      // grants clipboard-read above, so read the bytes back and compare.
+      const copiedClipboardText = await page.evaluate(() =>
+        navigator.clipboard.readText(),
+      );
+      expect(copiedClipboardText).toBe(ASSISTANT_TEXT);
+      await screenshot(page, `${viewport.name}-assistant-copied`);
 
-    await assistantRow.getByTestId("thread-line-speak").click();
-    await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
-    await screenshot(page, `${viewport.name}-assistant-play`);
+      await assistantRow.getByTestId("thread-line-speak").click();
+      await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
+      await screenshot(page, `${viewport.name}-assistant-play`);
 
-    await assistantRow.getByTestId("thread-line-reply").click();
-    await expect(page.getByTestId("chat-reply-pill")).toBeVisible();
-    await page.getByTestId("chat-reply-pill-cancel").click();
-    await expect(page.getByTestId("chat-reply-pill")).toHaveCount(0);
+      await assistantRow.getByTestId("thread-line-reply").click();
+      await expect(page.getByTestId("chat-reply-pill")).toBeVisible();
+      await page.getByTestId("chat-reply-pill-cancel").click();
+      await expect(page.getByTestId("chat-reply-pill")).toHaveCount(0);
 
-    const userRow = messageRowFor(page, USER_TEXT);
-    await revealActionRow(userRow, USER_TEXT, viewport.name);
-    await expectFullyPaintableActionSurface(userRow);
-    await expect(userRow.getByTestId("thread-line-reply")).toBeVisible();
-    await expect(userRow.getByTestId("thread-line-copy")).toBeVisible();
-    await expect(userRow.getByTestId("thread-line-edit")).toBeVisible();
-    await expect(userRow.getByTestId("thread-line-speak")).toHaveCount(0);
-    await expect(userRow.getByTestId("thread-line-delete")).toHaveCount(0);
-    await screenshot(page, `${viewport.name}-user-actions`);
+      const userRow = messageRowFor(page, USER_TEXT);
+      await revealActionRow(userRow, USER_TEXT, viewport.name);
+      await expectFullyPaintableActionSurface(userRow);
+      await expect(userRow.getByTestId("thread-line-reply")).toBeVisible();
+      await expect(userRow.getByTestId("thread-line-copy")).toBeVisible();
+      await expect(userRow.getByTestId("thread-line-edit")).toBeVisible();
+      await expect(userRow.getByTestId("thread-line-speak")).toHaveCount(0);
+      await expect(userRow.getByTestId("thread-line-delete")).toHaveCount(0);
+      await screenshot(page, `${viewport.name}-user-actions`);
 
-    await userRow.getByTestId("thread-line-edit").click();
-    const editor = userRow.getByTestId("thread-line-edit-input");
-    await expect(editor).toBeVisible();
-    await expect(editor).toHaveValue(USER_TEXT);
-    await editor.fill(EDITED_TEXT);
-    await screenshot(page, `${viewport.name}-user-editing`);
-    await page.getByTestId("thread-line-edit-save").click();
+      await userRow.getByTestId("thread-line-edit").click();
+      const editor = userRow.getByTestId("thread-line-edit-input");
+      await expect(editor).toBeVisible();
+      await expect(editor).toHaveValue(USER_TEXT);
+      await editor.fill(EDITED_TEXT);
+      await screenshot(page, `${viewport.name}-user-editing`);
+      await page.getByTestId("thread-line-edit-save").click();
 
-    await expect.poll(() => streamCalls.length, { timeout: 15_000 }).toBe(1);
-    expect(truncateCalls).toEqual([
-      { messageId: "seed-user-action-row", inclusive: true },
-    ]);
-    expect(JSON.stringify(streamCalls[0])).toContain(EDITED_TEXT);
-    expect(pageErrors, "no uncaught page errors").toEqual([]);
+      await expect.poll(() => streamCalls.length, { timeout: 15_000 }).toBe(1);
+      expect(truncateCalls).toEqual([
+        { messageId: "seed-user-action-row", inclusive: true },
+      ]);
+      expect(JSON.stringify(streamCalls[0])).toContain(EDITED_TEXT);
+      expect(streamCalls[0].images).toEqual([
+        { data: PHOTO_DATA, mimeType: "image/png", name: "photo.png" },
+      ]);
+      await expect(page.getByText(ASSISTANT_TEXT, { exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        page.getByText("Edited message received.", { exact: true }),
+      ).toBeVisible();
+      await screenshot(page, `${viewport.name}-edited-photo`);
+      expect(pageErrors, "no uncaught page errors").toEqual([]);
 
-    await test.info().attach(`${viewport.name} console`, {
-      body: consoleLines.join("\n") || "N/A - no console output",
-      contentType: "text/plain",
+      await test.info().attach(`${viewport.name} console`, {
+        body: consoleLines.join("\n") || "N/A - no console output",
+        contentType: "text/plain",
+      });
+    });
+    test(`chat overlay retries the complete photo turn on ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport.size);
+      await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+      await installDefaultAppRoutes(page);
+      const { streamCalls, truncateCalls } =
+        await installMessageActionConversationRoutes(page, true);
+      await openAppPath(page, "/chat");
+      await openThread(page);
+      await screenshot(page, `${viewport.name}-failed-photo`);
+      const row = messageRowFor(page, ASSISTANT_TEXT);
+      await revealActionRow(row, ASSISTANT_TEXT, viewport.name);
+      await row.getByTestId("thread-line-retry").click();
+      await expect.poll(() => streamCalls.length, { timeout: 15_000 }).toBe(1);
+      expect(truncateCalls).toEqual([
+        { messageId: "seed-user-action-row", inclusive: true },
+      ]);
+      expect(streamCalls[0].images).toEqual([
+        { data: PHOTO_DATA, mimeType: "image/png", name: "photo.png" },
+      ]);
+      expect(JSON.stringify(streamCalls[0])).toContain(USER_TEXT);
+      await expect(page.getByText(ASSISTANT_TEXT, { exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        page.getByText("Edited message received.", { exact: true }),
+      ).toBeVisible();
+      await screenshot(page, `${viewport.name}-retried-photo`);
     });
   });
 }

@@ -4,11 +4,11 @@
  * route must not add a second account-cache read after owner-side admission.
  */
 
+import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
+import { remoteHostsRepository } from "@elizaos/cloud-shared/db/repositories/remote-hosts";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
-import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../../../host-auth";
 import {
   activateManagedNetwork,

@@ -3,8 +3,9 @@
  * The deletion journal remains the authority; a stale task cannot approve new
  * archives, shorten retention, or substitute a new deletion operation.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,

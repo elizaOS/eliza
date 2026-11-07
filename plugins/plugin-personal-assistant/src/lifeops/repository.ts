@@ -33,6 +33,10 @@ export {
 } from "./repositories/schedule-projection-records.js";
 
 import crypto from "node:crypto";
+import type {
+  LifeOpsGoalDefinition,
+  LifeOpsGoalLink,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { GoalsRepository } from "@elizaos/plugin-goals/db/goals-repository";
 import {
@@ -40,10 +44,6 @@ import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalLink,
-} from "../contracts/index.js";
 
 export {
   createLifeOpsHealthMetricSample,
@@ -423,6 +423,14 @@ export class LifeOpsRepository {
     return this.goalsRepo.updateGoal(goal);
   }
 
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: Parameters<GoalsRepository["updateGoalReview"]>[2],
+  ): Promise<void> {
+    return this.goalsRepo.updateGoalReview(agentId, goalId, review);
+  }
+
   async getGoal(
     agentId: string,
     goalId: string,
@@ -435,7 +443,12 @@ export class LifeOpsRepository {
   }
 
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
+    await this.clearGoalReferences(agentId, goalId);
     return this.goalsRepo.deleteGoal(agentId, goalId);
+  }
+
+  async clearGoalReferences(agentId: string, goalId: string): Promise<void> {
+    return this.scheduleProjections.clearGoalReferences(agentId, goalId);
   }
 
   async upsertGoalLink(link: LifeOpsGoalLink): Promise<void> {
@@ -763,6 +776,15 @@ export class LifeOpsRepository {
     ...args: Parameters<InboxCacheRepository["listCachedInboxMessages"]>
   ): ReturnType<InboxCacheRepository["listCachedInboxMessages"]> {
     return this.inboxCache.listCachedInboxMessages(...args);
+  }
+  deleteCachedInboxMessagesForGmailAccount(
+    ...args: Parameters<
+      InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+    >
+  ): ReturnType<
+    InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+  > {
+    return this.inboxCache.deleteCachedInboxMessagesForGmailAccount(...args);
   }
   markCachedInboxMessageRead(
     ...args: Parameters<InboxCacheRepository["markCachedInboxMessageRead"]>

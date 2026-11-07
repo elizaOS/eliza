@@ -50,7 +50,7 @@ class TaskRunResult:
     num_turns: int = 0
     num_tool_calls: int = 0
     user_cost: float = 0.0
-    agent_cost: float = 0.0
+    agent_cost: float | None = None
     error: Optional[str] = None
     messages: list[dict[str, Any]] = field(default_factory=list)
     info: dict[str, Any] = field(default_factory=dict)
@@ -115,6 +115,16 @@ class BenchmarkReport:
                         "num_tool_calls": r.num_tool_calls,
                         "user_cost": r.user_cost,
                         "agent_cost": r.agent_cost,
+                        "cost_evidence": {
+                            key: r.info[key]
+                            for key in (
+                                "known_cost_usd",
+                                "cost_complete",
+                                "unknown_cost_calls",
+                                "pricing_revision",
+                            )
+                            if key in r.info
+                        },
                         "error": r.error,
                     }
                     for r in rs
@@ -162,7 +172,9 @@ class TauBenchConfig:
     agent_max_turns: int = 30
 
     # User simulator (LLM-driven by default, matches upstream)
-    user_strategy: str = "llm"  # "grounded", "human", "llm", "react", "verify", "reflection"
+    user_strategy: str = (
+        "llm"  # "grounded", "human", "llm", "react", "verify", "reflection"
+    )
     user_model: str = "gpt-4o"
     user_provider: str = "openai"
 

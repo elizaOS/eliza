@@ -17,7 +17,7 @@
  * remote target owns its token registry and sender, never the controller.
  */
 import type http from "node:http";
-import { sendJsonError } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
 import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
 import {
   getRuntimeModeSnapshot,

@@ -1,5 +1,5 @@
 /** Opens browser-workspace websites in the full Chromium profile on Linux. */
-import { openExternalUrl } from "../utils";
+import { openExternalUrl } from "../utils/openExternalUrl";
 import { invokeDesktopBridgeRequest } from "./electrobun-rpc";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 

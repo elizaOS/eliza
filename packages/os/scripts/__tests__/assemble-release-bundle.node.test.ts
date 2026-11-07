@@ -43,7 +43,7 @@ async function fixture() {
         "--output",
         path.join(directory, `${artifact.id}.release-evidence.json`),
         "--repository",
-        "elizaOS/os",
+        "elizaOS/eliza",
         "--source-sha",
         "a".repeat(40),
         "--run-id",
@@ -78,7 +78,7 @@ async function assemble(paths, extraArgs = []) {
       "--manifest-output",
       paths.manifestOutput,
       "--repository",
-      "elizaOS/os",
+      "elizaOS/eliza",
       "--tag",
       "v0.1.0-beta.1",
       "--available-date",
@@ -111,7 +111,7 @@ test("release assembly binds every Actions artifact to one publishable file", as
     assert.equal(artifact.status, "published");
     assert.equal(
       artifact.downloadUrl,
-      `https://github.com/elizaOS/os/releases/download/v0.1.0-beta.1/${artifact.filename}`,
+      `https://github.com/elizaOS/eliza/releases/download/v0.1.0-beta.1/${artifact.filename}`,
     );
     assert.ok(await readFile(path.join(paths.output, artifact.filename)));
   }

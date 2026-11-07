@@ -36,8 +36,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -259,7 +257,7 @@ def main() -> int:
         )
         return 1
 
-    from training.model_registry import REGISTRY, get as registry_get
+    from eliza_training.training.model_registry import REGISTRY, get as registry_get
 
     if args.tiers == "all":
         selected_tiers = ALL_TIERS

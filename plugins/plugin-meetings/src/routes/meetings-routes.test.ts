@@ -4,8 +4,8 @@
  * scripted adapter, no browser.
  */
 
-import { type AccessContext, type UUID } from "@elizaos/core";
-import { type RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import type { AccessContext, UUID } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingService } from "../service.js";
@@ -52,6 +52,7 @@ function makeHarness(billingSessions: FakeMeetingBillingSession[] = []) {
     method: "GET",
     path: "/api/meetings",
     runtime: fake.runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     ...over,
   });
@@ -261,6 +262,36 @@ describe("/api/meetings routes", () => {
       ).session.transcriptId,
     ).toBeUndefined();
   });
+  it("redacts transcriptId on the DELETE response for a viewer who cannot read the transcript", async () => {
+    const { ctx, adapter } = makeHarness();
+    const post = route("POST", "/api/meetings");
+    const del = route("DELETE", "/api/meetings/:id");
+    const created = await post(ctx({ body: { meetingUrl: MEET_URL } }));
+    const session = (
+      created.body as {
+        session: {
+          id: string;
+          transcriptId?: string;
+        };
+      }
+    ).session;
+    expect(session.transcriptId).toBeTypeOf("string");
+    await adapter.started;
+    const stopped = await del(
+      ctx({ params: { id: session.id }, accessContext: userAccess }),
+    );
+    expect(stopped.status).toBe(200);
+    // Same viewer selection as GET/:id: the reference is withheld.
+    expect(
+      (
+        stopped.body as {
+          session: {
+            transcriptId?: string;
+          };
+        }
+      ).session.transcriptId,
+    ).toBeUndefined();
+  });
   it("selects the session DTO per viewer role x grant (#14781)", async () => {
     const { ctx, adapter, fake } = makeHarness();
     const post = route("POST", "/api/meetings");
@@ -402,6 +433,7 @@ describe("/api/meetings routes", () => {
       method: "POST",
       path: "/api/meetings",
       runtime: fake.runtime,
+      signal: new AbortController().signal,
       inProcess: false,
     };
     expect((await route("POST", "/api/meetings")(ctx)).status).toBe(503);

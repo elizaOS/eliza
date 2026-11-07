@@ -7,12 +7,15 @@ import {
   cliAuthSessions,
   type NewCliAuthSession,
 } from "../schemas/cli-auth-sessions";
+import { organizations } from "../schemas/organizations";
 
 export type { CliAuthSession, NewCliAuthSession };
 
 export interface CliAuthApiKeyRevealState {
   session: CliAuthSession;
   apiKey: ApiKey | null;
+  /** When the API key's organization was created (null without a key or organization). */
+  organizationCreatedAt: Date | null;
 }
 
 /**
@@ -68,9 +71,14 @@ export class CliAuthSessionsRepository {
    */
   async findApiKeyRevealState(sessionId: string): Promise<CliAuthApiKeyRevealState | undefined> {
     const [state] = await dbWrite
-      .select({ session: cliAuthSessions, apiKey: apiKeys })
+      .select({
+        session: cliAuthSessions,
+        apiKey: apiKeys,
+        organizationCreatedAt: organizations.created_at,
+      })
       .from(cliAuthSessions)
       .leftJoin(apiKeys, eq(cliAuthSessions.api_key_id, apiKeys.id))
+      .leftJoin(organizations, eq(apiKeys.organization_id, organizations.id))
       .where(eq(cliAuthSessions.session_id, sessionId))
       .limit(1);
 
@@ -212,7 +220,7 @@ export class CliAuthSessionsRepository {
    */
   async reapExpiredSessions(now: Date = new Date()): Promise<{
     deletedSessions: number;
-    revokedOrphanKeys: { id: string; key_hash: string }[];
+    revokedOrphanKeys: { id: string; key_hash: string; organization_id: string }[];
   }> {
     return await dbWrite.transaction(async (tx) => {
       const orphanKeyIds = tx
@@ -236,7 +244,11 @@ export class CliAuthSessionsRepository {
             isNull(apiKeys.deleted_at),
           ),
         )
-        .returning({ id: apiKeys.id, key_hash: apiKeys.key_hash });
+        .returning({
+          id: apiKeys.id,
+          key_hash: apiKeys.key_hash,
+          organization_id: apiKeys.organization_id,
+        });
 
       const deleted = await tx
         .delete(cliAuthSessions)

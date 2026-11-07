@@ -85,7 +85,7 @@ export interface QueueJob {
   /** Artifact kind, becomes `AnalyzerInput.entry.kind`. */
   kind: ArtifactKind;
   /** Absolute path of the `analysis.json` the worker merges the result into. */
-  analysisPath: string;
+  analysisPath: string | null;
   /** Opaque analyzer params threaded through unchanged. */
   params?: Record<string, unknown>;
   enqueuedAt: string;
@@ -110,6 +110,71 @@ export interface JobResult {
   analyzer?: AnalyzerResult;
   /** Human reason, present for `failed` and `skipped`. */
   reason?: string;
+}
+
+/** Validate a persisted result before an asynchronous worker can supply evidence. */
+export function parseJobResult(raw: string, expectedId: string): JobResult {
+  const invalid = (): never => {
+    throw new EvidenceError(`invalid queue result for ${expectedId}`, {
+      code: "QUEUE_RESULT_INVALID",
+    });
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // error-policy:J3 Corrupt worker output is a typed failure, never missing evidence.
+    return invalid();
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return invalid();
+  const result = parsed as Record<string, unknown>;
+  if (
+    result.schema !== 1 ||
+    result.id !== expectedId ||
+    typeof result.analyzerId !== "string" ||
+    !result.analyzerId ||
+    typeof result.completedAt !== "string" ||
+    !Number.isFinite(Date.parse(result.completedAt)) ||
+    !["completed", "failed", "skipped"].includes(String(result.status))
+  )
+    return invalid();
+  if (
+    result.status !== "completed" &&
+    (typeof result.reason !== "string" || !result.reason)
+  )
+    return invalid();
+  if (result.analyzer !== undefined) {
+    if (
+      !result.analyzer ||
+      typeof result.analyzer !== "object" ||
+      Array.isArray(result.analyzer)
+    )
+      return invalid();
+    const analyzer = result.analyzer as Record<string, unknown>;
+    if (
+      typeof analyzer.durationMs !== "number" ||
+      !Number.isFinite(analyzer.durationMs) ||
+      analyzer.durationMs < 0 ||
+      !["ran", "failed", "skipped-tier", "skipped-missing-tool"].includes(
+        String(analyzer.status),
+      )
+    )
+      return invalid();
+    if (
+      analyzer.status === "ran"
+        ? !("data" in analyzer)
+        : typeof analyzer.reason !== "string" ||
+          !analyzer.reason ||
+          "data" in analyzer
+    )
+      return invalid();
+    if (result.status === "failed" && analyzer.status !== "failed")
+      return invalid();
+    if (result.status === "completed" && analyzer.status === "failed")
+      return invalid();
+  } else if (result.status === "completed") return invalid();
+  return parsed as JobResult;
 }
 
 /** Thrown by {@link parseJob} when an untrusted job file is not a valid job. */
@@ -184,7 +249,7 @@ export function parseJob(raw: string): QueueJob {
   const analyzerId = str("analyzerId");
   const imagePath = str("imagePath");
   const artifact = str("artifact");
-  const analysisPath = str("analysisPath");
+  const analysisPath = job.analysisPath === null ? null : str("analysisPath");
   const enqueuedAt = str("enqueuedAt");
 
   const kind = job.kind;

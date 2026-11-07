@@ -39,9 +39,8 @@ export interface SettingsSectionDef {
   /**
    * Extra friendly tokens (beyond {@link id}) a user can type to reach this
    * section via `/settings <token>`. Owner-declared so a plugin-registered
-   * section carries its own aliases instead of needing a central host edit;
-   * `resolveSettingsSectionToken` consults the live registry, so these resolve
-   * for dynamically-registered sections too. The `id` itself is always a token.
+   * section carries its own aliases instead of needing a central host edit.
+   * The `id` itself is always a token.
    */
   aliases?: readonly string[];
   /** i18n key for the nav label. */
@@ -73,11 +72,7 @@ export interface SettingsSectionDef {
   prominence?: SettingsSectionProminence;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
-  /**
-   * Hide unless Developer Mode is on (dev builds default on; prod off).
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
+
   /**
    * Hide on the cloud mobile build (no host machine). For host/self-host
    * concepts that are meaningless to a cloud user — e.g. the host
@@ -103,11 +98,7 @@ export interface SettingsSectionDef {
    * not infer a platform from viewport size or user-agent strings.
    */
   requires?: readonly SettingsRuntimeCapability[];
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set:
-   * `system`/`release` always show; `developer`/`preview` follow the Settings
-   * toggles. See `ViewKind` in `@elizaos/core`.
-   */
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /**
    * The section body. Accepts a plain component or a `React.lazy` wrapper so
@@ -118,24 +109,17 @@ export interface SettingsSectionDef {
 }
 /** Shared navigation policy for destinations that should stay one disclosure away. */
 export function settingsSectionIsSecondary(
-  section: Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
+  section: Pick<SettingsSectionDef, "prominence" | "viewKind">,
 ): boolean {
   return (
     section.prominence === "secondary" ||
-    section.developerOnly === true ||
     section.viewKind === "developer" ||
     section.viewKind === "preview"
   );
 }
 /** Partition one registry-driven group without duplicating prominence policy. */
 export function partitionSettingsSections<
-  T extends Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
+  T extends Pick<SettingsSectionDef, "prominence" | "viewKind">,
 >(
   sections: readonly T[],
 ): {
@@ -200,11 +184,42 @@ export function getSettingsSection(id: string): SettingsSectionDef | undefined {
 export function getAllSettingsSections(): SettingsSectionDef[] {
   return listSettingsSections();
 }
-/** Pure capability gate shared by hub visibility and deep-link resolution. */
+const SETTINGS_SECTION_EXCLUSIONS_STORE = "settings-section-exclusions";
+function getExclusions(): Set<string> {
+  return getUiRegistryStore(
+    SETTINGS_SECTION_EXCLUSIONS_STORE,
+    () => new Set<string>(),
+  );
+}
+/**
+ * Product policy for the shared Settings surface: section ids a host product never offers, for
+ * example local backups in a product without app-data transfer, or wallet RPC in a product without
+ * Wallet. Exclusions are additive for the session; an excluded section is hidden from the hub and
+ * refused as a deep link, and a later registration of the same id does not bring it back.
+ */
+export function excludeSettingsSections(ids: Iterable<string>): void {
+  const exclusions = getExclusions();
+  let changed = false;
+  for (const id of ids) {
+    if (typeof id !== "string" || id.length === 0 || exclusions.has(id))
+      continue;
+    exclusions.add(id);
+    changed = true;
+  }
+  if (!changed) return;
+  getStore().seq += 1;
+  for (const listener of registryListeners) listener();
+}
+/** True when the host product excluded this section id. */
+export function settingsSectionExcluded(id: string): boolean {
+  return getExclusions().has(id);
+}
+/** Pure capability and product-policy gate shared by hub visibility and deep-link resolution. */
 export function settingsSectionIsAvailable(
   section: SettingsSectionDef,
   capabilities: SettingsRuntimeCapabilities,
 ): boolean {
+  if (settingsSectionExcluded(section.id)) return false;
   return (
     section.requires?.every((capability) => capabilities.has(capability)) ??
     true

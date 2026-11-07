@@ -43,7 +43,10 @@ import {
   isCanonicalJsonArray,
   type Log,
   logger,
+  MESSAGE_CONTENT_SEGMENT_TABLE,
   type Memory,
+  type MessageContentSegmentMetadata,
+  messageContentSegmentId,
   type Relationship,
   type Room,
   readCanonicalArrayLength,
@@ -877,6 +880,66 @@ async function extractAgentData(
     }
   }
 
+  // World metadata can reference entities that never joined one of the
+  // exported rooms. Include those entities before collecting their components
+  // and relationships, and fail explicitly if the reference is stale instead
+  // of importing a world with a dangling owner or role id.
+  const metadataEntityIds = new Set<string>();
+  for (const world of agentWorlds) {
+    const ownerId = world.metadata?.ownership?.ownerId;
+    if (ownerId) metadataEntityIds.add(ownerId);
+    for (const entityId of Object.keys(world.metadata?.roles ?? {})) {
+      metadataEntityIds.add(entityId);
+    }
+  }
+  if (metadataEntityIds.size > 0) {
+    const metadataEntities = await db.getEntitiesByIds([
+      ...metadataEntityIds,
+    ] as UUID[]);
+    for (const entity of metadataEntities) {
+      if (entity.id) entityMap.set(entity.id, entity);
+    }
+    const missingEntityIds = [...metadataEntityIds].filter(
+      (entityId) => !entityMap.has(entityId),
+    );
+    if (missingEntityIds.length > 0) {
+      throw new AgentExportError(
+        `World metadata references entities that cannot be exported: ${missingEntityIds.join(", ")}`,
+      );
+    }
+  }
+
+  // Relationships may point at a user who is not a room participant or a
+  // metadata subject. Export that endpoint too so import never mints a
+  // relationship to a random, nonexistent entity.
+  const relationships = await db.getRelationships({
+    entityIds: [agentId, ...entityMap.keys()] as UUID[],
+  });
+  const relationshipEntityIds = new Set<string>();
+  for (const relationship of relationships) {
+    relationshipEntityIds.add(relationship.sourceEntityId);
+    relationshipEntityIds.add(relationship.targetEntityId);
+  }
+  const missingRelationshipEntityIds = [...relationshipEntityIds].filter(
+    (entityId) => !entityMap.has(entityId),
+  );
+  if (missingRelationshipEntityIds.length > 0) {
+    const relationshipEntities = await db.getEntitiesByIds(
+      missingRelationshipEntityIds as UUID[],
+    );
+    for (const entity of relationshipEntities) {
+      if (entity.id) entityMap.set(entity.id, entity);
+    }
+    const unresolvedRelationshipEntityIds = missingRelationshipEntityIds.filter(
+      (entityId) => !entityMap.has(entityId),
+    );
+    if (unresolvedRelationshipEntityIds.length > 0) {
+      throw new AgentExportError(
+        `Relationships reference entities that cannot be exported: ${unresolvedRelationshipEntityIds.join(", ")}`,
+      );
+    }
+  }
+
   const entities = Array.from(entityMap.values());
   logger.info(
     `[agent-export] Found ${entities.length} entities, ${participantRecords.length} participant records`,
@@ -912,6 +975,16 @@ async function extractAgentData(
       tableName,
       includeEmbedding: false,
     });
+    if (tableName === "document_fragments") {
+      memories.push(
+        ...(await db.getMemories({
+          agentId,
+          tableName,
+          metadata: { fragmentRole: "source-segment" },
+          includeEmbedding: false,
+        })),
+      );
+    }
     for (const mem of memories) {
       if (mem.id && !memoryIdSet.has(mem.id)) {
         memoryIdSet.add(mem.id);
@@ -923,8 +996,9 @@ async function extractAgentData(
 
   logger.info(`[agent-export] Found ${allMemories.length} memories`);
 
-  // 7. Relationships
-  const relationships = await db.getRelationships({ entityIds: [agentId] });
+  // 7. Relationships. The reflection evaluator records relationships between
+  // the agent's users as well, so every row touching an exported entity is
+  // carried, not only the rows that touch the agent.
   logger.info(`[agent-export] Found ${relationships.length} relationships`);
 
   // 8. Tasks
@@ -937,29 +1011,18 @@ async function extractAgentData(
   // 9. Logs (optional)
   const logs: Log[] = [];
   if (options.includeLogs) {
-    const pageSize = 500;
-    let offset = 0;
-    while (true) {
-      const page = await db.getLogs({ limit: pageSize, offset });
-      if (page.length > pageSize) {
-        throw new AgentExportError("Log export returned an oversized page", {
-          code: "AGENT_EXPORT_INVALID_LOG_PAGE",
-          context: { requested: pageSize, received: page.length, offset },
-        });
-      }
-      logs.push(
-        ...page.map(
-          (entry) =>
-            ({
-              ...entry,
-              // The manifest authenticates the JSON wire representation. Normalize
-              // Date objects before hashing so import verifies the same bytes.
-              createdAt: entry.createdAt.toISOString(),
-            }) as unknown as Log,
-        ),
-      );
-      if (page.length < pageSize) break;
-      offset += page.length;
+    // One read is one snapshot. getLogs pages newest-first, so offset pages
+    // taken while the running agent writes logs shift under the reader and
+    // export a row twice in place of another (the retention sweep reads its
+    // inventory in one query for the same reason).
+    const rows = await db.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+    for (const entry of rows) {
+      logs.push({
+        ...entry,
+        // The manifest authenticates the JSON wire representation. Normalize
+        // Date objects before hashing so import verifies the same bytes.
+        createdAt: entry.createdAt.toISOString(),
+      } as unknown as Log);
     }
     logger.info(`[agent-export] Found ${logs.length} logs`);
   }
@@ -1026,12 +1089,42 @@ function createIdRemapper(
   };
 }
 
+/** World metadata with its owner and role entity ids remapped to the imported entities. */
+function remapWorldMetadata(
+  metadata: NonNullable<World["metadata"]>,
+  remap: (oldId: string) => string,
+): NonNullable<World["metadata"]> {
+  return {
+    ...metadata,
+    ...(metadata.ownership
+      ? {
+          ownership: {
+            ...metadata.ownership,
+            ownerId: remap(metadata.ownership.ownerId),
+          },
+        }
+      : {}),
+    ...(metadata.roles
+      ? {
+          roles: Object.fromEntries(
+            Object.entries(metadata.roles).map(([entityId, role]) => [
+              remap(entityId),
+              role,
+            ]),
+          ),
+        }
+      : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Data restoration
 // ---------------------------------------------------------------------------
 
 /** Rehydrates database timestamps only after the JSON manifest has been verified. */
-function restoreGraphCreatedAt<T extends Entity | Room | World>(row: T): T {
+function restoreGraphCreatedAt<T extends Entity | Room | World | Log>(
+  row: T,
+): T {
   if (!("createdAt" in row) || row.createdAt === undefined) return row;
   const value = row.createdAt;
   if (typeof value !== "string" && typeof value !== "number") {
@@ -1185,13 +1278,17 @@ async function restoreAgentDataInScope(
     `[agent-import] Created agent record${payload.characterConfig ? " (merged with characterConfig)" : ""}`,
   );
 
-  // 2. Create worlds
+  // 2. Create worlds. Ownership and roles name entities by id, so they follow
+  // the entities' new ids; otherwise the owner's role reads as GUEST.
   let worldsImported = 0;
   for (const world of worlds) {
     const newWorld: World = {
       ...world,
       id: remap(world.id) as UUID,
       agentId: newAgentId as UUID,
+      ...(world.metadata
+        ? { metadata: remapWorldMetadata(world.metadata, remap) }
+        : {}),
     };
     await db.createWorlds([newWorld]);
     worldsImported++;
@@ -1269,7 +1366,10 @@ async function restoreAgentDataInScope(
   }
   logger.info(`[agent-import] Imported ${componentsImported} components`);
 
-  // 7. Create memories
+  // 7. Create memories. Reply targets may refer to deleted or external messages.
+  const exportedMemoryIds = new Set(
+    payload.memories.map((memory) => memory.id),
+  );
   let memoriesImported = 0;
   for (const mem of orderedMemories) {
     const tableName = resolveMemoryTableName(mem);
@@ -1281,6 +1381,17 @@ async function restoreAgentDataInScope(
       ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
       ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
       ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
+      // Remap only targets carried in this bundle. Preserve external references
+      // instead of minting an id for a message that will never be restored.
+      ...(typeof mem.content?.inReplyTo === "string" &&
+      exportedMemoryIds.has(mem.content.inReplyTo)
+        ? {
+            content: {
+              ...mem.content,
+              inReplyTo: remap(mem.content.inReplyTo) as UUID,
+            },
+          }
+        : {}),
       ...(fragment !== undefined
         ? {
             metadata: withFragmentDocumentId(
@@ -1288,6 +1399,9 @@ async function restoreAgentDataInScope(
               remap(fragment.documentId) as UUID,
             ),
           }
+        : {}),
+      ...(tableName === MESSAGE_CONTENT_SEGMENT_TABLE
+        ? withMessageSegmentOwner(mem, remap)
         : {}),
       // Embeddings are excluded — they will be regenerated
       embedding: undefined,
@@ -1353,7 +1467,8 @@ async function restoreAgentDataInScope(
 
   // 10. Create logs
   let logsImported = 0;
-  for (const logEntry of payload.logs) {
+  for (const exportedLog of payload.logs) {
+    const logEntry = restoreGraphCreatedAt(exportedLog);
     await db.createLogs([
       {
         body: logEntry.body,
@@ -1364,6 +1479,7 @@ async function restoreAgentDataInScope(
           ? (remap(logEntry.roomId) as UUID)
           : (newAgentId as UUID),
         type: logEntry.type,
+        createdAt: logEntry.createdAt,
       },
     ]);
     logsImported++;
@@ -1399,6 +1515,24 @@ function withFragmentDocumentId<T extends NonNullable<Memory["metadata"]>>(
   documentId: UUID,
 ): T & { documentId: UUID } {
   return { ...metadata, documentId };
+}
+
+function withMessageSegmentOwner(
+  segment: Memory,
+  remap: (oldId: string) => string,
+): Pick<Memory, "id" | "metadata"> {
+  const metadata = segment.metadata as unknown as MessageContentSegmentMetadata;
+  const messageId = remap(metadata.messageId) as UUID;
+  return {
+    id: messageContentSegmentId({
+      messageId,
+      kind: metadata.sourceKind,
+      revision: metadata.sourceRevision,
+      ordinal: metadata.ordinal,
+      attachmentHash: metadata.attachmentIdHash,
+    }),
+    metadata: { ...metadata, messageId } as unknown as Memory["metadata"],
+  };
 }
 
 /**

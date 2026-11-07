@@ -3,7 +3,13 @@
  * chat-command) against mocked service and device-bridge seams — no real model
  * or FFI backend is loaded.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import type http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -455,6 +461,27 @@ describe("local inference chat status", () => {
 				TEXT_LARGE: "elizacloud",
 			},
 		});
+	});
+
+	it("keeps the installed copy when a chat redownload names a tier that is no longer downloadable", async () => {
+		// eliza-1-9b is a pending (unpublished) tier in the catalog snapshot, so
+		// the downloader would refuse it; redownload uninstalls first, so the
+		// chat command must refuse before removing anything (#35203 contract).
+		const modelPath = writeInstalledModel("eliza-1-9b");
+		serviceMock.startDownload.mockClear();
+
+		const result = await handleLocalInferenceChatCommand(
+			"redownload",
+			"redownload eliza-1-9b",
+		);
+
+		expect(result.localInference).toMatchObject({
+			intent: "redownload",
+			status: "failed",
+			modelId: "eliza-1-9b",
+		});
+		expect(serviceMock.startDownload).not.toHaveBeenCalled();
+		expect(existsSync(modelPath)).toBe(true);
 	});
 
 	it("uses the AOSP active marker when the native APK loader has the chat model open", async () => {

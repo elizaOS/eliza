@@ -255,13 +255,6 @@ export function buildWorkspaceSourceAliases(
       ),
     },
     {
-      find: /^@elizaos\/testing\/scenario-runner\/(.+)$/,
-      replacement: path.join(
-        repoRoot,
-        "packages/testing/scenario-runner/src/$1",
-      ),
-    },
-    {
       find: /^@elizaos\/testing$/,
       replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
     },

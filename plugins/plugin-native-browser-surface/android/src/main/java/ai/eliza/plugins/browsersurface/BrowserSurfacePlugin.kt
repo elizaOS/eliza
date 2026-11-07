@@ -15,14 +15,30 @@
  * `shared` surface uses the default profile. There is NO silent degrade — if the
  * system WebView is too old for multi-profile, `createSurface` rejects, because a
  * surface that quietly shares the default store is the exact leak this closes.
- * Android keeps a loaded profile in use after its WebView is destroyed, so
- * retired profiles are never reused and are purged at the next process start.
+ * Android keeps a loaded profile in use after its WebView is destroyed, so a
+ * retired profile is never reused: its cookies and storage are cleared at once,
+ * deletion is retried until Android releases it, and anything left is purged
+ * at the next process start. A `profileKey` selects one persistent profile per
+ * owner and key instead, kept until `purgeProfiles` ([BrowserProfilePolicy]).
+ *
+ * A website never acts for the person through this layer: JavaScript dialogs,
+ * new windows, downloads, other-app links and sign-in pages that refuse embedded
+ * WebViews are reported to the host as events ([BrowserPageHandoffs]); nothing is
+ * accepted, opened or started by itself. A crashed or killed page renderer
+ * closes only its surface (`surfaceCrashed`), never the host activity.
  */
 package ai.eliza.plugins.browsersurface
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import android.view.PixelCopy
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Region
@@ -31,11 +47,22 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.URLUtil
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
 import android.widget.FrameLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -49,6 +76,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONObject
@@ -180,7 +208,21 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         helperEntry?.reconcilePermission()
     }
 
+    override fun handleOnPause() {
+        surfaces.values.forEach {
+            it.historyObservation = null
+            it.control?.interrupt("The browser host was paused")
+        }
+        super.handleOnPause()
+    }
+
     override fun handleOnDestroy() {
+        keyboardListener?.let { activity.window.decorView.viewTreeObserver.removeOnGlobalLayoutListener(it) }
+        keyboardListener = null
+        surfaces.values.forEach(::disposeSurface)
+        surfaces.clear()
+        inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        inputRouter = null
         dockScope.cancel()
         helperEntry?.destroy()
         helperEntry = null
@@ -284,7 +326,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private companion object {
         const val TAG = "ElizaSurfaceManager"
-        const val PROFILE_NAMESPACE_PREFIX = "eliza-browser-"
+        const val PROFILE_PREFS = "eliza_browser_surface_profiles"
     }
 
     private data class HostOuterClip(
@@ -316,16 +358,54 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val epoch: Long,
         val profileName: String?,
         var foregrounded: Boolean,
+        var control: SurfaceControlChannel? = null,
         var disposed: Boolean = false,
         var pageRevision: Long = 0,
+        var historyObservation: HistoryObservation? = null,
         var pageError: String? = null,
         var x: Double = 0.0,
         var y: Double = 0.0,
         var outerClip: HostOuterClip? = null,
         var occlusions: List<HostOcclusionRect> = emptyList(),
+        /** Cross-origin main-frame navigations wait for the host (BrowserNavigationPolicy). */
+        val interceptNavigation: Boolean = false,
+        /** Page dialogs waiting for the host's answer; dismissed whenever nobody can answer. */
+        val dialogs: BrowserPageHandoffs.Dialogs<JsResult> = BrowserPageHandoffs.Dialogs(),
+        /** The one other-app link the page asked for with a tap; `openExternalLink` may open only it. */
+        var pendingExternalLink: String? = null,
+        /** Main-frame requests WebView sends without asking shouldOverrideUrlLoading (POST, history). */
+        val gate: BrowserMainFrameGate = BrowserMainFrameGate(),
+        /** Set for a persistent keyed profile, which outlives the surface. */
+        val profileKey: String? = null,
+        val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
+        /** Set by pauseSurface: WebView.onPause() was called and onResume() not yet. */
+        var paused: Boolean = false,
     )
 
+    private data class HistoryObservation(
+        val reference: String,
+        val revision: Long,
+        val index: Int,
+        val urls: List<Pair<String?, String?>>,
+        val expiresAt: Long,
+    )
+
+    private fun historyUrls(view: WebView): List<Pair<String?, String?>> {
+        val history = view.copyBackForwardList()
+        return (0 until history.size).map {
+            history.getItemAtIndex(it).let { entry -> entry.url to entry.originalUrl }
+        }
+    }
+
+    private fun historyReady(surface: Surface): Boolean =
+        !surface.disposed && surface.foregrounded && !surface.paused && surface.pageError == null &&
+        surface.webView.progress == 100 &&
+        activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+
     private val surfaces = HashMap<String, Surface>()
+    private var inputRouter: BelowHostInputRouter? = null
+    private var keyboardListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private var keyboardVisible = false
     private val activeOwners = ActiveOwnerRegistry()
     private val retiredProfiles = HashSet<String>()
     private val profileProcessNonce = UUID.randomUUID().toString()
@@ -333,17 +413,45 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private val pageReader by lazy {
         context.assets.open("read-page.js").bufferedReader().use { it.readText() }
     }
+    private val pageControl by lazy {
+        context.assets.open("control-channel.js").bufferedReader().use { it.readText() }
+    }
+    private val captureMask by lazy {
+        context.assets.open("capture-mask.js").bufferedReader().use { it.readText() }
+    }
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+    /** Last use of each keyed profile ("used:<name>") and purges still to finish ("purge:<name>"). */
+    private val profilePrefs by lazy { context.getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE) }
 
     override fun load() {
         super.load()
+        // Observe the root insets instead of installing an insets listener, which would
+        // replace the host's own. The host moves its controls above the keyboard.
+        activity.runOnUiThread {
+            val decor = activity.window.decorView
+            keyboardListener = ViewTreeObserver.OnGlobalLayoutListener {
+                val insets = ViewCompat.getRootWindowInsets(decor) ?: return@OnGlobalLayoutListener
+                val visible = insets.isVisible(WindowInsetsCompat.Type.ime())
+                if (visible == keyboardVisible) return@OnGlobalLayoutListener
+                keyboardVisible = visible
+                val height = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom / density()
+                notifyListeners("keyboardChanged", JSObject().apply {
+                    put("visible", visible)
+                    put("height", if (visible) height.toDouble() else 0.0)
+                })
+            }.also { decor.viewTreeObserver.addOnGlobalLayoutListener(it) }
+        }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
         val store = ProfileStore.getInstance()
         for (name in store.allProfileNames) {
-            if (!name.startsWith(PROFILE_NAMESPACE_PREFIX)) continue
+            val purge = BrowserProfilePolicy.ephemeral(name) ||
+                (BrowserProfilePolicy.keyed(name) && profilePrefs.getBoolean("purge:$name", false))
+            if (!purge) continue
             try {
                 store.deleteProfile(name)
+                profilePrefs.edit().remove("purge:$name").apply()
             } catch (error: RuntimeException) {
-                Log.w(TAG, "Could not purge retired Browser profile $name", error)
+                Log.w(TAG, "Could not purge retired Browser profile", error)
             }
         }
     }
@@ -409,15 +517,95 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private fun profileName(owner: String, session: String, epoch: Long, id: String): String {
         profileSerial += 1
-        return "$PROFILE_NAMESPACE_PREFIX${digest("$profileProcessNonce\u0000$owner\u0000$session\u0000$epoch\u0000$id\u0000$profileSerial").take(48)}"
+        return "${BrowserProfilePolicy.EPHEMERAL_PREFIX}${digest("$profileProcessNonce\u0000$owner\u0000$session\u0000$epoch\u0000$id\u0000$profileSerial").take(48)}"
     }
 
-    private fun retireProfile(name: String) {
+    /** The same owner and key always name the same profile; the key itself is never stored. */
+    private fun keyedProfileName(owner: String, key: String): String =
+        "${BrowserProfilePolicy.KEYED_PREFIX}${digest("keyed\u0000$owner\u0000$key").take(48)}"
+
+    private fun touchProfile(name: String) {
+        profilePrefs.edit().putLong("used:$name", System.currentTimeMillis()).apply()
+    }
+
+    /**
+     * Signs the profile out of every website now; the directory goes once Android releases it.
+     * `done` gets true when no cookie remains in the profile (or the profile is gone).
+     */
+    private fun clearProfileData(name: String, done: ((Boolean) -> Unit)? = null) {
+        val profile = try {
+            ProfileStore.getInstance().getProfile(name)
+        } catch (error: RuntimeException) {
+            // error-policy:J1 A profile that cannot be opened is left to the start-up purge.
+            Log.w(TAG, "Could not open a Browser profile to clear it", error)
+            done?.invoke(false)
+            return
+        }
+        if (profile == null) {
+            done?.invoke(true)
+            return
+        }
+        profile.webStorage.deleteAllData()
+        profile.geolocationPermissions.clearAll()
+        profile.cookieManager.removeAllCookies {
+            profile.cookieManager.flush()
+            done?.invoke(profileClean(name, profile))
+        }
+    }
+
+    /** No cookie remains. A profile deleted in the meantime holds none. */
+    private fun profileClean(name: String, profile: Profile): Boolean = try {
+        !profile.cookieManager.hasCookies()
+    } catch (error: RuntimeException) {
+        !ProfileStore.getInstance().allProfileNames.contains(name)
+    }
+
+    private fun retireProfile(name: String, done: ((Boolean) -> Unit)? = null) {
         retiredProfiles.add(name)
+        clearProfileData(name, done)
+        deleteWhenReleased(name, 0)
     }
 
-    private fun disposeSurface(surface: Surface) {
-        if (!surface.disposed) {
+    private fun deleteWhenReleased(name: String, attempt: Int) {
+        mainHandler.postDelayed({
+            // A keyed profile opened again since its purge is in use and already empty.
+            if (surfaces.values.any { it.profileName == name && !it.disposed }) return@postDelayed
+            val deleted = try {
+                ProfileStore.getInstance().deleteProfile(name)
+                true
+            } catch (error: IllegalStateException) {
+                false // Android has not released it yet.
+            } catch (error: RuntimeException) {
+                // error-policy:J1 Left for the start-up purge; its data is already cleared.
+                Log.w(TAG, "Could not delete a retired Browser profile", error)
+                return@postDelayed
+            }
+            if (deleted) {
+                retiredProfiles.remove(name)
+                profilePrefs.edit().remove("purge:$name").remove("used:$name").apply()
+            } else if (attempt + 1 < BrowserProfilePolicy.DELETE_RETRY_MS.size) {
+                deleteWhenReleased(name, attempt + 1)
+            }
+        }, BrowserProfilePolicy.DELETE_RETRY_MS[attempt])
+    }
+
+    /** Ephemeral profiles go now; keyed ones stay for the next opening. */
+    private fun releaseProfile(surface: Surface) {
+        val name = surface.profileName ?: return
+        if (surface.profileKey == null) retireProfile(name) else touchProfile(name)
+    }
+
+    private fun purgeKeyedProfile(name: String, done: ((Boolean) -> Unit)? = null) {
+        profilePrefs.edit().putBoolean("purge:$name", true).remove("used:$name").apply()
+        retireProfile(name, done)
+    }
+
+    /** Closes every surface on the profile, telling the host for each live one. */
+    private fun closeProfileSurfaces(name: String) {
+        for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
+            val live = isLive(surface)
+            dismissDialogs(surface)
+            surface.control?.interrupt("The website sign-ins were removed", navigation = true)
             surface.container.visibility = View.GONE
             surface.foregrounded = false
             surface.webView.stopLoading()
@@ -425,8 +613,117 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             surface.container.removeView(surface.webView)
             surface.webView.destroy()
             surface.disposed = true
+            surfaces.remove(id)
+            if (surface.layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
+            if (live) notifyListeners("surfaceClosed", surfaceEvent(id, surface).apply { put("reason", "profile-purged") })
         }
-        surface.profileName?.let(::retireProfile)
+    }
+
+    private fun isLive(surface: Surface): Boolean =
+        !surface.disposed && activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))
+
+    private fun surfaceEvent(id: String, surface: Surface): JSObject = JSObject().apply {
+        put("id", id)
+        put("owner", surface.owner)
+        put("session", surface.session)
+        put("epoch", surface.epoch)
+    }
+
+    /** A dialog nobody will answer is dismissed: alert/confirm/prompt cancel, never accept. */
+    private fun dismissDialogs(surface: Surface) {
+        surface.dialogs.drain().forEach { it.cancel() }
+    }
+
+    /**
+     * Main-frame addresses this surface never loads: other-app links and sign-in pages that
+     * refuse embedded WebViews. Each is reported once for the host to handle; returns true when
+     * the navigation must be cancelled.
+     */
+    private fun handOff(id: String, surface: Surface, target: String, userGesture: Boolean): Boolean {
+        BrowserPageHandoffs.identityProvider(target)?.let { provider ->
+            if (isLive(surface)) {
+                notifyListeners("identityProviderRequested", surfaceEvent(id, surface).apply {
+                    put("provider", provider)
+                    put("url", target)
+                })
+            }
+            return true
+        }
+        if (!BrowserExternalLinkPolicy.external(target)) return false
+        var action: String? = null
+        var dataScheme: String? = null
+        var targetPackage: String? = null
+        var fallback: String? = null
+        if (target.regionMatches(0, "intent:", 0, 7, ignoreCase = true)) {
+            try {
+                val parsed = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
+                action = parsed.action
+                dataScheme = parsed.data?.scheme
+                targetPackage = parsed.`package`
+                fallback = BrowserExternalLinkPolicy.fallback(parsed.getStringExtra("browser_fallback_url"))
+            } catch (error: java.net.URISyntaxException) {
+                // error-policy:J1 A malformed intent link is refused, never guessed at.
+                action = "invalid"
+            }
+        }
+        val handoff = BrowserExternalLinkPolicy.decide(target, userGesture, action, dataScheme,
+            targetPackage, activity.packageName, setOf("capacitor"))
+        surface.pendingExternalLink = if (handoff == BrowserExternalLinkPolicy.Handoff.REFUSE) null else target
+        // A script's attempt to leave for another app is dropped without a word.
+        if (userGesture && isLive(surface)) {
+            notifyListeners("externalLinkRequested", surfaceEvent(id, surface).apply {
+                put("url", target)
+                put("handoff", handoff.name.lowercase().replace('_', '-'))
+                put("fallbackUrl", fallback ?: JSObject.NULL)
+            })
+        }
+        return true
+    }
+
+    /** Holds a page dialog for an intercepting host's answer, or dismisses it when nobody can answer. */
+    private fun holdDialog(
+        id: String,
+        view: WebView,
+        kind: BrowserPageHandoffs.DialogKind,
+        message: String?,
+        defaultValue: String?,
+        result: JsResult,
+    ): Boolean {
+        val surface = surfaces[id]
+        // Only an intercepting host answers dialogs; any other surface dismisses them as before.
+        if (surface == null || surface.webView !== view || !surface.interceptNavigation ||
+            !BrowserPageHandoffs.dialogMayWait(isLive(surface), surface.foregrounded && !surface.paused,
+                surface.dialogs.size())) {
+            result.cancel()
+            return true
+        }
+        val dialogId = surface.dialogs.open(result)
+        notifyListeners("dialogRequested", surfaceEvent(id, surface).apply {
+            put("dialogId", dialogId)
+            put("kind", kind.wire)
+            put("message", BrowserPageHandoffs.text(message))
+            if (kind == BrowserPageHandoffs.DialogKind.PROMPT) put("defaultText", BrowserPageHandoffs.text(defaultValue))
+            put("url", view.url ?: JSObject.NULL)
+        })
+        return true
+    }
+
+    private fun disposeSurface(surface: Surface) {
+        dismissDialogs(surface)
+        surface.pendingExternalLink = null
+        if (!surface.disposed) {
+            surface.historyObservation = null
+            surface.control?.interrupt("The native page was closed", navigation = true)
+            surface.container.visibility = View.GONE
+            surface.foregrounded = false
+            surface.webView.stopLoading()
+            (surface.container.parent as? ViewGroup)?.removeView(surface.container)
+            surface.container.removeView(surface.webView)
+            surface.webView.destroy()
+            surface.disposed = true
+            if (surface.layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
+        }
+        releaseProfile(surface)
     }
 
     @PluginMethod
@@ -446,6 +743,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             return
         }
         val url = call.getString("url")
+        val interceptNavigation = call.getBoolean("interceptNavigation", false) ?: false
+        val profileKey = call.getString("profileKey")
+        if (profileKey != null && (storage != "isolated" || !BrowserProfilePolicy.validKey(profileKey))) {
+            call.reject("createSurface profileKey needs isolated storage and 1 to 128 plain characters")
+            return
+        }
+        val layer = SurfaceLayer.parse(call.data.opt("layer").takeUnless { it == JSONObject.NULL }) ?: run {
+            call.reject("createSurface layer must be above-host or below-host")
+            return
+        }
 
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "createSurface") ?: return@runOnUiThread
@@ -460,12 +767,17 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (
                     existing.owner != owner || existing.session != session ||
                     existing.epoch != identity.epoch ||
-                    existing.process != process || existing.storage != storage
+                    existing.process != process || existing.storage != storage ||
+                    existing.interceptNavigation != interceptNavigation ||
+                    existing.profileKey != profileKey || existing.layer != layer
                 ) {
                     call.reject("surface $id already exists with different owner/session/policy")
                     return@runOnUiThread
                 }
-                if (url != null && existing.webView.url != url) existing.webView.loadUrl(url)
+                if (url != null && existing.webView.url != url) {
+                    existing.gate.approve(url)
+                    existing.webView.loadUrl(url)
+                }
                 call.resolve()
                 return@runOnUiThread
             }
@@ -474,14 +786,98 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
 
-            val container = OccludingSurfaceLayout(activity)
+            val branch = hostBranch(host, bridge.webView) ?: run {
+                call.reject("host webview is not inside its FrameLayout ancestor")
+                return@runOnUiThread
+            }
+            val container = OccludingSurfaceLayout(activity, layer)
             val webView = WebView(activity)
+            val gate = BrowserMainFrameGate()
+            // Every frame's requests after a task effect (SurfaceControlChannel arms it).
+            val effects = BrowserEffectWatch()
             webView.webViewClient = object : WebViewClient() {
+                // loadUrl() (the host's navigate) never reaches this callback, so an approved
+                // address is not intercepted again. POST form submissions do not reach it either;
+                // shouldInterceptRequest holds those. A server redirect does: one that continues
+                // the host's approved navigation goes on; any other is decided like a link, and a
+                // held redirect ends that approval (BrowserMainFrameGate).
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    val surface = surfaces[id]
+                    if (surface == null || surface.webView !== view) return false
+                    val target = request.url.toString()
+                    if (request.isForMainFrame && handOff(id, surface, target, request.hasGesture())) return true
+                    if (!surface.interceptNavigation) return false
+                    val redirect = request.isRedirect && request.isForMainFrame
+                    if (redirect && surface.gate.redirect(target)) return false
+                    return when (BrowserNavigationPolicy.decide(view.url, target, request.isForMainFrame, surface.gate.taskOrigins())) {
+                        BrowserNavigationPolicy.Decision.ALLOW -> false
+                        BrowserNavigationPolicy.Decision.BLOCK -> {
+                            if (redirect) surface.gate.settle(null)
+                            true
+                        }
+                        BrowserNavigationPolicy.Decision.REQUEST -> {
+                            if (redirect) surface.gate.settle(null)
+                            if (isLive(surface)) {
+                                notifyListeners("navigationRequested", surfaceEvent(id, surface).apply {
+                                    put("url", target)
+                                    put("redirect", request.isRedirect)
+                                    put("userGesture", request.hasGesture())
+                                    put("method", "GET")
+                                })
+                            }
+                            true
+                        }
+                    }
+                }
+
+                // Network thread. A main-frame request to an origin the host has not approved
+                // gets a local empty 204, which ends the navigation without sending anything.
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    val now = System.currentTimeMillis()
+                    if (!interceptNavigation || !request.isForMainFrame) {
+                        effects.observe(request.url.toString(), request.method, request.isForMainFrame, now,
+                            request.requestHeaders?.get("Accept"))
+                        return null
+                    }
+                    val target = request.url.toString()
+                    if (gate.admit(target)) {
+                        effects.observe(target, request.method, true, now)
+                        return null
+                    }
+                    val method = request.method ?: "GET"
+                    val gesture = request.hasGesture()
+                    view.post {
+                        val surface = surfaces[id]
+                        if (surface != null && surface.webView === view && isLive(surface)) {
+                            notifyListeners("navigationRequested", surfaceEvent(id, surface).apply {
+                                put("url", target)
+                                put("redirect", false)
+                                put("userGesture", gesture)
+                                // A held POST is not replayed: navigate() loads the address with GET.
+                                put("method", method.uppercase())
+                            })
+                        }
+                    }
+                    return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
+                        ByteArrayInputStream(ByteArray(0)))
+                }
+
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    effects.close(System.currentTimeMillis())
                     surfaces.values.firstOrNull { it.webView === view }?.let {
+                        it.control?.interrupt("The native page navigated", navigation = true)
+                        it.historyObservation = null
                         it.pageRevision += 1
                         it.pageError = null
+                        dismissDialogs(it)
+                        it.pendingExternalLink = null
                     }
+                    gate.commit(url)
+                }
+
+                // History traversal must never silently resubmit a payment/form POST.
+                override fun onFormResubmission(view: WebView, dontResend: android.os.Message, resend: android.os.Message) {
+                    dontResend.sendToTarget()
                 }
 
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -491,17 +887,140 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
+                    gate.settle(url)
                     val surface = surfaces[id] ?: return
                     if (surface.webView !== view || surface.disposed || view.url != url) return
-                    if (!activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))) return
-                    notifyListeners("navigationChanged", JSObject().apply {
-                        put("id", id)
-                        put("owner", surface.owner)
-                        put("session", surface.session)
-                        put("epoch", surface.epoch)
-                    })
+                    if (!isLive(surface)) return
+                    notifyListeners("navigationChanged", surfaceEvent(id, surface))
+                }
+
+                // Same-document moves (pushState, fragments) change the address and history
+                // without a page load; the host re-reads state as it does after a load.
+                override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                    val surface = surfaces[id] ?: return
+                    if (surface.webView !== view) return
+                    surface.historyObservation = null
+                    surface.pageRevision += 1
+                    if (isReload || !isLive(surface) || view.progress < 100) return
+                    gate.commit(url)
+                    notifyListeners("navigationChanged", surfaceEvent(id, surface))
+                }
+
+                // Returning true keeps the host activity alive when this page's renderer crashes or
+                // Android reclaims it. The WebView is unusable afterwards, so only its surface closes.
+                // Android calls this only on API 26+, where RenderProcessGoneDetail exists.
+                @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    val surface = surfaces[id]
+                    if (surface == null || surface.webView !== view) {
+                        (view.parent as? ViewGroup)?.removeView(view)
+                        view.destroy()
+                        return true
+                    }
+                    val url = view.url
+                    val live = isLive(surface)
+                    try {
+                        disposeSurface(surface)
+                    } catch (error: RuntimeException) {
+                        // error-policy:J1 A dead renderer must never take the host down with it.
+                        Log.w(TAG, "Could not release crashed Browser surface", error)
+                    }
+                    surfaces.remove(id)
+                    if (live) {
+                        notifyListeners("surfaceCrashed", surfaceEvent(id, surface).apply {
+                            put("didCrash", detail.didCrash())
+                            put("url", url ?: JSObject.NULL)
+                        })
+                    }
+                    return true
                 }
             }
+            webView.webChromeClient = object : WebChromeClient() {
+                override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult) =
+                    holdDialog(id, view, BrowserPageHandoffs.DialogKind.ALERT, message, null, result)
+
+                override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult) =
+                    holdDialog(id, view, BrowserPageHandoffs.DialogKind.CONFIRM, message, null, result)
+
+                override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult) =
+                    holdDialog(id, view, BrowserPageHandoffs.DialogKind.PROMPT, message, defaultValue, result)
+
+                override fun onJsBeforeUnload(view: WebView, url: String?, message: String?, result: JsResult) =
+                    holdDialog(id, view, BrowserPageHandoffs.DialogKind.BEFORE_UNLOAD, message, null, result)
+
+                // A new window never opens by itself. A tapped window's address is caught by a
+                // throwaway WebView that never loads it, then reported for the host to check.
+                override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                    val surface = surfaces[id] ?: return false
+                    if (surface.webView !== view || !isLive(surface) || !isUserGesture) return false
+                    val catcher = WebView(activity)
+                    surface.profileName?.let { WebViewCompat.setProfile(catcher, it) }
+                    catcher.settings.javaScriptEnabled = false
+                    var settled = false
+                    fun settle(target: String?) {
+                        if (settled) return
+                        settled = true
+                        catcher.post { catcher.stopLoading(); catcher.destroy() }
+                        val current = surfaces[id]
+                        if (target == null || current !== surface || !isLive(surface)) return
+                        if (handOff(id, surface, target, true)) return
+                        if (BrowserPageHandoffs.window(true, target) != BrowserPageHandoffs.WindowDecision.REQUEST) return
+                        if (surface.interceptNavigation) {
+                            notifyListeners("navigationRequested", surfaceEvent(id, surface).apply {
+                                put("url", target)
+                                put("redirect", false)
+                                put("userGesture", true)
+                                put("method", "GET")
+                                put("newWindow", true)
+                            })
+                        } else {
+                            // Without interception a tapped window opened in place before, so it still does.
+                            surface.gate.approve(target)
+                            surface.webView.loadUrl(target)
+                        }
+                    }
+                    catcher.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                            settle(request.url.toString())
+                            return true
+                        }
+
+                        override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest): WebResourceResponse? {
+                            if (!request.isForMainFrame) return null
+                            val target = request.url.toString()
+                            v.post { settle(target) }
+                            return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
+                                ByteArrayInputStream(ByteArray(0)))
+                        }
+
+                        @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+                        override fun onRenderProcessGone(v: WebView, detail: RenderProcessGoneDetail): Boolean {
+                            settle(null)
+                            return true
+                        }
+                    }
+                    // about:blank windows written by script never name an address; drop them.
+                    catcher.postDelayed({ settle(null) }, 3000)
+                    (resultMsg.obj as WebView.WebViewTransport).webView = catcher
+                    resultMsg.sendToTarget()
+                    return true
+                }
+            }
+            webView.setDownloadListener { downloadUrl, _, contentDisposition, mimeType, contentLength ->
+                val surface = surfaces[id]
+                if (surface == null || surface.webView !== webView || !isLive(surface)) return@setDownloadListener
+                val download = BrowserPageHandoffs.Download(downloadUrl,
+                    URLUtil.guessFileName(downloadUrl, contentDisposition, mimeType), mimeType, contentLength)
+                notifyListeners("downloadRequested", surfaceEvent(id, surface).apply {
+                    put("url", download.url ?: JSObject.NULL)
+                    put("fileName", download.fileName)
+                    put("mimeType", download.mimeType)
+                    put("contentLength", download.contentLength)
+                    put("pdf", download.pdf)
+                })
+            }
+            webView.settings.setSupportMultipleWindows(true)
+            webView.settings.javaScriptCanOpenWindowsAutomatically = false
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
             webView.settings.databaseEnabled = true
@@ -526,16 +1045,39 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     call.reject("isolated storage requires WebView multi-profile support; system WebView is too old")
                     return@runOnUiThread
                 }
-                profileName = profileName(owner, session, identity.epoch, id)
+                profileName = if (profileKey == null) profileName(owner, session, identity.epoch, id)
+                    else keyedProfileName(owner, profileKey).also {
+                        // A purge that could not delete it yet already cleared it; it starts a new life.
+                        retiredProfiles.remove(it)
+                        profilePrefs.edit().remove("purge:$it").apply()
+                        touchProfile(it)
+                    }
                 val profile = ProfileStore.getInstance().getOrCreateProfile(profileName)
                 WebViewCompat.setProfile(webView, profile.name)
             }
             // shared storage ⇒ the default profile (host-scoped store).
 
             val lp = FrameLayout.LayoutParams(0, 0)
-            host.addView(container, lp)
+            host.addView(container, surfaceInsertIndex(layer, host.indexOfChild(branch)), lp)
             container.visibility = View.GONE
-            if (url != null) webView.loadUrl(url)
+            if (layer == SurfaceLayer.BELOW_HOST) {
+                placeInputRouter(host, branch)
+                // TalkBack reads host chrome first, then the website.
+                if (bridge.webView.id != View.NO_ID) webView.accessibilityTraversalAfter = bridge.webView.id
+            }
+            val control = try {
+                if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl, effects) else null
+            } catch (error: Exception) {
+                host.removeView(container)
+                webView.destroy()
+                if (profileKey == null) profileName?.let(::retireProfile)
+                call.reject("Could not install isolated browser control", error)
+                return@runOnUiThread
+            }
+            if (url != null) {
+                gate.approve(url)
+                webView.loadUrl(url)
+            }
 
             // The renderer handle proves separation from the app process, which
             // is the strongest Android WebView guarantee. Android may reuse the
@@ -556,7 +1098,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 host.removeView(container)
                 webView.destroy()
                 try {
-                    profileName?.let(::retireProfile)
+                    if (profileKey == null) profileName?.let(::retireProfile)
                     call.reject("isolated process policy requires an out-of-app WebView renderer, which is unavailable on this device")
                 } catch (error: RuntimeException) {
                     call.reject("isolated renderer creation failed and its profile could not be released", error)
@@ -574,6 +1116,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 identity.epoch,
                 profileName,
                 false,
+                control,
+                interceptNavigation = interceptNavigation,
+                gate = gate,
+                profileKey = profileKey,
+                layer = layer,
             )
             call.resolve()
         }
@@ -677,6 +1224,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 ?: return@runOnUiThread
             surface.occlusions = rects
             applyOcclusions(surface, density())
+            // A below-host page takes input only once the host has said where its chrome is.
+            surface.container.hostRectsReceived = true
             call.resolve()
         }
     }
@@ -693,7 +1242,14 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "navigate") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "navigate")
                 ?: return@runOnUiThread
-            surface.webView.loadUrl(url)
+            // A sign-in page that refuses WebViews is reported instead of showing its error page.
+            if (BrowserPageHandoffs.identityProvider(url) == null) {
+                surface.historyObservation = null
+                surface.gate.approve(url)
+                surface.webView.loadUrl(url)
+            } else {
+                handOff(id, surface, url, true)
+            }
             call.resolve()
         }
     }
@@ -708,7 +1264,29 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "reloadSurface") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "reloadSurface")
                 ?: return@runOnUiThread
+            surface.historyObservation = null
             surface.webView.reload()
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun stopLoading(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("stopLoading requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "stopLoading") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "stopLoading")
+                ?: return@runOnUiThread
+            surface.historyObservation = null
+            surface.webView.stopLoading()
+            // A navigation stopped before it commits never finishes, so its approval ends here.
+            surface.gate.settle(null)
+            // onPageFinished may not follow a stop (or may name an address that never
+            // committed), so the host is told to re-read state and clear its loading line.
+            if (isLive(surface)) notifyListeners("navigationChanged", surfaceEvent(id, surface))
             call.resolve()
         }
     }
@@ -722,8 +1300,490 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "goBack") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "goBack") ?: return@runOnUiThread
-            if (surface.webView.canGoBack()) surface.webView.goBack()
+            if (surface.webView.canGoBack()) {
+                surface.historyObservation = null
+                approveHistoryStep(surface, -1)
+                surface.webView.goBack()
+            }
             call.resolve()
+        }
+    }
+
+    /** Trusted host primitive; task authorization and preview belong to the caller. */
+    @PluginMethod
+    fun observeHistory(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("observeHistory requires an id", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "observeHistory") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "observeHistory") ?: return@runOnUiThread
+            surface.historyObservation = null
+            if (!historyReady(surface)) {
+                call.reject("The native page is unavailable for history observation", "UNAVAILABLE")
+                return@runOnUiThread
+            }
+            val history = surface.webView.copyBackForwardList()
+            val observation = HistoryObservation(UUID.randomUUID().toString(), surface.pageRevision,
+                history.currentIndex, historyUrls(surface.webView), android.os.SystemClock.elapsedRealtime() + 30_000)
+            surface.historyObservation = observation
+            val destinations = org.json.JSONArray()
+            for ((direction, offset) in listOf("back" to -1, "forward" to 1)) {
+                val index = history.currentIndex + offset
+                if (index < 0 || index >= history.size) continue
+                val entry = history.getItemAtIndex(index)
+                if (!BrowserWebOrigin.sameOrigin(surface.webView.url, entry.url)) continue
+                destinations.put(JSObject().apply {
+                    put("reference", "${observation.reference}:$direction")
+                    put("direction", direction)
+                    put("url", entry.url)
+                    put("title", entry.title ?: "")
+                })
+            }
+            call.resolve(JSObject().apply { put("destinations", destinations) })
+        }
+    }
+
+    @PluginMethod
+    fun navigateHistory(call: PluginCall) {
+        val id = call.getString("id")
+        val reference = call.getString("reference")
+        if (id == null || reference == null) {
+            call.reject("navigateHistory requires an observed reference", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "navigateHistory") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "navigateHistory") ?: return@runOnUiThread
+            val observed = surface.historyObservation
+            val history = surface.webView.copyBackForwardList()
+            val offset = when (reference) {
+                "${observed?.reference}:back" -> -1
+                "${observed?.reference}:forward" -> 1
+                else -> 0
+            }
+            if (observed == null || offset == 0 || !historyReady(surface) ||
+                observed.expiresAt < android.os.SystemClock.elapsedRealtime() ||
+                observed.revision != surface.pageRevision || observed.index != history.currentIndex ||
+                observed.urls != historyUrls(surface.webView) ||
+                observed.index + offset !in 0 until history.size ||
+                !BrowserWebOrigin.sameOrigin(surface.webView.url, history.getItemAtIndex(observed.index + offset).url)) {
+                surface.historyObservation = null
+                call.reject("Native history changed or is unavailable; observe again", "STALE_REF")
+                return@runOnUiThread
+            }
+            // Consume before dispatch: even a lost reply cannot repeat this effect.
+            surface.historyObservation = null
+            val control = surface.control ?: run {
+                call.reject("Exact history navigation requires isolated page control", "UNSUPPORTED")
+                return@runOnUiThread
+            }
+            val revision = surface.pageRevision
+            val url = surface.webView.url
+            // WebView.goBackOrForward skips entries without activation. The isolated
+            // world's History API traverses the observed adjacent entry exactly.
+            control.execute(call, JSObject().apply {
+                put("subaction", "native-history")
+                put("offset", offset)
+                put("url", url)
+                put("length", history.size)
+            }, null) {
+                activeOwners.isActive(identity) && surfaces[id] === surface && historyReady(surface) &&
+                    surface.pageRevision == revision && surface.webView.url == url
+            }
+        }
+    }
+
+    @PluginMethod
+    fun answerDialog(call: PluginCall) {
+        val id = call.getString("id")
+        val dialogId = call.getString("dialogId")
+        val accept = call.getBoolean("accept")
+        val text = call.getString("text")
+        if (id == null || dialogId == null || accept == null) {
+            call.reject("answerDialog requires an id, a dialogId and accept", "INVALID_REQUEST")
+            return
+        }
+        if (text != null && text.length > BrowserPageHandoffs.MAX_TEXT) {
+            call.reject("answerDialog text is too long", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "answerDialog") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "answerDialog") ?: return@runOnUiThread
+            val result = surface.dialogs.take(dialogId) ?: run {
+                call.reject("This dialog is no longer open", "DIALOG_CLOSED")
+                return@runOnUiThread
+            }
+            when {
+                !accept -> result.cancel()
+                result is JsPromptResult -> result.confirm(text ?: "")
+                else -> result.confirm()
+            }
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun openExternalLink(call: PluginCall) {
+        val id = call.getString("id")
+        val url = call.getString("url")
+        if (id == null || url == null) {
+            call.reject("openExternalLink requires an id and a url", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "openExternalLink") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "openExternalLink") ?: return@runOnUiThread
+            if (surface.pendingExternalLink != url) {
+                call.reject("Only the link the person just tapped can open another app", "EXTERNAL_LINK_NOT_PENDING")
+                return@runOnUiThread
+            }
+            surface.pendingExternalLink = null
+            // A fresh implicit Intent: never the page's component, selector, flags or extras.
+            val intent = try {
+                val uri = android.net.Uri.parse(url)
+                when (uri.scheme?.lowercase()) {
+                    "mailto" -> Intent(Intent.ACTION_SENDTO, uri)
+                    "tel" -> Intent(Intent.ACTION_DIAL, uri)
+                    "market" -> Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                    else -> {
+                        val parsed = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                        Intent(Intent.ACTION_VIEW, parsed.data).addCategory(Intent.CATEGORY_BROWSABLE).apply {
+                            parsed.`package`?.let { setPackage(it) }
+                        }
+                    }
+                }
+            } catch (error: java.net.URISyntaxException) {
+                // error-policy:J1 A malformed link never opens anything.
+                call.reject("This link cannot open another app", "EXTERNAL_LINK_INVALID", error)
+                return@runOnUiThread
+            }
+            val resolved = intent.resolveActivity(activity.packageManager)
+            if (resolved == null || resolved.packageName == activity.packageName) {
+                call.reject("No app on this device opens this link", "EXTERNAL_APP_UNAVAILABLE")
+                return@runOnUiThread
+            }
+            try {
+                activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                call.resolve(JSObject().apply { put("status", "dispatched") })
+            } catch (error: android.content.ActivityNotFoundException) {
+                // error-policy:J1 The app may disappear between resolution and launch.
+                call.reject("No app on this device opens this link", "EXTERNAL_APP_UNAVAILABLE", error)
+            } catch (error: SecurityException) {
+                // error-policy:J1 Never broaden permissions to reach another app.
+                call.reject("Android prevented opening this link", "EXTERNAL_LINK_DENIED", error)
+            }
+        }
+    }
+
+    /**
+     * The host extended (or narrowed) its running task to these exact HTTPS origins after its own
+     * safety check. An intercepting page may then move between them without a held navigation.
+     * An empty list ends the extension; nothing is ever added without this call.
+     */
+    @PluginMethod
+    fun setTaskOrigins(call: PluginCall) {
+        val id = call.getString("id")
+        val list = call.getArray("origins")
+        val origins = ArrayList<String>()
+        for (index in 0 until (list?.length() ?: 0)) {
+            val origin = list?.opt(index) as? String
+            if (origin == null || index >= 16) {
+                call.reject("setTaskOrigins requires at most 16 HTTPS origins", "INVALID_REQUEST")
+                return
+            }
+            origins.add(origin)
+        }
+        if (id == null || list == null) {
+            call.reject("setTaskOrigins requires an id and origins", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "setTaskOrigins") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "setTaskOrigins") ?: return@runOnUiThread
+            if (!surface.interceptNavigation) {
+                call.reject("setTaskOrigins requires a surface created with interceptNavigation", "UNSUPPORTED")
+                return@runOnUiThread
+            }
+            if (!surface.gate.setTaskOrigins(origins)) {
+                call.reject("setTaskOrigins accepts exact HTTPS origins only", "INVALID_REQUEST")
+                return@runOnUiThread
+            }
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun setTextZoom(call: PluginCall) {
+        val id = call.getString("id")
+        val percent = call.getInt("percent")
+        if (id == null || percent == null || !BrowserPageHandoffs.validTextZoom(percent)) {
+            call.reject("setTextZoom requires an id and a percent from 50 to 300", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "setTextZoom") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "setTextZoom") ?: return@runOnUiThread
+            surface.webView.settings.textZoom = percent
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun goForward(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("goForward requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "goForward") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "goForward") ?: return@runOnUiThread
+            if (surface.webView.canGoForward()) {
+                surface.historyObservation = null
+                approveHistoryStep(surface, 1)
+                surface.webView.goForward()
+            }
+            call.resolve()
+        }
+    }
+
+    /** A history move the host asked for may reload its entry from the network. */
+    private fun approveHistoryStep(surface: Surface, step: Int) {
+        val history = surface.webView.copyBackForwardList()
+        history.getItemAtIndex(history.currentIndex + step)?.url?.let(surface.gate::approve)
+    }
+
+    @PluginMethod
+    fun clearSurfaceStorage(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("clearSurfaceStorage requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "clearSurfaceStorage") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "clearSurfaceStorage") ?: return@runOnUiThread
+            val name = surface.profileName ?: run {
+                // Shared storage is the host's own store; clearing it here would sign the host out.
+                call.reject("Only isolated storage can be cleared here", "SHARED_STORAGE")
+                return@runOnUiThread
+            }
+            surface.webView.clearCache(true)
+            clearProfileData(name) { call.resolve() }
+        }
+    }
+
+    /**
+     * Purges profiles: one key at once (sign-out), every keyed profile idle for at least
+     * `idleMs` that no open surface uses, or (`all: true`) every keyed and ephemeral profile of
+     * any owner. Surfaces on a purged profile close first. `all` resolves after the cookies are
+     * removed, with `clean` true when no purged profile still holds a cookie.
+     */
+    @PluginMethod
+    fun purgeProfiles(call: PluginCall) {
+        val key = call.getString("profileKey")
+        val idle = (call.data.opt("idleMs") as? Number)?.toDouble()
+        val all = call.data.opt("all") == true
+        if (listOf(key != null, idle != null, all).count { it } != 1 ||
+            (key != null && !BrowserProfilePolicy.validKey(key)) ||
+            (idle != null && (!idle.isFinite() || !BrowserProfilePolicy.validIdle(idle.toLong())))) {
+            call.reject("purgeProfiles requires one of a profileKey, an idleMs of at least one hour, or all: true", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "purgeProfiles") ?: return@runOnUiThread
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                call.resolve(JSObject().apply { put("purged", 0); if (all) put("clean", true) })
+                return@runOnUiThread
+            }
+            var purged = 0
+            if (all) {
+                val names = BrowserProfilePolicy.surfaceProfiles(ProfileStore.getInstance().allProfileNames)
+                names.forEach(::closeProfileSurfaces)
+                if (names.isEmpty()) {
+                    call.resolve(JSObject().apply { put("purged", 0); put("clean", true) })
+                    return@runOnUiThread
+                }
+                var pending = names.size
+                var clean = true
+                val cleared: (Boolean) -> Unit = { empty ->
+                    clean = clean && empty
+                    pending -= 1
+                    if (pending == 0) call.resolve(JSObject().apply { put("purged", names.size); put("clean", clean) })
+                }
+                for (name in names) {
+                    if (BrowserProfilePolicy.keyed(name)) purgeKeyedProfile(name, cleared) else retireProfile(name, cleared)
+                }
+                return@runOnUiThread
+            }
+            if (key != null) {
+                val name = keyedProfileName(identity.owner, key)
+                closeProfileSurfaces(name)
+                if (ProfileStore.getInstance().allProfileNames.contains(name)) {
+                    purgeKeyedProfile(name)
+                    purged = 1
+                }
+            } else {
+                val now = System.currentTimeMillis()
+                for (name in ProfileStore.getInstance().allProfileNames) {
+                    if (!BrowserProfilePolicy.keyed(name) || surfaces.values.any { it.profileName == name }) continue
+                    val used = if (profilePrefs.contains("used:$name")) profilePrefs.getLong("used:$name", 0) else null
+                    if (!BrowserProfilePolicy.expired(used, now, idle!!.toLong())) continue
+                    purgeKeyedProfile(name)
+                    purged += 1
+                }
+            }
+            call.resolve(JSObject().apply { put("purged", purged) })
+        }
+    }
+
+    /**
+     * A masked JPEG of the visible page for a vision fallback. Secret fields and unreadable
+     * frames are covered before the pixels are copied and uncovered right after; host chrome
+     * showing through the page is painted over. Any doubt rejects; nothing unmasked is returned.
+     */
+    @PluginMethod
+    fun captureSurface(call: PluginCall) {
+        val id = call.getString("id") ?: run {
+            call.reject("captureSurface requires an id")
+            return
+        }
+        val maxEdge = call.getInt("maxEdge", BrowserCapturePolicy.DEFAULT_MAX_EDGE) ?: BrowserCapturePolicy.DEFAULT_MAX_EDGE
+        val quality = call.getInt("quality", BrowserCapturePolicy.DEFAULT_QUALITY) ?: BrowserCapturePolicy.DEFAULT_QUALITY
+        val rawSelectors = call.getArray("maskSelectors")
+        val selectors = org.json.JSONArray()
+        for (index in 0 until (rawSelectors?.length() ?: 0)) {
+            val selector = rawSelectors?.opt(index) as? String
+            if (selector.isNullOrBlank() || selector.length > 512 || index >= 32) {
+                call.reject("captureSurface maskSelectors must be up to 32 CSS selectors", "INVALID_REQUEST")
+                return
+            }
+            selectors.put(selector)
+        }
+        if (!BrowserCapturePolicy.validMaxEdge(maxEdge) || !BrowserCapturePolicy.validQuality(quality)) {
+            call.reject("captureSurface maxEdge must be 256 to 2048 and quality 30 to 90", "INVALID_REQUEST")
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.VISUAL_STATE_CALLBACK)) {
+            call.reject("This device cannot capture a masked page", "UNSUPPORTED")
+            return
+        }
+        val maskFrames = call.getBoolean("maskFrames", true) ?: true
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "captureSurface") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "captureSurface") ?: return@runOnUiThread
+            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !surface.foregrounded ||
+                surface.paused || surface.webView.progress < 100 || surface.pageError != null ||
+                surface.container.width <= 0 || surface.container.height <= 0) {
+                call.reject(surface.pageError ?: "The native page is hidden or still loading", "CAPTURE_UNAVAILABLE")
+                return@runOnUiThread
+            }
+            val webView = surface.webView
+            val revision = surface.pageRevision
+            val url = webView.url
+            val token = UUID.randomUUID().toString()
+            val unchanged = {
+                isLive(surface) && surfaces[id] === surface && surface.foregrounded && !surface.paused &&
+                    surface.pageRevision == revision && webView.url == url
+            }
+            var settled = false
+            var masked: JSONObject? = null
+            val restore = {
+                val command = JSONObject().put("action", "restore").put("token", token)
+                if (!surface.disposed) webView.evaluateJavascript("($captureMask)($command)", null)
+            }
+            lateinit var timeout: Runnable
+            val fail = { message: String, code: String ->
+                if (!settled) {
+                    settled = true
+                    webView.removeCallbacks(timeout)
+                    restore()
+                    call.reject(message, code)
+                }
+            }
+            timeout = Runnable { fail("The page capture timed out", "CAPTURE_TIMEOUT") }
+            webView.postDelayed(timeout, 5000)
+            /** Masks, scales and returns a copied page; [bitmap] is the container's size. */
+            val finish = finish@{ bitmap: Bitmap ->
+                if (!unchanged()) {
+                    bitmap.recycle()
+                    return@finish fail("The page changed while capturing; capture again", "CAPTURE_STALE")
+                }
+                val width = bitmap.width
+                val height = bitmap.height
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) surface.container.maskHostRegions(Canvas(bitmap))
+                val (scaledWidth, scaledHeight) = BrowserCapturePolicy.scaled(width, height, maxEdge).let { it[0] to it[1] }
+                val image = if (scaledWidth == width) bitmap else Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
+                val bytes = java.io.ByteArrayOutputStream()
+                image.compress(Bitmap.CompressFormat.JPEG, quality, bytes)
+                if (image !== bitmap) image.recycle()
+                bitmap.recycle()
+                settled = true
+                webView.removeCallbacks(timeout)
+                call.resolve(JSObject().apply {
+                    put("mimeType", "image/jpeg")
+                    put("data", Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                    put("width", scaledWidth)
+                    put("height", scaledHeight)
+                    put("maskedFields", masked?.optInt("fields") ?: 0)
+                    put("maskedFrames", masked?.optInt("frames") ?: 0)
+                    put("url", url ?: JSObject.NULL)
+                })
+            }
+            val copy = copy@{
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@copy
+                if (surface.layer == SurfaceLayer.BELOW_HOST) {
+                    // The host draws over a below-host page, so a window copy would include
+                    // host pixels (a shadow, a toast, a fading tab); draw the page alone.
+                    val page = try {
+                        drawPageForCapture(surface.container)
+                    } catch (error: RuntimeException) {
+                        restore()
+                        return@copy fail("The page could not be captured", "CAPTURE_FAILED")
+                    }
+                    restore()
+                    return@copy finish(page)
+                }
+                val origin = IntArray(2)
+                surface.container.getLocationInWindow(origin)
+                val width = surface.container.width
+                val height = surface.container.height
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                PixelCopy.request(activity.window, Rect(origin[0], origin[1], origin[0] + width, origin[1] + height), bitmap, { status ->
+                    // Uncover the page as soon as its pixels are copied.
+                    restore()
+                    if (settled) return@request
+                    if (status != PixelCopy.SUCCESS) return@request fail("The page could not be captured", "CAPTURE_FAILED")
+                    finish(bitmap)
+                }, mainHandler)
+            }
+            val command = JSONObject().put("action", "mask").put("token", token)
+                .put("selectors", selectors).put("frames", maskFrames)
+            try {
+                webView.evaluateJavascript("($captureMask)($command)") { raw ->
+                    if (settled) return@evaluateJavascript
+                    val result = try {
+                        JSONObject(raw)
+                    } catch (error: org.json.JSONException) {
+                        // error-policy:J1 No mask report means no capture.
+                        return@evaluateJavascript fail("The page could not be masked", "CAPTURE_MASK_FAILED")
+                    }
+                    if (result.has("error")) return@evaluateJavascript fail(result.optString("error"), "CAPTURE_MASK_FAILED")
+                    if (!unchanged()) return@evaluateJavascript fail("The page changed while capturing; capture again", "CAPTURE_STALE")
+                    masked = result
+                    // Copy only once the covers are on screen: the visual state callback fires
+                    // when this DOM state is ready to draw, and the copy waits one more frame.
+                    WebViewCompat.postVisualStateCallback(webView, revision) {
+                        if (settled) return@postVisualStateCallback
+                        if (!unchanged()) return@postVisualStateCallback fail("The page changed while capturing; capture again", "CAPTURE_STALE")
+                        webView.postOnAnimation { if (!settled) copy() }
+                    }
+                }
+            } catch (error: RuntimeException) {
+                fail("The page could not be masked", "CAPTURE_MASK_FAILED")
+            }
         }
     }
 
@@ -782,6 +1842,37 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun controlPage(call: PluginCall) {
+        val id = call.getString("id")
+        val command = call.getObject("command")
+        if (id == null || command == null || command.optString("subaction") !in setOf("snapshot", "click", "fill", "select", "scroll", "follow", "guide")) {
+            call.reject("controlPage requires a surface and a fixed page command", "INVALID_REQUEST")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, "controlPage") ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, "controlPage") ?: return@runOnUiThread
+            val control = surface.control ?: run {
+                call.reject("This WebView provider does not support isolated page control", "UNSUPPORTED")
+                return@runOnUiThread
+            }
+            val revision = surface.pageRevision
+            val url = surface.webView.url
+            // Removing host annotations remains possible after Home or Pause.
+            // This exception never admits page reads, input or new guidance.
+            val cleanup = command.optString("subaction") == "guide" &&
+                command.optJSONObject("guidance")?.optString("kind") in setOf("hide", "pause")
+            control.execute(call, command, call.getString("documentId")) {
+                activeOwners.isActive(identity) && surfaces[id] === surface && !surface.disposed &&
+                    (cleanup || (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                    surface.foregrounded && !surface.paused && surface.webView.progress == 100 &&
+                    surface.pageError == null)) &&
+                    surface.pageRevision == revision && surface.webView.url == url
+            }
+        }
+    }
+
+    @PluginMethod
     fun presentSurface(call: PluginCall) {
         val id = call.getString("id")
         activity.runOnUiThread {
@@ -793,14 +1884,64 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             }
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
+                    if (surface !== selected) {
+                        surface.control?.interrupt("The native page was hidden")
+                        dismissDialogs(surface)
+                        surface.historyObservation = null
+                    }
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
             }
             selected?.let { surface ->
-                surface.container.bringToFront()
+                (surface.container.parent as? ViewGroup)?.let { host ->
+                    raiseSurface(host, surface.container, hostBranch(host, bridge.webView), ::ensureInputRouter)
+                }
                 surface.container.visibility = View.VISIBLE
                 surface.foregrounded = true
+            }
+            call.resolve()
+        }
+    }
+
+    /**
+     * Calls WebView.onPause() on one surface: Chromium treats the page as hidden, so it
+     * stops drawing, requestAnimationFrame and CSS animations, and throttles timers, even
+     * while the view is shown. JavaScript, history and page state stay. Visibility is
+     * unchanged: presentSurface does not resume a paused page. WebView.pauseTimers() is
+     * not used, because it is process-wide and would also freeze the host WebView.
+     */
+    @PluginMethod
+    fun pauseSurface(call: PluginCall) = setSurfacePaused(call, true)
+
+    /** Calls WebView.onResume() on a surface that pauseSurface paused. */
+    @PluginMethod
+    fun resumeSurface(call: PluginCall) = setSurfacePaused(call, false)
+
+    private fun setSurfacePaused(call: PluginCall, paused: Boolean) {
+        val operation = if (paused) "pauseSurface" else "resumeSurface"
+        val id = call.getString("id") ?: run {
+            call.reject("$operation requires an id")
+            return
+        }
+        activity.runOnUiThread {
+            val identity = requireActiveIdentity(call, operation) ?: return@runOnUiThread
+            val surface = ownedSurface(call, id, identity, operation) ?: return@runOnUiThread
+            if (surface.paused != paused) {
+                surface.paused = paused
+                if (paused) {
+                    surface.historyObservation = null
+                    surface.control?.interrupt("The native page was paused")
+                    dismissDialogs(surface)
+                    if (surface.webView.hasFocus()) {
+                        activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                            ?.hideSoftInputFromWindow(surface.webView.windowToken, 0)
+                    }
+                    surface.webView.clearFocus()
+                    surface.webView.onPause()
+                } else {
+                    surface.webView.onResume()
+                }
             }
             call.resolve()
         }
@@ -855,23 +1996,23 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             ) {
                 result.put("exists", false)
                 result.put("foregrounded", false)
+                result.put("paused", false)
                 result.put("currentUrl", JSObject.NULL)
                 result.put("process", JSObject.NULL)
                 result.put("storage", JSObject.NULL)
                 result.put("owner", JSObject.NULL)
                 result.put("session", JSObject.NULL)
                 result.put("epoch", JSObject.NULL)
+                result.put("title", JSObject.NULL)
+                result.put("canGoBack", false)
+                result.put("canGoForward", false)
+                result.put("progress", 0)
+                result.put("pageError", JSObject.NULL)
+                result.put("textZoom", JSObject.NULL)
+                call.resolve(result)
             } else {
-                result.put("exists", true)
-                result.put("foregrounded", surface.foregrounded)
-                result.put("currentUrl", surface.webView.url ?: JSObject.NULL)
-                result.put("process", surface.process)
-                result.put("storage", surface.storage)
-                result.put("owner", surface.owner)
-                result.put("session", surface.session)
-                result.put("epoch", surface.epoch)
+                call.resolve(surfaceState(id, surface))
             }
-            call.resolve(result)
         }
     }
 
@@ -922,6 +2063,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             // cannot remain visible or interactive after its realm is retired.
             for (surface in surfaces.values) {
                 if (surface.owner == owner) {
+                    surface.historyObservation = null
+                    surface.control?.interrupt("The native owner was reconciled")
                     surface.container.visibility = View.GONE
                     surface.foregrounded = false
                 }
@@ -952,12 +2095,19 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("id", id)
         put("exists", true)
         put("foregrounded", surface.foregrounded)
+        put("paused", surface.paused)
         put("currentUrl", surface.webView.url ?: JSObject.NULL)
         put("process", surface.process)
         put("storage", surface.storage)
         put("owner", surface.owner)
         put("session", surface.session)
         put("epoch", surface.epoch)
+        put("title", surface.webView.title?.let(BrowserPageHandoffs::text) ?: JSObject.NULL)
+        put("canGoBack", surface.webView.canGoBack())
+        put("canGoForward", surface.webView.canGoForward())
+        put("progress", surface.webView.progress)
+        put("pageError", surface.pageError ?: JSObject.NULL)
+        put("textZoom", surface.webView.settings.textZoom)
     }
 
     private fun HostOuterClip.hasValidGeometry(): Boolean =
@@ -966,6 +2116,21 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             bottomRightRadius.isFinite() && bottomLeftRadius.isFinite() &&
             width >= 0.0 && height >= 0.0 && topLeftRadius >= 0.0 &&
             topRightRadius >= 0.0 && bottomRightRadius >= 0.0 && bottomLeftRadius >= 0.0
+
+    /** The below-host input router, made on first use. */
+    private fun ensureInputRouter(): BelowHostInputRouter = inputRouter ?: BelowHostInputRouter(activity) {
+        surfaces.values.filter { takesPageInput(it.layer, it.foregrounded, it.paused, it.disposed) }.map { it.container }
+    }.also { inputRouter = it }
+
+    /** Keeps the below-host input router directly above the host WebView's branch. */
+    private fun placeInputRouter(host: ViewGroup, branch: View) = placeRouter(host, branch, ensureInputRouter())
+
+    /** Removes the input router once no below-host surface is left. */
+    private fun releaseUnusedRouter() {
+        if (surfaces.values.any { it.layer == SurfaceLayer.BELOW_HOST && !it.disposed }) return
+        inputRouter?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        inputRouter = null
+    }
 
     private fun applyGeometry(surface: Surface, density: Float) {
         surface.container.setOuterClip(
@@ -1101,8 +2266,16 @@ internal data class RoundedOcclusionRect(
  * chrome while keeping the page full-size and live. Returning false outside
  * that outer clip or inside an occlusion lets the parent continue hit-testing
  * the Capacitor host WebView underneath.
+ *
+ * In the `below-host` layer the host draws over the page, so the page is clipped
+ * only to its outer clip's rectangle: no rounded clip and no holes, which a
+ * WebView's draw functor would apply aliased. Occlusions are then host-owned
+ * rects for input and capture masking only.
  */
-internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
+internal class OccludingSurfaceLayout(
+    context: Context,
+    val layer: SurfaceLayer = SurfaceLayer.ABOVE_HOST,
+) : FrameLayout(context) {
     private var outerClip: RoundedOuterClip? = null
     private var occlusions: List<RoundedOcclusionRect> = emptyList()
     private val clipPath = Path()
@@ -1119,7 +2292,25 @@ internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
         invalidate()
     }
 
+    /**
+     * Set once the host has sent its rects with setOcclusionRects. Until then a below-host
+     * page takes no input, so chrome the host draws first cannot pass a tap to the website.
+     */
+    var hostRectsReceived = false
+
+    /** Whether a point in this layout's pixels is the website's, not host chrome's. */
+    fun pageOwns(x: Float, y: Float): Boolean =
+        hostRectsReceived && pageOwnsPoint(x, y, width, height, outerClip, occlusions)
+
     override fun dispatchDraw(canvas: Canvas) {
+        if (layer == SurfaceLayer.BELOW_HOST) {
+            val clip = outerClip ?: return super.dispatchDraw(canvas)
+            val saveCount = canvas.save()
+            canvas.clipRect(clip.left, clip.top, clip.right, clip.bottom)
+            super.dispatchDraw(canvas)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         if (outerClip == null && occlusions.isEmpty()) {
             super.dispatchDraw(canvas)
             return
@@ -1151,6 +2342,28 @@ internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
         }
         super.dispatchDraw(canvas)
         canvas.restoreToCount(saveCount)
+    }
+
+    /**
+     * Paints over everything a capture of this layout's window rectangle shows that is not the
+     * page: the area outside the rounded outer clip and every occlusion, where host chrome shows.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+    fun maskHostRegions(canvas: Canvas) {
+        val paint = Paint().apply { color = 0xFF5F6368.toInt() }
+        outerClip?.let { clip ->
+            val saveCount = canvas.save()
+            clipPath.reset()
+            clipPath.addRoundRect(RectF(clip.left, clip.top, clip.right, clip.bottom), clip.pathRadii(), Path.Direction.CW)
+            canvas.clipOutPath(clipPath)
+            canvas.drawPaint(paint)
+            canvas.restoreToCount(saveCount)
+        }
+        for (rect in occlusions) {
+            clipPath.reset()
+            clipPath.addRoundRect(RectF(rect.left, rect.top, rect.right, rect.bottom), rect.cornerRadius, rect.cornerRadius, Path.Direction.CW)
+            canvas.drawPath(clipPath, paint)
+        }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {

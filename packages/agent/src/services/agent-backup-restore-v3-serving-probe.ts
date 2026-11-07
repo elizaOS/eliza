@@ -6,14 +6,16 @@
 
 import { Buffer } from "node:buffer";
 import net from "node:net";
+import type {
+  AgentBackupRestoreV3Attestation,
+  AgentBackupRestoreV3ProbeRequest,
+} from "@elizaos/contracts/node";
 import {
   AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS,
-  type AgentBackupRestoreV3Attestation,
   AgentBackupRestoreV3AttestationSchema,
-  type AgentBackupRestoreV3ProbeRequest,
   AgentBackupRestoreV3ProbeRequestSchema,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import { servingError } from "./agent-backup-restore-v3-serving-wire";
 
 export const AGENT_BACKUP_RESTORE_V3_PROBE_TIMEOUT_MS = 10_000;

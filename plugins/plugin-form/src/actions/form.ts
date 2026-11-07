@@ -93,7 +93,11 @@ async function handleRestore(
           : 0;
       return bTime - aTime || a.id.localeCompare(b.id);
     })[0];
-    const session = await formService.restore(sessionToRestore.id, entityId);
+    const session = await formService.restore(
+      sessionToRestore.id,
+      entityId,
+      roomId,
+    );
 
     const form = formService.getForm(session.formId);
     const context = formService.getSessionContext(session);
@@ -171,12 +175,6 @@ export const formAction: Action = {
         type: "string",
         enum: [...FORM_SUBACTIONS],
       },
-    },
-    {
-      name: "sessionId",
-      description: "Optional stashed form session id to restore.",
-      required: false,
-      schema: { type: "string" },
     },
   ],
 

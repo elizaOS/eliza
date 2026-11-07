@@ -91,7 +91,7 @@ describe("room entity SQL batch", () => {
         [],
         [alice, bob].sort(),
       ]);
-      for (const [index, row] of results.entries()) {
+      for (const row of results) {
         for (const entity of row.entities) {
           expect(entity.agentId).toBe(setup.testAgentId);
           expect(entity).toEqual(expect.objectContaining({ createdAt: expect.any(Date) }));
@@ -103,7 +103,7 @@ describe("room entity SQL batch", () => {
           else if (entity.id === bob) expect(entity.components).toEqual([]);
           else
             expect(entity.components?.map((component) => component.id).sort()).toEqual(
-              (index === 0 ? componentIds : [...componentIds, ...componentIds]).sort()
+              [...componentIds].sort()
             );
         }
       }

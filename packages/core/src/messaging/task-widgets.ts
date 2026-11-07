@@ -12,30 +12,47 @@ export interface TaskChoiceWidget {
 	state: "pending" | "claimed" | "committed" | "completed";
 	block: ChoiceInteraction;
 }
+const WIDGET_FIELDS = [
+	"schemaVersion",
+	"taskId",
+	"epoch",
+	"contextKey",
+	"callbackData",
+	"expiresAt",
+	"state",
+	"block",
+];
+const WIDGET_STATES: readonly unknown[] = [
+	"pending",
+	"claimed",
+	"committed",
+	"completed",
+];
+const BLOCK_FIELDS = [
+	"kind",
+	"id",
+	"scope",
+	"prompt",
+	"options",
+	"allowCustom",
+];
+const OPTION_FIELDS = ["value", "label", "description"];
+const utf8 = new TextEncoder();
+
+function fail(): never {
+	throw new ElizaError("Invalid task choice widget", {
+		code: "TASK_CHOICE_INVALID",
+	});
+}
+
 export function validateTaskChoiceWidget(
 	value: unknown,
 ): asserts value is TaskChoiceWidget {
-	const fail = (): never => {
-		throw new ElizaError("Invalid task choice widget", {
-			code: "TASK_CHOICE_INVALID",
-		});
-	};
-	if (!value || typeof value !== "object" || Array.isArray(value))
-		return fail();
+	if (!value || typeof value !== "object" || Array.isArray(value)) fail();
 	const widget = value as TaskChoiceWidget;
-	const fields = [
-		"schemaVersion",
-		"taskId",
-		"epoch",
-		"contextKey",
-		"callbackData",
-		"expiresAt",
-		"state",
-		"block",
-	];
 	if (
-		Object.keys(value).length !== fields.length ||
-		fields.some((key) => !Object.hasOwn(value, key))
+		Object.keys(value).length !== WIDGET_FIELDS.length ||
+		WIDGET_FIELDS.some((key) => !Object.hasOwn(value, key))
 	)
 		fail();
 	if (
@@ -48,7 +65,7 @@ export function validateTaskChoiceWidget(
 		!/^[a-f0-9]{64}$/.test(widget.contextKey) ||
 		typeof widget.callbackData !== "string" ||
 		!/^is1:[a-f0-9]{32}$/.test(widget.callbackData) ||
-		!["pending", "claimed", "committed", "completed"].includes(widget.state)
+		!WIDGET_STATES.includes(widget.state)
 	)
 		fail();
 	if (
@@ -72,15 +89,7 @@ export function validateTaskChoiceWidget(
 		block.options.length > 25
 	)
 		fail();
-	if (
-		Object.keys(block).some(
-			(key) =>
-				!["kind", "id", "scope", "prompt", "options", "allowCustom"].includes(
-					key,
-				),
-		)
-	)
-		fail();
+	if (Object.keys(block).some((key) => !BLOCK_FIELDS.includes(key))) fail();
 	const seen = new Set<string>();
 	for (const option of block.options) {
 		if (
@@ -90,15 +99,48 @@ export function validateTaskChoiceWidget(
 			seen.has(option.value) ||
 			typeof option.label !== "string" ||
 			!option.label.trim() ||
-			new TextEncoder().encode(option.label).length > 80 ||
+			utf8.encode(option.label).length > 80 ||
 			(option.description !== undefined &&
 				(typeof option.description !== "string" ||
 					option.description.length > 1000)) ||
-			Object.keys(option).some(
-				(key) => !["value", "label", "description"].includes(key),
-			)
+			Object.keys(option).some((key) => !OPTION_FIELDS.includes(key))
 		)
 			fail();
 		seen.add(option.value);
 	}
+}
+
+/** Admit a reply's widgets for the task/epoch that requested it. This is a
+ * presentation boundary, not execution authority. Hosts choose the count limit. */
+export function admitTaskChoiceResponse(
+	value: unknown,
+	task: { taskId: string; epoch: number } | undefined,
+	maxWidgets: number,
+): TaskChoiceWidget[] {
+	const values = value ?? [];
+	if (
+		!Number.isSafeInteger(maxWidgets) ||
+		maxWidgets < 0 ||
+		!Array.isArray(values) ||
+		values.length > maxWidgets
+	)
+		throw new ElizaError("Invalid task choice response", {
+			code: "TASK_CHOICES_INVALID",
+		});
+	let detached: unknown[];
+	try {
+		detached = structuredClone(values);
+	} catch {
+		throw new ElizaError("Invalid task choice response", {
+			code: "TASK_CHOICES_INVALID",
+		});
+	}
+	return Array.from(detached, (widget) => {
+		validateTaskChoiceWidget(widget);
+		if (!task || widget.taskId !== task.taskId || widget.epoch !== task.epoch)
+			throw new ElizaError("Task choice response does not match its request", {
+				code: "TASK_CHOICES_MISMATCH",
+			});
+		return widget;
+	});
 }

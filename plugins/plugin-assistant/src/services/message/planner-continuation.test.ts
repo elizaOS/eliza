@@ -8,7 +8,7 @@ import {
   TaskService,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "../message.ts";

@@ -68,6 +68,7 @@ import {
   type ListConnectorAccountsParams,
   type Log,
   type LogBody,
+  type LogInventoryRow,
   logger,
   MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
   MESSAGE_CONTENT_READ_MAX_SEGMENTS,
@@ -122,7 +123,13 @@ import {
   type WorldMetadataMutationResult,
   worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject, serializeDocumentJsonb, serializeJsonb } from "./sanitize-json";
+import {
+  assertJsonbStorable,
+  isUnsupportedJsonTextError,
+  sanitizeJsonObject,
+  serializeDocumentJsonb,
+  serializeJsonb,
+} from "./sanitize-json";
 import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
@@ -439,7 +446,15 @@ function documentVisibilityCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   metadata: SQLWrapper = memoryTable.metadata
 ): SQL {
-  const validAuthorizationMetadata = validDocumentAuthorizationMetadata(metadata);
+  if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
+    return validDocumentAuthorizationMetadata(metadata);
+  }
+  // Runtime-internal bookkeeping rows are readable only by AGENT/RUNTIME,
+  // mirroring isDocumentVisibleToRequester.
+  const validAuthorizationMetadata = sql`(
+    ${validDocumentAuthorizationMetadata(metadata)}
+    AND COALESCE(${metadata}->'runtimeInternal' <> 'true'::jsonb, true)
+  )`;
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
@@ -569,6 +584,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 import { documentsFromDb } from "./agent-mapping";
+import { agentRecordedTime } from "./agent-recorded-time";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { agentTable } from "./schema/agent";
@@ -595,6 +611,19 @@ type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
+type RoomRow = Pick<
+  typeof roomTable.$inferSelect,
+  | "id"
+  | "name"
+  | "channelId"
+  | "agentId"
+  | "messageServerId"
+  | "serverId"
+  | "worldId"
+  | "type"
+  | "source"
+  | "metadata"
+>;
 
 class AtomicMemoryPublicationConflict extends Error {}
 
@@ -617,6 +646,21 @@ function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number
         : (row.metadata as MemoryMetadata),
     ...(embedding ? { embedding } : {}),
     ...(similarity !== undefined ? { similarity } : {}),
+  };
+}
+
+function roomFromRow(room: RoomRow): Room {
+  return {
+    ...room,
+    id: room.id as UUID,
+    name: room.name ?? undefined,
+    agentId: room.agentId as UUID,
+    messageServerId: room.messageServerId as UUID,
+    serverId: room.serverId ?? undefined,
+    worldId: room.worldId as UUID,
+    channelId: room.channelId as UUID,
+    type: room.type as ChannelType,
+    metadata: room.metadata as Metadata,
   };
 }
 
@@ -1326,26 +1370,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           const persistedAgent = transformAgentSettings(agent, encryptedCharacter);
           const agentData = {
             ...persistedAgent,
-            createdAt: new Date(
-              typeof agent.createdAt === "bigint"
-                ? Number(agent.createdAt)
-                : agent.createdAt || Date.now()
-            ),
-            updatedAt: new Date(
-              typeof agent.updatedAt === "bigint"
-                ? Number(agent.updatedAt)
-                : agent.updatedAt || Date.now()
-            ),
+            createdAt: new Date(agentRecordedTime(agent.createdAt, Date.now())),
+            updatedAt: new Date(agentRecordedTime(agent.updatedAt, Date.now())),
           };
           const sanitizedAgentData = Object.fromEntries(
             Object.entries(agentData).filter(([, value]) => value !== undefined)
           ) as typeof agentTable.$inferInsert;
+          // Every agent column here is jsonb; reject unsupported text before the bind.
+          assertJsonbStorable(sanitizedAgentData);
 
           await tx.insert(agentTable).values(sanitizedAgentData);
         });
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J3 untrusted-input sanitizing — a duplicate id is the
         // typed "already exists" outcome (false), distinct from a write failure.
         if (isDuplicateKeyError(error)) {
@@ -1421,11 +1462,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             updateData.updatedAt = new Date(); // Always set updatedAt to current time
           }
 
+          assertJsonbStorable(updateData);
           await tx.update(agentTable).set(updateData).where(eq(agentTable.id, agentId));
         });
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a failed update must not be
         // indistinguishable from a legitimate no-op; surface the failure.
         throw new ElizaError("updateAgent failed", {
@@ -1653,14 +1698,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(participantTable)
         .leftJoin(
           entityTable,
-          and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
+          and(
+            eq(participantTable.entityId, entityTable.id),
+            eq(participantTable.agentId, this.agentId),
+            eq(entityTable.agentId, this.agentId)
+          )
         );
 
       if (includeComponents) {
         query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
       }
 
-      const result = await query.where(eq(participantTable.roomId, roomId));
+      const result = await query.where(
+        and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
+      );
 
       // Group components by entity if includeComponents is true
       const entitiesByIdMap = new Map<UUID, Entity>();
@@ -1718,6 +1769,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           metadata: metadata || {},
         };
       });
+      // `names` is a text[] column bound separately by the driver; only the
+      // jsonb metadata carries the jsonb admissibility contract.
+      for (const entity of normalizedEntities) assertJsonbStorable(entity.metadata);
 
       try {
         // ON CONFLICT DO NOTHING keeps the create idempotent per row: rows
@@ -1744,6 +1798,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return normalizedEntities.map((entity) => entity.id as UUID);
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a failed batch insert must
         // not read as "created zero entities" (an empty return is a valid
         // success for an empty input); surface the write failure.
@@ -1789,12 +1846,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
     return this.withDatabase(async () => {
       // Normalize entity data to ensure names is a proper array
+      const { agentId: _ownerAgentId, ...fields } = entity;
       const normalizedEntity = {
-        ...entity,
-        agentId: this.agentId,
+        ...fields,
         names: this.normalizeEntityNames(entity.names),
         metadata: entity.metadata || {},
       };
+      assertJsonbStorable(normalizedEntity.metadata);
 
       await this.db
         .update(entityTable)
@@ -1886,6 +1944,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .select()
           .from(entityTable)
           .where(eq(entityTable.agentId, agentId))
+          // A bounded page needs a total order: without one Postgres returns
+          // rows in physical order, which an UPDATE rewrites, so "the first
+          // `limit` entities" changes between identical calls. Same order as
+          // queryEntities.
+          .orderBy(asc(entityTable.createdAt), asc(entityTable.id))
           .limit(limit);
 
         return result.map((row: Record<string, unknown>) => ({
@@ -1910,8 +1973,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
-          WHERE LOWER(name) LIKE LOWER(${`%${query}%`})
+          WHERE name ILIKE ${`%${escapeIlikeLiteral(query)}%`} ESCAPE '\\'
         )
+        ORDER BY
+          -- IDatabaseAdapter contract: exact (case-insensitive) matches first,
+          -- then a total order so the LIMIT keeps the same rows on every call.
+          EXISTS (
+            SELECT 1 FROM unnest(${entityTable.names}) AS name
+            WHERE LOWER(name) = LOWER(${query})
+          ) DESC,
+          ${entityTable.createdAt} ASC,
+          ${entityTable.id} ASC
         LIMIT ${limit}
       `;
 
@@ -2025,9 +2097,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async createComponent(component: Component): Promise<boolean> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(component.data);
       await this.db.insert(componentTable).values({
         ...component,
-        createdAt: new Date(),
+        createdAt: component.createdAt !== undefined ? new Date(component.createdAt) : new Date(),
       });
       return true;
     });
@@ -2043,6 +2116,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       try {
         // Convert createdAt from number to Date for database compatibility
         const { createdAt, ...rest } = component;
+        assertJsonbStorable(rest.data);
         await this.db
           .update(componentTable)
           .set({
@@ -2051,6 +2125,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           })
           .where(eq(componentTable.id, component.id));
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — a swallowed update left the
         // component silently stale; surface the write failure instead.
         throw new ElizaError("updateComponent failed", {
@@ -2123,6 +2200,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return { status: "created", parent: params.parent, removedSegmentIds: [] };
       }
 
+      // The parent gets the strict serializer the create path applies through
+      // insertMemoryInTransaction, before any segment row changes.
+      const replacementContent = serializeJsonb(params.replacementContent, { memoryContent: true });
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2220,7 +2300,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       const updated = await tx
         .update(memoryTable)
-        .set({ content: params.replacementContent })
+        .set({ content: sql`${replacementContent}::jsonb` })
         .where(eq(memoryTable.id, params.messageId))
         .returning();
       if (updated.length !== 1) {
@@ -2272,7 +2352,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(
           and(
             eq(participantTable.roomId, params.authorizedRoomId),
-            eq(participantTable.entityId, params.accessContext.requesterEntityId)
+            eq(participantTable.entityId, params.accessContext.requesterEntityId),
+            eq(participantTable.agentId, params.agentId)
           )
         )
         .limit(1);
@@ -3357,6 +3438,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const textContains = params.textContains?.trim();
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    // `0` is an explicit empty page. A truthy check skipped LIMIT and returned
+    // every matching row.
     const effectiveLimit = params.limit ?? params.count;
     // Default newest-first; `orderDirection: "asc"` powers around-message paging
     // (load the messages immediately *after* an anchor, not the newest tail).
@@ -3379,7 +3462,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
-      if (tableName === "document_fragments") {
+      if (
+        tableName === "document_fragments" &&
+        params.metadata?.fragmentRole !== "source-segment"
+      ) {
         conditions.push(
           sql`COALESCE(${memoryTable.metadata}->>'fragmentRole', 'embedding-chunk') <> 'source-segment'`
         );
@@ -3527,9 +3613,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // meant any caller passing only `limit` got NO limit clause and the
           // whole table back (e.g. evaluator recent-message fetches returning
           // thousands of rows instead of 10).
-          if (effectiveLimit && offset !== undefined && offset > 0) {
+          if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
             return baseQuery.limit(effectiveLimit).offset(offset);
-          } else if (effectiveLimit) {
+          } else if (effectiveLimit !== undefined) {
             return baseQuery.limit(effectiveLimit);
           } else if (offset !== undefined && offset > 0) {
             return baseQuery.offset(offset);
@@ -3549,9 +3635,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(...order);
       const rows = await (async () => {
-        if (effectiveLimit && offset !== undefined && offset > 0) {
+        if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
-        } else if (effectiveLimit) {
+        } else if (effectiveLimit !== undefined) {
           return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
@@ -4016,11 +4102,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         // string exceeds levenshtein's 255-char ceiling, so no fuzzy cache
         // match can exist for it: an empty result is the correct typed answer,
         // not a masked failure. Every other error is a real fault → rethrow.
-        if (
-          error instanceof Error &&
-          error.message === "levenshtein argument exceeds maximum length of 255 characters"
-        ) {
-          return [];
+        // Drizzle wraps the database error in Error.cause.
+        const seen = new Set<Error>();
+        let current = error;
+        while (current instanceof Error && !seen.has(current)) {
+          seen.add(current);
+          if (current.message === "levenshtein argument exceeds maximum length of 255 characters") {
+            return [];
+          }
+          current = current.cause;
         }
         throw new ElizaError("getCachedEmbeddings failed", {
           code: "DB_QUERY_FAILED",
@@ -4043,7 +4133,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {string} params.type - The type of the event to log.
    * @returns {Promise<void>} A Promise that resolves when the event is logged.
    */
-  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
+  async log(params: {
+    body: LogBody;
+    entityId: UUID;
+    roomId: UUID;
+    type: string;
+    createdAt?: Date;
+  }): Promise<void> {
     return this.withDatabase(async () => {
       try {
         // Sanitize JSON body to prevent Unicode escape sequence errors
@@ -4061,6 +4157,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             entityId: params.entityId,
             roomId: params.roomId,
             type: params.type,
+            ...(params.createdAt ? { createdAt: params.createdAt } : {}),
           });
         });
       } catch (error) {
@@ -4109,23 +4206,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     // entityId is both the RLS principal and a WHERE filter: PGlite and any
     // Postgres without ENABLE_DATA_ISOLATION apply no row policy, so the
-    // predicate is the only thing keeping other entities' logs out.
+    // predicate is the only thing keeping other entities' logs out. The logs
+    // table carries no agent column, so agents sharing one database are
+    // separated through the owning room, as in getAgentRunSummaries.
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const result = await tx
-        .select()
+        .select({ log: logTable })
         .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
         .where(
           and(
+            eq(roomTable.agentId, this.agentId),
             entityId ? eq(logTable.entityId, entityId) : undefined,
             roomId ? eq(logTable.roomId, roomId) : undefined,
             type ? eq(logTable.type, type) : undefined
           )
         )
-        .orderBy(desc(logTable.createdAt))
+        .orderBy(desc(logTable.createdAt), desc(logTable.id))
         .limit(effectiveLimit)
         .offset(offset ?? 0);
 
-      const logs = result.map((log) => ({
+      const logs = result.map(({ log }) => ({
         ...log,
         id: log.id as UUID,
         entityId: log.entityId as UUID,
@@ -4138,6 +4239,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (logs.length === 0) return [];
 
       return logs;
+    });
+  }
+
+  async getLogInventory(params: { excludeTypes?: readonly string[] }): Promise<LogInventoryRow[]> {
+    const excludeTypes = params.excludeTypes ?? [];
+    // Same rows and order as getLogs, without the body column.
+    return this.withEntityContext(null, async (tx) => {
+      const rows = await tx
+        .select({ id: logTable.id, roomId: logTable.roomId, createdAt: logTable.createdAt })
+        .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+        .where(
+          and(
+            eq(roomTable.agentId, this.agentId),
+            excludeTypes.length > 0 ? notInArray(logTable.type, [...excludeTypes]) : undefined
+          )
+        )
+        .orderBy(desc(logTable.createdAt), desc(logTable.id));
+      return rows.map((row) => ({
+        id: row.id as UUID,
+        roomId: row.roomId as UUID,
+        createdAt: new Date(row.createdAt as string | number | Date),
+      }));
     });
   }
 
@@ -4410,9 +4534,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<void>} A Promise that resolves when the log is deleted.
    */
   async deleteLog(logId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      await this.db.delete(logTable).where(eq(logTable.id, logId));
-    });
+    return this.deleteLogs([logId]);
   }
 
   /**
@@ -5005,7 +5127,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       .where(
         and(
           eq(memoryTable.agentId, this.agentId),
-          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`
+          or(
+            sql`${memoryTable.metadata}->>'documentId' = ${documentId}`,
+            and(
+              eq(memoryTable.type, "message_content_segments"),
+              sql`${memoryTable.metadata}->>'messageId' = ${documentId}`
+            )
+          )
         )
       );
 
@@ -5144,6 +5272,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
           messageServerId: roomTable.messageServerId,
+          serverId: roomTable.serverId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
@@ -5152,19 +5281,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(roomTable)
         .where(and(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId)));
 
-      // Map the result to properly typed Room objects
-      const rooms = result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID, // Backward compatibility alias
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      const rooms = result.map(roomFromRow);
 
       return rooms;
     });
@@ -5177,19 +5294,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
-      const rooms = result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID, // Backward compatibility alias
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      const result = await this.db
+        .select()
+        .from(roomTable)
+        .where(and(eq(roomTable.worldId, worldId), eq(roomTable.agentId, this.agentId)));
+      const rooms = result.map(roomFromRow);
       return rooms;
     });
   }
@@ -5201,10 +5310,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async updateRoom(room: Room): Promise<void> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(room.metadata);
       await this.db
         .update(roomTable)
         .set({ ...room, agentId: this.agentId })
-        .where(eq(roomTable.id, room.id));
+        .where(and(eq(roomTable.id, room.id), eq(roomTable.agentId, this.agentId)));
     });
   }
 
@@ -5220,6 +5330,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         agentId: this.agentId,
         id: room.id || v4(), // ensure each room has a unique ID
       }));
+      for (const room of roomsWithIds) assertJsonbStorable(room.metadata);
 
       const insertedRooms = await this.db
         .insert(roomTable)
@@ -5240,7 +5351,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (!roomId) throw new Error("Room ID is required");
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        await tx.delete(roomTable).where(eq(roomTable.id, roomId));
+        await tx
+          .delete(roomTable)
+          .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)));
       });
     });
   }
@@ -5256,7 +5369,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ roomId: participantTable.roomId })
         .from(participantTable)
         .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-        .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)));
+        .where(
+          and(
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.agentId, this.agentId),
+            eq(roomTable.agentId, this.agentId)
+          )
+        );
 
       return result.map((row) => row.roomId as UUID);
     });
@@ -5275,7 +5394,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .selectDistinct({ roomId: participantTable.roomId })
           .from(participantTable)
           .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-          .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)))
+          .where(
+            and(
+              eq(participantTable.entityId, entityId),
+              eq(participantTable.agentId, this.agentId),
+              eq(roomTable.agentId, this.agentId)
+            )
+          )
       );
       for (const row of result) roomIds.add(row.roomId as UUID);
     }
@@ -5376,7 +5501,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           return await tx
             .delete(participantTable)
             .where(
-              and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
+              and(
+                eq(participantTable.entityId, entityId),
+                eq(participantTable.roomId, roomId),
+                eq(participantTable.agentId, this.agentId)
+              )
             )
             .returning();
         });
@@ -5409,7 +5538,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           roomId: participantTable.roomId,
         })
         .from(participantTable)
-        .where(eq(participantTable.entityId, entityId));
+        .where(
+          and(eq(participantTable.entityId, entityId), eq(participantTable.agentId, this.agentId))
+        );
 
       const entities = await this.getEntitiesByIds([entityId]);
 
@@ -5434,7 +5565,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select({ entityId: participantTable.entityId })
         .from(participantTable)
-        .where(eq(participantTable.roomId, roomId));
+        .where(
+          and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
+        );
 
       return result.map((row) => row.entityId as UUID);
     });
@@ -5452,7 +5585,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(participantTable)
-        .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
+        .where(
+          and(
+            eq(participantTable.roomId, roomId),
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.agentId, this.agentId)
+          )
+        )
         .limit(1);
 
       return result.length > 0;
@@ -5560,6 +5699,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         tags: params.tags || [],
         metadata: params.metadata || {},
       };
+      // Metadata is bound as jsonb directly and embedded again inside the
+      // evidence SQL via JSON.stringify({ tags, metadata }) (see
+      // independentRelationshipEvidence), so both fields need the check.
+      assertJsonbStorable({ tags: saveParams.tags, metadata: saveParams.metadata });
       try {
         const inserted = await this.db
           .insert(relationshipTable)
@@ -5583,6 +5726,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .returning();
         return inserted.length > 0;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — false is the typed "already
         // existed (onConflictDoNothing)" signal; an insert failure must not
         // collapse into it.
@@ -5608,6 +5754,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updateRelationship(relationship: Relationship): Promise<void> {
     return this.withDatabase(async () => {
       try {
+        assertJsonbStorable({
+          tags: relationship.tags || [],
+          metadata: relationship.metadata || {},
+        });
         await this.db
           .update(relationshipTable)
           .set({
@@ -5625,6 +5775,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           );
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — attach relationship context.
         throw new ElizaError("updateRelationship failed", {
           code: "DB_UPDATE_FAILED",
@@ -5790,6 +5943,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async setCache<T>(key: string, value: T): Promise<boolean> {
     return this.withDatabase(async () => {
+      assertJsonbStorable(value);
       try {
         await this.db
           .insert(cacheTable)
@@ -5807,6 +5961,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
+        // error-policy:J3 the typed jsonb text rejection is input validation;
+        // surface it unwrapped instead of as a storage fault.
+        if (isUnsupportedJsonTextError(error)) throw error;
         // error-policy:J2 context-adding rethrow — setCache only returns true on
         // success, so false here masked a real write failure.
         throw new ElizaError("setCache failed", {
@@ -5890,17 +6047,35 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       const newWorldId = normalizedWorld.id as UUID;
 
-      try {
-        await this.db.insert(worldTable).values(normalizedWorld);
-      } catch (error) {
-        if (isDuplicateKeyError(error)) {
-          throw new ElizaError("World already exists", {
-            code: "WORLD_ALREADY_EXISTS",
-            cause: error,
+      assertJsonbStorable(normalizedWorld.metadata);
+      // ON CONFLICT DO NOTHING keeps an enclosing transaction usable so the
+      // owner of a colliding id can be read back instead of aborting it.
+      const inserted = await this.db
+        .insert(worldTable)
+        .values(normalizedWorld)
+        .onConflictDoNothing({ target: worldTable.id })
+        .returning();
+      if (inserted.length === 0) {
+        // World ids are a global primary key while world reads are scoped to
+        // the adapter agent. A colliding row this agent does not own is a
+        // caller id collision, not a creation race: retrying can never
+        // succeed, so it carries its own code that ensureWorldExists does not
+        // retry.
+        const owned = await this.db
+          .select({ id: worldTable.id })
+          .from(worldTable)
+          .where(and(eq(worldTable.id, newWorldId), eq(worldTable.agentId, this.agentId)))
+          .limit(1);
+        if (owned.length === 0) {
+          throw new ElizaError("World id is owned by another agent", {
+            code: "WORLD_OWNED_BY_OTHER_AGENT",
             context: { worldId: newWorldId, agentId: this.agentId },
           });
         }
-        throw error;
+        throw new ElizaError("World already exists", {
+          code: "WORLD_ALREADY_EXISTS",
+          context: { worldId: newWorldId, agentId: this.agentId },
+        });
       }
       return newWorldId;
     });
@@ -5960,6 +6135,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           storedRevision
         );
         normalizedWorld.metadata = nextMetadata;
+        assertJsonbStorable(nextMetadata);
         await tx
           .update(worldTable)
           .set(normalizedWorld)
@@ -6049,10 +6225,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             roomId: params.audit.roomId,
           })
         : params.replacementMetadata;
+      const swappedMetadata = advanceWorldMetadataRevision(replacementMetadata, storedRevision);
+      assertJsonbStorable(swappedMetadata);
       await tx
         .update(worldTable)
         .set({
-          metadata: advanceWorldMetadataRevision(replacementMetadata, storedRevision),
+          metadata: swappedMetadata,
         })
         .where(eq(worldTable.id, params.worldId));
       return { status: "updated" as const };
@@ -6066,7 +6244,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async removeWorld(id: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.delete(worldTable).where(eq(worldTable.id, id));
+      await this.db
+        .delete(worldTable)
+        .where(and(eq(worldTable.id, id), eq(worldTable.agentId, this.agentId)));
     });
   }
 
@@ -6097,11 +6277,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: task.entityId as UUID,
           tags: task.tags,
           metadata: metadata,
-          createdAt: now,
+          // Preserve a caller-supplied createdAt (agent import replays the
+          // original task row, and sqlite keeps it too). Stamp now only
+          // when the caller did not provide one.
+          createdAt: task.createdAt !== undefined ? new Date(Number(task.createdAt)) : now,
           updatedAt: now,
           agentId: this.agentId as UUID,
         };
 
+        assertJsonbStorable(values.metadata);
         const result = await this.db.insert(taskTable).values(values).returning();
 
         return result[0].id as UUID;
@@ -6156,6 +6340,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  private taskRowCreatedAtMs(value: Date | string | null | undefined): number | undefined {
+    if (value == null) return undefined;
+    const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+
   /**
    * Maps a listed task row while keeping one unreadable `scheduledAt` from
    * hiding every other task of the agent. The scheduler tick lists all tasks in
@@ -6185,6 +6375,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       scheduleError = error.message;
     }
+    const createdAt = this.taskRowCreatedAtMs(row.createdAt);
     return {
       id: row.id as UUID,
       agentId: row.agentId as UUID,
@@ -6195,6 +6386,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: row.entityId as UUID,
       tags: row.tags || [],
       dueAt,
+      ...(createdAt === undefined ? {} : { createdAt }),
       ...(scheduleError === undefined ? {} : { scheduleError }),
       metadata,
     };
@@ -6238,6 +6430,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         const row = result[0];
         const metadata = (row.metadata || {}) as TaskMetadata;
+        const createdAt = this.taskRowCreatedAtMs(row.createdAt);
         return {
           id: row.id as UUID,
           agentId: row.agentId as UUID,
@@ -6248,6 +6441,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: row.entityId as UUID,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
+          ...(createdAt === undefined ? {} : { createdAt }),
           metadata,
         };
       });
@@ -6264,6 +6458,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const scheduledAt = task.dueAt == null ? undefined : serializeTaskDueAt(task.dueAt);
     const replacementMetadata =
       task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
+    if (replacementMetadata !== undefined) assertJsonbStorable(replacementMetadata);
     await this.withRetry(async () => {
       await this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {};
@@ -6859,7 +7054,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    beforeMessageId?: UUID
   ): Promise<
     Array<{
       id: UUID;
@@ -6878,14 +7074,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
       if (beforeTimestamp) {
-        conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        // A bare timestamp cursor drops the rest of a same-timestamp group
+        // that straddled the previous page boundary. When the caller also
+        // names the last row's id, the cursor becomes the exact
+        // (createdAt, id) position this descending composite sort walks.
+        if (beforeMessageId) {
+          conditions.push(
+            or(
+              lt(messageTable.createdAt, beforeTimestamp),
+              and(eq(messageTable.createdAt, beforeTimestamp), lt(messageTable.id, beforeMessageId))
+            ) as SQL
+          );
+        } else {
+          conditions.push(lt(messageTable.createdAt, beforeTimestamp));
+        }
       }
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        // The id tiebreak gives same-timestamp rows one deterministic order;
+        // without it two identical calls can return different pages.
+        .orderBy(desc(messageTable.createdAt), desc(messageTable.id))
         .limit(limit);
 
       const results = await query;
@@ -7576,6 +7787,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       await this.withDatabase(async () => {
+        assertJsonbStorable(data);
         await this.db
           .update(componentTable)
           .set({ data })
@@ -7656,7 +7868,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       let query = this.db
         .select()
         .from(entityTable)
-        .where(conditions.length > 0 ? and(...conditions) : undefined);
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        // Limit/offset pages need a total order: without one Postgres returns
+        // rows in physical order, which an UPDATE rewrites, so a caller paging
+        // across a concurrent write (plugin-form session restore) skips one
+        // entity and serves another twice. The key truncates to milliseconds
+        // because reads return `createdAt` as a millisecond Date and
+        // updateEntity writes it back, which would otherwise move a row with
+        // PostgreSQL's microsecond `now()` earlier in the order mid-scan.
+        .orderBy(
+          asc(sql`date_trunc('milliseconds', ${entityTable.createdAt})`),
+          asc(entityTable.id)
+        );
 
       if (params.limit !== undefined && !params.entityIds?.length) {
         query = query.limit(params.limit) as typeof query;
@@ -7765,7 +7988,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ...(includeComponents && { components: componentTable }),
         })
         .from(requested)
-        .innerJoin(participantTable, sql`${participantTable.roomId} = requested.room_id`)
+        .innerJoin(
+          participantTable,
+          sql`${participantTable.roomId} = requested.room_id AND ${participantTable.agentId} = ${this.agentId}`
+        )
         .leftJoin(
           entityTable,
           and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
@@ -7810,6 +8036,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       entityId: UUID;
       roomId: UUID;
       type: string;
+      createdAt?: Date;
     }>
   ): Promise<void> {
     for (const param of params) {
@@ -7820,7 +8047,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
     if (logIds.length === 0) return [];
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(logTable).where(inArray(logTable.id, logIds));
+      const result = await this.db
+        .select()
+        .from(logTable)
+        .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
       return result.map((log) => ({
         ...log,
         id: log.id as UUID,
@@ -7837,10 +8067,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       for (const { id, updates } of logs) {
         const setValues: Record<string, unknown> = {};
-        if (updates.body !== undefined) setValues.body = updates.body;
+        if (updates.body !== undefined) {
+          // Bound as log() binds a new body: NUL stripped, lone surrogates as U+FFFD.
+          setValues.body = sql`${JSON.stringify(sanitizeJsonObject(updates.body))}::jsonb`;
+        }
         if (updates.type !== undefined) setValues.type = updates.type;
         if (Object.keys(setValues).length > 0) {
-          await this.db.update(logTable).set(setValues).where(eq(logTable.id, id));
+          await this.db
+            .update(logTable)
+            .set(setValues)
+            .where(and(eq(logTable.id, id), this.ownedLogRoomCondition()));
         }
       }
     });
@@ -7849,8 +8085,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteLogs(logIds: UUID[]): Promise<void> {
     if (logIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(logTable).where(inArray(logTable.id, logIds));
+      await this.db
+        .delete(logTable)
+        .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
     });
+  }
+
+  /** Restricts a log read or mutation to rows in this agent's rooms (logs carry no agent column). */
+  private ownedLogRoomCondition() {
+    return inArray(
+      logTable.roomId,
+      this.db
+        .select({ id: roomTable.id })
+        .from(roomTable)
+        .where(eq(roomTable.agentId, this.agentId))
+    );
   }
 
   // ── Memory batch methods ──────────────────────────────────────────────
@@ -7860,6 +8109,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<AtomicMemoryPublicationResult> {
     const headId = params.head.memory.id;
     if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    // The head gets the strict serializers insertMemoryInTransaction applies to
+    // its dependencies, so an invalid head is refused before any row is written.
+    const contentText =
+      params.head.tableName === "document_fragments"
+        ? serializeDocumentJsonb(params.head.memory.content)
+        : serializeJsonb(params.head.memory.content, {
+            documentText: params.head.tableName === "documents",
+            memoryContent: true,
+          });
+    const metadataText = serializeJsonb(params.head.memory.metadata ?? {});
     try {
       return await this.withDatabase(async () =>
         this.db.transaction(async (tx) => {
@@ -7909,8 +8168,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             }
           }
 
-          const contentText = JSON.stringify(params.head.memory.content);
-          const metadataText = JSON.stringify(params.head.memory.metadata ?? {});
           let published: MemoryRow[];
           if (params.expectedRevision === null) {
             published = await tx
@@ -8088,18 +8345,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         query = query.limit(limit) as typeof query;
       }
       const result = await query;
-      return result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID,
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      return result.map(roomFromRow);
     });
   }
 
@@ -8178,7 +8424,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const rows = await this.db
         .select({ roomId: participantTable.roomId, entityId: participantTable.entityId })
         .from(participantTable)
-        .where(inArray(participantTable.roomId, roomIds));
+        .where(
+          and(inArray(participantTable.roomId, roomIds), eq(participantTable.agentId, this.agentId))
+        );
       const byRoom = new Map<string, UUID[]>();
       for (const row of rows) {
         if (row.roomId === null) continue;
@@ -8305,7 +8553,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     if (relationshipIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(relationshipTable).where(inArray(relationshipTable.id, relationshipIds));
+      await this.db
+        .delete(relationshipTable)
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId)
+          )
+        );
     });
   }
 
@@ -8361,6 +8616,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
     const replacementMetadata =
       task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
+    if (replacementMetadata !== undefined) assertJsonbStorable(replacementMetadata);
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
         const updateValues: Partial<typeof taskTable.$inferInsert> = {
@@ -8407,6 +8663,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const guarded = taskMetadataPatchForWrite(patch);
     // JSON.stringify drops undefined values, so an `undefined` in `set` never
     // reaches storage; callers remove keys through `unset`.
+    assertJsonbStorable(guarded.set ?? {});
     const merged = JSON.stringify(guarded.set ?? {});
     let metadata = sql`(COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${merged}::jsonb)`;
     for (const key of guarded.unset ?? []) {

@@ -7,7 +7,8 @@
  *
  * Resolution order:
  *   1. Match triage entries by entityId (most precise — UUID identity).
- *   2. Fall back to case-insensitive senderName substring match.
+ *   2. Fall back to a case-insensitive senderName match on whole name tokens
+ *      ("Alice" matches "Alice Smith"; "Al" does not match "Alice").
  *
  * Owner-only (same gate as inboxTriage). Silently returns empty when:
  *   - the caller is not the owner,
@@ -66,12 +67,32 @@ function matchesSender(
   if (entityId && entry.sourceEntityId === entityId) return true;
 
   if (name && entry.senderName) {
-    const needle = name.toLowerCase();
-    const haystack = entry.senderName.toLowerCase();
-    return haystack.includes(needle) || needle.includes(haystack);
+    return namesShareWholeTokens(name, entry.senderName);
   }
 
   return false;
+}
+
+function nameTokens(value: string): string[] {
+  return value.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
+}
+
+function containsTokenRun(tokens: string[], run: string[]): boolean {
+  for (let start = 0; start + run.length <= tokens.length; start++) {
+    if (run.every((token, offset) => tokens[start + offset] === token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function namesShareWholeTokens(a: string, b: string): boolean {
+  const aTokens = nameTokens(a);
+  const bTokens = nameTokens(b);
+  if (aTokens.length === 0 || bTokens.length === 0) return false;
+  return (
+    containsTokenRun(aTokens, bTokens) || containsTokenRun(bTokens, aTokens)
+  );
 }
 
 function escapeMarkdownText(value: string): string {

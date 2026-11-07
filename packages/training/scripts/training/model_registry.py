@@ -61,6 +61,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .gemma_capacity import GEMMA_MODEL_SPECS
+
+_MODEL_FACTS = {spec.slug: spec for spec in GEMMA_MODEL_SPECS}
+
 
 class Tier(str, Enum):
     LOCAL = "local"
@@ -326,12 +330,12 @@ REGISTRY: dict[str, ModelEntry] = {
     # params_billion uses EFFECTIVE sizes for budget realism (E2B ~2.3B,
     # E4B ~4.5B); E2B's with-PLE/embeddings footprint is ~4.65B (noted below).
     "gemma4-e2b": _entry(
-        hf_id="google/gemma-4-E2B",
+        hf_id=_MODEL_FACTS['gemma4-e2b'].model_id,
         short_name="gemma4-e2b",
-        eliza_short_name="eliza-1-2b",
+        eliza_short_name=_MODEL_FACTS['gemma4-e2b'].eliza_tier,
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=2.3,
+        params_billion=_MODEL_FACTS['gemma4-e2b'].total_params / 1e9,
         tier=Tier.LOCAL,
         seq_len=8192,
         optimizer="apollo_mini",
@@ -341,7 +345,7 @@ REGISTRY: dict[str, ModelEntry] = {
         max_grad_norm=1.0,
         train_mem_gb_budget=15.5,
         train_dtype="bf16",
-        infer_max_in=131072,
+        infer_max_in=_MODEL_FACTS['gemma4-e2b'].max_context_tokens,
         infer_max_out=16384,
         # ~15 KV-bearing of 35 layers (7 global + non-shared SWA; 20 shared).
         # Verify against google/gemma-4-E2B config.json.
@@ -363,12 +367,12 @@ REGISTRY: dict[str, ModelEntry] = {
         "Gemma's already-minimal KV.",
     ),
     "gemma4-e4b": _entry(
-        hf_id="google/gemma-4-E4B",
+        hf_id=_MODEL_FACTS['gemma4-e4b'].model_id,
         short_name="gemma4-e4b",
-        eliza_short_name="eliza-1-4b",
+        eliza_short_name=_MODEL_FACTS['gemma4-e4b'].eliza_tier,
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=4.5,
+        params_billion=_MODEL_FACTS['gemma4-e4b'].total_params / 1e9,
         tier=Tier.LOCAL,
         seq_len=8192,
         optimizer="apollo_mini",
@@ -378,7 +382,7 @@ REGISTRY: dict[str, ModelEntry] = {
         max_grad_norm=1.0,
         train_mem_gb_budget=28.0,
         train_dtype="bf16",
-        infer_max_in=131072,
+        infer_max_in=_MODEL_FACTS['gemma4-e4b'].max_context_tokens,
         infer_max_out=16384,
         # Proportionate to E2B's ~15/35; verify against gemma-4-E4B config.json.
         infer_kv_layers=18,
@@ -397,12 +401,12 @@ REGISTRY: dict[str, ModelEntry] = {
         "Gemma 4 (SWA + global, MQA, PLE), 128k ctx.",
     ),
     "gemma4-12b": _entry(
-        hf_id="google/gemma-4-12B",
+        hf_id=_MODEL_FACTS['gemma4-12b'].model_id,
         short_name="gemma4-12b",
-        eliza_short_name="eliza-1-9b",
+        eliza_short_name=_MODEL_FACTS['gemma4-12b'].eliza_tier,
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=12.0,
+        params_billion=_MODEL_FACTS['gemma4-12b'].total_params / 1e9,
         tier=Tier.WORKSTATION,
         seq_len=16384,
         optimizer="apollo",
@@ -417,7 +421,7 @@ REGISTRY: dict[str, ModelEntry] = {
         # forward (all-NaN 12B checkpoint incident). Registry is the single
         # source of truth; train_local.py's arch-string check is the backstop.
         use_liger=False,
-        infer_max_in=262144,
+        infer_max_in=_MODEL_FACTS['gemma4-12b'].max_context_tokens,
         infer_max_out=16384,
         # Proportionate KV-bearing count; verify against gemma-4-12B config.json.
         infer_kv_layers=20,
@@ -436,12 +440,12 @@ REGISTRY: dict[str, ModelEntry] = {
         "Vast/FSDP.",
     ),
     "gemma4-31b": _entry(
-        hf_id="google/gemma-4-31B",
+        hf_id=_MODEL_FACTS['gemma4-31b'].model_id,
         short_name="gemma4-31b",
-        eliza_short_name="eliza-1-27b",
+        eliza_short_name=_MODEL_FACTS['gemma4-31b'].eliza_tier,
         eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
-        params_billion=31.0,
+        params_billion=_MODEL_FACTS['gemma4-31b'].total_params / 1e9,
         tier=Tier.CLOUD,
         seq_len=65536,
         optimizer="apollo_mini",
@@ -455,7 +459,7 @@ REGISTRY: dict[str, ModelEntry] = {
         # off in the registry so the 31B tier is protected independent of the
         # train_local.py arch check.
         use_liger=False,
-        infer_max_in=262144,
+        infer_max_in=_MODEL_FACTS['gemma4-31b'].max_context_tokens,
         infer_max_out=16384,
         # Proportionate KV-bearing count; verify against gemma-4-31B config.json.
         infer_kv_layers=28,

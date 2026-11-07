@@ -5,7 +5,7 @@ A comprehensive implementation of the Vending-Bench benchmark for evaluating
 LLM agent coherence in a simulated vending machine business.
 
 All real-LLM runs are routed through the elizaOS TypeScript benchmark
-bridge (``suites/lifeops-bench/runner/src/server.ts``); the legacy
+bridge (``harnesses/eliza/runner/src/server.ts``); the legacy
 Python ``AgentRuntime`` path has been removed. The heuristic and direct
 OpenAI/Anthropic/Groq HTTP providers remain available for offline /
 direct-API runs.

@@ -2,14 +2,17 @@
  * Data-loading callbacks, one of the domain hooks AppContext composes.
  *
  * Covers: autonomy event merge / replay / append, conversation loaders,
- * BSC trade + steward wrappers, loadInventory, ownerName hydration,
+ * steward wrappers, loadInventory, ownerName hydration,
  * character language sync, loadWorkbench, loadUpdateStatus,
  */
+
+import type { UiLanguage } from "@elizaos/core/protocol";
+import type { StylePreset } from "@elizaos/host/protocol";
 
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetByName,
-} from "@elizaos/core/character-presets";
+} from "@elizaos/host/protocol";
 import {
   type RefObject,
   useCallback,
@@ -17,33 +20,23 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AgentStatus,
-  type BscTradeExecuteRequest,
-  type BscTradeExecuteResponse,
-  type BscTradePreflightResponse,
-  type BscTradeQuoteRequest,
-  type BscTradeQuoteResponse,
-  type BscTradeTxStatusResponse,
-  type BscTransferExecuteRequest,
-  type BscTransferExecuteResponse,
-  type CharacterData,
-  type Conversation,
-  type ConversationMessage,
-  client,
-  type StewardWebhookEventType,
-  type StreamEventEnvelope,
-  type StylePreset,
-  type UpdateStatus,
-  type WalletTradingProfileResponse,
-  type WalletTradingProfileSourceFilter,
-  type WalletTradingProfileWindow,
-  type WorkbenchOverview,
-} from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../api/client-types-chat";
+import type {
+  CharacterData,
+  UpdateStatus,
+  WorkbenchOverview,
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  StreamEventEnvelope,
+} from "../api/client-types-core";
 import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
-import type { UiLanguage } from "../i18n";
 import { logger } from "../logger.ts";
 import { normalizeOwnerName } from "../utils/owner-name.js";
 import {
@@ -56,14 +49,14 @@ import {
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import {
-  applyStreamingTextModification,
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
+import type { LoadConversationMessagesResult } from "./types";
+import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 function hasConversationBootstrapMessage(
@@ -73,6 +66,39 @@ function hasConversationBootstrapMessage(
     (message) =>
       message.role === "assistant" && shouldKeepConversationMessage(message),
   );
+}
+const STORE_MESSAGE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Keep local rows in their arrival slots while ordering durable UUIDs within each timestamp. */
+function orderStreamedConversationMessages(
+  messages: readonly ConversationMessage[],
+): ConversationMessage[] {
+  const ordered = [...messages].sort(
+    (left, right) => left.timestamp - right.timestamp,
+  );
+  for (let start = 0; start < ordered.length; ) {
+    let end = start + 1;
+    while (
+      end < ordered.length &&
+      ordered[end].timestamp === ordered[start].timestamp
+    )
+      end++;
+    const durable = ordered
+      .slice(start, end)
+      .filter((message) => STORE_MESSAGE_ID_RE.test(message.id))
+      .sort((left, right) => {
+        const leftId = left.id.toLowerCase(),
+          rightId = right.id.toLowerCase();
+        return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+      });
+    let next = 0;
+    for (let index = start; index < end; index++) {
+      if (STORE_MESSAGE_ID_RE.test(ordered[index].id))
+        ordered[index] = durable[next++];
+    }
+    start = end;
+  }
+  return ordered;
 }
 function localConversationMessageLineage(
   message: ConversationMessage,
@@ -368,6 +394,9 @@ function mergeMessagesChronologically(
     message: ConversationMessage;
     serverIndex: number | null;
   }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
+  // Overlay rows are client-local and not yet in the store, so the store's
+  // same-millisecond UUID tiebreak does not apply: a request and its reply are
+  // often stamped in the same millisecond, and the stable sort keeps send order.
   const orderedOverlay = [...localOverlay].sort(
     (left, right) => left.timestamp - right.timestamp,
   );
@@ -1192,9 +1221,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           .map((row) => [row.id, row]),
       );
       for (const row of changed) rows.set(row.id, row);
-      const orderedRows = [...rows.values()].sort(
-        (a, b) => a.timestamp - b.timestamp,
-      );
+      // Streamed durable rows follow the store's UUID tie-break order. Local
+      // optimistic rows retain insertion order in mergeMessagesChronologically.
+      const orderedRows = orderStreamedConversationMessages([...rows.values()]);
       setConversationMessages(
         mergeMessagesChronologically(
           orderedRows.filter((row) => row.assistantEphemeral !== true),
@@ -1759,7 +1788,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // user navigated away before it landed. Best-effort — a failure leaves the
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
-    async (convId: string, messageId: string): Promise<boolean> => {
+    async (
+      convId: string,
+      messageId: string,
+      options?: {
+        onMessages: (messages: readonly ConversationMessage[]) => void;
+      },
+    ): Promise<boolean> => {
       if (
         activeConversationIdRef.current !== convId ||
         visibleConversationMessagesOwnerRef.current !== convId
@@ -1792,6 +1827,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (!isCurrentConversationMessageFence(fence)) return false;
         captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
+        options?.onMessages(serverMessages);
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),
@@ -1886,41 +1922,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       finishConversationMessageCacheRequest,
     ],
   );
-  // ── BSC trade / steward wrappers ────────────────────────────────────
-  const getBscTradePreflight = useCallback(
-    async (tokenAddress?: string): Promise<BscTradePreflightResponse> =>
-      client.getBscTradePreflight(tokenAddress),
-    [],
-  );
-  const getBscTradeQuote = useCallback(
-    async (request: BscTradeQuoteRequest): Promise<BscTradeQuoteResponse> =>
-      client.getBscTradeQuote(request),
-    [],
-  );
-  const getBscTradeTxStatus = useCallback(
-    async (hash: string): Promise<BscTradeTxStatusResponse> =>
-      client.getBscTradeTxStatus(hash),
-    [],
-  );
+  // ── Steward wrappers ────────────────────────────────────────────────
   const getStewardStatus = useCallback(
     async () => client.getStewardStatus(),
-    [],
-  );
-  const getStewardAddresses = useCallback(
-    async () => client.getStewardAddresses(),
-    [],
-  );
-  const getStewardBalance = useCallback(
-    async (chainId?: number) => client.getStewardBalance(chainId),
-    [],
-  );
-  const getStewardTokens = useCallback(
-    async (chainId?: number) => client.getStewardTokens(chainId),
-    [],
-  );
-  const getStewardWebhookEvents = useCallback(
-    async (opts?: { event?: StewardWebhookEventType; since?: number }) =>
-      client.getStewardWebhookEvents(opts),
     [],
   );
   const getStewardHistory = useCallback(
@@ -1939,26 +1943,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const rejectStewardTx = useCallback(
     async (txId: string, reason?: string) =>
       client.rejectStewardTx(txId, reason),
-    [],
-  );
-  const loadWalletTradingProfile = useCallback(
-    async (
-      window: WalletTradingProfileWindow = "30d",
-      source: WalletTradingProfileSourceFilter = "all",
-    ): Promise<WalletTradingProfileResponse> =>
-      client.getWalletTradingProfile(window, source),
-    [],
-  );
-  const executeBscTrade = useCallback(
-    async (request: BscTradeExecuteRequest): Promise<BscTradeExecuteResponse> =>
-      client.executeBscTrade(request),
-    [],
-  );
-  const executeBscTransfer = useCallback(
-    async (
-      request: BscTransferExecuteRequest,
-    ): Promise<BscTransferExecuteResponse> =>
-      client.executeBscTransfer(request),
     [],
   );
   const loadInventory = useCallback(async () => {
@@ -2045,14 +2029,12 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // ── Workbench / update / extension ──────────────────────────────────
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
   const [workbench, setWorkbench] = useState<WorkbenchOverview | null>(null);
-  const [workbenchTasksAvailable, setWorkbenchTasksAvailable] = useState(false);
   const [workbenchTriggersAvailable, setWorkbenchTriggersAvailable] =
     useState(false);
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
   const loadWorkbench = useCallback(async () => {
     if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
       setWorkbenchLoading(false);
@@ -2062,12 +2044,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     try {
       const result = await client.getWorkbenchOverview();
       setWorkbench(result);
-      setWorkbenchTasksAvailable(result.tasksAvailable ?? false);
       setWorkbenchTriggersAvailable(result.triggersAvailable ?? false);
       setWorkbenchTodosAvailable(result.todosAvailable ?? false);
     } catch {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
     } finally {
@@ -2140,27 +2120,16 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
-    // BSC / Steward / Trading
-    getBscTradePreflight,
-    getBscTradeQuote,
-    getBscTradeTxStatus,
+    // Steward
     getStewardStatus,
-    getStewardAddresses,
-    getStewardBalance,
-    getStewardTokens,
-    getStewardWebhookEvents,
     getStewardHistory,
     getStewardPending,
     approveStewardTx,
     rejectStewardTx,
-    loadWalletTradingProfile,
-    executeBscTrade,
-    executeBscTransfer,
     loadInventory,
     // Workbench
     workbenchLoading,
     workbench,
-    workbenchTasksAvailable,
     workbenchTriggersAvailable,
     workbenchTodosAvailable,
     loadWorkbench,

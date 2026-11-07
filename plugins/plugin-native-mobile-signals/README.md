@@ -11,7 +11,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-mobile-signals build  # build
-bun run --cwd plugins/plugin-native-mobile-signals test   # tests
 ```
 
 Build the package before running `bun run validate:ios-screen-time`; the command uses the bundled validator shipped to consumers.

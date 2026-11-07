@@ -1,3 +1,4 @@
+import { lifeCalendarMutationAttempts } from "../mutations/schema.js";
 /**
  * Calendar Drizzle schema.
  *
@@ -329,6 +330,7 @@ export const linkedCalendarControlMutations = calendarPgSchema.table(
 );
 
 export const calendarSchema = {
+  lifeCalendarMutationAttempts,
   calendarEvents,
   calendarSyncStates,
   calendarSources,

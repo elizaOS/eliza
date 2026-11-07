@@ -1,9 +1,9 @@
 /** Durable current task presentation. Hosts own delivery, styling and effect dispatch. */
-import { ElizaError } from "@elizaos/core/errors";
 import {
+  ElizaError,
   type TaskChoiceWidget,
   validateTaskChoiceWidget,
-} from "@elizaos/core/messaging/task-widgets";
+} from "@elizaos/core/protocol";
 import type { InteractiveTaskChoices } from "./interactive-task-choices.ts";
 import type { InteractiveTaskRuntime } from "./interactive-task-runtime.ts";
 import type { TaskSqliteConnection } from "./interactive-task-store.ts";

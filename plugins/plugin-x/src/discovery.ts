@@ -17,7 +17,7 @@ import {
 import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
-import { getRandomInterval } from "./environment";
+import { getRandomInterval, parseTwitterCount } from "./environment";
 import type { TwitterClientState } from "./types";
 import { sendTextAsTweetThread } from "./utils";
 import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
@@ -205,58 +205,39 @@ export class TwitterDiscoveryClient {
   private buildDiscoveryConfig(): DiscoveryConfig {
     const character = this.runtime?.character;
 
-    // Default topics if character is not available
-    const defaultTopics = [
-      "ai",
-      "technology",
-      "blockchain",
-      "web3",
-      "crypto",
-      "programming",
-      "innovation",
-    ];
+    // Use the character's topics, or extract them from its bio. Discovery
+    // searches, follows, likes and replies on these topics, so it refuses to
+    // start without any rather than act on topics the operator never chose.
+    const topics =
+      Array.isArray(character?.topics) && character.topics.length > 0
+        ? character.topics
+        : this.extractTopicsFromBio(character?.bio);
 
-    // Use character topics, extract from bio, or use defaults
-    let topics: string[] = defaultTopics;
-
-    if (character) {
-      if (
-        character.topics &&
-        Array.isArray(character.topics) &&
-        character.topics.length > 0
-      ) {
-        topics = character.topics;
-      } else if (character.bio) {
-        topics = this.extractTopicsFromBio(character.bio);
-      }
-    } else {
-      logger.warn(
-        "Character not available in runtime, using default topics for discovery",
+    if (topics.length === 0) {
+      throw new ElizaError(
+        "X discovery has no topics: the character sets no `topics` and none could be derived from its `bio`. Set `topics` on the character, or set TWITTER_ENABLE_DISCOVERY=false to turn discovery off.",
+        { code: "X_DISCOVERY_NO_TOPICS" },
       );
     }
 
     return {
       topics,
-      minFollowerCount: parseInt(
-        (getSetting(this.runtime, "TWITTER_MIN_FOLLOWER_COUNT") as string) ||
-          process.env.TWITTER_MIN_FOLLOWER_COUNT ||
-          "100",
-        10,
+      minFollowerCount: parseTwitterCount(
+        (getSetting(this.runtime, "TWITTER_MIN_FOLLOWER_COUNT") as string) ??
+          process.env.TWITTER_MIN_FOLLOWER_COUNT,
+        100,
       ),
-      maxFollowsPerCycle: parseInt(
-        (getSetting(this.runtime, "TWITTER_MAX_FOLLOWS_PER_CYCLE") as string) ||
-          process.env.TWITTER_MAX_FOLLOWS_PER_CYCLE ||
-          "5",
-        10,
+      maxFollowsPerCycle: parseTwitterCount(
+        (getSetting(this.runtime, "TWITTER_MAX_FOLLOWS_PER_CYCLE") as string) ??
+          process.env.TWITTER_MAX_FOLLOWS_PER_CYCLE,
+        5,
       ),
-      maxEngagementsPerCycle: parseInt(
+      maxEngagementsPerCycle: parseTwitterCount(
         (getSetting(
           this.runtime,
           "TWITTER_MAX_ENGAGEMENTS_PER_RUN",
-        ) as string) ||
-          process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
-          "5",
-        10, // Reduced from 10 to 5
+        ) as string) ?? process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
+        5, // Reduced from 10 to 5
       ),
       likeThreshold: 0.5, // Increased from 0.3 (be more selective)
       replyThreshold: 0.7, // Increased from 0.5 (be more selective)
@@ -992,6 +973,20 @@ export class TwitterDiscoveryClient {
         // Add delay to avoid rate limits
         await this.delay(3000 + Math.random() * 5000);
       } catch (error) {
+        // Part of the reply or quote may already be public (a thread that
+        // failed after its first post, or a post X accepted without a usable
+        // receipt). Mark the tweet engaged so the next cycle does not post a
+        // new reply or quote under it.
+        if (
+          error instanceof ElizaError &&
+          (error.code === "X_THREAD_PARTIALLY_POSTED" ||
+            error.code === "X_POST_RECEIPT_INDETERMINATE")
+        ) {
+          await this.saveEngagementMemory(
+            scoredTweet.tweet,
+            scoredTweet.engagementType,
+          );
+        }
         if (this.isSessionRotation(error)) throw error;
         const message =
           error instanceof Error

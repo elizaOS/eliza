@@ -39,7 +39,7 @@ const Permissions = {
 	UseEmbeddedActivities: 1n << 39n,
 	ModerateMembers: 1n << 40n,
 	SendVoiceMessages: 1n << 46n,
-	SendPolls: 1n << 47n,
+	SendPolls: 1n << 49n,
 } as const;
 
 const TEXT_BASIC =

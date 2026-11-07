@@ -41,8 +41,7 @@ type RecipientKind = "owner" | "external" | "e164";
 interface VoiceCallParams {
   /**
    * Recipient discriminator. Drives the routing inside `dial`:
-   *   - `owner`     → owner-escalation path (env-resolved owner number,
-   *                   standing-policy acknowledgement)
+   *   - `owner`     → owner-escalation path (env-resolved owner number)
    *   - `external`  → name-resolved third party + allow-list check
    *   - `e164`      → raw E.164 number, no relationship lookup
    */
@@ -52,30 +51,18 @@ interface VoiceCallParams {
   /** Contact name or E.164 used for `external` lookup. */
   recipient?: string;
   bodyText?: string;
-  confirmed?: boolean;
-  reason?: string;
 }
 
 const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
   dial: {
     description:
-      "Outbound Twilio voice call. recipientKind: owner escalation env owner number + standing-policy ack; external third party RelationshipStore + allow-list; e164 raw phoneNumber. Draft first; confirmed:true dispatch.",
+      "Outbound Twilio voice call. recipientKind: owner escalation env owner number; external third party RelationshipStore + allow-list; e164 raw phoneNumber + bodyText. Draft first; the owner's next-turn yes dispatches.",
     descriptionCompressed:
-      "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+      "Twilio voice dial: recipientKind=owner|external|e164; draft, owner yes/no next turn",
     required: ["recipientKind"],
-    optional: ["phoneNumber", "recipient", "bodyText", "confirmed", "reason"],
+    optional: ["phoneNumber", "recipient", "bodyText"],
   },
 };
-
-type PendingCallActionName = "CALL_USER" | "CALL_EXTERNAL";
-
-interface PendingCallDraft {
-  actionName: PendingCallActionName;
-  to?: string | null;
-  message?: string | null;
-  approvalTaskId?: string | null;
-  createdAt: string;
-}
 
 function isE164(value: string): boolean {
   return E164_RE.test(value);
@@ -94,69 +81,43 @@ function isPlaceholderOrNonNumeric(value: string): boolean {
 function normalizeLookup(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
+}
+
+const UNSPACED_SCRIPT_RE =
+  /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+$/u;
+
+/**
+ * Whether `inner` appears as a run of whole tokens in `outer`, or of token
+ * prefixes when `prefix` is set. Scripts written without spaces may carry
+ * attached particles ("田中さんに"), so their tokens match inside a longer token.
+ */
+function containsTokenRun(
+  outer: string[],
+  inner: string[],
+  prefix = false,
+): boolean {
+  if (inner.length === 0 || inner[0] === "") return false;
+  for (let start = 0; start + inner.length <= outer.length; start++) {
+    if (
+      inner.every((token, offset) => {
+        const candidate = outer[start + offset] ?? "";
+        return (
+          candidate === token ||
+          (prefix && candidate.startsWith(token)) ||
+          (UNSPACED_SCRIPT_RE.test(token) && candidate.includes(token))
+        );
+      })
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function messageText(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : "";
-}
-
-function isStandingOwnerCallPolicy(message: Memory): boolean {
-  const text = normalizeLookup(messageText(message));
-  if (!text) {
-    return false;
-  }
-  const isConditional =
-    /\b(if|when|whenever)\b/.test(text) ||
-    /\bget stuck\b/.test(text) ||
-    /\bblocked\b/.test(text);
-  const mentionsCall = /\b(call|phone|dial)\b/.test(text);
-  const mentionsBlockedWork =
-    /\b(stuck|blocked|jam|jams|unblock)\b/.test(text) &&
-    /\b(browser|computer|desktop|remote|workflow|machine)\b/.test(text);
-  return isConditional && mentionsCall && mentionsBlockedWork;
-}
-
-function buildCallUserPolicyAcknowledgement(
-  userText: string,
-): ActionResult | null {
-  const normalized = userText.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  const isStandingEscalationPolicy =
-    /\bif\b/u.test(normalized) &&
-    /\b(?:stuck|blocked|jammed|jams|unblock|can't continue|cannot continue)\b/u.test(
-      normalized,
-    ) &&
-    /\b(?:browser|computer|desktop|screen|remote workflow|on my machine)\b/u.test(
-      normalized,
-    ) &&
-    /\b(?:call me|phone me|ring me|dial me)\b/u.test(normalized);
-
-  if (!isStandingEscalationPolicy) {
-    return null;
-  }
-
-  return {
-    text: "If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in and unblock it. I will still require confirmation before placing an actual call.",
-    success: true,
-    values: {
-      success: true,
-      policyRecorded: true,
-    },
-    data: {
-      actionName: ACTION_NAME,
-      action: "dial",
-      subaction: "dial",
-      recipientKind: "owner",
-      policyRecorded: true,
-      policyType: "stuck_computer_phone_escalation",
-      channel: "phone_call",
-    },
-  };
 }
 
 function readOwnerNumber(
@@ -198,79 +159,147 @@ function normalizePhoneAllowListKey(value: string): string {
   return value.replace(/[^0-9+]/g, "").replace(/^\+/, "");
 }
 
-function getPendingCallCacheKey(
-  roomId: string,
-  actionName: PendingCallActionName,
-): string {
-  return `lifeops:twilio-call:pending:${actionName}:${roomId}`;
+type SpokenMessageConfirmation =
+  | { status: "confirmed"; spokenMessage: string }
+  | { status: "pending" | "cancelled"; spokenMessage: string; prompt: string };
+
+/**
+ * Two-phase confirmation bound to the spoken message the owner was shown. The
+ * planner writes the arguments again on the confirming turn, so a yes places
+ * the call with the previewed message. A yes that arrives with a different
+ * bodyText previews that message instead of dialing.
+ */
+async function confirmSpokenMessage(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  actionName: string;
+  pendingKey: string;
+  /** How the prompt names the callee. */
+  target: string;
+  /** The message this call asks for: bodyText, or the path default. */
+  spokenMessage: string;
+  /** False when bodyText was omitted and `spokenMessage` is the default. */
+  explicit: boolean;
+}): Promise<SpokenMessageConfirmation> {
+  const { spokenMessage } = args;
+  const prompt = `Place voice call to ${args.target} with message: "${spokenMessage}"?`;
+  const ask = () =>
+    requireConfirmation({
+      runtime: args.runtime,
+      message: args.message,
+      actionName: args.actionName,
+      pendingKey: args.pendingKey,
+      prompt,
+      metadata: { spokenMessage },
+    });
+  const decision = await ask();
+  if (decision.status !== "confirmed") {
+    return { status: decision.status, spokenMessage, prompt };
+  }
+  const previewed = decision.metadata?.spokenMessage;
+  if (
+    typeof previewed === "string" &&
+    (!args.explicit || previewed === spokenMessage)
+  ) {
+    return { status: "confirmed", spokenMessage: previewed };
+  }
+  // The consumed record held another message; this call stores the new one.
+  await ask();
+  return { status: "pending", spokenMessage, prompt };
 }
 
-async function readPendingCallDraft(
-  runtime: IAgentRuntime,
-  roomId: string,
-  actionName: PendingCallActionName,
-): Promise<PendingCallDraft | null> {
-  return (
-    (await runtime.getCache<PendingCallDraft>(
-      getPendingCallCacheKey(roomId, actionName),
-    )) ?? null
-  );
-}
+type ExternalCallRecipient =
+  | {
+      kind: "resolved";
+      to: string;
+      name: string | null;
+      matchedRelationshipId: string | null;
+    }
+  | { kind: "ambiguous"; names: string[] }
+  | { kind: "missing" };
 
-async function clearPendingCallDraft(
-  runtime: IAgentRuntime,
-  roomId: string,
-  actionName: PendingCallActionName,
-): Promise<void> {
-  await runtime.deleteCache(getPendingCallCacheKey(roomId, actionName));
-}
-
+/**
+ * Resolve the callee. The declared `recipient` decides when it is supplied;
+ * the message text is searched only when it is absent, so a contact that is
+ * merely mentioned in the chat cannot replace the named one.
+ */
 async function resolveExternalCallRecipient(args: {
   runtime: IAgentRuntime;
-  providedTo?: string;
-  messageText?: string;
-}): Promise<{ to: string | null; matchedRelationshipId?: string | null }> {
-  const explicit = args.providedTo?.trim();
+  recipient?: string;
+  messageText: string;
+}): Promise<ExternalCallRecipient> {
+  const explicit = args.recipient?.trim();
   if (explicit && isE164PhoneNumber(explicit)) {
-    return { to: explicit, matchedRelationshipId: null };
+    return {
+      kind: "resolved",
+      to: explicit,
+      name: null,
+      matchedRelationshipId: null,
+    };
   }
 
+  const haystack = normalizeLookup(explicit || args.messageText);
+  if (!haystack) {
+    return { kind: "missing" };
+  }
+
+  const haystackTokens = haystack.split(" ");
   const service = new LifeOpsService(args.runtime);
   const relationships = await service.listRelationships();
-  const haystack = normalizeLookup(
-    [explicit ?? "", args.messageText ?? ""].join(" "),
-  );
-  if (!haystack) {
-    return { to: null, matchedRelationshipId: null };
-  }
-
-  const candidates = relationships.filter(
-    (relationship) =>
-      typeof relationship.phone === "string" && relationship.phone,
-  );
-  for (const relationship of candidates) {
-    const lookupValues = [
+  const partialMatches = relationships.filter((relationship) => {
+    if (typeof relationship.phone !== "string" || !relationship.phone) {
+      return false;
+    }
+    const identifiers = [
       relationship.name,
       relationship.primaryHandle,
       relationship.email ?? "",
-      relationship.notes ?? "",
       ...relationship.tags,
-    ]
-      .map(normalizeLookup)
-      .filter((value) => value.length > 0);
-
-    const matched = lookupValues.some(
-      (value) => haystack.includes(value) || value.includes(haystack),
+    ].map((value) => normalizeLookup(value).split(" "));
+    // Free-text notes only match when the whole note was named, so a word in
+    // a note ("Alice's brother") never stands in for the contact.
+    const notes = normalizeLookup(relationship.notes ?? "").split(" ");
+    // A declared recipient may be the start of a name ("Bo" for "Bob"); the
+    // message text must name the contact in whole words.
+    return (
+      identifiers.some(
+        (tokens) =>
+          containsTokenRun(haystackTokens, tokens) ||
+          containsTokenRun(tokens, haystackTokens, Boolean(explicit)),
+      ) || containsTokenRun(haystackTokens, notes)
     );
-    if (matched && relationship.phone) {
-      return {
-        to: relationship.phone,
-        matchedRelationshipId: relationship.id,
-      };
-    }
-  }
+  });
+  // A contact whose whole name was given wins over contacts that only contain
+  // it ("Bob" over "Bob Jones"), so the short name stays callable.
+  const namedMatches = partialMatches.filter(
+    (relationship) => normalizeLookup(relationship.name) === haystack,
+  );
+  const matches = namedMatches.length > 0 ? namedMatches : partialMatches;
 
-  return { to: explicit ?? null, matchedRelationshipId: null };
+  const [first] = matches;
+  if (!first?.phone) {
+    // An unmatched `recipient` is reported as an invalid number by the caller.
+    return explicit
+      ? {
+          kind: "resolved",
+          to: explicit,
+          name: null,
+          matchedRelationshipId: null,
+        }
+      : { kind: "missing" };
+  }
+  if (new Set(matches.map((relationship) => relationship.phone)).size > 1) {
+    return {
+      kind: "ambiguous",
+      names: matches.map((relationship) => relationship.name),
+    };
+  }
+  return {
+    kind: "resolved",
+    to: first.phone,
+    name: first.name,
+    matchedRelationshipId: first.id,
+  };
 }
 
 function deliveryToResult(
@@ -388,19 +417,20 @@ async function dialE164(
     };
   }
 
-  const callPrompt = `Place voice call to ${to} with message: "${messageBody}"?`;
-  const decision = await requireConfirmation({
+  const decision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: ACTION_NAME,
     pendingKey: `e164:${to}`,
-    prompt: callPrompt,
+    target: to,
+    spokenMessage: messageBody,
+    explicit: true,
   });
   if (decision.status !== "confirmed") {
     return {
       text:
         decision.status === "pending"
-          ? `${callPrompt} Reply yes to confirm or no to cancel.`
+          ? `${decision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -429,7 +459,7 @@ async function dialE164(
   const result = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: messageBody,
+    message: decision.spokenMessage,
   });
 
   if (!result.ok) {
@@ -477,39 +507,6 @@ async function dialOwner(
   message: Memory,
   params: VoiceCallParams,
 ): Promise<ActionResult> {
-  const policyAcknowledgement = buildCallUserPolicyAcknowledgement(
-    messageText(message),
-  );
-  if (policyAcknowledgement) {
-    return policyAcknowledgement;
-  }
-
-  const pendingDraft = await readPendingCallDraft(
-    runtime,
-    message.roomId,
-    "CALL_USER",
-  );
-
-  if (params.confirmed !== true && isStandingOwnerCallPolicy(message)) {
-    return {
-      text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
-      success: true,
-      values: {
-        success: true,
-        policyRecorded: true,
-        channel: "phone_call",
-      },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "owner",
-        policyRecorded: true,
-        channel: "phone_call",
-      },
-    };
-  }
-
   const to = readOwnerNumber(runtime);
   if (!to) {
     logger.warn(
@@ -556,23 +553,21 @@ async function dialOwner(
     };
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "Your agent is calling you.";
-  const ownerPrompt = `Place voice call to owner ${to} with message: "${spokenMessage}"?`;
-  const ownerDecision = await requireConfirmation({
+  const bodyText = params.bodyText?.trim();
+  const ownerDecision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: "VOICE_CALL_OWNER",
     pendingKey: `owner:${to}`,
-    prompt: ownerPrompt,
+    target: `owner ${to}`,
+    spokenMessage: bodyText || "Your agent is calling you.",
+    explicit: Boolean(bodyText),
   });
   if (ownerDecision.status !== "confirmed") {
     return {
       text:
         ownerDecision.status === "pending"
-          ? `${ownerPrompt} Reply yes to confirm or no to cancel.`
+          ? `${ownerDecision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -592,16 +587,9 @@ async function dialOwner(
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: spokenMessage,
+    message: ownerDecision.spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "owner");
-  if (result.success) {
-    await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
-    if (pendingDraft?.approvalTaskId) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
-    }
-  }
-  return result;
+  return deliveryToResult(delivery, to, "owner");
 }
 
 async function dialExternal(
@@ -609,18 +597,27 @@ async function dialExternal(
   message: Memory,
   params: VoiceCallParams,
 ): Promise<ActionResult> {
-  const pendingDraft = await readPendingCallDraft(
-    runtime,
-    message.roomId,
-    "CALL_EXTERNAL",
-  );
   const resolvedRecipient = await resolveExternalCallRecipient({
     runtime,
-    providedTo: params.recipient ?? pendingDraft?.to ?? undefined,
+    recipient: params.recipient,
     messageText: messageText(message),
   });
-  const to = resolvedRecipient.to?.trim();
-  if (!to) {
+  if (resolvedRecipient.kind === "ambiguous") {
+    return {
+      text: `More than one saved contact matches: ${resolvedRecipient.names.join(", ")}. Which one should I call?`,
+      success: false,
+      values: { success: false, error: "AMBIGUOUS_RECIPIENT" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        error: "AMBIGUOUS_RECIPIENT",
+        candidates: resolvedRecipient.names,
+      },
+    };
+  }
+  if (resolvedRecipient.kind === "missing") {
     return {
       text: "Who should I call, or which saved contact/phone number should I use?",
       success: false,
@@ -639,6 +636,7 @@ async function dialExternal(
       },
     };
   }
+  const to = resolvedRecipient.to.trim();
   if (isPlaceholderOrNonNumeric(to)) {
     return invalidPhoneResult(
       to,
@@ -656,23 +654,64 @@ async function dialExternal(
     );
   }
 
-  const spokenMessage =
-    params.bodyText?.trim() ||
-    pendingDraft?.message?.trim() ||
-    "This is a call from an automated assistant.";
-  const externalPrompt = `Place voice call to ${to} with message: "${spokenMessage}"?`;
-  const externalDecision = await requireConfirmation({
+  // Refuse a call that cannot be placed before the owner is asked to confirm it.
+  const allowList = readExternalAllowList(runtime);
+  const normalizedTo = normalizePhoneAllowListKey(to);
+  const isAllowed = allowList.some(
+    (candidate) => normalizePhoneAllowListKey(candidate) === normalizedTo,
+  );
+  if (!isAllowed) {
+    logger.warn(
+      { action: ACTION_NAME, recipientKind: "external", to },
+      `[${ACTION_NAME}] recipient not in allow-list`,
+    );
+    return {
+      text: `I cannot call ${to}. It is not on the external call allow-list (${EXTERNAL_ALLOWLIST_ENV_KEY}).`,
+      success: false,
+      values: { success: false, reason: "disallowed-recipient", to },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        reason: "disallowed-recipient",
+        to,
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId,
+      },
+    };
+  }
+
+  const credentials = readTwilioCredentialsFromEnv();
+  if (!credentials) {
+    return {
+      text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
+      success: false,
+      values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
+        error: "TWILIO_NOT_CONFIGURED",
+      },
+    };
+  }
+
+  const bodyText = params.bodyText?.trim();
+  const externalDecision = await confirmSpokenMessage({
     runtime,
     message,
     actionName: "VOICE_CALL_EXTERNAL",
     pendingKey: `external:${to}`,
-    prompt: externalPrompt,
+    target: resolvedRecipient.name ? `${resolvedRecipient.name} (${to})` : to,
+    spokenMessage: bodyText || "This is a call from an automated assistant.",
+    explicit: Boolean(bodyText),
   });
   if (externalDecision.status !== "confirmed") {
     return {
       text:
         externalDecision.status === "pending"
-          ? `${externalPrompt} Reply yes to confirm or no to cancel.`
+          ? `${externalDecision.prompt} Reply yes to confirm or no to cancel.`
           : "Voice call cancelled.",
       success: false,
       values: {
@@ -688,49 +727,7 @@ async function dialExternal(
         requiresConfirmation: externalDecision.status === "pending",
         awaitingUserInput: externalDecision.status === "pending",
         to,
-        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
-      },
-    };
-  }
-
-  const allowList = readExternalAllowList(runtime);
-  const normalizedTo = normalizePhoneAllowListKey(to);
-  const isAllowed = allowList.some(
-    (candidate) => normalizePhoneAllowListKey(candidate) === normalizedTo,
-  );
-  if (!isAllowed) {
-    logger.warn(
-      { action: ACTION_NAME, recipientKind: "external", to },
-      `[${ACTION_NAME}] recipient not in allow-list`,
-    );
-    return {
-      text: "",
-      success: false,
-      values: { success: false, reason: "disallowed-recipient", to },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "external",
-        reason: "disallowed-recipient",
-        to,
-        matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
-      },
-    };
-  }
-
-  const credentials = readTwilioCredentialsFromEnv();
-  if (!credentials) {
-    return {
-      text: "",
-      success: false,
-      values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
-      data: {
-        actionName: ACTION_NAME,
-        action: "dial",
-        subaction: "dial",
-        recipientKind: "external",
-        error: "TWILIO_NOT_CONFIGURED",
+        matchedRelationshipId: resolvedRecipient.matchedRelationshipId,
       },
     };
   }
@@ -738,16 +735,9 @@ async function dialExternal(
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
-    message: spokenMessage,
+    message: externalDecision.spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "external");
-  if (result.success) {
-    await clearPendingCallDraft(runtime, message.roomId, "CALL_EXTERNAL");
-    if (pendingDraft?.approvalTaskId) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
-    }
-  }
-  return result;
+  return deliveryToResult(delivery, to, "external");
 }
 
 function normalizeRecipientKind(value: unknown): RecipientKind | null {
@@ -785,10 +775,10 @@ export const voiceCallAction: Action & {
   description:
     "Owner-only outbound voice call via registered provider. Action dial; recipientKind=owner|external|e164. " +
     "Provider Twilio; Android/app-phone implementation-only until VOICE_CALL provider wired. " +
-    "owner env owner number + standing escalation policy; external RelationshipStore contact + allow-list; e164 raw phoneNumber. " +
-    "All paths draft first; confirmed:true required; approval queue.",
+    "owner env owner number; external RelationshipStore contact + allow-list; e164 raw phoneNumber. " +
+    "All paths draft first; the call is placed only after the owner replies yes on the next turn.",
   descriptionCompressed:
-    "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+    "Twilio voice dial: recipientKind=owner|external|e164; draft, owner yes/no next turn",
   contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
@@ -798,7 +788,7 @@ export const voiceCallAction: Action & {
     {
       name: "action",
       description: "dial.",
-      required: false,
+      required: true,
       schema: { type: "string" as const, enum: ["dial"] },
     },
     {
@@ -813,33 +803,22 @@ export const voiceCallAction: Action & {
     },
     {
       name: "phoneNumber",
-      description: "recipientKind=e164: destination E.164 phoneNumber.",
+      description:
+        "recipientKind=e164: destination E.164 phoneNumber. Also needs bodyText.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "recipient",
       description:
-        "recipientKind=external: contact name or E.164; names via RelationshipStore.",
+        "recipientKind=external: contact name or E.164; names via RelationshipStore. When omitted, the saved contact named in the message text is used.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "bodyText",
-      description: "Optional spoken message on connect.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "confirmed",
       description:
-        "true required to place call. Without: draft/approval-queue.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "reason",
-      description: "Optional call reason; approval task audit.",
+        "Spoken message on connect. Required for recipientKind=e164; owner and external use a default message when omitted.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -904,26 +883,24 @@ export const voiceCallAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Call me at +15551234567 and say the build is done" },
+        content: { text: "Call my phone now." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: 'Draft voice call to +15551234567:\n\n"The build is done."\n\nSay "confirm" to place the call.',
+          text: 'Draft call to your configured phone number: "Your agent is calling you." Reply yes to confirm or no to cancel.',
         },
       },
     ],
     [
       {
         name: "{{name1}}",
-        content: {
-          text: "If you get stuck in the browser or on my computer, call me and let me jump in to unblock it.",
-        },
+        content: { text: "Call me at +15551234567 and say the build is done" },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
+          text: 'Draft voice call to +15551234567:\n\n"The build is done."\n\nSay "confirm" to place the call.',
         },
       },
     ],

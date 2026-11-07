@@ -136,6 +136,7 @@ beforeAll(async () => {
     (statement) => getPgliteClientForTests().exec(statement),
     true,
   );
+  await applyMigration("0530_subscription_invoice_event_evidence.sql");
 });
 
 beforeEach(async () => {
@@ -805,5 +806,122 @@ describe("SubscriptionBillingOperationsRepository", () => {
         providerObjectDigest: DIGEST_A,
       }),
     ).toBeNull();
+  });
+});
+
+describe("original unfunded invoice event retention", () => {
+  async function original() {
+    const { invoiceEventFixture } = await import(
+      "../../lib/services/test-support/subscription-invoice-event-fixture"
+    );
+    const { createSubscriptionInvoiceEventEvidence } = await import(
+      "../../lib/services/subscription-invoice-event-evidence"
+    );
+    const f = invoiceEventFixture();
+    Object.assign(f.scope, {
+      organizationId: ORG_A,
+      subscriptionId: SUB_A,
+      customerId: "cus_repoa",
+      providerSubscriptionId: "sub_repoa",
+    });
+    f.invoice.customer = f.scope.customerId;
+    f.invoice.subscription = f.scope.providerSubscriptionId;
+    f.invoice.lines.data[0]!.subscription = f.scope.providerSubscriptionId;
+    const evidence = createSubscriptionInvoiceEventEvidence(f.event, f.scope);
+    const input = {
+      organizationId: ORG_A,
+      subscriptionId: SUB_A,
+      providerEventId: f.scope.providerEventId,
+      eventType: "invoice.paid",
+      providerObjectType: "invoice" as const,
+      providerObjectId: f.scope.invoiceId,
+      livemode: false,
+      eventCreatedAt: new Date(f.event.created * 1000),
+      payloadDigest: DIGEST_A,
+      now: at(0),
+    };
+    const { recordOriginalInvoiceEvent } = await import("./subscription-invoice-event-evidence");
+    return {
+      f,
+      input,
+      evidence,
+      record: recordOriginalInvoiceEvent,
+      create: createSubscriptionInvoiceEventEvidence,
+    };
+  }
+  test("atomically records unfunded original and preserves exact concurrent replay without a grant", async () => {
+    const f = await original();
+    const results = await Promise.all([
+      f.record(f.input, f.evidence),
+      f.record(f.input, f.evidence),
+    ]);
+    expect(results.map((x) => x.replayed).sort()).toEqual([false, true]);
+    expect(results[0]!.value.id).toBe(results[1]!.value.id);
+    const rows = await getPgliteClientForTests().query<{ evidence: unknown }>(
+      "SELECT evidence FROM subscription_invoice_event_evidence",
+    );
+    expect(rows.rows).toEqual([{ evidence: f.evidence }]);
+    const grants = await getPgliteClientForTests().query(
+      "SELECT * FROM subscription_allowance_transactions",
+    );
+    expect(grants.rows).toHaveLength(0);
+  });
+  test("refuses to backfill an existing digest-only receipt", async () => {
+    const f = await original();
+    await repository.recordEvent(f.input);
+    await expect(f.record(f.input, f.evidence)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_INVOICE_EVENT_EVIDENCE_CONFLICT",
+    });
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM subscription_invoice_event_evidence"))
+        .rows,
+    ).toHaveLength(0);
+  });
+  test("changed original invoice on replay cannot overwrite retained evidence", async () => {
+    const f = await original();
+    await f.record(f.input, f.evidence);
+    f.f.invoice.ending_balance++;
+    await expect(f.record(f.input, f.create(f.f.event, f.f.scope))).rejects.toMatchObject({
+      code: "SUBSCRIPTION_INVOICE_EVENT_EVIDENCE_CONFLICT",
+    });
+    expect(
+      (
+        await getPgliteClientForTests().query<{ evidence: unknown }>(
+          "SELECT evidence FROM subscription_invoice_event_evidence",
+        )
+      ).rows[0]!.evidence,
+    ).toEqual(f.evidence);
+  });
+  test("database ownership failure rolls back the newly inserted receipt", async () => {
+    const f = await original();
+    f.f.scope.customerId = "cus_foreign";
+    f.f.invoice.customer = "cus_foreign";
+    await expect(f.record(f.input, f.create(f.f.event, f.f.scope))).rejects.toThrow();
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM billing_subscription_event_receipts"))
+        .rows,
+    ).toHaveLength(0);
+  });
+  test("observation storage rejects direct mutation and deletion", async () => {
+    const f = await original();
+    await f.record(f.input, f.evidence);
+    await expect(
+      getPgliteClientForTests().exec(
+        "UPDATE subscription_invoice_event_evidence SET evidence=evidence || '{\"version\":2}'::jsonb",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      getPgliteClientForTests().exec("DELETE FROM subscription_invoice_event_evidence"),
+    ).rejects.toThrow();
+  });
+  test("receipt input cannot borrow another organization's observation", async () => {
+    const f = await original();
+    await expect(
+      f.record({ ...f.input, organizationId: ORG_B, subscriptionId: SUB_B }, f.evidence),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_EVENT_EVIDENCE_CONFLICT" });
+    expect(
+      (await getPgliteClientForTests().query("SELECT * FROM billing_subscription_event_receipts"))
+        .rows,
+    ).toHaveLength(0);
   });
 });

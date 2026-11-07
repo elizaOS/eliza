@@ -11,6 +11,8 @@ import {
   MCP_USAGE_BASED_COST_LABEL,
   PLATFORM_MCP_TOOL_PRICING,
 } from "@elizaos/cloud-shared/billing";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@elizaos/cloud-shared/lib/models/catalog";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   INTEGRATION_TRUST,
@@ -18,8 +20,6 @@ import {
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
 } from "@/api-app/lib/mcp/integration-catalog";
-import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@/lib/models/catalog";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // MCP definitions with their tools and schemas
 const mcpDefinitions = [
@@ -386,26 +386,6 @@ const mcpDefinitions = [
         description: "Get current date and time in any timezone",
         cost: MCP_FREE_COST_LABEL,
       },
-      {
-        name: "convert_timezone",
-        description: "Convert times between timezones",
-        cost: MCP_FREE_COST_LABEL,
-      },
-      {
-        name: "format_date",
-        description: "Format dates in various locales and styles",
-        cost: MCP_FREE_COST_LABEL,
-      },
-      {
-        name: "calculate_time_diff",
-        description: "Calculate difference between two dates",
-        cost: MCP_FREE_COST_LABEL,
-      },
-      {
-        name: "list_timezones",
-        description: "List common timezones with current offsets",
-        cost: MCP_FREE_COST_LABEL,
-      },
     ],
   },
   {
@@ -423,16 +403,6 @@ const mcpDefinitions = [
       {
         name: "get_current_weather",
         description: "Get current weather conditions for any city",
-        cost: MCP_FREE_COST_LABEL,
-      },
-      {
-        name: "get_weather_forecast",
-        description: "Get multi-day forecast (up to 16 days)",
-        cost: MCP_FREE_COST_LABEL,
-      },
-      {
-        name: "compare_weather",
-        description: "Compare weather between multiple cities",
         cost: MCP_FREE_COST_LABEL,
       },
       {

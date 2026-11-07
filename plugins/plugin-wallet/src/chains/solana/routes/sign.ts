@@ -20,10 +20,11 @@ import type {
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
+import { browserSignTokenMatches } from "../../browser-sign-token";
 import type { SolanaService } from "../service";
 
 class SolanaSignInputError extends Error {}
@@ -93,7 +94,7 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
     return false;
   }
   const got = readBearer(req);
-  if (got !== expected) {
+  if (!got || !browserSignTokenMatches(expected, got)) {
     res.status(401).json({ error: "invalid sign token" });
     return false;
   }

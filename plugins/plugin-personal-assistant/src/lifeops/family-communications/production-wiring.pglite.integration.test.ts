@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ChannelType,
@@ -13,7 +14,6 @@ import {
   setEntityRole,
   type UUID,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {

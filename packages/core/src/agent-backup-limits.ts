@@ -1,7 +1,7 @@
 /**
  * Defines the common wire-size ceiling for v1 agent snapshots.
  * Retain, push, reconstruction, and restore consumers share this contract so
- * no stored backup can exceed the smallest restore boundary (#17172).
+ * no stored backup can exceed the smallest restore boundary.
  */
 
 /**
@@ -36,15 +36,8 @@ export function resolveRetainableAgentBackupBytes(
 ): number {
 	if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 	const trimmed = rawOverride.trim();
-	if (trimmed === "") return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
-
-	if (!/^\d+$/.test(trimmed)) {
-		throw new Error(
-			`Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
-		);
-	}
 	const parsed = Number(trimmed);
-	if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+	if (!/^\d+$/.test(trimmed) || !Number.isSafeInteger(parsed) || parsed <= 0) {
 		throw new Error(
 			`Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
 		);
@@ -53,18 +46,7 @@ export function resolveRetainableAgentBackupBytes(
 }
 
 /**
- * A restore payload larger than what the restore path accepts, refused locally
- * instead of being sent to be rejected (#17172).
- *
- * It lives beside the limits themselves because BOTH sides that enforce them
- * throw it — the service before pushing state, and backup-chain reconstruction
- * while walking the chain — and a service-owned class would make the repository
- * import its own consumer.
- *
- * Typed because the classification matters in both directions: retrying is
- * pointless (the same bytes exceed the same limit every time), but the stored
- * chain is intact and still decryptable, so this must never read as permanently
- * lost and must never prune the chain.
+ * Restore payload exceeds the receiving boundary’s accepted size.
  */
 export class SnapshotPayloadTooLargeError extends Error {
 	readonly name = "SnapshotPayloadTooLargeError";

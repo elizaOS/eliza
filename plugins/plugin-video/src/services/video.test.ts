@@ -1,6 +1,7 @@
 /** Exercises VideoService metadata and parsing boundaries with deterministic binary doubles. */
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
@@ -37,6 +38,21 @@ function createServiceWithYtDlp(results: unknown[]) {
 }
 
 describe("VideoService deterministic behavior", () => {
+  it("accepts a cache directory created after a stale absence observation", () => {
+    fs.mkdirSync("./content_cache", { recursive: true });
+    const exists = fs.existsSync.bind(fs);
+    const probe = vi
+      .spyOn(fs, "existsSync")
+      .mockImplementation((value) =>
+        value === "./content_cache" ? false : exists(value),
+      );
+    try {
+      expect(() => createServiceWithYtDlp([])).not.toThrow();
+    } finally {
+      probe.mockRestore();
+    }
+  });
+
   it("parses yt-dlp compact upload_date into a valid Date", async () => {
     const { service } = createServiceWithYtDlp([
       {
@@ -248,6 +264,59 @@ describe("VideoService deterministic behavior", () => {
 
     const parsed = service.parseSRT(srtContent);
     expect(parsed).toBe("Hello world! This is a test. Line 2 text.");
+  });
+
+  it("keeps the first text line of WebVTT cues that have no identifier", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const vttContent = [
+      "WEBVTT",
+      "",
+      "NOTE produced by a caption editor",
+      "",
+      "00:00:01.000 --> 00:00:04.000",
+      "Hello world!",
+      "",
+      "intro",
+      "00:00:04.500 --> 00:00:07.000 align:start",
+      "This is a test.",
+      "Line 2 text.",
+    ].join("\n");
+
+    expect(service.parseSRT(vttContent)).toBe(
+      "Hello world! This is a test. Line 2 text.",
+    );
+  });
+
+  it("splits SRT cues on whitespace-only or bare-CR separators without leaking timings", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const spaced = [
+      "1",
+      "00:00:01,000 --> 00:00:04,000",
+      "Hello world!",
+      "  ",
+      "2",
+      "00:00:04,500 --> 00:00:07,000",
+      "This is a test.",
+    ].join("\n");
+    const bareCr = spaced.replace(/\n/g, "\r");
+
+    expect(service.parseSRT(spaced)).toBe("Hello world! This is a test.");
+    expect(service.parseSRT(bareCr)).toBe("Hello world! This is a test.");
+  });
+
+  it("ignores WebVTT metadata even when it contains cue-like timestamps", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const metadata = [
+      "NOTE",
+      "NOTE editor comment",
+      "NOTE\teditor comment",
+      "STYLE",
+      "REGION",
+    ]
+      .map((header) => `${header}\n00:00:01.000 --> 00:00:04.000\nnot spoken`)
+      .join("\n\n");
+    const content = `WEBVTT\n\n${metadata}\n\nNOTES\n00:00:04.000 --> 00:00:06.000\nActual speech`;
+    expect(service.parseSRT(content)).toBe("Actual speech");
   });
 
   it("handles empty or non-string SRT input", () => {

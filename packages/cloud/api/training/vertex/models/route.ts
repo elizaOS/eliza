@@ -1,12 +1,18 @@
 // Handles cloud API training vertex models route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
+
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import type {
   VertexTuningScope,
   VertexTuningSlot,
-} from "@/lib/services/vertex-tuning";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const VERTEX_TUNING_SLOTS = [
   "should_respond",
@@ -87,12 +93,13 @@ async function __hono_GET(request: Request) {
       resolvedModelPreferences: resolved.modelPreferences,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
+    logger.error("[Training] Failed to list tuned models:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to list tuned models",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

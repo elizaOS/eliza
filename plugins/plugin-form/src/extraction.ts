@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime, JSONSchema, JsonValue } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, parseJsonObject } from "@elizaos/core";
 import { FormService } from "./service";
 import type { TemplateValues } from "./template";
 import { resolveControlTemplates } from "./template";
@@ -73,24 +73,6 @@ type CorrectionJsonResponse = {
   corrections?: CorrectionJsonField[];
 };
 
-function parseJsonObjectResponse<T>(response: string): T | null {
-  try {
-    const trimmed = response.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = (fenced?.[1] ?? trimmed).trim();
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
-    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
-    }
-    return parsed as T;
-  } catch {
-    return null;
-  }
-}
-
 function parseBoolean(value: unknown): boolean {
   return (
     String(value ?? "")
@@ -101,6 +83,15 @@ function parseBoolean(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Dedupe key for an extracted or corrected field value. Values are compared by
+ * their JSON encoding so distinct object/array values (which all stringify to
+ * "[object Object]" via `String()`) are kept apart.
+ */
+function extractionDedupeKey(field: string, value: unknown): string {
+  return `${field}\0${JSON.stringify(value ?? null)}`;
 }
 
 function isValidIntent(str: string): str is FormIntent {
@@ -246,7 +237,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
     if (!fieldKey) continue;
     if (!isSafeExtractionField(fieldKey)) continue;
 
-    const dedupeKey = `${fieldKey}\0${String(entry.value ?? "")}`;
+    const dedupeKey = extractionDedupeKey(fieldKey, entry.value);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
@@ -392,7 +383,7 @@ Return only a valid JSON object with this schema:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(response);
+  const parsed = parseJsonObject<SingleFieldJsonResponse>(response);
   const found = parsed?.found === true || parsed?.found === "true";
   if (!found || !parsed) return null;
 
@@ -490,7 +481,7 @@ Rules:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(response);
+  const parsed = parseJsonObject<CorrectionJsonResponse>(response);
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";
   if (!parsed || !hasCorrection || !parsed.corrections) return [];
@@ -511,7 +502,7 @@ Rules:
     );
     if (!control) continue;
 
-    const dedupeKey = `${control.key}\0${String(correction.new_value ?? "")}`;
+    const dedupeKey = extractionDedupeKey(control.key, correction.new_value);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 

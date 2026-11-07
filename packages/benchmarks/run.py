@@ -5,7 +5,7 @@ Usage:
     python -m benchmarks.run <benchmark-id> [adapter-args...]
 
 Where ``<benchmark-id>`` is one of the adapters registered under
-``benchmarks.standard.*``: ``mmlu``, ``humaneval``, ``gsm8k``,
+``benchmarks.suites.standard.*``: ``mmlu``, ``humaneval``, ``gsm8k``,
 ``mt_bench``.
 
 Examples:
@@ -27,25 +27,25 @@ from typing import Callable, Mapping, Sequence
 
 
 def _mmlu_main() -> int:
-    from .standard.mmlu import main
+    from .suites.standard.mmlu import main
 
     return main()
 
 
 def _humaneval_main() -> int:
-    from .standard.humaneval import main
+    from .suites.standard.humaneval import main
 
     return main()
 
 
 def _gsm8k_main() -> int:
-    from .standard.gsm8k import main
+    from .suites.standard.gsm8k import main
 
     return main()
 
 
 def _mt_bench_main() -> int:
-    from .standard.mt_bench import main
+    from .suites.standard.mt_bench import main
 
     return main()
 

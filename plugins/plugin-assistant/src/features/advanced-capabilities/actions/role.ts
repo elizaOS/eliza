@@ -22,7 +22,9 @@ import {
   asRecord,
   ChannelType,
   canModifyRole,
+  findKeywordTermMatch,
   getLiveEntityMetadataFromMessage,
+  getCatalogValidationKeywordTerms as getValidationKeywordTerms,
   logger,
   normalizeRole,
   type RoleName,
@@ -31,16 +33,17 @@ import {
   resolveWorldForMessage,
   setEntityRoleCas,
   toWellFormedUnicode,
+  validateUuid,
 } from "@elizaos/core";
-import {
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching-core";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];
 
 const ROLE_NAMES: readonly RoleName[] = ["OWNER", "ADMIN", "USER", "GUEST"];
+
+/** Mirrors core `validateUuid`, which `setEntityRoleCas` applies to the write target. */
+const ENTITY_UUID_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
 const MAX_USERNAME_LENGTH = 64;
 const AMBIGUOUS_MATCH_SCORE_GAP = 10;
@@ -179,13 +182,14 @@ function normalizeAssignmentArray(raw: unknown): AssignmentJson[] {
   const out: AssignmentJson[] = [];
   for (const entry of raw) {
     const rec = asRecord(entry);
-    if (!rec) continue;
+    if (!rec) {
+      out.push({});
+      continue;
+    }
     const entityId =
       typeof rec.entityId === "string" ? rec.entityId : undefined;
     const newRole = typeof rec.newRole === "string" ? rec.newRole : undefined;
-    if (entityId || newRole) {
-      out.push({ entityId, newRole });
-    }
+    out.push({ entityId, newRole });
   }
   return out;
 }
@@ -366,9 +370,12 @@ async function buildAssignmentsFromParams(args: {
   runtime: IAgentRuntime;
   message: Memory;
   params: RoleHandlerParams;
-  defaultRole: RoleName | null;
+  op: "assign" | "revoke";
 }): Promise<{ assignments: RoleAssignment[]; errors: string[] }> {
-  const { runtime, message, params, defaultRole } = args;
+  const { runtime, message, params, op } = args;
+  // Revoke always lands on GUEST. A `role`/`newRole` supplied with revoke names
+  // the role being taken away, so it must never be written back to the target.
+  const revoking = op === "revoke";
   const errors: string[] = [];
   const assignments: RoleAssignment[] = [];
 
@@ -378,14 +385,28 @@ async function buildAssignmentsFromParams(args: {
       errors.push("Assignment missing entityId");
       continue;
     }
-    const newRole = entry.newRole
-      ? normalizeRoleInput(entry.newRole)
-      : defaultRole;
+    const entityId = validateUuid(entry.entityId);
+    if (!entityId) {
+      errors.push(
+        `Invalid entityId "${entry.entityId}": assignments[].entityId must be an entity UUID; use target for a name.`,
+      );
+      continue;
+    }
+    const newRole = revoking
+      ? "GUEST"
+      : entry.newRole
+        ? normalizeRoleInput(entry.newRole)
+        : null;
     if (!newRole) {
       errors.push(`Invalid role for ${entry.entityId}`);
       continue;
     }
-    assignments.push({ entityId: entry.entityId as UUID, newRole });
+    assignments.push({ entityId, newRole });
+  }
+  // A batch is applied entry by entry, so a bad entry must stop the whole
+  // batch here: writing the rest would report a partial write as the request.
+  if (errors.length > 0) {
+    return { assignments: [], errors };
   }
 
   if (assignments.length === 0 && params.target) {
@@ -394,11 +415,13 @@ async function buildAssignmentsFromParams(args: {
       errors.push("Could not determine target user.");
       return { assignments, errors };
     }
-    const newRole = params.role
-      ? normalizeRoleInput(params.role)
-      : params.label
-        ? (NATURAL_ROLE_MAP[params.label.trim().toLowerCase()] ?? null)
-        : defaultRole;
+    const newRole = revoking
+      ? "GUEST"
+      : params.role
+        ? normalizeRoleInput(params.role)
+        : params.label
+          ? (NATURAL_ROLE_MAP[params.label.trim().toLowerCase()] ?? null)
+          : null;
     if (!newRole) {
       errors.push("Could not determine target role.");
       return { assignments, errors };
@@ -684,16 +707,18 @@ export const roleAction: Action = {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   description:
-    "Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name.",
+    "Manage world roles OWNER/ADMIN/USER/GUEST. Ops assign, revoke, list. Use assignments[] or target name. revoke always sets the target to GUEST; use assign to set any other role.",
   parameters: [
     {
       name: "action",
-      description: "Operation: assign, revoke, list.",
+      // No schema default: the validator would fill it for every call and
+      // readParams reads action first, so it would override the subaction alias.
+      description:
+        "Operation: assign, revoke, list. assign when neither action nor subaction is given.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [...ROLE_OPS],
-        default: "assign",
       },
     },
     {
@@ -714,7 +739,8 @@ export const roleAction: Action = {
     },
     {
       name: "role",
-      description: "Role for single-target assign.",
+      description:
+        "Role for single-target assign. Not used by revoke, which always sets GUEST.",
       required: false,
       schema: {
         type: "string" as const,
@@ -723,20 +749,25 @@ export const roleAction: Action = {
     },
     {
       name: "label",
-      description: "Natural label (boss, coworker, etc.) to derive role.",
+      description:
+        "Natural label (boss, coworker, etc.) to derive the role for assign.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "assignments",
-      description: "Batch assignments by entityId for assign/revoke.",
+      description:
+        "Batch assignments by entity UUID for assign/revoke; use target for a name. newRole applies to assign only; revoke always sets GUEST. One invalid entry rejects the whole batch.",
       required: false,
       schema: {
         type: "array" as const,
         items: {
           type: "object" as const,
           properties: {
-            entityId: { type: "string" as const },
+            entityId: {
+              type: "string" as const,
+              pattern: ENTITY_UUID_PATTERN,
+            },
             newRole: {
               type: "string" as const,
               enum: [...ROLE_NAMES],
@@ -794,12 +825,11 @@ export const roleAction: Action = {
       return handleList({ runtime, message, callback });
     }
 
-    const defaultRole: RoleName | null = op === "revoke" ? "GUEST" : null;
     const { assignments, errors } = await buildAssignmentsFromParams({
       runtime,
       message,
       params,
-      defaultRole,
+      op,
     });
 
     if (assignments.length === 0) {
@@ -879,7 +909,7 @@ export const roleAction: Action = {
           text: "Revoked 1 role(s)",
           actions: ["ROLE"],
           thought:
-            "Revoke intent maps to ROLE action=revoke; defaultRole becomes GUEST so Pat drops to GUEST.",
+            "Revoke intent maps to ROLE action=revoke with target='Pat'; revoke always drops Pat to GUEST.",
         },
       },
     ],

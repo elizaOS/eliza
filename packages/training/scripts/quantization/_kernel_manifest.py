@@ -40,7 +40,7 @@ PINNED_KERNEL_CODEBOOK_SHA256 = {
     "turbo3": "d2fe34ddf270c3de0ea78dc840bf18f8bc9c9175c32489700ed62e70c7a95429",
     "turbo4": "d2fe34ddf270c3de0ea78dc840bf18f8bc9c9175c32489700ed62e70c7a95429",
     "turbo3_tcq": "d2fe34ddf270c3de0ea78dc840bf18f8bc9c9175c32489700ed62e70c7a95429",
-    "polar_q4": "6f0e9e204f10df190385e8f0f60055db2adbfabc611ade503be3f888eb04d399",
+    "polar_q4": "0521cf4ab10ec5e482d5062c5dec9dd1db17022e83812ee2206ff5d3702dff7f",
     "qjl1_256": "84048dea7812cf87e0c002aa2be69443e4228c10b326a9e5b1aa2d3668fbab58",
 }
 

@@ -1,9 +1,9 @@
 /** Verifies the thin inference router's authentication and canonical route behavior. */
 import { describe, expect, test } from "bun:test";
+import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
+import { getRequestTaskDefer } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
-import { getRequestTaskDefer } from "@/lib/runtime/request-context";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import chatCompletionsRoute from "../v1/chat/completions/route";
 import { createInferenceApp } from "./inference-app";
 

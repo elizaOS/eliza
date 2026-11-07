@@ -4,11 +4,14 @@
  * voice-speaker types. The single source these sibling components import their
  * types from so their contracts stay in sync.
  */
-import type { CapabilityHandoffRequest } from "@elizaos/core/capability-catalog";
+
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
   ChatTurnStatus,
+} from "@elizaos/contracts";
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
+import type {
   ConversationSecretRequest,
   MessageAttachment,
 } from "../../../api/client-types-chat";
@@ -147,6 +150,8 @@ export interface ChatMessageRenderContext {
   turnStatus?: ChatTurnStatus | null;
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
+  /** True while this turn's text is still arriving and may end mid-tag. */
+  streaming?: boolean;
 }
 export interface ChatMessageLabels extends ChatLabelSet {}
 export interface ChatConversationSummary {

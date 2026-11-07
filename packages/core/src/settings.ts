@@ -1,23 +1,4 @@
-/**
- * At-rest encryption for secret settings and the SECRET_SALT lifecycle. Secret
- * values (API keys and the like) are encrypted with AES-256-GCM keyed by
- * SHA-256(SECRET_SALT) under an "elizaos:settings:v2" AAD; legacy AES-256-CBC
- * ciphertext still decrypts. getSalt() reads the salt once and caches it with a
- * short TTL because it runs on every getSetting string-decrypt — the hot path
- * avoids re-clearing the env cache, and clearSaltCache() is the test seam. In
- * production a non-default SECRET_SALT is required unless
- * ELIZA_ALLOW_DEFAULT_SECRET_SALT overrides the check. Outside production an
- * unset salt no longer falls back to the publicly known constant — a random
- * per-process salt is generated with a loud warning instead, so ciphertext
- * can never be keyed by a published value (and does not survive restart).
- *
- * Consumed by the runtime's getSetting/setSetting path and by world/character
- * setup: saltWorldSettings/unsaltWorldSettings (gated on each setting's `secret`
- * flag) and encryptedCharacter/decryptedCharacter walk their string values,
- * round-tripping non-strings untouched. Authenticated decryption fails closed:
- * callers receive a typed error rather than accidentally consuming ciphertext
- * as a usable secret.
- */
+/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit salt unless the operator enables the default-salt exception. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
@@ -79,20 +60,31 @@ function getEphemeralSalt(): string {
 	return ephemeralSalt;
 }
 
+/** Additional authenticated data bound into every v2 ciphertext. */
+const SETTINGS_V2_AAD = new TextEncoder().encode("elizaos:settings:v2");
+
 function isEncryptedV1(value: string): boolean {
+	// Plain settings dominate reads; a v1 envelope always has its only colon
+	// right after the 32-hex IV, so reject before allocating a split.
+	if (value.charCodeAt(32) !== 58) return false;
 	const parts = value.split(":");
 	if (parts.length !== 2) return false;
-	try {
-		const iv = BufferUtils.fromHex(parts[0]);
-		return iv.length === 16;
-	} catch {
-		// error-policy:J3 settings are persisted input; malformed hexadecimal
-		// content makes this an invalid v1 ciphertext.
-		return false;
-	}
+	// v1 was AES-256-CBC: a 16-byte IV (32 hex chars) and a ciphertext that is a
+	// whole number of 16-byte blocks (>=32 hex chars). Validate both halves as
+	// pure hex. BufferUtils.fromHex silently strips non-hex characters, so an
+	// IV-shaped-but-punctuated prefix, or a plaintext like "<32 hex>:<text>",
+	// would otherwise be classified as already-encrypted: stored in the clear by
+	// encryptStringValue, then fatal SETTING_DECRYPTION_FAILED when read back.
+	const [ivHex, ciphertextHex] = parts;
+	return (
+		/^[0-9a-fA-F]{32}$/.test(ivHex) &&
+		/^[0-9a-fA-F]{32,}$/.test(ciphertextHex) &&
+		ciphertextHex.length % 32 === 0
+	);
 }
 
 function isEncryptedV2(value: string): boolean {
+	if (!value.startsWith("v2:")) return false;
 	const parts = value.split(":");
 	if (parts.length !== 4) return false;
 	if (parts[0] !== "v2") return false;
@@ -162,7 +154,7 @@ export function getSalt(): string {
 			saltErrorLogged = true;
 		}
 	} else {
-		// Explicit salt, or the legacy constant under an explicit opt-in.
+		// Use the explicit salt or the default constant under operator opt-in.
 		value = isDefaultOrUnset ? LEGACY_DEFAULT_SECRET_SALT : envSalt;
 		if (isDefaultOrUnset && !saltErrorLogged) {
 			logger.warn(
@@ -196,18 +188,6 @@ export function clearSaltCache(): void {
  * @returns {string} - The encrypted value in 'iv:encrypted' format
  */
 export function encryptStringValue(value: string, salt: string): string {
-	if (value === undefined || value === null) {
-		return value;
-	}
-
-	if (typeof value === "boolean" || typeof value === "number") {
-		return value;
-	}
-
-	if (typeof value !== "string") {
-		return value;
-	}
-
 	// If already encrypted, return as-is.
 	if (isEncryptedV1(value) || isEncryptedV2(value)) {
 		return value;
@@ -221,13 +201,12 @@ export function encryptStringValue(value: string, salt: string): string {
 		.slice(0, 32);
 	const iv = BufferUtils.randomBytes(12);
 
-	const aad = new TextEncoder().encode("elizaos:settings:v2");
 	const plaintextBytes = BufferUtils.fromString(value, "utf8");
 	const { ciphertext, tag } = cryptoUtils.encryptAes256Gcm(
 		key,
 		iv,
 		plaintextBytes,
-		aad,
+		SETTINGS_V2_AAD,
 	);
 
 	// Store version + IV + ciphertext + tag so we can decrypt and authenticate later
@@ -263,13 +242,12 @@ export function decryptStringValue(value: string, salt: string): string {
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-			const aad = new TextEncoder().encode("elizaos:settings:v2");
 			const plaintextBytes = cryptoUtils.decryptAes256Gcm(
 				key,
 				iv,
 				ciphertext,
 				tag,
-				aad,
+				SETTINGS_V2_AAD,
 			);
 			return BufferUtils.bufferToString(plaintextBytes, "utf8");
 		}
@@ -529,12 +507,7 @@ export function encryptedCharacter(character: Character): Character {
 	return encryptedChar;
 }
 
-/**
- * Decrypts sensitive data in a Character object
- * @param {Character} character - The character object with encrypted secrets
- * @param {IAgentRuntime} runtime - Retained for backward compatibility; salt resolution is process-scoped
- * @returns {Character} - A copy of the character with decrypted secrets
- */
+/** Returns a character copy with decrypted secrets. Salt resolution is process-scoped. */
 export function decryptedCharacter(
 	character: Character,
 	_runtime?: IAgentRuntime,

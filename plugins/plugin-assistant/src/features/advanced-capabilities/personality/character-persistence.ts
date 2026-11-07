@@ -32,12 +32,23 @@ export interface PersistCharacterParams {
   character?: PersistableCharacter;
   previousCharacter?: PersistableCharacter;
   previousName?: string;
+  /** True for a submitted name edit, including explicitly keeping the same label. */
+  nameWasExplicitlyEdited?: boolean;
   source?: CharacterPersistenceSource;
+}
+
+export type CharacterPersistenceStage = "not-started" | "committed" | "unknown";
+export interface CharacterPersistenceReceipt {
+  config: CharacterPersistenceStage;
+  agent: CharacterPersistenceStage;
+  history: CharacterPersistenceStage;
 }
 
 export interface PersistCharacterResult {
   success: boolean;
   error?: string;
+  /** Confirmed writes and uncertain outcomes; a failure does not imply rollback. */
+  persistence?: CharacterPersistenceReceipt;
 }
 
 export interface CharacterPersistenceServiceLike {

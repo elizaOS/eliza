@@ -1,7 +1,6 @@
 /** Defines and parses activity telemetry records for the LifeOps persistence boundary, preserving public factory and row contracts. */
 
 import crypto from "node:crypto";
-import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 import type {
   LifeOpsActivitySignal,
   LifeOpsCircadianState,
@@ -13,7 +12,8 @@ import type {
   LifeOpsTelemetryFamily,
   LifeOpsTelemetryPayload,
   LifeOpsUnclearReason,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 import {
   parseJsonArray,
   parseJsonRecord,

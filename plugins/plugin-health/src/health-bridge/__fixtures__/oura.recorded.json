@@ -37,6 +37,17 @@
     ],
     "next_token": null
   },
+  "dailySleep": {
+    "data": [
+      {
+        "id": "dsl-2026-05-01",
+        "day": "2026-05-01",
+        "score": 86,
+        "timestamp": "2026-05-01T00:00:00+00:00"
+      }
+    ],
+    "next_token": null
+  },
   "sleep": {
     "data": [
       {
@@ -53,7 +64,6 @@
         "rem_sleep_duration": 5760,
         "latency": 540,
         "efficiency": 94,
-        "score": 86,
         "average_heart_rate": 52.5,
         "lowest_heart_rate": 47,
         "average_hrv": 68,

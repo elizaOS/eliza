@@ -4,9 +4,26 @@ export type DateRangeParams =
   | { success: false; error: string };
 
 const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
+
+function isRealCivilDay(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(0);
+  probe.setUTCFullYear(year, month - 1, day);
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() + 1 === month &&
+    probe.getUTCDate() === day
+  );
+}
 
 function parseOptionalDate(raw: string | null): Date | undefined {
   if (raw === null) return undefined;
+
+  const prefix = ISO_DATE_PREFIX.exec(raw);
+  if (prefix && !isRealCivilDay(Number(prefix[1]), Number(prefix[2]), Number(prefix[3]))) {
+    return undefined;
+  }
 
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return undefined;
@@ -20,7 +37,13 @@ export function parseDateRangeParams(searchParams: URLSearchParams): DateRangePa
   const rawStart = searchParams.get("start_date");
   const rawEnd = searchParams.get("end_date");
   const startDate = parseOptionalDate(rawStart);
-  const endDate = parseOptionalDate(rawEnd);
+  const parsedEnd = parseOptionalDate(rawEnd);
+  // A date-only end_date names a whole day: include it up to its last
+  // millisecond, since callers filter with created_at <= endDate.
+  const endDate =
+    parsedEnd && rawEnd !== null && ISO_DATE_ONLY.test(rawEnd)
+      ? new Date(parsedEnd.getTime() + 24 * 60 * 60 * 1000 - 1)
+      : parsedEnd;
 
   if (rawStart !== null && !startDate) {
     return { success: false, error: "Invalid start_date" };

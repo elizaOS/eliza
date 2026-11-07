@@ -1,0 +1,42 @@
+name = "eliza-redis-http"
+main = "worker.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RedisHttpBridge"]
+
+[env.staging]
+name = "eliza-redis-http-staging"
+
+[[env.staging.containers]]
+class_name = "RedisHttpBridge"
+image = "../Dockerfile"
+image_build_context = ".."
+max_instances = 1
+instance_type = "lite"
+
+[[env.staging.durable_objects.bindings]]
+name = "BRIDGE"
+class_name = "RedisHttpBridge"
+
+[env.production]
+name = "eliza-redis-http-production"
+
+[[env.production.containers]]
+class_name = "RedisHttpBridge"
+image = "../Dockerfile"
+image_build_context = ".."
+max_instances = 1
+instance_type = "lite"
+
+[[env.production.durable_objects.bindings]]
+name = "BRIDGE"
+class_name = "RedisHttpBridge"

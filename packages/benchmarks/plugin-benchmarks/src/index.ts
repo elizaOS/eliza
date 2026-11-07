@@ -59,17 +59,19 @@ function rejectContradictoryDiscriminator(actions: readonly Action[]): Action[] 
   });
 }
 
-import { osworldAction } from "./actions/osworld";
-import { tauBenchToolAction } from "./actions/tau-bench";
-import { vendingMachineAction } from "./actions/vending-machine";
-import { visualWebBenchTaskAction } from "./actions/visualwebbench";
-import { webshopAction } from "./actions/webshop";
+import { osworldAction } from "./actions/osworld.js";
+import { tauBenchToolAction } from "./actions/tau-bench.js";
+import { vendingMachineAction } from "./actions/vending-machine.js";
+import { visualWebBenchTaskAction } from "./actions/visualwebbench.js";
+import { webshopAction } from "./actions/webshop.js";
 
-export { osworldAction } from "./actions/osworld";
-export { tauBenchToolAction } from "./actions/tau-bench";
-export { vendingMachineAction } from "./actions/vending-machine";
-export { visualWebBenchTaskAction } from "./actions/visualwebbench";
-export { webshopAction } from "./actions/webshop";
+export {
+  osworldAction,
+  tauBenchToolAction,
+  vendingMachineAction,
+  visualWebBenchTaskAction,
+  webshopAction,
+};
 
 export const benchmarksPlugin: Plugin = {
   name: "benchmarks",
@@ -85,3 +87,8 @@ export const benchmarksPlugin: Plugin = {
 };
 
 export default benchmarksPlugin;
+
+export {
+  LOCA_BENCHMARK_TOOL_ACTION_NAMES,
+  locaBenchmarkToolParametersFor,
+} from "./actions/loca.js";

@@ -14,12 +14,15 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   type BackgroundJobContext,
   BackgroundPlannerError,
   planJob,
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
+
+const FOLLOWUP_APPROVAL_REQUESTER = "background-job:followup_watchdog";
 
 /**
  * Periodically scans known contacts managed by the RelationshipsService and
@@ -381,7 +384,24 @@ export async function reconcileFollowupsOnce(
 
   // Route each overdue contact through the shared LLM planner. Sensitive
   // actions are enqueued into the approval queue; the tracker never auto-sends.
+  // A contact whose follow-up approval is still open is not planned again, so
+  // the hourly tick does not stack a new approval and owner prompt each hour.
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
   for (const entry of digest.overdue) {
+    const open = await queue.list({
+      subjectUserId: String(entry.entityId),
+      state: "pending",
+      action: null,
+    });
+    if (
+      open.some(
+        (request) =>
+          request.requestedBy === FOLLOWUP_APPROVAL_REQUESTER &&
+          request.expiresAt.getTime() > now,
+      )
+    ) {
+      continue;
+    }
     const plannerContext: BackgroundJobContext = {
       jobKind: "followup_watchdog",
       subjectUserId: String(entry.entityId),

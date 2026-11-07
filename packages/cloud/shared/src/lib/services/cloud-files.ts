@@ -1,6 +1,8 @@
 // Coordinates cloud service cloud files behavior behind route handlers.
 import { createHash, randomUUID } from "node:crypto";
 import { extname } from "node:path";
+import type { DbTransaction } from "../../db/client";
+import { writeTransaction } from "../../db/helpers";
 import {
   type CloudFile,
   type CloudFilesRepository,
@@ -28,8 +30,12 @@ export interface CloudFileStorage {
 
 export interface CloudFileQuotaRepository {
   tryReserveBytes(organizationId: string, bytes: bigint): Promise<bigint | null>;
-  releaseBytes(organizationId: string, bytes: bigint): Promise<void>;
+  releaseBytes(organizationId: string, bytes: bigint, tx?: DbTransaction): Promise<void>;
 }
+
+export type CloudFileWriteTransaction = <T>(
+  operation: (tx: DbTransaction) => Promise<T>,
+) => Promise<T>;
 
 export class CloudFileQuotaExceededError extends Error {
   constructor() {
@@ -74,6 +80,7 @@ export class CloudFilesService {
   constructor(
     private readonly repository: CloudFilesRepository = cloudFilesRepository,
     private readonly quotaRepository: CloudFileQuotaRepository = orgStorageQuotaRepository,
+    private readonly transaction: CloudFileWriteTransaction = writeTransaction,
   ) {}
 
   async list(input: CloudFileListInput) {
@@ -157,46 +164,65 @@ export class CloudFilesService {
   }
 
   async recordGenerated(input: RecordGeneratedCloudFileInput): Promise<CloudFile> {
-    return await this.repository.create({
-      organization_id: input.organizationId,
-      user_id: input.userId ?? null,
-      api_key_id: input.apiKeyId ?? null,
-      generation_id: input.generationId,
-      source: "generated",
-      kind: kindFromMime(input.mimeType),
-      filename: sanitizeFilename(input.filename),
-      mime_type: input.mimeType,
-      size_bytes: BigInt(input.sizeBytes),
-      sha256: input.sha256,
-      storage_key: input.storageKey,
-      storage_url: input.storageUrl,
-      metadata: input.metadata ?? {},
+    return await this.transaction(async (tx) => {
+      await this.repository.lockStorageKey(input.organizationId, input.storageKey, tx);
+      return await this.repository.create(
+        {
+          organization_id: input.organizationId,
+          user_id: input.userId ?? null,
+          api_key_id: input.apiKeyId ?? null,
+          generation_id: input.generationId,
+          source: "generated",
+          kind: kindFromMime(input.mimeType),
+          filename: sanitizeFilename(input.filename),
+          mime_type: input.mimeType,
+          size_bytes: BigInt(input.sizeBytes),
+          sha256: input.sha256,
+          storage_key: input.storageKey,
+          storage_url: input.storageUrl,
+          metadata: input.metadata ?? {},
+        },
+        tx,
+      );
     });
   }
 
   async delete(env: Bindings, organizationId: string, id: string): Promise<CloudFile | undefined> {
-    const deleted = await this.repository.softDeleteByOrgAndId(organizationId, id);
-    if (!deleted || !env.BLOB) return deleted;
+    return await this.transaction(async (tx) => {
+      const file = await this.repository.findActiveByOrgAndId(organizationId, id, tx);
+      if (!file) return undefined;
 
-    const activeReferences = await this.repository.activeStorageKeyReferences(
-      organizationId,
-      deleted.storage_key,
-    );
-    if (activeReferences > 0) return deleted;
-
-    try {
-      await env.BLOB.delete(deleted.storage_key);
-      if (deleted.source === "upload") {
-        await this.quotaRepository.releaseBytes(organizationId, deleted.size_bytes);
+      await this.repository.lockStorageKey(organizationId, file.storage_key, tx);
+      const activeReferences = await this.repository.lockActiveStorageKeyReferences(
+        organizationId,
+        file.storage_key,
+        tx,
+      );
+      if (!activeReferences.some((reference) => reference.id === file.id)) {
+        return undefined;
       }
-    } catch (error) {
-      logger.warn("[CloudFiles] Failed to delete object after file deletion", {
-        id,
-        storageKey: deleted.storage_key,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return deleted;
+
+      const removesObject = activeReferences.length === 1;
+      if (removesObject) {
+        if (!env.BLOB) throw new Error("R2 storage is not configured");
+        try {
+          await env.BLOB.delete(file.storage_key);
+        } catch (error) {
+          logger.warn("[CloudFiles] Object deletion failed; retaining the active file", {
+            id,
+            storageKey: file.storage_key,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      }
+
+      const deleted = await this.repository.softDeleteByOrgAndId(organizationId, id, tx);
+      if (removesObject && deleted?.source === "upload") {
+        await this.quotaRepository.releaseBytes(organizationId, deleted.size_bytes, tx);
+      }
+      return deleted;
+    });
   }
 }
 

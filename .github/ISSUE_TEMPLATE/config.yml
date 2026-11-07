@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Required contribution rules
+    url: https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md
+    about: Read before filing. Only real bugs and approved MVP gaps are in scope.
   - name: LifeOps Personal Assistant MVP board
     url: https://github.com/orgs/elizaOS/projects/15
     about: The active kanban for MVP work items.

@@ -23,7 +23,7 @@ import {
 } from "../../components/ui/tabs";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AffiliatesSurface } from "./affiliates/AffiliatesSurface";
-import { CreatorEarningsStatement } from "./earnings/CreatorEarningsStatement";
+import { CreatorEarningsStatement } from "./CreatorEarningsStatement";
 
 export function MonetizationView() {
   const t = useCloudT();

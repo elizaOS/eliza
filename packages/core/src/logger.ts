@@ -1,6 +1,26 @@
+import type { Logger, LoggerBindings } from "./logging.js";
+
+export type { Logger, LoggerBindings } from "./logging.js";
+
 import * as fs from "node:fs";
 import { hostname } from "node:os";
 import * as pathMod from "node:path";
+import adze, {
+	type ConsoleStyle,
+	type Level,
+	type LevelConfiguration,
+	type Method,
+	setup,
+	type UserConfiguration,
+} from "adze";
+import type Log from "adze/dist/log.js";
+import {
+	REDACTION_FAILED_VALUE,
+	redactLogValue,
+	redactSensitiveLogText,
+	redactTrailingArgs,
+} from "./security/log-redaction.js";
+
 /**
  * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
  * interface and the `createLogger` factory (plus the default `logger` /
@@ -21,26 +41,6 @@ import * as pathMod from "node:path";
  * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
  * Node logging is synchronously available; file sinks open lazily.
  */
-// Leaf-only test access; excluded from the public runtime barrel.
-export const __loggerTestHooks = {
-	stripAnsi: (str: string): string => stripAnsi(str),
-};
-
-import adze, {
-	type ConsoleStyle,
-	type LevelConfiguration,
-	type Method,
-	setup,
-	type UserConfiguration,
-} from "adze";
-import type Log from "adze/dist/log.js";
-import {
-	REDACTION_FAILED_VALUE,
-	redactLogValue,
-	redactSensitiveLogText,
-	redactTrailingArgs,
-} from "./security/log-redaction.js";
-
 const getEnvironmentVar = (
 	key: string,
 	fallback?: string,
@@ -61,54 +61,12 @@ interface AdzeLogMethods {
 	verbose(...args: unknown[]): void;
 }
 
-// ============================================================================
 // Type Definitions
-// ============================================================================
 
-/**
- * Log function signature matching Pino's API for compatibility
- */
-type LogFn = (
-	obj: Record<string, unknown> | string | Error,
-	msg?: string,
-	...args: unknown[]
-) => void;
+type LogFn = Logger["trace"];
 
-/**
- * Logger interface - elizaOS standard logger API
- */
-export interface Logger {
-	level: string;
-	trace: LogFn;
-	debug: LogFn;
-	info: LogFn;
-	warn: LogFn;
-	error: LogFn;
-	fatal: LogFn;
-	success: LogFn;
-	progress: LogFn;
-	log: LogFn;
-	clear: () => void;
-	child: (bindings: Record<string, unknown>) => Logger;
-}
-
-/**
- * Configuration for logger creation
- */
-export interface LoggerBindings extends Record<string, unknown> {
-	level?: string;
-	namespace?: string;
-	namespaces?: string[];
-	/**
-	 * Retention cap for the process-wide in-memory ring buffer backing
-	 * `recentLogs()` and WebSocket log streaming. A positive value resizes the
-	 * shared buffer in place, preserving already-captured history; raising the
-	 * cap keeps prior entries and lowering it trims the oldest. Non-positive or
-	 * non-finite values are ignored, leaving the current cap (default 100)
-	 * unchanged. Constructing a logger never clears the shared buffer.
-	 */
-	maxMemoryLogs?: number;
-}
+/** Shared method for levels below a logger's threshold. */
+const suppressedLogFn: LogFn = () => {};
 
 /**
  * Log entry structure for in-memory storage and streaming
@@ -171,9 +129,7 @@ interface InMemoryDestination {
 	setMaxLogs: (maxLogs: number) => void;
 }
 
-// ============================================================================
 // Utility Functions
-// ============================================================================
 
 /**
  * Log level priorities for filtering
@@ -190,7 +146,40 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
 	error: 50,
 	fatal: 60,
 	alert: 60,
+	silent: Number.POSITIVE_INFINITY,
 };
+
+/** Accepted spellings that map onto a canonical level name. */
+const LOG_LEVEL_ALIASES: Record<string, string> = {
+	off: "silent",
+	none: "silent",
+	warning: "warn",
+};
+
+/**
+ * Resolve a configured level name to a canonical entry of
+ * `LOG_LEVEL_PRIORITY`. An unknown name is reported once on stderr and falls
+ * back to `fallback`, so a typo such as `LOG_LEVEL=warnign` never silently
+ * turns into full info output.
+ */
+function resolveConfiguredLogLevel(
+	raw: string | undefined,
+	fallback: string,
+	source: string,
+): string {
+	const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+	if (trimmed.length === 0) return fallback;
+	const level = LOG_LEVEL_ALIASES[trimmed] ?? trimmed;
+	if (Object.hasOwn(LOG_LEVEL_PRIORITY, level)) return level;
+	const known = Object.keys(LOG_LEVEL_PRIORITY).join(", ");
+	const message = `[logger] ignoring unknown ${source}=${JSON.stringify(raw)}; expected one of ${known} (aliases: off, none, warning); using "${fallback}"`;
+	if (typeof process !== "undefined" && process.stderr?.write) {
+		process.stderr.write(`${message}\n`);
+	} else {
+		console.warn(message);
+	}
+	return fallback;
+}
 
 /**
  * Reverse mapping from numeric level to preferred level name
@@ -207,15 +196,6 @@ const LEVEL_TO_NAME: Record<number, string> = {
 	50: "error",
 	60: "fatal", // prefer 'fatal' over 'alert'
 };
-
-/**
- * Check if a message should be logged based on current level
- */
-function shouldLog(messageLevel: string, currentLevel: string): boolean {
-	const messagePriority = LOG_LEVEL_PRIORITY[messageLevel.toLowerCase()] || 30;
-	const currentPriority = LOG_LEVEL_PRIORITY[currentLevel.toLowerCase()] || 30;
-	return messagePriority >= currentPriority;
-}
 
 /**
  * Safe JSON stringify that handles circular references
@@ -262,66 +242,51 @@ function formatExtraValue(value: unknown): string {
 	return safeStringify(value);
 }
 
+/** `src` is the prefix; agentId/agentName are shown via the Adze namespace tag. */
+const PRETTY_EXCLUDED_KEYS = new Set(["src", "agentId", "agentName"]);
+
 /**
- * Format a log entry in compact pretty format
- * Format: [src] message (key=val, key=val)
- *
- * agentId/agentName are NOT displayed in pretty mode because:
- * - Loggers with namespace already show an agent-prefixed tag (via Adze)
- * - These fields ARE still included in JSON mode for filtering/monitoring
+ * Format a log entry in compact pretty format:
+ * `[SRC] message (key=val, key=val)`. JSON mode keeps the structured object
+ * (with agentId/agentName) instead.
  */
 function formatPrettyLog(
 	context: Record<string, unknown>,
 	message: string,
-	isJsonMode: boolean,
 ): string {
-	// In JSON mode, don't format - return message as-is
-	if (isJsonMode) {
-		return message;
-	}
-
-	const src = context.src as string | undefined;
-
-	// Build prefix: [SRC] in uppercase
-	const srcPart = src ? `[${src.toUpperCase()}] ` : "";
-
-	// Build extras: (key=val, key=val)
-	// Exclude: src (already in prefix), agentId/agentName (shown via Adze namespace tag)
-	const excludeKeys = ["src", "agentId", "agentName"];
-	const extraPairs: string[] = [];
-
-	for (const [key, value] of Object.entries(context)) {
-		if (excludeKeys.includes(key)) continue;
+	const src = context.src;
+	let line = src ? `[${String(src).toUpperCase()}] ` : "";
+	line += message;
+	let extras = "";
+	for (const key in context) {
+		if (!Object.hasOwn(context, key) || PRETTY_EXCLUDED_KEYS.has(key)) continue;
+		const value = context[key];
 		if (value === undefined) continue;
-		extraPairs.push(`${key}=${formatExtraValue(value)}`);
+		extras += `${extras ? ", " : ""}${key}=${formatExtraValue(value)}`;
 	}
-
-	const extrasPart = extraPairs.length > 0 ? ` (${extraPairs.join(", ")})` : "";
-
-	return `${srcPart}${message}${extrasPart}`;
+	return extras ? `${line} (${extras})` : line;
 }
 
-// ============================================================================
 // Configuration
-// ============================================================================
 
 // Log level configuration
 const DEFAULT_LOG_LEVEL = "info";
-const effectiveLogLevel = getEnvironmentVar("LOG_LEVEL") || DEFAULT_LOG_LEVEL;
+const effectiveLogLevel = resolveConfiguredLogLevel(
+	getEnvironmentVar("LOG_LEVEL"),
+	DEFAULT_LOG_LEVEL,
+	"LOG_LEVEL",
+);
+/**
+ * True when the configured level is `silent`: no sink receives anything. It
+ * switches off the Adze console, the buffer filter, and the file sinks
+ * (`ensureFileLog` never opens output.log, prompts.log, or chat.log).
+ */
+const effectiveLogSilent = effectiveLogLevel === "silent";
 
-// Custom log levels mapping (elizaOS to Adze)
-// These are for our internal shouldLog function, not Adze's levels
-export const customLevels: Record<string, number> = {
-	fatal: 60,
-	error: 50,
-	warn: 40,
-	info: 30,
-	log: 29,
-	progress: 28,
-	success: 27,
-	debug: 20,
-	trace: 10,
-};
+/** Lets hot paths omit debug-only diagnostics under the resolved logger level. */
+export const RUNTIME_DEBUG_LOG_ENABLED = ["trace", "verbose", "debug"].includes(
+	effectiveLogLevel,
+);
 
 // Configuration flags
 const raw = parseBooleanFromText(getEnvironmentVar("LOG_JSON_FORMAT"));
@@ -331,43 +296,33 @@ const showTimestamps = parseBooleanFromText(
 
 const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`;
 
-// ============================================================================
 // Sensitive-data redaction
-// ============================================================================
 
-// ============================================================================
 // File Log Output
-// ============================================================================
 
 /**
  * File logging - lazy-initialized on first write to avoid module-init timing issues.
  * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in
  * cwd) or LOG_FILE=/path/to/file.log.
- * Disabled by default.
+ * Disabled by default, and always disabled under LOG_LEVEL=silent.
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
 // One-shot guard so a persistent file-write failure surfaces exactly once on
-// stderr instead of being swallowed forever by the catch in writeLogEntryToFile
-// (#16356: an invalid stripAnsi regex threw on every write and output.log
-// silently stayed empty for the sink's whole lifetime).
+// stderr instead of being swallowed forever by the catch in writeLogEntryToFile.
 let _fileLogWriteErrorWarned = false;
 let _promptLogFd: number | null = null;
 let _chatLogFd: number | null = null;
 let _promptLogCounter = 0;
 
-/**
- * Strip ANSI escape codes from a string for plain-text logging.
- * Uses RegExp constructor to avoid control-character-in-regex lint.
- */
+/** ANSI CSI/OSC escape sequences, compiled once: every file-sink line runs through it. */
+const ANSI_ESCAPE_RE =
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC and BEL delimit the ANSI sequences being stripped.
+	/\x1b(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1b\\|\(B))/g;
+
+/** Strip ANSI escape codes from a string for plain-text logging. */
 function stripAnsi(str: string): string {
-	const ESC = "\x1b";
-	const BEL = "\x07";
-	const re = new RegExp(
-		`${ESC}(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:${BEL}|${ESC}\\\\|\\(B))`,
-		"g",
-	);
-	return str.replace(re, "");
+	return str.replace(ANSI_ESCAPE_RE, "");
 }
 
 /**
@@ -392,13 +347,19 @@ function openLogFilePrivate(
 
 /**
  * Lazily open the log files on the first write.
- * Returns true if the files are ready for writing.
+ * Returns true if the files are ready for writing. Every file sink (output,
+ * prompt, and chat) is opened here and nowhere else, so this is the single
+ * gate for LOG_FILE and for the silent level.
  */
 function ensureFileLog(): boolean {
 	if (_fileLogState === "active") return true;
 	if (_fileLogState === "disabled") return false;
 
 	_fileLogState = "disabled";
+	// `silent` disables the file sinks too: logPrompt/logResponse/logChatIn/
+	// logChatOut bypass shouldLog, so gating here is what keeps prompts.log and
+	// chat.log from being created when LOG_FILE is set alongside silent.
+	if (effectiveLogSilent) return false;
 	try {
 		const logFileEnv = process.env.LOG_FILE;
 		if (
@@ -481,9 +442,8 @@ function writeLogEntryToFile(entry: LogEntry): void {
 		const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
 		fs.writeSync(fd, line);
 	} catch (error) {
-		// A persistent write failure (e.g. #16356's invalid regex, which threw on
-		// every call) must not stay invisible for the sink's whole lifetime — go
-		// straight to stderr once, bypassing the logger that is itself failing.
+		// A persistent write failure must not stay invisible for the sink's whole
+		// lifetime — go straight to stderr once, bypassing the failing logger.
 		if (!_fileLogWriteErrorWarned) {
 			_fileLogWriteErrorWarned = true;
 			console.error(
@@ -495,9 +455,7 @@ function writeLogEntryToFile(entry: LogEntry): void {
 	}
 }
 
-// ============================================================================
 // Prompt instrumentation (prompts.log)
-// ============================================================================
 
 export interface PromptLogMetadata {
 	agentName?: string;
@@ -592,9 +550,7 @@ export function logResponse(
 	return slug;
 }
 
-// ============================================================================
 // Chat instrumentation (chat.log)
-// ============================================================================
 
 export interface ChatInLogParams {
 	agentName: string;
@@ -686,9 +642,7 @@ export function logChatOut(params: ChatOutLogParams): string {
 	return part;
 }
 
-// ============================================================================
 // In-Memory Log Storage
-// ============================================================================
 
 /**
  * Creates an in-memory destination for storing recent logs
@@ -764,25 +718,27 @@ function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
 // Global in-memory destination
 const globalInMemoryDestination = createInMemoryDestination();
 
-// ============================================================================
 // Adze Configuration
-// ============================================================================
 
 // Configure Adze globally
 // Map elizaOS log levels to Adze log levels
-const getAdzeActiveLevel = () => {
-	const level = effectiveLogLevel.toLowerCase();
-	if (level === "trace") return "verbose";
-	if (level === "debug") return "debug";
-	if (level === "log") return "log";
-	if (level === "info") return "info";
-	if (level === "warn") return "warn";
-	if (level === "error") return "error";
-	if (level === "fatal") return "alert";
-	return "info"; // Default to info
+// Every name in LOG_LEVEL_PRIORITY maps onto one of the custom Adze levels
+// below so the console and the in-memory buffer agree on what is emitted;
+// `silent` disables the console through Adze's own `silent` switch.
+const ADZE_ACTIVE_LEVEL_BY_NAME: Record<string, Level> = {
+	trace: "verbose",
+	verbose: "verbose",
+	debug: "debug",
+	success: "success",
+	progress: "log",
+	log: "log",
+	info: "info",
+	warn: "warn",
+	error: "error",
+	fatal: "alert",
+	alert: "alert",
+	silent: "alert",
 };
-
-const adzeActiveLevel = getAdzeActiveLevel();
 
 // Reusable custom level configuration using Adze's types
 const customLevelConfig: Record<string, LevelConfiguration> = {
@@ -860,20 +816,29 @@ const customLevelConfig: Record<string, LevelConfiguration> = {
 	},
 };
 
-setup({
-	activeLevel: adzeActiveLevel,
+/**
+ * Passed to every sealed logger so it inherits the level and styling. Adze
+ * `structuredClone`s a sealed logger's configuration on every call, so it must
+ * hold no functions: the timestamp formatter lives only in the global setup,
+ * which takes precedence anyway.
+ */
+const adzeSealConfig: UserConfiguration = {
+	activeLevel: ADZE_ACTIVE_LEVEL_BY_NAME[effectiveLogLevel] ?? "info",
+	silent: effectiveLogSilent,
 	format: raw ? "json" : "pretty",
-	timestampFormatter: showTimestamps ? undefined : () => "",
 	withEmoji: false,
 	levels: customLevelConfig,
+};
+
+setup({
+	...adzeSealConfig,
+	timestampFormatter: showTimestamps ? undefined : () => "",
 });
 
 // Adze owns formatted output; createLogger().invoke owns the single in-memory
 // dispatch so listeners receive one entry with Pino-compatible levels.
 
-// ============================================================================
 // Logger Factory
-// ============================================================================
 
 /**
  * Creates a sealed Adze logger instance with namespaces and metadata
@@ -923,15 +888,6 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 		metaBase.hostname = hostname();
 	}
 
-	// This ensures the sealed logger inherits the correct log level and styling
-	const globalConfig: UserConfiguration = {
-		activeLevel: getAdzeActiveLevel(),
-		format: raw ? "json" : "pretty",
-		timestampFormatter: showTimestamps ? undefined : () => "",
-		withEmoji: false,
-		levels: customLevelConfig,
-	};
-
 	// Creation/child bindings bypass the per-call redaction in adaptArgs — Adze
 	// emits the merged meta verbatim on every line — so scrub the bindings here:
 	// logger.child({ apiKey }) must not print the key on each subsequent line.
@@ -947,7 +903,7 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 		safeMeta = { redactionError: REDACTION_FAILED_VALUE };
 	}
 
-	return chain.meta(safeMeta).seal(globalConfig);
+	return chain.meta(safeMeta).seal(adzeSealConfig);
 }
 
 /**
@@ -964,7 +920,11 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
 
 	if (typeof bindings === "object" && bindings !== null) {
 		if ("level" in bindings) {
-			level = bindings.level as string;
+			level = resolveConfiguredLogLevel(
+				String(bindings.level),
+				effectiveLogLevel,
+				"bindings.level",
+			);
 		}
 		if (
 			"maxMemoryLogs" in bindings &&
@@ -999,7 +959,11 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
  * @returns Logger instance with elizaOS API
  */
 function createLogger(bindings: LoggerBindings | boolean = false): Logger {
-	const { level, base, maxMemoryLogs } = extractBindingsConfig(bindings);
+	const {
+		level: currentLevel,
+		base,
+		maxMemoryLogs,
+	} = extractBindingsConfig(bindings);
 
 	// Apply the requested retention cap in place. Resizing preserves the shared
 	// buffer's existing history instead of destroying every other logger's
@@ -1009,67 +973,44 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 		globalInMemoryDestination.setMaxLogs(maxMemoryLogs);
 	}
 
-	const sealed = sealAdze(base);
-	const levelStr =
-		typeof level === "number" ? "info" : level || effectiveLogLevel;
-	const currentLevel = levelStr.toLowerCase();
+	const sealed = sealAdze(base) as Log & AdzeLogMethods;
+	// `currentLevel` is already a canonical lower-case key of LOG_LEVEL_PRIORITY.
+	const currentPriority = LOG_LEVEL_PRIORITY[currentLevel];
+	const namespacePrefix = base.namespace ? `#${base.namespace}  ` : "";
 	let warnedSinkFailure = false;
 
 	/**
-	 * Invoke Adze method with error capture
+	 * Record one already-redacted call in the ring buffer and file sink, then
+	 * hand it to Adze. Level filtering happens in the method wrappers below so a
+	 * suppressed call never pays for redaction.
 	 */
-	const invoke = (method: string, ...args: unknown[]): void => {
-		if (!shouldLog(method, currentLevel)) {
-			return;
+	const invoke = (
+		priority: number,
+		adzeMethod: keyof AdzeLogMethods,
+		adzeTag: string | undefined,
+		args: unknown[],
+	): void => {
+		let msg = namespacePrefix;
+		for (let i = 0; i < args.length; i++) {
+			const arg = args[i];
+			if (i > 0) msg += " ";
+			msg +=
+				typeof arg === "string"
+					? arg
+					: arg instanceof Error
+						? arg.message
+						: safeStringify(arg);
 		}
 
-		// Capture to in-memory destination for API access (even for namespaced loggers)
-		let msg = "";
-		if (args.length > 0) {
-			msg = args
-				.map((arg) => {
-					if (typeof arg === "string") return arg;
-					if (arg instanceof Error) return arg.message;
-					return safeStringify(arg);
-				})
-				.join(" ");
-		}
-
-		if (base.namespace) {
-			msg = `#${base.namespace}  ${msg}`;
-		}
-
-		const entry: LogEntry = {
-			time: Date.now(),
-			level:
-				LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
-			msg,
-		};
-
+		const entry: LogEntry = { time: Date.now(), level: priority, msg };
 		globalInMemoryDestination.write(entry);
 		writeLogEntryToFile(entry);
 
-		let adzeMethod = method;
-		let adzeArgs = args;
-
-		if (method === "fatal") {
-			// Adze uses 'alert' for fatal-level logging
-			adzeMethod = "alert";
-		} else if (method === "progress") {
-			adzeMethod = "info";
-			adzeArgs = ["[PROGRESS]", ...args];
-		} else if (method === "success") {
-			adzeMethod = "info";
-			adzeArgs = ["[SUCCESS]", ...args];
-		} else if (method === "trace") {
-			adzeMethod = "verbose";
-		}
-
 		try {
-			const loggerWithMethods = sealed as Log & AdzeLogMethods;
-			const logMethod = loggerWithMethods[adzeMethod as keyof AdzeLogMethods];
-			if (typeof logMethod === "function") {
-				logMethod.call(loggerWithMethods, ...adzeArgs);
+			if (adzeTag === undefined) {
+				sealed[adzeMethod](...args);
+			} else {
+				sealed[adzeMethod](adzeTag, ...args);
 			}
 		} catch {
 			// error-policy:J7 report without re-entering Adze or exposing the failed entry.
@@ -1154,7 +1095,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 		if (cleanMsg !== undefined) {
 			// Pretty mode: format as compact single line
 			if (!raw) {
-				const formatted = formatPrettyLog(redactedObj, cleanMsg, raw);
+				const formatted = formatPrettyLog(redactedObj, cleanMsg);
 				return [formatted, ...redactTrailingArgs(args)];
 			}
 			// JSON mode: keep structured object for machine parsing
@@ -1164,7 +1105,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 		// No message provided - just context object
 		if (!raw) {
 			// Pretty mode: format the object as a simple string
-			const formatted = formatPrettyLog(redactedObj, "", raw);
+			const formatted = formatPrettyLog(redactedObj, "");
 			return formatted
 				? [formatted, ...redactTrailingArgs(args)]
 				: [...redactTrailingArgs(args)];
@@ -1172,25 +1113,30 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 		return [redactedObj, ...redactTrailingArgs(args)];
 	};
 
-	// Create log methods
-	const trace: LogFn = (obj, msg, ...args) =>
-		invoke("verbose", ...adaptArgs(obj, msg, ...args));
-	const debug: LogFn = (obj, msg, ...args) =>
-		invoke("debug", ...adaptArgs(obj, msg, ...args));
-	const info: LogFn = (obj, msg, ...args) =>
-		invoke("info", ...adaptArgs(obj, msg, ...args));
-	const warn: LogFn = (obj, msg, ...args) =>
-		invoke("warn", ...adaptArgs(obj, msg, ...args));
-	const error: LogFn = (obj, msg, ...args) =>
-		invoke("error", ...adaptArgs(obj, msg, ...args));
-	const fatal: LogFn = (obj, msg, ...args) =>
-		invoke("fatal", ...adaptArgs(obj, msg, ...args));
-	const success: LogFn = (obj, msg, ...args) =>
-		invoke("success", ...adaptArgs(obj, msg, ...args));
-	const progress: LogFn = (obj, msg, ...args) =>
-		invoke("progress", ...adaptArgs(obj, msg, ...args));
-	const logFn: LogFn = (obj, msg, ...args) =>
-		invoke("log", ...adaptArgs(obj, msg, ...args));
+	/**
+	 * Build one level's method. `priority` is the buffer level; `adzeTag`
+	 * prefixes levels Adze has no method of its own for.
+	 */
+	const method = (
+		priority: number,
+		adzeMethod: keyof AdzeLogMethods,
+		adzeTag?: string,
+	): LogFn => {
+		if (priority < currentPriority) return suppressedLogFn;
+		return (obj, msg, ...args) =>
+			invoke(priority, adzeMethod, adzeTag, adaptArgs(obj, msg, ...args));
+	};
+
+	const p = LOG_LEVEL_PRIORITY;
+	const trace = method(p.verbose, "verbose");
+	const debug = method(p.debug, "debug");
+	const info = method(p.info, "info");
+	const warn = method(p.warn, "warn");
+	const error = method(p.error, "error");
+	const fatal = method(p.fatal, "alert");
+	const success = method(p.success, "info", "[SUCCESS]");
+	const progress = method(p.progress, "info", "[PROGRESS]");
+	const logFn = method(p.log, "log");
 
 	/**
 	 * Clear console and memory buffer
@@ -1226,14 +1172,11 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 	};
 }
 
-// ============================================================================
 // Exports
-// ============================================================================
 
 // Create default logger instance
 const logger = createLogger();
 
-// Backward compatibility alias
 export const elizaLogger = logger;
 
 // Export recent logs function

@@ -9,7 +9,7 @@ import { type BigIntStats, constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { types as utilTypes } from "node:util";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 
 export const CANDIDATE_FS_IO_CHUNK_BYTES = 256 * 1024;

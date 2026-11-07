@@ -4,8 +4,8 @@
  * schedule. The caller supplies duration from the provider response when
  * settling so estimated reservations reconcile to authoritative usage.
  */
-import { PLATFORM_MARKUP_MULTIPLIER } from "@/lib/pricing-constants";
-import type { FlatOperationCost } from "@/lib/services/ai-pricing";
+import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
+import type { FlatOperationCost } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 
 const CARTESIA_STT_CREDITS_PER_SECOND = 0.5;
 const CARTESIA_PRICING_SOURCE = "https://www.cartesia.ai/pricing";
@@ -14,9 +14,22 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 }
 
+/**
+ * Highest published paid-plan credit price (Pro overage: $65 per 1M credits;
+ * Startup $45, Scale $38). Cloud speech is funded from subscription allowance,
+ * so this only sizes reservations and usage records; the conservative upper
+ * bound never under-reserves. A deployment on a cheaper Cartesia plan may set
+ * CARTESIA_STT_USD_PER_CREDIT to its account rate.
+ */
+export const CARTESIA_PUBLISHED_USD_PER_CREDIT = 65 / 1_000_000;
+
+/** Account rate when configured, else the published upper bound. A set but
+ * invalid value is a deployment error and fails closed. */
 export function parseCartesiaUsdPerCredit(value: string | undefined): number {
+  if (value === undefined || value.trim() === "")
+    return CARTESIA_PUBLISHED_USD_PER_CREDIT;
   const parsed = Number(value);
-  if (!value?.trim() || !Number.isFinite(parsed) || parsed <= 0) {
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(
       "CARTESIA_STT_USD_PER_CREDIT must be a positive finite number",
     );

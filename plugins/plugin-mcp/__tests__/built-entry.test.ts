@@ -55,6 +55,20 @@ it("loads the relocated package root through the runtime plugin boundary", () =>
      const plugin = findRuntimePluginExport(module);
      assert(plugin, "The emitted module did not expose a runtime plugin");
      assert.equal(plugin, module.default);
+     const direct = await import("@elizaos/plugin-mcp/protocol-utils/schema-converter");
+     for (const validate of [module.validateParamsAgainstSchema, direct.validateParamsAgainstSchema]) {
+       for (const type of ["integer", ["integer", "null"], ["null", "integer"]]) {
+         const schema = { properties: { count: { type } }, required: ["count"] };
+         assert.deepEqual(validate({ count: 1.5 }, schema), ["Parameter 'count' expected integer, got 1.5"]);
+         for (const count of [0, -2, 2]) assert.deepEqual(validate({ count }, schema), []);
+         assert.deepEqual(validate({ count: "2" }, schema), ["Parameter 'count' expected number, got string"]);
+         if (Array.isArray(type)) assert.deepEqual(validate({ count: null }, schema), []);
+       }
+       for (const type of ["number", ["integer", "number"], ["number", "integer", "null"]]) {
+         assert.deepEqual(validate({ count: 1.5 }, { properties: { count: { type } } }), []);
+       }
+       assert.deepEqual(validate({ count: "many" }, { properties: { count: { type: ["integer", "string"] } } }), []);
+     }
      console.log(JSON.stringify({ name: plugin.name }));`,
         normalizer,
       ],

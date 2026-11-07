@@ -109,7 +109,9 @@ class TauBenchRunner:
         if config.start_index < 0:
             raise ValueError("tau-bench start_index cannot be negative")
         if config.end_index != -1 and config.end_index <= config.start_index:
-            raise ValueError("tau-bench end_index must be -1 or greater than start_index")
+            raise ValueError(
+                "tau-bench end_index must be -1 or greater than start_index"
+            )
         if config.max_tasks_per_domain is not None and config.max_tasks_per_domain <= 0:
             raise ValueError("tau-bench max_tasks_per_domain must be positive")
         if config.task_ids is not None and (
@@ -159,12 +161,16 @@ class TauBenchRunner:
             task_index=task_index,
         )
 
-    def _apply_scenario_note(self, env: Env, task_index: int, scenario_note: str) -> None:
+    def _apply_scenario_note(
+        self, env: Env, task_index: int, scenario_note: str
+    ) -> None:
         if not scenario_note:
             return
         task = env.tasks[task_index]
         note = f"\n\nAdditional conversation condition: {scenario_note}"
-        env.tasks[task_index] = task.model_copy(update={"instruction": task.instruction + note})
+        env.tasks[task_index] = task.model_copy(
+            update={"instruction": task.instruction + note}
+        )
 
     def _make_agent(self) -> BaseTauAgent:
         if self.config.use_mock:
@@ -262,7 +268,9 @@ class TauBenchRunner:
 
         # Upstream env's calculate_reward fired on done; pull both data-hash and
         # outputs sub-rewards out of info.reward_info.
-        reward_info = run.info.get("reward_info") if isinstance(run.info, dict) else None
+        reward_info = (
+            run.info.get("reward_info") if isinstance(run.info, dict) else None
+        )
         r_actions: Optional[float] = None
         r_outputs: Optional[float] = None
         if reward_info:
@@ -334,7 +342,7 @@ class TauBenchRunner:
             agent_cost=run.agent_cost,
             error=run.error,
             messages=run.messages,
-            info={"reward_info": reward_info} if reward_info else {},
+            info={**run.info, **({"reward_info": reward_info} if reward_info else {})},
         )
 
     # --- Public API ------------------------------------------------------
@@ -380,7 +388,9 @@ class TauBenchRunner:
                 and self.config.max_tasks_per_domain is None
             ):
                 actual_by_domain = {
-                    domain: sum(1 for selected, _, _ in base_task_list if selected == domain)
+                    domain: sum(
+                        1 for selected, _, _ in base_task_list if selected == domain
+                    )
                     for domain in self.config.domains
                 }
                 expected_by_domain = {
@@ -395,10 +405,15 @@ class TauBenchRunner:
             task_list = (
                 expand_task_items(base_task_list)
                 if self.config.include_edge_scenarios
-                else [(domain, idx, task, "base", "") for domain, idx, task in base_task_list]
+                else [
+                    (domain, idx, task, "base", "")
+                    for domain, idx, task in base_task_list
+                ]
             )
             if not task_list:
-                raise ValueError("No tasks selected — check --domains / --task-ids / --split")
+                raise ValueError(
+                    "No tasks selected — check --domains / --task-ids / --split"
+                )
 
             expected_keys = [
                 (domain, task_index, scenario_id, trial)
@@ -406,7 +421,9 @@ class TauBenchRunner:
                 for trial in range(self.config.num_trials)
             ]
             if len(set(expected_keys)) != len(expected_keys):
-                raise ValueError("tau-bench workload contains duplicate rollout identities")
+                raise ValueError(
+                    "tau-bench workload contains duplicate rollout identities"
+                )
 
             agent = self._make_agent()
 

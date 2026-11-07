@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop session manager ts behavior for app shell integration. */
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";

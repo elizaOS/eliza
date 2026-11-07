@@ -21,12 +21,12 @@
  */
 
 import { Boxes } from "lucide-react";
-import { lazy } from "react";
 import { registerSettingsSection } from "../../components/settings/settings-section-registry";
 import {
   type CloudRouteDef,
   registerCloudRoute,
 } from "../shell/cloud-route-registry";
+import McpsRoute from "./McpsRoute";
 import { McpsSection } from "./McpsSection";
 
 export type {
@@ -72,13 +72,10 @@ export const MCPS_SECTION_ID = "mcps";
 /** Stable URL path slug for the standalone MCPs route. */
 export const MCPS_ROUTE_PATH = "cloud/mcps";
 
-/** Lazy route element for the standalone MCPs surface (code-split). */
-const McpsRouteLazy = lazy(() => import("./McpsRoute"));
-
 /** Cloud-route definition for the standalone MCPs surface. */
 export const mcpsCloudRoute: CloudRouteDef = {
   path: MCPS_ROUTE_PATH,
-  element: McpsRouteLazy,
+  element: McpsRoute,
   group: "cloud",
 };
 

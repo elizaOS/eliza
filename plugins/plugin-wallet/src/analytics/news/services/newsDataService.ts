@@ -7,6 +7,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
+import { decodeBasicHtmlEntities } from "@elizaos/plugin-assistant/html-entities";
 import type { RealWorldNewsArticle } from "../interfaces/types";
 
 interface RSSItem {
@@ -124,32 +125,31 @@ export class NewsDataService extends Service {
   }
 
   private decodeHtmlEntities(text: string): string {
-    const entities: Record<string, string> = {
-      "&#8217;": "'",
-      "&#8216;": "'",
-      "&#8220;": '"',
-      "&#8221;": '"',
-      "&#8211;": "–",
-      "&#8212;": "—",
-      "&#038;": "&",
-      "&amp;": "&",
-      "&lt;": "<",
-      "&gt;": ">",
-      "&quot;": '"',
-      "&#39;": "'",
-    };
-
-    let decoded = text;
-    for (const [entity, char] of Object.entries(entities)) {
-      decoded = decoded.replace(new RegExp(entity, "g"), char);
-    }
-
-    // Handle numeric entities
-    decoded = decoded.replace(/&#(\d+);/g, (_match, dec) => {
-      return String.fromCharCode(dec);
-    });
-
-    return decoded;
+    // The wallet renders the quote code points U+2018/U+2019/U+201C/U+201D
+    // as straight quotes, where the shared decoder returns the curly
+    // characters. The choice depends on the code point, not the spelling:
+    // decimal (`&#8217;`), hex (`&#x2019;`), and uppercase-X hex
+    // (`&#X2019;`, the spelling merged #35829 added to the decoder family)
+    // render the same. Every other entity defers to the shared decoder.
+    // Decode in one pass over the source text: replacement output is never
+    // rescanned, so an escaped entity such as `&amp;amp;` decodes one
+    // layer to the literal text `&amp;` instead of collapsing both layers
+    // to `&`.
+    return text.replace(
+      /&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+      (entity) => {
+        const numeric = /^&#(?:[xX]([0-9a-fA-F]+)|([0-9]+));$/.exec(entity);
+        if (numeric) {
+          const hexDigits = numeric[1];
+          const code = hexDigits
+            ? Number.parseInt(hexDigits, 16)
+            : Number.parseInt(numeric[2] ?? "", 10);
+          if (code === 0x2018 || code === 0x2019) return "'";
+          if (code === 0x201c || code === 0x201d) return '"';
+        }
+        return decodeBasicHtmlEntities(entity);
+      },
+    );
   }
 
   async getLatestNews(options?: {

@@ -15,12 +15,7 @@ import { Capacitor } from "@capacitor/core";
 import { Button, Input } from "@elizaos/ui";
 import type React from "react";
 import { useCallback, useState } from "react";
-import {
-  decodePairingPayload,
-  ElizaIntent,
-  logger,
-  type PairingPayload,
-} from "../services";
+import { decodePairingPayload, logger, type PairingPayload } from "../services";
 
 interface PairingViewProps {
   onPaired(payload: PairingPayload): void;
@@ -91,10 +86,10 @@ export function Pairing({
       });
       try {
         const payload = decodePairingPayload(trimmed);
-        await ElizaIntent.setPairingStatus({
-          deviceId: payload.agentId,
-          agentUrl: payload.ingressUrl,
-        });
+        // Native persistence happens via onPaired -> persistPairingToNative
+        // (guarded to native platforms); calling the native-only
+        // setPairingStatus here would reject on web and break the manual
+        // pairing fallback that dev builds rely on.
         onPaired(payload);
         setStatus({ kind: "idle" });
       } catch (err) {

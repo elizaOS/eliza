@@ -2,12 +2,10 @@
  * Tracks bar-surface window placement so launcher and overlay panes stay
  * within viewport constraints.
  */
-import * as React from "react";
 
-import {
-  type NavigateViewDetail,
-  pathForNavigateViewDetail,
-} from "../../app-navigate-view";
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
+import * as React from "react";
+import { pathForNavigateViewDetail } from "../../app-navigate-view";
 import {
   openDesktopAppWindow,
   openDesktopLauncherWindow,

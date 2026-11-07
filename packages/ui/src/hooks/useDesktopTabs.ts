@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 
 /**
@@ -77,7 +78,7 @@ function persistPinnedTabs(tabs: DesktopTab[]): void {
   if (typeof window === "undefined") return;
   const pinned = tabs.filter((t) => t.pinned);
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pinned));
+    shellLocalStorage.setItem(STORAGE_KEY, JSON.stringify(pinned));
   } catch {
     // localStorage unavailable in sandboxed environments — non-fatal.
   }

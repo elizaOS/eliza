@@ -4,9 +4,9 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { advertisingService } from "@/lib/services/advertising";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const PublicReportQuerySchema = z.object({
   format: z.enum(["json", "csv"]).default("json"),

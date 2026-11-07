@@ -31,15 +31,15 @@
  */
 
 import {
+	NlmsEchoCanceller,
+	type ResidualSuppressionOptions,
+} from "@elizaos/voice";
+import {
 	type EmitVoiceTurnObservedArgs,
 	type HandleLiveVoiceAttributionOptions,
 	handleLiveVoiceAttribution,
 } from "../../runtime/voice-entity-binding.js";
 import type { VoiceTurnSignal } from "./eot-classifier.js";
-import {
-	NlmsEchoCanceller,
-	type ResidualSuppressionOptions,
-} from "./nlms-echo-canceller.js";
 import type {
 	IncrementalTurnAttributor,
 	VoiceAttributionOutput,

@@ -1,4 +1,5 @@
 import {
+  compareMemoryIds,
   createUniqueUuid,
   type IAgentRuntime,
   ModelType,
@@ -130,7 +131,7 @@ export function registerImportedConversationEmbeddingWorker(
               (cursor &&
                 (last.createdAt < cursor.createdAt ||
                   (last.createdAt === cursor.createdAt &&
-                    last.id <= cursor.id)))
+                    compareMemoryIds(last.id, cursor.id) <= 0)))
             ) {
               throw new Error("Import embedding scan did not advance");
             }

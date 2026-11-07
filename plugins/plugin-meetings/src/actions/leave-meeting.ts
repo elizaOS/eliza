@@ -12,11 +12,12 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/core/meetings";
+import { MEETING_PLATFORM_LABELS } from "@elizaos/core/protocol";
 import type { MeetingService } from "../service.js";
 import {
   MEETING_URL_PARAMETER,
   messageText,
+  optionString,
   reply,
   requireMeetingService,
   resolveTargetSession,
@@ -60,7 +61,18 @@ async function handler(
       `I'm in ${active.length} meetings (${list}) — which one should I leave?`,
     );
   }
-  svc.service.stopSession(target.id as UUID);
+  const label = `${MEETING_PLATFORM_LABELS[target.platform]} ${target.nativeMeetingId}`;
+  // stopSession returns false for a session that already reached a terminal
+  // status. A session that just ended stays in the live map until transcript
+  // finalization evicts it, so it can still be listed here. Report that state
+  // instead of claiming a leave that the service refused.
+  if (!svc.service.stopSession(target.id as UUID)) {
+    return reply(
+      callback,
+      false,
+      `That ${label} meeting already ended — the transcript is in the Transcripts view.`,
+    );
+  }
   return reply(
     callback,
     true,
@@ -72,12 +84,22 @@ async function handler(
 export const leaveMeetingAction: Action = {
   name: "LEAVE_MEETING",
   similes: ["EXIT_MEETING", "STOP_MEETING_TRANSCRIPTION"],
+  // Same gate as JOIN_MEETING: the owner's meetings are the owner's.
+  roleGate: { minRole: "OWNER" },
   description:
     "Leave a meeting the notetaker bot is currently attending and finalize its transcript.",
-  validate: async (runtime, message) => {
+  // The keyword test guards an untargeted leave. A planner call that names the
+  // meeting (the follow-up to "which one should I leave?") carries no keyword.
+  validate: async (runtime, message, _state, options) => {
     const service = runtime.getService<MeetingService>("meetings");
     if (!service) return false;
     if (service.listSessions({ active: true }).length === 0) return false;
+    if (
+      optionString(options, "sessionId") ||
+      optionString(options, "meetingUrl")
+    ) {
+      return true;
+    }
     return /\b(leave|exit|stop|end|drop)\b/i.test(messageText(message));
   },
   parameters: [SESSION_ID_PARAMETER, MEETING_URL_PARAMETER],

@@ -24,8 +24,10 @@ export default defineConfig({
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
   },
   webServer: {
+    // Node owns Vite's HTTP preview server; Bun's stream implementation can
+    // terminate it between desktop and mobile requests (write after end).
     command:
-      "bun run build && bun --bun vite preview --host 127.0.0.1 --port 4456",
+      "bun run build && node ../../../node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4456",
     url: "http://127.0.0.1:4456",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

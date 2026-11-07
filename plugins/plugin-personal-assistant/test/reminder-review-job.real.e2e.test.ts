@@ -5,6 +5,7 @@
  * runtime.
  */
 import crypto from "node:crypto";
+import type { LifeOpsOccurrence } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ChannelType,
@@ -14,7 +15,6 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
-import type { LifeOpsOccurrence } from "../src/contracts/index.js";
 import {
   createLifeOpsReminderAttempt,
   createLifeOpsReminderPlan,

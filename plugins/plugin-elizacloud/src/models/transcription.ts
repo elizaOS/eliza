@@ -88,38 +88,59 @@ export async function handleTranscription(
     blob = new Blob([input] as never, { type: detectedMimeType });
   } else if (typeof input === "string") {
     blob = await fetchAudioFromUrl(input);
-  } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
-    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else if (
     typeof input === "object" &&
     input !== null &&
     "audio" in input &&
     input.audio != null
   ) {
+    // In-process audio wins over any audioUrl: core TranscriptionParams
+    // requires an audioUrl, so callers that already hold the media send
+    // `{ audioUrl: "", audio }` (audio redaction verification). Transcribe
+    // the bytes instead of fetching the (possibly empty) URL.
     const params = input as OpenAITranscriptionParams;
-    if (
-      !(params.audio instanceof Blob) &&
-      !(params.audio instanceof File) &&
-      !Buffer.isBuffer(params.audio)
+    const providedAudio: unknown = params.audio;
+    const rawBytes =
+      Buffer.isBuffer(providedAudio)
+        ? providedAudio
+        : providedAudio instanceof Uint8Array
+          ? Buffer.from(providedAudio)
+          : providedAudio instanceof ArrayBuffer
+            ? Buffer.from(new Uint8Array(providedAudio))
+            : null;
+    if (rawBytes !== null) {
+      const mimeType = params.mimeType ?? detectAudioMimeType(rawBytes);
+      logger.debug(
+        params.mimeType
+          ? `Using provided MIME type: ${mimeType}`
+          : `Auto-detected audio MIME type: ${mimeType}`
+      );
+      blob = new Blob([rawBytes] as never, { type: mimeType });
+    } else if (
+      providedAudio instanceof Blob ||
+      providedAudio instanceof File
     ) {
-      throw new Error("TRANSCRIPTION param 'audio' must be a Blob/File/Buffer.");
-    }
-    if (Buffer.isBuffer(params.audio)) {
-      let mimeType = params.mimeType;
-      if (!mimeType) {
-        mimeType = detectAudioMimeType(params.audio);
-        logger.debug(`Auto-detected audio MIME type: ${mimeType}`);
-      } else {
-        logger.debug(`Using provided MIME type: ${mimeType}`);
-      }
-      blob = new Blob([params.audio] as never, { type: mimeType });
+      blob = providedAudio;
     } else {
-      blob = params.audio as Blob;
+      throw new Error(
+        "TRANSCRIPTION param 'audio' must be a Blob/File/Buffer/Uint8Array/ArrayBuffer."
+      );
     }
     extraParams = params;
+  } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
+    // No in-process bytes accompanied the URL: only a remote fetch can serve
+    // the transcript. An empty audioUrl is a caller-shape error, not a
+    // fetchable resource — reject it instead of issuing a request that
+    // cannot succeed.
+    if (!input.audioUrl) {
+      throw new Error(
+        "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio."
+      );
+    }
+    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else {
     throw new Error(
-      "TRANSCRIPTION expects a Blob/File/Buffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"
+      "TRANSCRIPTION expects a Blob/File/Buffer/Uint8Array/ArrayBuffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer/Uint8Array/ArrayBuffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"
     );
   }
 
@@ -145,12 +166,8 @@ export async function handleTranscription(
   }
 
   try {
-    // Ride through the cloud's transient cold-cache warming 503: on a box
-    // whose text brain runs elsewhere the STT admission cache goes cold
-    // between rare calls and the first one 503s with a warming body that
-    // clears in ~1s — the raw-Response companion to the throw-shaped retries
-    // in image/video/music (#18323/#18325/#18333). A non-warming failure
-    // still throws immediately.
+    // Retry the cloud's typed transient 503 (see utils/warming.ts); any other
+    // failure throws immediately.
     let response: Response;
     let warmingRetries = 0;
     for (;;) {
@@ -163,7 +180,7 @@ export async function handleTranscription(
         if (waitSeconds !== null) {
           warmingRetries++;
           logger.warn(
-            `[ELIZAOS_CLOUD] STT cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`
+            `[ELIZAOS_CLOUD] STT transient unavailability (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`
           );
           await new Promise((r) => setTimeout(r, waitSeconds * 1000));
           continue;

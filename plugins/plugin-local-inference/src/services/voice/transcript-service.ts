@@ -15,7 +15,7 @@ import {
 	type TranscriptSummary,
 	transcriptDurationMs,
 	transcriptSpeakerCount,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { transcriptKnowledgePayload } from "./transcript-knowledge";
 import {
 	TranscriptStore,

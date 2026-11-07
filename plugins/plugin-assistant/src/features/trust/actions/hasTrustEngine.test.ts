@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 
 /**
  * Verifies TRUST action availability against the real runtime service registry,

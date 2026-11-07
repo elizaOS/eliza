@@ -9,7 +9,7 @@
 import {
   LIFEOPS_REVIEW_STATES,
   type LifeOpsGoalReviewState,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",

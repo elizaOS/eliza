@@ -743,6 +743,22 @@ describe("GET + DELETE /api/pty/sessions", () => {
     expect(h.svc?.hasSession(id)).toBe(false);
   });
 
+  it("does not report success when killing the session fails", async () => {
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
+    const spawn = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    const id = (spawn.body as { session: { sessionId: string } }).session
+      .sessionId;
+    h.fake.ptys[0].killError = new Error("EPERM");
+
+    await expect(
+      routeByName("pty-stop-session")(ctx(h.runtime, undefined, { id })),
+    ).rejects.toMatchObject({ code: "PTY_SESSION_STOP_FAILED" });
+    expect(h.fake.ptys[0].killed).toBe(false);
+    expect(h.svc?.hasSession(id)).toBe(true);
+  });
+
   it("400 when stopping without an id", async () => {
     const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const res = await routeByName("pty-stop-session")(

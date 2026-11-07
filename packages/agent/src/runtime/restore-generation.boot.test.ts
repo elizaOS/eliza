@@ -1,10 +1,4 @@
-/**
- * Exercises committed-generation selection through the actual runtime entry.
- * A real PGlite store and synthetic preparation authority isolate boot selection;
- * Two boots exercise the real runtime and SQL adapter. The server wiring case
- * substitutes only the HTTP host boundary; it proves no registry publication and
- * no ordinary-boot fallback on restart, not HTTP readiness or live-model output.
- */
+/** Exercises committed-generation selection, real runtime boots, authenticated HTTP restart failure without ordinary-boot fallback, and API stop/start of the restored runtime. */
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -13,6 +7,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { AgentRuntime } from "@elizaos/core";
 import { type SQL, sql } from "drizzle-orm";
 import { afterEach, expect, it, vi } from "vitest";
+import * as apiServer from "../api/server.ts";
 import * as sandboxRegistry from "../sandbox-registry.ts";
 import {
   type AgentBackupRestoreV3CandidateFs,
@@ -32,14 +27,6 @@ import {
 /** Load-tolerant wall-clock test budget; no deadline here proves expiry. */
 const TEST_BUDGET_MS = 10 * 60_000;
 vi.setConfig({ testTimeout: TEST_BUDGET_MS, hookTimeout: TEST_BUDGET_MS });
-
-type ServerOptions = NonNullable<
-  Parameters<typeof import("../api/server").startApiServer>[0]
->;
-const apiBoundary = vi.hoisted(() => ({
-  start: vi.fn<(options?: ServerOptions) => Promise<{ port: number }>>(),
-}));
-vi.mock("../api/server.ts", () => ({ startApiServer: apiBoundary.start }));
 
 const roots = new Set<string>();
 const candidates = new Set<AgentBackupRestoreV3CandidateFs>();
@@ -159,7 +146,6 @@ async function fixture() {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  apiBoundary.start.mockReset();
   _resetAgentHostBridge();
   for (const authority of authorities) await authority.close();
   authorities.clear();
@@ -226,14 +212,40 @@ it(
     });
     const registry = vi.spyOn(sandboxRegistry, "buildSandboxRegistryFromEnv");
     const abort = new AbortController();
-    let serverOptions: ServerOptions | undefined;
+    let server:
+      | Awaited<ReturnType<typeof apiServer.startApiServer>>
+      | undefined;
+    const token = randomUUID();
+    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
+    vi.stubEnv("ELIZA_API_TOKEN", token);
+    vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "1");
+    vi.stubEnv(
+      "ELIZA_CONFIG_PATH",
+      path.join(committed.paths.state, "eliza.json"),
+    );
+    vi.stubEnv(
+      "ELIZA_PERSIST_CONFIG_PATH",
+      path.join(committed.paths.state, "eliza.json"),
+    );
     let runtime: AgentRuntime | undefined;
-    apiBoundary.start.mockImplementation(async (options) => {
-      serverOptions = options;
-      // Stop optional background work; server wiring itself continues to return.
-      abort.abort();
-      return { port: 0 };
-    });
+    let runtimeForCleanup: AgentRuntime | undefined;
+    const startServer = apiServer.startApiServer;
+    const start = vi
+      .spyOn(apiServer, "startApiServer")
+      .mockImplementation(async (options) => {
+        const activateRuntime = options?.onRuntimeActivated;
+        server = await startServer({
+          ...options,
+          port: 0,
+          skipDeferredStartupWork: true,
+          onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+            await activateRuntime?.(previousRuntime, activeRuntime);
+            runtimeForCleanup = activeRuntime;
+          },
+        });
+        abort.abort();
+        return server;
+      });
     try {
       const started = await startEliza({
         serverOnly: true,
@@ -248,19 +260,63 @@ it(
         abortSignal: abort.signal,
         onRuntimeCreated: (created) => {
           runtime = created;
+          runtimeForCleanup = created;
         },
       });
       expect(started).toBe(runtime);
       expect(started?.agentId).toBe(agentId);
-      expect(apiBoundary.start).toHaveBeenCalledOnce();
+      expect(start).toHaveBeenCalledOnce();
       expect(registry).not.toHaveBeenCalled();
-      if (!serverOptions?.onRestart)
-        throw new Error("Server restart was not wired");
-      expect(serverOptions.restartRequiresRuntimeDisposal).toBe(true);
+      if (!server) throw new Error("HTTP server did not start");
+      if (!started) throw new Error("Restored runtime did not start");
+      const serverPort = server.port;
+      const lifecycle = (
+        action: "restart" | "start" | "stop",
+        authenticated = true,
+      ) =>
+        fetch(`http://127.0.0.1:${serverPort}/api/agent/${action}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-forwarded-for": "203.0.113.10",
+            ...(authenticated ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: "{}",
+        });
+      expect((await lifecycle("restart", false)).status).toBe(401);
+      expect((await lifecycle("stop", false)).status).toBe(401);
+      const adapter = started.adapter;
+      if (!adapter) throw new Error("Runtime adapter was not initialized");
+      const closeAdapter = vi.spyOn(adapter, "close");
+      expect((await lifecycle("stop")).status).toBe(200);
+      runtimeForCleanup = undefined;
+      expect(closeAdapter).toHaveBeenCalledOnce();
+
+      const restarted = await lifecycle("start");
+      expect(restarted.status).toBe(200);
+      expect(await restarted.json()).toMatchObject({
+        status: { state: "running" },
+      });
+      // The restored-generation start must not dispose the runtime that the
+      // preceding API stop already closed.
+      expect(closeAdapter).toHaveBeenCalledOnce();
+      expect(runtimeForCleanup).toBeDefined();
+
       await authority.close();
-      // The real replacement entry rejects the closed authority before construction.
-      // Dropping that authority would instead try an ordinary boot of the same store.
-      await expect(serverOptions.onRestart()).resolves.toBeNull();
+      const failedRestart = await lifecycle("restart");
+      expect(failedRestart.status).toBe(500);
+      expect(await failedRestart.json()).toMatchObject({
+        error: expect.stringContaining("runtime failed to re-initialize"),
+      });
+      expect(registry).not.toHaveBeenCalled();
+
+      expect((await lifecycle("stop")).status).toBe(200);
+      runtimeForCleanup = undefined;
+      const failed = await lifecycle("start");
+      expect(failed.status).toBe(500);
+      expect(await failed.json()).toMatchObject({
+        error: expect.stringContaining("runtime did not initialize"),
+      });
       expect(registry).not.toHaveBeenCalled();
       const db = new PGlite(committed.paths.database);
       try {
@@ -272,9 +328,12 @@ it(
       }
     } finally {
       abort.abort();
-      await shutdownRuntime(runtime, "restore server fixture cleanup", {
-        fast: true,
-      });
+      await server?.close();
+      await shutdownRuntime(
+        runtimeForCleanup,
+        "restore server fixture cleanup",
+        { fast: true },
+      );
     }
   },
   TEST_BUDGET_MS,

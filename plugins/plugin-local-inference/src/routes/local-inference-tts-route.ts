@@ -12,8 +12,13 @@
  */
 
 import type http from "node:http";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { ttsDebug, ttsDebugTextPreview } from "@elizaos/core/utils/tts-debug";
+import {
+	type AgentRuntime,
+	ModelType,
+	ttsDebug,
+	ttsDebugTextPreview,
+} from "@elizaos/core";
+import { localInferenceEngine } from "../services/engine";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -21,8 +26,9 @@ import {
 	sendJson,
 } from "./compat-helpers";
 
+const ENGINE_TTS_PROVIDER_ID = "eliza-local-inference";
 const LOCAL_TTS_PROVIDER_IDS = [
-	"eliza-local-inference",
+	ENGINE_TTS_PROVIDER_ID,
 	"capacitor-llama",
 	"eliza-device-bridge",
 	"eliza-aosp-llama",
@@ -143,18 +149,33 @@ function isClosed(res: http.ServerResponse): boolean {
 	return res.destroyed || res.writableEnded;
 }
 
-/** Report a registered provider the POST route can actually dispatch to. */
-function hasLocalInferenceTtsHandler(state: CompatRuntimeState): boolean {
-	return (
+/**
+ * Report whether the POST route can produce audio. A registration alone is not
+ * enough for the desktop engine provider: its handler is registered at boot
+ * and throws until Paradee v1.1 (or an opted-in Kokoro) is staged. The mobile
+ * providers own their native TTS backends, which this server cannot probe, so
+ * they keep the registration signal.
+ */
+async function isLocalInferenceTtsReady(
+	state: CompatRuntimeState,
+): Promise<boolean> {
+	const providers = new Set(
 		state.current
 			?.getModelRegistrations?.()
-			.some(
-				(entry) =>
-					entry.modelType === ModelType.TEXT_TO_SPEECH &&
-					LOCAL_TTS_PROVIDER_IDS.some(
-						(provider) => provider === entry.provider,
-					),
-			) ?? false
+			.filter((entry) => entry.modelType === ModelType.TEXT_TO_SPEECH)
+			.map((entry) => entry.provider),
+	);
+	if (
+		LOCAL_TTS_PROVIDER_IDS.some(
+			(provider) =>
+				provider !== ENGINE_TTS_PROVIDER_ID && providers.has(provider),
+		)
+	) {
+		return true;
+	}
+	return (
+		providers.has(ENGINE_TTS_PROVIDER_ID) &&
+		(await localInferenceEngine.canSynthesizeLocally())
 	);
 }
 
@@ -167,7 +188,7 @@ export async function handleLocalInferenceTtsRoute(
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (method === "GET" && url.pathname === "/api/tts/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
-		const ready = hasLocalInferenceTtsHandler(state);
+		const ready = await isLocalInferenceTtsReady(state);
 		sendJson(res, 200, {
 			ready,
 			provider: ready ? "local-inference" : null,

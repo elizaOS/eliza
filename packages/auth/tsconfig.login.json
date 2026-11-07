@@ -12,6 +12,5 @@
     "types": ["bun"],
     "customConditions": ["eliza-source"]
   },
-  "include": ["src/sdk/**/*.ts", "src/server/**/*.ts"],
-  "exclude": ["src/**/__tests__/**"]
+  "include": ["src/sdk/**/*.ts", "src/server/**/*.ts", "test/login/**/*.ts"]
 }

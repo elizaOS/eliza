@@ -4,23 +4,24 @@
  * legacy `getProjectionsData` server action consumed by `AnalyticsPageClient`.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
+  fillIdleUsageDays,
   generateProjectionAlerts,
   generateProjections,
-} from "@/lib/analytics/projections";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/analytics/projections";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { analyticsService } from "@/lib/services/analytics";
-import { analyticsAlertsService } from "@/lib/services/analytics-alerts";
-import { toSuccessRatePercent } from "@/lib/services/analytics-derived";
-import { organizationsService } from "@/lib/services/organizations";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { analyticsService } from "@elizaos/cloud-shared/lib/services/analytics";
+import { analyticsAlertsService } from "@elizaos/cloud-shared/lib/services/analytics-alerts";
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { organizationsService } from "@elizaos/cloud-shared/lib/services/organizations";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -48,7 +49,7 @@ app.get("/", async (c) => {
     const now = new Date();
     const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [historicalData, organization] = await Promise.all([
+    const [activeDays, organization] = await Promise.all([
       analyticsService.getUsageTimeSeries(user.organization_id, {
         startDate,
         endDate: now,
@@ -60,12 +61,15 @@ app.get("/", async (c) => {
     if (!organization) {
       throw new Error(`Organization ${user.organization_id} not found`);
     }
+    // The chart gets one point per day; the alerts keep the active-day series
+    // (an idle day is not a trend change) and compute the runway per calendar day.
+    const historicalData = fillIdleUsageDays(activeDays);
 
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);
     const alerts = generateProjectionAlerts(
-      historicalData,
-      projections,
+      activeDays,
+      generateProjections(activeDays, periods),
       creditBalance,
     );
     const alertEvents = await analyticsAlertsService.persistProjectionAlerts({

@@ -1,7 +1,7 @@
 /** Exercises malformed iOS transcript identifiers across read, update, and delete routes. */
 
-import { type IAgentRuntime, type Memory, type UUID } from "@elizaos/core";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import { handleDirectCoreRoute, type IosBridgeBackend } from "./bridge.ts";
 
@@ -49,6 +49,7 @@ function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
   return {
     runtime,
     dispatchRoute: async () => null,
+    cloudInferenceRejection: () => null,
     conversations: new Map(),
     close: async () => {},
   };

@@ -57,6 +57,11 @@ on:
         required: false
         default: false
         type: boolean
+      approve_staging_billable_dedicated_confirmation:
+        description: Explicitly approve the staging fixture Dedicated compute quote during the browser proof
+        required: false
+        default: false
+        type: boolean
       production_binding_only_recovery:
         description: Admit only the bounded production Hyperdrive binding recovery against the currently served certified base
         required: false
@@ -589,7 +594,7 @@ jobs:
           echo "staging_run_id=$staging_run_id" >> "$GITHUB_OUTPUT"
 
       - name: Download selected certification artifact by id
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ steps.resolve.outputs.artifact_id }}
           path: ${{ runner.temp }}/staging-certification
@@ -700,7 +705,7 @@ jobs:
 
       - name: Download selected recovery-policy certification by id
         if: ${{ inputs.production_binding_only_recovery == true }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ steps.resolve-policy.outputs.artifact_id }}
           path: ${{ runner.temp }}/recovery-policy-certification
@@ -794,7 +799,7 @@ jobs:
           printf 'runtime_authority=production-live-attested\n' >> "$GITHUB_OUTPUT"
 
       - if: ${{ inputs.production_binding_only_recovery == true }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -1034,6 +1039,7 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+      CARTESIA_STT_USD_PER_CREDIT: ${{ secrets.CARTESIA_STT_USD_PER_CREDIT }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -1053,6 +1059,8 @@ jobs:
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
       ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+      ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
+      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ secrets.ELIZA_NATIVE_AUTH_CALLBACKS_JSON }}
       ELIZA_SERVICE_JWT_SECRET: ${{ secrets.ELIZA_SERVICE_JWT_SECRET }}
       ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
       ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 }}
@@ -1060,14 +1068,24 @@ jobs:
       FAL_KEY: ${{ secrets.FAL_KEY }}
       FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
       FISH_AUDIO_REFERENCE_ID: ${{ secrets.FISH_AUDIO_REFERENCE_ID }}
+      GATEWAY_DISCORD_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_DISCORD_BOOTSTRAP_SECRET }}
       GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
+      GATEWAY_WEBHOOK_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_WEBHOOK_BOOTSTRAP_SECRET }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       INFERENCE_AUTH_PROBE_TOKEN: ${{ secrets.INFERENCE_AUTH_PROBE_TOKEN }}
       LOCAL_EMBEDDINGS_API_KEY: ${{ secrets.LOCAL_EMBEDDINGS_API_KEY }}
       NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      NETWORK_SITE_AUTH_SERVER_TOKEN: ${{ secrets.NETWORK_SITE_AUTH_SERVER_TOKEN }}
       OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
       OIDC_SIGNING_JWKS: ${{ secrets.OIDC_SIGNING_JWKS }}
+      ELIZA_ENTITLEMENT_SIGNING_KEY: ${{ secrets.ELIZA_ENTITLEMENT_SIGNING_KEY }}
+      ELIZA_ENTITLEMENT_SIGNING_KEY_ID: ${{ secrets.ELIZA_ENTITLEMENT_SIGNING_KEY_ID }}
+      ELIZA_ENTITLEMENT_PREVIOUS_PUBLIC_KEY: ${{ secrets.ELIZA_ENTITLEMENT_PREVIOUS_PUBLIC_KEY }}
+      ELIZA_ENTITLEMENT_PREVIOUS_KEY_ID: ${{ secrets.ELIZA_ENTITLEMENT_PREVIOUS_KEY_ID }}
+      ELIZA_ENTITLEMENT_NEXT_PUBLIC_KEY: ${{ secrets.ELIZA_ENTITLEMENT_NEXT_PUBLIC_KEY }}
+      ELIZA_ENTITLEMENT_NEXT_KEY_ID: ${{ secrets.ELIZA_ENTITLEMENT_NEXT_KEY_ID }}
+      ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER: ${{ secrets.ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       RAILWAY_DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
@@ -1095,6 +1113,7 @@ jobs:
       # automatic release is a Develop effect reconciliation with a bound
       # digest; an ordinary manual dispatch must honor its explicit false.
       run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && (inputs.run_deployed_renderer_staging == true || (inputs.effect_digest != '' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1')) }}
+      approve_staging_billable_dedicated_confirmation: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && inputs.approve_staging_billable_dedicated_confirmation == true }}
       production_binding_only_recovery: ${{ github.event_name == 'workflow_dispatch' && inputs.production_binding_only_recovery == true }}
       certified_production_base_sha: ${{ inputs.certified_production_base_sha }}
       certified_recovery_policy_sha: ${{ inputs.certified_recovery_policy_sha }}
@@ -1155,7 +1174,7 @@ jobs:
 
       - name: Upload immutable staging certification
         id: upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.identity.outputs.artifact_name }}
           path: staging-cloud-certification.json

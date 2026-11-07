@@ -1,11 +1,9 @@
 /** Owner-bound remote browser composition for the dedicated CLI host. */
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
-  ElizaError,
   type HttpPlugin,
-  type IAgentRuntime,
   registerHttpPluginRoutes,
-} from "@elizaos/core";
-import { resetHonoMountCache } from "../api/hono-mount.ts";
+} from "@elizaos/host/protocol";
 
 /** Provisioning supplies owner identity; it never grants a browser profile. */
 export async function initializeManagedBrowserHost(
@@ -47,6 +45,5 @@ export async function initializeManagedBrowserHost(
     runtime,
     remoteHost.createRemoteBrowserControllerPlugin(ownerId),
   );
-  resetHonoMountCache();
   await remoteHost.restoreRemoteBrowserController(runtime, ownerId);
 }

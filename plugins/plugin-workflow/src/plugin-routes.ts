@@ -4,8 +4,8 @@
  * plugin-workflow services; there is no external workflow server or sidecar.
  */
 import type http from 'node:http';
-import type { HttpPlugin as Plugin, Route } from '@elizaos/core/api/http-plugin';
-import { getCloudRuntimeRequestIdentity } from '@elizaos/core/contracts/cloud-runtime-request';
+import { getCloudRuntimeRequestIdentity } from '@elizaos/contracts';
+import type { HttpPlugin as Plugin, Route } from '@elizaos/host/protocol';
 import { handleAutomationsRoutes, readAutomations } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
@@ -87,6 +87,13 @@ const workflowRouteList: Route[] = [
     handler: workflowHandler,
   },
   { type: 'GET', path: '/api/workflow/phone/catalog', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/phone/generate',
+    rawPath: true,
+    maxBodyBytes: 75000,
+    handler: workflowHandler,
+  },
   { type: 'POST', path: '/api/workflow/phone/validate', rawPath: true, handler: workflowHandler },
   { type: 'POST', path: '/api/workflow/phone/workflows', rawPath: true, handler: workflowHandler },
   {
@@ -118,9 +125,9 @@ const workflowRouteList: Route[] = [
   // Hosted digests. `/status` advertises `hostedDigestProtocol: 1`; these are
   // the paths handleWorkflowRoutes serves under `/hosted/`. The dispatcher
   // parses JSON bodies (default cap 1 MiB) before the handler's readBody caps
-  // run. live-calendars (2000) and sources (20000) are tighter than that
-  // default, so they restate their caps. The other hosted POSTs read with
-  // the handler's MAX_WORKFLOW_JSON_BYTES (2 MB); the 1 MiB default is
+  // run. live-calendars and dossier (2000) and sources (20000) are tighter
+  // than that default, so they restate their caps. The other hosted POSTs
+  // read with the handler's MAX_WORKFLOW_JSON_BYTES (2 MB); the 1 MiB default is
   // already stricter, and restating 2 MB would loosen them.
   {
     type: 'POST',
@@ -147,6 +154,13 @@ const workflowRouteList: Route[] = [
     type: 'POST',
     path: '/api/workflow/hosted/sources/revoke',
     rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/dossier',
+    rawPath: true,
+    maxBodyBytes: 2000,
     handler: workflowHandler,
   },
   { type: 'GET', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },

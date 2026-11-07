@@ -1,14 +1,10 @@
-/** Implements Electrobun desktop index ts behavior for app shell integration. */
 import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { formatError } from "@elizaos/core";
-import {
-	resolveApiToken,
-	resolveDesktopApiPort,
-} from "@elizaos/core/runtime-env";
+import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/host/protocol";
 import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
@@ -131,6 +127,7 @@ import {
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
+import { createQuitGate } from "./quit-gate";
 import { resumeDesktopRemoteTarget } from "./remote-target-rpc";
 import {
 	createRendererApiProxyRequestInit,
@@ -757,21 +754,27 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
-let quitRequestPromise: Promise<void> | null = null;
+const quitGate = createQuitGate({
+	runCleanup: () => runShutdownCleanup("explicit-quit"),
+	quit: () => Utils.quit(),
+	onCleanupError: (err) => {
+		logger.warn(
+			`[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
+		);
+	},
+	onDeadline: (deadlineMs) => {
+		logger.warn(
+			`[Main] Shutdown cleanup did not settle within ${deadlineMs}ms; quitting anyway`,
+		);
+	},
+});
 function requestAppQuit(): Promise<void> {
-	if (quitRequestPromise) {
-		return quitRequestPromise;
-	}
 	isQuitting = true;
-	quitRequestPromise = (async () => {
-		await runShutdownCleanup("explicit-quit").catch((err) => {
-			logger.warn(
-				`[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
-			);
-		});
-		Utils.quit();
-	})();
-	return quitRequestPromise;
+	return quitGate.requestQuit();
+}
+function requestAppRelaunch(spawn: () => void): Promise<void> {
+	isQuitting = true;
+	return quitGate.requestRelaunch(spawn);
 }
 /**
  * True for packaged desktop builds, false for the in-repo dev runtime.
@@ -1693,17 +1696,6 @@ function toggleFocusedWindowDevTools(): void {
 type ElizaDesktopRpc = ReturnType<
 	typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
 >;
-/**
- * Internal: type-erased view of the rpc shape that
- * `wireBrowserWorkspaceCaller` consumes. The handler module declares its
- * own structural type with `params: any`, so we widen here at the
- * boundary instead of forcing every consumer to import that internal.
- */
-// biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
-type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
-function asRpcRequestProxy(request: unknown): RpcRequestProxy {
-	return request as RpcRequestProxy;
-}
 function asRpcSend(
 	send: unknown,
 ): (message: string, payload?: unknown) => void {
@@ -1794,21 +1786,7 @@ function wireMainWindowAfterCreate(
 	initializeNativeModules(win, sendToWebview);
 	setStewardSendToWebview(sendToWebview);
 	wireBrowserWorkspaceCaller({
-		request: asRpcRequestProxy(rpc.request),
-	});
-}
-/**
- * Wire RPC for a secondary window (e.g. settings) after constructor-time
- * injection. Does NOT call `initializeNativeModules` — that would
- * overwrite the main window reference on DesktopManager and other
- * singletons.
- *
- * This keeps the call site symmetric with the main window even though
- * settings windows don't need most of the wiring.
- */
-function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
-	wireBrowserWorkspaceCaller({
-		request: asRpcRequestProxy(rpc.request),
+		request: rpc.request,
 	});
 }
 function injectApiBase(win: BrowserWindow): void {
@@ -2466,12 +2444,19 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 				`[Main] Native module disposal failed during shutdown: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
-	})();
+	})().finally(() => {
+		quitGate.markCleanupSettled();
+	});
 	return shutdownCleanupPromise;
 }
 function setupShutdown(): void {
-	Electrobun.events.on("before-quit", () => {
-		void runShutdownCleanup("before-quit");
+	// Electrobun's quit() emits before-quit synchronously and then blocks in
+	// native teardown until the process exits, so async cleanup started here
+	// never runs and the spawned agent runtime is orphaned. The gate vetoes the
+	// quit, finishes cleanup (bounded), then quits again.
+	Electrobun.events.on("before-quit", (event) => {
+		isQuitting = true;
+		quitGate.handleBeforeQuit(event);
 	});
 }
 /**
@@ -2844,10 +2829,6 @@ async function main(): Promise<void> {
 				`[SSH runtime] Failed to read restart intents; all SSH tunnels remain stopped: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		});
-	// Per-window RPC tracking: surface windows each get their own typed
-	// RPC built up front via createDesktopRpc, baked into the BrowserWindow
-	// constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
-	const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
 	surfaceWindowManager = new SurfaceWindowManager({
 		createWindow: (options) => {
 			const { rpc, releaseShellSync } = createDesktopRpc("surface");
@@ -2855,7 +2836,6 @@ async function main(): Promise<void> {
 				...options,
 				rpc,
 			}) as BrowserWindow & ManagedWindowLike;
-			surfaceRpcs.set(window, rpc);
 			// Drop this window's relay endpoint when it closes so a churned detached
 			// surface does not leak (#16442).
 			window.on("close", releaseShellSync);
@@ -2863,16 +2843,6 @@ async function main(): Promise<void> {
 		},
 		resolveRendererUrl,
 		readPreload: () => readResolvedPreloadScript(import.meta.dir),
-		wireRpc: (window) => {
-			const rpc = surfaceRpcs.get(window);
-			if (!rpc) {
-				logger.warn(
-					"[surface-windows] wireRpc called for window with no tracked rpc; skipping browser-workspace caller setup",
-				);
-				return;
-			}
-			wireSettingsRpcAfterCreate(rpc);
-		},
 		injectApiBase: (window) =>
 			injectApiBase(window as BrowserWindow & ManagedWindowLike),
 		onWindowFocused: (window) => {
@@ -2902,6 +2872,9 @@ async function main(): Promise<void> {
 	getDesktopManager().setRestoreMainWindowCallback(() => restoreWindow());
 	getDesktopManager().setRequestQuitCallback(() => {
 		void requestAppQuit();
+	});
+	getDesktopManager().setRequestRelaunchCallback((spawn) => {
+		void requestAppRelaunch(spawn);
 	});
 	getDesktopManager().setOpenSurfaceWindowCallback(
 		(surface, browse, alwaysOnTop) => {
@@ -3005,7 +2978,6 @@ async function main(): Promise<void> {
 					preload: readResolvedPreloadScript(import.meta.dir),
 					partition: mainWindowPartition,
 					rpc,
-					wireRpc: () => wireSettingsRpcAfterCreate(rpc),
 					injectApiBase,
 					onWindowFocused: (window) => {
 						lastFocusedWindow = window;
@@ -3024,7 +2996,7 @@ async function main(): Promise<void> {
 	}
 	// ── Steward sidecar startup (must happen BEFORE agent) ────────────
 	// When STEWARD_LOCAL=true, start the steward sidecar first so it can
-	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The the app agent's
+	// set STEWARD_API_URL / STEWARD_AGENT_TOKEN env vars. The app agent's
 	// steward-bridge.ts reads these on boot to discover local steward.
 	if (isStewardLocalEnabled()) {
 		logger.info("[Main] STEWARD_LOCAL=true — starting steward sidecar...");

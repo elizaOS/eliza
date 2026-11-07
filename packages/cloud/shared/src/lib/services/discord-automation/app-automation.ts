@@ -337,10 +337,13 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
 
     if (result.success) {
       // Update stats
+      // Re-read: keep any change the owner made while the post was generated.
+      const currentConfig = ((await this.getAppForOrg(organizationId, appId)).discord_automation ??
+        config) as DiscordAutomationConfig;
       const updatedConfig: DiscordAutomationConfig = {
-        ...config,
+        ...currentConfig,
         lastAnnouncementAt: new Date().toISOString(),
-        totalMessages: (config.totalMessages || 0) + 1,
+        totalMessages: (currentConfig.totalMessages || 0) + 1,
       };
 
       await appsRepository.update(appId, {

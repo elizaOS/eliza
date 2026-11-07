@@ -581,10 +581,10 @@ export function ApiTester({
             className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-status-success" : endpoint.pricing.isVariable ? "bg-muted" : "bg-muted"}`}
           />
           <CardContent className="pt-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
+              <div className="flex min-w-0 items-start gap-3">
                 <div
-                  className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-status-success-bg" : endpoint.pricing.isVariable ? "bg-surface" : "bg-surface"}`}
+                  className={`shrink-0 p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-status-success-bg" : endpoint.pricing.isVariable ? "bg-surface" : "bg-surface"}`}
                 >
                   {endpoint.pricing.isFree ? (
                     <Sparkles className="size-5 text-status-success" />
@@ -595,7 +595,7 @@ export function ApiTester({
                   )}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <span
                       className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-status-success" : endpoint.pricing.isVariable ? "text-txt-strong" : "text-txt-strong"}`}
                     >
@@ -607,11 +607,13 @@ export function ApiTester({
                       </span>
                     )}
                   </div>
-                  {endpoint.pricing.description && (
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {endpoint.pricing.description}
-                    </p>
-                  )}
+                  {endpoint.pricing.description &&
+                    formatEndpointPrice(endpoint.pricing) !==
+                      endpoint.pricing.description && (
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {endpoint.pricing.description}
+                      </p>
+                    )}
                 </div>
               </div>
               {endpoint.pricing.isVariable && !endpoint.pricing.isFree && (

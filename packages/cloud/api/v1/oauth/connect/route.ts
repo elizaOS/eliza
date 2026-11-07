@@ -5,22 +5,25 @@
  * Returns an authorization URL for the user to visit.
  */
 
-import { Hono } from "hono";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
-} from "@/lib/api/cloud-worker-errors";
-import { ApiError } from "@/lib/api/errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import {
   internalErrorResponse,
   OAuthError,
   oauthService,
   validationErrorResponse,
-} from "@/lib/services/oauth";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface ConnectRequestBody {
   platform: string;
@@ -61,6 +64,7 @@ app.post("/", async (c) => {
     // Sanitize platform — lowercase and max 50 chars.
     body.platform = body.platform.toLowerCase().slice(0, 50);
     platform = body.platform;
+    if (platform === "google") await requirePrivateOwnerAccess(c, user);
 
     logger.info("[API] POST /api/v1/oauth/connect", {
       organizationId,

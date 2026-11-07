@@ -13,8 +13,8 @@ import {
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../perf/layout-stability";
+import { useAppSelector } from "../../state/app-store";
 import {
   acknowledgeNotificationCenterOpenRequest,
   peekNotificationCenterOpenRequest,
@@ -22,7 +22,7 @@ import {
 } from "../../state/notifications/notification-center-open-request";
 import { useNotifications } from "../../state/notifications/notification-store";
 import { useShellSurface } from "../../state/shell-surface-store";
-import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
+import { cn } from "../../utils/cn";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
@@ -30,7 +30,7 @@ import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 // A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
 // throughout so slow paints and screenshot tooling never expose unreadable
 // intermediate content. Reduced-motion users see the settled layout directly.
-const HOME_SCREEN_CSS = `
+export const HOME_SCREEN_CSS = `
 @keyframes home-enter {
   from { transform: translateY(10px); }
   to   { transform: none; }
@@ -110,6 +110,7 @@ const HOME_SCREEN_CSS = `
 [data-home-below-notifications-inner] {
   min-height: 0;
 }
+@media (min-height: 521px) {
 [data-testid="home-content-column"][data-home-has-notifications]:has(
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-notification-region],
@@ -118,6 +119,7 @@ const HOME_SCREEN_CSS = `
 ) [data-home-notification-region] {
   flex-grow: 1;
   max-height: 100%;
+}
 }
 [data-testid="home-content-column"][data-home-has-notifications]:has(
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
@@ -135,6 +137,11 @@ const HOME_SCREEN_CSS = `
    separate fixed header and card regions here can leave less than one row. */
 @media (max-height: 520px) {
   [data-home-scroll-frame] {
+    /* Preserve the content gutter while exposing the notification rims beyond it. */
+    box-sizing: border-box;
+    margin-inline: -.5rem;
+    padding-inline: .5rem;
+    width: calc(100% + 1rem);
     overflow-y: auto;
     overscroll-behavior-y: contain;
   }
@@ -143,7 +150,15 @@ const HOME_SCREEN_CSS = `
     min-height: 100%;
   }
   [data-home-notification-region] {
-    flex-shrink: 0;
+    flex: none;
+    max-height: none;
+  }
+  [data-home-notification-region] [data-testid="home-notification-center"],
+  [data-home-notification-region] [data-testid="home-notification-list"] {
+    flex: none;
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
   [data-testid="home-content-column"]:not([data-home-has-notifications])
     [data-home-notification-region]:has(
@@ -242,7 +257,9 @@ export interface HomeScreenProps {
  * content inert until the shade collapses. The separate launcher page is owned
  * by HomeLauncherSurface, not this dashboard.
  */
-export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
+export function useHomeDashboard<
+  AppRegion extends HTMLElement = HTMLElement,
+>() {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
   // The entrance rise plays once, on first mount only - never re-triggered by a
@@ -252,7 +269,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   useHomeLayoutShiftObserver();
   const homeScreenRef = useRef<HTMLDivElement>(null);
   const homeContentColumnRef = useRef<HTMLDivElement>(null);
-  const appsRegionRef = useRef<HTMLElement>(null);
+  const appsRegionRef = useRef<AppRegion>(null);
   const displacedAppFocusRef = useRef<HTMLElement | null>(null);
   const appsDisplacedRef = useRef(false);
   const wasAppsDisplacedRef = useRef(false);
@@ -382,6 +399,39 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
     wasAppsDisplacedRef.current = appsDisplaced;
   }, [appsDisplaced]);
 
+  return {
+    events,
+    clearEvents,
+    enterClass,
+    homeScreenRef,
+    homeContentColumnRef,
+    appsRegionRef,
+    notifications,
+    appsDisplaced,
+    handleAppsFocusCapture,
+    handleAppsBlurCapture,
+    handleShadeExpandedChange,
+    notificationCenterOpenRequestId,
+    handleNotificationCenterOpenRequestHandled,
+  };
+}
+
+export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
+  const {
+    events,
+    clearEvents,
+    enterClass,
+    homeScreenRef,
+    homeContentColumnRef,
+    appsRegionRef,
+    notifications,
+    appsDisplaced,
+    handleAppsFocusCapture,
+    handleAppsBlurCapture,
+    handleShadeExpandedChange,
+    notificationCenterOpenRequestId,
+    handleNotificationCenterOpenRequestHandled,
+  } = useHomeDashboard();
   return (
     <div
       ref={homeScreenRef}

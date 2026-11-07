@@ -15,13 +15,19 @@ process.env.NODE_ENV = "test";
 setDefaultTimeout(60_000);
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@/db/client");
-const { organizations } = await import("@/db/schemas/organizations");
-const { users } = await import("@/db/schemas/users");
-const { creditTransactions } = await import("@/db/schemas/credit-transactions");
-const { cryptoPayments } = await import("@/db/schemas/crypto-payments");
+  await import("@elizaos/cloud-shared/db/client");
+const { organizations } = await import(
+  "@elizaos/cloud-shared/db/schemas/organizations"
+);
+const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
+const { creditTransactions } = await import(
+  "@elizaos/cloud-shared/db/schemas/credit-transactions"
+);
+const { cryptoPayments } = await import(
+  "@elizaos/cloud-shared/db/schemas/crypto-payments"
+);
 const { CryptoPaymentError, cryptoPaymentsService } = await import(
-  "@/lib/services/crypto-payments"
+  "@elizaos/cloud-shared/lib/services/crypto-payments"
 );
 
 const pg = () => getPgliteClientForTests();

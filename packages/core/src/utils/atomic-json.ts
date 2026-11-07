@@ -1,25 +1,6 @@
 /**
- * Atomic JSON read/write helpers (node-only).
- *
- * Consolidates the write-tmp + rename pattern duplicated across the agent
- * package for tokens, ledgers, config snapshots, and runtime operations.
- *
- * Defaults:
- *   - mode 0o600 on the written file (secret-grade)
- *   - dir mode 0o700 when the parent has to be created
- *   - JSON 2-space indent, no trailing newline
- *   - tmp filename `${filePath}.tmp-${pid}-${Date.now()}-${sequence}`
- *   - parent directory created with mkdir recursive
- *
- * On failure, the temp file is best-effort removed.
- *
- * Only values whose top-level `JSON.stringify` result is `undefined` are
- * rejected — top-level `undefined`, function, and symbol — with a `TypeError`
- * before any filesystem work (no parent-directory creation, no temp file), so
- * a rejected write leaves an existing target byte-identical. Nested
- * function/symbol properties keep standard `JSON.stringify` semantics (object
- * properties omitted, array entries become `null`); ordinary optional object
- * properties are unaffected.
+ * Atomic JSON writes use a sibling temporary file and rename. Defaults are file mode 0600,
+ * directory mode 0700, and two-space JSON without a trailing newline.
  */
 
 import fs from "node:fs";
@@ -197,26 +178,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 	assertFilePath(filePath);
 	try {
 		const raw = await fsp.readFile(filePath, "utf-8");
-		return JSON.parse(raw) as T;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-			// error-policy:J4 an absent optional JSON file is an explicit not-found
-			// state; parse and other filesystem failures still propagate.
-			return null;
-		}
-		throw error;
-	}
-}
-
-/**
- * Synchronous read and parse JSON. Only a genuinely absent file returns `null`;
- * malformed JSON and filesystem failures surface to the caller.
- */
-export function readJsonFileSync<T>(filePath: string): T | null {
-	assertFilePath(filePath);
-	try {
-		const raw = fs.readFileSync(filePath, "utf-8");
-		return JSON.parse(raw) as T;
+		return JSON.parse(raw.replace(/^\uFEFF/, "")) as T;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 			// error-policy:J4 an absent optional JSON file is an explicit not-found

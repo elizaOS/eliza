@@ -1,6 +1,6 @@
-/** Registers the redacted context inspector as a developer-only app page. */
+import { loadContextInspectorView, registerAppShellPage } from "@elizaos/ui";
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+/** Registers the redacted context inspector as a developer-only app page. */
 
 registerAppShellPage({
   id: "context-inspector",
@@ -11,7 +11,7 @@ registerAppShellPage({
   viewKind: "developer",
   order: 84,
   loader: () =>
-    import("@elizaos/ui/components/ContextInspectorView").then((module) => ({
+    loadContextInspectorView().then((module) => ({
       default: module.default,
     })),
 });

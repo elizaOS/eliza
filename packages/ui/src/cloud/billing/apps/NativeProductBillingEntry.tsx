@@ -2,7 +2,7 @@
 import type { NativeApplicationBillingSelection } from "@elizaos/cloud-sdk/app-billing";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 

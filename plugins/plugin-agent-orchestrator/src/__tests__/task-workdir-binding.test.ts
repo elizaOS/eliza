@@ -15,8 +15,8 @@ import {
   projectWorldId,
   stringToUuid,
   type UUID,
-  upsertProject,
 } from "@elizaos/core";
+import { upsertProject } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";

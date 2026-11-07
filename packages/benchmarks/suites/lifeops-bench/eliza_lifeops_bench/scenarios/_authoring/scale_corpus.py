@@ -340,7 +340,7 @@ async def run_batch(
     # Conformance check: only for static.
     final: list[dict[str, Any]] = []
     if mode == "static":
-        from ...runner import supported_actions
+        from ...lifeworld.executor import supported_actions
 
         supported = supported_actions()
         for c in deduped:

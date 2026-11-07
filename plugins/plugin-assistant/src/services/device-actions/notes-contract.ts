@@ -79,6 +79,7 @@ export function isNotesOperation(value: unknown): value is NotesOperation {
   return (
     !!value &&
     typeof value === "object" &&
+    typeof (value as { type?: unknown }).type === "string" &&
     ["notes_read_selected", "notes_update", "notes_delete"].includes(
       String((value as { type?: unknown }).type),
     )
@@ -134,4 +135,34 @@ export function validateNotesResult(
   if (operation.type === "notes_read_selected")
     result.fields = notesFields(v.fields);
   return result;
+}
+
+/** Typed native selection adapter; note IDs use this contract, not a UUID/length guess. */
+export function notesSelectionTarget(value: unknown): NotesTarget {
+  const selected = object(value);
+  if (selected.kind !== "note") throw Error("Expected selected note");
+  const operation = validateNotesOperation({
+    type: "notes_read_selected",
+    target: {
+      sourceId: selected.accountId,
+      sourceRevision: selected.sourceRevision,
+      noteId: selected.id,
+      revision: selected.revision,
+    },
+  });
+  if (operation.type !== "notes_read_selected")
+    throw Error("Expected selected note read");
+  return operation.target;
+}
+
+/** Native source selections carry no record ID and do not authorize a record operation. */
+export function notesSource(
+  value: unknown,
+): Pick<NotesTarget, "sourceId" | "sourceRevision"> {
+  const v = object(value);
+  keys(v, ["sourceId", "sourceRevision"]);
+  return {
+    sourceId: id(v.sourceId),
+    sourceRevision: revision(v.sourceRevision),
+  };
 }

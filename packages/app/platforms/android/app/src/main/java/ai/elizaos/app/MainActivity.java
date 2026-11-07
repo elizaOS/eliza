@@ -94,29 +94,31 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        captureNativeNotification(getIntent());
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
+        registerPlugin(ai.eliza.plugins.system.SensePlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
         registerPlugin(ElizaVoicePlugin.class);
         registerPlugin(ElizaBgePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(CredentialManagerPlugin.class);
+        registerPlugin(ElizaCloudSignInPlugin.class);
+        // BridgeActivity appends this list after generated plugins, so the resident-aware
+        // secure-store binding cannot be replaced by the generic auto-discovered plugin.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
+        registerPlugin(SlotClockPlugin.class);
+        registerPlugin(ElizaCalendarPlugin.class);
+        // Reset app data: native review and device credential decide; the renderer passes nothing.
+        registerPlugin(ElizaDataResetPlugin.class);
+        // BridgeActivity appends these after discovery, before the first JS export.
+        initialPlugins.add(SafePushNotificationsPlugin.class);
         super.onCreate(savedInstanceState);
-
-        // Replace the auto-registered community PushNotifications plugin with
-        // the Firebase-guarded subclass. Must run AFTER super.onCreate: the
-        // bridge exists, auto-registration has happened, and
-        // Bridge.registerPlugin is a plain map.put — last one wins. Without
-        // this, any build lacking google-services.json hard-crashes the
-        // process the moment the renderer calls PushNotifications.register()
-        // with notification permission already granted.
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
 
         updateScreenWakePolicy();
 
@@ -155,7 +157,12 @@ public class MainActivity extends BridgeActivity {
         // the cold-boot path; this is the fast path when the user opens the
         // app.
         if (ElizaAgentService.shouldAutoStart(this)) {
-            ElizaAgentService.start(this);
+            try {
+                ElizaAgentService.start(this);
+            } catch (ai.eliza.plugins.agent.runtime.CredentialShutdownLease.Pending pending) {
+                // The credential writer or its delayed stop ACK still owns runtime startup.
+                Log.i(TAG, "Agent auto-start deferred until credential retirement completes");
+            }
             // Ask for notification consent only once the user (or the device
             // image) has actually committed to running the on-device agent —
             // keep first paint free of a cold permission ask and let
@@ -175,15 +182,31 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onNewIntent(Intent intent) {
+        captureNativeNotification(intent);
         DeepLinkBufferPlugin.captureIntent(this, intent);
+        ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
+        if (getBridge() != null) getBridge().triggerWindowJSEvent("eliza:sense-invocation");
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        NativeNotificationConnectionService.resume(this);
         updateScreenWakePolicy();
         applyImmersiveNavigationBar();
+    }
+
+    private void captureNativeNotification(Intent intent) {
+        try {
+            NativeNotificationAuthority owner = new NativeNotificationAuthority(this);
+            owner.current();
+            NativeNotificationProjector.onOpened(this, intent, owner.owner);
+        } catch (Exception unavailable) {
+            NativeNotificationProjector.onOpened(this, intent, null);
+            // No authenticated current profile means no fallback notification
+            // navigation. No credential or notification content is logged.
+        }
     }
 
     @Override

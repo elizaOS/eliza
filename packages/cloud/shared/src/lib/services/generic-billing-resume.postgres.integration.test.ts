@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installBillingCommandEvidenceTestColumns } from "../../testing";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
 
@@ -122,6 +123,7 @@ describe.skipIf(!postgresUrl)("setup Checkout resume with PostgreSQL and Stripe 
       "0508_app_notification_secret_envelope_v2",
       "0414_app_subscription_outbox_delivery",
       "0415_app_billing_webhook_recovery",
+      "0555_stripe_delivery_outbox",
       "0416_app_billing_checkout_expiry",
       "0417_app_billing_membership_authority",
       "0420_app_billing_import_commands",
@@ -135,6 +137,12 @@ describe.skipIf(!postgresUrl)("setup Checkout resume with PostgreSQL and Stripe 
       "0428_billing_identity_anchors",
       "0429_billing_identity_backfill",
       "0430_billing_identity_references",
+      "0511_organization_plan_change_quotes",
+      "0512_organization_upgrade_dispatch",
+      "0534_subscription_allowance_invoice_authority",
+      "0541_app_pilot_redemptions",
+      "0542_subscription_grant_codes",
+      "0543_app_pilot_allowance",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0435_app_billing_resume_payment_progress",
@@ -147,6 +155,7 @@ describe.skipIf(!postgresUrl)("setup Checkout resume with PostgreSQL and Stripe 
       for (const statement of migration.split("--> statement-breakpoint"))
         if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
     }
+    await installBillingCommandEvidenceTestColumns((statement) => db.query(statement));
     await db.query(
       "INSERT INTO organizations(id,stripe_customer_id) VALUES($1,'cus_infrastructure')",
       [org],

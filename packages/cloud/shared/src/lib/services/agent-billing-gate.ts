@@ -5,7 +5,7 @@
  * allowing agent creation, provisioning, or resume.
  */
 
-import { AGENT_PRICING } from "../constants/agent-pricing";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
 import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
@@ -96,7 +96,7 @@ async function runCreditGate(
   insufficientMessage: (balance: number) => string,
 ): Promise<CreditGateResult> {
   try {
-    const org = await readAgentFundingAccount(organizationId);
+    const org = await readAgentFundingAccount(organizationId, { managedComputePaymentGrace: true });
     if (!org) {
       return {
         allowed: false,

@@ -13,7 +13,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OUT=""
 KEEP_BUILD=0
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
+RM_PATH_RECURSIVE="$repo_root/../scripts/rm-path-recursive.ts"
 
 while [ $# -gt 0 ]; do
     case "$1" in

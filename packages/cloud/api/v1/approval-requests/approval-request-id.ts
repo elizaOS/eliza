@@ -4,7 +4,7 @@
  * never surface as internal 500s on public or authenticated approval routes.
  */
 
-import { isValidUUID } from "@/lib/utils/validation";
+import { isValidUUID } from "@elizaos/cloud-shared/lib/utils/validation";
 
 export type ApprovalRequestIdParseResult =
   | { ok: true; id: string }

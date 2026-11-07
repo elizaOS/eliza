@@ -338,6 +338,35 @@ export interface SubscriptionCancellationControlSnapshot {
   blockers: SubscriptionCancellationBlockerCode[];
 }
 
+/** Economic categories, not product availability or authorization to charge. */
+export type OrganizationSubscriptionFundingOperation =
+  | "ai_inference"
+  | "container_compute"
+  | "managed_agent_compute"
+  | "media_generation"
+  | "search"
+  | "storage"
+  | "voice"
+  | "advertising_or_promotion"
+  | "app_or_marketplace"
+  | "domain"
+  | "hardware_or_network_access"
+  | "payout_or_transfer"
+  | "unclassified";
+
+/** Descriptive enforced classification. Cash-only never means a cash charge is approved. */
+export interface OrganizationSubscriptionFundingPolicySnapshot {
+  schemaVersion: 1;
+  operationClasses: Readonly<
+    Record<
+      OrganizationSubscriptionFundingOperation,
+      "allowance_eligible" | "cash_only"
+    >
+  >;
+  /** Balance, lifecycle, quota and spending authorization remain per-request checks. */
+  requiresRequestEligibility: true;
+}
+
 /** Organization infrastructure billing only; never an app subscriber's merchant account. */
 export interface OrganizationSubscriptionSnapshot {
   /** Durable organization subscription id (never a provider identifier). */
@@ -364,6 +393,8 @@ export interface OrganizationSubscriptionSnapshot {
   dunningStartedAt: string | null;
   cancellationNotice: Observed<SubscriptionCancellationNoticeSnapshot>;
   cancellationControl: SubscriptionCancellationControlSnapshot;
+  /** Optional for older servers; absence is unknown policy, never unlimited spending. */
+  fundingPolicy?: Observed<OrganizationSubscriptionFundingPolicySnapshot>;
   allowance: Observed<{
     sourceLifecycleRevision: string;
     periodStart: string;
@@ -383,11 +414,42 @@ export interface OrganizationSubscriptionSnapshot {
   }>;
 }
 
+/**
+ * The organization's active Cloud subscription grant (a redeemed grant code),
+ * read from the primary database. Free-through and allowance facts only: it
+ * creates no payment method, invoice or renewal. Serving still follows the
+ * organization policy (an effective paid plan keeps precedence).
+ */
+export interface SubscriptionGrantSnapshot {
+  grantId: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  startsAt: string;
+  /** Exclusive end of the grant window; null is a lifetime grant. */
+  endsAt: string | null;
+  /** True while an effective paid subscription serves instead of the grant. */
+  paidPlanTakesPrecedence: boolean;
+  /** The grant's non-rollover bucket for the month containing the snapshot clock. */
+  allowance: Observed<{
+    periodStart: string;
+    periodEnd: string;
+    state: "open" | "expired" | "clawed_back" | "closed";
+    granted: string;
+    unreserved: string;
+    currency: "USD";
+  }>;
+}
+
 export interface AccountBillingSnapshotV2 {
   snapshotStartedAt: string;
   snapshotCompletedAt: string;
   balance: Observed<AccountBalanceSnapshot>;
   subscription: Observed<OrganizationSubscriptionSnapshot>;
+  /**
+   * Additive: absent from Clouds that predate grant readback, which clients
+   * must treat as unknown rather than as "no grant".
+   */
+  grant?: Observed<SubscriptionGrantSnapshot>;
   paymentMethodPresence: Observed<PaymentMethodPresenceSnapshot>;
   billingReadiness: Observed<BillingReadinessSnapshot>;
   autoTopUp: AutoTopUpSnapshot;

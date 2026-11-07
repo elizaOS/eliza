@@ -33,6 +33,10 @@
  *   - `prewarm-fired`            — the turn controller (W9) when it calls
  *                                   W6's `prewarmConversation`.
  *   - `asr-first-partial`        — `StreamingTranscriber` first `partial`.
+ *   - `vad-speech-end`           — the last audio frame of the utterance was
+ *                                   received and the VAD closed the segment
+ *                                   (live streaming-ASR session, right before
+ *                                   `flush()`); the end-of-turn `t0`.
  *   - `asr-final`                — `StreamingTranscriber` `final`.
  *   - `llm-first-token`          — the engine generate path's first
  *                                   `onTextChunk` (W4).
@@ -79,6 +83,7 @@ export const VOICE_CHECKPOINTS = [
 	"vad-speech-start",
 	"prewarm-fired",
 	"asr-first-partial",
+	"vad-speech-end",
 	"asr-final",
 	"llm-first-token",
 	"llm-first-replytext-char",
@@ -107,6 +112,7 @@ const CHECKPOINT_ORDER: Readonly<Record<VoiceCheckpoint, number>> =
  */
 const OPTIONAL_CHECKPOINTS: ReadonlySet<VoiceCheckpoint> = new Set([
 	"peer-utterance-end",
+	"vad-speech-end",
 	"replyText-first-emotion-tag",
 	"audio-first-into-peer-ring",
 ]);
@@ -166,6 +172,13 @@ export interface LatencyDerived {
 	 * peer's ear (the `duet_round_trip_ms` gate reads `.p50` of this).
 	 */
 	firstAudioIntoPeerRingFromUtteranceEndMs: number | null;
+	/**
+	 * vad-speech-end → asr-final: end-of-turn ASR latency, from the last audio
+	 * frame of the utterance to the final transcript (streaming `flush()`).
+	 */
+	asrFinalFromSpeechEndMs: number | null;
+	/** vad-speech-end → llm-first-token: last audio frame to first LLM token. */
+	ttftFromSpeechEndMs: number | null;
 	/** llm-first-token → replyText-first-emotion-tag (emotion-markup overhead);
 	 *  `null` when the model emitted no inline expressive tag. */
 	emotionTagOverheadMs: number | null;
@@ -183,6 +196,8 @@ export const LATENCY_DERIVED_KEYS = [
 	"ttfaMs",
 	"ttapMs",
 	"asrFinalLatencyMs",
+	"asrFinalFromSpeechEndMs",
+	"ttftFromSpeechEndMs",
 	"asrFirstPartialMs",
 	"prewarmLatencyMs",
 	"llmFirstTokenAfterAsrMs",
@@ -204,6 +219,8 @@ const DERIVED_SPANS: Readonly<
 	ttfaMs: ["vad-trigger", "tts-first-audio-chunk"],
 	ttapMs: ["vad-trigger", "audio-first-played"],
 	asrFinalLatencyMs: ["vad-speech-start", "asr-final"],
+	asrFinalFromSpeechEndMs: ["vad-speech-end", "asr-final"],
+	ttftFromSpeechEndMs: ["vad-speech-end", "llm-first-token"],
 	asrFirstPartialMs: ["vad-trigger", "asr-first-partial"],
 	prewarmLatencyMs: ["vad-trigger", "prewarm-fired"],
 	llmFirstTokenAfterAsrMs: ["asr-final", "llm-first-token"],

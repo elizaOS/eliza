@@ -8,22 +8,23 @@
  * they take the shared `LifeOpsContext` explicitly rather than depending on
  * `this` so they stay unit-testable without a class instance.
  */
-import {
-  healthConnectorCapabilities,
-  readStoredHealthToken,
-  resolveHealthOAuthConfig,
-} from "@elizaos/plugin-health";
+
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorCapability,
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import {
+  healthConnectorCapabilities,
+  readStoredHealthToken,
+  resolveHealthOAuthConfig,
+} from "@elizaos/plugin-health";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { normalizeEnumValue } from "../service-normalize.js";
 import {

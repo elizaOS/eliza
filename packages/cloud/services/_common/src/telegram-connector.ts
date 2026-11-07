@@ -146,6 +146,40 @@ export interface TelegramMessage {
     mime_type?: string;
     file_size?: number;
   };
+  photo?: unknown[];
+  video?: unknown;
+  video_note?: unknown;
+  animation?: unknown;
+  audio?: { file_name?: string };
+  document?: { file_name?: string };
+  sticker?: unknown;
+}
+
+/**
+ * The note that tells the agent which file the user sent. The gateway does not
+ * download Telegram photos, videos or documents (voice notes are transcribed
+ * separately), so without it a captioned photo reached the agent as plain
+ * text and an uncaptioned one was dropped with no reply.
+ */
+function telegramMediaNote(message: TelegramMessage): string | undefined {
+  const named = (kind: string, name?: string) =>
+    name ? `${kind} ("${name}")` : kind;
+  const kind = message.photo?.length
+    ? "a photo"
+    : message.video || message.video_note
+      ? "a video"
+      : message.animation
+        ? "a GIF"
+        : message.document
+          ? named("a document", message.document.file_name)
+          : message.audio
+            ? named("an audio file", message.audio.file_name)
+            : message.sticker
+              ? "a sticker"
+              : undefined;
+  return kind
+    ? `[The user sent ${kind} on Telegram. This connector cannot open Telegram files yet.]`
+    : undefined;
 }
 
 interface TelegramUpdate {
@@ -367,13 +401,15 @@ export function parseTelegramWebhook(
     logger?.warn("Rejected invalid Telegram message thread identifier");
     return null;
   }
-  const text = message.text || message.caption || "";
+  const caption = message.text || message.caption || "";
+  const mediaNote = telegramMediaNote(message);
+  const text = [caption, mediaNote].filter(Boolean).join("\n");
   const voice = message.voice;
   if (!text && !voice) return null;
   if (message.from?.is_bot) return null;
   const groupInvocation =
     isGroup && groupPolicy
-      ? classifyTelegramGroupInvocation(message, text, groupPolicy)
+      ? classifyTelegramGroupInvocation(message, caption, groupPolicy)
       : null;
   if (isGroup && !groupInvocation) {
     return null;
@@ -689,19 +725,45 @@ function isLowSurrogate(code: number): boolean {
   return code >= 0xdc00 && code <= 0xdfff;
 }
 
+// The pinned runtimes provide Intl.Segmenter, while this package's
+// declaration library does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const telegramGraphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
 /**
- * `text.slice(0, maxLength)` that never ends on the lead half of a surrogate
- * pair. Combined with {@link assertValidTelegramChunkLength}, the chunk loop
- * always consumes at least one code unit.
+ * `text.slice(0, maxLength)` that never ends inside a grapheme cluster
+ * (a ZWJ emoji sequence, a regional-indicator flag, a combining mark, or a
+ * skin-tone modifier) or on the lead half of a surrogate pair, so a cluster
+ * is never split across two message parts. Combined with
+ * {@link assertValidTelegramChunkLength}, the chunk loop always consumes at
+ * least one code unit.
  */
 function truncateWellFormedTelegram(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  const end =
+  let end = 0;
+  for (const { segment } of telegramGraphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break;
+    end += segment.length;
+  }
+  if (end > 0) return text.slice(0, end);
+  // A single grapheme cluster alone exceeds the limit, so fall back to the
+  // surrogate-safe cut; it is the only case with no clean boundary.
+  const fallbackEnd =
     isHighSurrogate(text.charCodeAt(maxLength - 1)) &&
     isLowSurrogate(text.charCodeAt(maxLength))
       ? maxLength - 1
       : maxLength;
-  return text.slice(0, end);
+  return text.slice(0, fallbackEnd);
 }
 
 export function splitTelegramMessage(
@@ -713,9 +775,31 @@ export function splitTelegramMessage(
   const chunks: string[] = [];
   let remaining = text;
   while (remaining.length > 0) {
-    const head = truncateWellFormedTelegram(remaining, maxLength);
+    let head = truncateWellFormedTelegram(remaining, maxLength);
     if (head.length === 0) {
       throw new RangeError("telegram chunk limit made no UTF-16 progress");
+    }
+    if (head.length < remaining.length) {
+      // Break after the last newline, else the last whitespace, in the second
+      // half of the chunk, so a word or URL stays whole; chunks still join
+      // exactly. A break that would split a grapheme (CR LF, or a combining
+      // mark after the space) is skipped.
+      const floor = Math.floor(maxLength / 2);
+      const splitsGrapheme = (index: number) =>
+        (remaining[index - 1] === "\r" && remaining[index] === "\n") ||
+        /(?:\p{M}|\u200d|\ufe0e|\ufe0f)/u.test(
+          String.fromCodePoint(remaining.codePointAt(index) ?? 0),
+        );
+      let cut = -1;
+      for (let index = head.length - 1; index >= floor && cut < 0; index -= 1) {
+        if (head[index] === "\n" && !splitsGrapheme(index + 1)) cut = index + 1;
+      }
+      for (let index = head.length - 1; index >= floor && cut < 0; index -= 1) {
+        if (/\s/.test(head[index] ?? "") && !splitsGrapheme(index + 1)) {
+          cut = index + 1;
+        }
+      }
+      if (cut > 0) head = head.slice(0, cut);
     }
     chunks.push(head);
     remaining = remaining.slice(head.length);

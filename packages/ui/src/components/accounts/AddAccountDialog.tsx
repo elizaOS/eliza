@@ -8,11 +8,11 @@
 import {
   codingProviderSubscriptionAuthMode,
   isCodingSubscriptionProvider,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
+} from "@elizaos/contracts";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import {
   type FormEvent,
   useCallback,
@@ -20,12 +20,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { useAppSelector } from "../../state/app-store";
-import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  navigatePreOpenedWindow,
+  preOpenWindow,
+} from "../../utils/openExternalUrl";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -42,6 +45,7 @@ import { Label } from "../ui/label";
 import { SemanticForm } from "../ui/semantic-form";
 import { Spinner } from "../ui/spinner";
 import { TextLink } from "../ui/text-link";
+import { accountProviderDisplayName } from "./account-provider-options";
 import { ProviderPicker } from "./ProviderPicker";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 import {
@@ -84,16 +88,6 @@ type SubscriptionAddMode =
   | "unavailable"
   | "none";
 
-// The static provider catalog + its types now live in their own module so
-// presentational pieces can import them without a circular dependency on this
-// dialog. Re-exported here for backward compatibility.
-export {
-  ACCOUNT_PROVIDER_OPTIONS,
-  type AccountProviderCategory,
-  type AccountProviderOption,
-  getAccountProviderOption,
-} from "./account-provider-options";
-
 function getSubscriptionAddMode(
   providerId: LinkedAccountProviderId,
 ): SubscriptionAddMode {
@@ -115,71 +109,6 @@ function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
     return "Coding plan account";
   }
   return "API account";
-}
-function providerDisplayName(
-  providerId: LinkedAccountProviderId,
-  t: (k: string, v?: Record<string, unknown>) => string,
-): string {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return t("accounts.provider.anthropicSubscription", {
-        defaultValue: "Anthropic Claude subscription",
-      });
-    case "openai-codex":
-      return t("accounts.provider.openaiCodex", {
-        defaultValue: "OpenAI Codex subscription",
-      });
-    case "gemini-cli":
-      return t("accounts.provider.geminiCli", {
-        defaultValue: "Gemini CLI subscription",
-      });
-    case "zai-coding":
-      return t("accounts.provider.zaiCoding", {
-        defaultValue: "z.ai Coding Plan",
-      });
-    case "kimi-coding":
-      return t("accounts.provider.kimiCoding", {
-        defaultValue: "Kimi Coding Endpoint Key",
-      });
-    case "deepseek-coding":
-      return t("accounts.provider.deepseekCoding", {
-        defaultValue: "DeepSeek coding subscription",
-      });
-    case "anthropic-api":
-      return t("accounts.provider.anthropicApi", {
-        defaultValue: "Anthropic API",
-      });
-    case "openai-api":
-      return t("accounts.provider.openaiApi", {
-        defaultValue: "OpenAI API",
-      });
-    case "deepseek-api":
-      return t("accounts.provider.deepseekApi", {
-        defaultValue: "DeepSeek API",
-      });
-    case "zai-api":
-      return t("accounts.provider.zaiApi", {
-        defaultValue: "z.ai API",
-      });
-    case "moonshot-api":
-      return t("accounts.provider.moonshotApi", {
-        defaultValue: "Kimi / Moonshot API",
-      });
-    case "cerebras-api":
-      return t("accounts.provider.cerebrasApi", {
-        defaultValue: "Cerebras API",
-      });
-    case "openrouter-api":
-      return t("accounts.provider.openrouterApi", {
-        defaultValue: "OpenRouter credits / BYOK",
-      });
-    case "xai-api":
-      return t("accounts.provider.xaiApi", {
-        defaultValue: "xAI API (metered)",
-      });
-    default:
-      return providerId;
-  }
 }
 export function AddAccountDialog({
   open,
@@ -769,8 +698,8 @@ export function AddAccountDialog({
                       account: credentialRepairAccount.label,
                     })
                 : t("accounts.add.title", {
-                    defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
-                    provider: providerDisplayName(activeProviderId, t),
+                    defaultValue: `Add ${accountProviderDisplayName(activeProviderId, t)} account`,
+                    provider: accountProviderDisplayName(activeProviderId, t),
                   })
               : t("accounts.add.chooseTitle", {
                   defaultValue: "Add a provider account",

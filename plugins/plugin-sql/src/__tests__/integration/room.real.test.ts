@@ -2,12 +2,20 @@
  * Room-store CRUD tests against a real PGlite (or Postgres, if `POSTGRES_URL`
  * is set) adapter via `createIsolatedTestDatabase` — no mocks.
  */
-import { type AgentRuntime, ChannelType, type Room, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  authorizeManageServerDestination,
+  ChannelType,
+  type Room,
+  type UUID,
+} from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { roomTable } from "../../schema/room";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Room Integration Tests", () => {
@@ -164,6 +172,134 @@ describe("Room Integration Tests", () => {
       expect(retrieved).toHaveLength(1);
       if (!retrieved?.[0]) throw new Error("Room should exist");
       expect(retrieved[0].messageServerId).toBe(messageServerId);
+    });
+
+    it("should preserve the connector serverId through runtime room persistence", async () => {
+      const roomId = uuidv4() as UUID;
+      const messageServerId = uuidv4() as UUID;
+      const serverId = "123456789012345678";
+
+      await _runtime.ensureRoomExists({
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: "discord",
+        type: ChannelType.GROUP,
+        name: "Discord Guild Room",
+        channelId: "987654321098765432",
+        serverId,
+        messageServerId,
+        metadata: { accountId: "work" },
+      });
+
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+      const stored = await (adapter.getDatabase() as DrizzleDatabase)
+        .select({ serverId: roomTable.serverId })
+        .from(roomTable)
+        .where(eq(roomTable.id, roomId));
+
+      expect(retrieved).toHaveLength(1);
+      expect(retrieved[0]?.serverId).toBe(serverId);
+      expect(retrieved[0]?.messageServerId).toBe(messageServerId);
+      expect(retrieved[0]?.metadata).toMatchObject({ accountId: "work" });
+      expect(retrieved[0]?.metadata).not.toHaveProperty("serverId");
+      expect(stored[0]?.serverId).toBe(serverId);
+    });
+
+    it("should keep a room's stored channel and name when a connection omits them", async () => {
+      const roomId = uuidv4() as UUID;
+      const entityId = uuidv4() as UUID;
+      if (!(await adapter.getEntitiesByIds([testAgentId]))?.length) {
+        await adapter.createEntities([
+          { id: testAgentId, agentId: testAgentId, names: ["Test Agent"] },
+        ]);
+      }
+
+      await _runtime.ensureRoomExists({
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: "x",
+        type: ChannelType.DM,
+        name: "X DM with @alice",
+        channelId: "111-999",
+      });
+      await _runtime.ensureConnection({
+        entityId,
+        roomId,
+        worldId: testWorldId,
+        source: "x",
+        type: ChannelType.DM,
+        userName: "alice",
+        name: "Alice",
+      });
+
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+      expect(retrieved?.[0]?.channelId).toBe("111-999");
+      expect(retrieved?.[0]?.name).toBe("X DM with @alice");
+    });
+
+    it("should authorize manage_server for a room written through ensureConnection", async () => {
+      const roomId = uuidv4() as UUID;
+      const requesterEntityId = uuidv4() as UUID;
+      const serverId = "223456789012345678";
+      const world = await adapter.getWorld(testWorldId);
+      if (!world?.messageServerId) throw new Error("World should have a message server id");
+
+      await adapter.createEntities([
+        {
+          id: requesterEntityId,
+          agentId: testAgentId,
+          names: ["Discord Operator"],
+        },
+        {
+          id: testAgentId,
+          agentId: testAgentId,
+          names: ["Test Agent"],
+        },
+      ]);
+
+      await _runtime.ensureConnection({
+        entityId: requesterEntityId,
+        roomId,
+        worldId: testWorldId,
+        source: "discord",
+        type: ChannelType.GROUP,
+        channelId: "323456789012345678",
+        serverId,
+        messageServerId: world.messageServerId,
+      });
+
+      const connectedWorld = await adapter.getWorld(testWorldId);
+      if (!connectedWorld) throw new Error("Connected world should exist");
+      await adapter.updateWorld({
+        ...connectedWorld,
+        metadata: {
+          ...connectedWorld.metadata,
+          roles: { [requesterEntityId]: "ADMIN" },
+          roleSources: { [requesterEntityId]: "manual" },
+        },
+      });
+
+      const authorization = await authorizeManageServerDestination(_runtime, requesterEntityId, {
+        source: "discord",
+        accountId: "work",
+        serverId,
+        messageServerId: world.messageServerId,
+        destinationWorldId: testWorldId,
+        target: {
+          source: "discord",
+          channelId: "323456789012345678",
+          serverId,
+        },
+      });
+
+      expect(authorization).toMatchObject({
+        requesterEntityId,
+        authorizedEntityId: requesterEntityId,
+        role: "ADMIN",
+        bindingRoomIds: [roomId],
+      });
     });
   });
 });

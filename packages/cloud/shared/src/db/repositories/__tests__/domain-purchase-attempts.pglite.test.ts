@@ -479,6 +479,71 @@ describe("domain purchase durable authority", () => {
     }
   });
 
+  test("lets a new purchase start after an uncharged failure's replay window", async () => {
+    const input = createInput();
+    await quoteAttempt();
+    await repository.markTerminalFailure({
+      key: input.key,
+      organizationId: ORG_A,
+      errorCode: "insufficient_balance",
+      responseStatus: 402,
+      responseBody: { success: false, code: "insufficient_balance" },
+      replayUntil: new Date(Date.now() + 60_000),
+    });
+    const clear = () =>
+      repository.deleteExpiredUnchargedFailure({
+        key: input.key,
+        organizationId: ORG_A,
+        now: new Date(),
+      });
+
+    // Inside the replay window the stored 402 stays.
+    expect(await clear()).toBe(false);
+    await dbWrite.execute(sql`
+      UPDATE domain_purchase_idempotency
+      SET expires_at = now() - interval '1 second'
+      WHERE key = ${input.key}
+    `);
+    expect(
+      await repository.deleteExpiredUnchargedFailure({
+        key: input.key,
+        organizationId: ORG_B,
+        now: new Date(),
+      }),
+    ).toBe(false);
+    expect(await clear()).toBe(true);
+
+    const retry = await repository.createOrRead(input);
+    expect(retry.created).toBe(true);
+    expect(retry.attempt.status).toBe("processing");
+    expect(retry.attempt.response_body).toBeNull();
+  });
+
+  test("keeps an expired attempt that charged", async () => {
+    await quoteAttempt();
+    const chargeId = await insertCharge();
+    await repository.attachCharge({
+      key: createInput().key,
+      organizationId: ORG_A,
+      requestDigest: DIGEST,
+      chargeId,
+    });
+    await dbWrite.execute(sql`
+      UPDATE domain_purchase_idempotency
+      SET expires_at = now() - interval '1 second'
+      WHERE key = ${createInput().key}
+    `);
+
+    expect(
+      await repository.deleteExpiredUnchargedFailure({
+        key: createInput().key,
+        organizationId: ORG_A,
+        now: new Date(),
+      }),
+    ).toBe(false);
+    expect((await repository.read(createInput().key))?.status).toBe("charged");
+  });
+
   test("surfaces an expired charged attempt to the durable reconciler", async () => {
     await quoteAttempt();
     const chargeId = await insertCharge();

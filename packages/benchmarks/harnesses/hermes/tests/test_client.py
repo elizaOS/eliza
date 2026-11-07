@@ -314,13 +314,13 @@ def test_subscription_campaign_rejects_noncanonical_loopback_paths(
         HermesClient(repo_path=tmp_path, provider="openai", base_url=base_url)
 
 
-def test_subscription_campaign_rejects_legacy_in_process_mode(
+def test_subscription_campaign_rejects_unsupported_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
 
-    with pytest.raises(ValueError, match="require mode='subprocess'"):
+    with pytest.raises(ValueError, match="expected 'subprocess'"):
         HermesClient(repo_path=tmp_path, mode="in_process")
 
 
@@ -540,7 +540,7 @@ def test_client_send_message_payload_includes_generation_options(
         repo_path=tmp_path,
         api_key="test-key",
         base_url="https://test.example/v1",
-        mode="in_process",
+        mode="subprocess",
         temperature=0.1,
         reasoning_effort="medium",
         max_tokens=2048,
@@ -748,3 +748,13 @@ def test_client_health_runs_native_runner(client_with_fake_venv: HermesClient) -
     cmd = mock_run.call_args.args[0]
     assert cmd[2].endswith("native_runtime.py")
     assert cmd[-1] == "--health"
+
+
+def test_explicit_model_overrides_campaign_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "campaign-model")
+    client = HermesClient(repo_path=tmp_path, model="requested-model")
+    try:
+        assert client.model == "requested-model"
+    finally:
+        client.close()

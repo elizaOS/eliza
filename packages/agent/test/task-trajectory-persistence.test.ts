@@ -1,23 +1,21 @@
 /** Real task execution and PGlite trajectory persistence; no model provider calls. */
 
 import { randomUUID } from "node:crypto";
-import { ModelType } from "@elizaos/core";
-import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { PseudonymSession } from "../../core/src/security/pii-pseudonymizer.ts";
-import { SecretSwapSession } from "../../core/src/security/secret-swap.ts";
-import { TaskService } from "../../core/src/services/task.ts";
 import {
   getTrajectoryContext,
+  logActiveTrajectoryLlmCall,
+  ModelType,
+  PseudonymSession,
+  recordLlmCall,
   runWithTrajectoryContext,
   runWithTrajectoryPurpose,
-} from "../../core/src/trajectory-context.ts";
-import {
-  logActiveTrajectoryLlmCall,
-  recordLlmCall,
+  SecretSwapSession,
+  TaskService,
   withStandaloneTrajectory,
-} from "../../core/src/trajectory-utils.ts";
+} from "@elizaos/core";
+import { trajectoriesPlugin } from "@elizaos/plugin-assistant";
+import { createTestRuntime } from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   DatabaseTrajectoryLogger,
   installDatabaseTrajectoryLogger,

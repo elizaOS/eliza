@@ -18,13 +18,16 @@ import {
   type ViewDeclaration,
   type ViewType,
 } from "@elizaos/core";
-
-import { generateViewHeroSvgFor } from "@elizaos/ui/view-hero-art";
 import type { AgentPlatform } from "./platform-detect.ts";
+import { generateViewHeroSvgFor } from "./view-hero-art.ts";
 
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
+import {
+  NATIVE_VIEW_DECLARATIONS_ENV,
+  nativeViewDeclarations,
+} from "./native-view-declarations.ts";
 import {
   isPathWithinRoot,
   resolveRealPathSync,
@@ -80,6 +83,25 @@ function viewRegistryKey(id: string, viewType: ViewType): string {
 }
 
 const builtinInstallations = new WeakMap<IAgentRuntime, ViewInstallation>();
+
+// Pin trusted launch declarations for this runtime, regardless of plugin load order.
+const nativeDeclarations = new WeakMap<
+  IAgentRuntime,
+  readonly ViewDeclaration[]
+>();
+function runtimeNativeViews(
+  runtime: IAgentRuntime,
+): readonly ViewDeclaration[] {
+  let declarations = nativeDeclarations.get(runtime);
+  if (!declarations) {
+    declarations = nativeViewDeclarations(
+      process.env[NATIVE_VIEW_DECLARATIONS_ENV],
+      BUILTIN_VIEWS,
+    );
+    nativeDeclarations.set(runtime, declarations);
+  }
+  return declarations;
+}
 
 // Directory-loaded plugins are real module objects but are not installed npm
 // packages, so name-based resolution cannot recover their bundle root. Binding
@@ -355,15 +377,41 @@ export async function registerPluginViews(
     options.installation ??
     beginViewInstallation(runtime, plugin.name, plugin.packageName);
   try {
+    const views = plugin.views ?? [];
+    const nativeViews = runtimeNativeViews(runtime);
+    // Only view bundles need the package root; probing it for a view-less
+    // plugin just warns about a directory nothing would read.
     const resolvedDir =
-      options.pluginDir ??
-      boundPluginPackageDirectories.get(plugin) ??
-      (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
+      views.length === 0
+        ? undefined
+        : (options.pluginDir ??
+          boundPluginPackageDirectories.get(plugin) ??
+          (await resolvePluginPackageDir(plugin.packageName ?? plugin.name)));
     const registered: ViewRegistryEntry[] = [];
-    for (const view of plugin.views ?? []) {
+    for (const view of views) {
       for (const viewType of getViewModalities(view)) {
+        // A hosted plugin can replace its native fallback without erasing the
+        // host's exact GUI delivery route. Retain the native OWNER boundary;
+        // this does not supply a hosted bundle or alter its availability.
+        const nativeCounterpart =
+          viewType === "gui" &&
+          view.roleGate?.minRole === "OWNER" &&
+          nativeViews.some(
+            (native) =>
+              native.id === view.id &&
+              native.path === view.path &&
+              native.fallbackFor === (plugin.packageName ?? plugin.name),
+          );
         registered.push(
-          await buildEntry({ ...view, viewType }, plugin.name, resolvedDir),
+          await buildEntry(
+            {
+              ...view,
+              viewType,
+              ...(nativeCounterpart ? { nativeOs: true } : {}),
+            },
+            plugin.name,
+            resolvedDir,
+          ),
         );
       }
     }
@@ -421,8 +469,19 @@ export function registerBuiltinViews(
     assertViewInstallation(runtime, current);
     return;
   }
+  // Only trusted process launch configuration can declare consumer routes.
+  // Renderer metadata and device profiles never manufacture registry entries.
+  const nativeViews = runtimeNativeViews(runtime);
+  const nativeIds = new Set(nativeViews.map((view) => view.id));
+  const installed = runtimeViewEntries(runtime);
+  const views = [
+    ...BUILTIN_VIEWS.filter((view) => !nativeIds.has(view.id)),
+    ...nativeViews.filter(
+      (view) =>
+        !installed.some((entry) => !entry.builtin && entry.id === view.id),
+    ),
+  ];
   const installation = beginViewInstallation(runtime, "@elizaos/builtin");
-  const views = BUILTIN_VIEWS;
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
@@ -456,7 +515,8 @@ export function registerBuiltinViews(
           query ? `?${query}` : ""
         }`,
         hasHeroImage,
-        available: true,
+        // No hosted executable is supplied for a consumer-owned counterpart.
+        available: !nativeIds.has(view.id),
         loadedAt,
         platform,
         builtin: true,

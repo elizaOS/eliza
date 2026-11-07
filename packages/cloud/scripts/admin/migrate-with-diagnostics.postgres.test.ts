@@ -228,8 +228,11 @@ async function usageQuotasBarrier() {
 function expectRedactedMigrationFailure(
   output: string,
   databaseCode?: string,
+  ledgerReason?: string,
 ): void {
-  const suffix = databaseCode ? ` database_code=${databaseCode}` : "";
+  const suffix =
+    (databaseCode ? ` database_code=${databaseCode}` : "") +
+    (ledgerReason ? ` ledger_reason=${ledgerReason}` : "");
   expect(output).toMatch(
     new RegExp(
       `^\\[db:migrate\\] fatal: code=DATABASE_OPERATION_FAILED${suffix}$`,
@@ -1499,7 +1502,11 @@ describe.skipIf(!ENABLED)(
       );
       const checkpointMismatch = await runScript(MIGRATOR, database.url);
       expect(checkpointMismatch.exitCode).toBe(1);
-      expectRedactedMigrationFailure(checkpointMismatch.output);
+      expectRedactedMigrationFailure(
+        checkpointMismatch.output,
+        undefined,
+        "hash_mismatch",
+      );
       expect(checkpointMismatch.output).not.toContain("checkpoint-drift");
       await database.client.end();
     }, 30_000);
@@ -1643,7 +1650,11 @@ describe.skipIf(!ENABLED)(
 
       const result = await runScript(MIGRATOR, database.url);
       expect(result.exitCode).toBe(1);
-      expectRedactedMigrationFailure(result.output);
+      expectRedactedMigrationFailure(
+        result.output,
+        undefined,
+        "historical_after_checkpoint",
+      );
       expect(result.output).not.toContain("appears after hash enforcement");
       await database.client.end();
     }, 120_000);
@@ -1698,7 +1709,11 @@ describe.skipIf(!ENABLED)(
       );
       const duplicateResult = await runScript(MIGRATOR, duplicate.url);
       expect(duplicateResult.exitCode).toBe(1);
-      expectRedactedMigrationFailure(duplicateResult.output);
+      expectRedactedMigrationFailure(
+        duplicateResult.output,
+        undefined,
+        "duplicate_ledger_time",
+      );
       expect(duplicateResult.output).not.toContain("duplicate created_at");
       await duplicate.client.end();
 
@@ -1709,7 +1724,11 @@ describe.skipIf(!ENABLED)(
       );
       const unknownRowResult = await runScript(MIGRATOR, unknownRow.url);
       expect(unknownRowResult.exitCode).toBe(1);
-      expectRedactedMigrationFailure(unknownRowResult.output);
+      expectRedactedMigrationFailure(
+        unknownRowResult.output,
+        undefined,
+        "unmatched_ledger_time",
+      );
       expect(unknownRowResult.output).not.toContain("no matching journal");
       await unknownRow.client.end();
     }, 300_000);

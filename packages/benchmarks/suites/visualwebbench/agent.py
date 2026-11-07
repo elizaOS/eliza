@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 
-from benchmarks.visualwebbench.types import (
+from benchmarks.suites.visualwebbench.types import (
     BBox,
     VisualWebBenchPrediction,
     VisualWebBenchTask,

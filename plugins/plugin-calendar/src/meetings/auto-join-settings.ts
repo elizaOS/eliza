@@ -5,20 +5,15 @@
  * the owner-visible off/ask/all behavior.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  MeetingAutoJoinPolicy,
+  MeetingAutoJoinSettings,
+} from "./auto-join-types.js";
 
-/**
- * Per-agent meeting auto-join policy.
- *
- * - `"off"`  — never schedule the agent into meetings automatically (default).
- * - `"ask"`  — schedule an approval task shortly before each recognized
- *              meeting; the agent joins only after the owner approves.
- * - `"all"`  — join every synced calendar event with a recognized
- *              Meet/Teams/Zoom conference link at event start.
- *
- * Persisted in the runtime cache, the same surface the calendar plugin uses
- * for its feed-inclusion preferences (`feed-preferences.ts`).
- */
-export type MeetingAutoJoinPolicy = "off" | "ask" | "all";
+export type {
+  MeetingAutoJoinPolicy,
+  MeetingAutoJoinSettings,
+} from "./auto-join-types.js";
 
 export const MEETING_AUTO_JOIN_POLICIES: readonly MeetingAutoJoinPolicy[] = [
   "off",
@@ -27,11 +22,6 @@ export const MEETING_AUTO_JOIN_POLICIES: readonly MeetingAutoJoinPolicy[] = [
 ];
 
 export const DEFAULT_MEETING_AUTO_JOIN_POLICY: MeetingAutoJoinPolicy = "off";
-
-export interface MeetingAutoJoinSettings {
-  policy: MeetingAutoJoinPolicy;
-  updatedAt: string | null;
-}
 
 const MEETING_AUTO_JOIN_CACHE_KEY = "calendar:meeting-auto-join";
 

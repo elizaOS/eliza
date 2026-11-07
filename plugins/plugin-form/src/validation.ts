@@ -45,13 +45,13 @@
  * - No need to maintain exhaustive type lists
  */
 
-import { type JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/core";
 import {
   isSafeUntrustedRegexPattern,
   MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
   MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   matchesSafeUntrustedRegexPattern,
-} from "@elizaos/core/config/config-catalog";
+} from "@elizaos/host/protocol";
 import { formatCalendarDate, parseCalendarDate } from "./calendar-date";
 import { strictEmailValid } from "./email";
 import type { ControlType, FormControl, TypeHandler } from "./types";
@@ -140,14 +140,22 @@ export function clearTypeHandlers(): void {
  * Validation order (first failure returns):
  * 1. Required check
  * 2. Custom type handler (if registered)
- * 3. Built-in type validation
- * 4. Pattern, min/max, etc.
+ * 3. Built-in type validation, which applies the type's value grammar and
+ *    its field constraints (min/max, options, file limits, pattern, length)
+ *
+ * A per-runtime custom type owns its field grammar; only pattern/length/enum
+ * apply after its handler. A legacy `registerTypeHandler` entry that overrides
+ * a built-in type name replaces only the built-in value grammar: step 3 still
+ * enforces the field constraints the control declares (min/max for number and
+ * date, options for select, file limits for file, pattern/length/enum for
+ * every type).
  *
  * WHY this order:
  * - Required is fastest check
  * - Custom handlers may have special logic
  * - Built-in types provide fallback
- * - Pattern/limits are additional constraints
+ * - Field constraints are declared by the form, not the type, so a handler
+ *   that replaces the grammar never lifts them
  *
  * @param value - The value to validate
  * @param control - The field definition with validation rules
@@ -180,10 +188,18 @@ export function validateField(
     if (!result.valid) {
       return result;
     }
-    // A registered custom type owns its value grammar. Field-level text
-    // constraints still apply, but a built-in switch must not override it.
+    // A per-runtime custom type owns its whole field grammar. Field-level
+    // text constraints still apply, but a built-in switch must not override it.
     if (controlType && !controlType.builtin)
       return validateText(value, control);
+    // A legacy handler overriding a built-in name replaces only the value
+    // grammar; the field constraints the control declares still apply.
+    // Invariant: getTypeHandler returns the built-in descriptor itself when no
+    // legacy handler is registered, so handler === controlType holds for every
+    // built-in control without an override and the built-in switch below stays
+    // reachable.
+    if (handler !== controlType)
+      return validateFieldConstraints(value, control, handler);
   }
   // Type-specific validation
   // WHY switch: Clear separation of validation logic per type
@@ -348,11 +364,23 @@ function validateEmail(
  */
 const STRICT_NUMBER_PATTERN = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
 function parseStrictNumber(input: string): number {
-  const cleaned = input.replace(/[,$]/g, "").trim();
-  if (!STRICT_NUMBER_PATTERN.test(cleaned)) {
+  // A dollar sign is a currency mark only at the start, after an optional
+  // sign. Stripping every "$" turned "1$2" into 12. Anchoring on "^$" alone
+  // rejected "-$50", which is a negative amount.
+  const cleaned = input
+    .trim()
+    .replace(/^([+-]?)\s*\$/, "$1")
+    .trim();
+  if (
+    cleaned.includes(",") &&
+    !/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d*)?(?:e[+-]?\d+)?$/i.test(cleaned)
+  )
+    return Number.NaN;
+  const normalized = cleaned.replace(/,/g, "");
+  if (!STRICT_NUMBER_PATTERN.test(normalized)) {
     return Number.NaN;
   }
-  return Number(cleaned);
+  return Number(normalized);
 }
 /**
  * Validate number field.
@@ -374,7 +402,13 @@ function validateNumber(
       error: `${control.label || control.key} must be a number`,
     };
   }
-  // Min/max validation
+  return checkNumberBounds(numValue, control);
+}
+/** Min/max for a numeric value (as numbers, not lengths). */
+function checkNumberBounds(
+  numValue: number,
+  control: FormControl,
+): ValidationResult {
   if (control.min !== undefined && numValue < control.min) {
     return {
       valid: false,
@@ -418,7 +452,8 @@ export function parseBoolean(value: JsonValue): ParsedBoolean {
   if (typeof value === "boolean") {
     return { known: true, value };
   }
-  const literal = String(value).toLowerCase();
+  // Extraction often wraps a literal in spaces. " yes " is yes, not an unknown.
+  const literal = String(value).trim().toLowerCase();
   if (BOOLEAN_TRUE_LITERALS.includes(literal)) {
     return { known: true, value: true };
   }
@@ -462,9 +497,17 @@ function validateDate(
       error: `${control.label || control.key} must be a valid date`,
     };
   }
-  const timestamp = new Date(`${iso}T00:00:00.000Z`).getTime();
-  // Min/max as timestamps
-  // WHY: Form definition can set date ranges (e.g., dates after today only)
+  return checkDateBounds(new Date(`${iso}T00:00:00.000Z`).getTime(), control);
+}
+/**
+ * Min/max for a date, compared as timestamps.
+ *
+ * WHY: Form definition can set date ranges (e.g., dates after today only)
+ */
+function checkDateBounds(
+  timestamp: number,
+  control: FormControl,
+): ValidationResult {
   if (control.min !== undefined && timestamp < control.min) {
     return {
       valid: false,
@@ -493,7 +536,16 @@ function validateSelect(
 ): ValidationResult {
   const options = control.options ?? [];
   if (options.length === 0) {
-    // No options defined - treat as text
+    // Use the declared enum when no option values are available.
+    if (control.enum) {
+      const enumValue = String(value);
+      if (!control.enum.includes(enumValue)) {
+        return {
+          valid: false,
+          error: `Must be one of: ${control.enum.join(", ")}`,
+        };
+      }
+    }
     return { valid: true };
   }
   const strValue = String(value);
@@ -518,28 +570,55 @@ function validateFile(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
-  if (!control.file) {
-    return { valid: true };
-  }
   // Value should be an array of file metadata
   const files = Array.isArray(value) ? value : [value];
+  if (files.length === 0) {
+    return control.required
+      ? {
+          valid: false,
+          error: `${control.label || control.key} is required`,
+        }
+      : { valid: true };
+  }
   // Check max files
-  if (control.file.maxFiles && files.length > control.file.maxFiles) {
+  if (
+    control.file?.maxFiles !== undefined &&
+    files.length > control.file.maxFiles
+  ) {
     return {
       valid: false,
       error: `Maximum ${control.file.maxFiles} files allowed`,
     };
   }
   for (const file of files) {
-    if (!file || typeof file !== "object") continue;
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      return { valid: false, error: "Invalid file data" };
+    }
     const fileObj = file as {
+      id?: unknown;
+      name?: unknown;
       size?: number;
-      mimeType?: string;
+      mimeType?: unknown;
+      url?: unknown;
     };
+    if (
+      typeof fileObj.id !== "string" ||
+      fileObj.id.trim().length === 0 ||
+      typeof fileObj.name !== "string" ||
+      fileObj.name.trim().length === 0 ||
+      typeof fileObj.mimeType !== "string" ||
+      fileObj.mimeType.trim().length === 0 ||
+      typeof fileObj.size !== "number" ||
+      !Number.isFinite(fileObj.size) ||
+      fileObj.size < 0 ||
+      typeof fileObj.url !== "string" ||
+      fileObj.url.trim().length === 0
+    ) {
+      return { valid: false, error: "Invalid file data" };
+    }
     // Check file size
     if (
-      control.file.maxSize &&
-      fileObj.size &&
+      control.file?.maxSize !== undefined &&
       fileObj.size > control.file.maxSize
     ) {
       return {
@@ -548,7 +627,7 @@ function validateFile(
       };
     }
     // Check accepted MIME types
-    if (control.file.accept && fileObj.mimeType) {
+    if (control.file?.accept) {
       const { mimeType } = fileObj;
       const accepted = control.file.accept.some((pattern) =>
         matchesMimeType(mimeType, pattern),
@@ -576,12 +655,15 @@ function validateFile(
  * matchesMimeType('application/pdf', 'image/*') // false
  */
 export function matchesMimeType(mimeType: string, pattern: string): boolean {
-  if (pattern === "*/*") return true;
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -1); // "image/" from "image/*"
-    return mimeType.startsWith(prefix);
+  // Type and subtype are case-insensitive. "IMAGE/*" must accept image/png.
+  const type = mimeType.toLowerCase();
+  const expected = pattern.toLowerCase();
+  if (expected === "*/*") return true;
+  if (expected.endsWith("/*")) {
+    const prefix = expected.slice(0, -1); // "image/" from "image/*"
+    return type.startsWith(prefix);
   }
-  return mimeType === pattern;
+  return type === expected;
 }
 /**
  * Format bytes to human-readable string.
@@ -615,14 +697,17 @@ export function parseValue(
   control: FormControl,
   controlType?: ControlType,
 ): JsonValue {
-  // Check for custom type handler
+  // Check for custom type handler. The builtin number and boolean parses are
+  // bypassed: both coerce input the shared contract rejects (a partial
+  // number, an unknown or space-wrapped boolean literal) into a fake-valid
+  // value, so the switch below must parse those two types itself.
   const handler = getTypeHandler(control.type, controlType);
   if (
     handler?.parse &&
     !(
       handler === controlType &&
       controlType.builtin &&
-      control.type === "number"
+      (control.type === "number" || control.type === "boolean")
     )
   ) {
     return handler.parse(value);
@@ -660,6 +745,102 @@ export function parseValue(
       return value;
   }
 }
+/**
+ * Enforce a control's field constraints when a legacy handler overrides a
+ * built-in type's value grammar.
+ *
+ * The handler decides what a well-formed value looks like; the form decides
+ * the range, the allowed options and the file limits. A bound that cannot be
+ * compared against the value (a handler-accepted number or date that neither
+ * the handler's `parse` nor the built-in parser can read) fails closed rather
+ * than passing unchecked.
+ */
+function validateFieldConstraints(
+  value: JsonValue,
+  control: FormControl,
+  handler: TypeHandler | ControlType | undefined,
+): ValidationResult {
+  const hasBounds = control.min !== undefined || control.max !== undefined;
+  switch (control.type) {
+    case "number": {
+      if (hasBounds) {
+        const numValue = readHandlerNumber(value, handler);
+        if (numValue === undefined) {
+          return {
+            valid: false,
+            error: `${control.label || control.key} must be a number`,
+          };
+        }
+        const bounds = checkNumberBounds(numValue, control);
+        if (!bounds.valid) return bounds;
+      }
+      break;
+    }
+    case "date": {
+      if (hasBounds) {
+        const iso = readHandlerDate(value, handler);
+        if (iso === undefined) {
+          return {
+            valid: false,
+            error: `${control.label || control.key} must be a valid date`,
+          };
+        }
+        const bounds = checkDateBounds(
+          new Date(`${iso}T00:00:00.000Z`).getTime(),
+          control,
+        );
+        if (!bounds.valid) return bounds;
+      }
+      break;
+    }
+    case "select": {
+      const selected = validateSelect(value, control);
+      if (!selected.valid) return selected;
+      break;
+    }
+    case "file": {
+      if (control.file) {
+        const files = validateFile(value, control);
+        if (!files.valid) return files;
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return validateText(value, control);
+}
+/** Read a numeric value through the owning handler's parser, then the built-in one. */
+function readHandlerNumber(
+  value: JsonValue,
+  handler: TypeHandler | ControlType | undefined,
+): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  const raw = String(value);
+  if (handler?.parse) {
+    const parsed = handler.parse(raw);
+    if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed;
+  }
+  const strict = parseStrictNumber(raw);
+  return Number.isFinite(strict) ? strict : undefined;
+}
+/** Read a calendar date through the owning handler's parser, then the built-in one. */
+function readHandlerDate(
+  value: JsonValue,
+  handler: TypeHandler | ControlType | undefined,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  if (handler?.parse) {
+    const parsed = handler.parse(value);
+    if (typeof parsed === "string") {
+      const iso = parseCalendarDate(parsed);
+      if (iso) return iso;
+    }
+  }
+  return parseCalendarDate(value);
+}
 // ============================================================================
 // VALUE FORMATTING
 // ============================================================================
@@ -682,15 +863,10 @@ export function formatValue(
   controlType?: ControlType,
 ): string {
   if (value === undefined || value === null) return "";
-  // Sensitive fields should be masked
-  // WHY: Passwords, tokens shouldn't be echoed back to user
-  if (control.sensitive) {
-    const strVal = String(value);
-    if (strVal.length > 8) {
-      return `${strVal.slice(0, 4)}...${strVal.slice(-4)}`;
-    }
-    return "****";
-  }
+  // Sensitive fields are masked in full.
+  // WHY: Passwords and tokens must not be echoed back. Showing the first and
+  // last four characters showed 8 of the 9 characters of a 9-character password.
+  if (control.sensitive) return "****";
   const handler = getTypeHandler(control.type, controlType);
   if (handler?.format) return handler.format(value);
   switch (control.type) {

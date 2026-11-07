@@ -313,6 +313,57 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       }
     );
 
+    testOrSkip(
+      "should keep other queries on the pool out of a failing migration's transaction",
+      async () => {
+        // With more callers than pool connections, a released connection goes
+        // to whoever waits first. A migration that spreads BEGIN, its DDL and
+        // ROLLBACK over pool connections leaves one idle in transaction, lets
+        // other writes join it and roll back with it, and keeps partial DDL.
+        await db.execute(sql.raw("CREATE TABLE test_parallel_1 (id serial PRIMARY KEY)"));
+        await migrator.migrate("@elizaos/concurrent-test-shared-pool", {
+          b: pgTable("test_deadlock_b", { id: uuid("id").primaryKey().defaultRandom() }),
+        });
+        await db.execute(sql.raw("INSERT INTO test_deadlock_b DEFAULT VALUES"));
+        // The NOT NULL column without a default fails on the existing row.
+        const failing = {
+          a: pgTable("test_deadlock_a", { id: uuid("id").primaryKey().defaultRandom() }),
+          b: pgTable("test_deadlock_b", {
+            id: uuid("id").primaryKey().defaultRandom(),
+            required: text("required").notNull(),
+          }),
+        };
+        let writing = true;
+        let acknowledged = 0;
+        const writers = Array.from({ length: 30 }, async () => {
+          while (writing) {
+            await db.execute(sql.raw("INSERT INTO test_parallel_1 DEFAULT VALUES"));
+            acknowledged++;
+          }
+        });
+        await expect(
+          migrator.migrate("@elizaos/concurrent-test-shared-pool", failing)
+        ).rejects.toThrow();
+        writing = false;
+        await Promise.all(writers);
+
+        const stored = await db.execute(
+          sql.raw("SELECT count(*)::int AS count FROM test_parallel_1")
+        );
+        expect((stored.rows[0] as unknown as { count: number }).count).toBe(acknowledged);
+        const partial = await db.execute(
+          sql.raw("SELECT to_regclass('public.test_deadlock_a') IS NOT NULL AS exists")
+        );
+        expect(partial.rows[0]?.exists).toBe(false);
+        const idle = await db.execute(
+          sql.raw(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE state = 'idle in transaction'"
+          )
+        );
+        expect((idle.rows[0] as unknown as { count: number }).count).toBe(0);
+      }
+    );
+
     it("should allow concurrent migrations for different plugins", async () => {
       const schema1 = {
         testTable1: pgTable("test_concurrent_1", {

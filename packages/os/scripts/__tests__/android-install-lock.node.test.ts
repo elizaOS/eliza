@@ -8,7 +8,9 @@ import { withDeviceInstallLock } from "../android/install-lock.ts";
 import { openInstallJournal } from "../android/install-release.ts";
 
 function directory(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "android-lock-test-"));
+  const root = fs.mkdtempSync(
+    path.join(fs.realpathSync(os.tmpdir()), "android-lock-test-"),
+  );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }

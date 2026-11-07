@@ -6,7 +6,14 @@
  * file with no fetchable URL is dropped with a warning instead of becoming a
  * `Media` that no consumer can fetch.
  */
-import { logger, type Media } from "@elizaos/core";
+import {
+  ElizaError,
+  type FetchLike,
+  fetchWithSsrfGuard,
+  logger,
+  type Media,
+  readResponseWithLimit,
+} from "@elizaos/core";
 import type { SlackFile } from "./types";
 
 function optionalString(value: unknown): string | undefined {
@@ -90,4 +97,65 @@ export function slackFilesToMedia(
     });
   }
   return media;
+}
+
+const SLACK_FILE_HOSTS = new Set(["files.slack.com", "files.slack-gov.com"]);
+
+export interface SlackFileBytes {
+  buffer: Buffer;
+  contentType: string | undefined;
+}
+
+export async function fetchSlackFileBytes(
+  url: string,
+  botToken: string,
+  options: {
+    maxBytes: number;
+    expectedMimeType?: string;
+    fetchImpl?: FetchLike;
+  },
+): Promise<SlackFileBytes> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" || !SLACK_FILE_HOSTS.has(parsed.hostname)) {
+    throw new ElizaError("Slack file URL is not on a Slack file host", {
+      code: "SLACK_FILE_HOST_UNTRUSTED",
+      context: { host: parsed.hostname },
+    });
+  }
+  const { response, release } = await fetchWithSsrfGuard({
+    url,
+    fetchImpl: options.fetchImpl,
+    timeoutMs: 30_000,
+    maxRedirects: 5,
+    init: { headers: { Authorization: `Bearer ${botToken}` } },
+  });
+  try {
+    if (!response.ok) {
+      throw new ElizaError(
+        `Slack file download failed with HTTP ${response.status}`,
+        {
+          code: "SLACK_FILE_DOWNLOAD_FAILED",
+          context: { host: parsed.hostname, status: response.status },
+        },
+      );
+    }
+    const contentType =
+      response.headers.get("content-type")?.split(";")[0]?.trim() || undefined;
+    if (
+      contentType === "text/html" &&
+      options.expectedMimeType !== "text/html"
+    ) {
+      throw new ElizaError(
+        "Slack returned an HTML page instead of file bytes; the bot token needs the files:read scope",
+        {
+          code: "SLACK_FILE_DOWNLOAD_UNAUTHORIZED",
+          context: { host: parsed.hostname },
+        },
+      );
+    }
+    const buffer = await readResponseWithLimit(response, options.maxBytes);
+    return { buffer, contentType };
+  } finally {
+    await release();
+  }
 }

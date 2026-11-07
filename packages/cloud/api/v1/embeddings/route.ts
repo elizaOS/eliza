@@ -8,19 +8,12 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { APICallError, embed, embedMany, RetryError } from "ai";
-import { Hono } from "hono";
-import {
-  resolveInferenceAuthStandingDenial,
-  resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -29,57 +22,66 @@ import {
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
   withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
   calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
-} from "@/lib/pricing";
-import { validateBgeInput } from "@/lib/providers/bge-embeddings";
+} from "@elizaos/cloud-shared/lib/pricing";
+import { validateBgeInput } from "@elizaos/cloud-shared/lib/providers/bge-embeddings";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
   hasTextEmbeddingProviderConfigured,
   resolveEmbeddingProviderSource,
   resolvePassthroughEmbeddingsUpstream,
-} from "@/lib/providers/language-model";
-import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  billUsage,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
 import {
   admitAppSubscriptionInference,
   appInferenceDeveloperScope,
-} from "@/lib/services/app-subscription-inference-admission";
-import type { CreditReservation } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import { requireInferenceApiKeyWithOrg } from "@/lib/services/inference-api-key-auth";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
-} from "@/lib/services/inference-credential-revocation";
-import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
-import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   nativeApplicationInferenceErrorResponse,
   prepareNativeApplicationInference,
-} from "@/lib/services/native-application-inference";
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
-  InferenceAffiliateCacheUnavailableError,
-  InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
-} from "@/lib/services/organization-inference-admission";
-import { settlementDigest } from "@/lib/services/settlement-digest";
-import { usageService } from "@/lib/services/usage";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ElizaError } from "@elizaos/core";
+import { APICallError, embed, embedMany, RetryError } from "ai";
+import { Hono } from "hono";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -114,6 +116,7 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
@@ -123,23 +126,8 @@ app.post("/", async (c) => {
       typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
     // error-policy:J4 Hono intentionally throws outside Workers; local tools
-    // retain compatibility, while enabled Worker admission fails closed below.
+    // keep the synchronous primary admission.
     executionCtx = undefined;
-  }
-  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
-    logger.error(
-      "[Embeddings] Worker execution context is unavailable for cache-only inference",
-    );
-    return c.json(
-      {
-        error: {
-          message: "Inference authorization is warming. Retry shortly.",
-          type: "service_unavailable",
-          code: "inference_context_unavailable",
-        },
-      },
-      503,
-    );
   }
   // True once settleBilling() has taken ownership of settling/releasing the
   // reservation, so the outer catch never double-applies a release.
@@ -184,24 +172,11 @@ app.post("/", async (c) => {
     const resolution = await resolveInferenceAuthContext(inferenceRequest, {
       traceId,
       executionCtx,
-      cacheOnly: Boolean(executionCtx),
       deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
-    if (resolution.kind === "warming") {
-      return c.json(
-        {
-          error: {
-            message: "Authorization cache is warming. Retry shortly.",
-            type: "service_unavailable",
-            code: "auth_cache_warming",
-          },
-        },
-        503,
-      );
-    }
     if (resolution.kind === "suspended") {
       const denial = resolveInferenceAuthStandingDenial(resolution, {
         route: "embeddings",
@@ -247,6 +222,10 @@ app.post("/", async (c) => {
       guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      apiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
@@ -286,12 +265,17 @@ app.post("/", async (c) => {
     }
 
     const tAuth = performance.now();
+    // Dispatch reaches the billing gate after the rate decision; wake it now.
+    if (executionCtx && user.organization_id)
+      wakeInferenceAdmissionGate(user.organization_id, executionCtx);
     const orgRateLimitPromise = user.organization_id
       ? enforceOrgRateLimit(user.organization_id, "embeddings", {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          admissionSnapshot,
           apiKeyId,
+          apiKeyRateLimit,
         })
       : Promise.resolve(null);
 
@@ -304,24 +288,20 @@ app.post("/", async (c) => {
     try {
       orgRateLimited = await orgRateLimitPromise;
     } catch (error) {
-      // error-policy:J1 the route boundary translates a cold policy cache into
-      // a retryable response; all other errors continue to the outer boundary.
+      // error-policy:J1 the route boundary translates an unprovable policy
+      // into a retryable response; all other errors continue to the outer boundary.
       if (error instanceof OrgRateLimitCacheNotReadyError) {
         return c.json(
           {
             error: {
               message:
-                error.state === "warming"
-                  ? "Organization rate-limit policy is warming. Retry shortly."
-                  : "Organization rate-limit policy cache is unavailable. Retry shortly.",
+                "Organization rate-limit policy is unavailable. Retry shortly.",
               type: "service_unavailable",
-              code:
-                error.state === "warming"
-                  ? "rate_limit_cache_warming"
-                  : "rate_limit_cache_unavailable",
+              code: "rate_limit_unavailable",
             },
           },
           503,
+          { "Retry-After": "1" },
         );
       }
       throw error;
@@ -559,23 +539,17 @@ app.post("/", async (c) => {
           { "Retry-After": "1" },
         );
       }
-      if (error instanceof InferenceBalanceCacheWarmingError) {
-        const unavailable =
-          error instanceof InferencePricingCacheUnavailableError ||
-          error instanceof InferenceAffiliateCacheUnavailableError;
+      if (error instanceof InferenceBillingUnavailableError) {
         return c.json(
           {
             error: {
-              message: unavailable
-                ? "Inference admission cache is unavailable. Retry shortly."
-                : "Inference admission cache is warming. Retry shortly.",
+              message: "Billing authorization is unavailable. Retry shortly.",
               type: "service_unavailable",
-              code: unavailable
-                ? "inference_admission_cache_unavailable"
-                : "inference_admission_cache_warming",
+              code: "billing_unavailable",
             },
           },
           503,
+          { "Retry-After": "1" },
         );
       }
       throw error;

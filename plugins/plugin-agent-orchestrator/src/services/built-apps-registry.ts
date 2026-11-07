@@ -26,7 +26,7 @@
  * @module services/built-apps-registry
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, isLoopbackHost } from "@elizaos/core";
 import {
   type AppDeployConfig,
   isAppBuildTask,
@@ -59,10 +59,6 @@ export const MAX_BUILT_APPS = 200;
  *  opened at …"); they are never the hosted app itself. */
 const CODE_HOST_RE =
   /(^|\.)(github\.com|gist\.github\.com|raw\.githubusercontent\.com|gitlab\.com|bitbucket\.org)$/i;
-
-function isLoopbackHost(host: string): boolean {
-  return host === "localhost" || host === "::1" || host.startsWith("127.");
-}
 
 function slugToDisplayName(slug: string): string {
   return slug

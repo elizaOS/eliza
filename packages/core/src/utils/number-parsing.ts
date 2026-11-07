@@ -93,7 +93,7 @@ export function parseCanonicalInteger(
 ): CanonicalIntegerResult {
 	// Reject whitespace-padded input (must be canonical): " 1" and "1 " are 400,
 	// not 1. sanitizeNumericText trims, so check original string first.
-	// Pure whitespace ("   ") is blank -> undefined, not invalid.
+	// Pure whitespace (" ") is blank -> undefined, not invalid.
 	if (
 		typeof value === "string" &&
 		value !== "" &&

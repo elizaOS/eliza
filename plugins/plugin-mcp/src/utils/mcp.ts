@@ -4,7 +4,7 @@
  * markdown summary, and createMcpMemory records tool/resource use as an agent
  * memory with an embedding when the runtime provides that capability.
  */
-import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, type Media, type Memory, ModelType } from "@elizaos/core";
 import { buildMcpProviderProjection } from "../protocol-utils/provider-projection.js";
 import type { McpProvider, McpServer } from "../types";
 export async function createMcpMemory(
@@ -13,7 +13,8 @@ export async function createMcpMemory(
   type: "tool" | "resource",
   serverName: string,
   content: string,
-  metadata: Readonly<Record<string, unknown>>
+  metadata: Readonly<Record<string, unknown>>,
+  attachments: readonly Media[] = []
 ): Promise<void> {
   const memory: Memory = {
     entityId: message.entityId,
@@ -22,6 +23,7 @@ export async function createMcpMemory(
     content: {
       text: `Used the "${type}" from "${serverName}" server.
         Content: ${content}`,
+      ...(attachments.length ? { attachments: [...attachments] } : {}),
       metadata: {
         ...metadata,
         serverName,

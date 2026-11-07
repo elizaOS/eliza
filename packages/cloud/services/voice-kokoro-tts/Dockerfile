@@ -1,8 +1,5 @@
-# Reproducible build of the free-cloud Kokoro TTS service that lives behind the
-# cloud-api /api/v1/voice/tts route (the `KOKORO_TTS_URL` branch). It wraps the
-# upstream Kokoro-FastAPI image so the deploy is a pinned, in-repo artifact
-# instead of an unreproducible Railway pet: the previously-provisioned instance
-# (kokoro-tts-production-aa4b.up.railway.app) existed only as a test-default URL.
+# Pinned optional self-hosted Kokoro image for the cloud-api compatibility route.
+# Managed Cloud voice uses Workers AI instead.
 #
 # Contract this image MUST satisfy (asserted by
 # packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts):

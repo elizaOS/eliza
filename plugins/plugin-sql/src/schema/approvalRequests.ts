@@ -72,6 +72,8 @@ export const approvalRequestTable = pgTable(
     }),
     providerReceipt: jsonb("provider_receipt"),
     executionError: text("execution_error"),
+    /** Private one-shot original-request completion for approved native reads. */
+    deviceReadCompletion: jsonb("device_read_completion"),
     reconciliationResolvedAt: timestamp("reconciliation_resolved_at", {
       withTimezone: true,
     }),

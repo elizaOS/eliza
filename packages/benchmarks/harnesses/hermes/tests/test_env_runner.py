@@ -561,3 +561,11 @@ def test_env_runner_force_reruns_even_when_cached(fake_repo: Path, tmp_path: Pat
         )
     assert spawn_count["n"] == 1
     assert result.score == pytest.approx(0.99)
+
+
+@pytest.mark.parametrize("score", [True, float("nan"), float("inf"), "0.5"])
+def test_environment_score_rejects_non_numeric_or_nonfinite_measurements(score):
+    from hermes_adapter.env_runner import _pick_score
+
+    with pytest.raises(ValueError, match="finite number"):
+        _pick_score({"accuracy": score})

@@ -97,7 +97,7 @@ export async function routeTaskAgentTextToConnector(
   }
   if (!roomId) return false;
 
-  const room = await runtime.getRoom(roomId as UUID).catch(() => null);
+  const room = await runtime.getRoom(roomId as UUID);
   if (!room?.source) return false;
 
   requireConfirmedSendHandlerDelivery(

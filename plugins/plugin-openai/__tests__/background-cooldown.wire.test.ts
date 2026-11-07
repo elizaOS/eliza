@@ -6,7 +6,7 @@
 import { createServer } from "node:http";
 import { ChannelType, type Memory, ModelType, stringToUuid, TaskService } from "@elizaos/core";
 import { EvaluatorService } from "@elizaos/plugin-assistant";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
 
@@ -119,10 +119,10 @@ it("shares a provider hold across memory jobs and resumes after restart and fore
     const scheduler = () =>
       new TaskService(runtime, {
         now: () => now,
-        setInterval: () => {
+        setTimeout: () => {
           throw new Error("Manual ticks only");
         },
-        clearInterval: () => undefined,
+        clearTimeout: () => undefined,
       });
     now = start + 1000;
     await expect(scheduler().runDueTasks()).rejects.toThrow();

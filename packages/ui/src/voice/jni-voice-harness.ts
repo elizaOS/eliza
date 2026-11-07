@@ -17,7 +17,7 @@
  * pipeline owns ASR/text/TTS while this harness remains observable on-device.
  */
 
-import { ElizaClient } from "../api";
+import { ElizaClient } from "../api/client";
 import {
   getElizaVoicePlugin,
   getTalkModePlugin,

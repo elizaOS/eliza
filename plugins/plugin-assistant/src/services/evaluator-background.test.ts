@@ -5,6 +5,7 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
+  ElizaError,
   type EvaluatorProcessorContext,
   isActiveMemoryEvidence,
   type Memory,
@@ -15,7 +16,7 @@ import {
   type Task,
   TaskService,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { getEntityDetails } from "../entities";
@@ -226,6 +227,40 @@ describe("durable background memory", () => {
       }
     },
   );
+  it("turns provider reasoning off for the schema and JSON-object evaluation requests", async () => {
+    const { runtime, service, message } = await setup();
+    const process = vi.fn(async () => undefined);
+    runtime.registerEvaluator(evaluator(process));
+    const requests: unknown[] = [];
+    runtime.useModel = vi.fn(async (_type, params) => {
+      requests.push(params);
+      // Reject the schema attempt so the JSON-object fallback also runs.
+      if (requests.length === 1) throw new Error("response schema rejected");
+      return '{"memory":{"ok":true}}';
+    }) as AgentRuntime["useModel"];
+    await service.enqueue(message, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+    const thinkingOff = {
+      providerOptions: {
+        eliza: expect.objectContaining({ thinking: "off" }),
+      },
+    };
+    expect(requests).toEqual([
+      expect.objectContaining({
+        ...thinkingOff,
+        responseSchema: expect.anything(),
+      }),
+      expect.objectContaining({
+        ...thinkingOff,
+        responseFormat: { type: "json_object" },
+      }),
+    ]);
+    expect(requests[1]).not.toHaveProperty("responseSchema");
+    // The reasoning-off answer still passes the evaluator schema.
+    expect(process).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ output: { ok: true } }),
+    );
+  });
   it.each([relationshipEvaluator, identityEvaluator])(
     "holds $name source reconciliation before inference without acknowledging the evidence",
     async (entry) => {
@@ -441,10 +476,10 @@ describe("durable background memory", () => {
     let now = Date.now() + 10_000;
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Test drives public scheduler ticks");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     await service.enqueue(message, state, { phase: "post_turn" });
     const initial = await job(runtime);
@@ -487,6 +522,72 @@ describe("durable background memory", () => {
     });
   });
 
+  it.each(["provider error", "native result"])(
+    "stops a memory job whose input exhausts the model output limit (%s)",
+    async (shape) => {
+      const { runtime, service, message } = await setup();
+      const process = vi.fn(async () => undefined);
+      runtime.registerEvaluator(evaluator(process));
+      // The provider failure recorded live: reasoning consumed the whole
+      // uncapped completion and the provider reported a length stop.
+      const truncated = new ElizaError(
+        "[cerebras] Model output did not complete successfully (length).",
+        {
+          code: "MODEL_OUTPUT_INCOMPLETE",
+          context: {
+            finishReason: "length",
+            maxTokens: null,
+            usage: { completionTokens: 40_000, reasoningTokens: 39_997 },
+          },
+        },
+      );
+      let attempts = 0;
+      let complete = false;
+      runtime.useModel = vi.fn(async () => {
+        attempts++;
+        if (complete) return '{"memory":{"ok":true}}';
+        if (shape === "provider error") throw truncated;
+        return { text: "", toolCalls: [], finishReason: "length" };
+      }) as AgentRuntime["useModel"];
+      const now = Date.now() + 10_000;
+      const scheduler = new TaskService(runtime, {
+        now: () => now,
+        setTimeout: () => {
+          throw new Error("Test drives public scheduler ticks");
+        },
+        clearTimeout: () => undefined,
+      });
+      await service.enqueue(message, state, { phase: "post_turn" });
+      const initial = await job(runtime);
+      // At temperature 0 the identical input truncates again: the job is
+      // finished instead of re-buying the same output on later ticks.
+      await scheduler.executeTaskById(initial.id);
+      expect(attempts).toBe(1);
+      expect(await runtime.getTask(initial.id)).toBeNull();
+      expect(process).not.toHaveBeenCalled();
+
+      // The evidence stayed pending: once the input changes it is extracted.
+      complete = true;
+      const later: Memory = {
+        ...message,
+        id: "00000000-0000-4000-8000-000000000009",
+        content: { text: "I moved to Paris.", channelType: ChannelType.DM },
+        createdAt: 20,
+      };
+      await runtime.upsertMemory(later, "messages");
+      await service.enqueue(later, state, { phase: "post_turn" });
+      await scheduler.executeTaskById((await job(runtime)).id);
+      expect(attempts).toBe(2);
+      expect(process).toHaveBeenCalledTimes(1);
+      const [[processed]] = process.mock.calls as unknown as [
+        [EvaluatorProcessorContext],
+      ];
+      expect(
+        processed.options.extraction?.messages.map((row) => row.id),
+      ).toEqual([message.id, later.id]);
+    },
+  );
+
   it.each(["headers", "cooldown"])(
     "waits for %s retry deadlines across scheduler restart and delivery replay",
     async (kind) => {
@@ -511,10 +612,10 @@ describe("durable background memory", () => {
       const createScheduler = () =>
         new TaskService(runtime, {
           now: () => now,
-          setInterval: () => {
+          setTimeout: () => {
             throw new Error("Manual ticks only");
           },
-          clearInterval: () => undefined,
+          clearTimeout: () => undefined,
         });
       try {
         await service.enqueue(message, state, { phase: "post_turn" });
@@ -577,10 +678,10 @@ describe("durable background memory", () => {
     }) as AgentRuntime["useModel"];
     const scheduler = new TaskService(runtime, {
       now: () => now,
-      setInterval: () => {
+      setTimeout: () => {
         throw new Error("Manual ticks only");
       },
-      clearInterval: () => undefined,
+      clearTimeout: () => undefined,
     });
     try {
       await service.enqueue(message, state, { phase: "post_turn" });
@@ -1574,8 +1675,12 @@ describe("durable background memory", () => {
     expect(prompt).toContain(next.content.text);
     expect(prompt.match(/evidence-set-1:/g)).toHaveLength(1);
     expect(
-      prompt.match(/only the exact source IDs in evidence-set-1/g),
-    ).toHaveLength(2);
+      JSON.parse(
+        prompt.match(
+          /Evaluators (\[[^\n]+\]) below: Incremental evidence contract: process only the exact source IDs in evidence-set-1 defined above\./,
+        )?.[1] ?? "null",
+      ),
+    ).toEqual(["leadA", "leadB"]);
     expect(prompt).not.toContain("evidence-set-2");
     expect(
       JSON.parse(prompt.match(/evidence-set-1: (\[[\s\S]*?\])/)?.[1] ?? "null"),
@@ -2516,5 +2621,40 @@ describe("durable background memory", () => {
     expect(await runtime.getTask(first.id)).toBeNull();
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
     expect(process).toHaveBeenCalledTimes(1);
+  });
+  it("composes background provider state without the stored turn's closed trajectory step", async () => {
+    const { runtime, service, message } = await setup();
+    const owned = {
+      ...message,
+      metadata: {
+        type: "message",
+        trajectoryStepId: "closed-step",
+        trajectoryId: "closed-trajectory",
+      },
+    } as Memory;
+    await runtime.upsertMemory(owned, "messages");
+    runtime.registerEvaluator({
+      ...evaluator(),
+      providers: ["CONVERSATION_PROXIMITY"],
+    });
+    runtime.useModel = vi.fn(
+      async () => '{"memory":{"ok":true}}',
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(owned, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+
+    const composed = vi
+      .mocked(runtime.composeState)
+      .mock.calls.map(([composedMessage]) => composedMessage.metadata);
+    expect(composed).not.toHaveLength(0);
+    for (const metadata of composed) {
+      expect(metadata).not.toHaveProperty("trajectoryStepId");
+      expect(metadata).not.toHaveProperty("trajectoryId");
+    }
+    // The stored row keeps its provenance.
+    expect(
+      (await runtime.getMemoryById(owned.id as NonNullable<Memory["id"]>))
+        ?.metadata,
+    ).toMatchObject({ trajectoryStepId: "closed-step" });
   });
 });

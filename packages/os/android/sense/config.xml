@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Shared AOSP image: always-on listener and hardware invocation (docs/adr/0001-privileged-listener.md).
+ Static product overlay. Emergency SOS (repeated power presses) and the double-press-power camera
+ gesture are deliberately NOT overridden here; the stock values stay in force.
+-->
+<resources>
+    <!-- Hardware invocation: press and hold power opens the default assistant (the host, via the
+         assistant role and its ACTION_ASSIST activity). 5 = LONG_PRESS_POWER_ASSISTANT. -->
+    <integer name="config_longPressOnPowerBehavior">5</integer>
+    <!-- Users can switch press-and-hold back to the power menu in Settings. -->
+    <bool name="config_longPressOnPowerForAssistantSettingAvailable">true</bool>
+    <!-- Power + volume up keeps opening the power menu (shutdown, restart, Emergency) because
+         press-and-hold power now invokes the assistant. 2 = global actions. -->
+    <integer name="config_keyChordPowerVolumeUp">2</integer>
+
+    <!-- The system microphone privacy toggle is available in Quick Settings; it silences the listener. -->
+    <bool name="config_supportsMicToggle">true</bool>
+
+    <!-- The holders of these six system roles are exempt from the microphone privacy indicator
+         (PermissionManager EXEMPTED_ROLES). No package may hold them on this image, so no capture
+         (including the listener's) is hidden by role. A device/vendor overlay that sets them again
+         would win over this one; that is checked on the booted image (gate G3). -->
+    <string name="config_systemAmbientAudioIntelligence" translatable="false"></string>
+    <string name="config_systemUiIntelligence" translatable="false"></string>
+    <string name="config_systemAudioIntelligence" translatable="false"></string>
+    <string name="config_systemNotificationIntelligence" translatable="false"></string>
+    <string name="config_systemTextIntelligence" translatable="false"></string>
+    <string name="config_systemVisualIntelligence" translatable="false"></string>
+</resources>

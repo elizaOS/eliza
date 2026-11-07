@@ -351,24 +351,31 @@ function emitModelUsed(
 	model: string,
 	usage: NormalizedUsage,
 ): void {
-	void runtime.emitEvent(
-		EventType.MODEL_USED as string,
-		{
-			runtime,
-			source: "local-ai",
-			provider: "local-ai",
-			type,
+	void Promise.resolve(
+		runtime.emitEvent(
+			EventType.MODEL_USED as string,
+			{
+				runtime,
+				source: "local-ai",
+				provider: "local-ai",
+				type,
+				model,
+				modelName: model,
+				tokens: {
+					prompt: usage.promptTokens,
+					completion: usage.completionTokens,
+					total: usage.totalTokens,
+					...(usage.estimated ? { estimated: true } : {}),
+				},
+				...(usage.estimated ? { usageEstimated: true } : {}),
+			} as EventPayload,
+		),
+	).catch((error) => {
+		runtime.reportError("LocalAIModelUsage.emitEvent", error, {
 			model,
-			modelName: model,
-			tokens: {
-				prompt: usage.promptTokens,
-				completion: usage.completionTokens,
-				total: usage.totalTokens,
-				...(usage.estimated ? { estimated: true } : {}),
-			},
-			...(usage.estimated ? { usageEstimated: true } : {}),
-		} as EventPayload,
-	);
+			modelType: String(type),
+		});
+	});
 }
 /**
  * Singleton manager. Holds one Capacitor context per `ModelType` (small,

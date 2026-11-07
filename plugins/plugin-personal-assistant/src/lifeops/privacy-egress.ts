@@ -5,13 +5,13 @@
  * connector grants.
  */
 import crypto from "node:crypto";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import type {
   ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 
 export const LIFEOPS_EGRESS_DATA_CLASSES = [
   "metadata",

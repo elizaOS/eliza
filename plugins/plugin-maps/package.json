@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-maps",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "description": "Provider-neutral place search, routing, saved places, sharing, and navigation handoffs for Eliza agents.",
   "main": "./dist/index.js",
@@ -30,6 +30,18 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client/*": {
+      "eliza-source": "./src/client/*.ts",
+      "types": "./dist/client/*.d.ts",
+      "import": "./dist/client/*.js",
+      "default": "./dist/client/*.js"
     }
   },
   "files": [
@@ -41,18 +53,19 @@
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun run test:client && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:client": "node --test --experimental-transform-types test/*.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.3.0",
+    "react": "^19.3.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -60,19 +73,23 @@
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.2",
-    "@elizaos/testing": "workspace:*"
+    "vite": "^8.3.3",
+    "vitest": "^5.0.5",
+    "@elizaos/testing": "workspace:*",
+    "@capacitor/core": "^8.5.2",
+    "maplibre-gl": "^6.16.0"
   },
   "peerDependencies": {
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@capacitor/core": "^8.5.2",
+    "maplibre-gl": "^6.16.0"
   },
   "publishConfig": {
     "access": "public"
@@ -82,10 +99,21 @@
     "pluginParameters": {}
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "app": {
       "displayName": "Maps",
       "category": "productivity"
+    }
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/core": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
     }
   }
 }

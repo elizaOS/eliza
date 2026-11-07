@@ -9,7 +9,9 @@ extension. Create adapters through createDatabaseAdapter, register the selected 
 before dependent plugins, and preserve tenant-scoped authorization and migrations.
 
 Import adapters, schema tables, migration APIs, and SQL helpers from
-`@elizaos/plugin-sql`. Implementation subpaths are private. Test-storage utilities
+`@elizaos/plugin-sql`. `@elizaos/plugin-sql/errors` is the dependency-free storage error contract for
+boot diagnostics; these same symbols are also exported from the root.
+Implementation subpaths are private. Test-storage utilities
 belong to `@elizaos/testing`.
 
 ## Development

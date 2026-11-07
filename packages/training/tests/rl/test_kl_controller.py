@@ -10,7 +10,7 @@ Covers:
 
 import pytest
 
-from src.training.kl_controller import (
+from eliza_training.rl.kl_controller import (
     KLConfig,
     KLControllerBase,
     KLStats,

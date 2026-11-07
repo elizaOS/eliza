@@ -34,21 +34,19 @@ from __future__ import annotations
 import argparse
 import logging
 import random
-import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import (  # noqa: E402
     ACTION_REPLY,
     ACTION_TASK_CALL,
     build,
     stable_id,
 )
-from lib.jsonl import write_jsonl  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.jsonl import write_jsonl  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_DIR = ROOT / "data" / "synthesized" / "action_examples"

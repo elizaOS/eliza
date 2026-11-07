@@ -9,25 +9,17 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": ["node", "bun", "react", "react-dom"],
+    "types": ["node", "bun", "react", "react-dom", "vite/client"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/app/services/task-host-capabilities": [
-        "../app/src/services/task-host-capabilities.ts"
-      ],
       "@elizaos/plugin-pdf": ["../../plugins/plugin-pdf/index.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-native-phone/*": [
         "../../plugins/plugin-native-phone/src/*"
       ],
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
-      ],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/ui/api/client-types-cloud": [
-        "../ui/src/api/client-types-cloud.ts"
       ],
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/auth/auth/*": ["../auth/src/auth/*"],
@@ -63,7 +55,8 @@
       "@elizaos/plugin-openai": ["../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-native-messages/bridge": [
         "../../plugins/plugin-native-messages/src/bridge.ts"
-      ]
+      ],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "include": ["src", "test", "scripts/**/*.test.ts"]

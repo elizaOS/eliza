@@ -48,7 +48,7 @@ function discordGatewayBaseUrl(env: Bindings): string {
   if (!value) {
     throw new Error("Shared Discord reminder gateway URL is not configured");
   }
-  return value.replace(/\/+$/, "");
+  return new URL(value).origin;
 }
 
 type GatewayDeliveryResponse = {

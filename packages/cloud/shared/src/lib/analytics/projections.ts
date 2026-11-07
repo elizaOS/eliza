@@ -118,6 +118,41 @@ export function calculateLinearRegression(values: number[]): LinearRegressionRes
   return { slope, intercept };
 }
 
+/**
+ * Day series with a zero-usage point for every idle UTC day between the first
+ * and the last observed day. Usage queries group by day and return only active
+ * days, while the projections and runway alerts assume one point per day.
+ * Days after the last usage are not added: a weekend or the current day before
+ * its first request would otherwise read as a falling trend.
+ */
+export function fillIdleUsageDays(points: readonly TimeSeriesDataPoint[]): TimeSeriesDataPoint[] {
+  if (points.length === 0) return [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  const byDay = new Map<number, TimeSeriesDataPoint>();
+  let firstDay = Number.POSITIVE_INFINITY;
+  let lastDay = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const day = Math.floor(point.timestamp.getTime() / dayMs);
+    byDay.set(day, point);
+    firstDay = Math.min(firstDay, day);
+    lastDay = Math.max(lastDay, day);
+  }
+  const filled: TimeSeriesDataPoint[] = [];
+  for (let day = firstDay; day <= lastDay; day += 1) {
+    filled.push(
+      byDay.get(day) ?? {
+        timestamp: new Date(day * dayMs),
+        totalRequests: 0,
+        totalCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        successRate: 1,
+      },
+    );
+  }
+  return filled;
+}
+
 export function generateProjections(
   historicalData: TimeSeriesDataPoint[],
   periods: number,
@@ -188,7 +223,7 @@ export function generateProjections(
     combined.push({
       timestamp: futureDate,
       totalRequests: Math.round(requestsVariance),
-      totalCost: Math.round(costVariance),
+      totalCost: costVariance,
       inputTokens: Math.round(inputTokensVariance),
       outputTokens: Math.round(outputTokensVariance),
       successRate: projectedSuccessRate,
@@ -272,10 +307,12 @@ export function generateProjectionAlerts(
     });
   }
 
-  const avgDailyCost =
-    historicalData.length > 0
-      ? historicalData.reduce((sum, d) => sum + d.totalCost, 0) / historicalData.length
-      : 0;
+  // Usage series list only days with usage: divide by the calendar days the
+  // series covers, not by its row count, or idle days shorten the runway.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = historicalData.map((d) => Math.floor(d.timestamp.getTime() / dayMs));
+  const spanDays = Math.max(...days) - Math.min(...days) + 1;
+  const avgDailyCost = historicalData.reduce((sum, d) => sum + d.totalCost, 0) / spanDays;
   const numericBalance = Number(creditBalance);
   if (avgDailyCost > 0 && numericBalance / avgDailyCost < 7) {
     const daysRemaining = Math.floor(numericBalance / avgDailyCost);

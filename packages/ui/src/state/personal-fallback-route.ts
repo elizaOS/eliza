@@ -11,7 +11,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
 import {
   describePersonalRouteRefusal,

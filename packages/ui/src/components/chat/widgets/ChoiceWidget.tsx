@@ -27,7 +27,7 @@ export type ChoiceWidgetProps = {
   /** Scope hint from the marker, e.g. "app-create" or "plugin-create". */
   scope: string;
   options: ChoiceOption[];
-  onChoose: (value: string) => void;
+  onChoose: (value: string) => void | Promise<boolean>;
   /** When true, offer an "Other…" affordance so the user can type their own answer. */
   allowCustom?: boolean;
 };
@@ -66,17 +66,34 @@ export const ChoiceWidget = memo(function ChoiceWidget({
 }: ChoiceWidgetProps) {
   const [selected, setSelected] = useState<ChoiceOption | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [choiceError, setChoiceError] = useState<string | null>(null);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const locked = selected !== null || dismissed;
 
+  const choose = useCallback(
+    async (option: ChoiceOption) => {
+      setSelected(option);
+      setChoiceError(null);
+      try {
+        if ((await onChoose(option.value)) === false) setSelected(null);
+      } catch {
+        // The callback may have dispatched an effect before it rejected. Keep
+        // the choice locked until the host can establish its delivery outcome.
+        setChoiceError(
+          "Could not confirm this choice. Check the conversation before trying again.",
+        );
+      }
+    },
+    [onChoose],
+  );
+
   const handleChoose = useCallback(
     (option: ChoiceOption) => {
       if (locked) return;
-      setSelected(option);
-      onChoose(option.value);
+      void choose(option);
     },
-    [onChoose, locked],
+    [choose, locked],
   );
 
   // Local-only dismissal (the ✕ in the header): collapses the prompt without
@@ -91,10 +108,8 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   const submitCustom = useCallback(() => {
     const value = customText.trim();
     if (!value || locked) return;
-    const option = { value, label: value };
-    setSelected(option);
-    onChoose(value);
-  }, [customText, onChoose, locked]);
+    void choose({ value, label: value });
+  }, [customText, choose, locked]);
 
   if (options.length === 0 && !allowCustom) return null;
 
@@ -139,6 +154,11 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             </span>
           </span>
         </Button>
+        {choiceError && (
+          <p role="alert" className="text-xs text-destructive">
+            {choiceError}
+          </p>
+        )}
       </div>
     );
   }
@@ -152,11 +172,13 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               readable on every surface (chat-native de-slop, supersedes the
               #15144 pill-background fix by removing the pill). */}
           <span className="text-xs-tight font-medium text-muted">
-            {selected
-              ? "Selected"
-              : dismissed
-                ? "Dismissed"
-                : `${options.length} options`}
+            {choiceError
+              ? "Unconfirmed"
+              : selected
+                ? "Selected"
+                : dismissed
+                  ? "Dismissed"
+                  : `${options.length} options`}
           </span>
           {!firstRun && !locked && (
             <Button
@@ -179,7 +201,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           <span role="status">Dismissed</span>
         ) : undefined
       }
-      complete={locked}
+      complete={locked && !choiceError}
       testId={`choice-shell-${id}`}
     >
       <fieldset
@@ -308,6 +330,11 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           )
         ) : null}
       </fieldset>
+      {choiceError && (
+        <p role="alert" className="text-xs text-destructive">
+          {choiceError}
+        </p>
+      )}
     </ChatWidgetShell>
   );
 }, choicePropsEqual);

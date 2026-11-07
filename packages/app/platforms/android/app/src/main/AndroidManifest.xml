@@ -2,6 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
+        <!-- The AOSP launcher reads launchable activities and the current dialer. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <!-- The shared Calendar handoff resolves an installed editor before dispatch. -->
+        <intent>
+            <action android:name="android.intent.action.INSERT" />
+            <data android:scheme="content" android:host="com.android.calendar" android:mimeType="vnd.android.cursor.dir/event" />
+        </intent>
+        <!-- Capability detection must not confuse package invisibility with
+             absent Google Play services and replace a working FCM path. -->
+        <package android:name="com.google.android.gms" />
         <package android:name="${elizaChromiumPackageName}" />
         <package android:name="com.x8bit.bitwarden" />
         <package android:name="com.onepassword.android" />
@@ -24,6 +41,8 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".ElizaApplication"
@@ -34,6 +53,32 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <meta-data android:name="ai.eliza.voice.BUNDLE_DIRECTORY" android:value="eliza-1/bundle" />
+        <!-- One FCM receiver; inherited stock behavior handles all non-reminder messages. -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+        <receiver android:name=".ReminderNotificationDismissReceiver" android:exported="false" />
+        <receiver android:name=".ElizaAlarmReceiver" android:exported="false" android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".ElizaAlarmRingingService" android:exported="false"
+            android:directBootAware="true" android:foregroundServiceType="mediaPlayback" />
+        <activity android:name=".ElizaAlarmRingingActivity" android:exported="false"
+            android:directBootAware="true" android:showWhenLocked="true" android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <service android:name=".ElizaReminderMessagingService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <service
             android:name=".BrowserNativeMessagingService"
             android:exported="true">
@@ -41,6 +86,17 @@
                 <action android:name="org.chromium.chrome.browser.extensions.messaging.action.NATIVE_MESSAGING" />
             </intent-filter>
         </service>
+        <!-- ElizaDataResetRecoveryActivity: an unfinished "Reset app data". Own process: none of the
+             app's providers or startup initializers run there; ElizaApplication lets it start. -->
+        <activity
+            android:name=".ElizaDataResetRecoveryActivity"
+            android:exported="false"
+            android:process=":reset_recovery"
+            android:taskAffinity="${applicationId}.reset"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:label="Reset app data"
+            android:theme="@style/ElizaDataResetRecoveryTheme" />
         <activity
             android:name=".PasswordsActivity"
             android:exported="false"
@@ -184,10 +240,22 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
-<service
+        <service
             android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service android:name=".NativeNotificationConnectionService"
+            android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="remote-agent-notification-delivery-without-google-play-services" />
+        </service>
+        <receiver android:name=".NativeNotificationConnectionReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name="ai.elizaos.app.ElizaAgentService"
@@ -345,6 +413,14 @@
             </intent-filter>
         </service>
 
+        <!-- Owner review of a Cloud-drafted SMS reply; opened only from this app's own notice. -->
+        <activity
+            android:name="ai.elizaos.app.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
+
         <activity
             android:name="ai.elizaos.app.ElizaSmsComposeActivity"
             android:exported="true"
@@ -443,26 +519,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_ALARMS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_TIMER" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_TIMERS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.DISMISS_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
         </activity>
 
         <activity
@@ -499,6 +555,8 @@
          hands-free voice loop (engages the platform AEC). See TalkModePlugin. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />

@@ -13,7 +13,7 @@
  */
 
 const NOT_AVAILABLE =
-  "unpdf is not available on Cloudflare Workers — PDF text extraction runs on the Node sidecar (cloud/INFRA.md).";
+  "unpdf is not available on Cloudflare Workers — PDF text extraction runs on the Node sidecar (plugins/plugin-assistant).";
 
 export function extractText(): never {
   throw new Error(NOT_AVAILABLE);

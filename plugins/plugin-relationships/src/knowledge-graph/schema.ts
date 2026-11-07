@@ -18,7 +18,7 @@
  * global constraint. `cadence_days` is surfaced as a column-level shortcut for
  * the cadence-overdue filter even though it also appears inside `metadata_json`.
  */
-import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { KNOWLEDGE_GRAPH_DEFAULT_CONNECTOR_ACCOUNT_ID as DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/contracts";
 import {
   boolean,
   index,

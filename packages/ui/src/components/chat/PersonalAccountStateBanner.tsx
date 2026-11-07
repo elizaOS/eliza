@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   type PersonalFallbackAccountState,
   personalFallbackRecoveryUrl,

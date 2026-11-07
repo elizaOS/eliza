@@ -47,12 +47,9 @@
  * `App.surface-mutation-fuzz.test.tsx`.
  */
 
+import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/contracts";
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import {
-  THEME_CSS_VAR_MAP,
-  THEME_FONT_CSS_VARS,
-} from "@elizaos/core/contracts/theme";
-import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
+import { surfaceGrants } from "@elizaos/core/protocol";
 import { logger } from "./logger.ts";
 import { isPrivilegedShellActive } from "./surface-realm-channel";
 
@@ -231,7 +228,7 @@ export function brokerSurfaceNavigate(
   };
 }
 // ── Root/body class + :root CSS-variable vector ──────────────────────────────
-// The shell's own writers (`platform/init.ts`, `themes/apply-theme.ts`,
+// The shell's own writers (`platform/init.ts`, `config/theme.ts`,
 // `state/persistence.ts` accent/theme) are the only sanctioned mutators of
 // root/body classes and `:root` variables. They run from a provider ABOVE
 // `<App/>`, so their tokens land after the shell's per-view scope is created;

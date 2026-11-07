@@ -1,10 +1,18 @@
 /** Defines sandbox snapshot outcomes and explicit transport failure sentinels shared by backup capture, restore, and lifecycle callers. */
 import { type AgentSandboxBackup } from "../../../../db/repositories/agent-sandboxes";
 
+export type SnapshotRefusal = "not-found" | "conflict";
+
 export interface SnapshotResult {
   success: boolean;
   backup?: AgentSandboxBackup;
   error?: string;
+  /**
+   * Classifies a refusal the caller caused or can retry: the target does not
+   * exist, or the agent/backup state does not admit the operation right now.
+   * Absent on a failure means a server fault.
+   */
+  refusal?: SnapshotRefusal;
   retryable?: boolean;
   /**
    * Set when a manifest-v3 restore was admitted to the restore coordinator.

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop renderer static ts behavior for app shell integration. */
 import path from "node:path";
 
 type ExistsSyncLike = (filePath: string) => boolean;
@@ -174,11 +173,11 @@ export type RendererStaticAssetHeadersInput = {
 
 /**
  * Response headers for renderer HTML documents served by the desktop static
- * server. These documents embed the local agent API base URL and bearer token
- * via `apiBaseOwner.injectIntoHtml`, so they must never be readable
- * cross-origin: no `Access-Control-Allow-Origin` header is set. Any website
- * the user visits could otherwise fetch the index page and extract the
- * OWNER-level credential (elizaOS/eliza#33034).
+ * server. These documents embed the local agent API base URL (never the
+ * bearer token, which travels only over the Electrobun RPC bridge —
+ * elizaOS/eliza#33034) via `apiBaseOwner.injectIntoHtml`, so they must
+ * never be readable cross-origin: no `Access-Control-Allow-Origin` header
+ * is set.
  */
 export function buildRendererStaticHtmlHeaders(): Record<string, string> {
 	return {

@@ -23,8 +23,8 @@ import {
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-job-queue";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 export interface AdminCanaryRolloutTargetResponse extends AdminCanaryPlannedTarget {

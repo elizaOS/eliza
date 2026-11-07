@@ -6,12 +6,12 @@ import {
   type RateLimitDependencies,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   MOBILE_APP_AUTH_CLEANUP_DRAIN_CAPACITY,
   MobileAppAuthProtocolError,
-} from "@/lib/services/mobile-app-auth";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export const MOBILE_APP_AUTH_GRANT_ADMISSION_WINDOW_MS = 15 * 60_000;
 export const MOBILE_APP_AUTH_GRANT_USER_MAX = 20;

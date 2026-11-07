@@ -1,12 +1,12 @@
 /** Defines and parses gmail records for the host persistence adapter, preserving canonical domain contracts. */
 
 import crypto from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { deriveConnectorAccountId } from "../privacy-egress.js";
 import {
   parseJsonArray,

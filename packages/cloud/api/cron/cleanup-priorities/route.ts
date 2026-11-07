@@ -3,12 +3,12 @@
  * Cleanup expired ALB priorities (free up slots from deleted containers).
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { dbPriorityManager } from "@elizaos/cloud-shared/lib/services/alb-priority-manager";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { dbPriorityManager } from "@/lib/services/alb-priority-manager";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

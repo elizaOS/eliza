@@ -1,17 +1,9 @@
-/**
- * Agent provisioning: migrations, agent/entity/room setup, embedding dimension.
- * Runs once at deploy/daemon boot; not part of runtime.initialize().
- * Exported through the core Node/Bun entry point.
- *
- * WHY this module exists:
- * - Keeps the runtime a lean request handler; heavy one-time setup lives here.
- * - Edge and ephemeral runtimes can skip provisioning entirely (they don't import this).
- * - Daemon entry points call provisionAgent() once after initialize().
- */
+/** One-time agent provisioning: schema migrations, agent/entity/room setup, and embedding dimensions. Hosts invoke it after runtime initialization. */
 
 import { createLogger } from "./logger";
 import type { Agent, Character } from "./types/agent.js";
 import type { IDatabaseAdapter } from "./types/database";
+import { ModelType } from "./types/model";
 import type { JsonValue, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime";
@@ -37,14 +29,11 @@ function hasAgentProvisioningRuntime(
 	);
 }
 
-/**
- * Run plugin migrations (DDL) using the runtime's adapter and registered plugins.
- * WHY standalone: Migrations are a one-time basic-capabilities step; not part of initialize()
- * so ephemeral/edge runtimes never run them. process.env guards allow safe use in Node only.
- */
+/** Runs registered plugin schema migrations through the adapter. Hosts opt into this provisioning step separately from runtime initialization. */
 export async function runPluginMigrations(
 	runtime: IAgentRuntime,
 ): Promise<void> {
+	const logger = runtime.logger;
 	const adapter = runtime.adapter;
 	if (!adapter) {
 		logger.warn(
@@ -61,24 +50,21 @@ export async function runPluginMigrations(
 		return;
 	}
 
-	const pluginsWithSchemas = runtime.plugins
-		.filter((p) => p.schema)
-		.map((p) => {
-			const schema = p.schema || {};
-			const normalizedSchema: Record<string, JsonValue> = {};
-			for (const [key, value] of Object.entries(schema)) {
-				if (
-					typeof value === "string" ||
-					typeof value === "number" ||
-					typeof value === "boolean" ||
-					value === null ||
-					(typeof value === "object" && value !== null)
-				) {
-					normalizedSchema[key] = value as JsonValue;
-				}
+	const pluginsWithSchemas = runtime.plugins.flatMap((p) => {
+		if (!p.schema) return [];
+		const normalizedSchema: Record<string, JsonValue> = {};
+		for (const [key, value] of Object.entries(p.schema)) {
+			if (
+				typeof value === "string" ||
+				typeof value === "number" ||
+				typeof value === "boolean" ||
+				typeof value === "object"
+			) {
+				normalizedSchema[key] = value as JsonValue;
 			}
-			return { name: p.name, schema: normalizedSchema };
-		});
+		}
+		return [{ name: p.name, schema: normalizedSchema }];
+	});
 
 	if (pluginsWithSchemas.length === 0) {
 		logger.debug(
@@ -182,9 +168,7 @@ export async function ensureEmbeddingDimension(
 	runtime: IAgentRuntime,
 ): Promise<void> {
 	const adapter = runtime.adapter;
-	const model = runtime.getModel(
-		"TEXT_EMBEDDING" as import("./types/model").ModelTypeName,
-	);
+	const model = runtime.getModel(ModelType.TEXT_EMBEDDING);
 	if (!model) {
 		logger.debug(
 			{ src: "provisioning", agentId: runtime.agentId },
@@ -206,7 +190,14 @@ export async function ensureEmbeddingDimension(
 		typeof value === "number"
 			? value
 			: typeof value === "string"
-				? parseInt(value, 10)
+				? // parseInt stops at the first non-digit, so "1536junk"
+					// parsed to 1536 and was accepted as a deliberate dimension
+					// instead of being ignored. Require the whole trimmed value
+					// to be decimal, mirroring getExpectedEmbeddingDimensions
+					// in the agent runtime.
+					/^\+?\d+$/.test(value.trim())
+					? Number(value.trim())
+					: NaN
 				: NaN;
 	const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"));
 	const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"));
@@ -239,12 +230,7 @@ export async function ensureEmbeddingDimension(
 	);
 }
 
-/**
- * Orchestrator: run migrations (optional), ensure agent/entity/room/participant, set embedding dimension.
- * Call after runtime.initialize() in daemon mode.
- * WHY separate from initialize(): Ephemeral and edge runtimes do not call this;
- * only long-lived daemons run it once at boot.
- */
+/** Provisions a long-lived agent after runtime initialization, with optional schema migrations. */
 export async function provisionAgent(
 	runtime: IAgentRuntime,
 	options: ProvisionAgentOptions = {},

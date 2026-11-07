@@ -22,7 +22,7 @@
  *   1. the fake page exposes 2 live per-participant audio elements,
  *   2. the REAL capture binding fires (per-speaker PCM crosses browser->Node),
  *   3. the pipeline receives per-speaker audio for BOTH speaker keys,
- *   4. finalize() produces confirmed segments carrying the mapped speaker labels,
+ *   4. finalize() produces confirmed segments retaining uncertain roster attribution,
  *   5. the transcript record is created (recording) then finalized (ready) in the
  *      runtime double, with both speakers + the scripted text, and the knowledge
  *      mirror lands.
@@ -65,9 +65,14 @@ function assert(cond: unknown, msg: string): boolean {
 function scriptedBackend(textFor: Map<string, string>): {
   backend: AsrBackend;
   calls: Array<{ wavBytes: number }>;
+  release: () => void;
   perKeyText: (speakerKey: string) => string;
 } {
   const calls: Array<{ wavBytes: number }> = [];
+  let release!: () => void;
+  const completion = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   // The pipeline hands the backend only the WAV window, not the speaker key —
   // it labels the resulting segment by speaker itself. So the backend just
   // round-robins deterministic non-silence text across the two speakers; the
@@ -80,10 +85,11 @@ function scriptedBackend(textFor: Map<string, string>): {
       // Round-robin the scripted texts so distinct speakers get distinct text.
       const text = texts[seq % texts.length] ?? "hello from the meeting";
       seq += 1;
+      await completion;
       return { text };
     },
   };
-  return { backend, calls, perKeyText: (k) => textFor.get(k) ?? "" };
+  return { backend, calls, release, perKeyText: (k) => textFor.get(k) ?? "" };
 }
 
 // --autoplay-policy=no-user-gesture-required lets the fake page's local WebAudio
@@ -177,7 +183,7 @@ async function main() {
     writer.updateSegments(update.confirmed);
   });
 
-  // Map stream keys -> display names (as speaker-attribution would).
+  // Roster names alone are hints, not confirmed speaker identities.
   pipeline.setSpeakerName("0", "Jill");
   pipeline.setSpeakerName("1", "Bob");
 
@@ -245,15 +251,42 @@ async function main() {
   );
 
   // ── Finalize: pipeline flush -> segments -> transcript write ─────────────
-  const segments = await pipeline.finalize();
+  assert(
+    scripted.calls.length >= 2,
+    "both captured speakers have ASR in flight",
+  );
+  const finalizing = pipeline.finalize();
+  scripted.release();
+  const segments = await finalizing;
   assert(
     segments.length >= 1,
     `pipeline produced >=1 confirmed segment (got ${segments.length})`,
   );
   const labels = new Set(segments.map((s) => s.speakerLabel));
   assert(
-    labels.has("Jill") || labels.has("Bob"),
-    `segments carry mapped speaker labels (${[...labels].join(", ")})`,
+    labels.has("Speaker 1") && labels.has("Speaker 2"),
+    `roster-only evidence keeps both speaker labels anonymous (${[...labels].join(", ")})`,
+  );
+  const candidateNames = new Set(
+    segments.flatMap((segment) =>
+      (segment.speakerNameAttribution?.candidateNames ?? []).map(
+        (candidate) => candidate.name,
+      ),
+    ),
+  );
+  assert(
+    candidateNames.has("Jill") &&
+      candidateNames.has("Bob") &&
+      segments.every(
+        (segment) =>
+          segment.speakerNameAttribution?.resolution === "needs_confirmation" &&
+          segment.speakerNameAttribution.requiresReview &&
+          segment.speakerNameAttribution.provenance.some(
+            (evidence) => evidence.source === "platform_roster",
+          ) &&
+          segment.speakerEntityId === undefined,
+      ),
+    "both roster candidates retain reviewable provenance without confirmed identity",
   );
   const wav = pipeline.sessionAudioWav();
   assert(

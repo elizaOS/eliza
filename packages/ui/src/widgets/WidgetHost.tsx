@@ -10,28 +10,33 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+import { isViewVisible } from "@elizaos/core/protocol";
 import type * as React from "react";
 import {
   Component,
   type ErrorInfo,
   type ReactNode,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useNow } from "../hooks/useNow";
-import { useAppSelectorShallow } from "../state";
+import { useAppSelectorShallow } from "../state/app-store";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useHomeAttentionSignals } from "./home-attention-store";
-import { isHomeWidgetSunset, useHomeDismissals } from "./home-dismissal-store";
+import {
+  isHomeWidgetSunset,
+  recordHomeWidgetSeen,
+  useHomeDismissals,
+} from "./home-dismissal-store";
 import {
   type HomeWidgetSignal,
   homeSignalsFromEvents,
@@ -45,7 +50,7 @@ import {
   subscribeWidgetRegistry,
 } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
@@ -163,6 +168,8 @@ function spanClassForSize(size: PluginWidgetDeclaration["size"]): string {
 }
 
 export interface WidgetHostProps {
+  /** Passed through to widgets that have a distinct compact tray presentation. */
+  surface?: WidgetProps["surface"];
   /** Which slot to render widgets for. */
   slot: WidgetSlot;
   /** Activity events forwarded to widgets (primarily chat-sidebar). */
@@ -195,6 +202,7 @@ export interface WidgetHostProps {
 
 export function WidgetHost({
   slot,
+  surface,
   events,
   clearEvents,
   className,
@@ -358,6 +366,15 @@ export function WidgetHost({
   }
   const displayed = displayedRef.current.entries;
 
+  useEffect(() => {
+    if (slot !== "home") return;
+    for (const { declaration } of displayed) {
+      if (typeof declaration.sunset?.afterSeen === "number") {
+        recordHomeWidgetSeen(homeWidgetKey(declaration));
+      }
+    }
+  }, [displayed, slot]);
+
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();
     for (const p of plugins ?? []) map.set(p.id, p);
@@ -367,8 +384,8 @@ export function WidgetHost({
   // The fields every widget shares this render - split out so the per-item props
   // object is built from one stable base rather than re-derived inline.
   const widgetPropsBase = useMemo(
-    () => ({ events, clearEvents, slot }),
-    [events, clearEvents, slot],
+    () => ({ events, clearEvents, slot, surface }),
+    [events, clearEvents, slot, surface],
   );
 
   // The rendered children, memoized on the stable order-key + the stable prop

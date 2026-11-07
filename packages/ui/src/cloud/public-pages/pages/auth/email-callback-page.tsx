@@ -6,15 +6,23 @@
  */
 
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   APP_AUTHORIZE_PATH,
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   LocalStewardAuthContext,
@@ -33,7 +41,6 @@ import {
 import { startStewardEmailLogin } from "../../lib/steward-email-login";
 import { publishStewardEmailLoginComplete } from "../../lib/steward-email-login-complete";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type CallbackStatus = "verifying" | "success" | "error";
 type ResendStatus = "idle" | "sending" | "sent" | "error";
@@ -173,9 +180,9 @@ function EmailCallbackContent() {
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [resendRemainingSeconds, setResendRemainingSeconds] = useState(0);
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.emailCallback.metaTitle", {
-      defaultValue: "Email Sign-In | Eliza Cloud",
+      defaultValue: "Email Sign-In | {{cloudName}}",
     }),
   );
 
@@ -367,7 +374,7 @@ function EmailCallbackContent() {
           defaultValue: "Returning to the app authorization screen...",
         })
       : t("cloud.emailCallback.openingEliza", {
-          defaultValue: "Opening Eliza...",
+          defaultValue: "Opening {{appName}}...",
         });
     const buttonCopy = isAppAuthorization
       ? t("cloud.emailCallback.continue", {
@@ -375,7 +382,7 @@ function EmailCallbackContent() {
         })
       : isJoinFallback
         ? t("cloud.emailCallback.continueToEliza", {
-            defaultValue: "Continue to Eliza",
+            defaultValue: "Continue to {{appName}}",
           })
         : t("common.continue", {
             defaultValue: "Continue",

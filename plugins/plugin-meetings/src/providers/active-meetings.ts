@@ -2,15 +2,18 @@
  * `ACTIVE_MEETINGS` provider — injects the meetings the notetaker bot is
  * currently attending (platform, URL, elapsed time, speakers heard) into the
  * prompt, so the agent can answer "are you in the call?" and route
- * LEAVE_MEETING / GET_MEETING_TRANSCRIPT correctly. Contributes nothing when
- * no meeting is active.
+ * LEAVE_MEETING / GET_MEETING_TRANSCRIPT correctly. Each line carries the
+ * session id those actions take as `sessionId`; the transcript id is a
+ * different id and does not select a session. Contributes nothing when no
+ * meeting is active.
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core";
 import {
   MEETING_PLATFORM_LABELS,
   type MeetingSession,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import type { MeetingService } from "../service.js";
 
 function formatDuration(ms: number): string {
@@ -26,7 +29,7 @@ function describe(session: MeetingSession, now: number): string {
   const present = session.participants.filter(
     (p) => p.leftAtMs === undefined,
   ).length;
-  return `- ${label} ${session.nativeMeetingId} (${session.meetingUrl}) — status ${session.status}, ${formatDuration(now - since)} elapsed, ${present} participant(s) present, transcript ${session.transcriptId ?? "pending"}`;
+  return `- ${label} ${session.nativeMeetingId} (${session.meetingUrl}) — session ${session.id}, status ${session.status}, ${formatDuration(now - since)} elapsed, ${present} participant(s) present, transcript ${session.transcriptId ?? "pending"}`;
 }
 
 export const activeMeetingsProvider: Provider = {
@@ -34,6 +37,10 @@ export const activeMeetingsProvider: Provider = {
   description:
     "Meetings the notetaker bot is currently attending and transcribing",
   dynamic: true,
+  // Meeting URLs can carry join passwords; only the owner sees them, and
+  // only where the delivery audience is the owner alone.
+  roleGate: { minRole: "OWNER" },
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const service = runtime.getService<MeetingService>("meetings");
     const active = service?.listSessions({ active: true }) ?? [];

@@ -1,7 +1,7 @@
 /** Handles owner-scoped remote-session revocation at the HTTP boundary. */
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/v1/remote/sessions/:id/revoke
@@ -10,11 +10,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * authenticated agent owner can revoke it.
  */
 
-import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
-import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import { isRemotePairingUuid } from "@elizaos/cloud-shared/db/crypto/remote-pairing-code";
+import { remoteSessionsRepository } from "@elizaos/cloud-shared/db/repositories/remote-sessions";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 
 const CORS_METHODS = "POST, OPTIONS";
 

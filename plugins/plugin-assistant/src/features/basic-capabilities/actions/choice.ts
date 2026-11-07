@@ -167,7 +167,7 @@ export const choiceAction: Action = {
         // No visible callback: the model-emitted taskId is planner detail
         // the user never typed; the evaluator delivers the miss in voice.
         return {
-          text: `Could not find task with ID: ${taskId}`,
+          text: `Could not find task with ID: ${taskId}. Pending tasks: ${formattedTasks.map((task) => `${task.name} (taskId: ${task.taskId})`).join(", ")}`,
           values: {
             success: false,
             error: "TASK_NOT_FOUND",
@@ -212,6 +212,30 @@ export const choiceAction: Action = {
         );
       }
       const selectedTaskId = selectedTask.id;
+      // Workers compare the option by exact name, so a name the task never
+      // offered must stop here, before any worker effect.
+      const validOptions = [
+        ...taskInfo.options.map((option) => option.name),
+        "ABORT",
+      ];
+      if (!validOptions.includes(selectedOption)) {
+        return {
+          text: `"${selectedOption}" is not an option for task: ${selectedTask.name}. Valid options: ${validOptions.join(", ")}`,
+          values: {
+            success: false,
+            error: "INVALID_OPTION",
+            taskId: selectedTaskId,
+          },
+          data: {
+            actionName: "CHOOSE_OPTION",
+            error: "Option not offered by the task",
+            taskId: selectedTaskId,
+            taskName: selectedTask.name,
+            validOptions,
+          },
+          success: false,
+        };
+      }
       if (selectedOption === "ABORT") {
         await runtime.deleteTask(selectedTaskId);
         const cancelledText = `Task "${selectedTask.name}" has been cancelled.`;
@@ -253,34 +277,49 @@ export const choiceAction: Action = {
         });
       }
       const taskWorker = runtime.getTaskWorker(selectedTask.name);
-      if (taskWorker) {
-        if (taskWorker.canExecute) {
-          const stateForCanExecute = _state ?? ({} as State);
-          const allowed = await taskWorker.canExecute(
-            runtime,
-            message,
-            stateForCanExecute,
-          );
-          if (!allowed) {
-            // No visible callback: the evaluator delivers the
-            // permission denial in voice, once.
-            return {
-              text: "You don't have permission to execute this task.",
-              values: { success: false, error: "FORBIDDEN" },
-              data: {
-                actionName: "CHOOSE_OPTION",
-                error: "You don't have permission to execute this task.",
-              },
-              success: false,
-            };
-          }
-        }
-        await taskWorker.execute(
-          runtime,
-          { option: selectedOption },
-          selectedTask,
-        );
+      if (!taskWorker) {
+        return {
+          text: `No task worker is registered for task: ${selectedTask.name}; the option was not applied.`,
+          values: {
+            success: false,
+            error: "TASK_WORKER_NOT_FOUND",
+            taskId: selectedTaskId,
+          },
+          data: {
+            actionName: "CHOOSE_OPTION",
+            error: "No task worker registered",
+            taskId: selectedTaskId,
+            taskName: selectedTask.name,
+          },
+          success: false,
+        };
       }
+      if (taskWorker.canExecute) {
+        const stateForCanExecute = _state ?? ({} as State);
+        const allowed = await taskWorker.canExecute(
+          runtime,
+          message,
+          stateForCanExecute,
+        );
+        if (!allowed) {
+          // No visible callback: the evaluator delivers the
+          // permission denial in voice, once.
+          return {
+            text: "You don't have permission to execute this task.",
+            values: { success: false, error: "FORBIDDEN" },
+            data: {
+              actionName: "CHOOSE_OPTION",
+              error: "You don't have permission to execute this task.",
+            },
+            success: false,
+          };
+        }
+      }
+      await taskWorker.execute(
+        runtime,
+        { option: selectedOption },
+        selectedTask,
+      );
       // No visible callback: "Selected option: X for task: Y" is tool-speak,
       // and the evaluator's in-voice reply is the user's single answer. The
       // selection detail stays planner-facing in the result text.
@@ -354,7 +393,8 @@ export const choiceAction: Action = {
     },
     {
       name: "option",
-      description: "Option name to select for the pending task.",
+      description:
+        "Exact option name offered by the pending task, or ABORT to cancel it.",
       required: true,
       schema: { type: "string" as const, minLength: 1 },
     },

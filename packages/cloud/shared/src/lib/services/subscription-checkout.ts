@@ -10,6 +10,7 @@ import {
 import { subscriptionCheckoutRecoveryRepository as recovery } from "../../db/repositories/subscription-checkout-recovery";
 import type { SubscriptionPlanKey } from "../../db/schemas/billing-subscriptions";
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
+import { isProductionDeployment } from "../config/deployment-environment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
@@ -23,9 +24,13 @@ import {
 import {
   assertCheckoutProviderAuthority,
   type CheckoutContract,
+  checkoutPresentation,
   readCheckoutContract,
   requireCheckoutContract,
+  requireCheckoutPublishableKey,
   SUBSCRIPTION_CHECKOUT_CANCEL_PATH,
+  type SubscriptionCheckoutPresentation,
+  sharedCheckoutReturnUrl,
 } from "./subscription-checkout-contract";
 
 /** Stripe's maximum is 24h; stay below it so provider clock skew never rejects creation. */
@@ -38,7 +43,35 @@ const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000;
 const PROVIDER_CREATE_SETTLE_MS = 5 * 60 * 1000;
 
 export type SubscriptionCheckoutResult =
+  /** Hosted (default): this account's own browser redirect, unchanged from the original contract. */
   | { status: "open"; commandId: string; checkoutUrl: string }
+  /**
+   * In-app Embedded Checkout. `clientSecret` mounts the payment form; the quote is the
+   * provider session's own amount. Payment is never inferred from the form: entitlement
+   * comes only from the webhook or `checkout/confirm` with `sessionId`.
+   */
+  | {
+      status: "open";
+      presentation: "embedded";
+      commandId: string;
+      checkoutUrl: null;
+      sessionId: string;
+      uiMode: "embedded";
+      clientSecret: string;
+      publishableKey: string;
+      amountDueCents: number;
+      currency: "usd";
+      interval: "month";
+      expiresAt: string;
+    }
+  /** A hosted page for someone else to pay without signing in; returns land on the public payer page. */
+  | {
+      status: "open";
+      presentation: "shared";
+      commandId: string;
+      checkoutUrl: string;
+      expiresAt: string;
+    }
   /** The provider payment is captured and the subscription it created is still live. */
   | { status: "completed"; commandId: string; checkoutUrl: null }
   /** The checkout expired or was replaced; this intent is spent and the client must mint a new key. */
@@ -240,6 +273,45 @@ async function driveCheckout(
     if (!isRetired(retired)) unavailable("command_changed");
     return terminal("expired", command.id);
   }
+  return openResult(session, command, contract, env);
+}
+
+function openResult(
+  session: Stripe.Checkout.Session,
+  command: BillingSubscriptionCommand,
+  contract: CheckoutContract,
+  env: NodeJS.ProcessEnv,
+): SubscriptionCheckoutResult {
+  const presentation = checkoutPresentation(contract);
+  const expiresAt = new Date(session.expires_at * 1000).toISOString();
+  if (presentation === "embedded") {
+    const secret = session.client_secret;
+    if (
+      session.ui_mode !== "embedded" ||
+      typeof secret !== "string" ||
+      !secret.startsWith(`${session.id}_secret_`)
+    )
+      unavailable("invalid_embedded_session");
+    const amount = session.amount_total;
+    if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0)
+      unavailable("missing_checkout_amount");
+    if (session.currency !== "usd") unavailable("checkout_currency_mismatch");
+    return {
+      status: "open",
+      presentation,
+      commandId: command.id,
+      checkoutUrl: null,
+      sessionId: session.id,
+      uiMode: "embedded",
+      clientSecret: secret,
+      publishableKey: requireCheckoutPublishableKey(contract.expectedLivemode, env),
+      amountDueCents: amount,
+      currency: "usd",
+      // The v1 catalog admits only one-month recurring prices (subscription-catalog plan schema).
+      interval: "month",
+      expiresAt,
+    };
+  }
   if (!session.url) unavailable("missing_checkout_url");
   const url = new URL(session.url);
   if (
@@ -249,7 +321,51 @@ async function driveCheckout(
     url.password
   )
     unavailable("invalid_checkout_url");
+  if (presentation === "shared")
+    return {
+      status: "open",
+      presentation,
+      commandId: command.id,
+      checkoutUrl: session.url,
+      expiresAt,
+    };
   return { status: "open", commandId: command.id, checkoutUrl: session.url };
+}
+
+function commandPresentation(
+  command: BillingSubscriptionCommand,
+): SubscriptionCheckoutPresentation {
+  return checkoutPresentation(readCheckoutContract(command));
+}
+
+/** Server-owned return origins; a client never supplies a return URL. */
+function httpsOrigin(value: string | undefined, missing: string, invalid: string): string {
+  if (!value) unavailable(missing);
+  if (!URL.canParse(value)) unavailable(invalid);
+  const origin = new URL(value);
+  if (origin.protocol !== "https:" || origin.username || origin.password) unavailable(invalid);
+  return origin.origin;
+}
+
+function returnParams(
+  presentation: SubscriptionCheckoutPresentation,
+  env: NodeJS.ProcessEnv,
+):
+  | { ui_mode: "embedded"; redirect_on_completion: "never" }
+  | { success_url: string; cancel_url: string } {
+  if (presentation === "embedded") return { ui_mode: "embedded", redirect_on_completion: "never" };
+  if (presentation === "shared") {
+    const api = httpsOrigin(env.NEXT_PUBLIC_API_URL, "missing_api_origin", "invalid_api_origin");
+    return {
+      success_url: sharedCheckoutReturnUrl(api, "paid"),
+      cancel_url: sharedCheckoutReturnUrl(api, "canceled"),
+    };
+  }
+  const app = httpsOrigin(env.NEXT_PUBLIC_APP_URL, "missing_app_origin", "invalid_app_origin");
+  return {
+    success_url: `${app}/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${app}${SUBSCRIPTION_CHECKOUT_CANCEL_PATH}`,
+  };
 }
 
 function classify(command: BillingSubscriptionCommand): PendingCheckoutSettlement {
@@ -317,19 +433,28 @@ export async function submitSubscriptionCheckout(
     actorId: string;
     planKey: SubscriptionPlanKey;
     idempotencyKey: string;
+    /** Defaults to `hosted`, the original browser-redirect checkout. */
+    presentation?: SubscriptionCheckoutPresentation;
   },
   reauthorize: Reauthorize,
 ): Promise<SubscriptionCheckoutResult> {
   const stripe = requireStripe();
   const env = getCloudAwareEnv();
-  const appUrl = env.NEXT_PUBLIC_APP_URL;
-  if (!appUrl) unavailable("missing_app_origin");
-  const origin = new URL(appUrl);
-  if (origin.protocol !== "https:" || origin.username || origin.password)
-    unavailable("invalid_app_origin");
+  const presentation = input.presentation ?? "hosted";
+  const returns = returnParams(presentation, env);
+  // Fail before any provider write when the app could never mount the form.
+  if (presentation === "embedded") requireCheckoutPublishableKey(isProductionDeployment(env), env);
   const requestDigest = createHash("sha256")
     .update(
-      JSON.stringify([input.organizationId, input.actorId, input.planKey, "v1", origin.origin]),
+      JSON.stringify([
+        input.organizationId,
+        input.actorId,
+        input.planKey,
+        "v1",
+        // Hosted digests keep their original shape.
+        ...("success_url" in returns ? [new URL(returns.success_url).origin] : []),
+        ...(presentation === "hosted" ? [] : [presentation]),
+      ]),
     )
     .digest("hex");
   const providerKey = `eliza-subscription-${createHash("sha256").update(`${input.organizationId}:${input.idempotencyKey}`).digest("hex")}`;
@@ -342,23 +467,29 @@ export async function submitSubscriptionCheckout(
     if (
       replay.kind !== "checkout" ||
       replay.requested_by_user_id !== input.actorId ||
-      replay.target_plan_key !== input.planKey
+      replay.target_plan_key !== input.planKey ||
+      (replay.checkout_contract !== null && commandPresentation(replay) !== presentation)
     )
       rejected("checkout_replay_mismatch");
     return driveCheckout(stripe, env, replay, reauthorize);
   }
   const pending = await operations.findPendingCheckout(input.organizationId);
   if (pending) {
-    if (pending.target_plan_key === input.planKey) {
+    const samePlan = pending.target_plan_key === input.planKey;
+    if (samePlan && commandPresentation(pending) === presentation) {
       // Resume the organization's single pending checkout across devices and keys.
       const resumed = await driveCheckout(stripe, env, pending, reauthorize);
       if (resumed.status !== "expired") return resumed;
     } else {
+      // Switching plan or who pays closes the old payable session first, so a shared link
+      // and an in-app form can never both charge for this organization.
       const settled = await settlePendingCheckout(
         stripe,
         env,
         pending,
-        "CHECKOUT_SUPERSEDED_BY_PLAN_CHANGE",
+        samePlan
+          ? "CHECKOUT_SUPERSEDED_BY_PRESENTATION_CHANGE"
+          : "CHECKOUT_SUPERSEDED_BY_PLAN_CHANGE",
         { expireOpen: true, createIfMissing: true, reauthorize },
       );
       if (settled === "completed") rejected("previous_checkout_completed");
@@ -386,6 +517,7 @@ export async function submitSubscriptionCheckout(
     expectedLivemode: binding.expectedLivemode,
     priceId: binding.priceId,
     productId: binding.productId,
+    ...(presentation === "hosted" ? {} : { presentation }),
     params: {
       mode: "subscription",
       currency: "usd",
@@ -407,8 +539,7 @@ export async function submitSubscriptionCheckout(
           command_id: commandId,
         },
       },
-      success_url: `${origin.origin}/cloud/billing?subscription_session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin.origin}${SUBSCRIPTION_CHECKOUT_CANCEL_PATH}`,
+      ...returns,
       expires_at: Math.floor((createdAt.getTime() + CHECKOUT_SESSION_TTL_MS) / 1000),
     },
   });

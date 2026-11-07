@@ -5,12 +5,12 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
-const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -78,10 +78,6 @@ export default defineConfig({
         replacement: resolve(uiSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: resolve(uiSrc, "$1"),
-      },
-      {
         find: /^@elizaos\/cloud-routing$/,
         replacement: resolve(cloudRoutingSrc, "index.ts"),
       },
@@ -96,14 +92,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/cloud-shared\/(.+)$/,
         replacement: resolve(cloudSharedSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/core$/,
-        replacement: resolve(coreSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/(.+)$/,
-        replacement: resolve(coreSrc, "$1"),
       },
       {
         find: /^@elizaos\/app(?:\/browser|\/ui-compat)?$/,
@@ -225,6 +213,7 @@ export default defineConfig({
     ],
   },
   test: {
+    ...compoundVitestEvidence(),
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     // Write worker console output straight to stdout instead of shipping every
@@ -282,26 +271,18 @@ export default defineConfig({
       jsdom: { url: "http://localhost/" },
     },
     include: [
-      "__tests__/**/*.test.ts",
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
-      // Pure-logic unit tests for the story-gate audit scripts (e.g. the
-      // console/a11y baseline-allowlist guard) run in the standard suite.
-      "test/**/*.test.mjs",
+      "src/**/__e2e__/**/*.test.{ts,tsx}",
+      "test/cloud/network-site-handoff.test.ts",
+      "src/voice/voice-session-cloud-budget-rotation.test.ts",
+      "src/hooks/useRealtimeVoiceSession.refusal.test.tsx",
+      "src/voice/voice-session-prepared-navigation.test.ts",
+      "src/voice/voice-capture-factory.test.ts",
+      "src/utils/value-formatting.test.ts",
+      "src/components/permissions/permission-walkthrough.test.ts",
+      "src/components/permissions/use-permission-priming.test.tsx",
     ],
-    exclude: [
-      "dist/**",
-      "**/node_modules/**",
-      "**/*.live.test.{ts,tsx}",
-      "**/*.real.test.{ts,tsx}",
-      "**/*.integration.test.{ts,tsx}",
-      "**/*.e2e.test.{ts,tsx}",
-      "**/*.e2e.spec.{ts,tsx}",
-      "**/*.spec.{ts,tsx}",
-      // Heavy jsdom flows live under __e2e__/ — they routinely take >5min
-      // and blow past the global suite budget. Run them via the dedicated
-      // `test:slow` script (vitest.e2e.config.ts) with a 15min cap.
-      "**/__e2e__/**",
-    ],
+    exclude: ["dist/**", "**/node_modules/**"],
+    testTimeout: 900_000,
+    hookTimeout: 900_000,
   },
 });

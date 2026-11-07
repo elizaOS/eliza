@@ -4,7 +4,7 @@
  * lifecycle admission, rollback, history retention, and metadata races use real SQL.
  */
 import { randomUUID } from "node:crypto";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   getScheduledTaskRunner,
   registerScheduledTaskChannelDispatcher,

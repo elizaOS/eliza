@@ -10,7 +10,7 @@
  */
 
 import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { openExternalUrl } from "../utils/openExternalUrl";
 /** The canonical hosted add-funds / credits console URL. */
 export function cloudBillingConsoleUrl(cloudApiBase?: string): string {

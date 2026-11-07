@@ -1,152 +1,107 @@
 /**
- * Unit tests (deterministic, no runtime) for the fact keyword tooling behind
- * lexical fact retrieval. Tokenization strips punctuation/stopwords, splits
- * hyphens, and applies length floors; extraction dedupes + ranks by frequency;
- * lexical similarity blends coverage + jaccard (1.0 for identical keyword sets,
- * 0 for disjoint).
+ * Regression tests for fact keyword tokenization: non-Latin fact text must
+ * produce keywords, storage keywords, and a query text, so the facts
+ * provider can rank a fact written in the same language as the query.
+ * Mirrors the documents BM25 tokenizer contract (merged #35488).
  */
+import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  buildFactKeywordsForStorage,
   buildFactQueryText,
-  extractFactKeywords,
-  factClaimsEquivalent,
   factLexicalSimilarity,
-  factPolarityDiffers,
+  scoreFactKeywordRelevance,
   tokenizeFactText,
 } from "./fact-keywords.ts";
 
-describe("factClaimsEquivalent", () => {
-  it.each([
-    ["prefers oat milk in coffee", "User prefers oat milk in coffee."],
-    ["prefers morning check-ins", "the user prefers morning check-ins"],
-    [
-      "Prefers sparkling water over still water",
-      "prefers  sparkling water over still water",
-    ],
-    ["doesn’t like oat milk", "doesn't like oat milk"],
-    ["likes 茶", "User likes 茶."],
-    ["knows C++", "The user knows C++"],
-  ])("accepts %j and %j as the identical claim", (left, right) => {
-    expect(factClaimsEquivalent(left, right)).toBe(true);
-  });
-
-  it.each([
-    ["likes 茶", "likes 咖啡"],
-    ["knows C++", "knows C"],
-    ["rates A > B", "rates A < B"],
-    ["prefers oat milk in coffee", "User prefers oat milk in their coffee."],
-    ["prefers tea over coffee", "prefers coffee over tea"],
-    ["reports to Alice, manages Bob", "reports to Bob, manages Alice"],
-    ["previously liked oat milk", "nowadays likes oat milk"],
-    ["used to hate oat milk", "does not hate oat milk"],
-    ["prefers oat milk in coffee", "loves oat milk in coffee"],
-    ["prefers oat milk in coffee", "prefers oat milk in cereal"],
-    ["prefers oat milk", "prefers oat milk in coffee"],
-    ["likes oat milk", "does not like oat milk"],
-    ["", "prefers oat milk"],
-  ])("keeps %j and %j as separate claims", (left, right) => {
-    expect(factClaimsEquivalent(left, right)).toBe(false);
-  });
-});
-
-describe("factClaimsEquivalent: possessive and first-person subject references", () => {
-  it('treats "the user\'s", "user\'s", and "my" as the row\'s own subject', () => {
-    // Live 2026-09-06: the MEMORY action stored "The user's favorite tea is
-    // hojicha", Stage-1 kept "favorite tea is hojicha"; both rows persisted
-    // and the next "forget my favorite tea" was ambiguous.
-    expect(
-      factClaimsEquivalent(
-        "The user's favorite tea is hojicha",
-        "favorite tea is hojicha",
-      ),
-    ).toBe(true);
-    expect(
-      factClaimsEquivalent(
-        "user's favorite tea is genmaicha",
-        "The user's favorite tea is genmaicha.",
-      ),
-    ).toBe(true);
-    expect(
-      factClaimsEquivalent("my sister is Dana", "user's sister is Dana"),
-    ).toBe(true);
-  });
-
-  it("does not strip those words when they are not the leading subject", () => {
-    expect(factClaimsEquivalent("sister is Dana", "Dana is my sister")).toBe(
-      false,
-    );
-    expect(
-      factClaimsEquivalent(
-        "favorite tea is hojicha",
-        "favorite tea is not hojicha",
-      ),
-    ).toBe(false);
-    expect(
-      factClaimsEquivalent(
-        "the user's favorite tea is hojicha",
-        "the user's favorite tea is genmaicha",
-      ),
-    ).toBe(false);
-  });
-});
-
-describe("factPolarityDiffers", () => {
-  it.each([
-    ["likes oat milk", "does not like oat milk"],
-    ["likes oat milk", "doesn’t like oat milk"],
-    ["used to hate oat milk", "does not hate oat milk"],
-    ["used to prefer oat milk", "prefers oat milk"],
-    ["prefers oat milk", "no longer prefers oat milk"],
-    ["hates mornings", "never hated mornings"],
-  ])("treats %j and %j as different claims", (left, right) => {
-    expect(factPolarityDiffers(left, right)).toBe(true);
-    expect(factPolarityDiffers(right, left)).toBe(true);
-  });
-
-  it.each([
-    ["does not like oat milk", "dislikes oat milk"],
-    ["prefers oat milk in coffee", "User prefers oat milk in their coffee."],
-    ["never liked oat milk", "does not like oat milk"],
-    ["used to live in Berlin", "previously lived in Berlin"],
-  ])("treats %j and %j as compatible claims", (left, right) => {
-    expect(factPolarityDiffers(left, right)).toBe(false);
-  });
-});
-
 describe("tokenizeFactText", () => {
-  it("lowercases, strips punctuation/stopwords, splits hyphens, floors length", () => {
-    expect(tokenizeFactText("The quick brown fox")).toEqual([
-      "quick",
-      "brown",
-      "fox",
+  it("keeps Hangul, Cyrillic, and Greek tokens instead of dropping them", () => {
+    expect(tokenizeFactText("사용자는 녹차를 좋아한다")).toEqual([
+      "사용자는",
+      "녹차를",
+      "좋아한다",
     ]);
-    expect(tokenizeFactText("Hello, World!")).toEqual(["hello", "world"]);
-    expect(tokenizeFactText("well-known facts")).toEqual([
-      "well",
-      "known",
-      "facts",
+    expect(tokenizeFactText("Пользователь любит зелёный чай")).toContain(
+      "зелёный",
+    );
+    expect(tokenizeFactText("Ο χρήστης πίνει πράσινο τσάι")).toContain(
+      "χρήστης",
+    );
+  });
+
+  it("keeps an accented word as one token instead of splitting it", () => {
+    const tokens = tokenizeFactText("The user lives in Málaga");
+    expect(tokens).toContain("málaga");
+    expect(tokens).not.toContain("laga");
+  });
+
+  it("keeps the existing English floors: stopwords out, short words out", () => {
+    expect(tokenizeFactText("The user likes green tea")).toEqual([
+      "likes",
+      "green",
+      "tea",
     ]);
-    // "a"/"ok" too short; "5" single digit dropped; "42" kept.
-    expect(tokenizeFactText("a 5 42 ok")).toEqual(["42"]);
+    expect(tokenizeFactText("order 42 and 7 cups")).toEqual([
+      "order",
+      "42",
+      "cups",
+    ]);
   });
 });
 
-describe("extractFactKeywords / buildFactQueryText", () => {
-  it("dedupes and ranks by frequency", () => {
-    expect(extractFactKeywords("cat dog cat")).toEqual(["cat", "dog"]);
-    expect(buildFactQueryText("Quick brown")).toBe("quick brown");
-  });
-});
+describe("fact keyword retrieval path", () => {
+  const memories = [
+    { content: { text: "사용자는 녹차를 좋아한다" }, metadata: {} },
+    { content: { text: "사용자는 커피를 싫어한다" }, metadata: {} },
+  ] as unknown as Memory[];
 
-describe("factLexicalSimilarity", () => {
-  it("scores identical=1, disjoint=0, empty=0, partial in between", () => {
+  it("stores keywords for a non-Latin fact", () => {
+    expect(buildFactKeywordsForStorage("사용자는 녹차를 좋아한다")).toEqual([
+      "사용자는",
+      "녹차를",
+      "좋아한다",
+    ]);
+  });
+
+  it("ranks the matching non-Latin fact above the unrelated one", () => {
+    const queryText = buildFactQueryText("녹차 좋아한다");
+    // Non-empty (it was "" before the fix). "녹차" itself is two
+    // characters, so the pre-existing length floor drops it for every
+    // script alike; the surviving query term still ranks the fact.
+    expect(queryText).toBe("좋아한다");
+    const ranked = scoreFactKeywordRelevance(queryText, memories);
+    expect(ranked[0].relevance).toBeGreaterThan(0);
+    expect(ranked[1].relevance).toBe(0);
+  });
+
+  it("treats two copies of the same non-Latin claim as lexically similar", () => {
     expect(
-      factLexicalSimilarity(["apple banana cherry"], ["apple banana cherry"]),
-    ).toBeCloseTo(1);
-    expect(factLexicalSimilarity(["apple"], ["zulu"])).toBe(0);
-    expect(factLexicalSimilarity([], ["apple"])).toBe(0);
-    const partial = factLexicalSimilarity(["apple banana"], ["apple cherry"]);
-    expect(partial).toBeGreaterThan(0);
-    expect(partial).toBeLessThan(1);
+      factLexicalSimilarity(
+        ["사용자는 녹차를 좋아한다"],
+        ["사용자는 녹차를 좋아한다"],
+      ),
+    ).toBe(1);
+  });
+});
+
+describe("fact keywords across Unicode normalization forms", () => {
+  const composedClaim = "prefers café au lait";
+  const decomposedClaim = composedClaim.normalize("NFD");
+  const composedHangul = "사용자는 녹차를 좋아한다";
+  const decomposedHangul = composedHangul.normalize("NFD");
+
+  it("gives the same tokens for composed and decomposed text", () => {
+    expect(decomposedClaim).not.toBe(composedClaim);
+    expect(tokenizeFactText(decomposedClaim)).toEqual(
+      tokenizeFactText(composedClaim),
+    );
+    expect(tokenizeFactText(decomposedHangul)).toEqual(
+      tokenizeFactText(composedHangul),
+    );
+  });
+
+  it("scores composed and decomposed copies of a claim as identical", () => {
+    expect(factLexicalSimilarity([composedHangul], [decomposedHangul])).toBe(1);
+    expect(factLexicalSimilarity([composedClaim], [decomposedClaim])).toBe(1);
   });
 });

@@ -1,12 +1,12 @@
 /** Fires due Shared reminders through the canonical scheduler and trusted gateway. */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { processDueSharedReminders } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-reminder-cron";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { isPersonalSharedTelegramEdgeEnabled } from "@/api-app/personal-shared-telegram-edge";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { processDueSharedReminders } from "@/lib/services/shared-runtime/shared-reminder-cron";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { dispatchPersonalTelegramReminder } from "../../eliza-app/webhook/_telegram-edge";
 
 const app = new Hono<AppEnv>();

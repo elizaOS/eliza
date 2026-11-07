@@ -5,18 +5,19 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { getBootConfig } from "../config/boot-config";
-import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token";
+import { getBootConfig } from "../config/boot-config-store.js";
+import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token.js";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
-} from "../first-run/mobile-runtime-mode";
+} from "../first-run/mobile-runtime-mode.js";
+import { hostRequestOwnerId } from "./host-transport.js";
 import {
   createNativeStreamingResponse,
   supportsNativeStreaming,
-} from "./native-agent-stream";
-import { nativeHttpResultToResponse } from "./native-http-codec";
+} from "./native-agent-stream.js";
+import { nativeHttpResultToResponse } from "./native-http-codec.js";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -24,9 +25,11 @@ import {
   headersToRecord,
   isStreamingRequest,
   methodAllowsBody,
-} from "./transport";
+} from "./transport.js";
 
 export interface NativeAgentRequestOptions {
+  /** Expected renderer owner; native compares it to its current authenticated identity. */
+  ownerId?: string;
   method?: string;
   path: string;
   headers?: Record<string, string>;
@@ -311,6 +314,9 @@ export function createAndroidNativeAgentTransport(
 ): AgentRequestTransport {
   return {
     async request(url, init, context) {
+      // The host selector may await native readiness. Recheck before any
+      // effect crosses the bridge after that wait.
+      init.signal?.throwIfAborted();
       if (!isAndroidLocalAgentUrl(url)) {
         return fetchAgentTransport.request(url, init);
       }
@@ -342,6 +348,7 @@ export function createAndroidNativeAgentTransport(
       ) {
         return createNativeStreamingResponse(agent, {
           method,
+          ownerId: context?.ownerId,
           path: localAgentRequestPath(url),
           headers: headersToRecord(init.headers),
           body: methodAllowsBody(method) ? (body ?? null) : null,
@@ -351,6 +358,7 @@ export function createAndroidNativeAgentTransport(
 
       const result = await request({
         method,
+        ownerId: context?.ownerId,
         path: localAgentRequestPath(url),
         headers: headersToRecord(init.headers),
         body: methodAllowsBody(method) ? (body ?? null) : null,
@@ -503,6 +511,7 @@ export function installAndroidNativeAgentFetchBridge(): void {
     if (!shouldBridgeFetchUrl(url, rawUrl)) return original(input, init);
 
     const bridgedUrl = localAgentUrlForFetch(url, rawUrl);
+    const ownerId = hostRequestOwnerId(bridgedUrl);
     const bridgedInit = await normalizeFetchBridgeInit(input, init);
     if (!bridgedInit) {
       return isLocalAgentIpcUrl(bridgedUrl)
@@ -520,7 +529,7 @@ export function installAndroidNativeAgentFetchBridge(): void {
           )
         : original(input, init);
     }
-    return transport.request(bridgedUrl, bridgedInit);
+    return transport.request(bridgedUrl, bridgedInit, { ownerId });
   }) as typeof fetch;
 
   const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;

@@ -1,6 +1,6 @@
 /** Selects an exact connected browser profile for this agent's searches. */
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { isDesktopLocalApiBaseUrl } from "../../api/desktop-local-api-base";
 import { isMobileLocalAgentUrl } from "../../first-run/mobile-runtime-mode";
 import {

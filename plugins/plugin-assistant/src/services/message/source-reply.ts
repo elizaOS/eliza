@@ -326,9 +326,15 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
+    const attachments =
+      typeof meta?.attachmentSummary === "string"
+        ? ` ${meta.attachmentSummary}`
+        : "";
     if (
-      priorDialogueContent(raw, speaker) !== event.segment.content &&
-      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+      priorDialogueContent(`${raw}${attachments}`, speaker) !==
+        event.segment.content &&
+      priorDialogueContent(`${raw.trim()}${attachments}`, speaker) !==
+        event.segment.content
     )
       continue;
     originals.set(id, raw);
@@ -356,6 +362,72 @@ export function createSourceReplySnapshot(
   };
 }
 
+/** Resolve only caller-supplied authorized data; do not manufacture dialogue/provider identities. */
+export function resolveSuppliedSourceReply(
+  parts: unknown,
+  scope: SourceReplySnapshot["scope"],
+  sources: readonly { id: string; text: string }[],
+): SourceReplyRendering {
+  const invalid = () =>
+    new ElizaError("Invalid supplied source reply", {
+      code: "STAGE1_INVALID_SOURCE_REPLY",
+    });
+  if (
+    !Array.isArray(parts) ||
+    !scope ||
+    Object.keys(scope).length !== 3 ||
+    [scope.agentId, scope.roomId, scope.messageId].some(
+      (value) => typeof value !== "string" || !value,
+    )
+  )
+    throw invalid();
+  const originals = new Map<string, string>();
+  for (const source of sources) {
+    if (
+      typeof source.id !== "string" ||
+      !source.id ||
+      typeof source.text !== "string" ||
+      originals.has(source.id)
+    )
+      throw invalid();
+    originals.set(source.id, source.text);
+  }
+  const resolved: SourceReplyPart[] = [];
+  for (const part of parts) {
+    if (
+      !isObjectRecord(part) ||
+      Object.keys(part).length !== 2 ||
+      typeof part.value !== "string" ||
+      (part.kind !== "text" && part.kind !== "source")
+    )
+      throw invalid();
+    if (part.kind === "text") resolved.push({ kind: "text", text: part.value });
+    else {
+      const text = originals.get(part.value);
+      if (text === undefined) throw invalid();
+      // Empty approved data is valid, but cannot create an invalid zero-length literal span.
+      if (text !== "") resolved.push({ kind: "source", text });
+    }
+  }
+  return createRendering(resolved, scope);
+}
+
+/** True for a string that serializes the ordered reply-parts array (complete or
+ * truncated) instead of supplying the array itself. Ordinary prose, empty strings
+ * and an omitted replyText keep their existing reply/no-reply semantics. */
+export function isSerializedReplyParts(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /^\s*\[\s*\{/.test(value) &&
+    /"kind"\s*:\s*"(?:text|source)"/.test(value)
+  );
+}
+
+/** Native replyText that must go through the ordered reply-parts contract. */
+export function isNativeReplyPartsCandidate(value: unknown): boolean {
+  return Array.isArray(value) || isSerializedReplyParts(value);
+}
+
 /** A quote explicitly carries its original bytes; source IDs remain runtime-only.
  * Ordinary strings and text parts never acquire literal/effect exemptions. */
 export function resolveLiteralSourceReply(
@@ -364,7 +436,16 @@ export function resolveLiteralSourceReply(
   raw: Record<string, unknown>,
   onRendering?: (rendering: SourceReplyRendering) => void,
 ): Record<string, unknown> | undefined {
-  if (!Array.isArray(raw.replyText)) return raw;
+  if (!Array.isArray(raw.replyText)) {
+    if (!isSerializedReplyParts(raw.replyText)) return raw;
+    throw new ElizaError(
+      "Native replyText must be an ordered reply-parts array, not a serialized string; no response fields were processed",
+      {
+        code: "STAGE1_INVALID_SOURCE_REPLY",
+        severity: "ephemeral",
+      },
+    );
+  }
   const ids: string[] = [];
   const parts = raw.replyText.map((part) => {
     if (
@@ -500,9 +581,16 @@ export function resolveSourceReply(
       (selected.has(part.value) || snapshot.providerIds.has(part.value)) &&
       snapshot.originals.has(part.value)
     ) {
+      const text = snapshot.originals.get(part.value) ?? "";
+      // An empty original cannot form a literal span, so it is an
+      // invalid quote that deserves the one-shot source-reply repair,
+      // not a TypeError from the renderer that bypasses that repair.
+      // (Do not merely skip it: that would yield a defined-but-empty
+      // rendering that escapes the decision gate's answer check.)
+      if (text === "") throw invalid();
       parts.push({
         kind: "source",
-        text: snapshot.originals.get(part.value) ?? "",
+        text,
         reference: snapshot.references.get(part.value),
       });
     } else throw invalid();

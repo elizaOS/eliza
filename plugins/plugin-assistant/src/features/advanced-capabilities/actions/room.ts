@@ -14,6 +14,8 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
+  findKeywordTermMatch,
+  getCatalogValidationKeywordTerms as getValidationKeywordTerms,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -24,10 +26,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import {
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching-core";
 import {
   setRoomMuteUntil,
   setWorldMuteState,
@@ -261,41 +259,23 @@ async function validateRoomOpAvailability(
   if (typeof runtime.getParticipantUserState !== "function") {
     return false;
   }
-  const params = readRoomOpParams(options);
-  const op = forcedOp ?? normalizeOp(params.action) ?? normalizeOp(params.op);
-  if (!op) {
+  if (options?.parameters !== undefined) {
+    // A planner call. The handler resolves the target room and checks the
+    // precondition before any state change or model call, and returns
+    // ROOM_NOT_FOUND, ROOM_SCOPE_INVALID or ROOM_<OP>_PRECONDITION_FAILED.
+    // Refusing here would replace those with "not available".
     return true;
   }
-  const platform = normalizePlatform(params.platform);
-  const explicitRoomId = normalizeString(params.roomId);
-  const chatName = normalizeString(params.chatName);
-  let roomId = explicitRoomId as UUID | undefined;
-  if (platform && (explicitRoomId || chatName)) {
-    const targetRoom = await resolveTargetRoom({
-      runtime: runtime as RuntimeLike,
-      platform,
-      roomId: explicitRoomId,
-      chatName,
-    });
-    if (!targetRoom) {
-      return false;
-    }
-    roomId = targetRoom.id;
-  }
-  roomId = (roomId ?? message.roomId) as UUID;
-  if (normalizeScope(params.scope) === "server") {
-    if (op !== "mute" && op !== "unmute") return false;
-    const room = await runtime.getRoom(roomId);
-    if (!room?.worldId) return false;
-    const world = await runtime.getWorld(room.worldId);
-    const active = worldMuteActive(world);
-    return op === "mute" ? !active : active;
+  // No call yet: a child action is offered only when the room the message
+  // arrived in is in a state the operation can change.
+  if (!forcedOp) {
+    return true;
   }
   const current = (await runtime.getParticipantUserState(
-    roomId,
+    message.roomId,
     runtime.agentId,
   )) as ParticipantState;
-  return preconditionMet(op, current);
+  return preconditionMet(forcedOp, current);
 }
 async function decide(
   runtime: IAgentRuntime,
@@ -438,6 +418,13 @@ async function applyOp(args: {
       args.op === "mute"
         ? muteUntilIsoFromDuration(args.durationMinutes)
         : undefined;
+    // The state lives on the agent's participant row. A room the agent has
+    // no row in (for example, one a connector created on join) would take the
+    // update as a no-op while the reply says the room is muted.
+    await args.runtime.ensureParticipantInRoom(
+      args.runtime.agentId,
+      args.roomId,
+    );
     await args.runtime.updateParticipantUserState(
       args.roomId,
       args.runtime.agentId,
@@ -662,7 +649,8 @@ export const roomOpAction: Action = {
     },
     {
       name: "chatName",
-      description: "Channel/group title for non-current room.",
+      description:
+        "Channel/group title for non-current room. Requires platform.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -789,6 +777,21 @@ export const roomOpAction: Action = {
         success: false,
       };
     }
+    if (chatName && !platform && !explicitRoomId) {
+      // chatName is only resolved among one connector's rooms. Without a
+      // platform or a roomId the call used to fall through to the current room.
+      return {
+        text: "chatName needs platform (telegram, discord, ...). Supply platform with chatName, or use roomId.",
+        values: { success: false, error: "ROOM_PLATFORM_REQUIRED" },
+        data: {
+          actionName: "ROOM",
+          op,
+          chatName,
+          error: "ROOM_PLATFORM_REQUIRED",
+        },
+        success: false,
+      };
+    }
     const scope = normalizeScope(params.scope);
     if (scope === "server") {
       if (op !== "mute" && op !== "unmute") {
@@ -908,13 +911,18 @@ export const roomOpAction: Action = {
     if (!preconditionMet(op, current)) {
       return roomPreconditionFailureResult({ op, current, roomId });
     }
-    const proceed = await decide(runtime, message, state, cfg, op);
+    // Resolve the room before decide(): decide() spends a model call and
+    // stores a thought, neither of which belongs to a room that does not exist.
+    // state.data.room is the room the message arrived in; it only names the
+    // target when no other roomId was given.
     const room =
-      (state.data.room as
-        | {
-            name?: string;
-          }
-        | undefined) ?? (await runtime.getRoom(roomId));
+      (roomId === message.roomId
+        ? (state.data.room as
+            | {
+                name?: string;
+              }
+            | undefined)
+        : undefined) ?? (await runtime.getRoom(roomId));
     if (!room) {
       return {
         text: `Could not find room to ${op}`,
@@ -924,6 +932,7 @@ export const roomOpAction: Action = {
       };
     }
     const roomName = room.name ?? `Room-${String(roomId)}`;
+    const proceed = await decide(runtime, message, state, cfg, op);
     if (!proceed) {
       return {
         text: cfg.declinedText(roomName),
@@ -971,7 +980,7 @@ function makeRoomOpChildAction(args: {
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
     parameters: roomOpAction.parameters?.filter(
-      (parameter) => parameter.name !== "op",
+      (parameter) => parameter.name !== "action",
     ),
     validate: (runtime, message, state, options) =>
       validateRoomOpAvailability(
@@ -997,7 +1006,7 @@ function makeRoomOpChildAction(args: {
           ...(options ?? {}),
           parameters: {
             ...params,
-            op: args.op,
+            action: args.op,
           },
         },
         actionCallback,

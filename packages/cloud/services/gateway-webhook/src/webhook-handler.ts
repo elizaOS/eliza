@@ -1,3 +1,4 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /** Handles authenticated connector webhooks from verification through reply delivery. */
 
 import {
@@ -5,23 +6,24 @@ import {
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
 import {
-  type PersonalSharedFailureMetadata,
-  personalSharedFailureReply,
-  personalSharedNoResponseFailure,
-  readPersonalSharedFailureMetadata,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import {
-  executeResponseAttempts,
-  type ResponseAttemptsResult,
-} from "@elizaos/cloud-services-common/response-attempts";
-import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-common/telegram-connector";
-import {
   executeTelegramDelivery,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER,
   type TelegramDeliveryHooks,
   type TelegramDeliveryLedger,
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
-} from "@elizaos/cloud-services-common/telegram-delivery";
+} from "@elizaos/cloud-services-common/telegram";
+import {
+  executeResponseAttempts,
+  PERSONAL_SHARED_FAILURE_REPLY,
+  type PersonalSharedFailureMetadata,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
+  type ResponseAttemptsResult,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/transport";
+import type { NetworkServiceClient } from "@elizaos/plugin-network/client";
+import { SVC_MIN_SECRET, svcSign } from "@elizaos/plugin-network/svc-auth";
 import type {
   ChatEvent,
   Platform,
@@ -38,10 +40,30 @@ import {
   type HeldWebhookOutcome,
   holdWebhookForCutover,
 } from "./cutover-hold";
+import { deliveryReceiptStore } from "./delivery-receipts";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
+import {
+  handleNetworkInboundCompliance,
+  isNetworkAddressOptedOut,
+  isNetworkProject,
+  type NetworkConsentLedger,
+  type NetworkInboundCompliance,
+  networkTakeoverAppliesTo,
+  redisNetworkConsentLedger,
+  sendWithTwilioReplyFence,
+} from "./network-compliance";
+import {
+  type NetworkOpenTurn,
+  networkIngressMatchesPolicy,
+  networkServiceFromEnv,
+  parseNetworkAdmissionPolicy,
+  runNetworkServiceTurn,
+  turnRequestFor,
+} from "./network-service";
 import type { GatewayRedis } from "./redis";
 import {
+  type AgentReply,
   forwardToServer,
   refreshKedaActivity,
   resolveAgentServer,
@@ -52,7 +74,10 @@ import {
   requireCanonicalTelegramIdentity,
   telegramIdentityNotReadyResponse,
 } from "./telegram-identity";
-import { resolveWebhookConfig } from "./webhook-config";
+import {
+  resolveWebhookConfig,
+  WebhookConfigUnavailableError,
+} from "./webhook-config";
 
 const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
@@ -127,6 +152,9 @@ class PersonalSharedPreEgressError extends Error {
   }
 }
 
+/** Rejected Network ingress cannot authorize even a generic failure reply. */
+class NetworkIngressRejectedError extends PersonalSharedPreEgressError {}
+
 /** Read Cloud's explicit pre-execution cutover hold from a refused turn. */
 async function readCutoverHold(
   response: Response,
@@ -164,6 +192,17 @@ interface HandlerDeps {
   deliveryAuthoritySecret?: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
+  /** Network consent ledger; defaults to the Redis ledger on `redis`. */
+  networkConsentLedger?: NetworkConsentLedger;
+  /**
+   * The Network service (takeover). Defaults to `networkServiceFromEnv()`;
+   * `null` forces the legacy gateway-only keyword path.
+   */
+  networkService?: Pick<NetworkServiceClient, "turn" | "turnReceipt"> | null;
+}
+
+function networkConsentLedger(deps: HandlerDeps): NetworkConsentLedger {
+  return deps.networkConsentLedger ?? redisNetworkConsentLedger(deps.redis);
 }
 
 interface PersonalSharedDeliveryTiming {
@@ -230,7 +269,6 @@ function parseGroupDeliveryDirective(
 
 function parsePersonalSharedMediaUrls(
   data: Record<string, unknown> | null,
-  preserveAll = false,
 ): string[] {
   if (!Array.isArray(data?.mediaUrls)) return [];
   const urls = data.mediaUrls.flatMap((value) => {
@@ -242,7 +280,7 @@ function parsePersonalSharedMediaUrls(
       return [];
     }
   });
-  return preserveAll ? [...new Set(urls)] : urls.slice(0, 4);
+  return [...new Set(urls)];
 }
 
 interface MessageTraceContext {
@@ -257,7 +295,23 @@ async function sendReplyWithRequiredReceipt(
   text: string,
   deliveryHooks?: TelegramDeliveryHooks,
   mediaUrls?: readonly string[],
-): Promise<void> {
+  networkEgress?: {
+    deps: HandlerDeps;
+    project: string;
+    app?: NetworkOpenTurn["app"];
+  },
+  onReplyReady?: () => void,
+): Promise<string[] | false> {
+  if (
+    networkEgress &&
+    (await isNetworkAddressOptedOut(
+      networkConsentLedger(networkEgress.deps),
+      networkEgress.project,
+      event.senderId,
+      networkEgress.app,
+    ))
+  )
+    return false;
   if (!adapter.sendReplyWithReceipt) {
     throw new PlatformDeliveryError(
       `${adapter.platform} adapter does not expose provider receipts`,
@@ -266,6 +320,7 @@ async function sendReplyWithRequiredReceipt(
       false,
     );
   }
+  onReplyReady?.();
   const receipt = await adapter.sendReplyWithReceipt(
     config,
     event,
@@ -284,6 +339,73 @@ async function sendReplyWithRequiredReceipt(
       false,
     );
   }
+  return providerMessageIds;
+}
+
+/**
+ * Direct (non-group) reply egress. A Network Twilio reply goes through the
+ * selected receipt fence so a reopened webhook cannot send it twice; every
+ * other project and platform keeps the unfenced path unchanged.
+ */
+async function sendDirectReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  text: string,
+  deliveryHooks?: TelegramDeliveryHooks,
+  mediaUrls?: readonly string[],
+  networkAdmission?: { app?: NetworkOpenTurn["app"]; compliance?: true },
+  onReplyReady?: () => void,
+): Promise<void> {
+  const networkScoped =
+    isNetworkProject(project) ||
+    networkAdmission !== undefined ||
+    networkTakeoverAppliesTo(project, event);
+  const networkEgress =
+    networkScoped && !networkAdmission?.compliance
+      ? { deps, project, app: networkAdmission?.app }
+      : undefined;
+  if (adapter.platform === "twilio" && networkScoped) {
+    const outcome = await sendWithTwilioReplyFence(
+      deliveryReceiptStore(deps.redis),
+      project,
+      event.messageId,
+      () =>
+        sendReplyWithRequiredReceipt(
+          adapter,
+          config,
+          event,
+          text,
+          deliveryHooks,
+          mediaUrls,
+          networkEgress,
+          onReplyReady,
+        ),
+      (error) =>
+        error instanceof PlatformDeliveryError &&
+        error.deliveryStatus === "failed",
+    );
+    if (outcome === "replayed") {
+      logger.warn("Network Twilio reply already claimed; not resending", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+      });
+    }
+    return;
+  }
+  await sendReplyWithRequiredReceipt(
+    adapter,
+    config,
+    event,
+    text,
+    deliveryHooks,
+    mediaUrls,
+    networkEgress,
+    onReplyReady,
+  );
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -441,14 +563,19 @@ function redisTelegramDeliveryLedger(
   const chunkKey = (chunkIndex: number, chunkDigest: string) =>
     `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
   const decodeChunk = (
-    encoded: string | null,
+    encoded: unknown,
   ): { state: TelegramDeliveryState; providerMessageId?: string } | null => {
     if (encoded === "uncertain" || encoded === "delivered") {
       return { state: encoded };
     }
     if (!encoded) return null;
     try {
-      const parsed = JSON.parse(encoded) as {
+      // Every GatewayRedis adapter JSON-parses on get(), so a stored JSON
+      // record arrives already parsed; accept both shapes, the way
+      // parseHeldWebhook in cutover-hold.ts does.
+      const parsed = (
+        typeof encoded === "string" ? JSON.parse(encoded) : encoded
+      ) as {
         state?: unknown;
         providerMessageId?: unknown;
       };
@@ -467,6 +594,17 @@ function redisTelegramDeliveryLedger(
     }
     return null;
   };
+  // The stored plan reads back as an array through the JSON-parsing
+  // adapters and as its JSON string through a raw one; compare by content
+  // either way, or an identical plan re-registration always conflicts.
+  const planMatches = (
+    existing: unknown,
+    chunkDigests: readonly string[],
+  ): boolean =>
+    Array.isArray(existing)
+      ? existing.length === chunkDigests.length &&
+        existing.every((digest, index) => digest === chunkDigests[index])
+      : existing === JSON.stringify(chunkDigests);
   return {
     async read() {
       const state = await redis.get<string>(dedupKey);
@@ -488,28 +626,28 @@ function redisTelegramDeliveryLedger(
     },
     async preparePlan(chunkDigests) {
       const encoded = JSON.stringify(chunkDigests);
-      const existing = await redis.get<string>(planKey);
+      const existing = await redis.get(planKey);
       if (existing !== null) {
-        return existing === encoded ? "prepared" : "conflict";
+        return planMatches(existing, chunkDigests) ? "prepared" : "conflict";
       }
       const claimed = await redis.set(planKey, encoded, {
         nx: true,
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
       if (claimed) return "prepared";
-      return (await redis.get<string>(planKey)) === encoded
+      return planMatches(await redis.get(planKey), chunkDigests)
         ? "prepared"
         : "conflict";
     },
     async readChunk(chunkIndex, chunkDigest) {
       return (
-        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+        decodeChunk(await redis.get(chunkKey(chunkIndex, chunkDigest)))
           ?.state ?? null
       );
     },
     async readChunkProviderMessageId(chunkIndex, chunkDigest) {
       return (
-        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+        decodeChunk(await redis.get(chunkKey(chunkIndex, chunkDigest)))
           ?.providerMessageId ?? null
       );
     },
@@ -570,15 +708,36 @@ export async function handleWebhook(
 
   // ── Synchronous phase: verify + extract + dedup (fast, <100ms) ──
 
-  const config = await resolveWebhookConfig(
-    redis,
-    cloudBaseUrl,
-    authHeader,
-    adapter.platform,
-    project,
-    agentId,
-    reauth,
-  );
+  let config: WebhookConfig | null;
+  try {
+    config = await resolveWebhookConfig(
+      redis,
+      cloudBaseUrl,
+      authHeader,
+      adapter.platform,
+      project,
+      agentId,
+      reauth,
+    );
+  } catch (error) {
+    // Only "the cloud says this agent has no connector" is final. A read
+    // failure is retryable, so it must not answer 404: Telegram/Meta/Twilio
+    // never redeliver a 4xx and the inbound message would be lost.
+    if (!(error instanceof WebhookConfigUnavailableError)) throw error;
+    logger.error("Webhook config unavailable", {
+      project,
+      platform: adapter.platform,
+      agentId,
+      error: error.message,
+    });
+    return new Response(JSON.stringify({ error: "config unavailable" }), {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "5",
+      },
+    });
+  }
   if (!config) {
     logger.warn("No webhook config found", {
       project,
@@ -619,6 +778,8 @@ export async function handleWebhook(
   if (!event) {
     return ackResponse(adapter.platform);
   }
+
+  if (adapter.platform === "blooio") event.traceId = trace.traceId;
 
   const dedupKey = buildWebhookDedupeKey(
     adapter,
@@ -712,6 +873,19 @@ export async function handleWebhook(
     }
   }
 
+  if (networkTakeoverAppliesTo(project, event, agentId)) {
+    // A retry must retain the exact service request body. This is metadata of
+    // the existing authenticated ingress ledger, not a second turn cache.
+    const timeKey = `${dedupKey}:received-at`;
+    await redis.set(timeKey, String(event.providerSentAtMs ?? Date.now()), {
+      nx: true,
+      ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+    });
+    const retained = Number(await redis.get(timeKey));
+    if (!Number.isSafeInteger(retained) || retained <= 0)
+      throw new Error("Network ingress timestamp unavailable");
+    event.gatewayReceivedAtMs = retained;
+  }
   const priorDeliveryState = await redis.get<string>(dedupKey);
   if (priorDeliveryState) {
     if (
@@ -815,22 +989,95 @@ export async function handleWebhook(
           });
         }
       }
-      await settleBackgroundDeliveryFailure(redis, err, {
-        dedupKey,
+      await settleAcknowledgedTurnFailure(
+        adapter,
+        config,
+        event,
+        deps,
         project,
-        platform: adapter.platform,
-        messageId: event.messageId,
-        traceId: trace.traceId,
-      });
+        trace.traceId,
+        dedupKey,
+        err,
+        agentId,
+      );
     });
 
   return ackResponse(adapter.platform);
 }
 
 /**
+ * Settle an acknowledged turn that failed in the background, on its first
+ * delivery or after a cutover hold. The provider already received its
+ * acknowledgement and will not retry, so a Personal Shared direct turn that
+ * failed before any egress gets the same notice a private Telegram turn gets.
+ * A Network turn is excluded: its consent state can be unknown here.
+ */
+async function settleAcknowledgedTurnFailure(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  traceId: string,
+  dedupKey: string,
+  err: unknown,
+  agentId?: string,
+): Promise<void> {
+  let failure: unknown = err;
+  if (
+    err instanceof PersonalSharedPreEgressError &&
+    !agentId &&
+    isPersonalElizaTransport(adapter.platform) &&
+    !isNetworkProject(project) &&
+    !(err instanceof NetworkIngressRejectedError) &&
+    isDirectChat(event)
+  ) {
+    logger.warn("Personal Shared turn failed; delivering failure notice", {
+      project,
+      platform: adapter.platform,
+      messageId: event.messageId,
+      traceId,
+      error: err.message,
+      status: err.failure?.status ?? null,
+      failureStage: err.failure?.stage ?? null,
+      failureName: err.failure?.name ?? null,
+      failureCauseName: err.failure?.causeName ?? null,
+      retryable: err.failure?.retryable ?? false,
+    });
+    try {
+      await sendDirectReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        personalSharedFailureReply(err.failure),
+      );
+      await deps.redis.set(dedupKey, CONNECTOR_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+      return;
+    } catch (noticeError) {
+      // error-policy:J2 the turn failure is logged above; the ledger now
+      // records the outcome of the notice send, which is the only egress.
+      failure = noticeError;
+    }
+  }
+  await settleBackgroundDeliveryFailure(deps.redis, failure, {
+    dedupKey,
+    project,
+    platform: adapter.platform,
+    messageId: event.messageId,
+    traceId,
+  });
+}
+
+/**
  * Terminal ledger handling for an acknowledged webhook whose background
- * processing failed: idempotent pre-egress failures reopen the delivery, and
- * anything that may have reached the provider is recorded as uncertain.
+ * processing failed: an idempotent pre-egress failure clears the delivery
+ * claim, and anything that may have reached the provider is recorded as
+ * uncertain. Blooio and Twilio were acknowledged before processing and do not
+ * retry, so clearing the claim does not by itself recover the turn.
  */
 async function settleBackgroundDeliveryFailure(
   redis: GatewayRedis,
@@ -857,13 +1104,13 @@ async function settleBackgroundDeliveryFailure(
     (err instanceof PlatformDeliveryError && err.deliveryStatus === "failed")
   ) {
     try {
-      // The Shared endpoint is idempotent, including its pooled-key media
+      // Clearing the claim is safe if the same event arrives again. The
+      // Shared endpoint is idempotent, including its pooled-key media
       // enrichment: the Worker keys a durable description record by the
-      // forwarded `<platform>:<project>:<messageId>`, so a reopened
-      // delivery reuses the stored description instead of re-spending.
-      // Blooio also keys provider egress by the inbound message id, so a
-      // lost receipt response can safely reopen the webhook without
-      // sending a second text.
+      // forwarded `<platform>:<project>:<messageId>`, so a second delivery
+      // reuses the stored description instead of re-spending. Blooio also
+      // keys provider egress by the inbound message id, so it does not send
+      // a second text.
       await redis.del(dedupKey);
     } catch (cleanupError) {
       // error-policy:J7 The original delivery failure is already observed;
@@ -914,15 +1161,9 @@ export async function redeliverHeldWebhook(
 ): Promise<HeldWebhookOutcome> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
-  const failureContext = {
-    dedupKey: held.dedupKey,
-    project: held.project,
-    platform: adapter.platform,
-    messageId: held.event.messageId,
-    traceId: held.traceId,
-  };
+  let config: WebhookConfig | null = null;
   try {
-    const config = await resolveWebhookConfig(
+    config = await resolveWebhookConfig(
       redis,
       cloudBaseUrl,
       getAuthHeader(),
@@ -950,7 +1191,19 @@ export async function redeliverHeldWebhook(
     // pre-execution failure must stay in the durable retry queue; reopening
     // the provider dedup key cannot cause a provider retry after its ACK. A
     // failure Cloud classified as not retryable would only be refused again
-    // until the hold budget ran out, so it settles like the first delivery.
+    // until the hold budget ran out, so it settles like the first delivery,
+    // including the failure notice to the sender.
+    if (err instanceof WebhookConfigUnavailableError) {
+      // The turn was never executed and the config API was only unreachable —
+      // this is not "the connector is gone". Keep the hold queued so the next
+      // drain pass retries instead of settling the message as undeliverable.
+      return {
+        kind: "held",
+        // Keep the original hold code so the release log still names the
+        // cutover reason.
+        signal: { code: held.code, retryAfterSeconds: null },
+      };
+    }
     if (
       err instanceof PersonalSharedPreEgressError &&
       (err.hold !== null || err.failure?.retryable !== false)
@@ -960,7 +1213,27 @@ export async function redeliverHeldWebhook(
         signal: err.hold ?? { code: held.code, retryAfterSeconds: null },
       };
     }
-    await settleBackgroundDeliveryFailure(redis, err, failureContext);
+    if (config) {
+      await settleAcknowledgedTurnFailure(
+        adapter,
+        config,
+        held.event,
+        deps,
+        held.project,
+        held.traceId,
+        held.dedupKey,
+        err,
+        held.agentId,
+      );
+    } else {
+      await settleBackgroundDeliveryFailure(redis, err, {
+        dedupKey: held.dedupKey,
+        project: held.project,
+        platform: adapter.platform,
+        messageId: held.event.messageId,
+        traceId: held.traceId,
+      });
+    }
     return { kind: "released" };
   }
   await redis.set(held.dedupKey, CONNECTOR_DELIVERED, {
@@ -977,10 +1250,15 @@ export async function redeliverHeldWebhook(
   return { kind: "delivered" };
 }
 
-/** Release a hold that outlived the cutover budget to ordinary failure handling. */
+/**
+ * Release a hold that outlived the cutover budget. The turn was never
+ * executed and the provider will not retry, so the sender gets the failure
+ * notice through the same handling as a first-delivery failure.
+ */
 export async function releaseExpiredHeldWebhook(
   held: HeldWebhook,
-  redis: GatewayRedis,
+  adapter: PlatformAdapter,
+  deps: HandlerDeps,
 ): Promise<void> {
   logger.error("Held personal connector turn exceeded the cutover budget", {
     project: held.project,
@@ -992,16 +1270,50 @@ export async function releaseExpiredHeldWebhook(
     operatorAction:
       "inspect the Dedicated target's attestation; the turn was never executed",
   });
-  await settleBackgroundDeliveryFailure(
-    redis,
-    new PersonalSharedPreEgressError("cutover hold expired"),
-    {
+  const expired = new PersonalSharedPreEgressError("cutover hold expired");
+  let config: WebhookConfig | null = null;
+  try {
+    config = await resolveWebhookConfig(
+      deps.redis,
+      deps.cloudBaseUrl,
+      deps.getAuthHeader(),
+      adapter.platform,
+      held.project,
+      held.agentId,
+      deps.reacquireAuthHeader ?? reacquireAuthHeader,
+    );
+  } catch (err) {
+    // The turn is already past its hold budget, so a config read failure only
+    // costs the sender the notice — the same outcome as a missing config. It
+    // must not abort the drain pass for the holds behind this one.
+    if (!(err instanceof WebhookConfigUnavailableError)) throw err;
+    logger.error("Expired hold could not read webhook config", {
+      project: held.project,
+      platform: adapter.platform,
+      agentId: held.agentId,
+      error: err.message,
+    });
+  }
+  if (!config) {
+    await settleBackgroundDeliveryFailure(deps.redis, expired, {
       dedupKey: held.dedupKey,
       project: held.project,
-      platform: held.platform,
+      platform: adapter.platform,
       messageId: held.event.messageId,
       traceId: held.traceId,
-    },
+    });
+    return;
+  }
+  await settleAcknowledgedTurnFailure(
+    adapter,
+    config,
+    held.event,
+    deps,
+    held.project,
+    held.traceId,
+    held.dedupKey,
+    expired,
+    held.agentId,
   );
 }
 
@@ -1034,23 +1346,252 @@ async function processMessage(
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
+  // A link code proves the sender owns the eliza.app session only when the
+  // platform identity is attested by a platform-owned connector. A per-agent
+  // route is verified with the tenant's own connector secrets, so the tenant
+  // can sign any sender id: never confirm a link from one.
+  const linkConfirmationAllowed = explicitAgentId === undefined;
+  // Shared proof-bearing links precede intake; legacy Network keeps intake first.
+  const linkAttempt =
+    isNetworkProject(project) || !linkConfirmationAllowed
+      ? undefined
+      : await tryConfirmIdentityLink(
+          { redis, cloudBaseUrl, getAuthHeader },
+          adapter.platform,
+          event.senderId,
+          event.senderName,
+          event.text,
+        );
+  // The Network takeover: a direct message goes to the Network service's
+  // deterministic loop first (routing, STOP/HELP/START, join, onboarding).
+  // A handled turn is answered here with no model call; an open turn carries
+  // the service's member context into the agent turn.
+  let networkTurn: NetworkOpenTurn | undefined;
+  const networkEligible =
+    !linkAttempt?.handled &&
+    networkTakeoverAppliesTo(project, event, explicitAgentId);
+  if (networkEligible && !isNetworkProject(project)) {
+    const connectorAccountId = resolveConnectorAccountId(
+      adapter.platform,
+      config,
+    );
+    const policy = parseNetworkAdmissionPolicy(
+      process.env.NETWORK_OWNED_INGRESS_POLICY,
+    );
+    if (
+      adapter.platform !== "blooio" ||
+      event.chatType !== "private" ||
+      !connectorAccountId ||
+      !process.env.SERVICE_TURN_SECRET ||
+      process.env.SERVICE_TURN_SECRET.length < SVC_MIN_SECRET ||
+      !networkIngressMatchesPolicy(
+        {
+          project,
+          platform: adapter.platform,
+          connectorAccountId,
+          phoneNumber: event.senderId,
+          messageId: `${adapter.platform}:${project}:${event.messageId}`,
+          message: event.text,
+        },
+        policy,
+        process.env.NETWORK_PERSONAL_CONTINUITY_ENABLED,
+      )
+    )
+      throw new NetworkIngressRejectedError(
+        "Network Shared ingress authority does not match",
+      );
+  }
+  const networkService =
+    deps.networkService === undefined
+      ? networkServiceFromEnv()
+      : deps.networkService;
+  const isDirect = !(
+    event.chatType === "group" || event.chatType === "supergroup"
+  );
+  if (networkEligible && !networkService)
+    throw new PersonalSharedPreEgressError(
+      "Network takeover authority is not configured",
+    );
+  if (networkEligible && networkService && isDirect) {
+    let outcome: Awaited<ReturnType<typeof runNetworkServiceTurn>>;
+    try {
+      outcome = await runNetworkServiceTurn(
+        networkService,
+        networkConsentLedger(deps),
+        project,
+        event,
+      );
+    } catch (error) {
+      // error-policy:J2 nothing has been sent. A provider that retries gets
+      // the service's stored result for this messageId; Blooio and Twilio
+      // were acknowledged already and do not retry.
+      throw new PersonalSharedPreEgressError("network service unavailable", {
+        cause: error,
+      });
+    }
+    if (outcome.kind === "reply") {
+      // Cloud resolves the trusted sender through the existing phone owner;
+      // the canonical room records inbound, owns dispatch and records acceptance.
+      const path = "/api/internal/eliza-app/personal-shared/messages";
+      const body = JSON.stringify({
+        platform: outcome.request.channel,
+        project,
+        connectorAccountId: resolveConnectorAccountId(adapter.platform, config),
+        phoneNumber: event.senderId,
+        messageId: `${outcome.request.channel}:${project}:${event.messageId}`,
+        message: event.text,
+        ...(!isNetworkProject(project)
+          ? { transport: outcome.request.transport }
+          : {}),
+        networkHandled: { request: outcome.request, response: outcome.handled },
+      });
+      let delivered: Record<string, unknown> | undefined;
+      let accepted = false;
+      let unknown = false;
+      let notAccepted = false;
+      try {
+        const signed = await svcSign(process.env.SERVICE_TURN_SECRET, {
+          method: "POST",
+          path,
+          id: event.messageId,
+          body,
+        });
+        const response = await fetch(`${cloudBaseUrl}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+            ...signed,
+          },
+          body,
+          signal: AbortSignal.timeout(PERSONAL_SHARED_TURN_TIMEOUT_MS),
+        });
+        const result = (await response.json()) as {
+          data?: { delivery?: Record<string, unknown> };
+        };
+        delivered = result.data?.delivery;
+        accepted =
+          response.status === 200 &&
+          delivered?.ok === true &&
+          Array.isArray(delivered.providerMessageIds) &&
+          delivered.providerMessageIds.every(
+            (value) => typeof value === "string" && value.trim(),
+          ) &&
+          new Set(delivered.providerMessageIds).size ===
+            delivered.providerMessageIds.length &&
+          (outcome.handled.replyIds.length === 0 ||
+            delivered.providerMessageIds.length > 0) &&
+          (delivered.history === true ||
+            (!outcome.handled.accountEligible &&
+              (outcome.handled.replyKind === "compliance" ||
+                (outcome.handled.replyKind === "reply" &&
+                  outcome.handled.reason === "onboarding_asked" &&
+                  outcome.handled.memberId === null &&
+                  outcome.handled.app !== null)) &&
+              delivered.history === false));
+        unknown = response.status === 202 || delivered?.error === "unknown";
+        notAccepted = !accepted && !unknown && response.status < 500;
+      } catch {
+        unknown = true;
+      }
+      await networkService.turnReceipt({
+        channel: outcome.request.channel,
+        messageId: event.messageId,
+        replyIds: outcome.handled.replyIds,
+        outcome: accepted ? "accepted" : notAccepted ? "rejected" : "unknown",
+        providerMessageIds: accepted
+          ? (delivered?.providerMessageIds as string[])
+          : [],
+        historyRecorded: accepted && delivered?.history === true,
+      });
+      if (!accepted && !unknown && !notAccepted)
+        throw new PersonalSharedPreEgressError(
+          "Network handled conversation owner unavailable",
+        );
+      logger.info("Network service handled turn", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        reason: outcome.reason,
+        replies: outcome.texts.length,
+      });
+      return;
+    }
+    if (outcome.kind === "open") networkTurn = outcome.turn;
+  }
+  if ((isNetworkProject(project) || networkEligible) && !networkTurn) {
+    // The Network without a service-owned turn (legacy, or a turn the service
+    // ignored): carrier keywords (STOP/HELP/START) and the consent ledger run
+    // before any identity, account, or agent work, so an ignored STOP is
+    // still recorded and confirmed.
+    let compliance: NetworkInboundCompliance;
+    try {
+      compliance = await handleNetworkInboundCompliance(
+        networkConsentLedger(deps),
+        project,
+        event,
+      );
+    } catch (error) {
+      // error-policy:J2 a ledger outage fails the turn before egress instead
+      // of guessing consent. Blooio and Twilio were acknowledged already and
+      // do not retry.
+      throw new PersonalSharedPreEgressError(
+        "network consent ledger unavailable",
+        { cause: error },
+      );
+    }
+    if (compliance.kind === "reply") {
+      await sendDirectReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        compliance.text,
+        deliveryHooks,
+        undefined,
+        { compliance: true },
+      );
+      logger.info("Network keyword handled", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        action: compliance.action,
+      });
+      return;
+    }
+    if (compliance.kind === "suppress") {
+      logger.info("Network message suppressed by consent", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        reason: compliance.reason,
+      });
+      return;
+    }
+  }
+
   // Link challenges are proof-bearing control messages, including when the
   // handle currently resolves to a provisional onboarding account. Inspect
   // them before every personal or agent route so no existing row can swallow
   // the challenge as ordinary agent text.
-  const linkAttempt = await tryConfirmIdentityLink(
-    { redis, cloudBaseUrl, getAuthHeader },
-    adapter.platform,
-    event.senderId,
-    event.senderName,
-    event.text,
-  );
-  if (linkAttempt.handled && linkAttempt.reply) {
+  const resolvedLinkAttempt =
+    linkAttempt ??
+    (!linkConfirmationAllowed
+      ? { handled: false }
+      : await tryConfirmIdentityLink(
+          { redis, cloudBaseUrl, getAuthHeader },
+          adapter.platform,
+          event.senderId,
+          event.senderName,
+          event.text,
+        ));
+  if (resolvedLinkAttempt.handled && resolvedLinkAttempt.reply) {
     await sendReplyWithRequiredReceipt(
       adapter,
       config,
       event,
-      linkAttempt.reply,
+      resolvedLinkAttempt.reply,
       deliveryHooks,
     );
     return;
@@ -1065,9 +1606,39 @@ async function processMessage(
     // Membership transitions mutate routing state only. Emitting a typing
     // action while the bot is being removed is both misleading and violates
     // the no-provider-egress membership contract.
-    const stopTyping = event.membershipChange
-      ? () => undefined
-      : beginTypingFeedback(adapter, config, event);
+    const deferPrivateBlooioTyping =
+      adapter.platform === "blooio" &&
+      event.chatType === "private" &&
+      !event.membershipChange;
+    if (deferPrivateBlooioTyping) {
+      // A read means accepted for processing, even if the model later chooses IGNORE.
+      adapter.sendReadReceipt?.(config, event).catch((error) => {
+        logger.warn("Personal Blooio read feedback failed", {
+          traceId: trace.traceId,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
+      });
+    }
+    let stopTyping =
+      event.membershipChange || deferPrivateBlooioTyping
+        ? () => undefined
+        : beginTypingFeedback(adapter, config, event);
+    let typingStarted = false;
+    const onPrivateReplyReady = deferPrivateBlooioTyping
+      ? () => {
+          if (
+            adapter.platform !== "blooio" ||
+            event.chatType !== "private" ||
+            event.membershipChange
+          )
+            throw new Error("BLOOIO_TERMINAL_DELIVERY_SCOPE_CHANGED");
+          if (typingStarted) return;
+          typingStarted = true;
+          stopTyping = beginTypingFeedback(adapter, config, event, {
+            markRead: false,
+          });
+        }
+      : undefined;
     try {
       const timing = await sendPersonalSharedReply(
         adapter,
@@ -1077,6 +1648,9 @@ async function processMessage(
         project,
         trace.traceId,
         deliveryHooks,
+        networkTurn,
+        networkEligible,
+        onPrivateReplyReady,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
@@ -1122,6 +1696,10 @@ async function processMessage(
           event,
           personalSharedFailureReply(error.failure),
           deliveryHooks,
+          undefined,
+          networkEligible
+            ? { deps, project, app: networkTurn?.app }
+            : undefined,
         );
         return;
       }
@@ -1199,6 +1777,20 @@ async function processMessage(
         agentId,
         reason: server.kind,
       });
+      // The agent did not run and nothing was sent. A direct chat gets the
+      // failure notice, so the ledger records a real delivery. A group gets
+      // no notice and keeps the earlier behavior.
+      if (isDirectChat(event)) {
+        await sendDirectReply(
+          adapter,
+          config,
+          event,
+          deps,
+          project,
+          PERSONAL_SHARED_FAILURE_REPLY,
+          deliveryHooks,
+        );
+      }
       return;
     }
     logger.info(
@@ -1230,10 +1822,10 @@ async function processMessage(
     });
   });
 
-  let responseText: string;
+  let reply: AgentReply;
   stageStartedAt = Date.now();
   try {
-    responseText = await forwardToServer(
+    reply = await forwardToServer(
       server.serverUrl,
       server.serverName,
       agentId,
@@ -1261,13 +1853,38 @@ async function processMessage(
   }
   const forwardMs = Date.now() - stageStartedAt;
 
-  // An empty responseText is a deliberate no-response from the agent (mute /
-  // shouldRespond=no), not content: forwarding it would make platform adapters
-  // (WhatsApp/Twilio/Telegram) attempt an invalid empty send. Skip the reply so
-  // "agent chose silence" sends nothing, staying distinct from a forward
-  // failure (which returned above) and from a real reply.
+  // A reply with no text and no sendable media is a deliberate no-response
+  // from the agent (mute / shouldRespond=no), not content: forwarding it would
+  // make platform adapters (WhatsApp/Twilio/Telegram) attempt an invalid empty
+  // send. Skip the reply so "agent chose silence" sends nothing, staying
+  // distinct from a forward failure (which returned above) and from a real reply.
+  const mediaUrls = parsePersonalSharedMediaUrls({
+    mediaUrls: reply.mediaUrls,
+  });
+  // Adapters can only pass on public HTTPS links. Inline (data:) or local
+  // attachments are not sent; record that instead of dropping them silently.
+  const undeliverableSchemes = reply.mediaUrls.flatMap((url) => {
+    try {
+      const { protocol } = new URL(url.trim());
+      return protocol === "https:" ? [] : [protocol];
+    } catch {
+      // error-policy:J3 a relative or malformed reference is not a public link.
+      return ["relative"];
+    }
+  });
+  if (undeliverableSchemes.length > 0) {
+    logger.warn(
+      "Agent reply attachments are not public HTTPS links; not sent",
+      {
+        agentId,
+        platform: adapter.platform,
+        count: undeliverableSchemes.length,
+        schemes: [...new Set(undeliverableSchemes)],
+      },
+    );
+  }
   // error-policy:J5 no-op — deliberate agent silence, nothing to deliver.
-  if (responseText.length === 0) {
+  if (reply.text.length === 0 && mediaUrls.length === 0) {
     logger.debug("Agent produced no reply; skipping send", {
       agentId,
       platform: adapter.platform,
@@ -1281,8 +1898,9 @@ async function processMessage(
       adapter,
       config,
       event,
-      responseText,
+      reply.text,
       deliveryHooks,
+      mediaUrls,
     );
     logger.info("Connector message completed", {
       project,
@@ -1343,6 +1961,15 @@ export function startTypingRefreshLoop(
   };
 }
 
+/** A one-to-one chat with a real inbound message, not a membership change. */
+function isDirectChat(event: ChatEvent): boolean {
+  return (
+    event.chatType !== "group" &&
+    event.chatType !== "supergroup" &&
+    !event.membershipChange
+  );
+}
+
 function isPersonalElizaTransport(
   platform: Platform,
 ): platform is "telegram" | "twilio" | "blooio" {
@@ -1365,23 +1992,32 @@ function beginTypingFeedback(
   adapter: PlatformAdapter,
   config: WebhookConfig,
   event: ChatEvent,
+  feedback?: { markRead: boolean },
 ): () => void {
   if (adapter.platform === "telegram") {
     return startTypingRefreshLoop(adapter, config, event);
   }
-  adapter.sendTypingIndicator(config, event).catch((err) => {
-    logger.debug("sendTypingIndicator failed", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
-  return () => {
-    adapter.stopTypingIndicator?.(config, event).catch((err) => {
-      logger.debug("stopTypingIndicator failed", {
+  const startTyping = adapter
+    .sendTypingIndicator(config, event, feedback)
+    .catch((err) => {
+      logger.debug("sendTypingIndicator failed", {
         platform: adapter.platform,
         error: err instanceof Error ? err.message : String(err),
       });
     });
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    // Keep model/reply work independent, but never stop before a delayed start settles.
+    startTyping
+      .then(() => adapter.stopTypingIndicator?.(config, event))
+      .catch((err) => {
+        logger.debug("stopTypingIndicator failed", {
+          platform: adapter.platform,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
   };
 }
 
@@ -1421,6 +2057,9 @@ async function sendPersonalSharedReply(
   project: string,
   traceId: string,
   deliveryHooks?: TelegramDeliveryHooks,
+  networkTurn?: NetworkOpenTurn,
+  networkAdmitted = false,
+  onPrivateReplyReady?: () => void,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -1465,7 +2104,7 @@ async function sendPersonalSharedReply(
   // execution. The Worker's per-message description claim makes the overlap
   // spend-safe (the second execution sees the live claim and keeps the raw
   // text), but that raw turn would only race the enriched one, so media turns
-  // still hand provider/transport failures to the durable redelivery path.
+  // still end provider/transport failures as a pre-egress failure.
   // Blooio private and group events share the same guarded cloud vision path.
   // Media URLs are forwarded only while that path is explicitly enabled.
   const isMediaTurn =
@@ -1474,92 +2113,109 @@ async function sendPersonalSharedReply(
     !!event.mediaUrls?.length;
   // Voice and media turns can spend most of the 120-second processing lease in
   // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
-  // transport failures reopen the webhook for the platform's durable retry
-  // instead of overlapping it.
+  // transport failures end the turn as a pre-egress failure instead of
+  // overlapping the lease. Blooio and Twilio do not retry after their ACK.
   const isLongTurn = Boolean(voiceNote) || isMediaTurn;
   const maxAttempts = isLongTurn ? 2 : PERSONAL_SHARED_ATTEMPTS;
-  const postMessage = (authHeader: Record<string, string>) =>
-    fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        [ELIZA_TRACE_ID_HEADER]: traceId,
-        ...authHeader,
-      },
-      body: JSON.stringify(
-        event.membershipChange
+  const postMessage = async (authHeader: Record<string, string>) => {
+    const body = JSON.stringify(
+      event.membershipChange
+        ? {
+            eventType: "membership",
+            platform: "telegram",
+            project,
+            connectorAccountId,
+            chatId: event.chatId,
+            messageId: `telegram:${project}:${event.messageId}`,
+            membershipChange: event.membershipChange,
+          }
+        : isGroup &&
+            (adapter.platform === "telegram" || adapter.platform === "blooio")
           ? {
-              eventType: "membership",
-              platform: "telegram",
+              platform: adapter.platform,
+              chatType: event.chatType,
               project,
               connectorAccountId,
               chatId: event.chatId,
-              messageId: `telegram:${project}:${event.messageId}`,
-              membershipChange: event.membershipChange,
+              actor: {
+                platformUserId: event.senderId,
+                ...(event.senderName ? { displayName: event.senderName } : {}),
+                role:
+                  adapter.platform === "telegram"
+                    ? (event.groupActorRole ?? "unknown")
+                    : "possessor",
+              },
+              messageId: `${adapter.platform}:${project}:${event.messageId}`,
+              message: event.text,
+              invocation: groupInvocationForEvent(event),
+              ...(adapter.platform === "telegram" && event.providerThreadId
+                ? { providerThreadId: event.providerThreadId }
+                : {}),
+              ...(event.replyToMessageId
+                ? { replyToMessageId: event.replyToMessageId }
+                : {}),
+              ...(isMediaTurn && event.mediaUrls?.length
+                ? { mediaUrls: event.mediaUrls }
+                : {}),
             }
-          : isGroup &&
-              (adapter.platform === "telegram" || adapter.platform === "blooio")
+          : adapter.platform === "telegram"
             ? {
-                platform: adapter.platform,
-                chatType: event.chatType,
+                platform: "telegram",
                 project,
                 connectorAccountId,
                 chatId: event.chatId,
-                actor: {
-                  platformUserId: event.senderId,
-                  ...(event.senderName
-                    ? { displayName: event.senderName }
-                    : {}),
-                  role:
-                    adapter.platform === "telegram"
-                      ? (event.groupActorRole ?? "unknown")
-                      : "possessor",
-                },
+                telegramUserId: event.senderId,
+                displayName: event.senderName,
+                messageId: `telegram:${project}:${event.messageId}`,
+                ...(event.text ? { message: event.text } : {}),
+                ...(voiceNote ? { voiceNote } : {}),
+              }
+            : {
+                platform: adapter.platform,
+                project,
+                connectorAccountId,
+                phoneNumber: event.senderId,
                 messageId: `${adapter.platform}:${project}:${event.messageId}`,
                 message: event.text,
-                invocation: groupInvocationForEvent(event),
-                ...(adapter.platform === "telegram" && event.providerThreadId
-                  ? { providerThreadId: event.providerThreadId }
+                // The Network service's open-turn context (takeover only).
+                ...(networkTurn ? { networkTurn } : {}),
+                ...(networkTurn && !isNetworkProject(project)
+                  ? { transport: turnRequestFor(event).transport }
                   : {}),
-                ...(event.replyToMessageId
-                  ? { replyToMessageId: event.replyToMessageId }
-                  : {}),
+                // Only Blooio media URLs are provider-hosted and fetchable
+                // by the cloud vision path; other platforms keep text-only.
                 ...(isMediaTurn && event.mediaUrls?.length
                   ? { mediaUrls: event.mediaUrls }
                   : {}),
-              }
-            : adapter.platform === "telegram"
-              ? {
-                  platform: "telegram",
-                  project,
-                  connectorAccountId,
-                  chatId: event.chatId,
-                  telegramUserId: event.senderId,
-                  displayName: event.senderName,
-                  messageId: `telegram:${project}:${event.messageId}`,
-                  ...(event.text ? { message: event.text } : {}),
-                  ...(voiceNote ? { voiceNote } : {}),
-                }
-              : {
-                  platform: adapter.platform,
-                  project,
-                  connectorAccountId,
-                  phoneNumber: event.senderId,
-                  messageId: `${adapter.platform}:${project}:${event.messageId}`,
-                  message: event.text,
-                  // Only Blooio media URLs are provider-hosted and fetchable
-                  // by the cloud vision path; other platforms keep text-only.
-                  ...(isMediaTurn && event.mediaUrls?.length
-                    ? { mediaUrls: event.mediaUrls }
-                    : {}),
-                },
-      ),
-      signal: AbortSignal.timeout(
-        voiceNote
-          ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
-          : PERSONAL_SHARED_TURN_TIMEOUT_MS,
-      ),
-    });
+              },
+    );
+    const signed = networkTurn
+      ? await svcSign(process.env.SERVICE_TURN_SECRET, {
+          method: "POST",
+          path: "/api/internal/eliza-app/personal-shared/messages",
+          id: networkTurn.messageId,
+          body,
+        })
+      : {};
+    return fetch(
+      `${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...authHeader,
+          ...signed,
+        },
+        body,
+        signal: AbortSignal.timeout(
+          voiceNote
+            ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
+            : PERSONAL_SHARED_TURN_TIMEOUT_MS,
+        ),
+      },
+    );
+  };
 
   let authHeader: Record<string, string> = getAuthHeader();
   let attemptResult: ResponseAttemptsResult;
@@ -1692,12 +2348,18 @@ async function sendPersonalSharedReply(
       "personal Shared chat returned no reply",
     );
   }
-  const replyMediaUrls = parsePersonalSharedMediaUrls(
-    data,
-    adapter.platform === "telegram" &&
-      event.chatType === "private" &&
-      !event.membershipChange,
-  );
+  const replyMediaUrls = parsePersonalSharedMediaUrls(data);
+  const responded = data?.responded;
+  if (
+    (responded !== undefined && typeof responded !== "boolean") ||
+    (responded === false &&
+      (reply.length !== 0 || replyMediaUrls.length !== 0)) ||
+    (responded === true && reply.length === 0 && replyMediaUrls.length === 0)
+  ) {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned contradictory response outcome",
+    );
+  }
   if (
     adapter.platform === "telegram" &&
     event.chatType === "private" &&
@@ -1718,21 +2380,91 @@ async function sendPersonalSharedReply(
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
-  if (
-    reply.length === 0 &&
-    !(
-      adapter.platform === "telegram" &&
+  // A direct reply that is only media still has something to deliver. A group
+  // turn with no reply text stays a no-response.
+  const hasDeliverableMedia = replyMediaUrls.length > 0 && isDirectChat(event);
+  if (reply.length === 0 && !hasDeliverableMedia) {
+    const acknowledgementReaction = parseImessageReaction(
+      data?.acknowledgementReaction,
+    );
+    let canAcknowledge =
+      responded === false &&
+      acknowledgementReaction !== undefined &&
+      adapter.platform === "blooio" &&
       event.chatType === "private" &&
       !event.membershipChange &&
-      replyMediaUrls.length > 0
-    )
-  ) {
+      Boolean(adapter.sendAcknowledgementReaction);
+    if (canAcknowledge && (isNetworkProject(project) || networkAdmitted)) {
+      try {
+        canAcknowledge = !(await isNetworkAddressOptedOut(
+          networkConsentLedger(deps),
+          project,
+          event.senderId,
+          networkTurn?.app,
+        ));
+      } catch (error) {
+        canAcknowledge = false;
+        logger.warn("Acknowledgement consent check unavailable", {
+          messageId: event.messageId,
+          errorName: safeObservedErrorName(error),
+        });
+      }
+    }
+    const acknowledgementStartedAt = Date.now();
+    if (canAcknowledge && acknowledgementReaction) {
+      try {
+        await adapter.sendAcknowledgementReaction?.(
+          config,
+          event,
+          acknowledgementReaction,
+        );
+      } catch (error) {
+        // Optional feedback never turns deliberate silence into a text reply or replay.
+        logger.warn("Acknowledgement adapter failed", {
+          messageId: event.messageId,
+          errorName: safeObservedErrorName(error),
+        });
+      }
+    }
     return {
       cloudMs,
       cloudAttempts: attemptResult.attempts,
-      egressMs: 0,
+      egressMs: canAcknowledge ? Date.now() - acknowledgementStartedAt : 0,
       cloudServerTiming,
     };
+  }
+  // A STOP that landed while this Network turn was running wins: re-read the
+  // ledger immediately before egress so no reply follows the confirmation.
+  if ((isNetworkProject(project) || networkAdmitted) && !isGroup) {
+    let optedOut: boolean;
+    try {
+      // An app-scoped START newer than a line-wide STOP reopens that app,
+      // as the internal delivery fence already reads it.
+      optedOut = await isNetworkAddressOptedOut(
+        networkConsentLedger(deps),
+        project,
+        event.senderId,
+        networkTurn?.app,
+      );
+    } catch (error) {
+      throw new PersonalSharedPreEgressError(
+        "network consent ledger unavailable",
+        { cause: error },
+      );
+    }
+    if (optedOut) {
+      logger.info("Network reply suppressed: recipient opted out mid-turn", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+      });
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
   }
   const groupDelivery = parseGroupDeliveryDirective(data?.groupDelivery);
   const egressStartedAt = Date.now();
@@ -1996,13 +2728,17 @@ async function sendPersonalSharedReply(
       );
     }
   } else {
-    await sendReplyWithRequiredReceipt(
+    await sendDirectReply(
       adapter,
       config,
       event,
+      deps,
+      project,
       replyText,
       deliveryHooks,
       replyMediaUrls,
+      networkAdmitted ? { app: networkTurn?.app } : undefined,
+      onPrivateReplyReady,
     );
   }
   return {

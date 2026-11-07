@@ -9,17 +9,22 @@
  * returns 503 when the feature is unavailable. The activity feed also folds in
  * recent extracted facts from runtime memory.
  */
+
+import { PostRelationshipLinkRequestSchema } from "@elizaos/contracts";
 import {
+  compareMemoryIds,
+  ElizaError,
   type IAgentRuntime,
-  PostRelationshipLinkRequestSchema,
-  type RouteRequestContext,
+  type Memory,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
-import type {
-  RelationshipsGraphQuery,
-  RelationshipsGraphService,
-  RelationshipsMergeProposalEvidence,
+import {
+  RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsMergeProposalEvidence,
 } from "@elizaos/plugin-assistant";
 import { decodePathComponent } from "./server-helpers.ts";
 
@@ -149,6 +154,85 @@ function asEvidenceRecord(value: unknown): RelationshipsMergeProposalEvidence {
   }
 }
 
+const ACTIVITY_FACT_PAGE_ROWS = 200;
+const ACTIVITY_FACT_MAX_SCAN_ROWS = 5000;
+
+/**
+ * Every fact feeds the activity timeline, which is sorted and paged after the
+ * merge with people and edges. The facts are read in keyset pages until the
+ * table is exhausted; a store larger than the scan budget is refused
+ * explicitly, never trimmed to a window that the paging then reports as
+ * complete.
+ */
+async function listActivityFacts(runtime: IAgentRuntime): Promise<Memory[]> {
+  const facts: Memory[] = [];
+  let cursor: { createdAt: number; id: UUID } | undefined;
+  for (;;) {
+    const remaining = ACTIVITY_FACT_MAX_SCAN_ROWS - facts.length;
+    if (remaining <= 0) {
+      const page = await runtime.getMemories({
+        agentId: runtime.agentId,
+        tableName: "facts",
+        limit: 1,
+        cursor,
+        includeEmbedding: false,
+        orderDirection: "desc",
+      });
+      if (page.length === 0) return facts;
+      throw new ElizaError(
+        "Relationships activity exceeded its bounded fact scan before completing the timeline",
+        {
+          code: "RELATIONSHIPS_ACTIVITY_SCAN_LIMIT",
+          context: {
+            scannedRows: facts.length,
+            maxScannedRows: ACTIVITY_FACT_MAX_SCAN_ROWS,
+          },
+        },
+      );
+    }
+    const queryLimit = Math.min(ACTIVITY_FACT_PAGE_ROWS, remaining);
+    const page = await runtime.getMemories({
+      agentId: runtime.agentId,
+      tableName: "facts",
+      limit: queryLimit,
+      cursor,
+      includeEmbedding: false,
+      orderDirection: "desc",
+    });
+    for (const fact of page) {
+      if (!fact.id) {
+        throw new ElizaError(
+          "A paged fact row did not contain the required id",
+          {
+            code: "RELATIONSHIPS_ACTIVITY_CURSOR_MISSING_ID",
+          },
+        );
+      }
+      const next = {
+        createdAt: typeof fact.createdAt === "number" ? fact.createdAt : 0,
+        id: fact.id,
+      };
+      if (
+        cursor &&
+        (next.createdAt > cursor.createdAt ||
+          (next.createdAt === cursor.createdAt &&
+            compareMemoryIds(next.id, cursor.id) >= 0))
+      ) {
+        throw new ElizaError(
+          "Memory adapter did not advance the requested keyset cursor",
+          {
+            code: "RELATIONSHIPS_ACTIVITY_CURSOR_NO_PROGRESS",
+            context: { cursorId: cursor.id, returnedId: next.id },
+          },
+        );
+      }
+      cursor = next;
+      facts.push(fact);
+    }
+    if (page.length < queryLimit) return facts;
+  }
+}
+
 function parseActivityInteger(
   value: string | null,
   fallback: number,
@@ -245,10 +329,23 @@ export async function handleRelationshipsRoutes(
         error(res, "Invalid merge candidate id.", 400);
         return true;
       }
-      if (action === "accept") {
-        await relationshipsGraph.acceptMerge(candidateId as UUID);
-      } else {
-        await relationshipsGraph.rejectMerge(candidateId as UUID);
+      try {
+        if (action === "accept") {
+          await relationshipsGraph.acceptMerge(candidateId as UUID);
+        } else {
+          await relationshipsGraph.rejectMerge(candidateId as UUID);
+        }
+      } catch (cause) {
+        // error-policy:J1 an unknown candidate id is the caller's 404, not a
+        // server failure; every other failure propagates.
+        if (
+          cause instanceof ElizaError &&
+          cause.code === RELATIONSHIP_MERGE_CANDIDATE_NOT_FOUND
+        ) {
+          error(res, "Merge candidate not found.", 404);
+          return true;
+        }
+        throw cause;
       }
       json(res, { data: { id: candidateId, status: action } }, 200);
       return true;
@@ -276,6 +373,15 @@ export async function handleRelationshipsRoutes(
           parsedLink.error.issues[0]?.message ?? "targetEntityId is required.",
           400,
         );
+        return true;
+      }
+      // UUIDs compare case-insensitively (UUID_REGEX is /i and the schema
+      // preserves case), so normalize before the self-link check.
+      if (
+        parsedLink.data.targetEntityId.toLowerCase() ===
+        sourceEntityId.toLowerCase()
+      ) {
+        error(res, "A person cannot be linked to themselves.", 400);
         return true;
       }
       const evidence = asEvidenceRecord(parsedLink.data.evidence);
@@ -375,11 +481,7 @@ export async function handleRelationshipsRoutes(
     }
 
     if (runtime) {
-      const recentFacts = await runtime.getMemories({
-        agentId: runtime.agentId,
-        tableName: "facts",
-        limit: 200,
-      });
+      const recentFacts = await listActivityFacts(runtime);
       for (const fact of recentFacts) {
         const text =
           typeof fact.content.text === "string" ? fact.content.text.trim() : "";

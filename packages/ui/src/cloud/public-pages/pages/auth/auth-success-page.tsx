@@ -8,6 +8,10 @@
 
 import { Capacitor } from "@capacitor/core";
 import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAuthApiBase,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import {
   AlertCircle,
   CheckCircle,
   Home,
@@ -16,16 +20,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import {
-  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
-  resolveDirectCloudAuthApiBase,
-} from "../../../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../../../bridge/electrobun-runtime";
-import { Button } from "../../../../components/primitives";
-import { getBootConfig } from "../../../../config/boot-config";
+import { Button } from "../../../../components/ui/button";
+import { getBootConfig } from "../../../../config/boot-config-store";
 import { ApiError, api, readCloudBearerToken } from "../../../lib/api-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 import { AuthResultShell } from "./auth-result-shell";
 
 /** Hosts that may receive OAuth success redirects but are not Eliza Cloud. */
@@ -276,13 +276,6 @@ export function resolveAuthSuccessCandidate(
     connectionId,
     proof,
   };
-}
-
-/** @deprecated Prefer {@link resolveAuthSuccessCandidate}. */
-export function resolveAuthSuccessSignal(
-  searchParams: URLSearchParams,
-): AuthSuccessCandidate {
-  return resolveAuthSuccessCandidate(searchParams);
 }
 
 /** 5xx/0/network and 429 (rate limit) are retryable; other 4xx are rejected. */
@@ -559,28 +552,6 @@ export async function verifyAuthSuccessCandidate(args: {
   return asVerifyFailure(ownership.reason);
 }
 
-/** @deprecated Prefer {@link verifyAuthSuccessCandidate}. */
-export async function verifyAuthSuccessConnection(args: {
-  platform: string;
-  connectionId: string;
-  signal?: AbortSignal;
-}): Promise<
-  | {
-      ok: true;
-      platform: string;
-      platformDisplay: string;
-      connectionId: string | null;
-    }
-  | { ok: false; reason: "rejected" | "unavailable" }
-> {
-  return verifyAuthSuccessCandidate({
-    platform: args.platform,
-    connectionId: args.connectionId,
-    proof: null,
-    signal: args.signal,
-  });
-}
-
 export default function AuthSuccessPage() {
   const t = useCloudT();
   const navigate = useNavigate();
@@ -595,21 +566,21 @@ export default function AuthSuccessPage() {
       : { phase: "unverified", reason: candidate.reason },
   );
 
-  usePageTitle(
+  useDocumentTitle(
     view.phase === "verified"
       ? t("cloud.authSuccess.metaTitle", {
-          defaultValue: "Connection Successful | Eliza Cloud",
+          defaultValue: "Connection Successful | {{cloudName}}",
         })
       : view.phase === "pending"
         ? t("cloud.authSuccess.pendingMetaTitle", {
-            defaultValue: "Verifying Connection | Eliza Cloud",
+            defaultValue: "Verifying Connection | {{cloudName}}",
           })
         : view.phase === "unavailable"
           ? t("cloud.authSuccess.unavailableMetaTitle", {
-              defaultValue: "Verification Unavailable | Eliza Cloud",
+              defaultValue: "Verification Unavailable | {{cloudName}}",
             })
           : t("cloud.authSuccess.unverifiedMetaTitle", {
-              defaultValue: "Connection Could Not Be Verified | Eliza Cloud",
+              defaultValue: "Connection Could Not Be Verified | {{cloudName}}",
             }),
   );
 
@@ -678,7 +649,7 @@ export default function AuthSuccessPage() {
           </h1>
           <p className="text-sm text-muted">
             {t("cloud.authSuccess.pendingDescription", {
-              defaultValue: "Confirming this connection with Eliza Cloud…",
+              defaultValue: "Confirming this connection with {{cloudName}}…",
             })}
           </p>
         </div>
@@ -695,7 +666,7 @@ export default function AuthSuccessPage() {
         <div className="space-y-2">
           <h1 className="text-xl font-semibold text-txt">
             {t("cloud.authSuccess.unavailableTitle", {
-              defaultValue: "Could Not Reach Eliza Cloud",
+              defaultValue: "Could Not Reach {{cloudName}}",
             })}
           </h1>
           <p className="text-sm text-muted">
@@ -735,7 +706,7 @@ export default function AuthSuccessPage() {
       view.reason === "untrusted" || view.reason === "rejected"
         ? t("cloud.authSuccess.untrustedDescription", {
             defaultValue:
-              "This connection link could not be verified. It may be incomplete, expired, or not issued by Eliza Cloud.",
+              "This connection link could not be verified. It may be incomplete, expired, or not issued by {{cloudName}}.",
           })
         : t("cloud.authSuccess.missingDescription", {
             defaultValue:

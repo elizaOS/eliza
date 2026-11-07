@@ -24,7 +24,7 @@ from typing import Any, Mapping, Sequence
 
 from .images import extract_benchmark_images, native_image_argv
 
-from ._retry import (
+from benchmarks.lib import (
     MAX_ATTEMPTS,
     RetryExhaustedError,
     backoff_seconds,
@@ -455,7 +455,7 @@ class OpenClawClient:
         repo_path: Path | None = None,
         binary_path: Path | None = None,
         provider: str = DEFAULT_PROVIDER,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         api_key: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
         base_url: str | None = None,
@@ -474,8 +474,7 @@ class OpenClawClient:
         if provider == DEFAULT_PROVIDER and campaign_provider:
             provider = campaign_provider
         campaign_model = os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
-        if model == DEFAULT_MODEL and campaign_model:
-            model = campaign_model
+        model = model or campaign_model or DEFAULT_MODEL
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = (
             Path(binary_path) if binary_path else _resolve_default_binary()
@@ -746,10 +745,14 @@ class OpenClawClient:
         self._active_native_runtime = runtime
         argv = self.build_argv(text, ctx)
         if images:
-            node = _resolve_compatible_node_bin(self.binary_path) or shutil.which("node")
+            node = _resolve_compatible_node_bin(self.binary_path) or shutil.which(
+                "node"
+            )
             if node is None:
                 raise RuntimeError("OpenClaw native image input requires Node")
-            argv = native_image_argv(self.binary_path, str(node), runtime.state_dir, argv, images)
+            argv = native_image_argv(
+                self.binary_path, str(node), runtime.state_dir, argv, images
+            )
         env = benchmark_runtime_env(
             paths=runtime,
             gateway_token=gateway_token,
@@ -909,7 +912,9 @@ class OpenClawClient:
             extra={
                 "agent_runtime": "openclaw",
                 "native_runtime_class": "openclaw.agent.embedded",
-                "native_runtime_api": "agentCommand(images)" if images else "openclaw agent --local --json",
+                "native_runtime_api": "agentCommand(images)"
+                if images
+                else "openclaw agent --local --json",
                 "native_image_count": len(images),
                 "native_image_bytes_verified": bool(images),
                 "tool_bridge": "native_plugin",
@@ -1262,7 +1267,8 @@ def _post_with_retry(
                 )
             except AttributeError:
                 retry_after_raw = None
-            delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
+            retry_after = parse_retry_after(retry_after_raw)
+            delay = backoff_seconds(attempt) if retry_after is None else retry_after
         except urllib.error.URLError as exc:
             last_status = None
             last_error_str = f"{type(exc).__name__}: {exc.reason!r}"
@@ -1658,26 +1664,6 @@ def _normalize_tool_call(
         else f"call_{fallback_index}",
         "name": name_obj,
         "arguments": args_obj if args_obj is not None else {},
-    }
-
-
-def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    fn = raw.get("function")
-    if isinstance(fn, Mapping):
-        name = fn.get("name")
-        args: object = fn.get("arguments", {})
-    else:
-        name = raw.get("name")
-        args = raw.get("arguments", {})
-    if not isinstance(name, str) or not name:
-        return None
-    args = _decode_tool_arguments(args)
-    return {
-        "id": str(raw.get("id") or ""),
-        "name": name,
-        "arguments": args,
     }
 
 

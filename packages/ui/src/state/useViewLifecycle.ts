@@ -16,10 +16,11 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import type { EvictReason } from "../cache-telemetry";
 import { trackTimer } from "../perf/resource-counters";
 import { viewLifecycleController } from "./view-lifecycle";
 import { useViewLifecycleSlot } from "./view-lifecycle-context";
-import type { EvictReason, ViewLifecyclePhase } from "./view-lifecycle-types";
+import type { ViewLifecyclePhase } from "./view-lifecycle-types";
 
 export interface ViewLifecycleHandlers {
   onMount?: () => void;

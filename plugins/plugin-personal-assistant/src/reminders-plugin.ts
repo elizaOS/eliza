@@ -21,6 +21,10 @@ import {
   registerChannelRegistry,
   registerDefaultChannelPack,
 } from "./lifeops/channels/index.ts";
+import {
+  ownerReminderChoiceRoutingEvaluator,
+  registerOwnerReminderDirectRouting,
+} from "./lifeops/reminders/direct-routing.ts";
 import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.ts";
 import { lifeOpsSchema } from "./lifeops/schema.ts";
 
@@ -36,7 +40,9 @@ export const personalAssistantRemindersPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions:
     promoteSubactionsToActions(ownerRemindersAction).map(ownerPrivateAction),
+  responseHandlerEvaluators: [ownerReminderChoiceRoutingEvaluator],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerOwnerReminderDirectRouting(runtime);
     if (!getChannelRegistry(runtime)) {
       const channels = createChannelRegistry();
       registerDefaultChannelPack(channels, runtime);

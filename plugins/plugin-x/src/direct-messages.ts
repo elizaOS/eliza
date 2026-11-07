@@ -29,7 +29,12 @@ import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
 import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
+import { splitXDirectMessageContent } from "./utils";
 import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
+import {
+  isExplicitTwitterRejection,
+  isPermanentTwitterRejection,
+} from "./utils/error-handler";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
@@ -408,6 +413,9 @@ export class TwitterDirectMessageClient {
     }
 
     const conversationId = event.dm_conversation_id ?? senderId;
+    // A group conversation is not a private one-to-one chat: respond and
+    // privacy rules key on the room type.
+    const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
     // DMs and public interactions share the sender's canonical X world. Older
     // connector builds already attached DM rooms to this world, so reusing it
     // also repairs their raw platform-id ownership metadata on the next poll.
@@ -432,7 +440,7 @@ export class TwitterDirectMessageClient {
       id: roomId,
       name: `X DM with @${username}`,
       source: "x",
-      type: ChannelType.DM,
+      type: channelType,
       channelId: conversationId,
       serverId: senderId,
       worldId,
@@ -444,7 +452,7 @@ export class TwitterDirectMessageClient {
       userName: username,
       name: displayName,
       source: "x",
-      type: ChannelType.DM,
+      type: channelType,
       worldId,
     });
 
@@ -456,7 +464,11 @@ export class TwitterDirectMessageClient {
       agentId: this.runtime.agentId,
       entityId,
       roomId,
-      content: { text: event.text?.trim() ?? "", source: "x" },
+      content: {
+        text: event.text?.trim() ?? "",
+        source: "x",
+        channelType,
+      },
       metadata: {
         type: "message",
         source: "x",
@@ -468,7 +480,7 @@ export class TwitterDirectMessageClient {
         fromBot: false,
         fromId: senderId,
         sourceId: entityId,
-        chatType: ChannelType.DM,
+        chatType: channelType,
         messageIdFull: event.id,
         twitter: {
           accountId: this.client.accountId,
@@ -516,7 +528,6 @@ export class TwitterDirectMessageClient {
         return [];
       }
 
-      let sent: unknown;
       // X's DM create endpoints do not accept an idempotency key. Persist a
       // no-replay barrier before the request so a crash, timeout, or receipt
       // persistence failure cannot cause a second externally visible reply.
@@ -527,38 +538,64 @@ export class TwitterDirectMessageClient {
         deliveryError = error;
         throw error;
       }
-      if (!this.isSessionCurrent(session)) {
-        await this.runtime.deleteCache(settledKey);
-        deliveryError = this.sessionRotationError(
-          "before the direct-message reply was sent",
-        );
-        throw deliveryError;
-      }
-      try {
-        sent = isGroup
-          ? await session.client.v2.sendDmInConversation(conversationId, {
-              text,
-            })
-          : await session.client.v2.sendDmToParticipant(senderId, { text });
-      } catch (error) {
-        // error-policy:J2 explicit HTTP rejection proves X did not accept the
-        // send, so reopen it for a later retry. Transport failures are
-        // indeterminate and retain the no-replay tombstone.
-        deliveryError = error;
-        if (isExplicitTwitterRejection(error)) {
-          await this.runtime.deleteCache(settledKey);
-        } else {
-          await this.runtime.setCache(settledKey, "indeterminate");
+      // X rejects DM text over X_MAX_DM_LENGTH, so a longer reply goes out as
+      // ordered parts. The response memory is keyed by the first part's event.
+      let sentId: string | undefined;
+      let partsAccepted = 0;
+      for (const part of splitXDirectMessageContent(text)) {
+        if (!this.isSessionCurrent(session)) {
+          // Nothing reached X yet: reopen the event. Once a part was accepted
+          // the tombstone stays so a retry cannot resend that part.
+          if (partsAccepted === 0) {
+            await this.runtime.deleteCache(settledKey);
+          } else {
+            await this.runtime.setCache(settledKey, "indeterminate");
+          }
+          deliveryError = this.sessionRotationError(
+            "before the direct-message reply was sent",
+          );
+          throw deliveryError;
         }
-        throw error;
+        let sent: unknown;
+        try {
+          sent = isGroup
+            ? await session.client.v2.sendDmInConversation(conversationId, {
+                text: part,
+              })
+            : await session.client.v2.sendDmToParticipant(senderId, {
+                text: part,
+              });
+        } catch (error) {
+          // error-policy:J2 explicit HTTP rejection proves X did not accept
+          // this part. With no earlier part accepted, a refusal tied to this
+          // recipient settles the event so the cursor moves past it; any other
+          // rejection (auth, 402 credits, 403 app access, rate limits) reopens
+          // it so it resumes once the operator fixes the app or account.
+          // Transport failures, and any failure after an earlier part was
+          // accepted, retain the no-replay tombstone.
+          deliveryError = error;
+          if (partsAccepted === 0 && isExplicitTwitterRejection(error)) {
+            if (isPermanentTwitterRejection(error)) {
+              await this.runtime.setCache(settledKey, "rejected");
+            } else {
+              await this.runtime.deleteCache(settledKey);
+            }
+          } else {
+            await this.runtime.setCache(settledKey, "indeterminate");
+          }
+          throw error;
+        }
+        const sentResult = sent as {
+          data?: { dm_event_id?: string };
+          dm_event_id?: string;
+        };
+        if (partsAccepted === 0) {
+          sentId = normalizeXReceiptId(
+            sentResult.data?.dm_event_id ?? sentResult.dm_event_id,
+          );
+        }
+        partsAccepted += 1;
       }
-      const sentResult = sent as {
-        data?: { dm_event_id?: string };
-        dm_event_id?: string;
-      };
-      const sentId = normalizeXReceiptId(
-        sentResult.data?.dm_event_id ?? sentResult.dm_event_id,
-      );
       await this.runtime.setCache(
         settledKey,
         sentId ? `delivered:${sentId}` : "delivered",
@@ -579,7 +616,13 @@ export class TwitterDirectMessageClient {
         agentId: this.runtime.agentId,
         entityId: this.runtime.agentId,
         roomId,
-        content: { ...response, text, source: "x", inReplyTo: memoryId },
+        content: {
+          ...response,
+          text,
+          source: "x",
+          channelType,
+          inReplyTo: memoryId,
+        },
         metadata: {
           type: "message",
           source: "x",
@@ -588,7 +631,7 @@ export class TwitterDirectMessageClient {
           fromBot: true,
           fromId: this.runtime.agentId,
           sourceId: this.runtime.agentId,
-          chatType: ChannelType.DM,
+          chatType: channelType,
           messageIdFull: sentId,
           twitter: {
             accountId: this.client.accountId,
@@ -669,25 +712,4 @@ export class TwitterDirectMessageClient {
       throw this.sessionRotationError(phase);
     }
   }
-}
-
-function isExplicitTwitterRejection(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    code?: unknown;
-    status?: unknown;
-    data?: { status?: unknown };
-    response?: { status?: unknown };
-  };
-  const status =
-    candidate.data?.status ??
-    candidate.response?.status ??
-    candidate.status ??
-    candidate.code;
-  return (
-    typeof status === "number" &&
-    Number.isInteger(status) &&
-    status >= 400 &&
-    status < 500
-  );
 }

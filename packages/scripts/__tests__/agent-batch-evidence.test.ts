@@ -16,7 +16,10 @@ import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
-function runFixture(mode: "mixed" | "skipped" | "failed") {
+function runFixture(
+  mode: "mixed" | "skipped" | "failed" | "preflight-failed",
+  preflight = true,
+) {
   const directory = mkdtempSync(
     path.join(root, "packages", "agent-evidence-fixture-"),
   );
@@ -35,8 +38,17 @@ function runFixture(mode: "mixed" | "skipped" | "failed") {
         name,
         private: true,
         type: "module",
-        scripts: { test: "node scripts/run-vitest-batches.ts" },
+        scripts: {
+          test: `${preflight ? "bun run test:mobile-workspace-entry && " : ""}node scripts/run-vitest-batches.ts`,
+          "test:mobile-workspace-entry": "node scripts/preflight.mjs",
+        },
       }),
+    );
+    writeFileSync(
+      path.join(directory, "scripts/preflight.mjs"),
+      mode === "preflight-failed"
+        ? 'console.error("preflight rejected"); process.exit(1);\n'
+        : 'console.log("preflight completed");\n',
     );
     writeFileSync(
       path.join(directory, "vitest.config.ts"),
@@ -83,6 +95,24 @@ test("reconciles actual Vitest batches including skipped cases", () => {
   expect(result.stdout).toContain(
     "EVIDENCE reports=1 tests=2 executed=1 skipped=1 unobserved-tasks=0",
   );
+}, 60_000);
+
+test("retains evidence for the standalone batch wrapper", () => {
+  const result = runFixture("mixed", false);
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain(
+    "EVIDENCE reports=1 tests=2 executed=1 skipped=1 unobserved-tasks=0",
+  );
+}, 60_000);
+
+test("a failed preflight cannot be certified by the batch wrapper", () => {
+  const result = runFixture("preflight-failed");
+  expect(result.error).toBeUndefined();
+  expect(result.status).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("preflight rejected");
+  expect(result.stdout).toContain('"status":"fail"');
+  expect(result.stdout).not.toContain("EVIDENCE reports=1");
 }, 60_000);
 
 test("all-skipped Vitest batches cannot satisfy required work", () => {

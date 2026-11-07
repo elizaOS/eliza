@@ -100,6 +100,171 @@ describe("life-ops scheduling-with-others (pure slot logic)", () => {
     ]);
   });
 
+  it("an all-day event blocks the owner's local day, not the UTC day", () => {
+    // Google stores an all-day event on Oct 15 at UTC midnight. In Sydney
+    // (UTC+11) that UTC day runs Oct 15 11:00 → Oct 16 11:00 local.
+    const slots = computeProposedSlots({
+      now: new Date("2026-10-14T00:00:00Z"),
+      windowStart: new Date("2026-10-14T13:00:00Z"), // Oct 15 00:00 AEDT
+      windowEnd: new Date("2026-10-16T13:00:00Z"), // Oct 17 00:00 AEDT
+      durationMinutes: 30,
+      slotCount: 1,
+      preferences: {
+        timeZone: "Australia/Sydney",
+        preferredStartLocal: "09:00",
+        preferredEndLocal: "17:00",
+        defaultDurationMinutes: 30,
+        travelBufferMinutes: 0,
+        blackoutWindows: [],
+        updatedAt: null,
+      },
+      events: [
+        {
+          id: "offsite",
+          externalId: "offsite",
+          agentId: AGENT_ID,
+          provider: "google",
+          side: "owner",
+          calendarId: "primary",
+          title: "Offsite",
+          description: "",
+          location: "",
+          status: "confirmed",
+          startAt: "2026-10-15T00:00:00.000Z",
+          endAt: "2026-10-16T00:00:00.000Z",
+          isAllDay: true,
+          timezone: "Australia/Sydney",
+          htmlLink: null,
+          conferenceLink: null,
+          organizer: null,
+          attendees: [],
+          metadata: {},
+          syncedAt: "2026-10-14T00:00:00.000Z",
+          updatedAt: "2026-10-14T00:00:00.000Z",
+        },
+      ],
+    });
+    // First free slot is Oct 16 09:00 AEDT, the first morning after the offsite.
+    expect(slots.map((slot) => slot.startAt)).toEqual([
+      "2026-10-15T22:00:00.000Z",
+    ]);
+  });
+
+  it.each([
+    {
+      // A floating EventKit all-day event has no zone: the device's midnight.
+      timeZone: "Australia/Sydney",
+      eventZone: null,
+      startAt: "2026-10-14T13:00:00.000Z", // Oct 15 00:00 AEDT
+      endAt: "2026-10-15T12:59:59.000Z", // Oct 15 23:59:59 AEDT
+      windowStart: "2026-10-14T13:00:00.000Z",
+      windowEnd: "2026-10-16T13:00:00.000Z",
+      firstFree: "2026-10-15T22:00:00.000Z", // Oct 16 09:00 AEDT
+    },
+    {
+      timeZone: "Europe/Berlin",
+      eventZone: "Europe/Berlin",
+      startAt: "2026-10-14T22:00:00.000Z", // Oct 15 00:00 CEST
+      endAt: "2026-10-15T21:59:59.000Z", // Oct 15 23:59:59 CEST
+      windowStart: "2026-10-14T22:00:00.000Z",
+      windowEnd: "2026-10-16T22:00:00.000Z",
+      firstFree: "2026-10-16T07:00:00.000Z", // Oct 16 09:00 CEST
+    },
+  ])(
+    "an Apple Calendar all-day event blocks its local day in $timeZone",
+    (row) => {
+      const slots = computeProposedSlots({
+        now: new Date("2026-10-14T00:00:00Z"),
+        windowStart: new Date(row.windowStart),
+        windowEnd: new Date(row.windowEnd),
+        durationMinutes: 30,
+        slotCount: 1,
+        preferences: {
+          timeZone: row.timeZone,
+          preferredStartLocal: "09:00",
+          preferredEndLocal: "17:00",
+          defaultDurationMinutes: 30,
+          travelBufferMinutes: 0,
+          blackoutWindows: [],
+          updatedAt: null,
+        },
+        events: [
+          {
+            id: "offsite",
+            externalId: "offsite",
+            agentId: AGENT_ID,
+            provider: "apple_calendar",
+            side: "owner",
+            calendarId: "home",
+            title: "Offsite",
+            description: "",
+            location: "",
+            status: "confirmed",
+            startAt: row.startAt,
+            endAt: row.endAt,
+            isAllDay: true,
+            timezone: row.eventZone,
+            htmlLink: null,
+            conferenceLink: null,
+            organizer: null,
+            attendees: [],
+            metadata: {},
+            syncedAt: "2026-10-14T00:00:00.000Z",
+            updatedAt: "2026-10-14T00:00:00.000Z",
+          },
+        ],
+      });
+      expect(slots.map((slot) => slot.startAt)).toEqual([row.firstFree]);
+    },
+  );
+
+  it("an event shown as free does not block a slot", () => {
+    const event = (id: string, transparency: string) => ({
+      id,
+      externalId: id,
+      agentId: AGENT_ID,
+      provider: "google" as const,
+      side: "owner" as const,
+      calendarId: "primary",
+      title: id,
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt: "2026-10-15T13:00:00.000Z",
+      endAt: "2026-10-15T14:00:00.000Z",
+      isAllDay: false,
+      timezone: "America/New_York",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: { transparency },
+      syncedAt: "2026-10-14T00:00:00.000Z",
+      updatedAt: "2026-10-14T00:00:00.000Z",
+    });
+    const propose = (transparency: string) =>
+      computeProposedSlots({
+        now: new Date("2026-10-15T12:00:00Z"),
+        windowStart: new Date("2026-10-15T13:00:00Z"), // 09:00 New York
+        windowEnd: new Date("2026-10-15T21:00:00Z"),
+        durationMinutes: 30,
+        slotCount: 1,
+        preferences: {
+          timeZone: "America/New_York",
+          preferredStartLocal: "09:00",
+          preferredEndLocal: "17:00",
+          defaultDurationMinutes: 30,
+          travelBufferMinutes: 0,
+          blackoutWindows: [],
+          updatedAt: null,
+        },
+        events: [event("Focus time", transparency)],
+      }).map((slot) => slot.startAt);
+    // A "free" focus block at 09:00 leaves 09:00 open; a busy one does not.
+    expect(propose("transparent")).toEqual(["2026-10-15T13:00:00.000Z"]);
+    expect(propose("opaque")).toEqual(["2026-10-15T14:00:00.000Z"]);
+  });
+
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {
     const now = new Date();
     const windowStart = new Date(localIso(1, 0, 0));
@@ -390,6 +555,92 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
         isFree: null,
       });
       expect(JSON.stringify(result.data)).not.toContain("redacted-by-action");
+    } finally {
+      getService.mockRestore();
+    }
+  });
+
+  it("CALENDAR.check_availability reads an offset-less start in the supplied timeZone", async () => {
+    const feedRequests: Array<{ timeMin?: string; timeMax?: string }> = [];
+    const originalGetService = runtime.getService.bind(runtime);
+    const getService = vi.spyOn(runtime, "getService").mockImplementation(((
+      serviceType: string,
+    ) =>
+      serviceType === "calendar"
+        ? {
+            getCalendarFeed: async (
+              _url: unknown,
+              request: { timeMin?: string; timeMax?: string },
+            ) => {
+              feedRequests.push(request);
+              return {
+                calendarId: "all",
+                events: [],
+                source: "synced",
+                state: "complete",
+                sources: [],
+                timeMin: request.timeMin,
+                timeMax: request.timeMax,
+                syncedAt: "2026-10-01T00:00:00.000Z",
+              };
+            },
+          }
+        : originalGetService(serviceType)) as typeof runtime.getService);
+    try {
+      const result = await runCheckAvailabilityHandler(
+        runtime,
+        makeMessage(runtime, "am I free") as never,
+        undefined,
+        {
+          parameters: {
+            startAt: "2026-10-12T09:00:00",
+            durationMinutes: 30,
+            timeZone: "America/New_York",
+          },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(true);
+      // 09:00 in New York on 2026-10-12 (UTC-4), not 09:00 in the host zone.
+      expect(result.data).toMatchObject({
+        windowStart: "2026-10-12T13:00:00.000Z",
+        windowEnd: "2026-10-12T13:30:00.000Z",
+      });
+      expect(feedRequests).toMatchObject([
+        {
+          timeMin: "2026-10-12T13:00:00.000Z",
+          timeMax: "2026-10-12T13:30:00.000Z",
+        },
+      ]);
+    } finally {
+      getService.mockRestore();
+    }
+  });
+
+  it("CALENDAR.propose_times refuses out-of-range values before a calendar read", async () => {
+    const getService = vi.spyOn(runtime, "getService");
+    try {
+      const result = await runProposeMeetingTimesHandler(
+        runtime,
+        makeMessage(runtime, "find a time") as never,
+        undefined,
+        {
+          parameters: { slotCount: 12, daysAhead: 90, durationMinutes: 600 },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "INVALID_ARGUMENTS",
+        outOfRange: [
+          "durationMinutes (5-480)",
+          "slotCount (1-10)",
+          "daysAhead (1-60)",
+        ],
+      });
+      expect(getService).not.toHaveBeenCalledWith("calendar");
     } finally {
       getService.mockRestore();
     }

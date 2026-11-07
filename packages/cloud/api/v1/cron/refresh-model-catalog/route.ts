@@ -6,13 +6,16 @@
  * trigger) and POST (manual hits).
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { refreshBitRouterModelCatalog } from "@elizaos/cloud-shared/lib/services/model-catalog";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { cache } from "@/lib/cache/client";
-import { refreshBitRouterModelCatalog } from "@/lib/services/model-catalog";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

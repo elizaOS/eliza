@@ -22,6 +22,13 @@ const AVG_SWAP_TX_FEE_LAMPORTS = BigInt(10000); // Potentially higher for swaps 
 const AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS = BigInt(15000); // LP operations can be more complex
 const DEFAULT_SOL_PRICE_USD = 150;
 
+/** A recorded 0% yield is real. `apy || apr` replaced it with the other rate. */
+function recordedYield(apy: unknown, apr: unknown): number {
+  if (typeof apy === "number" && Number.isFinite(apy)) return apy;
+  if (typeof apr === "number" && Number.isFinite(apr)) return apr;
+  return 0;
+}
+
 /**
  * Interface for the YieldOptimizationService.
  * This service is responsible for fetching data about available LP pools,
@@ -234,10 +241,10 @@ export class YieldOptimizationService
 
     for (const position of currentPositions) {
       const { underlyingTokens } = position;
-      const currentYield =
-        (position.metadata?.apy as number) ||
-        (position.metadata?.apr as number) ||
-        0;
+      const currentYield = recordedYield(
+        position.metadata?.apy,
+        position.metadata?.apr,
+      );
 
       for (const targetPool of allAvailablePools) {
         if (
@@ -255,7 +262,10 @@ export class YieldOptimizationService
         );
 
         if (canPotentiallyFormPair) {
-          const estimatedNewYield = targetPool.apy || targetPool.apr || 0;
+          const estimatedNewYield = recordedYield(
+            targetPool.apy,
+            targetPool.apr,
+          );
           if (estimatedNewYield > currentYield) {
             const costDetails = await this.calculateRebalanceCost(
               position,
@@ -264,7 +274,11 @@ export class YieldOptimizationService
               undefined,
               underlyingTokens,
             );
-            const positionValueUsd = position.valueUsd || 1;
+            const positionValueUsd =
+              typeof position.valueUsd === "number" &&
+              Number.isFinite(position.valueUsd)
+                ? position.valueUsd
+                : 1;
             const costInYieldTerms =
               (costDetails.costUsd || 0) / positionValueUsd;
 
@@ -309,8 +323,12 @@ export class YieldOptimizationService
 
     if (idleAssets.length > 0) {
       for (const pool of allAvailablePools) {
+        // Prefer the recorded apy when present (steer vaults only report apy);
+        // the positions-rebalance branch of this same function screens with
+        // recordedYield, so idle assets deserve the same view of the pool.
+        const idlePoolYield = recordedYield(pool.apy, pool.apr);
         if (
-          (pool.apr || 0) <=
+          idlePoolYield <=
           userProfile.autoRebalanceConfig.minGainThresholdPercent / 100
         )
           continue;
@@ -328,19 +346,18 @@ export class YieldOptimizationService
             idleAssets,
           );
           if (
-            (pool.apr || 0) * 100 >
+            idlePoolYield * 100 >
             userProfile.autoRebalanceConfig.minGainThresholdPercent
           ) {
             opportunities.push({
               targetPool: pool,
-              estimatedNewYield: (pool.apr || 0) * 100,
+              estimatedNewYield: idlePoolYield * 100,
               currentYield: 0,
               estimatedCostToMoveLamports: costDetails.costSolLamports,
               estimatedCostToMoveUsd: costDetails.costUsd,
               netGainPercent:
-                (pool.apr || 0) * 100 -
-                ((costDetails.costUsd || 0) / 1000) * 100,
-              reason: `Deploy idle assets to ${pool.displayName || pool.id} with APR of ${((pool.apr || 0) * 100).toFixed(2)}%`,
+                idlePoolYield * 100 - ((costDetails.costUsd || 0) / 1000) * 100,
+              reason: `Deploy idle assets to ${pool.displayName || pool.id} with APR of ${(idlePoolYield * 100).toFixed(2)}%`,
               actions: costDetails.steps.filter(
                 (s) => !s.toLowerCase().includes("withdraw"),
               ),

@@ -23,8 +23,8 @@ import {
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -380,12 +380,41 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   const svc = runtime.getService<AcpService>(
                     AcpService.serviceType,
                   );
-                  // error-policy:J3 session lookup on a deferred flush timer; a
-                  // missing/failed lookup degrades to null and the guard below
-                  // treats it as "terminal", cancelling the flush cleanly.
-                  const session = svc
-                    ? await svc.getSession(sessionId).catch(() => null)
-                    : null;
+                  const retryOrRelease = (): void => {
+                    if (tries < MAX_FLUSH_POLLS) {
+                      scheduleFlush(sessionId, tries + 1);
+                    } else {
+                      // Keep the queued input. A later session event can re-arm
+                      // the flush after the bounded polling window ends.
+                      flushPending.delete(sessionId);
+                    }
+                  };
+                  if (!svc) {
+                    retryOrRelease();
+                    return;
+                  }
+                  let session: Awaited<ReturnType<AcpService["getSession"]>>;
+                  try {
+                    session = await svc.getSession(sessionId);
+                  } catch (err) {
+                    // error-policy:J4 a failed session read is not proof that
+                    // the session ended. Retain the queued user input and retry.
+                    retryOrRelease();
+                    if (tries === 0) {
+                      runtime.logger?.warn?.(
+                        {
+                          src: "@elizaos/plugin-agent-orchestrator",
+                          sessionId,
+                          err: err instanceof Error ? err.message : String(err),
+                        },
+                        "inbox flush session read failed; queued input retained",
+                      );
+                      runtime.reportError?.("SubAgentInbox.sessionRead", err, {
+                        sessionId,
+                      });
+                    }
+                    return;
+                  }
                   if (
                     !session ||
                     TERMINAL_SESSION_STATUSES.has(session.status)
@@ -397,12 +426,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   // Still mid-turn (busy / tool_running / running / blocked /
                   // authenticating) — wait for it to return to `ready`.
                   if (isSessionBusy(session.status)) {
-                    if (tries < MAX_FLUSH_POLLS) {
-                      scheduleFlush(sessionId, tries + 1);
-                    } else {
-                      // Stop polling; the next session event re-arms a flush.
-                      flushPending.delete(sessionId);
-                    }
+                    retryOrRelease();
                     return;
                   }
                   flushPending.delete(sessionId);
@@ -2320,7 +2344,7 @@ export type {
   WriteMemoryOptions,
 } from "coding-agent-adapters";
 // Action helper: resolve the runtime's registered ACP service singleton. Used by
-// out-of-tree live harnesses (e.g. packages/core/test/live/task-agent-live-smoke)
+// out-of-tree live harnesses (e.g. plugins/plugin-agent-orchestrator/test/live/task-agent-live-smoke)
 // so they read output from the same service instance the actions spawn into.
 export { getAcpService } from "./actions/common.js";
 // TASKS action surface.

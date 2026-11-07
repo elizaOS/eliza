@@ -1,9 +1,12 @@
 /** Delegates app-scoped image generation to the canonical cache-only pipeline. */
 
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { handleGenerateImagePOST } from "@/api/v1/generate-image/route";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

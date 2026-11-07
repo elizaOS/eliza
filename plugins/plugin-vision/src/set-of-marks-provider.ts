@@ -11,6 +11,7 @@
  * Pure + injectable: the YOLO detector and OCR resolver are passed in, so the
  * fusion wiring is unit-testable with fakes and degrades gracefully when the
  * GGUF detector or OCR engine is unavailable (icons or text simply absent).
+ * A failed OCR run keeps the icon marks and is reported as `ocrError`.
  */
 
 import { getOcrWithCoordsService } from "./ocr-with-coords.js";
@@ -36,6 +37,8 @@ export interface SetOfMarksInputLike {
 export interface SetOfMarksResultLike {
   readonly marks: ReadonlyArray<SomMark>;
   readonly overlayPngBase64?: string;
+  /** Why the OCR run failed; the marks then hold icons only. */
+  readonly ocrError?: string;
 }
 
 /** Structural shape of computeruse's `SetOfMarksProvider`. */
@@ -115,13 +118,25 @@ export function buildVisionSetOfMarksProvider(
       const [detections, ocrResult] = await Promise.all([
         detectIcons(input.pngBytes),
         ocr
-          ? ocr.describe({
-              displayId: input.displayId,
-              sourceX: input.sourceX,
-              sourceY: input.sourceY,
-              pngBytes: input.pngBytes,
-            })
-          : Promise.resolve({ blocks: [] as OcrBlockLike[] }),
+          ? ocr
+              .describe({
+                displayId: input.displayId,
+                sourceX: input.sourceX,
+                sourceY: input.sourceY,
+                pngBytes: input.pngBytes,
+              })
+              .then(
+                (result) => ({ blocks: result.blocks, ocrError: undefined }),
+                (error: unknown) => ({
+                  blocks: [] as OcrBlockLike[],
+                  ocrError:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              )
+          : Promise.resolve({
+              blocks: [] as OcrBlockLike[],
+              ocrError: undefined,
+            }),
       ]);
 
       const marks = buildSceneSetOfMarks(
@@ -131,12 +146,19 @@ export function buildVisionSetOfMarksProvider(
         },
         deps.options,
       );
+      const ocrError = ocrResult.ocrError
+        ? { ocrError: ocrResult.ocrError }
+        : {};
 
       if (!input.renderOverlay || marks.length === 0) {
-        return { marks };
+        return { marks, ...ocrError };
       }
       const overlay = await renderSetOfMarksOverlay(input.pngBytes, marks);
-      return { marks, overlayPngBase64: overlay.toString("base64") };
+      return {
+        marks,
+        overlayPngBase64: overlay.toString("base64"),
+        ...ocrError,
+      };
     },
   };
 }

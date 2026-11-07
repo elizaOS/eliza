@@ -7,9 +7,8 @@ import {
   BUILTIN_MCP_PRICING,
   MCP_FREE_COST_LABEL,
 } from "@elizaos/cloud-shared/billing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -19,7 +18,7 @@ app.get("/", (c) =>
     version: "2.0.0",
     description:
       "Real-time weather data, forecasts, and location search powered by Open-Meteo API.",
-    transport: ["http", "sse"],
+    transport: ["http"],
     endpoint: "/api/mcps/weather/mcp",
     tools: [
       {
@@ -27,18 +26,6 @@ app.get("/", (c) =>
         description: "Get current weather conditions for any city",
         price: MCP_FREE_COST_LABEL,
         example: { city: "New York", units: "fahrenheit" },
-      },
-      {
-        name: "get_weather_forecast",
-        description: "Get multi-day forecast (up to 16 days)",
-        price: MCP_FREE_COST_LABEL,
-        example: { city: "London", days: 7 },
-      },
-      {
-        name: "compare_weather",
-        description: "Compare weather between multiple cities",
-        price: MCP_FREE_COST_LABEL,
-        example: { cities: ["Tokyo", "New York", "London"] },
       },
       {
         name: "search_location",
@@ -59,8 +46,6 @@ app.get("/", (c) =>
     },
     features: [
       "Current conditions",
-      "16-day forecasts",
-      "Precipitation probability",
       "UV index",
       "Sunrise/sunset times",
       "Wind speed and direction",

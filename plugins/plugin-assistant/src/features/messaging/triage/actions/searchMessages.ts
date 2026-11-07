@@ -21,7 +21,11 @@ import type {
 import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
+import {
+  parseSearchMessagesParams,
+  SUPPORTED_MESSAGE_SOURCES_TEXT,
+  validateMessageAction,
+} from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
   name: "MESSAGE",
@@ -51,8 +55,7 @@ export const searchMessagesAction: Action = {
     },
     {
       name: "sources",
-      description:
-        "Optional message sources to search, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
+      description: `Optional message sources to search. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}.`,
       required: false,
       schema: {
         type: "array" as const,
@@ -74,13 +77,15 @@ export const searchMessagesAction: Action = {
     },
     {
       name: "since",
-      description: "Start timestamp or parseable date for the search window.",
+      description:
+        "Start of the search window: ISO 8601 date/timestamp or epoch milliseconds.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "until",
-      description: "End timestamp or parseable date for the search window.",
+      description:
+        "End of the search window: ISO 8601 date/timestamp or epoch milliseconds.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -110,17 +115,21 @@ export const searchMessagesAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const filters = parseSearchMessagesParams(options);
+    if ("error" in filters) {
+      logger.warn(`[SearchMessages] ${filters.error}`);
+      return { success: false, text: filters.error, error: filters.error };
+    }
     const service = getDefaultTriageService();
-    const { refs: hits, receipt } = await service.searchWithReceipt(
-      runtime,
-      filters,
-    );
+    const { refs: hits, receipt } = await service.searchWithReceipt(runtime, {
+      ...filters,
+      requester: message,
+    });
 
     const sourcesHit = new Set(hits.map((m) => m.source));
     const gaps = [
@@ -137,7 +146,7 @@ export const searchMessagesAction: Action = {
           : " No result cap was probed; connector-internal completeness is unknown.";
     const text = `${
       hits.length === 0
-        ? "No matching messages were returned."
+        ? "No matches were returned for the exact appliedFilters shown below. This does not establish that the mailbox has no matching messages under different filters."
         : `Found ${hits.length} match(es) from ${sourcesHit.size} source(s).`
     } ${coverage}${capEvidence}`;
 
@@ -158,6 +167,14 @@ export const searchMessagesAction: Action = {
           unregisteredSources: receipt.unregistered,
           unavailableSources: receipt.unavailable,
           failedSources: receipt.failed,
+          appliedFilters: {
+            query: filters.content ?? null,
+            sender: filters.sender ?? null,
+            tags: filters.tags ?? [],
+            sinceMs: filters.sinceMs ?? null,
+            untilMs: filters.untilMs ?? null,
+            limit: filters.limit ?? null,
+          },
           filtersApplied: {
             worldIds: (filters.worldIds?.length ?? 0) > 0,
             channelIds: (filters.channelIds?.length ?? 0) > 0,
@@ -180,6 +197,11 @@ export const searchMessagesAction: Action = {
           subject: m.subject ?? null,
           snippet: m.snippet,
           receivedAtMs: m.receivedAtMs,
+          receivedAt:
+            Number.isFinite(m.receivedAtMs) &&
+            Number.isFinite(new Date(m.receivedAtMs).getTime())
+              ? new Date(m.receivedAtMs).toISOString()
+              : null,
           tags: m.tags ?? [],
           contactWeight: m.triageScore?.contactWeight ?? null,
         })),

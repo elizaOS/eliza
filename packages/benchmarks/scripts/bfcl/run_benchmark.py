@@ -30,20 +30,34 @@ async def main():
     parser = argparse.ArgumentParser(description="Run BFCL Benchmark")
     parser.add_argument("--sample", type=int, help="Number of sample tests")
     parser.add_argument("--mock", action="store_true", help="Use mock agent")
-    parser.add_argument("--output", default="./benchmark_results/bfcl",
-                        help="Output directory")
+    parser.add_argument(
+        "--output", default="./benchmark_results/bfcl", help="Output directory"
+    )
     parser.add_argument("--categories", help="Comma-separated categories")
-    parser.add_argument("--expand-scenarios", action="store_true",
-                        help="Run each selected BFCL case with 10 edge variants")
-    parser.add_argument("--count-scenarios", action="store_true",
-                        help="Print base/edge/total scenario counts and exit")
-    parser.add_argument("--validate-scenarios", action="store_true",
-                        help="Validate selected base/expanded BFCL cases and exit")
+    parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="Run each selected BFCL case with 10 edge variants",
+    )
+    parser.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="Print base/edge/total scenario counts and exit",
+    )
+    parser.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="Validate selected base/expanded BFCL cases and exit",
+    )
     args = parser.parse_args()
 
-    from suites.bfcl import BFCLRunner, BFCLConfig, BFCLCategory
-    from suites.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases
-    from suites.bfcl.reporting import print_results
+    from benchmarks.suites.bfcl import BFCLRunner, BFCLConfig, BFCLCategory
+    from benchmarks.suites.bfcl.dataset import (
+        BFCLDataset,
+        expand_test_cases,
+        validate_test_cases,
+    )
+    from benchmarks.suites.bfcl.reporting import print_results
 
     # Configure benchmark
     config = BFCLConfig(
@@ -55,8 +69,7 @@ async def main():
 
     if args.categories:
         config.categories = [
-            BFCLCategory(c.strip())
-            for c in args.categories.split(",")
+            BFCLCategory(c.strip()) for c in args.categories.split(",")
         ]
 
     if args.count_scenarios or args.validate_scenarios:
@@ -65,14 +78,23 @@ async def main():
         base_cases = list(dataset)
         if args.sample:
             base_cases = base_cases[: args.sample]
-        cases = expand_test_cases(base_cases) if config.include_edge_scenarios else base_cases
+        cases = (
+            expand_test_cases(base_cases)
+            if config.include_edge_scenarios
+            else base_cases
+        )
         if args.validate_scenarios:
             validate_test_cases(cases)
-        print(json.dumps({
-            "base": len(base_cases),
-            "edge": len(cases) - len(base_cases),
-            "total": len(cases),
-        }, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "base": len(base_cases),
+                    "edge": len(cases) - len(base_cases),
+                    "total": len(cases),
+                },
+                sort_keys=True,
+            )
+        )
         return 0
 
     # Create runner
@@ -104,7 +126,9 @@ async def main():
             f.write("|--------|-------|\n")
             f.write(f"| AST Accuracy | {results.metrics.ast_accuracy:.2%} |\n")
             f.write(f"| Exec Accuracy | {results.metrics.exec_accuracy:.2%} |\n")
-            f.write(f"| Relevance Accuracy | {results.metrics.relevance_accuracy:.2%} |\n")
+            f.write(
+                f"| Relevance Accuracy | {results.metrics.relevance_accuracy:.2%} |\n"
+            )
             f.write(f"\nTotal Tests: {results.metrics.total_tests}\n")
             f.write(f"Passed: {results.metrics.passed_tests}\n")
             f.write(f"Failed: {results.metrics.failed_tests}\n")
@@ -127,6 +151,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Benchmark failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

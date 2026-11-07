@@ -13,15 +13,16 @@
  * definition / occurrence / reminder / calendar / activity-signal graph, so
  * they remain LifeOps mixin methods in PA.
  *
- * Two PA-owned concerns are taken as injected hooks rather than reimplemented:
- *   - `recordAudit` — audit events persist into PA's shared `app_lifeops` audit
- *     store; goal creates/updates/deletes record there exactly as before.
+ * PA-owned concerns are taken as injected hooks rather than reimplemented:
+ *   - `recordAudit` — with PA, audit events persist into PA's shared
+ *     `app_lifeops` audit store; without PA, into `app_goals`.
+ *   - `releaseGoalReferences` — PA clears its task definitions' references to
+ *     a deleted goal; without PA there are none.
  *   - `normalizeOwnership` — ownership normalization carries PA's domain /
  *     subject rules and resolves the owner-entity / agent identity; it stays
  *     PA-owned and is passed in.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   type CreateLifeOpsGoalRequest,
   LIFEOPS_GOAL_STATUSES,
@@ -32,7 +33,8 @@ import {
   type LifeOpsOwnership,
   type LifeOpsOwnershipInput,
   type UpdateLifeOpsGoalRequest,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   createGoalDefinition,
   GoalsRepository,
@@ -49,6 +51,33 @@ import {
   requireRecord,
 } from "./goal-normalize.ts";
 
+/**
+ * A `times_per_day` slot's `key` is its identity: the check-in mapper turns it
+ * into the task's `slot-${key}` idempotency key, so two slots sharing a key
+ * collapse into one task and the second declared time never gets a check-in.
+ * Reject the repeat at the write boundary instead of losing it silently.
+ */
+function rejectDuplicateSlotKeys(cadence: Record<string, unknown>): void {
+  if (cadence.kind !== "times_per_day" || !Array.isArray(cadence.slots)) {
+    return;
+  }
+  const seen = new Set<string>();
+  for (const slot of cadence.slots) {
+    const key =
+      slot && typeof slot === "object" && !Array.isArray(slot)
+        ? (slot as Record<string, unknown>).key
+        : undefined;
+    if (typeof key !== "string" || key.length === 0) continue;
+    if (seen.has(key)) {
+      fail(
+        400,
+        `goal cadence times_per_day slots must have unique keys; duplicate key ${JSON.stringify(key)}`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
 const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "and",
   "the",
@@ -63,13 +92,23 @@ const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "goals",
 ]);
 
+// One Han, kana or Hangul character carries a syllable or word, so it counts
+// twice toward the length floor: 매일 and 毎朝 pass, a lone 犬 does not.
+const CJK_SCRIPT_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
+  // The split below treats a combining mark as a separator, so compose first:
+  // a decomposed "café" (e + U+0301) must give the same token as "café".
   return raw
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .normalize("NFC")
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(
-      (token) => token.length >= 3 && !GOAL_SIMILARITY_STOP_WORDS.has(token),
+      (token) =>
+        token.length + (token.match(CJK_SCRIPT_CHAR)?.length ?? 0) >= 3 &&
+        !GOAL_SIMILARITY_STOP_WORDS.has(token),
     );
 }
 
@@ -177,6 +216,8 @@ export interface GoalsServiceDependencies {
   recordAudit: GoalsRecordAudit;
   normalizeOwnership: GoalsNormalizeOwnership;
   checkinSync?: () => GoalsCheckinSync | null;
+  /** Clear references to a goal that is being deleted from the host's tables. */
+  releaseGoalReferences?: (goalId: string) => Promise<void>;
 }
 
 export class GoalsService {
@@ -184,6 +225,7 @@ export class GoalsService {
   private readonly recordAudit: GoalsRecordAudit;
   private readonly normalizeOwnership: GoalsNormalizeOwnership;
   private readonly resolveCheckinSync: () => GoalsCheckinSync | null;
+  private readonly releaseGoalReferences?: (goalId: string) => Promise<void>;
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -193,6 +235,7 @@ export class GoalsService {
     this.recordAudit = deps.recordAudit;
     this.normalizeOwnership = deps.normalizeOwnership;
     this.resolveCheckinSync = deps.checkinSync ?? (() => null);
+    this.releaseGoalReferences = deps.releaseGoalReferences;
   }
 
   private agentId(): string {
@@ -216,6 +259,7 @@ export class GoalsService {
     if (!goal) {
       fail(404, "life-ops goal not found");
     }
+    await this.releaseGoalReferences?.(goalId);
     await this.repository.deleteGoal(this.agentId(), goalId);
     await this.recordAudit(
       "goal_deleted",
@@ -327,6 +371,7 @@ export class GoalsService {
         if (cadence && typeof cadence.kind !== "string") {
           fail(400, "goal cadence must include a 'kind' field when provided");
         }
+        if (cadence) rejectDuplicateSlotKeys(cadence);
         return cadence ?? null;
       })(),
       supportStrategy: (() => {
@@ -394,10 +439,15 @@ export class GoalsService {
         request.description !== undefined
           ? (normalizeOptionalString(request.description) ?? "")
           : current.goal.description,
-      cadence:
-        request.cadence !== undefined
-          ? (normalizeNullableRecord(request.cadence, "cadence") ?? null)
-          : current.goal.cadence,
+      cadence: (() => {
+        if (request.cadence === undefined) return current.goal.cadence;
+        const cadence = normalizeNullableRecord(request.cadence, "cadence");
+        if (cadence && typeof cadence.kind !== "string") {
+          fail(400, "goal cadence must include a 'kind' field when provided");
+        }
+        if (cadence) rejectDuplicateSlotKeys(cadence);
+        return cadence ?? null;
+      })(),
       supportStrategy:
         request.supportStrategy !== undefined
           ? requireRecord(request.supportStrategy, "supportStrategy")
@@ -425,9 +475,21 @@ export class GoalsService {
               normalizeOptionalRecord(request.metadata, "metadata"),
             )
           : current.goal.metadata,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(
+        Math.max(Date.now(), Date.parse(current.goal.updatedAt) + 1),
+      ).toISOString(),
     };
-    await this.repository.updateGoal(nextGoal);
+    const updated = await this.repository.updateGoalIfUnchanged(
+      nextGoal,
+      current.goal.updatedAt,
+    );
+    if (!updated) {
+      fail(
+        409,
+        "life-ops goal changed while the update was in progress; retry the update",
+        "GOAL_UPDATE_CONFLICT",
+      );
+    }
     await this.recordAudit(
       "goal_updated",
       "goal",

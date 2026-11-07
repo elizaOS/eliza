@@ -1,3 +1,4 @@
+import { createKpiReporter } from "../../lib/kpi-reporting.mjs";
 /**
  * Shared utilities for the view-bundle-size gate (#10724).
  *
@@ -8,39 +9,20 @@
  * the `memperf` / `loadperf` harnesses use.
  */
 
-import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
-/**
- * Root of a checked-out elizaOS/eliza monorepo. This suite measures that
- * repo's per-plugin view bundles, so a checkout is a hard prerequisite:
- * set ELIZA_REPO_DIR to its path.
- */
-export const REPO_ROOT = (() => {
-  const dir = (process.env.ELIZA_REPO_DIR ?? "").trim();
-  if (!dir) {
-    throw new Error(
-      "[view-bundle-size] ELIZA_REPO_DIR is not set. Point it at a checked-out elizaOS/eliza repo (the suite measures that repo's plugin view bundles).",
-    );
-  }
-  if (!existsSync(join(dir, "plugins"))) {
-    throw new Error(
-      `[view-bundle-size] ELIZA_REPO_DIR=${dir} does not look like an elizaOS/eliza checkout (no plugins/ directory).`,
-    );
-  }
-  return dir;
-})();
-export const RESULTS_ROOT = join(HERE, "results");
+export const {
+  REPO_ROOT,
+  RESULTS_ROOT,
+  gitInfo,
+  recordResult,
+  readLatest,
+  loadBudgets,
+} = createKpiReporter("view-bundle-size", HERE);
 export const PLUGINS_DIR = join(REPO_ROOT, "plugins");
 
 /**
@@ -63,7 +45,8 @@ export function gzipBytesOf(buf) {
 
 /** Plugin directory names that declare a view bundle (have vite.config.views.ts), sorted. */
 export function listViewBundlePlugins() {
-  if (!existsSync(PLUGINS_DIR)) return [];
+  if (!existsSync(PLUGINS_DIR))
+    throw new Error(`Missing measured plugins directory: ${PLUGINS_DIR}`);
   return readdirSync(PLUGINS_DIR, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
@@ -111,53 +94,3 @@ export function measureViewBundle(plugin) {
   }
   return { built: true, rawBytes, gzipBytes, files };
 }
-
-export function gitInfo() {
-  const run = (args) => {
-    try {
-      return execFileSync("git", args, {
-        cwd: REPO_ROOT,
-        encoding: "utf8",
-      }).trim();
-    } catch {
-      return null;
-    }
-  };
-  return {
-    branch: run(["rev-parse", "--abbrev-ref", "HEAD"]),
-    commit: run(["rev-parse", "--short", "HEAD"]),
-    dirty: !!run(["status", "--porcelain"]),
-  };
-}
-
-/**
- * Persist a result as timestamped JSON under results/<kpi>/ and update
- * results/<kpi>/latest.json. `nowIso` is supplied by the caller to keep this
- * module clock-free.
- */
-export function recordResult(kpi, payload, nowIso) {
-  const dir = join(RESULTS_ROOT, kpi);
-  mkdirSync(dir, { recursive: true });
-  const stamp = nowIso.replace(/[:.]/g, "-");
-  const record = { kpi, recordedAt: nowIso, git: gitInfo(), ...payload };
-  const file = join(dir, `${stamp}.json`);
-  writeFileSync(file, JSON.stringify(record, null, 2));
-  writeFileSync(join(dir, "latest.json"), JSON.stringify(record, null, 2));
-  return { file, record };
-}
-
-export function readLatest(kpi) {
-  const f = join(RESULTS_ROOT, kpi, "latest.json");
-  if (!existsSync(f)) return null;
-  try {
-    return JSON.parse(readFileSync(f, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-export function loadBudgets() {
-  return JSON.parse(readFileSync(join(HERE, "budgets.json"), "utf8"));
-}
-
-export { basename, existsSync, join, mkdirSync, readFileSync, writeFileSync };

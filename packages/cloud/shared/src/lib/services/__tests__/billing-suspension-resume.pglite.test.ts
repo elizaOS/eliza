@@ -13,6 +13,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -41,6 +42,7 @@ import { orgRateLimitOverrides } from "../../../db/schemas/org-rate-limit-overri
 import { orgStorageQuota } from "../../../db/schemas/org-storage-quota";
 import { organizationConfig } from "../../../db/schemas/organization-config";
 import { organizationEntitlements } from "../../../db/schemas/organization-entitlements";
+import { organizationPolicyAudit } from "../../../db/schemas/organization-policy-audit";
 import { organizations } from "../../../db/schemas/organizations";
 import { personalDedicatedFallbacks } from "../../../db/schemas/personal-dedicated-fallbacks";
 import { personalDedicatedUpgradeAuthorities } from "../../../db/schemas/personal-dedicated-upgrade-authorities";
@@ -49,14 +51,13 @@ import { subscriptionAllowancePeriods } from "../../../db/schemas/subscription-a
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
-import { AGENT_PRICING } from "../../constants/agent-pricing";
 
 const TEST_TIMEOUT = 300_000;
 const OWNER_ID = "10000000-0000-4000-8000-000000000042";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
-let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+let ProvisioningJobService: typeof import("@elizaos/cloud-shared/node").ProvisioningJobService;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
 
 let sequence = 0;
@@ -67,7 +68,7 @@ function unique(prefix: string): string {
 
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-  ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+  ({ ProvisioningJobService } = await import("@elizaos/cloud-shared/node"));
   ({ ElizaSandboxService } = await import("../eliza-sandbox"));
   const schema = {
     organizations,
@@ -116,6 +117,7 @@ beforeAll(async () => {
     ["billing_subscriptions", billingSubscriptions],
     ["billing_subscription_revisions", billingSubscriptionRevisions],
     ["organization_subscription_authorities", organizationSubscriptionAuthorities],
+    ["organization_policy_audit", organizationPolicyAudit],
     ["subscription_allowance_periods", subscriptionAllowancePeriods],
     ["org_rate_limit_overrides", orgRateLimitOverrides],
     ["organization_config", organizationConfig],
@@ -372,13 +374,95 @@ test(
     const { creditsService } = await import("../credits");
     const { billingHoldService } = await import("../billing-hold");
     const { checkAgentCreditGate } = await import("../agent-billing-gate");
-    const clawback = await creditsService.clawbackCredits({
-      organizationId: held.orgId,
-      amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
-      description: "refund clawback",
-      stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
-    });
+    const { runWithCloudBindingsAsync } = await import("../../runtime/cloud-bindings");
+    const { admitOrganizationInference } = await import("../organization-inference-admission");
+    const { readOrganizationQuotaPolicy } = await import("../organization-quota-policy");
+    const { inferenceAdmissionSnapshotFromPolicy } = await import(
+      "../inference-admission-snapshot"
+    );
+    const snapshot = {
+      ...inferenceAdmissionSnapshotFromPolicy(await readOrganizationQuotaPolicy(held.orgId)),
+      billingHold: (await billingHoldService.getState(held.orgId)).status === "held",
+    };
+    expect(snapshot.billingHold).toBe(false);
+    // The organization gate as the hold writer and the Worker admission see
+    // it: the standing fence (pending entries plus the committed generation
+    // floor) and a lease that refuses a superseded generation.
+    const pending = new Set<string>();
+    let floor = 0n;
+    const gatePaths: string[] = [];
+    const organizationGate = {
+      getByName() {
+        return {
+          async fetch(request: Request) {
+            const path = new URL(request.url).pathname;
+            gatePaths.push(path);
+            const body = (await request.json()) as {
+              mutationId?: string;
+              policyGeneration?: string;
+            };
+            if (path === "/policy-fence/begin") {
+              pending.add(String(body.mutationId));
+              return Response.json({ blocked: true });
+            }
+            if (path === "/policy-fence/commit" || path === "/policy-fence/abort") {
+              pending.delete(String(body.mutationId));
+              if (path === "/policy-fence/commit" && body.policyGeneration)
+                floor =
+                  BigInt(body.policyGeneration) > floor ? BigInt(body.policyGeneration) : floor;
+              return Response.json({ committed: true });
+            }
+            if (path === "/hydrate") return Response.json({ hydrated: true });
+            if (path.startsWith("/lease")) {
+              if (pending.size > 0 || BigInt(body.policyGeneration ?? "0") < floor)
+                return Response.json(
+                  { success: false, code: "inference_admission_policy_stale" },
+                  { status: 409 },
+                );
+              throw new Error("A held organization must stop before acquiring a lease");
+            }
+            throw new Error(`unexpected gate path ${path}`);
+          },
+        };
+      },
+    };
+    const clawback = await runWithCloudBindingsAsync(
+      { INFERENCE_ADMISSION_GATES: organizationGate },
+      () =>
+        creditsService.clawbackCredits({
+          organizationId: held.orgId,
+          amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
+          description: "refund clawback",
+          stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
+        }),
+    );
     expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
+    expect(gatePaths.slice(0, 2)).toEqual(["/policy-fence/begin", "/policy-fence/commit"]);
+    expect(pending.size).toBe(0);
+    expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
+
+    // A previously clear cached hold cannot lease after the hold commits: the
+    // gate refuses its superseded generation, admission refills the snapshot
+    // from the primary and refuses on the hold it now carries.
+    await expect(
+      runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
+        admitOrganizationInference({
+          context: {
+            organizationId: held.orgId,
+            userId: held.userId,
+            model: "openai/gpt-5-mini",
+            provider: "openai",
+            billingSource: "openai",
+            requestId: crypto.randomUUID(),
+          },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+          executionCtx: { waitUntil() {} },
+          admissionSnapshot: snapshot,
+        }),
+      ),
+    ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
 
     // Funds that land without settling the shortfall do not lift the hold.
     await creditsService.addCredits({
@@ -820,10 +904,34 @@ test(
       throw new Error("Expected a Dedicated cutback with an interval to reconcile");
     }
     expect(cutback.reconcile.dedicated_agent_id).toBe(account.agentId);
+    const sealScope = {
+      ...input,
+      dedicatedAgentId: account.agentId,
+      fallback: {
+        id: cutback.reconcile.id,
+        generation: cutback.reconcile.generation,
+        revision: cutback.reconcile.revision,
+        roomId: cutback.reconcile.journal_room_id,
+      },
+    };
+    expect(await fallback.resolvePersonalFallbackCutoverRecovery(sealScope)).toBe("pending");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...sealScope,
+        userId: crypto.randomUUID(),
+      }),
+    ).toBe("conflict");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...sealScope,
+        fallback: { ...sealScope.fallback, roomId: "fallback:other" },
+      }),
+    ).toBe("conflict");
     const recovered = await fallback.completePersonalFallbackRecovery({
       fallback: cutback.reconcile,
       receipt: { sourceMessageCount: 4, inserted: 4 },
     });
+    expect(await fallback.resolvePersonalFallbackCutoverRecovery(sealScope)).toBe("committed");
     expect(recovered).toMatchObject({
       state: "recovered",
       reconciled_message_count: 4,
@@ -861,6 +969,18 @@ test(
       }),
     ).rejects.toMatchObject({ code: "PERSONAL_DEDICATED_FALLBACK_CONFLICT" });
     expect((await route()).route).toBe("shared_fallback");
+    expect(
+      await fallback.resolvePersonalFallbackCutoverRecovery({
+        ...input,
+        dedicatedAgentId: account.agentId,
+        fallback: {
+          id: restoring.reconcile.id,
+          generation: restoring.reconcile.generation,
+          revision: restoring.reconcile.revision,
+          roomId: restoring.reconcile.journal_room_id,
+        },
+      }),
+    ).toBe("released");
     const rows = await fallbackRows(account);
     expect(rows.filter((row) => row.state !== "recovered")).toHaveLength(1);
   },
@@ -1167,7 +1287,9 @@ test(
         });
         expect(handback.route === "dedicated" && handback.dedicated.id).toBe(account.agentId);
         // Only the scoped journal was read, and it moved into the same agent.
-        expect(journal.rooms).toEqual([`${account.sourceAgentId}:${lapsed.roomId}`]);
+        expect(new Set(journal.rooms)).toEqual(
+          new Set([`${account.sourceAgentId}:${lapsed.roomId}`]),
+        );
         expect(imported).toHaveBeenCalledTimes(1);
         expect(imported.mock.calls[0]?.slice(0, 3)).toEqual([
           account.agentId,

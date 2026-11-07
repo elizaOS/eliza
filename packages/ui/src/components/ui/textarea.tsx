@@ -6,7 +6,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 const textareaVariants = cva(
   "w-full border text-sm pointer-coarse:text-[16px] resize-y transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",

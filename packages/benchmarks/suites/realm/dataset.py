@@ -22,7 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
 
-from benchmarks.realm.types import (
+from benchmarks.suites.realm.types import (
     MULTI_AGENT_PROBLEMS,
     PROBLEM_DESCRIPTIONS,
     PROBLEMS_WITH_DISRUPTIONS,

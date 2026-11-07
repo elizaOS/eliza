@@ -6,10 +6,10 @@
  */
 
 import {
+  readAliasedEnv,
   resolveAllowedOrigins,
   resolveRuntimePorts,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 /** Headers the native and browser app clients may send across the API boundary. */
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
@@ -17,6 +17,9 @@ export const CORS_ALLOWED_HEADERS = [
   "X-API-Token",
   "X-Api-Key",
   "X-ElizaOS-Client-Id",
+  "X-Eliza-Device-Id",
+  "X-Eliza-Device-Key",
+  "X-Eliza-Device-Capabilities",
   "X-ElizaOS-UI-Language",
   "X-ElizaOS-Token",
   "X-Eliza-Export-Token",

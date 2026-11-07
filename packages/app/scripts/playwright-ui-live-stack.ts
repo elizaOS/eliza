@@ -29,8 +29,9 @@ import os from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
+import { waitForChildExit } from "@elizaos/testing/fixtures";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildFirstRunRuntimeConfig } from "../../ui/src/first-run/first-run-config.ts";
+import { buildFirstRunRuntimeConfig } from "../../ui/src/first-run/first-run-config";
 import {
   createLiveRuntimeChildEnv,
   shouldSkipLiveStackAutoFirstRun,
@@ -40,6 +41,7 @@ import {
   selectLiveProviderAsync,
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.ts";
+import { signalSpawnedProcessTree } from "./lib/kill-process-tree.ts";
 import {
   attachSafeChildOutputObserver,
   formatSafeLiveStackDiagnostic,
@@ -752,36 +754,6 @@ async function startUiProxyServer(args: {
   return server;
 }
 
-async function waitForChildExit(
-  child: CapturedChildProcess,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
-}
-
 async function closeUiServer(uiServer: Server | null): Promise<void> {
   if (!uiServer) return;
   try {
@@ -985,7 +957,10 @@ async function ensureUiDistReady(): Promise<void> {
   const RENDERER_BUILD_TIMEOUT_MS = 1_080_000;
   const exited = await waitForChildExit(child, RENDERER_BUILD_TIMEOUT_MS);
   if (!exited) {
-    child.kill("SIGKILL");
+    // Bun's build script launches shells and compilers. Stop its owned tree
+    // before the launcher exits and reparents those descendants.
+    signalSpawnedProcessTree(child, "SIGKILL");
+    await waitForChildExit(child, 5_000);
     reportSafeProcessTimeout("renderer-build");
     throw new Error("App renderer build timed out; raw output suppressed.");
   }
@@ -1138,7 +1113,8 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
     const BUILD_TIMEOUT_MS = 300_000;
     const exited = await waitForChildExit(child, BUILD_TIMEOUT_MS);
     if (!exited) {
-      child.kill("SIGKILL");
+      signalSpawnedProcessTree(child, "SIGKILL");
+      await waitForChildExit(child, 5_000);
       reportSafeProcessTimeout("optional-plugin-build");
       throw new Error(
         "Optional live-stack plugin build timed out; raw output suppressed.",
@@ -1163,16 +1139,21 @@ async function startStubStack(): Promise<StartedStack> {
   try {
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
-    apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-        ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
+    apiChild = spawn(
+      "node",
+      ["--conditions=eliza-source", "--import", "tsx", UI_SMOKE_STUB_SCRIPT],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "0",
+          ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
+          TSX_TSCONFIG_PATH: path.join(REPO_ROOT, "tsconfig.json"),
+          ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
 
     attachSafeChildOutputObserver({
       child: apiChild,

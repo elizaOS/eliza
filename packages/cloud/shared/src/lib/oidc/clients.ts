@@ -1,7 +1,4 @@
-import {
-  CLOUD_RUNTIME_CLIENT,
-  CLOUD_RUNTIME_SCOPE,
-} from "@elizaos/core/contracts/cloud-runtime-request";
+import { CLOUD_RUNTIME_CLIENT, CLOUD_RUNTIME_SCOPE } from "@elizaos/contracts";
 /**
  * Relying-party registry for the OpenID Connect provider.
  *

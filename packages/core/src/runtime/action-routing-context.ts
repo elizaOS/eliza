@@ -1,25 +1,11 @@
-/**
- * Action-scoped routing context.
- *
- * The runtime wraps every action handler invocation in
- * {@link runWithActionRoutingContext}, exposing the executing action's
- * `modelClass` (if any) to any `useModel` call made transitively. The
- * `useModel` resolver reads {@link getActionRoutingContext} to decide whether
- * to reroute via the strategy registry in {@link ./action-model-routing}.
- *
- * Node.js: AsyncLocalStorage for async-safe propagation across `await`s
- * inside action handlers.
- * Node AsyncLocalStorage is required.
- *
- * Why a separate context (rather than threading an extra `useModel` param):
- *   - `useModel` callers inside action handlers are deep call chains — every
- *     helper would have to take an extra param. The async-context pattern
- *     keeps the call sites unchanged and back-compat clean.
- *   - The trajectory recorder already uses the same pattern; this matches.
- */
+/** AsyncLocalStorage propagates the executing action’s modelClass to nested useModel calls across asynchronous boundaries. */
 
-import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
+import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context";
+import { getAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";
+import type { Memory } from "../types/memory";
+import type { IAgentRuntime } from "../types/runtime";
+import type { State } from "../types/state";
 import { AsyncContextManager } from "../utils/async-context-manager";
 
 export interface ActionRoutingContext {
@@ -30,26 +16,24 @@ export interface ActionRoutingContext {
 	/** Trusted caller owns final synthesis; never inferred from tool arguments. */
 	readonly replyOwner?: "planner";
 	readonly messageId?: string;
-}
-
-interface IActionRoutingContextManager {
-	run<T>(
-		ctx: ActionRoutingContext | undefined,
-		fn: () => T | Promise<T>,
-	): T | Promise<T>;
-	active(): ActionRoutingContext | undefined;
+	/** Host-only current action provenance; never populated from tool arguments. */
+	readonly requestMessage?: Memory;
+	readonly requestState?: State;
+	readonly requestRuntime?: IAgentRuntime;
+	readonly hostAttemptId?: string;
+	/** Actual opaque executor attempt, never reconstructed from that string. */
+	readonly requestOperationAttempt?: BoundRequestOperationAttempt;
 }
 
 const MANAGER_KEY = Symbol.for("elizaos.actionRoutingContextManager");
 
-function initManagerSync(): IActionRoutingContextManager {
-	return new AsyncContextManager<ActionRoutingContext | undefined>();
-}
-
-function getOrCreate(): IActionRoutingContextManager {
+function getOrCreate(): AsyncContextManager<ActionRoutingContext | undefined> {
 	// Shared global slot is the single source of truth (no module-local cache),
 	// matching the trajectory context manager — see ambient-context.ts.
-	return getAmbientSingleton(MANAGER_KEY, initManagerSync);
+	return getAmbientSingleton(
+		MANAGER_KEY,
+		() => new AsyncContextManager<ActionRoutingContext | undefined>(),
+	);
 }
 
 export function runWithActionRoutingContext<T>(
@@ -72,14 +56,4 @@ export function runWithoutActionRoutingContext<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
 	return getOrCreate().run(undefined, fn);
-}
-
-/**
- * Test-only helper to inject a context manager (e.g. a deterministic stack
- * implementation). Not used in production.
- */
-export function setActionRoutingContextManager(
-	manager: IActionRoutingContextManager,
-): void {
-	setAmbientSingleton(MANAGER_KEY, manager);
 }

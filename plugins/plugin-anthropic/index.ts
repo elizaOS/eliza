@@ -274,4 +274,5 @@ export const anthropicPlugin: Plugin = {
 
 export default anthropicPlugin;
 
+export * from "./direct-media.ts";
 export * from "./utils/config";

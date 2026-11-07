@@ -77,7 +77,7 @@ while ($true) {
   $stream = $null
   $bitmap = $null
   try {
-    if ($null -eq $engine) { [Console]::Out.WriteLine('{"width":0,"height":0,"lines":[]}'); [Console]::Out.Flush(); continue }
+    if ($null -eq $engine) { [Console]::Out.WriteLine('{"width":0,"height":0,"lines":[],"error":"no-ocr-language"}'); [Console]::Out.Flush(); continue }
     $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($ImagePath)) ([Windows.Storage.StorageFile])
     $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
     $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])

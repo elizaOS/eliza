@@ -9,25 +9,20 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
-import {
-  getDefaultStylePreset,
-  getStylePresets,
-  normalizeCharacterLanguage,
-} from "@elizaos/core/character-presets";
-import {
-  deriveFirstRunCredentialPersistencePlan,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunCredentialInputs,
-} from "@elizaos/core/contracts/first-run-options";
+import { normalizeCharacterLanguage } from "@elizaos/core/protocol";
 import {
   type DeploymentTargetConfig,
+  deriveFirstRunCredentialPersistencePlan,
+  getDefaultStylePreset,
+  getStylePresets,
   type LinkedAccountFlagsConfig,
   normalizeDeploymentTargetConfig,
+  normalizeFirstRunCredentialInputs,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  PREMADE_VOICES,
   type ServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
-import { PREMADE_VOICES } from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { resolveProviderCredential } from "./credential-resolver";
 import type { FirstRunConfigWriteObserver } from "./first-run-rollback";
@@ -289,7 +284,6 @@ export function persistFirstRunDefaults(
       },
     };
   }
-  migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   saveElizaConfig(config);
   onConfigWrite?.(before, config);
   return adminEntityId;

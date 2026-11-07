@@ -222,7 +222,7 @@ test("wallet inventory controls update visible deterministic state", async ({
     }
     await route.fallback();
   });
-  const inventory = routeCaseByName("inventory app window");
+  const inventory = routeCaseByName("wallet app shell page");
 
   await openAppWindow(page, inventory);
   const walletSidebar = await ensurePageSidebarVisible(

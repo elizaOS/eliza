@@ -9,7 +9,7 @@ import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 const scrollAreaVariants = cva("relative overflow-hidden", {
   variants: {

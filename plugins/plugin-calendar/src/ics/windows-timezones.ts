@@ -3,7 +3,8 @@
  * Exchange serialize TZID with Windows display zone names ("Eastern Standard
  * Time"), which Intl rejects, so the parser consults this curated CLDR
  * windowsZones table (territory 001 primary mappings) whenever a raw TZID
- * fails IANA validation. Unresolvable zones return null so the caller can
+ * fails IANA validation. A libical TZID (a unique prefix and an IANA id) is
+ * read as that IANA id. Unresolvable zones return null so the caller can
  * quarantine the single event instead of the whole feed.
  */
 
@@ -23,12 +24,15 @@ const WINDOWS_TO_IANA: Record<string, string> = {
   "US Mountain Standard Time": "America/Phoenix",
   "Mountain Standard Time (Mexico)": "America/Mazatlan",
   "Mountain Standard Time": "America/Denver",
+  "British Columbia Standard Time": "America/Vancouver",
   "Yukon Standard Time": "America/Whitehorse",
+  "Alberta Standard Time": "America/Edmonton",
   "Central America Standard Time": "America/Guatemala",
   "Central Standard Time": "America/Chicago",
   "Easter Island Standard Time": "Pacific/Easter",
   "Central Standard Time (Mexico)": "America/Mexico_City",
   "Canada Central Standard Time": "America/Regina",
+  "Manitoba Standard Time": "America/Winnipeg",
   "SA Pacific Standard Time": "America/Bogota",
   "Eastern Standard Time (Mexico)": "America/Cancun",
   "Eastern Standard Time": "America/New_York",
@@ -172,14 +176,30 @@ function isValidIanaTimeZone(zone: string): boolean {
   }
 }
 
+// libical (the library of GNOME Evolution and other calendar programs) writes
+// a built-in zone as a unique prefix and the IANA id, for example
+// "/freeassociation.sourceforge.net/Europe/Berlin". These are the prefixes in
+// its icaltimezone.c: BUILTIN_TZID_PREFIX and the older glob_compat_tzids.
+const LIBICAL_TZID_PREFIXES: readonly RegExp[] = [
+  /^\/freeassociation\.sourceforge\.net\/(?:Tzfile\/)?/,
+  /^\/citadel\.org\/[^/]+\//,
+];
+
 /**
  * Resolve an untrusted ICS timezone identifier to an IANA zone: a valid IANA
- * id passes through unchanged, a Windows display name maps via CLDR, anything
- * else returns null so the caller can quarantine that event.
+ * id passes through unchanged, a libical id gives the IANA id after its
+ * prefix, a Windows display name maps via CLDR, anything else returns null so
+ * the caller can quarantine that event.
  */
 export function resolveIcsTimeZoneId(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   if (isValidIanaTimeZone(trimmed)) return trimmed;
+  for (const prefix of LIBICAL_TZID_PREFIXES) {
+    const location = trimmed.replace(prefix, "");
+    if (location !== trimmed) {
+      return isValidIanaTimeZone(location) ? location : null;
+    }
+  }
   return WINDOWS_TO_IANA_LOWERCASE.get(trimmed.toLowerCase()) ?? null;
 }

@@ -5,30 +5,33 @@
  * action can run on a small or local model while planning uses a larger model.
  *
  * Design constraints (AGENTS.md):
- *   - No runtime type-branching mess: each `ActionModelClass` is a strategy
- *     entry in {@link ACTION_MODEL_STRATEGIES}. New classes are additions to
- *     that table, not new `if/else` branches.
- *   - Strong typing: no `any`, no unsafe casts at the call sites.
- *   - When `action.modelClass` is absent, the resolver
- *     returns `null` and the runtime falls through to its existing behavior.
+ * - No runtime type-branching mess: each `ActionModelClass` is a strategy
+ * entry in {@link ACTION_MODEL_STRATEGIES}. New classes are additions to
+ * that table, not new `if/else` branches.
+ * - Strong typing: no `any`, no unsafe casts at the call sites.
+ * - When `action.modelClass` is absent, the resolver
+ * returns `null` and the runtime falls through to its existing behavior.
  *
  * Fallback chain (ascending cost / capability):
- *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
+ * `LOCAL → TEXT_SMALL → TEXT_LARGE`
  *
  * Failure semantics:
- *   - If the preferred model handler has a retryable provider failure, escalate
- *     and retry. The last step in the chain is terminal — its error is
- *     re-raised.
- *   - If the call returns a `confidence` field below the strategy's threshold,
- *     escalate one step up and retry. This is opt-in: returns without a
- *     `confidence` field are never re-evaluated.
+ * - If the preferred model handler has a retryable provider failure, escalate
+ * and retry. The last step in the chain is terminal — its error is
+ * re-raised.
+ * - If the call returns a `confidence` field below the strategy's threshold,
+ * escalate one step up and retry. This is opt-in: returns without a
+ * `confidence` field are never re-evaluated.
  */
 
-import { LOCAL_MODEL_PROVIDERS } from "../constants/secrets";
 import { isModelProviderFallbackError } from "../security/model-failure.ts";
+import { LOCAL_MODEL_PROVIDERS } from "../security/secrets";
 import type { ActionModelClass } from "../types/components";
-import type { ModelHandler, ModelRegistrationMetadata } from "../types/model";
-import { ModelType } from "../types/model";
+import {
+	type ModelHandler,
+	type ModelRegistrationMetadata,
+	ModelType,
+} from "../types/model";
 
 /**
  * Minimal capability view of a model registration, used by routing predicates.
@@ -85,23 +88,7 @@ export interface ActionModelRoutingStrategy {
 	readonly confidenceThreshold?: number;
 }
 
-/**
- * Name-only heuristic: does this provider *name* look like a local-inference
- * provider?
- *
- * @deprecated for classification decisions. Prefer {@link isLocalHandler},
- * which consumes the provider-declared `metadata.local` capability and only
- * falls back to this name heuristic for registrations that have not adopted the
- * flag yet. This function is retained as that explicitly-tested fallback (and
- * for the runtime streaming gate, which keys off the name for the
- * `eliza-router` special case). It is intentionally narrow.
- *
- * Sourced from {@link LOCAL_MODEL_PROVIDERS} (the single source of truth for
- * the canonical local providers list, also used by the secrets and pricing
- * layers) plus a substring pass for common local-OpenAI-compatible servers
- * (LM Studio, MLX, llama.cpp) so plugins registered under names like
- * `"lm-studio"` or `"mlx-lm"` still resolve when they omit the capability flag.
- */
+/** Name-based local-provider fallback for registrations without declared locality metadata. Prefer isLocalHandler for capability decisions. */
 export function isLocalProvider(provider: string): boolean {
 	const normalized = provider.toLowerCase();
 	if ((LOCAL_MODEL_PROVIDERS as readonly string[]).includes(normalized)) {
@@ -129,10 +116,10 @@ export function isLocalProvider(provider: string): boolean {
  * Predicate: is this registration a local-inference target?
  *
  * Capability-first classification. Precedence:
- *   1. If the provider declared `metadata.local` explicitly (`true`/`false`),
- *      that verdict wins — the owner metadata is authoritative.
- *   2. Otherwise fall back to the {@link isLocalProvider} name heuristic for
- *      providers that have not adopted the capability flag yet.
+ * 1. If the provider declared `metadata.local` explicitly (`true`/`false`),
+ * that verdict wins — the owner metadata is authoritative.
+ * 2. Otherwise fall back to the {@link isLocalProvider} name heuristic for
+ * providers that have not adopted the capability flag yet.
  *
  * This is the predicate the `LOCAL` routing strategy uses so a `LOCAL` request
  * never silently resolves to a cloud provider, and so providers can opt out of
@@ -151,10 +138,10 @@ export function isLocalHandler(candidate: ModelCapabilityView): boolean {
  * The strategy registry. Keyed by {@link ActionModelClass}.
  *
  * To add a new class, add it to the {@link ActionModelClass} union in
- * `types/components.ts` and add its entry here. Do not add `if (modelClass === ...)`
+ * `types/components.ts` and add its entry here. Do not add `if (modelClass ===...)`
  * branches at call sites — extend this table instead.
  */
-export const ACTION_MODEL_STRATEGIES: Readonly<
+const ACTION_MODEL_STRATEGIES: Readonly<
 	Record<ActionModelClass, ActionModelRoutingStrategy>
 > = {
 	LOCAL: {
@@ -181,7 +168,7 @@ export const ACTION_MODEL_STRATEGIES: Readonly<
  * the runtime's default resolution unchanged because they don't have a
  * meaningful small/large/local trichotomy at the action level.
  */
-export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
+const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TEXT_NANO,
 	ModelType.TEXT_SMALL,
 	ModelType.TEXT_MEDIUM,
@@ -195,30 +182,10 @@ export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Look up the routing strategy for an action's `modelClass`.
- *
- * Returns `undefined` when:
- *   - `modelClass` is undefined (back-compat path).
- *   - `modelClass` is a string that is not a registered key (forward-compat —
- *     the runtime treats unknown classes as "no preference" rather than
- *     throwing, so a plugin with a newer `MEDIUM` action descriptor running
- *     against an older runtime degrades to default behavior instead of
- *     crashing).
- */
-export function getActionModelStrategy(
-	modelClass: ActionModelClass | undefined,
-): ActionModelRoutingStrategy | undefined {
-	if (!modelClass) {
-		return undefined;
-	}
-	return ACTION_MODEL_STRATEGIES[modelClass];
-}
-
-/**
  * Should the runtime re-route this `useModel` call based on the action's
  * `modelClass`? Reroute only when:
- *   - The action has a `modelClass`.
- *   - The requested model type is in {@link ROUTABLE_TEXT_MODEL_TYPES}.
+ * - The action has a `modelClass`.
+ * - The requested model type is in {@link ROUTABLE_TEXT_MODEL_TYPES}.
  *
  * Returns the strategy if rerouting applies; otherwise `undefined`.
  */
@@ -226,10 +193,10 @@ export function maybeReroute(
 	modelClass: ActionModelClass | undefined,
 	requestedModelType: string,
 ): ActionModelRoutingStrategy | undefined {
-	if (!ROUTABLE_TEXT_MODEL_TYPES.has(requestedModelType)) {
+	if (!modelClass || !ROUTABLE_TEXT_MODEL_TYPES.has(requestedModelType)) {
 		return undefined;
 	}
-	return getActionModelStrategy(modelClass);
+	return ACTION_MODEL_STRATEGIES[modelClass];
 }
 
 /**
@@ -244,37 +211,6 @@ export interface ResolvedActionModel {
 	readonly handler: ModelHandler["handler"];
 	readonly modelType: string;
 	readonly provider: string;
-}
-
-/**
- * Locate a handler matching one routing step against an `(modelType → handlers)`
- * registry. Honors `providerFilter` if set; otherwise picks the highest-priority
- * registered handler for `modelType`.
- *
- * Caller-supplied `lookup` is the runtime's `models` map (or an equivalent
- * read-only view). This indirection lets the resolver be unit-tested without
- * a full {@link AgentRuntime} instance.
- */
-export function resolveStep(
-	step: ActionModelRoutingStep,
-	lookup: (modelType: string) => readonly ModelHandler[] | undefined,
-): ResolvedActionModel | undefined {
-	const handlers = lookup(step.modelType);
-	if (!handlers || handlers.length === 0) {
-		return undefined;
-	}
-	const providerFilter = step.providerFilter;
-	const match = providerFilter
-		? handlers.find((h) => providerFilter(h))
-		: handlers[0];
-	if (!match) {
-		return undefined;
-	}
-	return {
-		handler: match.handler,
-		modelType: step.modelType,
-		provider: match.provider,
-	};
 }
 
 /**
@@ -322,7 +258,7 @@ export function resolveChain(
  * accepted as-is — i.e., the absence of a confidence signal is never treated
  * as low confidence (false negatives would cause unnecessary escalation).
  */
-export function isLowConfidence(
+function isLowConfidence(
 	result: unknown,
 	threshold: number | undefined,
 ): boolean {
@@ -363,35 +299,27 @@ export async function executeChainWithFallback<TResult>(
 			"executeChainWithFallback: chain is empty — no handlers resolved",
 		);
 	}
+	let attempted = 0;
 	let lastError: unknown;
-	for (let i = 0; i < chain.length; i++) {
-		const resolved = chain[i];
-		if (!resolved) {
-			continue;
-		}
+	for (const resolved of chain) {
+		attempted += 1;
 		try {
 			const result = await invoke(resolved);
-			const isLast = i === chain.length - 1;
-			if (!isLast && isLowConfidence(result, threshold)) {
-				// Don't return yet — escalate.
-				lastError = new Error(
-					`Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
-				);
-				continue;
+			if (attempted === chain.length || !isLowConfidence(result, threshold)) {
+				return result;
 			}
-			return result;
+			lastError = new Error(
+				`Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
+			);
 		} catch (err) {
 			// error-policy:J4 Only provider availability failures permit another
 			// attempt. Cancellation, admission and invalid results stay terminal.
 			if (!isModelProviderFallbackError(err, resolved.modelType)) throw err;
 			lastError = err;
-			// Continue to the next step in the chain.
 		}
 	}
-	if (lastError instanceof Error) {
-		throw lastError;
-	}
-	throw new Error(
-		`executeChainWithFallback: all ${chain.length} step(s) failed without a thrown error`,
-	);
+	// Every step failed or escalated. Providers throw a mix of Error instances
+	// and bare { status, error } objects: re-raise whatever the terminal step
+	// threw.
+	throw lastError;
 }

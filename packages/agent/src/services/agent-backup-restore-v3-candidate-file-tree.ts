@@ -17,7 +17,7 @@ import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupRestoreV3OperationControl,
   compareAgentBackupCaptureV2FilePaths,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFsControl,
   AgentBackupRestoreV3CandidateFsError,

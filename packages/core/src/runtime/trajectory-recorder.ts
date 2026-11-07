@@ -1,33 +1,30 @@
 /** Generic trajectory contracts and value projection. File persistence is assistant-owned. */
+
 import { ElizaError } from "../errors";
 import {
 	projectCompleteToolArgsForModel,
 	projectCompleteToolValueForModel,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import type { RecordedStageKind } from "../services/trajectory-semantic-stage";
 import type { EvaluationResult } from "../types/components";
 import type {
 	ChatMessage,
 	GenerateTextResult,
 	ToolChoice,
 } from "../types/model";
-import { toWellFormedUnicode } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/unicode";
 import { resolveTrajectoryGate } from "./trajectory-gate";
 import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 	type TrajectoryProviderAttribution,
 } from "./trajectory-provider-attribution";
-import type { RecordedStageKind } from "./trajectory-stage-kind";
 
 export {
 	RECORDED_STAGE_KINDS,
 	type RecordedStageKind,
-} from "./trajectory-stage-kind";
-
-// ---------------------------------------------------------------------------
-// Schema (mirrors PLAN.md §18.1)
-// ---------------------------------------------------------------------------
+} from "../services/trajectory-semantic-stage";
 
 export interface RecordedUsage {
 	promptTokens?: number;
@@ -67,11 +64,7 @@ export interface RecordedModelCall {
 	 * field so unknown spend cannot be mistaken for free inference.
 	 */
 	costUsd?: number;
-	/**
-	 * Snapshot identifier of the price table used to compute `costUsd`.
-	 * Closes M40 / W1-X1. Bumped whenever any rate in the canonical
-	 * pricing table at `features/trajectories/pricing.ts` changes.
-	 */
+	/** Price-table snapshot identifier used to compute costUsd. */
 	priceTableId?: string;
 	/** Provider order selected for the composeState call that fed this model input. */
 	providerOrder?: string[];
@@ -85,7 +78,7 @@ export interface RecordedModelCall {
 	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
-/** Legacy marker retained so historical trajectory rows remain readable. */
+/** Loss marker in persisted trajectory rows. */
 export interface RecordedTruncationMarker {
 	field: "input" | "output" | "error" | "args" | "result";
 	originalBytes: number;
@@ -122,9 +115,7 @@ export interface RecordedToolStage {
 	 * for backwards compatibility with existing readers.
 	 */
 	errorText?: string;
-	/**
-	 * Legacy loss markers read from historical rows; new captures omit them.
-	 */
+	/** Loss markers in imported rows; captures preserve complete input. */
 	truncated?: RecordedTruncationMarker[];
 }
 
@@ -285,7 +276,7 @@ export interface RecordedTrajectory {
 	roomId?: string;
 	runId?: string;
 	scenarioId?: string;
-	// Correlation header (#13775) joining this file trajectory to the DB row and
+	// Correlation header joining this file trajectory to the DB row and
 	// any orchestrator task. `traceId` is minted at the root turn or inherited
 	// from a spawning parent; the rest are set when the recorder runs inside a
 	// sub-agent. Optional because pre-rollout trajectories carry none.
@@ -305,10 +296,6 @@ export interface RecordedTrajectory {
 	metrics: RecordedTrajectoryMetrics;
 }
 
-// ---------------------------------------------------------------------------
-// TrajectoryRecorder interface (PLAN.md §18.2)
-// ---------------------------------------------------------------------------
-
 export interface StartTrajectoryInput {
 	agentId: string;
 	roomId?: string;
@@ -319,7 +306,7 @@ export interface StartTrajectoryInput {
 	// group trajectories per scenario without inferring from filesystem layout.
 	runId?: string;
 	scenarioId?: string;
-	// Correlation header (#13775). `traceId` is passed from the root turn
+	// Correlation header. `traceId` is passed from the root turn
 	// (message.ts); when absent the recorder falls back to env, then mints one.
 	// The rest are inherited from a spawning parent's env when this recorder
 	// runs inside a sub-agent.
@@ -351,31 +338,18 @@ export interface TrajectoryRecorder {
 	list(opts?: ListTrajectoriesOptions): Promise<RecordedTrajectory[]>;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 export interface RecorderLogger {
 	warn?: (context: unknown, message?: string) => void;
 	debug?: (context: unknown, message?: string) => void;
 	error?: (context: unknown, message?: string) => void;
 }
 
-/**
- * Whether the file recorder is enabled. Delegates to the single gate resolver
- * (trajectory-gate.ts) so the file recorder and the DB logger can no longer
- * disagree (#13775). Prod is now opt-in and test is off — the prior
- * always-on-unless-`=0` default is retired in favor of the SOC2 O-5 policy.
- */
+/** Uses the shared trajectory-persistence gate for file recording. */
 export function isTrajectoryRecordingEnabled(): boolean {
 	return resolveTrajectoryGate().enabled;
 }
 
 const RECORD_SANITIZE_MAX_DEPTH = 40;
-
-function normalizeRecordString(value: string): string {
-	return toWellFormedUnicode(value);
-}
 
 function sanitizeForRecord(
 	value: unknown,
@@ -386,7 +360,7 @@ function sanitizeForRecord(
 		return "[MaxDepth]";
 	}
 	if (value === null) return null;
-	if (typeof value === "string") return normalizeRecordString(value);
+	if (typeof value === "string") return toWellFormedUnicode(value);
 	if (typeof value === "number") {
 		return Number.isFinite(value) ? value : null;
 	}
@@ -531,52 +505,24 @@ export interface ToolStageIOCapture {
  */
 export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 	const out: ToolStageIOCapture = {};
-
 	if (args.input !== undefined) {
-		out.input = toWellFormedUnicode(encodeTrajectoryFieldValue(args.input));
+		out.input = encodeWellFormedTrajectoryField(args.input);
 	}
 	if (args.output !== undefined) {
-		out.output = toWellFormedUnicode(encodeTrajectoryFieldValue(args.output));
+		out.output = encodeWellFormedTrajectoryField(args.output);
 	}
 	if (args.error !== undefined) {
-		out.errorText = toWellFormedUnicode(encodeTrajectoryFieldValue(args.error));
+		out.errorText = encodeWellFormedTrajectoryField(args.error);
 	}
 	return out;
 }
 
-// ---------------------------------------------------------------------------
-// Skill invocation I/O capture (W1-T5 / M13)
-//
-// Mirrors `captureToolStageIO` at the skill (USE_SKILL) seam.
-// ---------------------------------------------------------------------------
-
-export interface SkillInvocationIOInput {
-	args?: unknown;
-	result?: unknown;
-}
-
-export interface SkillInvocationIOCapture {
-	args?: string;
-	result?: string;
-}
-
-/**
- * Encode complete skill invocation args/result for a per-skill trajectory
- * record. Fields that are `undefined` after encoding are omitted so the
- * persisted shape stays minimal.
- */
-export function captureSkillInvocationIO(
-	input: SkillInvocationIOInput,
-): SkillInvocationIOCapture {
-	const out: SkillInvocationIOCapture = {};
-
-	if (input.args !== undefined) {
-		out.args = toWellFormedUnicode(encodeTrajectoryFieldValue(input.args));
-	}
-	if (input.result !== undefined) {
-		out.result = toWellFormedUnicode(encodeTrajectoryFieldValue(input.result));
-	}
-	return out;
+/** Non-string values are sanitized (well-formed strings) and JSON.stringify
+ * escapes lone surrogates, so only raw strings need re-normalizing. */
+function encodeWellFormedTrajectoryField(value: unknown): string {
+	return typeof value === "string"
+		? toWellFormedUnicode(value)
+		: encodeTrajectoryFieldValue(value);
 }
 
 /**
@@ -634,20 +580,14 @@ export function projectRecordedStageToolDiagnostics(
 		// no longer provable against the persisted prompt — drop the offsets via
 		// the canonical fallback and keep contribution identity.
 		if (typeof stage.model.prompt === "string") {
-			const projectedPrompt = redactText(stage.model.prompt);
-			if (projectedPrompt !== stage.model.prompt) {
-				stage.model.prompt = projectedPrompt;
-			}
+			stage.model.prompt = redactText(stage.model.prompt);
 		}
 		stage.model.response = redactText(stage.model.response);
 		if (Array.isArray(stage.model.messages)) {
-			const projectedMessages = projectCompleteToolValueForModel(
+			stage.model.messages = projectCompleteToolValueForModel(
 				stage.model.messages,
 				redactText,
 			) as RecordedModelCall["messages"];
-			if (projectedMessages !== stage.model.messages) {
-				stage.model.messages = projectedMessages;
-			}
 		}
 		const attributionInputAfter = canonicalPromptForModelCall({
 			messages: stage.model.messages,
@@ -669,10 +609,6 @@ export function projectRecordedStageToolDiagnostics(
 		) as RecordedEvaluationStage;
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Trajectory finalization guard
-// ---------------------------------------------------------------------------
 
 export interface FinalizeTrajectoryRecordingOptions {
 	recorder: TrajectoryRecorder;
@@ -702,7 +638,10 @@ export async function finalizeTrajectoryRecording(
 		// error-policy:J7 Finalization is diagnostic and cannot replace the turn;
 		// it must still surface the trajectory left unterminated.
 		opts.logger?.warn?.(
-			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
+			{
+				err: err instanceof Error ? err.message : String(err),
+				trajectoryId: opts.trajectoryId,
+			},
 			"[TrajectoryRecorder] endTrajectory failed",
 		);
 		opts.reportError?.("TrajectoryRecorder.finalize", err, {

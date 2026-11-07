@@ -91,6 +91,11 @@ export function validateTikTokCampaignBidControls(
   };
 }
 
+/** TikTok accepts the campaign budget as a decimal in the account currency, not in cents. */
+function tiktokBudgetAmount(amount: number): number {
+  return Number(amount.toFixed(2));
+}
+
 function mapCtaToTikTok(cta?: string): string {
   const mapping: Record<string, string> = {
     learn_more: "LEARN_MORE",
@@ -130,6 +135,29 @@ function splitTikTokCampaignId(
 
 function tiktokScheduleTime(date: Date): string {
   return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+/**
+ * TikTok keeps delivery dates on the ad group, not the campaign. A campaign
+ * with an end date becomes a bounded `SCHEDULE_START_END` ad group; one without
+ * runs `SCHEDULE_FROM_NOW`. The start never lies in the past: an ad group added
+ * to a campaign that already started begins now. The caller refuses a campaign
+ * whose end date has passed, so the end always follows the start.
+ */
+function tiktokAdGroupSchedule(
+  input: Pick<CreateCreativeInput, "campaignStartDate" | "campaignEndDate">,
+  now: Date,
+): Record<string, string> {
+  const start =
+    input.campaignStartDate && input.campaignStartDate > now ? input.campaignStartDate : now;
+  if (!input.campaignEndDate) {
+    return { schedule_type: "SCHEDULE_FROM_NOW", schedule_start_time: tiktokScheduleTime(start) };
+  }
+  return {
+    schedule_type: "SCHEDULE_START_END",
+    schedule_start_time: tiktokScheduleTime(start),
+    schedule_end_time: tiktokScheduleTime(input.campaignEndDate),
+  };
 }
 
 function firstString(...values: unknown[]): string | undefined {
@@ -235,8 +263,8 @@ export const tiktokAdsProvider: AdProvider = {
 
     const objective = mapObjectiveToTikTok(input.objective);
 
-    // Convert budget to cents (TikTok uses smallest currency unit)
-    const budgetCents = Math.round(input.budgetAmount * 100);
+    // TikTok reads `budget` as a decimal amount in the advertiser's account currency.
+    const budget = tiktokBudgetAmount(input.budgetAmount);
 
     const data = await tiktokAdsRequest<{ campaign_id: string }>(
       "/campaign/create/",
@@ -248,7 +276,7 @@ export const tiktokAdsProvider: AdProvider = {
           campaign_name: input.name,
           objective_type: objective,
           budget_mode: input.budgetType === "daily" ? "BUDGET_MODE_DAY" : "BUDGET_MODE_TOTAL",
-          budget: budgetCents,
+          budget,
           operation_status: "DISABLE", // Start paused
         }),
       },
@@ -269,6 +297,15 @@ export const tiktokAdsProvider: AdProvider = {
     externalCampaignId: string,
     input: UpdateCampaignInput,
   ): Promise<AdProviderCampaignResult> {
+    if (input.startDate !== undefined || input.endDate !== undefined) {
+      // TikTok campaigns have no dates; the schedule lives on each ad group.
+      return {
+        success: false,
+        error:
+          "TikTok campaign dates cannot be changed through this adapter; the schedule is set on the ad group when a creative is created",
+      };
+    }
+
     const parts = externalCampaignId.split("/");
     if (parts.length !== 2) {
       return {
@@ -288,7 +325,7 @@ export const tiktokAdsProvider: AdProvider = {
     }
 
     if (input.budgetAmount) {
-      updatePayload.budget = Math.round(input.budgetAmount * 100);
+      updatePayload.budget = tiktokBudgetAmount(input.budgetAmount);
     }
 
     await tiktokAdsRequest("/campaign/update/", credentials.accessToken, {
@@ -377,6 +414,14 @@ export const tiktokAdsProvider: AdProvider = {
       name: input.name,
     });
     const { advertiserId, campaignId } = splitTikTokCampaignId(accountId, externalCampaignId);
+    const now = new Date();
+    if (input.campaignEndDate && input.campaignEndDate <= now) {
+      // An ad group needs a delivery window in the future; the campaign's has closed.
+      return {
+        success: false,
+        error: "The campaign's end date has passed; extend the campaign before adding a creative",
+      };
+    }
     const primaryMedia = input.media[0];
     if (primaryMedia && !primaryMedia.providerAssetId) {
       return {
@@ -399,8 +444,7 @@ export const tiktokAdsProvider: AdProvider = {
           promotion_type: "WEBSITE",
           placement_type: "PLACEMENT_TYPE_AUTOMATIC",
           budget_mode: "BUDGET_MODE_INFINITE",
-          schedule_type: "SCHEDULE_START_END",
-          schedule_start_time: tiktokScheduleTime(new Date()),
+          ...tiktokAdGroupSchedule(input, now),
           billing_event: "CPC",
           bid_type: "BID_TYPE_NO_BID",
           operation_status: "DISABLE",

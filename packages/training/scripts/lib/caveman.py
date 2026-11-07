@@ -6,7 +6,7 @@ filler adverbs, lemmatize verbs to base, lowercase, collapse whitespace.
 Goal: 60-75% token reduction without semantic loss for short reasoning text.
 
 Usage:
-    from scripts.lib.caveman import compress
+    from eliza_training.lib.caveman import compress
     short = compress("I'll list the available time slots so the user can pick one.")
     # -> "list available time slots user pick one"
 

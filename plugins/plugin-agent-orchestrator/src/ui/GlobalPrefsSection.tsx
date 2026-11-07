@@ -9,8 +9,9 @@ import {
   SelectItem,
   SelectValue,
   SettingsControls,
+  useAppSelector,
 } from "@elizaos/ui";
-import { useAppSelector } from "@elizaos/ui/state";
+
 import { useState } from "react";
 import {
   type AgentSelectionStrategy,

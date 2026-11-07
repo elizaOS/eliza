@@ -28,11 +28,13 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { extractUrls } from "../../../utils/extract-urls.ts";
+import { decodeBasicHtmlEntities } from "../../../utils/html-entities.ts";
+import { decodeHttpText } from "../../../utils/http-text.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
 interface LinkRecord {
@@ -72,78 +74,101 @@ function getMessageSource(message: Memory): string {
   return typeof source === "string" && source.length > 0 ? source : "unknown";
 }
 
-function extractUrls(text: string): string[] {
-  const matches = text.match(URL_REGEX);
-  if (!matches) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const urls: string[] = [];
-  for (const raw of matches) {
-    const trimmed = stripTrailingPunctuation(raw);
-    if (!trimmed) {
-      continue;
-    }
-    if (seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    urls.push(trimmed);
-  }
-  return urls;
-}
-
-function stripTrailingPunctuation(url: string): string {
-  let result = url;
-  while (result.length > 0 && /[.,;:!?\])}>]/.test(result.slice(-1))) {
-    result = result.slice(0, -1);
-  }
-  return result;
-}
-
 function hasUrl(message: Memory): boolean {
-  const text = getMessageText(message);
-  if (!text) {
-    return false;
-  }
-  URL_REGEX.lastIndex = 0;
-  return URL_REGEX.test(text);
+  return extractUrls(getMessageText(message)).length > 0;
 }
 
 function extractTitle(html: string): string {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (titleMatch?.[1]) {
-    return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim();
+  const title = extractTitleElement(html);
+  if (title) {
+    return decodeBasicHtmlEntities(title).replace(/\s+/g, " ").trim();
   }
-  const ogMatch = html.match(
-    /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
-  );
-  if (ogMatch?.[1]) {
-    return decodeHtmlEntities(ogMatch[1]).trim();
+  // HTML attributes are unordered. Requiring property before content drops
+  // <meta content="Hello World" property="og:title"> and stores an empty title.
+  const ogTitle = extractOpenGraphTitle(html);
+  if (ogTitle) {
+    return decodeBasicHtmlEntities(ogTitle).trim();
   }
   return "";
 }
 
-function decodeHtmlEntities(value: string): string {
-  const namedEntities: Record<string, string> = {
-    amp: "&",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-    "#39": "'",
-  };
-  return value.replace(
-    /&(amp|lt|gt|quot|#39|nbsp);/gi,
-    (entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
-  );
+// The page is untrusted. A tag regex retried at every `<` rescans the rest of a
+// page that never closes the tag, so these scans find each end once.
+
+/** Text of the first `<title ...>...</title>`. */
+function extractTitleElement(html: string): string {
+  const open = /<title/i.exec(html);
+  if (!open) return "";
+  const start = html.indexOf(">", open.index + open[0].length);
+  if (start < 0) return "";
+  const close = /<\/title>/gi;
+  close.lastIndex = start + 1;
+  const end = close.exec(html);
+  return end ? html.slice(start + 1, end.index) : "";
+}
+
+/**
+ * For each index, the `>` that ends a tag whose attributes start there, with
+ * quoted values skipped; -1 when the tag never closes. Built right to left.
+ */
+function tagEnds(html: string): Int32Array {
+  const ends = new Int32Array(html.length + 1).fill(-1);
+  let nextDouble = -1;
+  let nextSingle = -1;
+  for (let index = html.length - 1; index >= 0; index--) {
+    const char = html[index];
+    if (char === ">") ends[index] = index;
+    else if (char === '"')
+      ends[index] = nextDouble < 0 ? -1 : (ends[nextDouble + 1] as number);
+    else if (char === "'")
+      ends[index] = nextSingle < 0 ? -1 : (ends[nextSingle + 1] as number);
+    else ends[index] = ends[index + 1] as number;
+    if (char === '"') nextDouble = index;
+    if (char === "'") nextSingle = index;
+  }
+  return ends;
+}
+
+function extractOpenGraphTitle(html: string): string {
+  const ends = tagEnds(html);
+  const meta = /<meta(?=[\s/>])/gi;
+  for (let match = meta.exec(html); match; match = meta.exec(html)) {
+    const end = ends[meta.lastIndex] as number;
+    if (end < 0) continue;
+    const tag = html.slice(match.index, end + 1);
+    meta.lastIndex = end + 1;
+    let property: string | undefined;
+    let content: string | undefined;
+    // Consume complete quoted values so title text cannot masquerade as an attribute.
+    for (const attribute of tag.matchAll(
+      /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
+    )) {
+      const name = attribute[1].toLowerCase();
+      const value = attribute[2] ?? attribute[3] ?? attribute[4];
+      if (name === "property") property ??= value;
+      if (name === "content") content ??= value;
+    }
+    if (property?.toLowerCase() === "og:title" && content) return content;
+  }
+  return "";
 }
 
 function stripTags(html: string): string {
-  return stripHtmlRawTextElements(html)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = stripHtmlRawTextElements(html);
+  let output = "";
+  let copied = 0;
+  for (let open = text.indexOf("<"); open >= 0; ) {
+    const close = text.indexOf(">", open + 1);
+    if (close < 0) break;
+    if (close > open + 1) {
+      output += `${text.slice(copied, open)} `;
+      copied = close + 1;
+      open = text.indexOf("<", close + 1);
+    } else {
+      open = text.indexOf("<", open + 1);
+    }
+  }
+  return (output + text.slice(copied)).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -197,7 +222,10 @@ async function fetchLinkPreview(
     if (!/text\/html|application\/xhtml/i.test(contentType)) {
       return null;
     }
-    const html = await response.text();
+    const html = decodeHttpText(
+      new Uint8Array(await response.arrayBuffer()),
+      contentType,
+    );
     const title = extractTitle(html);
     const bodyChunk = stripTags(html);
     return { title, bodyChunk };

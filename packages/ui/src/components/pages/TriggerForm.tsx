@@ -6,9 +6,10 @@
  * validation (e.g. cron-expression checking) only.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
-import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
+import type { TriggerSummary } from "../../api/client-types-core";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   detectUiHostCapabilities,
@@ -25,6 +26,7 @@ import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
 import {
+  cronTimeZone,
   DURATION_UNITS,
   durationToMs,
   durationUnitLabel,
@@ -33,10 +35,12 @@ import {
   localizedExecutionStatus,
   nextRunsForCron,
   nextRunsForInterval,
+  onceInstant,
   type TranslateFn,
   type TriggerFormState,
   validateCronExpression,
 } from "./trigger-form-utils";
+import { triggerRunMissed } from "./workflow-run-occurrence";
 
 const EVENT_KIND_OPTIONS = [
   {
@@ -185,7 +189,7 @@ export interface TriggerFormProps {
   /** All triggers (used for looking up the editing trigger's metadata). */
   triggers: TriggerSummary[];
   /** Run history keyed by trigger ID. */
-  triggerRunsById: Record<string, import("../../api").TriggerRunRecord[]>;
+  triggerRunsById: Record<string, import("@elizaos/core").TriggerRunRecord[]>;
   /** Translation function. */
   t: TranslateFn;
   /** Currently selected trigger ID. */
@@ -1228,7 +1232,7 @@ function SchedulePreview({
     if (form.triggerType === "once") {
       const raw = form.scheduledAtIso.trim();
       if (!raw || !Number.isFinite(Date.parse(raw))) return null;
-      const date = new Date(raw);
+      const date = new Date(onceInstant(form));
       const isPast = date.getTime() <= now.getTime();
       return { kind: "once" as const, date, isPast };
     }
@@ -1236,7 +1240,12 @@ function SchedulePreview({
     if (form.triggerType === "cron") {
       const result = validateCronExpression(form.cronExpression);
       if (!result.ok) return null;
-      const dates = nextRunsForCron(form.cronExpression, 3, now);
+      const dates = nextRunsForCron(
+        form.cronExpression,
+        3,
+        now,
+        cronTimeZone(form.timezone),
+      );
       if (dates.length === 0) return null;
       return { kind: "dates" as const, dates };
     }
@@ -1249,16 +1258,7 @@ function SchedulePreview({
     }
 
     return null;
-  }, [
-    form.triggerType,
-    form.durationValue,
-    form.durationUnit,
-    form.scheduledAtIso,
-    form.cronExpression,
-    form.eventKind,
-    previewNow,
-    t,
-  ]);
+  }, [form, previewNow, t]);
 
   if (!preview) return null;
 
@@ -1422,42 +1422,58 @@ function TriggerRunHistory({
               {runs
                 .slice()
                 .reverse()
-                .map((run) => (
-                  <div key={run.triggerRunId} className="text-sm">
-                    <div className="flex items-start gap-3">
-                      <StatusDot
-                        status={run.status}
-                        className="mt-1 shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                          <span className="font-medium text-txt">
-                            {localizedExecutionStatus(run.status, t)}
-                          </span>
-                          <span className="text-xs text-muted">
-                            {formatDateTime(run.finishedAt, {
-                              fallback: t("triggersview.emDash"),
-                            })}
-                          </span>
+                .map((run) => {
+                  const missed = triggerRunMissed(run, (at) =>
+                    formatDateTime(at, { fallback: t("triggersview.emDash") }),
+                  );
+                  return (
+                    <div
+                      key={run.triggerRunId}
+                      className="text-sm"
+                      data-run-occurrence={missed ? "missed" : undefined}
+                    >
+                      <div className="flex items-start gap-3">
+                        <StatusDot
+                          status={run.status}
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <span className="font-medium text-txt">
+                              {missed
+                                ? missed.label
+                                : localizedExecutionStatus(run.status, t)}
+                            </span>
+                            <span className="text-xs text-muted">
+                              {formatDateTime(run.finishedAt, {
+                                fallback: t("triggersview.emDash"),
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-xs-tight text-muted/80">
+                            {formatDurationMs(run.latencyMs)} &middot;{" "}
+                            <span className="font-mono text-muted/60">
+                              {run.source}
+                            </span>
+                          </div>
+                          {missed && (
+                            <div className="mt-1 text-xs-tight text-muted">
+                              {missed.notice}
+                            </div>
+                          )}
+                          {run.error && (
+                            <Alert
+                              variant="inlineDanger"
+                              className="mt-2.5 whitespace-pre-wrap leading-relaxed"
+                            >
+                              {run.error}
+                            </Alert>
+                          )}
                         </div>
-                        <div className="text-xs-tight text-muted/80">
-                          {formatDurationMs(run.latencyMs)} &middot;{" "}
-                          <span className="font-mono text-muted/60">
-                            {run.source}
-                          </span>
-                        </div>
-                        {run.error && (
-                          <Alert
-                            variant="inlineDanger"
-                            className="mt-2.5 whitespace-pre-wrap leading-relaxed"
-                          >
-                            {run.error}
-                          </Alert>
-                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           );
         })()}

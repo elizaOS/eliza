@@ -1,13 +1,14 @@
-# Operator E2E Tests (Chainsaw)
+# Operator integration scenarios
 
-End-to-end tests for the Eliza Server Operator using [Chainsaw](https://kyverno.github.io/chainsaw/) (Kyverno).
+Chainsaw scenarios exercise Server CRDs, generated workloads, scaling, routing,
+PostgreSQL, Redis, gateway delivery, and crash recovery. They require the isolated
+local Kubernetes stack prepared by `../local/setup.sh`, including its operator,
+KEDA, and CNPG controllers. They are not the database PITR drill.
 
-This directory is part of `packages/cloud/infra`.
+Run these scenarios with the installed Chainsaw test runner against that local
+cluster. Never target a shared or production cluster: the scenarios create,
+scale, and delete workloads in `eliza-agents`.
 
-No package build script is defined; this workspace is consumed from source.
-
-Test isolated database backup/recovery from the repository root (requires PostgreSQL 16 and pgBackRest):
-
-```bash
-bun run --cwd packages/cloud/infra test:pitr
-```
+The separate database recovery drill is `bun run --cwd packages/cloud/infra test:pitr`
+from the repository root. Cloud Tests owns Go tests and Python/shell syntax checks;
+cluster scenarios remain an operator-run integration lane.

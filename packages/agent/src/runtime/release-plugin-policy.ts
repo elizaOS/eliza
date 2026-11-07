@@ -41,6 +41,7 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   // reports the runtime ready — the app renders no UI at all.
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-inbox",
+  "@elizaos/plugin-maps",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-calendar",
   "@elizaos/plugin-todos",

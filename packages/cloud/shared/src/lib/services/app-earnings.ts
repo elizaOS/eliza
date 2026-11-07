@@ -161,19 +161,18 @@ export class AppEarningsService {
       offset?: number;
       type?: "inference_markup" | "purchase_share" | "withdrawal" | "adjustment";
     },
-  ): Promise<AppEarningsTransaction[]> {
-    if (options?.type) {
-      return await appEarningsRepository.listTransactionsByType(
-        appId,
-        options.type,
-        options?.limit || 50,
-      );
-    }
-
+  ): Promise<{ transactions: AppEarningsTransaction[]; hasMore: boolean }> {
+    // An omitted or non-finite limit is the default page of 50. An explicit
+    // finite limit, including 0, is a page — `limit || 50` treated 0 as missing,
+    // and `Math.max(0, NaN)` is `NaN`.
+    const rawLimit = options?.limit;
+    const limit =
+      typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : 50;
     return await appEarningsRepository.listTransactions(
       appId,
-      options?.limit || 50,
+      limit,
       options?.offset || 0,
+      options?.type,
     );
   }
 

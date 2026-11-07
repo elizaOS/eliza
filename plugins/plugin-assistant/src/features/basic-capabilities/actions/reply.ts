@@ -14,7 +14,7 @@ import {
   type State,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 import { composePromptFromState } from "../../../text/template-rendering.js";
 import { replyTemplate } from "../prompts.js";
@@ -142,6 +142,101 @@ function readTextParam(
   const value = params?.text ?? opts.text;
   return typeof value === "string" ? value : undefined;
 }
+/**
+ * Planner-path twin of the Stage-1 `core.simple_completed_side_effect_claim`
+ * reroute: a REPLY that claims a completed scheduling/save side effect is
+ * fabricated unless some tool actually succeeded earlier in this turn
+ * (observed live, #16941: a bare REPLY shipped "Saved! ✅ Your book report
+ * plan is now set up as reminders" with zero tool calls). Failing the step
+ * BEFORE the callback keeps the fabricated text off the wire and feeds the
+ * violation back into the planner loop, where the model can run the real
+ * action or rephrase honestly.
+ *
+ * Returns the failed step for ungrounded text. Otherwise returns the turn's
+ * effect receipts and, when the text is an action-owned outcome, the receipt
+ * ids it is bound to. Every REPLY branch that sends caller-written text runs it.
+ */
+function groundReplyText(
+  runtime: IAgentRuntime,
+  previousResults: readonly ActionResult[],
+  text: string,
+):
+  | { rejected: ActionResult }
+  | {
+      rejected?: undefined;
+      allTurnEffectReceipts: ReturnType<typeof mergeEffectReceipts>;
+      groundedEffectReceiptIds?: readonly string[];
+    } {
+  const allTurnEffectReceipts = mergeEffectReceipts(
+    ...previousResults.map((result) => result.effectReceipts),
+  );
+  const mutationResults = previousResults.filter((result) => {
+    const actionName =
+      typeof result.data?.actionName === "string"
+        ? result.data.actionName.trim()
+        : "";
+    if (actionName.toUpperCase() === "REPLY") return false;
+    const registeredAction = runtime.actions.find(
+      (action) => action.name.toUpperCase() === actionName.toUpperCase(),
+    );
+    return (
+      result.effectReceipts !== undefined ||
+      result.userFacingEffectReceiptIds !== undefined ||
+      tagsRequireEffectReceipts(registeredAction?.tags)
+    );
+  });
+  let groundedEffectReceiptIds: readonly string[] | undefined;
+  for (const previousResult of previousResults) {
+    if (
+      (
+        previousResult.data as
+          | {
+              actionName?: string;
+            }
+          | undefined
+      )?.actionName === "REPLY" ||
+      previousResult.userFacingText?.trim() !== text
+    ) {
+      continue;
+    }
+    const boundReceipts = resolveUserFacingEffectReceipts(
+      previousResult,
+      allTurnEffectReceipts,
+    );
+    if (boundReceipts) {
+      groundedEffectReceiptIds = boundReceipts.map(
+        (receipt) => receipt.receiptId,
+      );
+      break;
+    }
+  }
+  if (
+    !groundedEffectReceiptIds &&
+    (mutationResults.length > 0 || replyClaimsCompletedSideEffect(text))
+  ) {
+    const guidance =
+      mutationResults.length > 0
+        ? "A mutation-capable action ran this turn, but REPLY text is not the action-owned canonical outcome bound to its effect receipts. Use the exact userFacingText from that action result."
+        : "REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
+    return {
+      rejected: {
+        success: false,
+        text: guidance,
+        values: {
+          success: false,
+          error: "FABRICATED_SIDE_EFFECT_CLAIM",
+        },
+        data: {
+          actionName: "REPLY",
+          error: "FABRICATED_SIDE_EFFECT_CLAIM",
+          rejectedText: text,
+        },
+        error: new Error(guidance),
+      },
+    };
+  }
+  return { allTurnEffectReceipts, groundedEffectReceiptIds };
+}
 const baseDescription =
   "Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. Do NOT use REPLY to send to a different channel/person or to run an email/inbox workflow \u2014 use MESSAGE (action=send) for a directed send to another channel or DM, MESSAGE inbox operations for triage/drafts, and POST to publish to a public feed.";
 const extendedDescription = baseDescription.includes("questions[]")
@@ -164,14 +259,13 @@ export const replyAction = {
     {
       name: "text",
       description:
-        "Reply text. Omit with questions absent to compose from state.",
+        "Reply text. With questions, sent as the lead-in above them. Omit with questions absent to compose from state.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "questions",
-      description:
-        "Every needed structured question: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
+      description: `Structured questions, at most ${MAX_QUESTIONS}: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true. Omit or leave empty for a plain text reply.`,
       required: false,
       schema: {
         type: "array",
@@ -212,8 +306,13 @@ export const replyAction = {
     responses?: Memory[],
   ): Promise<ActionResult> => {
     // Structured-question branch.
+    // An empty array carries no question: strict tool schemas make the planner
+    // emit [] for an unused optional array, so it means "plain text reply".
     const rawQuestions = readQuestionsParam(_options);
-    if (rawQuestions !== undefined) {
+    if (
+      rawQuestions !== undefined &&
+      !(Array.isArray(rawQuestions) && rawQuestions.length === 0)
+    ) {
       if (!Array.isArray(rawQuestions)) {
         return {
           success: false,
@@ -226,10 +325,7 @@ export const replyAction = {
           error: new Error("questions must be an array when provided"),
         };
       }
-      if (
-        rawQuestions.length < MIN_QUESTIONS ||
-        rawQuestions.length > MAX_QUESTIONS
-      ) {
+      if (rawQuestions.length > MAX_QUESTIONS) {
         return {
           success: false,
           text: `questions must contain ${MIN_QUESTIONS}-${MAX_QUESTIONS} items, got ${rawQuestions.length}`,
@@ -260,7 +356,21 @@ export const replyAction = {
         }
         questions.push(parsed);
       }
-      const text = renderQuestions(questions);
+      // text and questions may be sent together: text is the lead-in the
+      // caller wrote for the questions, so it is delivered above them.
+      const leadIn = readTextParam(_options)?.trim();
+      if (leadIn) {
+        // The lead-in is caller-written reply text, so it passes the same
+        // side-effect claim check as a plain text reply before it is sent.
+        const grounding = groundReplyText(
+          runtime,
+          _options?.actionContext?.previousResults ?? [],
+          leadIn,
+        );
+        if (grounding.rejected) return grounding.rejected;
+      }
+      const rendered = renderQuestions(questions);
+      const text = leadIn ? `${leadIn}\n\n${rendered}` : rendered;
       logger.debug(
         {
           src: "plugin:basic-capabilities:action:reply:questions",
@@ -351,7 +461,10 @@ export const replyAction = {
         }
       }
     }
-    const parsedJson = parseJSONObjectFromText(response);
+    // Caller text is the reply. The JSON parse, the markup filter and the
+    // planner fallback below read model output only.
+    const callerText = directText?.trim() ?? "";
+    const parsedJson = callerText ? null : parseJSONObjectFromText(response);
     const thoughtValue = parsedJson?.thought;
     const textValue = parsedJson?.text;
     const thought: string =
@@ -359,83 +472,13 @@ export const replyAction = {
     const parsedText = typeof textValue === "string" ? textValue.trim() : "";
     const rawText = response.trim();
     const text =
+      callerText ||
       parsedText ||
       plannerReplyFallback ||
       (rawText.startsWith("<") ? "" : rawText);
-    // Planner-path twin of the Stage-1 `core.simple_completed_side_effect_claim`
-    // reroute: a REPLY that claims a completed scheduling/save side effect is
-    // fabricated unless some tool actually succeeded earlier in this turn
-    // (observed live, #16941: a bare REPLY shipped "Saved! ✅ Your book report
-    // plan is now set up as reminders" with zero tool calls). Failing the step
-    // BEFORE the callback keeps the fabricated text off the wire and feeds the
-    // violation back into the planner loop, where the model can run the real
-    // action or rephrase honestly.
-    const allTurnEffectReceipts = mergeEffectReceipts(
-      ...previousResults.map((result) => result.effectReceipts),
-    );
-    const mutationResults = previousResults.filter((result) => {
-      const actionName =
-        typeof result.data?.actionName === "string"
-          ? result.data.actionName.trim()
-          : "";
-      if (actionName.toUpperCase() === "REPLY") return false;
-      const registeredAction = runtime.actions.find(
-        (action) => action.name.toUpperCase() === actionName.toUpperCase(),
-      );
-      return (
-        result.effectReceipts !== undefined ||
-        result.userFacingEffectReceiptIds !== undefined ||
-        tagsRequireEffectReceipts(registeredAction?.tags)
-      );
-    });
-    let groundedEffectReceiptIds: readonly string[] | undefined;
-    for (const previousResult of previousResults) {
-      if (
-        (
-          previousResult.data as
-            | {
-                actionName?: string;
-              }
-            | undefined
-        )?.actionName === "REPLY" ||
-        previousResult.userFacingText?.trim() !== text
-      ) {
-        continue;
-      }
-      const boundReceipts = resolveUserFacingEffectReceipts(
-        previousResult,
-        allTurnEffectReceipts,
-      );
-      if (boundReceipts) {
-        groundedEffectReceiptIds = boundReceipts.map(
-          (receipt) => receipt.receiptId,
-        );
-        break;
-      }
-    }
-    if (
-      !groundedEffectReceiptIds &&
-      (mutationResults.length > 0 || replyClaimsCompletedSideEffect(text))
-    ) {
-      const guidance =
-        mutationResults.length > 0
-          ? "A mutation-capable action ran this turn, but REPLY text is not the action-owned canonical outcome bound to its effect receipts. Use the exact userFacingText from that action result."
-          : "REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
-      return {
-        success: false,
-        text: guidance,
-        values: {
-          success: false,
-          error: "FABRICATED_SIDE_EFFECT_CLAIM",
-        },
-        data: {
-          actionName: "REPLY",
-          error: "FABRICATED_SIDE_EFFECT_CLAIM",
-          rejectedText: text,
-        },
-        error: new Error(guidance),
-      };
-    }
+    const grounding = groundReplyText(runtime, previousResults, text);
+    if (grounding.rejected) return grounding.rejected;
+    const { allTurnEffectReceipts, groundedEffectReceiptIds } = grounding;
     const responseContent = {
       thought,
       text,

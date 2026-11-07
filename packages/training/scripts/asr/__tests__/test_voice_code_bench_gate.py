@@ -6,13 +6,11 @@ and publishable-report requirements without committing benchmark rows or audio.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 ASR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ASR_DIR))
 
-import voice_code_bench_gate as gate  # noqa: E402
+import eliza_training.asr.voice_code_bench_gate as gate  # noqa: E402
 
 
 def _row(audio_id: str = "contact_routing_001") -> gate.VoiceCodeBenchRow:

@@ -14,7 +14,7 @@ import {
   withoutManagedAgentGithubBinding,
 } from "./eliza-agent-config";
 import { oauthService } from "./oauth";
-import { provisioningJobService } from "./provisioning-jobs";
+import { provisioningJobService } from "./provisioning-job-queue";
 
 export interface ManagedAgentGithubStatus {
   configured: boolean;

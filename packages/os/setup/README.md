@@ -30,3 +30,9 @@ Test from the repository root:
 ```bash
 bun run --cwd packages/os/setup test
 ```
+
+The public package entrypoint contains browser UI; `/contracts` exposes portable
+Android types and `/node` exposes the host backend. Internal imports stay direct.
+iOS sideloading uses one host credential session: authentication returns an attempt
+token that must accompany 2FA, planning and execution. Execution consumes the
+server-owned plan; clients must receive an explicit success terminal event.

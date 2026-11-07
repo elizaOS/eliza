@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -20,8 +19,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lib.trajectory_normalizer import (  # noqa: E402
+from benchmarks.lib.trajectory_normalizer import (  # noqa: E402
     CanonicalEntry,
+    TrajectoryFormatError,
+    _read_jsonl_entries,
     align_by_step,
     cli,
     normalize_eliza_jsonl,
@@ -67,7 +68,7 @@ def test_eliza_passthrough(tmp_path: Path) -> None:
     assert entries[1].boundary == "vercel_ai_sdk.streamText"
 
 
-def test_eliza_passthrough_skips_blank_and_malformed_lines(tmp_path: Path) -> None:
+def test_eliza_passthrough_rejects_malformed_lines(tmp_path: Path) -> None:
     src = tmp_path / "eliza.jsonl"
     src.write_text(
         "\n".join(
@@ -87,9 +88,8 @@ def test_eliza_passthrough_skips_blank_and_malformed_lines(tmp_path: Path) -> No
         + "\n",
         encoding="utf-8",
     )
-    entries = normalize_eliza_jsonl(src, benchmark_id="b", task_id="t")
-    assert len(entries) == 1
-    assert entries[0].step_index == 0
+    with pytest.raises(TrajectoryFormatError, match="invalid JSON"):
+        normalize_eliza_jsonl(src, benchmark_id="b", task_id="t")
 
 
 def test_eliza_passthrough_preserves_native_metadata_and_cache_stats(
@@ -331,7 +331,12 @@ def test_write_canonical_jsonl_roundtrips(tmp_path: Path) -> None:
             response={
                 "text": "x",
                 "toolCalls": [
-                    {"name": "f", "arguments": {"deep": {"k": [1, 2]}}, "id": "i", "result": None}
+                    {
+                        "name": "f",
+                        "arguments": {"deep": {"k": [1, 2]}},
+                        "id": "i",
+                        "result": None,
+                    }
                 ],
             },
             agent_id="hermes",
@@ -363,7 +368,7 @@ def test_write_canonical_jsonl_roundtrips(tmp_path: Path) -> None:
 
     parsed = [json.loads(ln) for ln in lines]
     for original, roundtrip in zip(entries, parsed):
-        assert roundtrip == asdict(original)
+        assert CanonicalEntry.from_row(roundtrip) == original
 
 
 def test_write_canonical_jsonl_creates_parent_dir(tmp_path: Path) -> None:
@@ -451,14 +456,15 @@ def test_cli_normalize_openclaw_from_json(tmp_path: Path) -> None:
     assert parsed[1]["step_index"] == 1
 
 
-def test_cli_diff_outputs_aligned_pairs(tmp_path: Path) -> None:
+@pytest.mark.parametrize("steps", [(0, 1, 2), (3, 7, 11)])
+def test_cli_diff_outputs_aligned_pairs(tmp_path: Path, steps: tuple[int, ...]) -> None:
     a_path = tmp_path / "a.jsonl"
     b_path = tmp_path / "b.jsonl"
     write_canonical_jsonl(
-        [CanonicalEntry(step_index=i, agent_id="a") for i in range(2)], a_path
+        [CanonicalEntry(step_index=i, agent_id="a") for i in steps[:2]], a_path
     )
     write_canonical_jsonl(
-        [CanonicalEntry(step_index=i, agent_id="b") for i in range(3)], b_path
+        [CanonicalEntry(step_index=i, agent_id="b") for i in steps], b_path
     )
 
     result = subprocess.run(
@@ -477,6 +483,7 @@ def test_cli_diff_outputs_aligned_pairs(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert len(payload) == 3
+    assert [pair["step"] for pair in payload] == list(steps)
     assert payload[2]["a"] is None
     assert payload[2]["b"]["agent_id"] == "b"
 
@@ -485,3 +492,73 @@ def test_cli_requires_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["trajectory_normalizer"])
     with pytest.raises(SystemExit):
         cli()
+
+
+def test_native_context_and_extensions_survive_roundtrip(tmp_path: Path) -> None:
+    messages = [
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}]},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "call-1", "function": {"name": "lookup", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "call-1", "content": "complete result"},
+        {"role": "assistant", "content": "answer"},
+    ]
+    entries = normalize_openclaw_response({"messages": messages, "tools": [{"name": "lookup"}]}, benchmark_id="b", task_id="t")
+    assert entries[-1].request["messages"] == messages[:-1]
+    assert entries[-1].request["tools"] == [{"name": "lookup"}]
+    src = tmp_path / "canonical.jsonl"
+    row = {"format": "eliza_native_v1", "request": {}, "response": {}, "timestamp_ms": 0,
+           "metadata": {"important": True}, "cacheStats": {"hits": 7}, "future_field": [1, 2]}
+    _write_jsonl(src, [row])
+    entry = normalize_eliza_jsonl(src, benchmark_id="b", task_id="t")[0]
+    assert entry.timestamp_ms == 0
+    write_canonical_jsonl([entry], src)
+    assert _read_jsonl_entries(src) == [entry]
+    assert json.loads(src.read_text())["future_field"] == [1, 2]
+
+
+def test_hermes_trailing_tool_evidence_is_retained_as_incomplete(tmp_path: Path) -> None:
+    src = tmp_path / "samples.jsonl"
+    row = {"messages": [{"from": "human", "value": "question"},
+                        {"from": "gpt", "value": "", "tool_calls": [{"id": "c", "function": {"name": "f", "arguments": "{}"}}]},
+                        {"from": "tool", "value": "tail", "tool_call_id": "c"}], "tools": [{"name": "f"}]}
+    _write_jsonl(src, [row])
+    entry = normalize_hermes_samples_jsonl(src, benchmark_id="b", task_id="t")[0]
+    assert entry.response == {}
+    assert entry.request["messages"][-1] == {"role": "tool", "content": "tail", "tool_call_id": "c"}
+    assert entry.request["messages"][1]["tool_calls"] == row["messages"][1]["tool_calls"]
+    assert entry.request["tools"] == row["tools"]
+    assert entry.metadata == {"native": row, "complete": False}
+
+
+def test_alignment_uses_recorded_step_indices() -> None:
+    left = CanonicalEntry(step_index=2)
+    right = CanonicalEntry(step_index=3)
+    assert align_by_step([left], [right]) == [(left, None), (None, right)]
+    with pytest.raises(TrajectoryFormatError, match="Duplicate"):
+        align_by_step([left, left], [])
+
+
+@pytest.mark.parametrize("prefix", [[], [{"role": "assistant", "content": "working"}]])
+def test_openclaw_unfinished_transcript_remains_explicit(prefix) -> None:
+    row = {"messages": prefix + [{"role": "user", "content": "still pending"}], "tools": []}
+    entries = normalize_openclaw_response(row, benchmark_id="b", task_id="t")
+    assert entries[-1].request == row
+    assert entries[-1].response == {}
+    assert entries[-1].metadata == {"native": row, "complete": False}
+
+
+@pytest.mark.parametrize("calls", [{}, [None], [{"arguments": {}}], [{"function": {"name": 4}}]])
+def test_malformed_tool_calls_fail_explicitly(calls, tmp_path: Path) -> None:
+    with pytest.raises(TrajectoryFormatError):
+        normalize_openclaw_response({"messages": [{"role": "assistant", "tool_calls": calls}]}, benchmark_id="b", task_id="t")
+    path = tmp_path / "samples.jsonl"
+    _write_jsonl(path, [{"messages": [{"from": "gpt", "tool_calls": calls}]}])
+    with pytest.raises(TrajectoryFormatError):
+        normalize_hermes_samples_jsonl(path, benchmark_id="b", task_id="t")
+
+
+def test_hermes_structured_assistant_content_stays_structured(tmp_path: Path) -> None:
+    content = [{"type": "text", "text": "answer"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]
+    path = tmp_path / "samples.jsonl"
+    _write_jsonl(path, [{"messages": [{"from": "gpt", "value": content}]}])
+    entry = normalize_hermes_samples_jsonl(path, benchmark_id="b", task_id="t")[0]
+    assert entry.response == {"content": content}

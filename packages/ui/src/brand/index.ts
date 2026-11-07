@@ -11,15 +11,6 @@
  * script will produce.
  */
 
-/**
- * Canonical external URLs for every Eliza surface. Import from here instead
- * of hardcoding strings so a domain change is a one-line edit.
- */
-export {
-  EXTERNAL_URLS,
-  type ExternalUrlKey,
-} from "@elizaos/core/config/public-endpoints";
-
 export const BRAND_COLORS = {
   blue: "#0B35F1",
   orange: "#FF5800",
@@ -27,8 +18,6 @@ export const BRAND_COLORS = {
   black: "#000000",
   gray: "#D1D0D4",
 } as const;
-
-export type BrandColor = keyof typeof BRAND_COLORS;
 
 /**
  * Per-surface theme. Each maps to a `.theme-*` class defined in
@@ -54,11 +43,6 @@ export const SURFACE_THEMES = {
 
 export type Surface = keyof typeof SURFACE_THEMES;
 
-export const FONT_STACK =
-  '"Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
-
-export const FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
-
 /**
  * Default public-relative paths for the synced assets. Each consumer that
  * runs the sync script ends up with files at exactly these paths.
@@ -70,23 +54,6 @@ export const BRAND_PATHS = {
   concepts: "/brand/concepts",
   background: "/brand/background",
   favicons: "/brand/favicons",
-} as const;
-
-export const BRAND_FAVICONS = {
-  ico: "/brand/favicons/favicon.ico",
-  svg: "/brand/favicons/favicon.svg",
-  png16: "/brand/favicons/favicon-16x16.png",
-  png32: "/brand/favicons/favicon-32x32.png",
-  appleTouchIcon: "/brand/favicons/apple-touch-icon.png",
-  androidChrome192: "/brand/favicons/android-chrome-192x192.png",
-  androidChrome512: "/brand/favicons/android-chrome-512x512.png",
-} as const;
-
-// Only the poster frame is source-owned (assets/background/); the loop videos
-// shipped exclusively in the retired eliza-archive overlay (#16290), so their
-// paths are gone rather than pointing at files no checkout can produce.
-export const CLOUD_BACKGROUND_ASSETS = {
-  poster: "/brand/background/clouds_background.jpg",
 } as const;
 
 /**
@@ -115,18 +82,4 @@ export const LOGO_FILES = {
   markWhiteBlueBg: "logo_white_bluebg.svg",
   markWhiteOrangeBg: "logo_white_orangebg.svg",
   markWhiteGrayBg: "logo_white_graybg.svg",
-} as const;
-
-export type LogoVariant = keyof typeof LOGO_FILES;
-
-export const BANNER_FILES = {
-  eliza: "eliza_banner.svg",
-  cloud: "elizacloud_banner.svg",
-  os: "elizaos_banner.svg",
-} as const;
-
-export const OG_EMBED_FILES = {
-  eliza: "eliza_ogembed.png",
-  cloud: "elizacloud_ogembed.png",
-  os: "elizaos_ogembed.png",
 } as const;

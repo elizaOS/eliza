@@ -95,4 +95,16 @@ export class NodeRedisAdapter implements CacheRedisClient {
   llen(key: string): Promise<number> {
     return this.client.lLen(key);
   }
+
+  rpoplpush(source: string, destination: string): Promise<string | null> {
+    return this.client.lMove(source, destination, "RIGHT", "LEFT");
+  }
+
+  lrem(key: string, count: number, value: string): Promise<number> {
+    return this.client.lRem(key, count, value);
+  }
+
+  lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.client.lRange(key, start, stop);
+  }
 }

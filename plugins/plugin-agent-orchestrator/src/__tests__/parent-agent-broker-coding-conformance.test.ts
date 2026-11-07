@@ -16,7 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
-import { createTestRuntimeWithModelProvider } from "@elizaos/testing";
+import { createTestRuntimeWithModelProvider } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import {

@@ -43,6 +43,29 @@ afterEach(async () => {
 });
 
 describe("docs gate", () => {
+  it("checks rendered heading anchors without counting fenced examples", async () => {
+    const repoRoot = await makeRepo();
+    await fs.writeFile(
+      path.join(repoRoot, "docs", "target.md"),
+      "```md\n# Section\n# Only in code\n```\n\n# Section\n# The run_receipt tool\n# run__receipt\n# Using _draft mode_ today\n",
+    );
+    const index = path.join(repoRoot, "docs", "index.md");
+    const links =
+      "[section](./target.md#section)\n[tool](./target.md#the-run_receipt-tool)\n[double](./target.md#run__receipt)\n[emphasis](./target.md#using-draft-mode-today)\n";
+    await fs.writeFile(index, links);
+    expect(checkDocs({ repoRoot }).errors).toEqual([]);
+    await fs.writeFile(
+      index,
+      `${links}[false heading](./target.md#only-in-code)\n[false duplicate](./target.md#section-1)\n`,
+    );
+    const result = checkDocs({ repoRoot });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toHaveLength(2);
+    expect(
+      result.errors.every((error) => error.type === "missing-anchor"),
+    ).toBe(true);
+  });
+
   it("fails missing local markdown file links", async () => {
     const repoRoot = await makeRepo();
     await fs.writeFile(

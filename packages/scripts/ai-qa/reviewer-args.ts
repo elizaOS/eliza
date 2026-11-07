@@ -2,6 +2,7 @@
  * Defines the fail-closed command-line contract shared by AI-QA reviewer
  * entrypoints before they inspect credentials, call a model, or write evidence.
  */
+import { parseCanonicalInt } from "../lib/cli-numbers.ts";
 
 function requireUnique(seen, argument) {
   if (seen.has(argument)) {
@@ -50,13 +51,7 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
       } else if (argument === "--verdict-md") {
         options.verdictMd = value;
       } else {
-        const concurrency = Number(value);
-        if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
-          throw new Error(
-            `--concurrency must be a positive safe integer (received ${JSON.stringify(value)})`,
-          );
-        }
-        options.concurrency = concurrency;
+        options.concurrency = parseCanonicalInt(value, "--concurrency");
       }
       continue;
     }

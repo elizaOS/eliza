@@ -7,9 +7,8 @@
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
-
-import { CONFIG_SELECT_FLOATING_LAYER_NAME } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
+import { CONFIG_SELECT_FLOATING_LAYER_NAME } from "../../utils/floating-layers";
 
 const Select = SelectPrimitive.Root;
 

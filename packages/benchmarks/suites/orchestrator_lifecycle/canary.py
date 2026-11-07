@@ -294,9 +294,8 @@ def build_canary_plan(
         "system_hint_sha256": ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
         "source_fingerprint_sha256": source_fingerprint,
     }
-    execution_namespace = (
-        "orchestrator-lifecycle-canary-v1-"
-        + canonical_json_sha256(execution_contract)
+    execution_namespace = "orchestrator-lifecycle-canary-v1-" + canonical_json_sha256(
+        execution_contract
     )
     task_ids = {
         harness: "orchestrator-lifecycle-"
@@ -308,9 +307,7 @@ def build_canary_plan(
     if not all(OPAQUE_TASK_ID_RE.fullmatch(value) for value in task_ids.values()):
         raise CanaryError("Canary generated a non-opaque task id")
     output_root = root / "benchmark_results"
-    checkpoint_root = (
-        output_root / ".subscription-checkpoints" / execution_namespace
-    )
+    checkpoint_root = output_root / ".subscription-checkpoints" / execution_namespace
     return CanaryPlan(
         workspace_root=root,
         output_root=output_root,
@@ -335,7 +332,7 @@ def _canary_source_fingerprint(workspace_root: Path) -> str:
     repository_root = workspace_root
     candidates = (
         workspace_root / "suites" / "orchestrator_lifecycle",
-        workspace_root / "suites" / "claude-subscription-gateway",
+        workspace_root / "harnesses" / "transports" / "claude-subscription-gateway",
         workspace_root / "harnesses" / "eliza",
         workspace_root / "harnesses" / "hermes",
         workspace_root / "harnesses" / "openclaw",
@@ -381,7 +378,9 @@ def check_canary_storage(plan: CanaryPlan) -> dict[str, object]:
         free_bytes = int(shutil.disk_usage(plan.workspace_root).free)
     except OSError as error:
         # error-policy:J2 an unreadable filesystem reserve cannot be treated as safe.
-        raise CanaryError("Lifecycle canary storage preflight is unavailable") from error
+        raise CanaryError(
+            "Lifecycle canary storage preflight is unavailable"
+        ) from error
     payload: dict[str, object] = {
         "checked_at": datetime.now(UTC).isoformat(),
         "path": str(plan.workspace_root.resolve()),
@@ -448,9 +447,7 @@ def _normalized_tasks_gateway_schema_sha256(
 
 
 def _load_canary_prompt(workspace_root: Path) -> str:
-    request_path = (
-        workspace_root / "suites" / "orchestrator_lifecycle" / CANARY_REQUEST
-    )
+    request_path = workspace_root / "suites" / "orchestrator_lifecycle" / CANARY_REQUEST
     try:
         payload = json.loads(request_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -1832,8 +1829,7 @@ def _validate_eliza_system_hint_attestation(
         or attestation.get("system_hint_sha256")
         != ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256
         or attestation.get("model_boundary_call_count") != expected_call_count
-        or attestation.get("model_boundary_attested_call_count")
-        != expected_call_count
+        or attestation.get("model_boundary_attested_call_count") != expected_call_count
         or attestation.get("model_boundary_hint_occurrence_count")
         != expected_call_count
         or attestation.get("exact_once_per_model_call") is not True
@@ -1970,8 +1966,7 @@ def _load_gateway_records(
         or invalid_count
         or diagnostics.get("audit_ignored_torn_tail_bytes") not in (0, None)
         or (
-            require_durable
-            and diagnostics.get("audit_chain_mode") != "sha256-chain-v2"
+            require_durable and diagnostics.get("audit_chain_mode") != "sha256-chain-v2"
         )
     ):
         raise CanaryError("Gateway audit failed bounded integrity validation")
@@ -2146,7 +2141,11 @@ def validate_gateway_stages(
         if workspace_root is not None
         else Path(__file__).resolve().parents[2]
     )
-    prompt = public_prompt if public_prompt is not None else _load_canary_prompt(content_root)
+    prompt = (
+        public_prompt
+        if public_prompt is not None
+        else _load_canary_prompt(content_root)
+    )
     content_contract = build_lifecycle_gateway_content_contract(
         content_root,
         public_user_turns=[prompt],
@@ -2156,9 +2155,7 @@ def validate_gateway_stages(
     for harness in HARNESSES:
         tool_calls = ["TASKS"]
         model_types = (
-            dict(EXPECTED_ELIZA_MODEL_TYPE_CALL_COUNTS)
-            if harness == "eliza"
-            else {}
+            dict(EXPECTED_ELIZA_MODEL_TYPE_CALL_COUNTS) if harness == "eliza" else {}
         )
         lifecycle_contract = evaluate_lifecycle_gateway_execution(
             harness=harness,
@@ -2262,24 +2259,6 @@ def validate_gateway_stages(
         }
     )
     return summary
-
-
-def _validate_gateway_audit(
-    plan: CanaryPlan,
-    audit_path: Path,
-) -> tuple[dict[str, object], dict[str, object]]:
-    records = _load_gateway_records(audit_path, require_durable=True)
-    stage_summary = validate_gateway_stages(
-        records,
-        workspace_root=plan.workspace_root,
-        public_prompt=plan.prompt,
-    )
-    lane_summaries: dict[str, object] = {}
-    for harness in HARNESSES:
-        summary = summarize_subscription_gateway_audit(audit_path, harness=harness)
-        _validate_gateway_lane_summary(plan, harness, summary)
-        lane_summaries[harness] = summary
-    return lane_summaries, stage_summary
 
 
 def _validate_gateway_lane_summary(
@@ -2551,7 +2530,9 @@ def run_live_canary(plan: CanaryPlan) -> Path:
         final_status = (
             gateway_pause.status.value
             if gateway_pause is not None
-            else "failed" if failure is not None else "succeeded"
+            else "failed"
+            if failure is not None
+            else "succeeded"
         )
         final_manifest: dict[str, object] = {
             **plan.public_payload(),
@@ -2615,7 +2596,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "live_execution": False,
                     "next_command": (
                         "PYTHONPATH=packages /opt/miniconda3/bin/python -m "
-                        "benchmarks.orchestrator_lifecycle.canary --model "
+                        "benchmarks.suites.orchestrator_lifecycle.canary --model "
                         f"{plan.model} --live"
                     ),
                 },

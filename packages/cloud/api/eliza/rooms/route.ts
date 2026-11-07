@@ -2,13 +2,13 @@
  * /api/eliza/rooms — agent room CRUD.
  *
  * Workers sidecar boundary: depends on the elizaOS agent runtime
- * (`packages/lib/services/agents/agents.ts` → `@elizaos/core`). Agent runtime
- * lives on the Node sidecar (`services/agent-server`); the sidecar serves
- * this URL. See cloud/INFRA.md "Long-running services NOT migrated".
+ * (`packages/cloud/shared/src/lib/services/agents/agents.ts` → `@elizaos/core`).
+ * Agent runtime lives on the Node sidecar (`services/agent-server`); the
+ * sidecar serves this URL.
  */
 
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.all("/", (c) =>

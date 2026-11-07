@@ -92,13 +92,6 @@ export function writePendingFirstRunText(requests: readonly string[]): void {
   }
 }
 
-/** Return the ordered requests and clear their durable copy exactly once. */
-export function takePendingFirstRunText(): string[] {
-  const requests = readPendingFirstRunText();
-  clearPendingFirstRunText();
-  return requests;
-}
-
 /**
  * Registers the active conductor's in-memory release seam. The durable fallback
  * below covers a cold shell where the conductor has already unmounted.

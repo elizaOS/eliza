@@ -109,7 +109,16 @@ export function normalizeExplicitTimeZoneToken(
   if (!trimmed) {
     return null;
   }
-  const alias = TIME_ZONE_ALIASES[canonicalizeTimeZoneAliasKey(trimmed)];
+  const canonical = canonicalizeTimeZoneAliasKey(trimmed);
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC. This alias applies to the exact token
+  // only: it stays out of TIME_ZONE_ALIASES because that table is also
+  // scanned as free-text words by extractExplicitTimeZoneFromText, where a
+  // bare "z" in prose ("Jay Z", "Gen Z", "A-Z") is not a time zone.
+  if (canonical === "z") {
+    return isValidTimeZone("UTC") ? "UTC" : null;
+  }
+  const alias = TIME_ZONE_ALIASES[canonical];
   if (alias && isValidTimeZone(alias)) {
     return alias;
   }

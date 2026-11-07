@@ -1,5 +1,9 @@
 /** Main barrel for `@elizaos/cloud-sdk`: re-exports the client, HTTP layer, errors, types, and generated public-route surface. */
 
+export type {
+  ApiRouteMetaDto,
+  DiscoveredApiRouteDto,
+} from "./api-explorer/endpoint-discovery.js";
 export {
   APP_AUTHORIZE_PATH,
   type BuildAppAuthorizeUrlOptions,
@@ -29,6 +33,7 @@ export {
   applyNativeApplicationInferenceHeaders,
   NativeApplicationInferenceError,
 } from "./native-application-inference.js";
+export type * from "./native-host-routes.js";
 export type {
   PublicRouteBaseCallOptions,
   PublicRouteCallOptions,

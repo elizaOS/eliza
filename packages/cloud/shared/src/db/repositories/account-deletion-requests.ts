@@ -1,3 +1,11 @@
+import {
+  setInferenceOrganizationActive,
+  setInferenceSubjectActive,
+} from "../../lib/services/inference-credential-revocation";
+import {
+  clearDisabledInferencePolicyForAccountDeletion,
+  withInferenceUserPolicyMutation,
+} from "../../lib/services/inference-policy-fence";
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
 import { createHash } from "node:crypto";
@@ -17,7 +25,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { DbTransaction } from "../client";
-import { dbRead, dbWrite } from "../helpers";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import {
   type AccountDeletionExport,
   accountDeletionExports,
@@ -41,6 +49,7 @@ import { organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
+import { isNativeAppPublisher } from "./native-app-publishers";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const TERMINAL_REQUEST_STATUSES = ["completed", "canceled"] as const;
@@ -327,7 +336,7 @@ export class AccountDeletionRequestsRepository {
 
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -414,7 +423,14 @@ export class AccountDeletionRequestsRepository {
       return { outcome: "account_unavailable" };
     }
 
-    return await dbWrite.transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
+      await withInferenceUserPolicyMutation(
+        observed.user_id!,
+        [observed.organization_id!],
+        async () => {},
+        tx,
+      );
+
       const [organization] = await tx
         .select()
         .from(organizations)
@@ -459,7 +475,7 @@ export class AccountDeletionRequestsRepository {
       if (providerAdmission) return { outcome: "provider_work_in_flight" };
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
@@ -521,6 +537,11 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
+      // Fence the gate last, still before commit. A rollback leaves the request
+      // "requested", which cancellation refuses, so only a replay of this
+      // activation can repair the gate: no failed write above may reach it.
+      await setInferenceOrganizationActive(organization.id, false);
+      await setInferenceSubjectActive(organization.id, current.id, false, "account");
       return { outcome: "activated", request: activated };
     });
   }
@@ -640,7 +661,14 @@ export class AccountDeletionRequestsRepository {
       return { outcome: "account_unavailable" };
     }
 
-    return await dbWrite.transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
+      await withInferenceUserPolicyMutation(
+        observed.user_id!,
+        [observed.organization_id!],
+        async () => {},
+        tx,
+      );
+
       const [organization] = await tx
         .select()
         .from(organizations)
@@ -698,7 +726,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -812,7 +840,11 @@ export class AccountDeletionRequestsRepository {
     });
   }
 
-  async findExpiredRecoveryRequestIds(now: Date, limit: number): Promise<string[]> {
+  async findExpiredRecoveryRequestIds(
+    now: Date,
+    limit: number,
+    excludeIds: readonly string[] = [],
+  ): Promise<string[]> {
     const rows = await dbWrite
       .select({ id: accountDeletionRequests.id })
       .from(accountDeletionRequests)
@@ -820,6 +852,7 @@ export class AccountDeletionRequestsRepository {
         and(
           inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
           lte(accountDeletionRequests.execute_after, now),
+          excludeIds.length ? notInArray(accountDeletionRequests.id, [...excludeIds]) : undefined,
         ),
       )
       .orderBy(asc(accountDeletionRequests.execute_after))
@@ -930,6 +963,7 @@ export class AccountDeletionRequestsRepository {
   async findRunnableIrreversibleRequests(
     now: Date,
     limit: number,
+    excludeIds: readonly string[] = [],
   ): Promise<AccountDeletionRequest[]> {
     return await dbWrite
       .select()
@@ -942,6 +976,7 @@ export class AccountDeletionRequestsRepository {
             isNull(accountDeletionRequests.next_reconcile_at),
             lte(accountDeletionRequests.next_reconcile_at, now),
           ),
+          excludeIds.length ? notInArray(accountDeletionRequests.id, [...excludeIds]) : undefined,
         ),
       )
       .orderBy(asc(accountDeletionRequests.execute_after))
@@ -1135,7 +1170,14 @@ export class AccountDeletionRequestsRepository {
       return { outcome: "account_unavailable" };
     }
 
-    return await dbWrite.transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
+      await withInferenceUserPolicyMutation(
+        observed.user_id!,
+        [observed.organization_id!],
+        async () => {},
+        tx,
+      );
+
       const [organization] = await tx
         .select()
         .from(organizations)
@@ -1193,7 +1235,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
       if (
@@ -1312,6 +1354,7 @@ export class AccountDeletionRequestsRepository {
         sql`SELECT set_config('eliza.billing_cancel_account_deletion_authority', '', true)`,
       );
 
+      await clearDisabledInferencePolicyForAccountDeletion(tx, organization.id);
       const deleted = await tx
         .delete(organizations)
         .where(eq(organizations.id, organization.id))
@@ -1981,7 +2024,14 @@ export class AccountDeletionRequestsRepository {
       return false;
     }
 
-    return await dbWrite.transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
+      await withInferenceUserPolicyMutation(
+        observed.user_id!,
+        [observed.organization_id!],
+        async () => {},
+        tx,
+      );
+
       const [organization] = await tx
         .select()
         .from(organizations)
@@ -2030,6 +2080,10 @@ export class AccountDeletionRequestsRepository {
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
+      // Inside the transaction: a gate failure rolls back and the cancellation
+      // retries. After commit, a failure would leave the account denied for good.
+      await setInferenceSubjectActive(organization.id, user.id, true, "account");
+      await setInferenceOrganizationActive(organization.id, true);
       await tx
         .update(organizations)
         .set({

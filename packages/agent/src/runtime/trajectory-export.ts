@@ -5,16 +5,17 @@
  * shaping used by the agent runtime trajectory logger implementations.
  */
 
-import { ElizaError, type JsonValue } from "@elizaos/core";
-import type {
-  Trajectory,
-  TrajectoryExportOptions,
-  TrajectoryExportResult,
-  TrajectoryListItem,
-  TrajectoryLlmCall,
-  TrajectoryProviderAccess,
-  TrajectoryStep,
-} from "../types/trajectory.ts";
+import {
+  ElizaError,
+  type JsonValue,
+  type TrajectoryDetailRecord as Trajectory,
+  type TrajectoryExportOptions,
+  type TrajectoryExportResult,
+  type TrajectorySummaryRecord as TrajectoryListItem,
+  type TrajectoryLlmCallRecord as TrajectoryLlmCall,
+  type TrajectoryProviderAccessRecord as TrajectoryProviderAccess,
+  type TrajectoryStepRecord as TrajectoryStep,
+} from "@elizaos/core";
 import {
   enrichTrajectoryLlmCall,
   normalizePersistedTrajectoryTiming,

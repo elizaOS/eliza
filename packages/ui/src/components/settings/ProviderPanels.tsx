@@ -5,14 +5,15 @@
  * Cloud panel signs the user in rather than pretending the route is live.
  */
 
-import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
-import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
-import { type ComponentType, type ReactNode, useState } from "react";
 import type {
+  ModelOption,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
-} from "../../providers";
-import { useAppSelector } from "../../state";
+} from "@elizaos/host/protocol";
+import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
+import { useState } from "react";
+import { useAppSelector } from "../../state/app-store";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
@@ -21,7 +22,8 @@ import { Button } from "../ui/button";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
-import { type ServingAxes, servingProviderLabel } from "./resolveServingAxes";
+import type { ServingAxes } from "./resolveServingAxes";
+import { servingProviderLabel } from "./resolveServingAxes";
 import { SettingsActionButton } from "./settings-agent-rows";
 import type { PluginInfo } from "./useProviderEntries";
 

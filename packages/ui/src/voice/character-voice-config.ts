@@ -4,11 +4,12 @@
  */
 
 import {
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-} from "@elizaos/core/character-presets";
-import { hasConfiguredApiKey, PREMADE_VOICES } from "@elizaos/core/voice";
-import type { VoiceConfig } from "../api/client";
+} from "@elizaos/host/protocol";
+import type { VoiceConfig } from "../api/client-types-config";
 import { asRecord } from "../state/config-readers";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
@@ -132,8 +133,9 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
-      currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
-      currentVoiceId === legacyVoiceId);
+      (!isExplicitElevenLabsChoice(storedVoiceConfig) &&
+        (currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+          currentVoiceId === legacyVoiceId)));
   if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
     return storedVoiceConfig;
   }
@@ -158,10 +160,10 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
  * leaving any explicit user choice untouched.
  *
  * `resolvedTtsProvider` is the capability-aware default from
- * `resolveDefaultTtsProvider` (on-device Kokoro when staged, else Eliza Cloud
+ * `resolveDefaultTtsProvider` (on-device Paradee when staged, else Eliza Cloud
  * Kokoro, else ElevenLabs, else browser SpeechSynthesis). When omitted the
  * platform/mode preference in `defaults.tts` is used directly — the pre-probe
- * fallback, still a Kokoro transport on every device. The ASR default always
+ * fallback, still a local or cloud speech transport on every device. The ASR default always
  * comes from the platform matrix; the interactive-capture engine is chosen
  * independently in `voice-capture-factory.ts`.
  */

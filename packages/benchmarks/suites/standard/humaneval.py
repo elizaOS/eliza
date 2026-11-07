@@ -11,7 +11,7 @@ tests don't need the dependency.
 
 CLI:
 
-    python -m benchmarks.standard.humaneval \\
+    python -m benchmarks.suites.standard.humaneval \\
         --model-endpoint http://localhost:8000/v1 \\
         --model gpt-4o-mini \\
         --output /tmp/humaneval
@@ -435,7 +435,7 @@ class HumanEvalRunner:
 
 
 class _HumanEvalFactory(RunnerFactory):
-    prog = "benchmarks.standard.humaneval"
+    prog = "benchmarks.suites.standard.humaneval"
     description = (
         "HumanEval pass@1 (openai_humaneval) over an OpenAI-compatible endpoint."
     )

@@ -5,10 +5,12 @@
  * reordering. Pure presentation — all state and mutation callbacks are owned by
  * `PluginsView` and passed in as props.
  */
+
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import { memo } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { PluginInfo, PluginParamDef } from "../../api";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { PluginInfo } from "../../api/client-types-config";
+import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";

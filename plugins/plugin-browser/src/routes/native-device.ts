@@ -1,8 +1,8 @@
 /** Receives authenticated profile-bound device commands from the signed remote host executor. */
 
-import type { Route } from "@elizaos/core";
+import { parseRemoteBrowserCommandPayload } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { parseRemoteBrowserCommandPayload } from "@elizaos/core/contracts/remote-control";
+import type { Route } from "@elizaos/host/protocol";
 import { isBrowserDispatchFailure } from "../dispatch-types.js";
 
 export const nativeDeviceBrowserRoute: Route = {

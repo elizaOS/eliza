@@ -4,6 +4,7 @@
  */
 // @vitest-environment jsdom
 
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   act,
   cleanup,
@@ -12,7 +13,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import {
   afterEach,
   beforeAll,
@@ -31,6 +32,8 @@ beforeAll(() => {
 });
 
 const authSpies = vi.hoisted(() => ({
+  configurations: [] as Array<{ baseUrl?: string; tenantId?: string }>,
+  smsConfigurations: [] as Array<{ baseUrl?: string; tenantId?: string }>,
   storage: null as {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
@@ -52,19 +55,29 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
-const returnToSpies = vi.hoisted(() => ({
-  resolve: vi.fn(),
+const handoffSpies = vi.hoisted(() => ({
+  mint: vi.fn(),
+  burn: vi.fn(),
+  replace: vi.fn(),
 }));
 
-// Keep this focused login test on the Alert primitive the section actually
-// uses; evaluating the broad primitives barrel pulls in unrelated optional
-// controls and their peer dependencies.
-vi.mock("../../../../components/primitives", async () => {
-  const { Alert, AlertDescription } = await import(
-    "../../../../components/ui/alert"
-  );
-  return { Alert, AlertDescription };
+vi.mock("../../../app-mode/app-mode", () => ({
+  appModeNavigation: { replace: handoffSpies.replace },
+}));
+vi.mock("../../../sso-bridge/sso-bridge", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../sso-bridge/sso-bridge")>();
+  return {
+    ...actual,
+    mintSsoCode: handoffSpies.mint,
+    burnSsoBridgeCode: handoffSpies.burn,
+  };
 });
+
+const returnToSpies = vi.hoisted(() => ({
+  resolve: vi.fn(),
+  consume: vi.fn(),
+}));
 
 vi.mock(
   "@elizaos/plugin-elizacloud/steward-session-client",
@@ -98,22 +111,34 @@ vi.mock(
 
 vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
+    private config: { baseUrl?: string; tenantId?: string };
     constructor(config: {
+      baseUrl?: string;
+      tenantId?: string;
       storage: {
         getItem(key: string): string | null;
         setItem(key: string, value: string): void;
         removeItem(key: string): void;
       };
     }) {
+      this.config = config;
       authSpies.storage = config.storage;
+      authSpies.configurations.push({
+        baseUrl: config.baseUrl,
+        tenantId: config.tenantId,
+      });
     }
 
     getProviders = authSpies.getProviders;
     getSession = authSpies.getSession;
     refreshSession = authSpies.refreshSession;
-    sendSmsOtp = authSpies.sendSmsOtp;
+    async sendSmsOtp(...args: unknown[]) {
+      authSpies.smsConfigurations.push(this.config);
+      return await authSpies.sendSmsOtp(...args);
+    }
 
     async verifySmsOtp(phone: string, code: string) {
+      authSpies.smsConfigurations.push(this.config);
       const result = await authSpies.verifySmsOtp(phone, code);
       if (result && typeof result === "object" && "token" in result) {
         authSpies.storage?.setItem(
@@ -160,13 +185,19 @@ vi.mock("../../lib/steward-session", () => ({
   recoverStewardSessionViaCookie: sessionSpies.recover,
   refreshStewardSessionViaCookie: vi.fn(),
   syncStewardSessionCookie: sessionSpies.sync,
+  resolveStewardAuthEndpoint: (path: string) =>
+    `https://api.example.test${path}`,
 }));
 
-vi.mock("../../lib/login-return-to", () => ({
-  resolveLoginReturnTo: returnToSpies.resolve,
-  consumePendingOAuthReturnTo: () => null,
-  storePendingOAuthReturnTo: () => undefined,
-}));
+vi.mock("../../lib/login-return-to", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../lib/login-return-to")>();
+  return {
+    ...actual,
+    resolveLoginReturnTo: returnToSpies.resolve,
+    consumePendingOAuthReturnTo: returnToSpies.consume,
+  };
+});
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn() },
@@ -183,10 +214,21 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
 }
 
-function renderSection(initialEntry = "/login") {
+function LoginDestinationProbe() {
+  const location = useLocation();
+  return (
+    <span data-testid="login-destination">
+      {location.pathname}
+      {location.search}
+    </span>
+  );
+}
+
+function renderSection(initialEntry = "/login", phoneOnly = false) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <StewardLoginSection />
+      <StewardLoginSection phoneOnly={phoneOnly} />
+      <LoginDestinationProbe />
     </MemoryRouter>,
   );
 }
@@ -199,8 +241,10 @@ async function sendPhoneCode() {
 }
 
 describe("StewardLoginSection phone login", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    authSpies.configurations.length = 0;
+    authSpies.smsConfigurations.length = 0;
     authSpies.getProviders.mockResolvedValue({
       passkey: false,
       email: true,
@@ -229,316 +273,352 @@ describe("StewardLoginSection phone login", () => {
     sessionSpies.storedToken = null;
     sessionSpies.hasAuthedCookie = false;
     sessionSpies.recover.mockResolvedValue(null);
-    sessionSpies.sync.mockResolvedValue(undefined);
-    returnToSpies.resolve.mockReturnValue("/dashboard/agents");
+    sessionSpies.sync.mockImplementation(
+      async (
+        token: string,
+        _refresh?: string | null,
+        options?: { signal?: AbortSignal; expectedToken?: string | null },
+      ) => {
+        if (!options?.signal) return;
+        options.signal.throwIfAborted();
+        if (sessionSpies.storedToken !== options.expectedToken)
+          throw new DOMException("Session changed", "AbortError");
+        sessionSpies.storedToken = token;
+        sessionSpies.write(token);
+      },
+    );
+    const returnTo = await vi.importActual<
+      typeof import("../../lib/login-return-to")
+    >("../../lib/login-return-to");
+    returnToSpies.resolve.mockImplementation(returnTo.resolveLoginReturnTo);
+    returnToSpies.consume.mockReturnValue(null);
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it("restores an existing browser token through the Cloud session boundary", async () => {
-    const existingToken = makeJwt({
-      userId: "existing-user",
-      exp: Math.floor(Date.now() / 1000) + 600,
-    });
-    sessionSpies.storedToken = existingToken;
-
-    renderSection();
-
-    await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(existingToken, null),
-    );
-    expect(authSpies.refreshSession).not.toHaveBeenCalled();
-  });
-
-  it("clears an expired local token without sending it to session sync", async () => {
+  it("offers only phone sign-in on the Network entry without restoring another identity", async () => {
     sessionSpies.storedToken = makeJwt({
-      userId: "stale-user",
-      exp: Math.floor(Date.now() / 1000) - 60,
-    });
-
-    renderSection();
-
-    await waitFor(() => expect(sessionSpies.clear).toHaveBeenCalledTimes(1));
-    expect(sessionSpies.sync).not.toHaveBeenCalled();
-    expect(
-      await screen.findByRole("button", { name: "Magic Link" }),
-    ).toBeTruthy();
-  });
-
-  it("clears a malformed local token without sending it to session sync", async () => {
-    sessionSpies.storedToken = "not-a-steward-jwt";
-
-    renderSection();
-
-    await waitFor(() => expect(sessionSpies.clear).toHaveBeenCalledTimes(1));
-    expect(sessionSpies.sync).not.toHaveBeenCalled();
-    expect(
-      await screen.findByRole("button", { name: "Magic Link" }),
-    ).toBeTruthy();
-  });
-
-  it("recovers through a valid HttpOnly cookie after clearing an expired local token", async () => {
-    const expiredToken = makeJwt({
-      userId: "stale-user",
-      exp: Math.floor(Date.now() / 1000) - 60,
-    });
-    sessionSpies.storedToken = expiredToken;
-    sessionSpies.hasAuthedCookie = true;
-    sessionSpies.recover.mockResolvedValue({ token: "renewed-session-token" });
-
-    renderSection();
-
-    await waitFor(() => expect(sessionSpies.recover).toHaveBeenCalledTimes(1));
-    expect(sessionSpies.clear).toHaveBeenCalledTimes(1);
-    expect(sessionSpies.sync).not.toHaveBeenCalledWith(expiredToken, null);
-    expect(sessionSpies.write).toHaveBeenCalledWith("renewed-session-token");
-  });
-
-  it("renders only one method divider when phone and OAuth are available", async () => {
-    renderSection();
-
-    await screen.findByRole("button", { name: "Google" });
-    const divider = screen.getByText("or continue with");
-    expect(divider.getAttribute("aria-hidden")).toBe("true");
-    expect(
-      screen.getByRole("group", { name: "or continue with" }),
-    ).toBeTruthy();
-  });
-
-  it("normalizes E.164, sends a code, and exposes the cooldown before resend", async () => {
-    renderSection();
-
-    await sendPhoneCode();
-
-    expect(authSpies.sendSmsOtp).toHaveBeenCalledWith("+14155552671");
-    expect(screen.getByText("+14155552671")).toBeTruthy();
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Resend in 30s",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Resend code" }));
-
-    await waitFor(() => expect(authSpies.sendSmsOtp).toHaveBeenCalledTimes(2));
-    expect(authSpies.sendSmsOtp).toHaveBeenLastCalledWith("+14155552671");
-  });
-
-  it("normalizes a national number through the selected country", async () => {
-    renderSection();
-
-    const phoneInput = await screen.findByLabelText("Phone number");
-    fireEvent.change(phoneInput, { target: { value: "415-555-2671" } });
-    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
-
-    await screen.findByText("Enter the text code");
-    expect(authSpies.sendSmsOtp).toHaveBeenCalledWith("+14155552671");
-  });
-
-  it("lets the user override the locale-derived country", async () => {
-    renderSection();
-
-    const countrySelect = await screen.findByLabelText("Country calling code");
-    expect(countrySelect.textContent).toContain("US +1");
-    expect(countrySelect.textContent).not.toContain("United States");
-    // Use real keyboard selection without mounting the full country popover in jsdom.
-    act(() => countrySelect.focus());
-    fireEvent.keyDown(countrySelect, { key: "g" });
-    fireEvent.keyDown(countrySelect, { key: "b" });
-    expect(countrySelect.textContent).toContain("GB +44");
-    fireEvent.change(screen.getByLabelText("Phone number"), {
-      target: { value: "020 7946 0018" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
-
-    await screen.findByText("Enter the text code");
-    expect(authSpies.sendSmsOtp).toHaveBeenCalledWith("+442079460018");
-  });
-
-  it("rejects an invalid national number without hiding other methods", async () => {
-    renderSection();
-
-    fireEvent.change(await screen.findByLabelText("Phone number"), {
-      target: { value: "555" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
-
-    const message = await screen.findByText(/Enter a valid phone number/);
-    expect(authSpies.sendSmsOtp).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Magic Link" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
-
-    // #27241: the message is anchored to the phone field, announced, linked
-    // to the invalid input, and focus returns to that input.
-    const phoneInput = screen.getByLabelText("Phone number");
-    expect(message.getAttribute("role")).toBe("alert");
-    expect(phoneInput.getAttribute("aria-invalid")).toBe("true");
-    expect(phoneInput.getAttribute("aria-describedby")).toBe(message.id);
-    expect(document.activeElement).toBe(phoneInput);
-    expect(phoneInput.parentElement?.parentElement?.contains(message)).toBe(
-      true,
-    );
-
-    fireEvent.change(phoneInput, { target: { value: "5551" } });
-    expect(phoneInput.getAttribute("aria-invalid")).toBeNull();
-    expect(screen.queryByText(/Enter a valid phone number/)).toBeNull();
-  });
-
-  it("holds the send state while Steward is pending and surfaces its failure", async () => {
-    let rejectSend: (error: Error) => void = () => undefined;
-    authSpies.sendSmsOtp.mockReturnValue(
-      new Promise((_resolve, reject) => {
-        rejectSend = reject;
-      }),
-    );
-    renderSection();
-
-    const phoneInput = await screen.findByLabelText("Phone number");
-    fireEvent.change(phoneInput, { target: { value: "+14155552671" } });
-    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
-
-    await waitFor(() =>
-      expect((phoneInput as HTMLInputElement).disabled).toBe(true),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Magic Link" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-
-    await act(async () => rejectSend(new Error("SMS temporarily unavailable")));
-
-    expect(await screen.findByText("SMS temporarily unavailable")).toBeTruthy();
-    expect((phoneInput as HTMLInputElement).disabled).toBe(false);
-    expect(screen.queryByText("Enter the text code")).toBeNull();
-  });
-
-  it("does not expose phone login while an older session is still recovering", async () => {
-    let failRecovery: ((error: Error) => void) | undefined;
-    const olderToken = makeJwt({
       userId: "older-user",
-      exp: Math.floor(Date.now() / 1000) + 600,
+      exp: Math.floor(Date.now() / 1000) + 3600,
     });
-    sessionSpies.storedToken = olderToken;
-    sessionSpies.sync.mockReturnValueOnce(
-      new Promise<void>((_resolve, reject) => {
-        failRecovery = reject;
-      }),
-    );
-    renderSection();
-
-    await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
-    );
-    expect(screen.queryByLabelText("Phone number")).toBeNull();
-    expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
-
-    await act(async () => failRecovery?.(new Error("Older session expired")));
-    expect(await screen.findByText("Older session expired")).toBeTruthy();
-
-    await sendPhoneCode();
-    expect(screen.getByText("Enter the text code")).toBeTruthy();
-    expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
-    expect(sessionSpies.write).not.toHaveBeenCalled();
-    expect(returnToSpies.resolve).not.toHaveBeenCalled();
+    renderSection("/network/sign-in", true);
+    expect(await screen.findByLabelText("Phone number")).toBeTruthy();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByText("or continue with")).toBeNull();
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(sessionSpies.recover).not.toHaveBeenCalled();
   });
 
-  it("keeps login hidden when callback-error cleanup starts session recovery", async () => {
-    const olderToken = makeJwt({
-      userId: "older-user",
-      exp: Math.floor(Date.now() / 1000) + 600,
-    });
-    sessionSpies.storedToken = olderToken;
-    sessionSpies.sync.mockReturnValueOnce(new Promise<void>(() => undefined));
-
-    renderSection("/login?error=oauth_failed&reason=server_error");
-
-    await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(olderToken, null),
-    );
-    expect(screen.queryByLabelText("Phone number")).toBeNull();
-    expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
-  });
-
-  it("verifies six digits through the existing session completion authority", async () => {
-    renderSection("/login?returnTo=%2Fdashboard%2Fagents");
+  it("completes phone-only verification through the existing verified-phone sync", async () => {
+    renderSection("/network/sign-in", true);
     await sendPhoneCode();
-
-    const codeInput = screen.getByLabelText("Six-digit code");
-    fireEvent.change(codeInput, { target: { value: "12a345678" } });
-    expect((codeInput as HTMLInputElement).value).toBe("123456");
-    fireEvent.click(screen.getByRole("button", { name: "Verify phone" }));
-
-    await waitFor(() =>
-      expect(authSpies.verifySmsOtp).toHaveBeenCalledWith(
-        "+14155552671",
-        "123456",
-      ),
-    );
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "123456" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Change phone number" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() =>
       expect(sessionSpies.sync).toHaveBeenCalledWith(
         "sms-session-token",
         "sms-refresh-token",
-        { verifiedPhone: "+14155552671" },
+        {
+          verifiedPhone: "+14155552671",
+          expectedToken: null,
+          signal: expect.any(AbortSignal),
+        },
       ),
     );
+    expect(returnToSpies.resolve).toHaveBeenCalledWith(
+      expect.any(URLSearchParams),
+    );
+    expect(returnToSpies.consume).not.toHaveBeenCalled();
     expect(sessionSpies.write).toHaveBeenCalledWith("sms-session-token");
-    expect(returnToSpies.resolve).toHaveBeenCalled();
   });
 
-  it("keeps the SDK token private until phone-account convergence completes", async () => {
-    let completeSync: (() => void) | undefined;
-    const storageEvent = vi.fn();
-    window.addEventListener("storage", storageEvent);
-    sessionSpies.sync.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        completeSync = resolve;
+  it.each([
+    [
+      "/auth/bridge?state=owned&challenge=owned&returnTo=%2Fjoin",
+      "/auth/bridge?state=owned&challenge=owned&returnTo=%2Fjoin",
+    ],
+    ["https://evil.example/", "/join"],
+    ["//evil.example/", "/join"],
+  ])(
+    "phone-only completion sanitizes its bridge returnTo: %s",
+    async (returnTo, destination) => {
+      renderSection(
+        `/network/sign-in?returnTo=${encodeURIComponent(returnTo)}`,
+        true,
+      );
+      await sendPhoneCode();
+      fireEvent.change(screen.getByLabelText("Six-digit code"), {
+        target: { value: "123456" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("login-destination").textContent).toBe(
+          destination,
+        ),
+      );
+      expect(returnToSpies.consume).not.toHaveBeenCalled();
+      expect(handoffSpies.mint).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["cancel", "unmount"])(
+    "does not publish a late verification after %s without a handoff tuple",
+    async (action) => {
+      const existingToken = makeJwt({
+        userId: "existing-user",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      sessionSpies.storedToken = existingToken;
+      let finishVerify!: (value: object) => void;
+      authSpies.verifySmsOtp.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishVerify = resolve;
+        }),
+      );
+      const view = renderSection("/network/sign-in", true);
+      await sendPhoneCode();
+      fireEvent.change(screen.getByLabelText("Six-digit code"), {
+        target: { value: "123456" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await waitFor(() =>
+        expect(authSpies.verifySmsOtp).toHaveBeenCalledTimes(1),
+      );
+      if (action === "cancel")
+        fireEvent.click(
+          screen.getByRole("button", { name: "Change phone number" }),
+        );
+      else view.unmount();
+      if (action === "cancel") {
+        authSpies.sendSmsOtp.mockReturnValueOnce(new Promise(() => undefined));
+        fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
+      }
+      await act(async () => {
+        finishVerify({
+          token: "late-token",
+          refreshToken: "late-refresh",
+          expiresIn: 900,
+          user: { id: "late-user", email: null },
+        });
+      });
+      expect(sessionSpies.sync).not.toHaveBeenCalled();
+      expect(sessionSpies.write).not.toHaveBeenCalled();
+      expect(handoffSpies.mint).not.toHaveBeenCalled();
+      expect(handoffSpies.replace).not.toHaveBeenCalled();
+      expect(sessionSpies.storedToken).toBe(existingToken);
+      if (action === "cancel") {
+        expect(screen.getByLabelText("Phone number")).toBeTruthy();
+        expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+        expect(
+          screen
+            .getByRole("button", { name: "Text me a code" })
+            .hasAttribute("disabled"),
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("does not overwrite a newer send error with an abandoned verification error", async () => {
+    let failVerify!: (reason: Error) => void;
+    authSpies.verifySmsOtp.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failVerify = reject;
       }),
     );
-    renderSection();
+    renderSection("/network/sign-in", true);
     await sendPhoneCode();
-
     fireEvent.change(screen.getByLabelText("Six-digit code"), {
       target: { value: "123456" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Verify phone" }));
-
-    await waitFor(() => expect(sessionSpies.sync).toHaveBeenCalledTimes(1));
-    expect(authSpies.storage?.getItem("steward_session_token")).toBe(
-      "sms-session-token",
-    );
-    expect(window.localStorage.getItem("steward_session_token")).toBeNull();
-    expect(storageEvent).not.toHaveBeenCalled();
-    expect(sessionSpies.write).not.toHaveBeenCalled();
-
-    await act(async () => completeSync?.());
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() =>
-      expect(sessionSpies.write).toHaveBeenCalledWith("sms-session-token"),
+      expect(authSpies.verifySmsOtp).toHaveBeenCalledTimes(1),
     );
-    window.removeEventListener("storage", storageEvent);
-  });
-
-  it("keeps a rejected verification recoverable without creating a session", async () => {
-    authSpies.verifySmsOtp.mockRejectedValue(new Error("Code expired"));
-    renderSection();
-    await sendPhoneCode();
-
-    fireEvent.change(screen.getByLabelText("Six-digit code"), {
-      target: { value: "123456" },
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change phone number" }),
+    );
+    authSpies.sendSmsOtp.mockRejectedValueOnce(new Error("New send failed"));
+    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
+    await screen.findByText("New send failed");
+    await act(async () => {
+      failVerify(new Error("Old verification failed"));
     });
-    fireEvent.click(screen.getByRole("button", { name: "Verify phone" }));
-
-    expect(await screen.findByText("Code expired")).toBeTruthy();
-    expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
+    expect(screen.getByText("New send failed")).toBeTruthy();
+    expect(screen.queryByText("Old verification failed")).toBeNull();
     expect(sessionSpies.sync).not.toHaveBeenCalled();
     expect(sessionSpies.write).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen the code view when a cancelled resend completes", async () => {
+    renderSection("/network/sign-in", true);
+    await sendPhoneCode();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    let finishSend!: (value: object) => void;
+    authSpies.sendSmsOtp.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSend = resolve;
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Resend code" }));
+    await waitFor(() => expect(authSpies.sendSmsOtp).toHaveBeenCalledTimes(2));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change phone number" }),
+    );
+    await act(async () => {
+      finishSend({ ok: true, expiresAt: "2026-08-12T12:05:00.000Z" });
+    });
+    expect(screen.getByLabelText("Phone number")).toBeTruthy();
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(sessionSpies.write).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a pending phone verification after explicit logout from an empty session", async () => {
+    const canonical = await vi.importActual<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >("@elizaos/plugin-elizacloud/steward-session-client");
+    let finishVerify!: (value: object) => void;
+    authSpies.verifySmsOtp.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishVerify = resolve;
+      }),
+    );
+    renderSection("/network/sign-in", true);
+    await sendPhoneCode();
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(authSpies.verifySmsOtp).toHaveBeenCalledTimes(1),
+    );
+    expect(sessionSpies.storedToken).toBeNull();
+    await act(async () => {
+      await canonical.clearStoredStewardToken();
+    });
+    expect(
+      screen.getByRole("button", { name: "Sign in" }).hasAttribute("disabled"),
+    ).toBe(false);
+    await act(async () => {
+      finishVerify({
+        token: "late-phone-token",
+        refreshToken: "late-refresh",
+        expiresIn: 900,
+        user: { id: "phone-user", email: null },
+      });
+    });
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(sessionSpies.write).not.toHaveBeenCalled();
+    expect(handoffSpies.mint).not.toHaveBeenCalled();
+    expect(handoffSpies.replace).not.toHaveBeenCalled();
+    expect(sessionSpies.storedToken).toBeNull();
+    expect(canonical.readStoredStewardToken()).toBeNull();
+  });
+
+  it("does not replace an external sign-in while phone verification is pending", async () => {
+    const initial = makeJwt({
+      userId: "initial-user",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const newer = makeJwt({
+      userId: "newer-user",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    sessionSpies.storedToken = initial;
+    let finishVerify!: (value: object) => void;
+    authSpies.verifySmsOtp.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishVerify = resolve;
+      }),
+    );
+    renderSection("/network/sign-in", true);
+    await sendPhoneCode();
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(authSpies.verifySmsOtp).toHaveBeenCalledTimes(1),
+    );
+    sessionSpies.storedToken = newer;
+    window.dispatchEvent(
+      new CustomEvent(STEWARD_SESSION_CHANGE_EVENT, {
+        detail: { state: "present", sessionEpoch: 2 },
+      }),
+    );
+    await act(async () => {
+      finishVerify({
+        token: "late-phone-token",
+        refreshToken: "late-refresh",
+        expiresIn: 900,
+        user: { id: "phone-user", email: null },
+      });
+    });
+    expect(sessionSpies.sync).not.toHaveBeenCalled();
+    expect(sessionSpies.write).not.toHaveBeenCalled();
+    expect(handoffSpies.mint).not.toHaveBeenCalled();
+    expect(handoffSpies.replace).not.toHaveBeenCalled();
+    expect(sessionSpies.storedToken).toBe(newer);
+  });
+
+  it("burns a late handoff code after unmount without redirecting", async () => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://cloud-staging.eliza.app/network/sign-in"),
+    );
+    let finishMint!: (value: { ok: true; code: string }) => void;
+    handoffSpies.mint.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishMint = resolve;
+      }),
+    );
+    const tuple = new URLSearchParams({
+      networkSite: "http://127.0.0.1:5102",
+      state: "a".repeat(64),
+      challenge: "b".repeat(64),
+    });
+    const view = renderSection(`/network/sign-in?${tuple}`, true);
+    await sendPhoneCode();
+    fireEvent.change(screen.getByLabelText("Six-digit code"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(handoffSpies.mint).toHaveBeenCalledTimes(1));
+    expect(sessionSpies.sync).toHaveBeenCalledWith(
+      "sms-session-token",
+      "sms-refresh-token",
+      {
+        verifiedPhone: "+14155552671",
+        expectedToken: null,
+        signal: expect.any(AbortSignal),
+      },
+    );
+    expect(sessionSpies.write).toHaveBeenCalledWith("sms-session-token");
+    view.unmount();
+    const code = `enso_${"c".repeat(64)}`;
+    await act(async () => {
+      finishMint({ ok: true, code });
+    });
+    expect(handoffSpies.replace).not.toHaveBeenCalled();
+    expect(handoffSpies.burn).toHaveBeenCalledTimes(1);
+    expect(handoffSpies.burn).toHaveBeenCalledWith(
+      code,
+      "cloud-staging.eliza.app",
+      fetch,
+      true,
+    );
+    expect(sessionSpies.clear).not.toHaveBeenCalled();
   });
 });

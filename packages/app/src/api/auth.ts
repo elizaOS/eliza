@@ -6,12 +6,14 @@
  */
 import type http from "node:http";
 import { type RoleGateRole, roleRank } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/core/runtime-env";
+import { resolveApiToken } from "@elizaos/host/protocol";
+import type {
+  AuthIdentityRow,
+  AuthRepository,
+} from "../services/auth-repository.js";
 import {
-  type AuthIdentityRow,
-  type AuthRepository,
   type AuthRuntimeSource,
-  authStoreForRuntime,
+  authStoreForHost,
 } from "../services/auth-store.js";
 import {
   type EmbedSessionClaims,
@@ -54,6 +56,7 @@ export {
 } from "./auth/tokens.js";
 export interface CompatStateLike {
   current: (EmbedSessionSecretRuntime & AuthRuntimeSource) | null;
+  stoppedAuthRuntime?: AuthRuntimeSource | null;
 }
 /**
  * Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
@@ -194,7 +197,7 @@ export async function ensureCompatApiAuthorizedAsync(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   res: http.ServerResponse,
   options: {
-    store: import("../services/auth-store").AuthRepository;
+    store: import("../services/auth-repository").AuthRepository;
     now?: number;
     readSetting?: (key: string) => unknown;
     /**
@@ -434,7 +437,7 @@ export async function resolveSessionTokenRole(
     ok: true;
   }
 > | null> {
-  const store = options.store ?? authStoreForRuntime(options.state?.current);
+  const store = options.store ?? authStoreForHost(options.state);
   if (!store) return null;
   const session = await findActiveSession(store, provided, options.now).catch(
     denyOnAuthStoreError(
@@ -463,7 +466,7 @@ export async function resolveAuthorizedRouteRole(
   const store =
     "store" in options && options.store
       ? options.store
-      : authStoreForRuntime(state?.current);
+      : authStoreForHost(state);
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
   const sessionCookie =

@@ -9,6 +9,7 @@
  * ExperienceService for keyword derivation and dedupe maintenance.
  */
 import { redactBasicEmails } from "@elizaos/core";
+import { tokenize } from "../../../documents/bm25.ts";
 import type { Experience } from "../types.ts";
 
 /** Minimal interface of ExperienceService used by this module. */
@@ -199,11 +200,13 @@ export function isDuplicateLearning(a: string, b: string): boolean {
 }
 
 function normalizeTextForDuplicateComparison(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Keep the same token characters as the documents BM25 tokenizer
+  // ([\p{L}\p{M}\p{N}]+): an ASCII-only class erased every non-Latin
+  // learning, so identical Korean/Russian learnings never compared equal
+  // and non-Latin experiences stored no keywords. Reuse that tokenizer so
+  // its NFC step applies too: a decomposed copy of a learning must compare
+  // equal to the composed one.
+  return tokenize(text).join(" ");
 }
 
 function tokenizeForDuplicateComparison(text: string): Set<string> {

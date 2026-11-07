@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import collect_trajectories as c
+import eliza_training.collect_trajectories as c
 
 
 def _manifest(path: Path, run_id: str) -> dict:

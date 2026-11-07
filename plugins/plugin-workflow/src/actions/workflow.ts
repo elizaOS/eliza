@@ -13,6 +13,7 @@ import {
   type State,
 } from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { WorkflowApiError } from '../types/index';
 import {
   workflowCancellationEffect,
   workflowDefinitionEffect,
@@ -28,8 +29,8 @@ const WORKFLOW_OPS = [
   'modify',
   'activate',
   'deactivate',
-  'delete',
   'run',
+  'dossier',
   'cancel_run',
   'executions',
   'revisions',
@@ -42,6 +43,7 @@ interface WorkflowActionParameters {
   action?: unknown;
   workflowId?: unknown;
   executionId?: unknown;
+  sourceId?: unknown;
   seedPrompt?: unknown;
   instruction?: unknown;
   query?: unknown;
@@ -101,7 +103,6 @@ export const workflowAction: Action = {
     'AUTOMATIONS',
     'CREATE_AUTOMATION',
     'EDIT_AUTOMATION',
-    'DELETE_AUTOMATION',
     'RUN_AUTOMATION',
     'CREATE_WORKFLOW',
     // Live planner output has used the noun-first form for the same supported
@@ -110,7 +111,6 @@ export const workflowAction: Action = {
     'WORKFLOW_CREATE',
     'EDIT_WORKFLOW',
     'UPDATE_WORKFLOW',
-    'DELETE_WORKFLOW',
     'RUN_WORKFLOW',
     'LIST_WORKFLOWS',
     'ACTIVATE_WORKFLOW',
@@ -118,7 +118,7 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Create, edit, inspect, activate, run, cancel, and delete native Smithers workflows. ' +
+    'Create, edit, inspect, activate, run, and cancel native Smithers workflows. Workflows cannot be deleted from chat. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
     `Provide action=${WORKFLOW_OPS.join('|')}.`,
   parameters: [
     {
@@ -131,6 +131,13 @@ export const workflowAction: Action = {
       name: 'workflowId',
       required: false,
       description: 'Workflow id.',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'sourceId',
+      required: false,
+      description:
+        'Reviewed native source id for an explicit dossier; omit only when exactly one current source is configured.',
       schema: { type: 'string' },
     },
     { name: 'executionId', required: false, description: 'Run id.', schema: { type: 'string' } },
@@ -155,8 +162,8 @@ export const workflowAction: Action = {
     {
       name: 'input',
       required: false,
-      description: 'Run input object.',
-      schema: { type: 'object' },
+      description: 'Run input object. Its keys are defined by the workflow.',
+      schema: { type: 'object', additionalProperties: true },
     },
     { name: 'limit', required: false, description: 'Result limit.', schema: { type: 'number' } },
     {
@@ -225,6 +232,39 @@ export const workflowAction: Action = {
           { workflowId: workflow.id }
         );
       }
+      if (op === 'dossier') {
+        const execution = await service.prepareDossier(
+          ownerId,
+          String(message.id || ''),
+          text(params.sourceId)
+        );
+        if (execution.status !== 'finished')
+          return {
+            success: false,
+            text:
+              execution.error?.message ||
+              'The selected phone sources could not be read. No dossier was completed.',
+          };
+        const output = execution.output;
+        if (
+          !Array.isArray(output) ||
+          output.length !== 1 ||
+          output[0]?.nodeId !== 'typed-steps' ||
+          output[0]?.runId !== execution.id ||
+          typeof output[0]?.text !== 'string'
+        )
+          throw new Error('Completed dossier summary is unavailable');
+        return respond(
+          callback,
+          {
+            success: true,
+            text: output[0].text,
+            effectReceipts: [workflowSubmissionEffect(execution)],
+            data: { summary: output[0].text, manualOnly: true },
+          },
+          { workflowId: execution.workflowId, runId: execution.id }
+        );
+      }
       if (!workflowId && op !== 'cancel_run')
         return { success: false, text: 'workflowId is required.' };
       if (op === 'get') {
@@ -263,21 +303,6 @@ export const workflowAction: Action = {
           effectReceipts: [workflowDefinitionEffect(op, workflow)],
           data: { workflow },
         });
-      }
-      if (op === 'delete') {
-        // Legacy deletion is deliberately denied by the service: removal requires
-        // a reviewed version and receipt-preserving lifecycle mutation.
-        return {
-          success: false,
-          text: 'Use reviewed receipt-preserving removal.',
-          effectReceipts: [],
-          failureProvenance: {
-            kind: 'handler_error',
-            boundary: 'handler',
-            code: 'WORKFLOW_REVIEWED_REMOVAL_REQUIRED',
-            retryable: false,
-          },
-        };
       }
       if (op === 'run') {
         const workflow = await service.getWorkflow(workflowId as string, ownerId);
@@ -373,6 +398,34 @@ export const workflowAction: Action = {
         data: { suite },
       });
     } catch (error) {
+      if (
+        error instanceof WorkflowApiError &&
+        record(error.response).code === 'NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED'
+      )
+        return {
+          success: false,
+          text: error.message,
+          data: {
+            sources: Array.isArray(record(error.response).sources)
+              ? (record(error.response).sources as unknown[]).map((value) => {
+                  const source = record(value);
+                  return {
+                    id: text(source.id),
+                    label: text(source.label),
+                    reviewedAt: text(source.reviewedAt),
+                    expiresAt: text(source.expiresAt),
+                  };
+                })
+              : [],
+          },
+          effectReceipts: [],
+          failureProvenance: {
+            kind: 'handler_error',
+            boundary: 'handler',
+            code: 'NATIVE_DOSSIER_SOURCE_REVIEW_REQUIRED',
+            retryable: false,
+          },
+        };
       // error-policy:J1 action boundary returns the failure to the planner.
       return {
         success: false,

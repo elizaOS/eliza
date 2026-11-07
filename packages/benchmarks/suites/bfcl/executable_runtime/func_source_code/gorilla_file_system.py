@@ -2,7 +2,7 @@ import datetime
 from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
-from suites.bfcl.executable_runtime.func_source_code.long_context import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.long_context import (
     FILE_CONTENT_EXTENSION,
     FILES_TAIL_USED,
     POPULATE_FILE_EXTENSION,
@@ -10,7 +10,6 @@ from suites.bfcl.executable_runtime.func_source_code.long_context import (
 
 
 class File:
-
     def __init__(self, name: str, content: str = "") -> None:
         """
         Initialize a file with a name and optional content.
@@ -62,7 +61,6 @@ class File:
 
 
 class Directory:
-
     def __init__(self, name: str, parent: Optional["Directory"] = None) -> None:
         """
         Initialize a directory with a name.
@@ -139,7 +137,6 @@ DEFAULT_STATE = {"root": Directory("/", None)}
 
 
 class GorillaFileSystem:
-
     def __init__(self) -> None:
         """
         Initialize the Gorilla file system with a root directory
@@ -218,7 +215,6 @@ class GorillaFileSystem:
         """
         is_bottommost = True
         for dir_name, dir_data in current.items():
-
             if dir_data["type"] == "directory":
                 is_bottommost = False
                 new_dir = Directory(dir_name, parent)
@@ -308,14 +304,18 @@ class GorillaFileSystem:
             if self._current_dir.parent:
                 self._current_dir = self._current_dir.parent
             elif self.root == self._current_dir:
-                return {"error": "Current directory is already the root. Cannot go back."}
+                return {
+                    "error": "Current directory is already the root. Cannot go back."
+                }
             else:
                 return {"error": "cd: ..: No such directory"}
             return {}
 
         # Handle absolute or relative paths
         target_dir = self._navigate_to_directory(folder)
-        if isinstance(target_dir, dict):  # This means there was an error from _navigate_to_directory
+        if isinstance(
+            target_dir, dict
+        ):  # This means there was an error from _navigate_to_directory
             return target_dir
         self._current_dir = target_dir
         return {"current_working_directory": target_dir.name}
@@ -337,7 +337,9 @@ class GorillaFileSystem:
                 "error": f"mkdir: cannot create directory '{dir_name}': Invalid character"
             }
         if dir_name in self._current_dir.contents:
-            return {"error": f"mkdir: cannot create directory '{dir_name}': File exists"}
+            return {
+                "error": f"mkdir: cannot create directory '{dir_name}': File exists"
+            }
 
         self._current_dir._add_directory(dir_name)
         return None
@@ -516,7 +518,9 @@ class GorillaFileSystem:
             if isinstance(file, File):
                 content = file._read()
 
-                matching_lines = [line for line in content.splitlines() if pattern in line]
+                matching_lines = [
+                    line for line in content.splitlines() if pattern in line
+                ]
 
                 return {"matching_lines": matching_lines}
 
@@ -613,7 +617,9 @@ class GorillaFileSystem:
 
                 return {"diff_lines": "\n".join(diff_lines)}
 
-        return {"error": f"diff: {file_name1} or {file_name2}: No such file or directory"}
+        return {
+            "error": f"diff: {file_name1} or {file_name2}: No such file or directory"
+        }
 
     def mv(self, source: str, destination: str) -> Dict[str, str]:
         """
@@ -691,7 +697,9 @@ class GorillaFileSystem:
                     "error": f"rm: cannot remove '{file_name}': Not a file or directory"
                 }
         else:
-            return {"error": f"rm: cannot remove '{file_name}': No such file or directory"}
+            return {
+                "error": f"rm: cannot remove '{file_name}': No such file or directory"
+            }
 
     def rmdir(self, dir_name: str) -> Dict[str, str]:
         """

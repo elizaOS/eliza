@@ -15,7 +15,6 @@ import {
   listTriggerTasks,
   type PluginModuleShape,
   readTriggerConfig,
-  resolveOAuthDir,
 } from "@elizaos/agent";
 import {
   AgentRuntime,
@@ -25,6 +24,7 @@ import {
   logger,
   type Memory,
   type Plugin,
+  resolveOAuthDir,
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
@@ -714,13 +714,11 @@ describeIf(LIVE_SUITE_ENABLED)(
             isEnabled?: () => boolean;
             logLlmCall?: (...args: unknown[]) => unknown;
             setEnabled?: (enabled: boolean) => void;
-            updateLatestLlmCall?: (...args: unknown[]) => unknown;
           }
         | undefined;
       if (trajectoryService) {
         trajectoryService.setEnabled?.(false);
         trajectoryService.logLlmCall = () => {};
-        trajectoryService.updateLatestLlmCall = async () => {};
       }
 
       // Bootstrap the LifeOps schema (plus the app_inbox/app_reminders/

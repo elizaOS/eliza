@@ -1,7 +1,12 @@
 /** Reviews explicit document readers against the server's authorization revision; grants never change a person's role. */
-import { client, isApiError } from "@elizaos/ui/api";
-import { Button, Checkbox } from "@elizaos/ui/components";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
+import {
+  Button,
+  Checkbox,
+  client,
+  isApiError,
+  useActiveAgentAuthority,
+} from "@elizaos/ui";
+
 import { useEffect, useState } from "react";
 
 type Access = Awaited<ReturnType<typeof client.getDocumentAccess>>;

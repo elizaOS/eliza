@@ -16,6 +16,7 @@ import type {
   SendHandlerOutcome,
   UUID,
 } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core";
 import { createApprovalQueue as createAgentApprovalQueue } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
@@ -385,6 +386,31 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     expect(dispatchState.sends).toBe(0);
   });
 
+  it("stores the supplied reason when the request id is inferred", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        ...message("reject", request.id),
+        content: { text: "no, don't send that" },
+      },
+      undefined,
+      {
+        parameters: { action: "reject", reason: "too expensive" },
+      } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    const row = await pg.query<{ state: string; resolution_reason: string }>(
+      "SELECT state, resolution_reason FROM approval_requests WHERE id = $1",
+      [request.id],
+    );
+    expect(row.rows[0]).toEqual({
+      state: "rejected",
+      resolution_reason: "too expensive",
+    });
+  });
+
   it("returns indistinguishable not-found for a cross-subject explicit id", async () => {
     const request = await realQueue.enqueue(sendMessageInput(OWNER_A));
 
@@ -516,6 +542,13 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     const delivered = await realQueue.enqueue(sendMessageInput());
     dispatchState.mode = "ambiguous";
     await resolve("approve", delivered.id);
+    expect(
+      validateToolArgs(resolveRequestAction, {
+        action: "reconcile_delivered",
+        requestId: delivered.id,
+        providerReceiptId: "telegram-provider-receipt-7",
+      }).errors,
+    ).toEqual([]);
     const reconciledDelivered = await resolve(
       "reconcile_delivered",
       delivered.id,
@@ -835,20 +868,42 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     },
   );
 
-  it.each([true, false])(
-    "retains iMessage chunk receipts through the real domain and queue (success=%s)",
-    async (success) => {
+  it.each([
+    {
+      label: "provider success",
+      success: true,
+      messageIds: ["accepted-part-1", "accepted-part-2"],
+      localEffectIds: undefined,
+      expected: "delivered",
+    },
+    {
+      label: "provider partial delivery",
+      success: false,
+      messageIds: ["accepted-part-1"],
+      localEffectIds: undefined,
+      expected: "reconciliation_required",
+    },
+    {
+      label: "native local completion",
+      success: true,
+      messageIds: [],
+      localEffectIds: ["imessage-effect:native-accepted"],
+      expected: "delivered",
+    },
+  ] as const)(
+    "retains iMessage receipts through the real domain and queue ($label)",
+    async ({ success, messageIds, localEffectIds, expected }) => {
       const actual = await vi.importActual<
         typeof import("../src/actions/lib/messaging-helpers.js")
       >("../src/actions/lib/messaging-helpers.js");
-      const messageIds = success
-        ? ["accepted-part-1", "accepted-part-2"]
-        : ["accepted-part-1"];
       const send = vi.fn(async () => ({
         success,
         messageIds,
+        ...(localEffectIds ? { localEffectIds } : {}),
         ...(success
-          ? { messageId: "accepted-part-2" }
+          ? messageIds.length > 0
+            ? { messageId: messageIds.at(-1) }
+            : {}
           : { error: "Later chunk failed" }),
       }));
       const connector = { isConnected: () => true, sendMessage: send };
@@ -894,14 +949,18 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
           },
         });
       const outcome = await attempt();
-      expect(outcome.kind).toBe(
-        success ? "delivered" : "reconciliation_required",
-      );
+      expect(outcome.kind).toBe(expected);
       const reopened = createAgentApprovalQueue(runtime, {
         agentId: AGENT_ID,
       }) as unknown as ApprovalQueue;
       expect(await reopened.byId(request.id, OWNER_A)).toMatchObject({
-        execution: { providerReceipt: { provider: "imessage", messageIds } },
+        execution: {
+          providerReceipt: {
+            provider: "imessage",
+            messageIds,
+            ...(localEffectIds ? { localEffectIds } : {}),
+          },
+        },
       });
       await expect(attempt()).rejects.toThrow();
       expect(send).toHaveBeenCalledTimes(1);

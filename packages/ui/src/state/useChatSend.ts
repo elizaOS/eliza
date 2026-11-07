@@ -1,3 +1,4 @@
+import type { ChatTurnUsage } from "./types";
 /**
  * Chat send callbacks — message sending and streaming operations.
  *
@@ -5,26 +6,39 @@
  * streaming, stop, retry, edit, clear, and queue management.
  */
 
-import { asRecord } from "@elizaos/core/type-guards";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/types/message-source";
-import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import {
-  type ChatActionResultSummary,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
-  type CodingAgentSession,
-  type Conversation,
-  type ConversationChannelType,
-  type ConversationMessage,
-  client,
-  type ImageAttachment,
-  type MessageAttachmentContentType,
-} from "../api";
+  asObjectRecord as asRecord,
+  CHAT_UPLOAD_MIME_TYPE_SET,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH,
+  MAX_CHAT_IMAGE_BASE64_BYTES,
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_UPLOAD_ATTACHMENTS,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+} from "@elizaos/core/protocol";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import {
   generateChatClientMessageId,
   isStreamGenerationError,
 } from "../api/client-base";
+import type {
+  ChatActionResultSummary,
+  Conversation,
+  ConversationChannelType,
+  ConversationMessage,
+  ImageAttachment,
+  MessageAttachment,
+  MessageAttachmentContentType,
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import {
+  admitConversationStopReceipt,
+  type ConversationTurnContext,
+  ConversationTurnController,
+  isConversationTurnRefusal,
+} from "../api/conversation-turn-controller";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   describePersonalRouteRefusal,
@@ -48,15 +62,15 @@ import {
   type CloudHandoffPhaseDetail,
   dispatchChatPrefill,
 } from "../events";
+import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
+import { isNative } from "../platform/init";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
-import { emitViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
 import {
   type ChatReplyTarget,
   clearChatDraft,
@@ -70,14 +84,12 @@ import {
   UNDELIVERED_TURN_NOTICE,
 } from "./chat-send-failures";
 import { buildChatViewMetadata } from "./chat-view-routing";
+import { searchKnowledgeForCombinedSearch } from "./hash-search";
 import {
-  applyStreamingTextModification,
   formatSearchBullet,
-  type LoadConversationMessagesResult,
   mergeStreamingText,
-  type StreamingTextModification,
   shouldApplyFinalStreamText,
-} from "./internal";
+} from "./parsers";
 import {
   clearPendingChatTurn,
   listPendingChatTurns,
@@ -87,20 +99,26 @@ import {
   markPersonalRouteRetrying,
   refreshPersonalRoute,
 } from "./personal-fallback-route";
-import { streamingRenderDelayMs } from "./streaming-render-cadence";
+import type { LoadConversationMessagesResult } from "./types";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
+import { useStreamingChatBuffer } from "./useStreamingChatBuffer";
+import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Types ────────────────────────────────────────────────────────────
 const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");
 const CHAT_SEND_HYDRATION_SETTLED = Symbol("chat-send-hydration-settled");
+const CHAT_SEND_REPLAY = Symbol("chat-send-replay");
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
 >;
 interface ActiveChatTurn {
   controller: AbortController;
   conversationId: string | null;
-  roomId: string | null;
-  abortServerTurn: (() => void) | null;
+}
+interface ChatTurnDispatch {
+  clientMessageId: string;
+  send: (turn: ConversationTurnContext) => Promise<ConversationStreamResult>;
 }
 interface ChatViewHandoffOwner {
   conversationId: string | null;
@@ -192,7 +210,6 @@ async function handoffCompletedAction(
 // parked", distinct from a parked `null` (an explicit clear-the-status commit).
 // Module scope (not per-render) so the flush callbacks stay referentially
 // stable across renders.
-const NO_PENDING_STATUS = Symbol("no-pending-status");
 /** Derive the rendered-attachment kind for an optimistic bubble from its MIME. */
 function optimisticAttachmentKind(
   mimeType: string,
@@ -313,18 +330,27 @@ function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
   onFailure?: () => void,
-): void {
-  if (!roomId) return;
-  // error-policy:J6 best-effort abort signal for a turn the user already
-  // stopped locally. Paired remote turns continue after transport loss, so
-  // the explicit abort route is the server-side Stop boundary.
-  void client.abortConversationTurn(roomId, reason).catch((err) => {
-    onFailure?.();
-    logger.warn(
-      `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
+): Promise<void> {
+  if (!roomId) return Promise.resolve();
+  // The route acknowledges cancellation signaling, not completion of cleanup.
+  // false can mean already-aborted work is still active, so it cannot confirm
+  // this request. Check the echoed target before releasing a replacement send.
+  return client
+    .abortConversationTurn(roomId, reason)
+    .then((receipt) => {
+      admitConversationStopReceipt(receipt, { roomId, reason });
+    })
+    .catch((err) => {
+      // error-policy:J4 the controller reports an unconfirmed Stop and refuses
+      // the next dispatch; retain the original failure for diagnostics.
+      onFailure?.();
+      logger.warn(
+        `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
+    });
 }
+
 export interface QueuedChatSend {
   rawInput: string;
   channelType: ConversationChannelType;
@@ -358,10 +384,113 @@ export interface ChatSendTextOptions {
 }
 interface ChatSendTextInternalOptions extends ChatSendTextOptions {
   [CHAT_SEND_HYDRATION_SETTLED]?: true;
+  [CHAT_SEND_REPLAY]?: true;
   [CHAT_SEND_IDENTITY_OVERRIDE]?: {
     clientMessageId: string;
     optimisticTurn: QueuedChatSend["optimisticTurn"];
   };
+}
+function replayedTurnOptions(
+  conversationId: string | null,
+  message: ConversationMessage,
+  images: ImageAttachment[] | undefined,
+): ChatSendTextInternalOptions {
+  return {
+    [CHAT_SEND_REPLAY]: true,
+    conversationId,
+    ...(images?.length ? { images } : {}),
+    ...(message.replyToMessageId
+      ? { metadata: { replyToMessageId: message.replyToMessageId } }
+      : {}),
+  };
+}
+const BASE64_DATA_URL = /^data:([^;,]+);base64,(.+)$/s;
+const STORED_MEDIA_URL =
+  /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}(?:[?#][^\r\n]*)?$/;
+/**
+ * Rebuild the upload payload for a turn's attachments so a replayed turn
+ * (Retry / Edit) carries its media. The send route accepts bytes only and the
+ * replay deletes the stored user row, so the bytes are read back first: an
+ * optimistic bubble still holds them inline, a persisted turn serves them from
+ * the media store. Throws when any attachment cannot be read; the caller must
+ * then leave the stored turn untouched.
+ */
+async function readReplayedTurnImages(
+  attachments: MessageAttachment[],
+): Promise<ImageAttachment[]> {
+  if (attachments.length > MAX_CHAT_UPLOAD_ATTACHMENTS) {
+    throw new Error(
+      "The original turn has too many attachments to replay intact",
+    );
+  }
+  const images = await Promise.all(
+    attachments.map(async (attachment): Promise<ImageAttachment> => {
+      const name = attachment.title ?? "";
+      const transcript = attachment.transcriptId
+        ? { transcriptId: attachment.transcriptId }
+        : {};
+      // A redacted viewer holds only the scrubbed variant; replaying it would
+      // store that variant as the turn's original.
+      if (attachment.redacted) {
+        throw new Error(`attachment "${name}" is redacted for this viewer`);
+      }
+      const inline = BASE64_DATA_URL.exec(attachment.url);
+      if (inline) {
+        const thumbnail = attachment.thumbnailUrl
+          ? BASE64_DATA_URL.exec(attachment.thumbnailUrl)
+          : null;
+        return {
+          data: inline[2],
+          mimeType: inline[1],
+          name: name || "attachment",
+          ...(thumbnail
+            ? { thumbnail: { data: thumbnail[2], mimeType: thumbnail[1] } }
+            : {}),
+          ...transcript,
+        };
+      }
+      // Only a content-addressed media path is read with the API credential.
+      // Other root-relative paths could expose authenticated API responses.
+      if (!STORED_MEDIA_URL.test(attachment.url)) {
+        throw new Error(`attachment "${name}" is not stored media`);
+      }
+      const blob = await (await client.rawRequest(attachment.url)).blob();
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const encoded = BASE64_DATA_URL.exec(String(reader.result));
+          if (!encoded)
+            reject(new Error(`attachment "${name}" could not be encoded`));
+          else resolve(encoded[2]);
+        };
+        reader.onerror = () =>
+          reject(reader.error ?? new Error("Attachment read failed"));
+        reader.onabort = () => reject(new Error("Attachment read aborted"));
+        reader.readAsDataURL(blob);
+      });
+      return {
+        data,
+        mimeType: attachment.mimeType ?? blob.type,
+        name: name || "attachment",
+        ...transcript,
+      };
+    }),
+  );
+  for (const image of images) {
+    const cap = image.mimeType.toLowerCase().startsWith("image/")
+      ? MAX_CHAT_IMAGE_BASE64_BYTES
+      : MAX_CHAT_MEDIA_BASE64_BYTES;
+    if (
+      !CHAT_UPLOAD_MIME_TYPE_SET.has(image.mimeType.toLowerCase()) ||
+      image.data.length > cap ||
+      (image.name?.length ?? 0) > MAX_CHAT_ATTACHMENT_NAME_LENGTH
+    ) {
+      throw new Error(
+        `attachment "${image.name}" cannot be replayed intact within the upload limits`,
+      );
+    }
+  }
+  return images;
 }
 /**
  * Commands render only after the drain resolves whether they are local,
@@ -382,10 +511,14 @@ function createOptimisticTurn(
   };
 }
 function createOptimisticUserMessage(
-  turn: Pick<QueuedChatSend, "rawInput" | "images" | "optimisticTurn">,
+  turn: Pick<
+    QueuedChatSend,
+    "rawInput" | "images" | "metadata" | "optimisticTurn"
+  >,
 ): ConversationMessage {
   const { userMsgId, timestamp } = turn.optimisticTurn;
   const rawText = turn.rawInput.trim();
+  const replyToMessageId = turn.metadata?.replyToMessageId;
   const attachments = turn.images?.length
     ? turn.images.map((image, index) => ({
         id: `${userMsgId}-img-${index}`,
@@ -412,6 +545,7 @@ function createOptimisticUserMessage(
         : rawText,
     timestamp,
     ...(attachments ? { attachments } : {}),
+    ...(typeof replyToMessageId === "string" ? { replyToMessageId } : {}),
   };
 }
 // ── Deps interface ──────────────────────────────────────────────────
@@ -436,13 +570,7 @@ export interface UseChatSendDeps {
   /** Set/clear the live server-reported phase of the in-flight turn (#8813).
    *  Fed by the chat-send SSE `onStatus`; cleared when the turn settles. */
   setServerTurnStatus: (status: ChatTurnStatus | null) => void;
-  setChatLastUsage: (v: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model: string | undefined;
-    updatedAt: number;
-  }) => void;
+  setChatLastUsage: (v: ChatTurnUsage) => void;
   setChatPendingImages: (v: ImageAttachment[]) => void;
   setConversations: (
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),
@@ -600,9 +728,47 @@ export function useChatSend(deps: UseChatSendDeps) {
     pollCloudCredits,
   } = deps;
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const chatSendIdleWaitersRef = useRef<Array<() => void>>([]);
+  const notifyChatSendIdle = useCallback(() => {
+    for (const wake of chatSendIdleWaitersRef.current.splice(0)) wake();
+  }, []);
+  const pendingActionKeysRef = useRef(new Map<string, Promise<boolean>>());
   const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
+  // Teardown retains the durable pending-turn receipt for the next page.
+  // It must not start a room-only HTTP Stop that can arrive after a remount's send.
+  const unmountingRef = useRef(false);
+  const turnNoticeRef = useRef(setActionNotice);
+  turnNoticeRef.current = setActionNotice;
+  const conversationTurnsRef = useRef<ConversationTurnController<
+    ChatTurnDispatch,
+    ConversationStreamResult
+  > | null>(null);
+  if (!conversationTurnsRef.current) {
+    conversationTurnsRef.current = new ConversationTurnController({
+      create: async () => {
+        throw new Error("Bind the chat conversation before dispatch.");
+      },
+      clientMessageId: (input) => input.clientMessageId,
+      send: (_room, input, turn) => input.send(turn),
+      stop: (room) => {
+        if (unmountingRef.current) return Promise.resolve();
+        return abortServerConversationTurn(room.roomId, "ui-chat-stop", () => {
+          turnNoticeRef.current(
+            "The connected host did not confirm Stop. This turn may still finish; check its history before retrying.",
+            "error",
+            12000,
+          );
+        });
+      },
+      ownershipLost: (error) => {
+        const status = (error as { status?: number } | null)?.status;
+        return status === 401 || status === 403;
+      },
+    });
+  }
+  const conversationTurns = conversationTurnsRef.current;
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
   // so selecting another agent retriggers the prewarm effect.
   const chatScopePrewarmBase = client.getBaseUrl();
@@ -619,11 +785,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       );
     });
   }, [chatScopePrewarmBase]);
-  // A lifecycle abort is different from an explicit Stop. During teardown the
-  // new page owns recovery, so the durable pending-turn receipt must survive
-  // the abort/finally microtask. Explicit stops and all other terminal paths
-  // still clear it normally.
-  const unmountingRef = useRef(false);
   // Freeze-on-shared (cloud-agent handoff, PR2). While a shared→dedicated
   // handoff is migrating, the user is still pointed at the SHARED agent but the
   // shared transcript has already been (or is about to be) snapshotted. The
@@ -636,46 +797,6 @@ export function useChatSend(deps: UseChatSendDeps) {
   // flight this stays false → the drain runs exactly as before (byte-identical
   // when `preferSharedCloudTier` is off, since no `migrating` phase ever fires).
   const handoffFrozenRef = useRef(false);
-  // Streaming-paint coalescer.
-  // The SSE stream fires three per-event callbacks that each trigger a state
-  // commit: `onToken` (cumulative text, often >60/sec on a fast model),
-  // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
-  // A microtask merges callbacks decoded from one transport event, but a fast
-  // model still delivers separate events faster than the full chat overlay can
-  // render them. Park cumulative snapshots and paint the first one immediately,
-  // then at a bounded cadence. Terminal/abort paths synchronously flush the
-  // latest snapshot, so throttling cannot lose text. A timeout is the delivery
-  // clock rather than rAF because hidden/resource-constrained tabs may defer
-  // animation frames for seconds.
-  //
-  // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
-  // parked", distinct from a parked `null` (an explicit clear-the-status
-  // commit).
-  const streamingFlushRef = useRef<{
-    conversationId: string | null;
-    messageId: string;
-    pendingText: string | null;
-    /** Whether the parked text is action-callback (provisional) text — the
-     *  latest frame wins, mirroring `pendingText` (double-speak fix). */
-    pendingTextProvisional: boolean;
-    pendingStatus: ChatTurnStatus | null | typeof NO_PENDING_STATUS;
-    pendingToolEvents: ChatToolCallEvent[];
-    flushScheduled: boolean;
-    flushGeneration: number;
-    flushTimer: ReturnType<typeof setTimeout> | null;
-    lastFlushAtMs: number | null;
-  }>({
-    conversationId: null,
-    messageId: "",
-    pendingText: null,
-    pendingTextProvisional: false,
-    pendingStatus: NO_PENDING_STATUS,
-    pendingToolEvents: [],
-    flushScheduled: false,
-    flushGeneration: 0,
-    flushTimer: null,
-    lastFlushAtMs: null,
-  });
   const isConversationCommitActive = useCallback(
     (conversationId: string | null): boolean =>
       activeConversationIdRef.current === conversationId,
@@ -929,198 +1050,16 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [isConversationCommitActive, setServerTurnStatus],
   );
-  // Commit whatever text/status/tool events are parked for the in-flight turn in
-  // one pass, then clear the pending slots. Order matters: tool events merge
-  // onto the same turn as the text, and the status is a sibling indicator — all
-  // three settle together so the commit reflects one coherent stream state.
-  // Safe to call when nothing is pending (no-op).
-  const commitStreamingBuffer = useCallback(() => {
-    const buffer = streamingFlushRef.current;
-    const commitVisible = isConversationCommitActive(buffer.conversationId);
-    let committed = false;
-    if (buffer.pendingText !== null) {
-      const fullText = buffer.pendingText;
-      const provisional = buffer.pendingTextProvisional;
-      buffer.pendingText = null;
-      buffer.pendingTextProvisional = false;
-      const modification: StreamingTextModification = {
-        messageId: buffer.messageId,
-        mode: "replace",
-        fullText,
-        provisional,
-      };
-      if (commitVisible) {
-        applyStreamingTextModification(setConversationMessages, modification);
-      } else {
-        applyConversationMessageOverlayModification(
-          buffer.conversationId,
-          buffer.messageId,
-          modification,
-        );
-      }
-      committed = true;
-    }
-    if (buffer.pendingToolEvents.length > 0) {
-      const toolEvents = buffer.pendingToolEvents;
-      buffer.pendingToolEvents = [];
-      for (const event of toolEvents) {
-        const modification: StreamingTextModification = {
-          messageId: buffer.messageId,
-          mode: "tool",
-          event,
-        };
-        if (commitVisible) {
-          applyStreamingTextModification(setConversationMessages, modification);
-        } else {
-          applyConversationMessageOverlayModification(
-            buffer.conversationId,
-            buffer.messageId,
-            modification,
-          );
-        }
-      }
-      committed = true;
-    }
-    if (buffer.pendingStatus !== NO_PENDING_STATUS) {
-      const status = buffer.pendingStatus;
-      buffer.pendingStatus = NO_PENDING_STATUS;
-      if (commitVisible) {
-        setServerTurnStatus(status);
-        committed = true;
-      }
-    }
-    if (committed) buffer.lastFlushAtMs = performance.now();
-  }, [
-    applyConversationMessageOverlayModification,
+  const {
+    flushStreamingText,
+    scheduleStreamingText,
+    scheduleServerTurnStatus,
+    scheduleToolEvent,
+  } = useStreamingChatBuffer({
+    applyModification: applyStreamingModificationForConversation,
     isConversationCommitActive,
-    setConversationMessages,
     setServerTurnStatus,
-  ]);
-  // Apply whatever streaming state is parked for the in-flight turn NOW and
-  // invalidate its pending microtask/timer. Called before every terminal/abort
-  // transition so no token, tool row, or status is lost.
-  const flushStreamingText = useCallback(() => {
-    const buffer = streamingFlushRef.current;
-    if (buffer.flushScheduled) {
-      buffer.flushGeneration += 1;
-      buffer.flushScheduled = false;
-    }
-    if (buffer.flushTimer !== null) {
-      clearTimeout(buffer.flushTimer);
-      buffer.flushTimer = null;
-    }
-    commitStreamingBuffer();
-  }, [commitStreamingBuffer]);
-  // Reset the buffer to a fresh turn when `messageId` changes, dropping any
-  // stale parked state (text/status/tool) from the prior turn. Runs BEFORE a
-  // scheduler parks its value, so the reset never clobbers the value just set.
-  const startStreamingTurn = useCallback(
-    (conversationId: string, messageId: string) => {
-      const buffer = streamingFlushRef.current;
-      if (
-        buffer.conversationId === conversationId &&
-        buffer.messageId === messageId
-      )
-        return;
-      if (buffer.flushScheduled) buffer.flushGeneration += 1;
-      if (buffer.flushTimer !== null) {
-        clearTimeout(buffer.flushTimer);
-        buffer.flushTimer = null;
-      }
-      buffer.conversationId = conversationId;
-      buffer.messageId = messageId;
-      buffer.pendingText = null;
-      buffer.pendingTextProvisional = false;
-      buffer.pendingStatus = NO_PENDING_STATUS;
-      buffer.pendingToolEvents = [];
-      buffer.flushScheduled = false;
-      buffer.lastFlushAtMs = null;
-    },
-    [],
-  );
-  // The first snapshot paints in a microtask; later snapshots within the
-  // cadence window share one trailing timer and overwrite the cumulative text.
-  const ensureStreamingFlush = useCallback(() => {
-    const buffer = streamingFlushRef.current;
-    if (buffer.flushScheduled) return;
-    buffer.flushScheduled = true;
-    const generation = buffer.flushGeneration;
-    const commitScheduled = () => {
-      if (buffer.flushGeneration !== generation) return;
-      buffer.flushTimer = null;
-      buffer.flushScheduled = false;
-      commitStreamingBuffer();
-    };
-    const delayMs = streamingRenderDelayMs(
-      buffer.lastFlushAtMs,
-      performance.now(),
-    );
-    if (delayMs === 0) {
-      queueMicrotask(commitScheduled);
-      return;
-    }
-    buffer.flushTimer = setTimeout(commitScheduled, delayMs);
-  }, [commitStreamingBuffer]);
-  // Park the latest cumulative text for `messageId`. Synchronous callbacks from
-  // one decoded SSE batch overwrite the parked value and commit together.
-  const scheduleStreamingText = useCallback(
-    (
-      conversationId: string,
-      messageId: string,
-      fullText: string,
-      provisional = false,
-    ) => {
-      startStreamingTurn(conversationId, messageId);
-      streamingFlushRef.current.pendingText = fullText;
-      streamingFlushRef.current.pendingTextProvisional = provisional;
-      ensureStreamingFlush();
-    },
-    [startStreamingTurn, ensureStreamingFlush],
-  );
-  // Park a live turn-status phase for `messageId`; the latest value wins within
-  // one synchronous transport burst (superseded phases are never rendered).
-  // Coalesced with text/tool events from that burst (#8813).
-  const scheduleServerTurnStatus = useCallback(
-    (
-      conversationId: string,
-      messageId: string,
-      status: ChatTurnStatus | null,
-    ) => {
-      startStreamingTurn(conversationId, messageId);
-      streamingFlushRef.current.pendingStatus = status;
-      ensureStreamingFlush();
-    },
-    [startStreamingTurn, ensureStreamingFlush],
-  );
-  // Park one inline tool-call step for `messageId`. Unlike text/status these
-  // ACCUMULATE within a transport burst — each step (call → result/error) is a distinct
-  // merge onto the turn's `toolEvents`, so none may be dropped (#13535).
-  const scheduleToolEvent = useCallback(
-    (conversationId: string, messageId: string, event: ChatToolCallEvent) => {
-      startStreamingTurn(conversationId, messageId);
-      streamingFlushRef.current.pendingToolEvents.push(event);
-      ensureStreamingFlush();
-    },
-    [startStreamingTurn, ensureStreamingFlush],
-  );
-  // Invalidate any queued flush on unmount so it cannot commit into a torn-down
-  // tree.
-  useEffect(() => {
-    const buffer = streamingFlushRef.current;
-    return () => {
-      buffer.flushGeneration += 1;
-      buffer.flushScheduled = false;
-      if (buffer.flushTimer !== null) {
-        clearTimeout(buffer.flushTimer);
-        buffer.flushTimer = null;
-      }
-      buffer.pendingText = null;
-      buffer.pendingTextProvisional = false;
-      buffer.conversationId = null;
-      buffer.pendingStatus = NO_PENDING_STATUS;
-      buffer.pendingToolEvents = [];
-    };
-  }, []);
+  });
   useEffect(() => {
     // StrictMode and Fast Refresh replay setup after cleanup on the same refs.
     // A new mounted lifetime must accept its own turns; cleanup still aborts
@@ -1130,20 +1069,16 @@ export function useChatSend(deps: UseChatSendDeps) {
       unmountingRef.current = true;
       sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
-      if (activeTurn?.abortServerTurn) {
-        activeTurn.controller.signal.removeEventListener(
-          "abort",
-          activeTurn.abortServerTurn,
-        );
-      }
+      void conversationTurnsRef.current?.reset();
       activeTurn?.controller.abort();
       chatAbortRef.current?.abort();
       activeChatTurnRef.current = null;
       chatAbortRef.current = null;
       chatSendBusyRef.current = false;
       chatSendQueueRef.current.splice(0);
+      notifyChatSendIdle();
     };
-  }, [chatAbortRef, chatSendBusyRef]);
+  }, [chatAbortRef, chatSendBusyRef, notifyChatSendIdle]);
   const resolveQueuedChatSends = useCallback(
     (conversationId: string | null): RestoredQueuedDraft => {
       const queued: QueuedChatSend[] = [];
@@ -1212,21 +1147,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const restoredQueuedDraft = resolveQueuedChatSends(
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
       );
-      if (activeTurn?.roomId) {
-        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop", () => {
-          setActionNotice(
-            "Stop could not reach the connected host. This turn may still finish; check its history before retrying.",
-            "error",
-            12000,
-          );
-        });
-      }
-      if (activeTurn?.abortServerTurn) {
-        activeTurn.controller.signal.removeEventListener(
-          "abort",
-          activeTurn.abortServerTurn,
-        );
-      }
+      void conversationTurnsRef.current?.interrupt();
       activeTurn?.controller.abort();
       chatAbortRef.current?.abort();
       // Commit any parked partial text (so a stopped turn keeps what the user saw)
@@ -1237,16 +1158,17 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatSending(false);
       setChatFirstTokenReceived(false);
       setServerTurnStatus(null);
+      notifyChatSendIdle();
       return restoredQueuedDraft;
     }, [
       chatAbortRef,
       activeConversationIdRef,
       flushStreamingText,
+      notifyChatSendIdle,
       resolveQueuedChatSends,
       setChatFirstTokenReceived,
       setServerTurnStatus,
       setChatSending,
-      setActionNotice,
     ]);
   const interruptActiveChatPipeline = useCallback((): string => {
     return interruptActiveChatPipelineWithDraft().text;
@@ -1355,14 +1277,26 @@ export function useChatSend(deps: UseChatSendDeps) {
           commitLocalCommandTurn(rawText, "Search query cannot be empty.");
           return { handled: true };
         }
-        const [memoryResult, documentResult] = await Promise.all([
+        // On a native device without the documents route the combined search
+        // keeps its memory results and reports Knowledge as unavailable (see
+        // hash-search.ts). `#documents` keeps failing: it has no other result.
+        const searchDocuments = () =>
+          client.searchDocuments(query, { threshold: 0.2, limit: 6 });
+        const [memoryResult, knowledge] = await Promise.all([
           scope === "documents"
             ? Promise.resolve(null)
             : client.searchMemory(query, { limit: 6 }),
           scope === "memory"
-            ? Promise.resolve(null)
-            : client.searchDocuments(query, { threshold: 0.2, limit: 6 }),
+            ? Promise.resolve({ unavailable: false as const, result: null })
+            : scope === "all"
+              ? searchKnowledgeForCombinedSearch(searchDocuments, { isNative })
+              : searchDocuments().then((result) => ({
+                  unavailable: false as const,
+                  result,
+                })),
         ]);
+        const documentResult = knowledge.result;
+        const knowledgeUnavailable = knowledge.unavailable;
         const memoryLines =
           memoryResult?.results.map(
             (item, index) =>
@@ -1387,7 +1321,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               : formatSearchBullet("Memories", memoryLines),
             scope === "memory"
               ? ""
-              : formatSearchBullet("Knowledge", documentLines),
+              : knowledgeUnavailable
+                ? "Knowledge: unavailable on this device"
+                : formatSearchBullet("Knowledge", documentLines),
           ]
             .filter(Boolean)
             .join("\n\n"),
@@ -1711,7 +1647,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           ? claimConversationMessagesOwnership(optimisticOwnerConversationId)
           : null;
       let controller: AbortController | null = null;
-      let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
       const viewHandoffOwner: ChatViewHandoffOwner = {
         conversationId: optimisticOwnerConversationId,
@@ -1722,29 +1657,32 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Stop must also invalidate setup work before the streaming controller
       // exists (command resolution and first-conversation creation).
       const cancellationGeneration = sendCancellationGenerationRef.current;
-      const restoreUnsentSetup = (): void => {
+      const restoreUnsentSetup = (
+        ownerConversationId = optimisticOwnerConversationId,
+        ownerGeneration = optimisticOwnerGeneration,
+      ): void => {
         if (unmountingRef.current) return;
         const ids = [
           turn.optimisticTurn.userMsgId,
           turn.optimisticTurn.assistantMsgId,
         ];
         setConversationMessagesForConversation(
-          optimisticOwnerConversationId,
+          ownerConversationId,
           (previous) => previous.filter((message) => !ids.includes(message.id)),
         );
         for (const messageId of ids) {
           applyConversationMessageOverlayModification(
-            optimisticOwnerConversationId,
+            ownerConversationId,
             messageId,
             { messageId, mode: "drop" },
           );
         }
         if (
-          optimisticOwnerGeneration !== null &&
-          activeConversationIdRef.current === optimisticOwnerConversationId &&
+          ownerGeneration !== null &&
+          activeConversationIdRef.current === ownerConversationId &&
           isConversationMessagesOwnershipCurrent(
-            optimisticOwnerConversationId,
-            optimisticOwnerGeneration,
+            ownerConversationId,
+            ownerGeneration,
           )
         ) {
           const draft = [turn.rawInput, chatInputRef.current]
@@ -1987,61 +1925,72 @@ export function useChatSend(deps: UseChatSendDeps) {
       controller = new AbortController();
       viewHandoffOwner.controller = controller;
       chatAbortRef.current = controller;
-      abortServerTurn = () => {
-        abortServerConversationTurn(convRoomId, "ui-chat-abort");
-      };
-      controller.signal.addEventListener("abort", abortServerTurn, {
-        once: true,
-      });
       activeChatTurnRef.current = {
         controller,
         conversationId: convId,
-        roomId: convRoomId,
-        abortServerTurn,
       };
       let streamedAssistantText = "";
       try {
-        const data = await client.sendConversationMessageStream(
-          convId,
-          text,
-          (token, accumulatedText, provisional) => {
-            const nextText =
-              typeof accumulatedText === "string"
-                ? accumulatedText
-                : mergeStreamingText(streamedAssistantText, token);
-            if (nextText === streamedAssistantText) return;
-            streamedAssistantText = nextText;
-            if (isConversationCommitActive(convId)) {
-              setChatFirstTokenReceived(true);
-            }
-            // Coalesce tokens delivered in one transport burst into a microtask;
-            // the parked text is flushed synchronously before terminal changes.
-            // Provisional (action-callback) text is stamped on the message so
-            // voice output holds it until the final reply confirms or replaces
-            // it (double-speak fix).
-            scheduleStreamingText(
-              convId,
-              assistantMsgId,
-              nextText,
-              provisional === true,
-            );
+        const data = await conversationTurns.request(
+          {
+            clientMessageId,
+            send: (turnContext) =>
+              client.sendConversationMessageStream(
+                convId,
+                text,
+                (token, accumulatedText, provisional) => {
+                  if (!turnContext.current()) return;
+                  const nextText =
+                    typeof accumulatedText === "string"
+                      ? accumulatedText
+                      : mergeStreamingText(streamedAssistantText, token);
+                  if (nextText === streamedAssistantText) return;
+                  streamedAssistantText = nextText;
+                  if (isConversationCommitActive(convId)) {
+                    setChatFirstTokenReceived(true);
+                  }
+                  // Coalesce tokens delivered in one transport burst into a microtask;
+                  // the parked text is flushed synchronously before terminal changes.
+                  // Provisional (action-callback) text is stamped on the message so
+                  // voice output holds it until the final reply confirms or replaces
+                  // it (double-speak fix).
+                  scheduleStreamingText(
+                    convId,
+                    assistantMsgId,
+                    nextText,
+                    provisional === true,
+                  );
+                },
+                channelType,
+                turnContext.signal,
+                imagesToSend,
+                turn.metadata,
+                // Live server phase → the rich status indicator. Additive; the reply
+                // streams through onToken above regardless. Coalesced into the same
+                // transport-burst microtask as text/tool commits and flushed
+                // synchronously before any terminal transition.
+                (status) => {
+                  if (turnContext.current())
+                    scheduleServerTurnStatus(convId, assistantMsgId, status);
+                },
+                // Inline tool-call steps → the turn's tool rows (call → result/error),
+                // merged by callId so one row flips running → settled (#13535).
+                // Coalesced into the current transport burst with the text + status.
+                (event) => {
+                  if (turnContext.current())
+                    scheduleToolEvent(convId, assistantMsgId, event);
+                },
+                // Stable idempotency key for this logical turn.
+                turnContext.clientMessageId,
+                (results) => {
+                  if (turnContext.current()) handoffView(results);
+                },
+              ),
           },
-          channelType,
-          controller.signal,
-          imagesToSend,
-          turn.metadata,
-          // Live server phase → the rich status indicator. Additive; the reply
-          // streams through onToken above regardless. Coalesced into the same
-          // transport-burst microtask as text/tool commits and flushed
-          // synchronously before any terminal transition.
-          (status) => scheduleServerTurnStatus(convId, assistantMsgId, status),
-          // Inline tool-call steps → the turn's tool rows (call → result/error),
-          // merged by callId so one row flips running → settled (#13535).
-          // Coalesced into the current transport burst with the text + status.
-          (event) => scheduleToolEvent(convId, assistantMsgId, event),
-          // Stable idempotency key for this logical turn.
-          clientMessageId,
-          handoffView,
+          {
+            conversation: { id: convId, roomId: convRoomId },
+            signal: controller.signal,
+          },
         );
         // Commit any token parked by the throttle before the terminal
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
@@ -2209,7 +2158,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
-          dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+          if ((err as { notDispatched?: boolean } | null)?.notDispatched) {
+            restoreUnsentSetup(
+              viewHandoffOwner.conversationId,
+              viewHandoffOwner.generation,
+            );
+          } else {
+            dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+          }
+          return;
+        }
+        if (isConversationTurnRefusal(err)) {
+          restoreUnsentSetup(
+            viewHandoffOwner.conversationId,
+            viewHandoffOwner.generation,
+          );
+          setActionNotice(err.message, "error", 8000);
           return;
         }
         // A terminal SSE `error` event that carried a structured gate must
@@ -2389,42 +2353,70 @@ export function useChatSend(deps: UseChatSendDeps) {
               replayMessages,
             );
             let replayStreamedText = "";
-            const retryData = await client.sendConversationMessageStream(
-              conversation.id,
-              text,
-              (token, accumulatedText, provisional) => {
-                const nextText =
-                  typeof accumulatedText === "string"
-                    ? accumulatedText
-                    : mergeStreamingText(replayStreamedText, token);
-                if (nextText === replayStreamedText) return;
-                replayStreamedText = nextText;
-                if (isConversationCommitActive(conversation.id)) {
-                  setChatFirstTokenReceived(true);
-                }
-                scheduleStreamingText(
-                  conversation.id,
-                  replayAssistantId,
-                  nextText,
-                  provisional === true,
-                );
+            const retryData = await conversationTurns.request(
+              {
+                clientMessageId,
+                send: (turnContext) =>
+                  client.sendConversationMessageStream(
+                    conversation.id,
+                    text,
+                    (token, accumulatedText, provisional) => {
+                      if (!turnContext.current()) return;
+                      const nextText =
+                        typeof accumulatedText === "string"
+                          ? accumulatedText
+                          : mergeStreamingText(replayStreamedText, token);
+                      if (nextText === replayStreamedText) return;
+                      replayStreamedText = nextText;
+                      if (isConversationCommitActive(conversation.id)) {
+                        setChatFirstTokenReceived(true);
+                      }
+                      scheduleStreamingText(
+                        conversation.id,
+                        replayAssistantId,
+                        nextText,
+                        provisional === true,
+                      );
+                    },
+                    channelType,
+                    turnContext.signal,
+                    imagesToSend,
+                    turn.metadata,
+                    (serverStatus) => {
+                      if (turnContext.current())
+                        scheduleServerTurnStatus(
+                          conversation.id,
+                          replayAssistantId,
+                          serverStatus,
+                        );
+                    },
+                    (event) => {
+                      if (turnContext.current())
+                        scheduleToolEvent(
+                          conversation.id,
+                          replayAssistantId,
+                          event,
+                        );
+                    },
+                    // Same idempotency key across the whole logical turn, including
+                    // the 404 recreate-and-replay recovery.
+                    turnContext.clientMessageId,
+                    (results) => {
+                      if (turnContext.current()) handoffView(results);
+                    },
+                  ),
               },
-              channelType,
-              controller?.signal,
-              imagesToSend,
-              turn.metadata,
-              (serverStatus) =>
-                scheduleServerTurnStatus(
-                  conversation.id,
-                  replayAssistantId,
-                  serverStatus,
-                ),
-              (event) =>
-                scheduleToolEvent(conversation.id, replayAssistantId, event),
-              // Same idempotency key across the whole logical turn, including
-              // the 404 recreate-and-replay recovery.
-              clientMessageId,
-              handoffView,
+              {
+                conversation: {
+                  id: conversation.id,
+                  roomId: resolveAbortRoomId(
+                    conversation.id,
+                    conversation.roomId,
+                    undefined,
+                  ),
+                },
+                signal: controller.signal,
+              },
             );
             await handoffCompletedAction(retryData.actionResults, handoffView);
             // Commit any throttle-parked token before the terminal modification.
@@ -2548,9 +2540,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId || optimisticOwnerConversationId,
           null,
         );
-        if (controller && abortServerTurn) {
-          controller.signal.removeEventListener("abort", abortServerTurn);
-        }
         if (chatAbortRef.current === controller) {
           chatAbortRef.current = null;
         }
@@ -2563,6 +2552,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
+      conversationTurns,
       appendLocalCommandTurn,
       createTurnViewHandoff,
       handlePersonalRouteRefusal,
@@ -2647,9 +2637,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatSendBusyRef.current = false;
       setChatSending(false);
       setChatFirstTokenReceived(false);
+      notifyChatSendIdle();
     }
   }, [
     chatSendBusyRef,
+    notifyChatSendIdle,
     runQueuedChatSend,
     setChatFirstTokenReceived,
     setChatSending,
@@ -2733,7 +2725,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       // (a retry replaying an earlier reply-turn's metadata). The id rides in
       // `metadata.replyToMessageId`; the API boundary lifts it onto
       // `content.inReplyTo`, which drives the REPLY_CONTEXT provider.
-      const replyTarget = chatReplyTargetRef.current;
+      const replyTarget = options?.[CHAT_SEND_REPLAY]
+        ? null
+        : chatReplyTargetRef.current;
       const metadata =
         replyTarget && !asRecord(options?.metadata)?.replyToMessageId
           ? { ...options?.metadata, replyToMessageId: replyTarget.messageId }
@@ -2905,10 +2899,13 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversations omitted to limit rerenders
-  const sendActionMessage = useCallback(
-    async (text: string) => {
+  const deliverActionMessage = useCallback(
+    async (
+      text: string,
+      options?: Pick<ChatSendTextOptions, "metadata">,
+    ): Promise<boolean> => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed) return false;
       const viewHandoffOwner: ChatViewHandoffOwner = {
         conversationId: null,
         generation: null,
@@ -2920,13 +2917,28 @@ export function useChatSend(deps: UseChatSendDeps) {
       // still choosing the initial conversation. An unavailable restore leaves
       // the action unsent instead of allocating a competing conversation.
       const admissionGeneration = sendCancellationGenerationRef.current;
-      if ((await settleConversationHydrationForSend?.()) === false) return;
-      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
-      if (chatSendBusyRef.current) return;
+      if ((await settleConversationHydrationForSend?.()) === false)
+        return false;
+      if (admissionGeneration !== sendCancellationGenerationRef.current)
+        return false;
+      const requestedConversationId = activeConversationIdRef.current;
+      // Wait for the current turn instead of discarding the action. The
+      // handoff freeze holds it too: a send to the shared agent after its
+      // snapshot is lost to the skip-all import (see flushQueuedChatSends).
+      while (chatSendBusyRef.current || handoffFrozenRef.current) {
+        await new Promise<void>((resolve) => {
+          chatSendIdleWaitersRef.current.push(resolve);
+        });
+        if (admissionGeneration !== sendCancellationGenerationRef.current)
+          return false;
+      }
+      // A queued choice belongs to the conversation that admitted it. Do not
+      // deliver it into a different conversation selected while it waited.
+      if (activeConversationIdRef.current !== requestedConversationId)
+        return false;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
-      let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
       try {
         const optimisticOwnerConversationId =
@@ -2952,7 +2964,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                 actionTitle || t("common.newChat"),
               );
             if (admissionGeneration !== sendCancellationGenerationRef.current)
-              return;
+              return false;
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -2981,7 +2993,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             convRoomId = conversation.roomId;
           } catch {
             if (admissionGeneration !== sendCancellationGenerationRef.current)
-              return;
+              return false;
             // error-policy:J4 surfaced user-facing failure state. An
             // action/inbox send that can't start a conversation must not
             // vanish silently (mirrors the cold-open path in
@@ -2991,7 +3003,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               "error",
               8000,
             );
-            return;
+            return false;
           }
         }
         if (activeConversationIdRef.current === convId) {
@@ -3060,53 +3072,61 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller = new AbortController();
         viewHandoffOwner.controller = controller;
         chatAbortRef.current = controller;
-        abortServerTurn = () => {
-          abortServerConversationTurn(convRoomId, "ui-chat-abort");
-        };
-        controller.signal.addEventListener("abort", abortServerTurn, {
-          once: true,
-        });
         activeChatTurnRef.current = {
           controller,
           conversationId: convId,
-          roomId: convRoomId,
-          abortServerTurn,
         };
         let streamedAssistantText = "";
         try {
-          const data = await client.sendConversationMessageStream(
-            convId,
-            trimmed,
-            (token, accumulatedText, provisional) => {
-              const nextText =
-                typeof accumulatedText === "string"
-                  ? accumulatedText
-                  : mergeStreamingText(streamedAssistantText, token);
-              if (nextText === streamedAssistantText) return;
-              streamedAssistantText = nextText;
-              if (isConversationCommitActive(convId)) {
-                setChatFirstTokenReceived(true);
-              }
-              // Coalesce tokens delivered in one transport burst into a microtask;
-              // flush synchronously before terminal changes.
-              scheduleStreamingText(
-                convId,
-                assistantMsgId,
-                nextText,
-                provisional === true,
-              );
+          const data = await conversationTurns.request(
+            {
+              clientMessageId: generateChatClientMessageId(),
+              send: (turnContext) =>
+                client.sendConversationMessageStream(
+                  convId,
+                  trimmed,
+                  (token, accumulatedText, provisional) => {
+                    if (!turnContext.current()) return;
+                    const nextText =
+                      typeof accumulatedText === "string"
+                        ? accumulatedText
+                        : mergeStreamingText(streamedAssistantText, token);
+                    if (nextText === streamedAssistantText) return;
+                    streamedAssistantText = nextText;
+                    if (isConversationCommitActive(convId)) {
+                      setChatFirstTokenReceived(true);
+                    }
+                    // Coalesce tokens delivered in one transport burst into a microtask;
+                    // flush synchronously before terminal changes.
+                    scheduleStreamingText(
+                      convId,
+                      assistantMsgId,
+                      nextText,
+                      provisional === true,
+                    );
+                  },
+                  "DM",
+                  turnContext.signal,
+                  undefined,
+                  buildChatViewMetadata(tab, options?.metadata),
+                  // No overlay status on the action/DM path (its finally doesn't clear
+                  // it); still stream inline tool rows onto the turn (#13535),
+                  // coalesced into the current transport burst with the text.
+                  undefined,
+                  (event) => {
+                    if (turnContext.current())
+                      scheduleToolEvent(convId, assistantMsgId, event);
+                  },
+                  turnContext.clientMessageId,
+                  (results) => {
+                    if (turnContext.current()) handoffView(results);
+                  },
+                ),
             },
-            "DM",
-            controller.signal,
-            undefined,
-            buildChatViewMetadata(tab),
-            // No overlay status on the action/DM path (its finally doesn't clear
-            // it); still stream inline tool rows onto the turn (#13535),
-            // coalesced into the current transport burst with the text.
-            undefined,
-            (event) => scheduleToolEvent(convId, assistantMsgId, event),
-            undefined,
-            handoffView,
+            {
+              conversation: { id: convId, roomId: convRoomId },
+              signal: controller.signal,
+            },
           );
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
@@ -3163,10 +3183,28 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any throttled-but-uncommitted token first so an abort/error
           // never drops a placeholder the user already saw fill with text.
           flushStreamingText();
+          if (
+            isConversationTurnRefusal(err) ||
+            (err as { notDispatched?: boolean } | null)?.notDispatched
+          ) {
+            const ids = [userMsgId, assistantMsgId];
+            setConversationMessagesForConversation(convId, (previous) =>
+              previous.filter((message) => !ids.includes(message.id)),
+            );
+            for (const messageId of ids) {
+              applyConversationMessageOverlayModification(convId, messageId, {
+                messageId,
+                mode: "drop",
+              });
+            }
+            if (isConversationTurnRefusal(err))
+              setActionNotice(err.message, "error", 8000);
+            return false;
+          }
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
-            return;
+            return true;
           }
           dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           // Surface a status-specific notice so an inbox/connector send that
@@ -3200,17 +3238,17 @@ export function useChatSend(deps: UseChatSendDeps) {
               setChatSending(false);
               setChatFirstTokenReceived(false);
             }
+            notifyChatSendIdle();
             if (chatSendQueueRef.current.length > 0) {
               void flushQueuedChatSends();
             }
           }
         }
+        return true;
       } finally {
-        if (controller && abortServerTurn) {
-          controller.signal.removeEventListener("abort", abortServerTurn);
-        }
         if (controller == null && chatSendNonceRef.current === sendNonce) {
           chatSendBusyRef.current = false;
+          notifyChatSendIdle();
           if (chatSendQueueRef.current.length > 0) {
             void flushQueuedChatSends();
           }
@@ -3218,6 +3256,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
+      conversationTurns,
       activeConversationId,
       createTurnViewHandoff,
       claimConversationMessagesOwnership,
@@ -3226,9 +3265,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       elizaCloudEnabled,
       elizaCloudConnected,
       flushQueuedChatSends,
+      notifyChatSendIdle,
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
+      applyConversationMessageOverlayModification,
       applyStreamingModificationForConversation,
       reconcileTerminalStream,
       restoreEvictedUserTurn,
@@ -3246,6 +3287,30 @@ export function useChatSend(deps: UseChatSendDeps) {
       settleConversationHydrationForSend,
       flushStreamingText,
     ],
+  );
+  const sendActionMessage = useCallback(
+    async (
+      text: string,
+      options?: Pick<ChatSendTextOptions, "metadata">,
+    ): Promise<boolean> => {
+      // A waiting action no longer fails the busy check, so a repeated
+      // activation of the same control would start one agent turn each.
+      const actionKey = JSON.stringify([
+        activeConversationIdRef.current,
+        text.trim(),
+        options?.metadata,
+      ]);
+      const pending = pendingActionKeysRef.current.get(actionKey);
+      if (pending) return pending;
+      const delivery = deliverActionMessage(text, options);
+      pendingActionKeysRef.current.set(actionKey, delivery);
+      try {
+        return await delivery;
+      } finally {
+        pendingActionKeysRef.current.delete(actionKey);
+      }
+    },
+    [activeConversationIdRef, deliverActionMessage],
   );
   const handleChatStop = useCallback(() => {
     interruptActiveChatPipeline();
@@ -3265,9 +3330,9 @@ export function useChatSend(deps: UseChatSendDeps) {
   const replyRecoveriesRef = useRef(new Set<string>());
   const handleChatRetry = useCallback(
     async (assistantMsgId: string) => {
-      const currentMessages = conversationMessagesRef.current;
+      let currentMessages = conversationMessagesRef.current;
       // Find the failed/interrupted assistant message + its preceding user turn.
-      const assistantIdx = currentMessages.findIndex(
+      let assistantIdx = currentMessages.findIndex(
         (m) => m.id === assistantMsgId && m.role === "assistant",
       );
       if (assistantIdx < 0) return;
@@ -3320,10 +3385,51 @@ export function useChatSend(deps: UseChatSendDeps) {
       const userMsg = currentMessages[userIdx];
       const retryText = userMsg.text;
       if (!retryText) return;
+      let retryImages: ImageAttachment[] | undefined;
+      if (userMsg.attachments?.length) {
+        // The read is async: hold the retry key against a second click, and
+        // stop if the transcript changed while the bytes were loading.
+        replyRecoveriesRef.current.add(recoveryKey);
+        try {
+          retryImages = await readReplayedTurnImages(userMsg.attachments);
+        } catch (err) {
+          setActionNotice(
+            `Failed to retry message: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+          return;
+        } finally {
+          replyRecoveriesRef.current.delete(recoveryKey);
+        }
+        if (activeConversationIdRef.current !== convId) return;
+        currentMessages = conversationMessagesRef.current;
+        assistantIdx = currentMessages.findIndex(
+          (m) => m.id === assistantMsgId && m.role === "assistant",
+        );
+        userIdx = currentMessages.findIndex((m) => m.id === userMsg.id);
+        if (
+          assistantIdx < 0 ||
+          userIdx < 0 ||
+          currentMessages[userIdx] !== userMsg ||
+          currentMessages[assistantIdx] !== assistantMessage
+        )
+          return;
+      }
       const canTruncate =
         Boolean(convId) &&
         userMsg.source !== "local_command" &&
         !userMsg.id.startsWith("temp-");
+      const hasLaterUserTurn = currentMessages
+        .slice(assistantIdx + 1)
+        .some((m) => m.role === "user");
+      if (canTruncate && convId && hasLaterUserTurn) {
+        await sendChatTextInternal(
+          retryText,
+          replayedTurnOptions(convId, userMsg, retryImages),
+        );
+        return;
+      }
       // Preferred path: re-run the turn IN PLACE. Truncate from the user message
       // (inclusive) so [Q, fail] is removed server-side, then resend Q — exactly
       // like handleChatEdit. The old behaviour only dropped the assistant bubble
@@ -3343,7 +3449,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             removedMessages: removedTail,
             preservedMessages,
           });
-          await sendChatText(retryText, { conversationId: convId });
+          await sendChatTextInternal(
+            retryText,
+            replayedTurnOptions(convId, userMsg, retryImages),
+          );
         } catch (err) {
           await loadConversationMessages(convId);
           setActionNotice(
@@ -3370,6 +3479,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         ),
       );
       void sendChatTextInternal(retryText, {
+        ...replayedTurnOptions(convId, userMsg, retryImages),
         ...(clientMessageId
           ? {
               [CHAT_SEND_IDENTITY_OVERRIDE]: {
@@ -3385,7 +3495,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       });
     },
     [
-      sendChatText,
       sendChatTextInternal,
       applyStreamingModificationForConversation,
       setConversationMessages,
@@ -3428,6 +3537,26 @@ export function useChatSend(deps: UseChatSendDeps) {
       ) {
         return false;
       }
+      let editImages: ImageAttachment[] | undefined;
+      if (targetMessage.attachments?.length) {
+        try {
+          editImages = await readReplayedTurnImages(targetMessage.attachments);
+        } catch (err) {
+          setActionNotice(
+            `Failed to edit message: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+          return false;
+        }
+        if (activeConversationIdRef.current !== convId) return false;
+        currentMessages = conversationMessagesRef.current;
+        messageIndex = currentMessages.findIndex(
+          (message) => message.id === messageId && message.role === "user",
+        );
+        if (messageIndex < 0 || currentMessages[messageIndex] !== targetMessage)
+          return false;
+      }
       const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
       if (!restoredQueuedDraft.text) {
         setChatInput("");
@@ -3445,7 +3574,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           removedMessages: removedTail,
           preservedMessages,
         });
-        await sendChatText(nextText, { conversationId: convId });
+        await sendChatTextInternal(
+          nextText,
+          replayedTurnOptions(convId, targetMessage, editImages),
+        );
         return true;
       } catch (err) {
         await loadConversationMessages(convId);
@@ -3460,7 +3592,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       loadConversationMessages,
       removeConversationMessageStateMessages,
-      sendChatText,
+      sendChatTextInternal,
       setActionNotice,
       activeConversationIdRef.current,
       conversationMessagesRef,

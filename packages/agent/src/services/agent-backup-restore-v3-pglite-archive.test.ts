@@ -11,7 +11,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { extractAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database";
 import { validateAgentBackupRestoreV3CandidateDatabase } from "./agent-backup-restore-v3-candidate-database-validation";

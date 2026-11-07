@@ -5,15 +5,22 @@
  * evidence, evaluate conflicts, and queue exact proposal reviews; it exposes
  * no reserve, calendar-write, send, purchase, or dispatch operation.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,
   lifeOpsFailedEffect,
   lifeOpsNoopEffect,
 } from "../action-effect-result.js";
+import {
+  CAPACITY_ASSIGNMENTS_SCHEMA,
+  CAPACITY_PLAN_SCHEMA,
+  CAPACITY_TRANSITIONS_SCHEMA,
+  RESOURCE_DEFINITION_SCHEMA,
+} from "./action-schema.js";
 import {
   getResourceCapacityService,
   type ResourceCapacityService,
@@ -184,9 +191,9 @@ export function createResourceCapacityAction(
       {
         name: "resource",
         description:
-          "Typed caregiver, vehicle, or car-seat resource definition.",
+          "Typed caregiver, vehicle, or car-seat resource definition; the fields depend on kind.",
         subactions: ["put_resource"],
-        schema: { type: "object", additionalProperties: true },
+        schema: RESOURCE_DEFINITION_SCHEMA,
       },
       {
         name: "expectedRevision",
@@ -200,27 +207,21 @@ export function createResourceCapacityAction(
         description:
           "Household plan with exact needs, windows, locations, children, requirements, and handoffs.",
         subactions: ["evaluate_plan", "propose_plan"],
-        schema: { type: "object", additionalProperties: true },
+        schema: CAPACITY_PLAN_SCHEMA,
       },
       {
         name: "assignments",
         description:
           "Explicit caregiver, backup, vehicle, and car-seat assignments by need.",
         subactions: ["evaluate_plan", "propose_plan"],
-        schema: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
+        schema: CAPACITY_ASSIGNMENTS_SCHEMA,
       },
       {
         name: "transitions",
         description:
           "Exact source-grounded resource transition times between needs.",
         subactions: ["evaluate_plan", "propose_plan"],
-        schema: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
+        schema: CAPACITY_TRANSITIONS_SCHEMA,
       },
       {
         name: "maximumSourceAgeMinutes",

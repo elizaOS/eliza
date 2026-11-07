@@ -1,3 +1,4 @@
+import type { NotesRequestInterpretation } from "../actions/task-extraction-context";
 /**
  * Plugin-component contracts — the things a plugin registers into the runtime:
  * `Action` (validate + handler), `Provider` (context injected into the prompt),
@@ -16,8 +17,9 @@ import type {
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
 import type { DisclosureSubject, Memory } from "./memory";
-import type { Content, JsonPrimitive, JsonValue } from "./primitives";
+import type { Content, JsonPrimitive, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
+import type { ActionParameterSchema } from "./schema";
 import type { ActionPlan, State } from "./state";
 
 export type {
@@ -27,49 +29,7 @@ export type {
 	RoleGate,
 } from "./contexts";
 
-/**
- * JSON Schema type for action parameter validation.
- * Supports basic JSON Schema properties for parameter definition.
- */
-export interface ActionParameterSchema {
-	/**
-	 * JSON Schema instance type. Optional because a schema may instead be a
-	 * pure union (`oneOf`/`anyOf`) — a sibling `type` alongside union branches
-	 * of differing types contradicts the branches, and strict provider
-	 * grammars reject the contradiction. A schema should carry `type` or a
-	 * union keyword, never neither.
-	 */
-	type?: string;
-	description?: string;
-	/** Default value if parameter is not provided */
-	default?: JsonValue | null;
-	/** For object types, define nested properties */
-	properties?: Record<string, ActionParameterSchema>;
-	/** Required child property names for object-valued parameters */
-	required?: string[];
-	/** Whether object-valued parameters allow undeclared properties */
-	additionalProperties?: boolean | ActionParameterSchema;
-	/** For array types, define the item schema */
-	items?: ActionParameterSchema;
-	/** Enumerated allowed values (schema-compatible) */
-	enumValues?: Array<string | number | boolean | null>;
-	/** Enumerated allowed values */
-	enum?: Array<string | number | boolean | null>;
-	/** Minimum string length for string-valued parameters */
-	minLength?: number;
-	/** Maximum string length for string-valued parameters */
-	maxLength?: number;
-	/** Regular expression pattern for string-valued parameters */
-	pattern?: string;
-	/** Numeric minimum */
-	minimum?: number;
-	/** Numeric maximum */
-	maximum?: number;
-	/** JSON Schema `oneOf`: value must match exactly one sub-schema */
-	oneOf?: ReadonlyArray<ActionParameterSchema>;
-	/** JSON Schema `anyOf`: value must match at least one sub-schema */
-	anyOf?: ReadonlyArray<ActionParameterSchema>;
-}
+export type { ActionParameterSchema } from "./schema";
 
 /**
  * Defines a single parameter for an action.
@@ -105,15 +65,7 @@ export interface ActionParameter {
 	 * on MEMORY_CREATE is what native tool-calling models honour.
 	 */
 	requiredForSubactions?: readonly string[];
-	/**
-	 * Explicit legacy string selectors that may satisfy this required parameter
-	 * at runtime admission. Each alternative must also be a declared parameter,
-	 * supplied as an own, nonempty string and valid against both schemas. Only an
-	 * absent canonical parameter may be waived; arguments are never renamed.
-	 * Native tool schemas still require the canonical name. Use this only when
-	 * the owning handler deliberately supports these alternatives and validates
-	 * conflicting values. Other required parameters remain required.
-	 */
+	/** Declared string-selector alternatives for a required parameter. Each must be a valid, nonempty own value satisfying both schemas. Only an absent canonical selector may be waived; conflicting values remain the owner handler’s responsibility. Native schemas require canonical names. */
 	legacyRequiredAlternatives?: readonly string[];
 	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
@@ -203,6 +155,22 @@ export type CompletionContextSelection = {
 };
 
 export interface MessageHandlerPlan {
+	/** Same-call model-classified negative Notes restriction; never permission. */
+	notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved";
+	/** Owned same-call semantic interpretation; not permission or execution proof. */
+	notesRequestInterpretation?: {
+		readonly status: NotesRequestInterpretation["status"];
+		readonly operations: Array<
+			NotesRequestInterpretation["operations"][number]
+		>;
+	};
+	/** Host-only contradiction evidence; never a model field or write grant. */
+	notesRequestHostRestriction?: {
+		classification: "unresolved";
+		reason: "registered-current-mutation-route" | "registered-route-ambiguous";
+		routeIds: string[];
+		operations: string[];
+	};
 	contexts: AgentContext[];
 	reply?: string;
 	replyEffectStatus?: ReplyEffectStatus;
@@ -366,13 +334,6 @@ export const ActionMode = {
 } as const;
 export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 
-/** Hook modes that run in parallel with the corresponding pipeline step. */
-export const NON_BLOCKING_MODES = new Set<ActionMode>([
-	ActionMode.ALWAYS_DURING,
-	ActionMode.CONTEXT_DURING,
-	ActionMode.RESPONSE_HANDLER_DURING,
-]);
-
 /** All non-PLANNER hook modes, in canonical pipeline order. */
 export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_BEFORE,
@@ -386,9 +347,6 @@ export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_AFTER,
 ];
 
-/**
- * Represents an action the agent can perform
- */
 export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
 
 /**
@@ -397,20 +355,23 @@ export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
  * destination audience as well as the actor.
  *
  * Two forms, both fail-closed:
- *  - `owner_exclusive` (the original, unchanged): the destination must be a
- *    verified owner-only room — evaluated by `decisionFromAudience`.
- *  - `audience_admission` (added with the min-over-members policy wiring): the
- *    gate admits the component only when the ATTESTED delivery audience as a
- *    whole earns full disclosure for `subject`, computed by
- *    `resolveAudienceAdmission` over the same attested census. One ungranted
- *    non-agent member caps the room, exactly like `owner_exclusive` is the
- *    degenerate two-party-owner-DM case of this policy.
+ * - `owner_exclusive` (the original, unchanged): the destination must be a
+ * verified owner-only room — evaluated by `decisionFromAudience`.
+ * - `audience_admission` (added with the min-over-members policy wiring): the
+ * gate admits the component only when the ATTESTED delivery audience as a
+ * whole earns full disclosure for `subject`, computed by
+ * `resolveAudienceAdmission` over the same attested census. One ungranted
+ * non-agent member caps the room, exactly like `owner_exclusive` is the
+ * degenerate two-party-owner-DM case of this policy.
  */
 export type DisclosureGate =
 	| { require: "owner_exclusive" }
 	| { require: "audience_admission"; subject: DisclosureSubject };
 
+/** An action the agent can perform. */
 export interface Action {
+	/** Pure source-owned typed selection adapter for relevance only, never permission. */
+	selectionIdentity?: (selection: unknown) => string | undefined;
 	/** Exact owner-declared read-only operation IDs whose successful, non-replayed
 	 * noop receipts may follow their original request through history projection.
 	 * Undeclared operations and mutation outcomes remain complete inline evidence. */
@@ -429,6 +390,20 @@ export interface Action {
 
 	/** Handler function */
 	handler: Handler;
+
+	/** Source-owned negative restriction before argument validation. Must be
+	 * synchronous and effect-free. Return a privately issued negative result
+	 * bound to this executor attempt or nothing; invalid output fails closed.
+	 * Returning nothing grants no authority and all ordinary gates still run.
+	 * Raw params may be malformed. Resolve only the owner's known operation.
+	 */
+	restrictRequestOperation?: (args: {
+		runtime: IAgentRuntime;
+		message: Memory;
+		state?: State;
+		action: Action;
+		params: unknown;
+	}) => ActionResult | undefined;
 
 	/** Validation function */
 	validate: Validator;
@@ -449,23 +424,7 @@ export interface Action {
 	/** Optional priority for action ordering */
 	priority?: number;
 
-	/**
-	 * Explicit override policy for name collisions during registration.
-	 *
-	 * When two components register under the same `name`, the runtime keeps the
-	 * first-registered instance (deterministic first-wins) and emits a WARN for
-	 * the undeclared collision. Set `override: true` on the LATER registrant to
-	 * declare that it intentionally supersedes an already-registered component of
-	 * the same name; the runtime then replaces the incumbent and logs the
-	 * override at INFO instead of warning. This turns a silent, order-sensitive
-	 * dedupe into an explicit, declared precedence contract.
-	 *
-	 * NOTE: `override` is honored on the DIRECT host/core registration path only.
-	 * Across `registerPlugin` boundaries it is downgraded to safe first-wins,
-	 * because hot plugin teardown (unload/reload/rollback) does not restore a
-	 * displaced incumbent — a plugin override would otherwise destructively strip
-	 * another plugin's component on unload.
-	 */
+	/** Direct registration may replace a component with override: true; undeclared collisions warn and keep the incumbent. Plugin registration remains first-wins because teardown cannot restore displaced components. */
 	override?: boolean;
 
 	/**
@@ -500,10 +459,10 @@ export interface Action {
 	/**
 	 * One-line routing hint surfaced to the planner. Replaces hand-written
 	 * domain-routing prose in the v5 planner template. Format:
-	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
+	 * "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
 	 * Examples:
-	 *   - PERSONAL_ASSISTANT: "real flight/hotel/trip booking -> PERSONAL_ASSISTANT action=book_travel; no browse-first or web-search-first"
-	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
+	 * - PERSONAL_ASSISTANT: "real flight/hotel/trip booking -> PERSONAL_ASSISTANT action=book_travel; no browse-first or web-search-first"
+	 * - VOICE_CALL: "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
 	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
 	 * action carries its own routing rule alongside its description.
 	 *
@@ -516,8 +475,8 @@ export interface Action {
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
 	 * vs MEMORY search) should state its boundary here, and name the sibling to
 	 * route to, e.g.:
-	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
-	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
+	 * "coding/software delegation -> TASKS; reminders/check-ins/recurring
+	 * personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
 	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
 	 * remain explicit in the authored routing hint.
 	 */
@@ -593,18 +552,18 @@ export interface Action {
 	 * @example
 	 * ```typescript
 	 * parameters: [
-	 *   {
-	 *     name: "targetUser",
-	 *     description: "The username or ID of the user to send the message to",
-	 *     required: true,
-	 *     schema: { type: "string" }
-	 *   },
-	 *   {
-	 *     name: "platform",
-	 *     description: "The platform to send the message on (telegram, discord, etc)",
-	 *     required: false,
-	 *     schema: { type: "string", enum: ["telegram", "discord", "x"], default: "telegram" }
-	 *   }
+	 * {
+	 * name: "targetUser",
+	 * description: "The username or ID of the user to send the message to",
+	 * required: true,
+	 * schema: { type: "string" }
+	 * },
+	 * {
+	 * name: "platform",
+	 * description: "The platform to send the message on (telegram, discord, etc)",
+	 * required: false,
+	 * schema: { type: "string", enum: ["telegram", "discord", "x"], default: "telegram" }
+	 * }
 	 * ]
 	 * ```
 	 */
@@ -730,17 +689,15 @@ export interface Action {
 	 * caller passed. This lets the planner run on a large/cloud model while
 	 * cheap, narrow actions run on a small or local model.
 	 *
-	 * Closes gap A5 / W1-R2 in the Eliza-1 pipeline plan.
-	 *
 	 * Semantics (cost-aware, ascending escalation on failure):
-	 * - `LOCAL`     — prefer a local-provider registration (e.g. Ollama, LM
-	 *                 Studio, MLX, llama.cpp). If the local registration errors
-	 *                 or no local handler is registered, the runtime escalates
-	 *                 one step up: `LOCAL → TEXT_SMALL → TEXT_LARGE`.
+	 * - `LOCAL` — prefer a local-provider registration (e.g. Ollama, LM
+	 * Studio, MLX, llama.cpp). If the local registration errors
+	 * or no local handler is registered, the runtime escalates
+	 * one step up: `LOCAL → TEXT_SMALL → TEXT_LARGE`.
 	 * - `TEXT_SMALL`— prefer a small cloud-class model. Escalates to
-	 *                 `TEXT_LARGE` on error.
+	 * `TEXT_LARGE` on error.
 	 * - `TEXT_LARGE`— prefer a large cloud-class model. Top of the chain — no
-	 *                 escalation.
+	 * escalation.
 	 *
 	 * The resolver applies this routing only when the action handler invokes
 	 * `runtime.useModel()` for a text-generation model type. Non-text model
@@ -749,23 +706,13 @@ export interface Action {
 	 * resolution and fallback behavior verbatim.
 	 *
 	 * @see eliza/packages/core/src/runtime/action-model-routing.ts for the
-	 *      strategy-registry implementation.
+	 * strategy-registry implementation.
 	 */
 	modelClass?: ActionModelClass;
 }
 
-/**
- * Per-action model routing classes. Closes gap A5: provider switching was
- * previously per-provider only — actions could not request a small/local
- * model independently of the planner's choice.
- *
- * The runtime maps each class to a fallback chain via the strategy registry
- * in `runtime/action-model-routing.ts`. Order of escalation on error is:
- *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
- */
+/** Action model-routing classes escalate through the registered LOCAL → TEXT_SMALL → TEXT_LARGE fallback chain. */
 export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL";
-
-export type { JsonPrimitive } from "./primitives";
 
 /**
  * Value types allowed in provider results.
@@ -823,8 +770,14 @@ export interface ProviderResult {
 
 	/** Optional Stage-1 discovery notice. Keep standing constraints complete here;
 	 * the response handler can request the entire authorized `text` before answering.
-	 * Other consumers retain `text`. This never replaces stored provider evidence. */
+	 * Other consumers retain `text` unless using the same authorized-source
+	 * deferred-provider restoration contract. Stored provider evidence stays exact. */
 	discoveryText?: string;
+
+	/** A reference-only result whose complete body requires a fresh composition.
+	 * Keep it discoverable even when the notice is longer than the deferred text.
+	 * This is presentation metadata, never authorization to read the body. */
+	referenceBodyDeferred?: true;
 
 	/**
 	 * Complete, explicit retrieval representation used only when the primary
@@ -857,6 +810,15 @@ export interface ProviderExecutionContext {
 	signal: AbortSignal;
 	/** Providers admitted to this composition, including reused results; registration alone does not establish ownership. */
 	selectedProviderNames?: readonly string[];
+	/**
+	 * The caller shows the model this provider's shorter `discoveryText` in
+	 * place of `text`; the complete `text` is read only through a fresh
+	 * composition (provider restoration). The provider may skip reads that feed
+	 * only `text`, and `text` must then state each skipped read so it never
+	 * reads as empty data. Composition sets this only for owner-exclusive
+	 * providers, whose results are re-run on every composition and never reused.
+	 */
+	referenceBodyDeferred?: boolean;
 }
 
 /**
@@ -876,7 +838,7 @@ export interface Provider {
 	 */
 	description?: string;
 
-	/** Compressed description for legacy catalog rendering and diagnostics. */
+	/** Short description for catalog diagnostics. */
 	descriptionCompressed?: string;
 	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
 	compressedDescription?: string;
@@ -928,7 +890,7 @@ export interface Provider {
 	 * materializes `contexts` from the gate's anyOf surface at registration.
 	 * A contextGate adds context requirements on top of the provider's
 	 * top-level `roleGate`; it does not waive it unless it declares its own
-	 * (#12087 Item 14).
+	 *.
 	 */
 	contextGate?: ContextGate;
 
@@ -947,12 +909,7 @@ export interface Provider {
 	 */
 	registerByDefault?: boolean;
 
-	/**
-	 * Legacy name for an always-on planning provider. Composed on planning turns
-	 * regardless of selected contexts, subject to role and disclosure gates.
-	 * Stage 1 admits only its explicit dialogue/character provider list; this
-	 * flag cannot add domain state to the response decision.
-	 */
+	/** Always-on planning provider, subject to role and disclosure gates. Stage 1 uses its explicit dialogue/character list; this flag cannot add domain state to response decisions. */
 	alwaysInResponseState?: boolean;
 
 	/** Optional role gate checked before including this provider. */
@@ -981,59 +938,24 @@ export interface Provider {
 	) => Promise<ProviderResult>;
 }
 
-/**
- * Error codes an action handler may set on `ActionResult.values.error` or
- * `ActionResult.data.error` to signal that the next step requires a fresh
- * confirmation message from the user. Native planner execution checks for
- * these (alongside the canonical `requiresConfirmation: true` flag) and
- * pauses the chain so the agent does not spin re-running the same step.
- *
- * Keep this list aligned with `ACTION_CONFIRMATION_STATUS_VALUES` below —
- * both the type and the runtime set are exported so callers (actions,
- * test-spies, downstream packages) can `Set.has(code)` without re-declaring
- * the strings.
- */
-export type ActionConfirmationStatus =
-	| "CONFIRMATION_REQUIRED"
-	| "NOT_CONFIRMED"
-	| "REQUIRES_CONFIRMATION"
-	| "AWAITING_CONFIRMATION"
-	| "NEEDS_CONFIRMATION";
-
-/**
- * Runtime set of {@link ActionConfirmationStatus} values. Frozen so callers
- * cannot mutate the canonical list.
- */
-export const ACTION_CONFIRMATION_STATUS_VALUES: ReadonlySet<ActionConfirmationStatus> =
-	new Set<ActionConfirmationStatus>([
-		"CONFIRMATION_REQUIRED",
-		"NOT_CONFIRMED",
-		"REQUIRES_CONFIRMATION",
-		"AWAITING_CONFIRMATION",
-		"NEEDS_CONFIRMATION",
-	]);
-
-/**
- * Type-narrowing predicate. Returns true when `value` is a known confirmation
- * status string. Use this on stringly-typed error fields off `ActionResult`.
- */
-export function isActionConfirmationStatus(
-	value: unknown,
-): value is ActionConfirmationStatus {
-	return (
-		typeof value === "string" &&
-		ACTION_CONFIRMATION_STATUS_VALUES.has(value as ActionConfirmationStatus)
-	);
-}
-
-/** A tool-owned observation of an entire current inventory, never a filtered search or mutation result. */
-export interface EmptyTrackedStateObservation {
-	resource: "notes";
-	scope: "entire_current_inventory";
-	count: 0;
-	revision: number;
-	observedAt: string;
-}
+/** Tool-owned current inventory evidence. Notes retain their durable revision proof. */
+export type EmptyTrackedStateObservation =
+	| {
+			resource: "notes";
+			scope: "entire_current_inventory";
+			count: 0;
+			revision: number;
+			observedAt: string;
+	  }
+	| {
+			resource: "todos";
+			scope: "active_current_inventory" | "entire_current_inventory";
+			count: 0;
+			agentId: UUID;
+			entityId: UUID;
+			messageId: UUID;
+			observedAt: string;
+	  };
 
 /** Result returned by an action for chaining, grounding, and state management. */
 export interface ActionResult {
@@ -1111,6 +1033,10 @@ export interface ActionResult {
 	/**
 	 * Data payload containing action-specific results.
 	 * Accepts any JSON-serializable object values including domain types.
+	 * `awaitingDeviceExecution: true` means a durable request still awaits an
+	 * external device outcome. Enqueue success is not request fulfillment or an
+	 * applied effect. It blocks dependent execution without licensing human-input
+	 * widgets or confirmation prose. `approvalRequired` remains independent.
 	 */
 	data?: ProviderDataRecord;
 
@@ -1154,12 +1080,7 @@ export interface ActionResult {
 	/** Safe action-owned prose used only if required model synthesis is unavailable. */
 	modelReplyFallback?: string;
 
-	/**
-	 * Explicit chain-control override. `false` aborts the remaining planner queue
-	 * and returns immediately, including for legacy failure and fire-and-forget
-	 * actions that do not own a complete user reply. Prefer `turnComplete` for the
-	 * safe single-operation evaluator fast path.
-	 */
+	/** Explicit false aborts the remaining planner queue, including failed and fire-and-forget actions. turnComplete is the conservative single-operation completion signal. */
 	continueChain?: boolean;
 
 	/** Optional cleanup function to execute after action completion */
@@ -1178,36 +1099,7 @@ export interface ActionContext {
 	getPreviousResult?: (actionName: string) => ActionResult | undefined;
 }
 
-/**
- * Canonical callback type for streaming response chunks.
- *
- * WHY one type: Before this consolidation the same `(chunk, messageId?) => …`
- * signature was inlined in 8+ locations across runtime, model, message-service,
- * and streaming-context types — with inconsistent return types (`Promise<void>`
- * vs `void | Promise<void>`). Adding data (e.g. `accumulated`) required editing
- * every copy. A single alias eliminates drift and makes additional fields
- * (field name, token index, session handle) a one-line additive change.
- *
- * WHY `accumulated`: Two independent stream extractors in `useModel`
- * previously caused TTS garbling because consumers had to re-derive the full
- * text from deltas — and the two extractors produced deltas at different
- * timings. Providing the authoritative accumulated text from the extractor
- * makes that entire category of reassembly bugs impossible.
- *
- * WHY `void | Promise<void>`: The most permissive return — allows both sync
- * callbacks (simple loggers, test spies) and async ones (network, TTS).
- *
- * @param chunk - Delta text since the last emission for this field.
- * @param messageId - Streaming session / message identifier (UUID or opaque string).
- * @param accumulated - Full extracted text so far for the streaming field.
- *   Present when the emission originates from a structured field extractor.
- *   Undefined for raw-token streams (useModel without an extractor) where no
- *   field-level accumulation exists.
- * @param streamRevision - Monotonically allocated structured-extractor attempt
- *   number. A change means `accumulated` restarted and consumers must discard
- *   incremental state from the preceding attempt. Undefined for raw-token
- *   streams.
- */
+/** Streams a text delta with optional message ID and authoritative accumulated field text. streamRevision changes reset the accumulated stream; consumers must discard prior-attempt state. Raw-token streams omit accumulation and revision. Callbacks may be synchronous or asynchronous. */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
@@ -1220,6 +1112,9 @@ export type StreamChunkCallback = (
  * Provides context about the current execution and queued action plans
  */
 export interface HandlerOptions {
+	/** Server-owned executor cancellation, never a model-authored action parameter. */
+	abortSignal?: AbortSignal;
+
 	/** Context with previous action results and utilities */
 	actionContext?: ActionContext;
 
@@ -1239,11 +1134,11 @@ export interface HandlerOptions {
 	 * @example
 	 * ```typescript
 	 * handler: async (runtime, message, state, options) => {
-	 *   const params = options?.parameters;
-	 *   if (params) {
-	 *     const targetUser = params.targetUser as string;
-	 *     const platform = params.platform as string ?? "telegram"; // backfill default
-	 *   }
+	 * const params = options?.parameters;
+	 * if (params) {
+	 * const targetUser = params.targetUser as string;
+	 * const platform = params.platform as string ?? "telegram"; // backfill default
+	 * }
 	 * }
 	 * ```
 	 */

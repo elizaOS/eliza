@@ -15,15 +15,15 @@ from pathlib import Path
 
 import pytest
 
-import benchmarks.orchestrator_lifecycle.runner as runner_module
-from benchmarks.orchestrator_lifecycle.runner import (
+import benchmarks.suites.orchestrator_lifecycle.runner as runner_module
+from benchmarks.suites.orchestrator_lifecycle.runner import (
     _LIFECYCLE_SYSTEM_HINT,
     LifecycleRunner,
     _LIFECYCLE_TASKS_TOOLS,
     _ensure_eliza_adapter_on_path,
     _simulate_turn,
 )
-from benchmarks.orchestrator_lifecycle.types import (
+from benchmarks.suites.orchestrator_lifecycle.types import (
     LifecycleConfig,
     Scenario,
     ScenarioTurn,
@@ -60,9 +60,9 @@ def test_simulated_report_is_not_publishable(tmp_path: Path) -> None:
 
 
 def test_partial_bridge_report_is_not_publishable(tmp_path: Path) -> None:
-    from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-    from benchmarks.orchestrator_lifecycle.reporting import save_report
-    from benchmarks.orchestrator_lifecycle.types import Scenario
+    from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.suites.orchestrator_lifecycle.reporting import save_report
+    from benchmarks.suites.orchestrator_lifecycle.types import Scenario
 
     evaluator = LifecycleEvaluator()
     scenario = Scenario(
@@ -96,8 +96,8 @@ def test_partial_bridge_report_is_not_publishable(tmp_path: Path) -> None:
 
 
 def test_no_strict_bridge_report_is_intrinsically_unscored(tmp_path: Path) -> None:
-    from benchmarks.orchestrator_lifecycle.reporting import save_report
-    from benchmarks.orchestrator_lifecycle.types import LifecycleMetrics
+    from benchmarks.suites.orchestrator_lifecycle.reporting import save_report
+    from benchmarks.suites.orchestrator_lifecycle.types import LifecycleMetrics
 
     report_path = save_report(
         config=LifecycleConfig(output_dir=str(tmp_path), strict=False),
@@ -454,7 +454,7 @@ def test_external_lifecycle_bridge_receives_tasks_tool_and_prior_turns(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
 
     monkeypatch.delenv("ELIZA_BENCH_HARNESS", raising=False)
     monkeypatch.setenv("BENCHMARK_HARNESS", harness)

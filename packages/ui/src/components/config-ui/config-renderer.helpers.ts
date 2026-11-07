@@ -1,7 +1,9 @@
 /** Default field registry (catalog wired to the default renderers) and the `useConfigValidation` hook that lets a parent form call `ConfigRenderer.validateAll()` before submitting. */
+
+import { defaultCatalog } from "@elizaos/host/protocol";
 import { useCallback, useRef } from "react";
 import type { FieldRegistry } from "../../config/config-catalog";
-import { defaultCatalog, defineRegistry } from "../../config/config-catalog";
+import { defineRegistry } from "../../config/config-catalog";
 import { defaultRenderers } from "./config-field.helpers";
 import type { ConfigRendererHandle } from "./config-renderer";
 

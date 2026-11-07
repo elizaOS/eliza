@@ -7,7 +7,10 @@ const PG_SSLMODE_CURRENT_TLS_ALIASES = new Set(["prefer", "require", "verify-ca"
  * Make the current strict TLS behavior explicit before node-postgres parses it.
  */
 export function normalizePgSslMode(connectionString: string): string {
-  if (!connectionString || /(?:[?&]|\s)uselibpqcompat=true(?:[&#]|\s|$)/i.test(connectionString)) {
+  if (
+    !connectionString ||
+    /(?:^|[?&]|\s)uselibpqcompat=true(?:[&#]|\s|$)/i.test(connectionString)
+  ) {
     return connectionString;
   }
 

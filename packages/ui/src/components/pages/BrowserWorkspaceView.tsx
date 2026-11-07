@@ -1,6 +1,7 @@
 /** Renders the browser workspace with tab switching, navigation, and native or desktop page surfaces. */
 
 import { Capacitor } from "@capacitor/core";
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,12 +14,12 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import {
-  type BrowserWorkspaceSnapshot,
-  type BrowserWorkspaceTab,
-  client,
-} from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "../../api/browser-contracts";
+import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
@@ -26,21 +27,21 @@ import {
   usesOwnedChromiumBrowser,
 } from "../../bridge/system-browser";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
-import { NAVIGATE_VIEW_EVENT, type NavigateViewDetail } from "../../events";
+import { NAVIGATE_VIEW_EVENT } from "../../events";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { usesAndroidLp3SharedBrowserStorage } from "../../platform/android-runtime";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
-import { openExternalUrl } from "../../utils";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry.js";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -875,6 +876,16 @@ function BrowserWorkspaceForAuthority({
     },
     [clearBrowserWorkspaceIframeFocusTimer],
   );
+  const dismissMobileActions = useCallback(() => {
+    setMobileActionsOpen(false);
+    // Explicit dismissal ends the navigation's return-to-toolbar handoff.
+    // Otherwise its settle timer can undo the user's next click inside the
+    // embedded page. A frame taking focus while the menu is open still goes
+    // through onOpenChange's modal guard, not this user-dismissal path.
+    for (const [iframe, handoff] of iframeFocusHandoffsRef.current) {
+      releaseBrowserWorkspaceIframeFocusReturn(iframe, handoff);
+    }
+  }, [releaseBrowserWorkspaceIframeFocusReturn]);
   const monitorBrowserWorkspaceIframeFocus = useCallback(
     (iframe: HTMLIFrameElement, handoff: BrowserIframeFocusHandoff) => {
       if (
@@ -1005,6 +1016,17 @@ function BrowserWorkspaceForAuthority({
     }
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
+      const menu = mobileActionsMenuRef.current;
+      if (
+        menu?.dataset.state === "open" &&
+        target instanceof Element &&
+        !menu.contains(target) &&
+        !target.closest('[data-testid="browser-workspace-mobile-more"]')
+      ) {
+        // The modal's deferred outside-click listener may not yet be armed
+        // when a user immediately leaves a newly opened menu.
+        dismissMobileActions();
+      }
       if (target instanceof HTMLIFrameElement) {
         releaseBrowserWorkspaceIframeFocusReturn(target);
         return;
@@ -1049,7 +1071,7 @@ function BrowserWorkspaceForAuthority({
       iframeFocusTimersRef.current.clear();
       iframeFocusHandoffsRef.current.clear();
     };
-  }, [releaseBrowserWorkspaceIframeFocusReturn]);
+  }, [dismissMobileActions, releaseBrowserWorkspaceIframeFocusReturn]);
   const loadWorkspace = useCallback(
     async (options?: {
       preferTabId?: string | null;
@@ -1509,6 +1531,12 @@ function BrowserWorkspaceForAuthority({
                 return;
               }
               const txChainId = parseBrowserWorkspaceEvmChainId(tx.chainId);
+              if (tx.chainId !== undefined && txChainId === null) {
+                reply({
+                  error: "eth_sendTransaction requires a valid chainId.",
+                });
+                return;
+              }
               const chainId =
                 txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
               if (!isBrowserWorkspaceEvmChainSupported(chainId)) {
@@ -2856,8 +2884,8 @@ function BrowserWorkspaceForAuthority({
                 mobileActionsFocusRef.current = event.target;
               }
             }}
-            onEscapeKeyDown={() => setMobileActionsOpen(false)}
-            onPointerDownOutside={() => setMobileActionsOpen(false)}
+            onEscapeKeyDown={dismissMobileActions}
+            onPointerDownOutside={dismissMobileActions}
           >
             <DropdownMenuItem
               className="min-h-12 gap-3"

@@ -1,9 +1,18 @@
 // Handles cloud API training vertex assignments route traffic with route-local auth expectations.
+
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  requireAdmin,
+  requireAuthOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/lib/auth";
+import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
+import type { VertexTuningSlot } from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { requireAdmin, requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
-import type { VertexTuningSlot } from "@/lib/services/vertex-tuning";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const VERTEX_TUNING_SLOTS = [
   "should_respond",
@@ -106,12 +115,13 @@ async function __hono_GET(request: Request) {
 
     return Response.json({ assignments });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
+    logger.error("[Training] Failed to list tuned-model assignments:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to list tuned-model assignments",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -165,6 +175,9 @@ async function __hono_POST(request: Request) {
 
     return Response.json({ assignment }, { status: 201 });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     const message =
       error instanceof Error
         ? error.message
@@ -215,6 +228,9 @@ async function __hono_DELETE(request: Request) {
 
     return Response.json({ deactivatedCount });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     const message =
       error instanceof Error
         ? error.message

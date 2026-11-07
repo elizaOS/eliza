@@ -22,7 +22,7 @@ the loop continues.
 
 Run from `training/`:
 
-    python -m scripts.inference.heartbeat \\
+    python -m eliza_training.inference.heartbeat \\
         --vllm-metrics-url http://127.0.0.1:8000/metrics \\
         --out ~/.eliza/inference-stats.jsonl \\
         --interval-seconds 60 \\

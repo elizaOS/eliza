@@ -162,6 +162,9 @@ export interface TextGenerationParams {
   /** Stop sequences */
   stopSequences?: string[];
 
+  /** Seed for deterministic sampling */
+  seed?: number;
+
   /** Whether to stream the response */
   stream?: boolean;
 
@@ -350,9 +353,11 @@ export interface OpenAIChatCompletionResponse {
 export interface OpenAIImageGenerationResponse {
   created: number;
   data: Array<{
-    url: string;
+    url?: string;
+    b64_json?: string;
     revised_prompt?: string;
   }>;
+  output_format?: "png" | "jpeg" | "webp";
 }
 
 /**

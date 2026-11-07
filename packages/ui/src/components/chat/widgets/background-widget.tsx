@@ -13,7 +13,7 @@
  * auto-collapses; the chevron still collapses it manually).
  */
 
-import { useAppSelector } from "../../../state";
+import { useAppSelector } from "../../../state/app-store";
 import { BackgroundSettingsControls } from "../../settings/BackgroundSettingsControls";
 import { ChatWidgetShell } from "./chat-widget-shell";
 

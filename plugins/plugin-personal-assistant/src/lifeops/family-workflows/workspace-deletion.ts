@@ -4,20 +4,20 @@
  * survives interruption before file and backup cleanup. Shared records are retained.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 import {
   purgeAdmittedRetiredLocalAgentBackups,
   type RetiredLocalAgentBackup,
   withReviewedRetiredLocalAgentBackups,
 } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
+  resolveStateDir,
   ServiceType,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { z } from "zod";
 import {
   executeRawSql,

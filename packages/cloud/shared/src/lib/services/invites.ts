@@ -6,6 +6,7 @@ import {
   type NewOrganizationInvite,
   type OrganizationInvite,
   organizationInvitesRepository,
+  usersRepository,
 } from "../../db/repositories";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { appsRepository } from "../../db/repositories/apps";
@@ -17,6 +18,7 @@ import { isUntouchedSignupOpeningBalance } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { charactersService } from "./characters";
 import { emailService } from "./email";
 import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
@@ -44,6 +46,9 @@ export interface InviteWithOrganization extends OrganizationInvite {
     name: string;
     slug: string;
   };
+  inviter?: {
+    name: string | null;
+  } | null;
 }
 
 /**
@@ -92,9 +97,11 @@ export class InvitesService {
       throw new Error("User is already a member of this organization");
     }
 
-    const existingInvite =
-      await organizationInvitesRepository.findPendingInviteByEmail(normalizedEmail);
-    if (existingInvite && existingInvite.organization_id === organizationId) {
+    const existingInvite = await organizationInvitesRepository.findPendingInviteByEmail(
+      normalizedEmail,
+      organizationId,
+    );
+    if (existingInvite) {
       throw new Error("An invite for this email is already pending");
     }
 
@@ -193,19 +200,45 @@ export class InvitesService {
       await this.assertOwnerCanVacateSoloOrganization(user.id, vacatedSoloOrgId);
     }
 
-    const movedUser = await usersService.update(userId, {
-      organization_id: invite.organization_id,
-      role: invite.invited_role,
-      updated_at: new Date(),
-    });
-    if (!movedUser) {
-      throw new Error("Failed to move user into invited organization");
+    // Claim the invite before the user moves: a revoke that lands after the
+    // validation above must keep the user out of the organization.
+    const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
+    if (!updatedInvite) {
+      throw new Error("Invite already used or revoked");
     }
 
-    const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
-
-    if (!updatedInvite) {
-      throw new Error("Failed to mark invite as accepted");
+    let movedUser: Awaited<ReturnType<typeof usersService.update>>;
+    try {
+      movedUser = await usersService.update(userId, {
+        organization_id: invite.organization_id,
+        role: invite.invited_role,
+        updated_at: new Date(),
+      });
+    } catch (error) {
+      let currentUser: Awaited<ReturnType<typeof usersRepository.findByIdForWrite>>;
+      try {
+        currentUser = await usersRepository.findByIdForWrite(userId);
+      } catch (observationError) {
+        // The user update can commit before a later authorization-fence or
+        // cache operation fails. Keep the invite claimed when the primary
+        // membership outcome cannot be observed; reopening it would permit a
+        // second accept or revoke after the user may already have moved.
+        throw new AggregateError(
+          [error, observationError],
+          "Invite acceptance failed and the membership outcome could not be verified",
+        );
+      }
+      if (
+        !currentUser ||
+        (currentUser.organization_id === user.organization_id && currentUser.role === user.role)
+      ) {
+        await organizationInvitesRepository.releaseAcceptance(invite.id, userId);
+      }
+      throw error;
+    }
+    if (!movedUser) {
+      await organizationInvitesRepository.releaseAcceptance(invite.id, userId);
+      throw new Error("Failed to move user into invited organization");
     }
 
     if (vacatedSoloOrgId && movedUser?.organization_id === invite.organization_id) {
@@ -324,7 +357,7 @@ export class InvitesService {
         );
         return;
       }
-      await userCharactersRepository.reassignUserOrganization(
+      const movedCharacterIds = await userCharactersRepository.reassignUserOrganization(
         userId,
         previousOrganizationId,
         newOrganizationId,
@@ -336,6 +369,8 @@ export class InvitesService {
       );
       await this.assertOwnerCanVacateSoloOrganization(userId, previousOrganizationId);
       await organizationsService.delete(previousOrganizationId);
+      // After the durable re-home, so a cache failure cannot stop it.
+      await Promise.all(movedCharacterIds.map((id) => charactersService.invalidateCache(id)));
     } catch (error) {
       // error-policy:J6 the invite accept already moved the user; cleanup is
       // best-effort and must leave a warn breadcrumb for manual recovery.
@@ -365,7 +400,8 @@ export class InvitesService {
     const revoked = await organizationInvitesRepository.revoke(inviteId);
 
     if (!revoked) {
-      throw new Error("Failed to revoke invite");
+      // A concurrent accept claimed the invite after the check above.
+      throw new Error("Can only revoke pending invites");
     }
 
     return revoked;

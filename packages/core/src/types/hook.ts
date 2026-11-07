@@ -8,10 +8,6 @@
 import type { EventPayload, EventType } from "./events";
 import type { Service } from "./service";
 
-// ============================================================================
-// Hook Source and Priority Types
-// ============================================================================
-
 /**
  * Identifies the origin of a hook registration.
  */
@@ -32,10 +28,6 @@ export type HookPriority = number;
  * Default hook priority (FIFO ordering)
  */
 export const DEFAULT_HOOK_PRIORITY: HookPriority = 0;
-
-// ============================================================================
-// Hook Requirements (Eligibility)
-// ============================================================================
 
 /**
  * Specifies requirements that must be met for a hook to be eligible.
@@ -63,10 +55,6 @@ export interface HookEligibilityResult {
 	/** Reasons why the hook is not eligible (if applicable) */
 	reasons?: string[];
 }
-
-// ============================================================================
-// Hook Metadata and Registration
-// ============================================================================
 
 /**
  * Metadata describing a registered hook.
@@ -134,10 +122,6 @@ export interface HookRegistrationOptions {
 	requires?: HookRequirements;
 }
 
-// ============================================================================
-// Hook Snapshot (Introspection)
-// ============================================================================
-
 /**
  * Summary of a registered hook for introspection.
  */
@@ -168,57 +152,6 @@ export interface HookSnapshot {
 	timestamp: number;
 }
 
-// ============================================================================
-// Directory-based Hook Loading
-// ============================================================================
-
-/**
- * Parsed frontmatter from a HOOK.md file.
- */
-export interface HookFrontmatter {
-	/** Hook name */
-	name?: string;
-	/** Hook description */
-	description?: string;
-	/** Events this hook handles */
-	events?: string[];
-	/** Export name in handler module (default: "default") */
-	export?: string;
-	/** Operating systems supported */
-	os?: string[];
-	/** If true, bypass eligibility checks */
-	always?: boolean;
-	/** Requirements */
-	requires?: {
-		bins?: string[];
-		anyBins?: string[];
-		env?: string[];
-		config?: string[];
-	};
-}
-
-/**
- * A hook discovered from a directory.
- */
-export interface DiscoveredHook {
-	/** Hook name */
-	name: string;
-	/** Hook description */
-	description: string;
-	/** Source type */
-	source: HookSource;
-	/** Plugin ID if from plugin */
-	pluginId?: string;
-	/** Path to HOOK.md */
-	filePath: string;
-	/** Base directory containing the hook */
-	baseDir: string;
-	/** Path to handler module (handler.ts/js) */
-	handlerPath: string;
-	/** Parsed frontmatter */
-	frontmatter: HookFrontmatter;
-}
-
 /**
  * Result of loading hooks from a directory.
  */
@@ -230,10 +163,6 @@ export interface HookLoadResult {
 	/** Errors encountered during loading */
 	errors: Array<{ name: string; error: string }>;
 }
-
-// ============================================================================
-// Hook Service Interface
-// ============================================================================
 
 /**
  * The HookService provides a interface for registering, managing,
@@ -250,17 +179,17 @@ export interface HookLoadResult {
  *
  * // Register a hook programmatically
  * const hookId = hookService.register(
- *   [EventType.HOOK_COMMAND_NEW],
- *   async (payload) => {
- *     payload.messages.push("Session started!");
- *   },
- *   { name: "welcome-hook", description: "Welcomes users on new session" }
+ * [EventType.HOOK_COMMAND_NEW],
+ * async (payload) => {
+ * payload.messages.push("Session started!");
+ * },
+ * { name: "welcome-hook", description: "Welcomes users on new session" }
  * );
  *
  * // Load hooks from a directory
  * const result = await hookService.registerFromDirectory(
- *   "./hooks",
- *   "workspace"
+ * "./hooks",
+ * "workspace"
  * );
  *
  * // Introspect registered hooks
@@ -269,10 +198,6 @@ export interface HookLoadResult {
  * ```
  */
 export interface IHookService extends Service {
-	// ========================================================================
-	// Registration
-	// ========================================================================
-
 	/**
 	 * Register a hook handler for one or more event types.
 	 *
@@ -312,10 +237,6 @@ export interface IHookService extends Service {
 		options?: { pluginId?: string },
 	): Promise<HookLoadResult>;
 
-	// ========================================================================
-	// Introspection
-	// ========================================================================
-
 	/**
 	 * Get a snapshot of all registered hooks.
 	 *
@@ -346,10 +267,6 @@ export interface IHookService extends Service {
 	 */
 	getAllHooks(): HookRegistration[];
 
-	// ========================================================================
-	// Configuration
-	// ========================================================================
-
 	/**
 	 * Enable or disable a hook.
 	 *
@@ -365,10 +282,6 @@ export interface IHookService extends Service {
 	 * @param priority - New priority value
 	 */
 	setPriority(hookId: string, priority: HookPriority): void;
-
-	// ========================================================================
-	// Eligibility
-	// ========================================================================
 
 	/**
 	 * Check if a hook is eligible to run based on its requirements.

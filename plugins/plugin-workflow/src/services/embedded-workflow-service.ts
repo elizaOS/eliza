@@ -6,17 +6,25 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  type WorkflowOccurrenceNotRun,
+  workflowOccurrenceNotRun,
+} from '@elizaos/contracts/workflow-client';
+import {
+  agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
+  isMissedScheduledOccurrence,
   logger,
+  MISSED_SCHEDULED_OCCURRENCE_TEXT,
   ModelType,
+  recordsMissedScheduledOccurrences,
   Service,
   stringToUuid,
   type Task,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
 } from '@elizaos/core';
-import { and, asc, desc, eq, gt, notInArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   embeddedExecutions,
@@ -42,6 +50,7 @@ import type {
   WorkflowRevision,
   WorkflowRevisionOperation,
   WorkflowRunEvent,
+  WorkflowSchedule,
   WorkflowTag,
 } from '../types/index';
 import { WORKFLOW_RUN_EVENT, WorkflowApiError } from '../types/index';
@@ -56,11 +65,14 @@ import {
   digestPhoneSpec,
   digestRecord,
   digestSource,
+  digestSourceState,
   digestText,
   HOSTED_SPEC,
+  HOSTED_TEMPLATE_VERSION,
   validateDigestSpec,
   writeDigestResult,
 } from './hosted-digest';
+import { DIGEST_OVERLAP_TEXT } from './hosted-digest-policy';
 import {
   assertHostedGoogleSource,
   listHostedGoogleCalendars,
@@ -69,12 +81,23 @@ import {
   validateHostedGoogleSelection,
 } from './hosted-google-source';
 import {
+  assertHostedNativeSource,
+  readHostedNativeSource,
+  validateHostedNativeSelection,
+} from './hosted-native-source';
+import {
   PHONE_COMPILER_KEY,
   PHONE_COMPILER_REVISION,
+  PHONE_SCHEDULE_ADMISSION_WINDOW_MS,
   PHONE_SPEC_KEY,
   type PhoneWorkflowSpec,
   phoneDraftDefinition,
   phoneSpecDigest,
+  phoneTriggerSchedule,
+  storedPhoneTimeTrigger,
+  TYPED_SCHEDULE_INPUT,
+  type TypedScheduleAdmission,
+  typedScheduleAdmission,
   validatePhoneSpec,
   verifyPhoneWorkflowSource,
 } from './phone-workflow-spec';
@@ -85,6 +108,7 @@ import {
 } from './smithers-runtime';
 import { readApprovalReceipts } from './workflow-approval-receipts';
 import { cloneJson } from './workflow-json';
+import { workerTerminationFromError } from './workflow-worker-termination';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 export const WORKFLOW_TASK_KIND = 'workflow';
@@ -106,6 +130,82 @@ export interface ExecuteWorkflowOptions {
   throwOnError?: boolean;
   /** Trigger hops inherited by events emitted from this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
+}
+
+/**
+ * Hosts whose agent runs only while the device is powered on (a mobile
+ * resident) set `ELIZA_MISSED_SCHEDULED_OCCURRENCES=record` (the shared
+ * powered-on scheduling policy in `@elizaos/core`): an occurrence that passed
+ * while the agent was not running is recorded once as missed and never
+ * replayed, and the next occurrence is armed as usual. Other hosts keep
+ * running a late occurrence.
+ */
+export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
+  return recordsMissedScheduledOccurrences(runtime);
+}
+
+/**
+ * Whether a terminal execution is a missed scheduled occurrence: only the
+ * engine-recorded `missedOccurrenceAt` this service writes when it records the
+ * occurrence (or a resident digest's admission reports it missed). A
+ * workflow's own output that carries `status: 'missed'` ran and is not missed.
+ */
+export function isMissedOccurrenceExecution(
+  execution: Pick<WorkflowExecution, 'finished' | 'missedOccurrenceAt'>
+): boolean {
+  return (
+    execution.finished === true &&
+    typeof execution.missedOccurrenceAt === 'string' &&
+    Number.isFinite(Date.parse(execution.missedOccurrenceAt))
+  );
+}
+
+/**
+ * The settlement of a scheduled occurrence that this service recorded without
+ * running anything (`missed` or `overlap`), or undefined for an execution that
+ * ran. Same rule as the client run list (`@elizaos/contracts/workflow-client`,
+ * UI `workflowRunNotRun`): a typed or hosted admission records itself in the
+ * run input, and a generic schedule's missed occurrence carries the
+ * engine-written `missedOccurrenceAt`. Output shape alone never counts.
+ */
+export function notRunOccurrence(
+  execution: Pick<
+    WorkflowExecution,
+    'status' | 'finished' | 'input' | 'output' | 'missedOccurrenceAt'
+  >
+): WorkflowOccurrenceNotRun | undefined {
+  if (!execution.finished || execution.status !== 'finished') return undefined;
+  const settled = workflowOccurrenceNotRun(execution.output);
+  if (!settled) return undefined;
+  const admitted = [execution.input?.[TYPED_SCHEDULE_INPUT], execution.input?.hostedDigest].some(
+    (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+  );
+  return admitted || (settled.status === 'missed' && isMissedOccurrenceExecution(execution))
+    ? settled
+    : undefined;
+}
+
+/**
+ * Terminal record for a scheduled occurrence that passed while the agent was
+ * not running. A delay while the agent was running (device doze, a busy
+ * scheduler) is not missed: that occurrence still runs.
+ */
+export function missedOccurrence(
+  scheduledAtMs: number | undefined,
+  now: number,
+  agentStartedAtMs: number = agentProcessStartedAtMs(now)
+): Record<string, unknown> | undefined {
+  if (scheduledAtMs === undefined) return undefined;
+  if (!Number.isSafeInteger(scheduledAtMs) || scheduledAtMs > now + 1000)
+    throw new WorkflowApiError('Schedule requires its exact scheduled occurrence', 409);
+  if (!isMissedScheduledOccurrence(scheduledAtMs, now, agentStartedAtMs)) return undefined;
+  return {
+    status: 'missed',
+    scheduledAt: new Date(scheduledAtMs).toISOString(),
+    text: MISSED_SCHEDULED_OCCURRENCE_TEXT,
+  };
 }
 
 type RunListener = (event: WorkflowRunEvent) => void;
@@ -134,6 +234,27 @@ function requireMutable(workflow: WorkflowDefinition) {
       'Workflow removed; restore it explicitly before editing or running',
       409
     );
+}
+
+/**
+ * Next fire time of an enabled schedule, or a 400 when it cannot be armed.
+ * The cron scheduler evaluates a zone it cannot resolve on UTC, so an
+ * unrecognized zone (the model writes "PST") is rejected, not run on UTC.
+ */
+function scheduleNextRunAtMs(schedule: WorkflowSchedule, now: number): number {
+  const timeZone: unknown = schedule.timezone;
+  try {
+    if (typeof timeZone !== 'string') throw new RangeError('missing time zone');
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
+  } catch {
+    throw new WorkflowApiError(`Invalid workflow schedule time zone: ${String(timeZone)}`, 400);
+  }
+  const nextRunAtMs =
+    typeof schedule.cron === 'string' ? computeNextCronRunAtMs(schedule.cron, now, timeZone) : null;
+  if (nextRunAtMs === null) {
+    throw new WorkflowApiError(`Invalid workflow cron schedule: ${String(schedule.cron)}`, 400);
+  }
+  return nextRunAtMs;
 }
 
 function normalizeWorkflow(
@@ -175,6 +296,8 @@ function normalizeWorkflow(
   if (snapshot.steps !== undefined && !Array.isArray(snapshot.steps)) {
     throw new WorkflowApiError('Workflow steps must be an array', 400);
   }
+  // Checked before the write: activation arms this schedule after the row commits.
+  if (snapshot.schedule?.enabled) scheduleNextRunAtMs(snapshot.schedule, Date.now());
   const stepIds = new Set<string>();
   for (const step of snapshot.steps ?? []) {
     if (!step || typeof step !== 'object' || typeof step.id !== 'string' || !step.id.trim()) {
@@ -218,6 +341,62 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
 
+  private readonly workerReconciliations = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; dueAtMs: number }
+  >();
+  private reconciliationStopped = false;
+  private readonly resumeAdmissions = new Map<string, Promise<void>>();
+  private scheduleWorkerReconciliation(execution: WorkflowExecution, delayMs = 1000): void {
+    if (this.reconciliationStopped) return;
+    // A run keeps one wake-up. A resumed run can wait for something that is
+    // due before the wake-up armed earlier (a Timer after a Signal that came
+    // before its timeout), so the earlier wake-up replaces the later one.
+    const dueAtMs = Date.now() + delayMs;
+    const pending = this.workerReconciliations.get(execution.id);
+    if (pending) {
+      if (pending.dueAtMs <= dueAtMs) return;
+      clearTimeout(pending.timer);
+    }
+    const timer = setTimeout(() => {
+      this.workerReconciliations.delete(execution.id);
+      if (this.reconciliationStopped) return;
+      void this.resumeExecution(execution).catch((error) => {
+        logger.warn(
+          { src: 'plugin:workflow:embedded', runId: execution.id, error },
+          'Worker reconciliation unavailable; unfinished state preserved'
+        );
+      });
+    }, delayMs);
+    timer.unref?.();
+    this.workerReconciliations.set(execution.id, { timer, dueAtMs });
+  }
+
+  /**
+   * Smithers does not wait for a timer in process: a run that reaches a
+   * timer that is not due returns `waiting-timer` and expects its host to
+   * call it again. Resume at the earliest timer that has not fired yet.
+   */
+  private scheduleTimerResume(execution: WorkflowExecution): void {
+    // A timer id is its node id, so a Timer inside a Loop creates the same id
+    // again on each iteration. Walk the events in order: a later TimerCreated
+    // reopens the id after its earlier TimerFired.
+    const open = new Map<unknown, number>();
+    for (const event of execution.events ?? []) {
+      const payload = event.payload as { timerId?: unknown; firesAtMs?: unknown } | undefined;
+      if (event.type === 'TimerFired' || event.type === 'TimerCancelled')
+        open.delete(payload?.timerId);
+      else if (event.type === 'TimerCreated' && typeof payload?.firesAtMs === 'number')
+        open.set(payload.timerId, payload.firesAtMs);
+    }
+    const pending = [...open.values()];
+    const firesAtMs = pending.length ? Math.min(...pending) : Date.now() + 60_000;
+    // setTimeout overflows above 2^31-1 ms; a far timer is re-armed when the
+    // resumed run reports `waiting-timer` again.
+    const delayMs = Math.min(Math.max(firesAtMs - Date.now(), 0) + 100, 2_147_483_647);
+    this.scheduleWorkerReconciliation(execution, delayMs);
+  }
+
   private readonly cancellationControls = new Map<string, Promise<void>>();
   private readonly scheduleLocks = new Map<string, Promise<void>>();
   private readonly listeners = new Map<string, Set<RunListener>>();
@@ -234,6 +413,11 @@ export class EmbeddedWorkflowService extends Service {
   }
 
   override async stop(): Promise<void> {
+    this.reconciliationStopped = true;
+    for (const { timer } of this.workerReconciliations.values()) clearTimeout(timer);
+    this.workerReconciliations.clear();
+    for (const controller of this.controllers.values()) controller.abort();
+    await Promise.allSettled(this.resumeAdmissions.values());
     for (const controller of this.controllers.values()) controller.abort();
     await Promise.allSettled(this.running.values());
     this.controllers.clear();
@@ -325,28 +509,84 @@ export class EmbeddedWorkflowService extends Service {
     });
   }
 
-  private async resumeExecution(execution: WorkflowExecution): Promise<void> {
-    // A control request may have read its snapshot before a concurrent cancel.
-    execution = await this.getExecution(execution.id);
-    if (execution.finished || this.running.has(execution.id)) return;
-    if (execution.cancellationRequestedAt) {
-      await this.cancelExecution(execution.id);
-      return;
-    }
-    const workflow = await this.workflowVersionForExecution(execution);
-    const controller = new AbortController();
-    this.controllers.set(execution.id, controller);
-    const executionPromise = this.runInBackground(workflow, execution, controller).finally(() => {
-      this.controllers.delete(execution.id);
-      this.running.delete(execution.id);
+  private resumeExecution(execution: WorkflowExecution): Promise<void> {
+    const id = execution.id;
+    if (this.reconciliationStopped) return Promise.resolve();
+    const pending = this.resumeAdmissions.get(id);
+    if (pending) return pending;
+    // Reserve synchronously before any database read or worker publication.
+    const admission = Promise.resolve()
+      .then(async () => {
+        if (this.reconciliationStopped || this.running.has(id)) return;
+        execution = await this.getExecution(id);
+        if (this.reconciliationStopped || execution.finished || this.running.has(id)) return;
+        if (execution.cancellationRequestedAt) {
+          await this.cancelExecution(id);
+          return;
+        }
+        if (await this.settleLateScheduledStart(execution)) return;
+        const workflow = await this.workflowVersionForExecution(execution);
+        if (this.reconciliationStopped || this.running.has(id)) return;
+        const controller = new AbortController();
+        this.controllers.set(id, controller);
+        const executionPromise = this.runInBackground(workflow, execution, controller).finally(
+          () => {
+            if (this.controllers.get(id) === controller) this.controllers.delete(id);
+            if (this.running.get(id) === executionPromise) this.running.delete(id);
+          }
+        );
+        this.running.set(id, executionPromise);
+      })
+      .finally(() => {
+        if (this.resumeAdmissions.get(id) === admission) this.resumeAdmissions.delete(id);
+      });
+    this.resumeAdmissions.set(id, admission);
+    return admission;
+  }
+
+  /**
+   * A scheduled typed occurrence that was admitted but whose worker never started
+   * (the agent stopped first) is recorded as missed after its admission window
+   * instead of starting long after its local time. A started run is reconciled by
+   * the normal worker recovery and is never replayed.
+   */
+  private async settleLateScheduledStart(execution: WorkflowExecution): Promise<boolean> {
+    const occurrence = (execution.input as Record<string, unknown> | undefined)?.[
+      TYPED_SCHEDULE_INPUT
+    ] as { scheduledAt?: unknown } | undefined;
+    if (
+      !occurrence ||
+      execution.status !== 'queued' ||
+      !(
+        Date.now() - Date.parse(String(occurrence.scheduledAt)) >
+        PHONE_SCHEDULE_ADMISSION_WINDOW_MS
+      )
+    )
+      return false;
+    await this.saveExecution({
+      ...execution,
+      status: 'finished',
+      finished: true,
+      stoppedAt: nowIso(),
+      output: {
+        status: 'missed',
+        scheduledAt: occurrence.scheduledAt,
+        text: 'The agent stopped before this scheduled run started. Nothing ran, and it will not run later.',
+      },
     });
-    this.running.set(execution.id, executionPromise);
+    return true;
   }
 
   private async resumeInterruptedExecutions(): Promise<void> {
-    const interrupted = (await this.listExecutions()).data.filter(
-      (execution) => !execution.finished
-    );
+    const interrupted = (
+      await this.getDb()
+        .select()
+        .from(embeddedExecutions)
+        .where(
+          and(eq(embeddedExecutions.agentId, this.tenantId), eq(embeddedExecutions.finished, false))
+        )
+        .orderBy(desc(embeddedExecutions.startedAt))
+    ).map((row) => cloneJson(row.execution));
     for (const execution of interrupted) {
       try {
         await this.resumeExecution(execution);
@@ -392,13 +632,18 @@ export class EmbeddedWorkflowService extends Service {
     };
   }
 
+  /** Re-arms reviewed schedules (digests and typed local-time triggers) and repairs a sync
+   * interrupted between commit and task creation. Missed occurrences are never backfilled. */
   private async recoverHostedSchedules() {
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
       .where(eq(embeddedWorkflows.agentId, this.tenantId));
     for (const row of rows)
-      if (row.workflow.metadata?.[HOSTED_SPEC] && !isWorkflowRemoved(row.workflow))
+      if (
+        (row.workflow.metadata?.[HOSTED_SPEC] || storedPhoneTimeTrigger(row.workflow.metadata)) &&
+        !isWorkflowRemoved(row.workflow)
+      )
         await this.syncSchedule(responseFromStored(row));
   }
   async listDigestLiveCalendars(ownerId: string, input: unknown) {
@@ -412,9 +657,17 @@ export class EmbeddedWorkflowService extends Service {
     digestKeys(v, ['id', 'kind', 'label', 'text', 'observedAt', 'expiresAt', 'confirmed', 'live']);
     if (v.confirmed !== true || !['tasks', 'calendar', 'email', 'notes'].includes(String(v.kind)))
       throw new WorkflowApiError('Review and confirm the exact snapshot', 400);
-    const live = v.live === undefined ? undefined : validateHostedGoogleSelection(v.live);
+    const live =
+      v.live === undefined
+        ? undefined
+        : digestRecord(v.live).provider === 'native'
+          ? validateHostedNativeSelection(v.live)
+          : validateHostedGoogleSelection(v.live);
     if (live) {
-      if (live.kind !== v.kind || v.text !== undefined)
+      if (
+        (live.provider === 'native' ? v.kind !== 'tasks' : live.kind !== v.kind) ||
+        v.text !== undefined
+      )
         throw new WorkflowApiError(
           'Live source must match selected kind and cannot include snapshot text',
           400
@@ -455,7 +708,9 @@ export class EmbeddedWorkflowService extends Service {
     }
     if (live) {
       try {
-        await assertHostedGoogleSource(this.runtime, ownerId, live, Date.parse(expiresAt));
+        if (live.provider === 'native')
+          await assertHostedNativeSource(this.runtime, ownerId, live, Date.parse(expiresAt));
+        else await assertHostedGoogleSource(this.runtime, ownerId, live, Date.parse(expiresAt));
       } catch {
         throw new WorkflowApiError('Selected source permission changed before saving', 409, {
           code: 'HOSTED_SOURCE_NOT_SAVED',
@@ -524,6 +779,15 @@ export class EmbeddedWorkflowService extends Service {
       source = await digestSource(this.getDb(), this.tenantId, ownerId, spec.sourceId);
     if (source.revision !== spec.sourceRevision)
       throw new WorkflowApiError('Reviewed snapshot revision changed', 409);
+    if (source.live?.provider === 'native' && spec.enabled) {
+      if (source.revoked || Date.parse(source.expiresAt) <= Date.now())
+        throw new WorkflowApiError('Native source grant expired or revoked', 409);
+      const grant = await assertHostedNativeSource(this.runtime, ownerId, source.live);
+      if (digestRecord(grant.scope).timeZone !== spec.timeZone)
+        throw new WorkflowApiError('Review a native source grant for this schedule time zone', 409);
+    }
+    if (spec.manualOnly)
+      throw new WorkflowApiError('Use explicit dossier execution for manual source reads', 400);
     const receipt = await this.typedMutation(
       ownerId,
       mutationId,
@@ -535,26 +799,122 @@ export class EmbeddedWorkflowService extends Service {
     await this.syncSchedule(await this.getWorkflow(receipt.workflowId));
     return receipt;
   }
+  async runHostedDossier(
+    ownerId: string,
+    sourceId: string,
+    sourceRevision: string,
+    mutationId: string,
+    wait = false
+  ) {
+    const source = await digestSource(this.getDb(), this.tenantId, ownerId, sourceId);
+    if (source.revision !== sourceRevision || source.live?.provider !== 'native')
+      throw new WorkflowApiError('Dossier source binding changed', 409);
+    const definitionKey = digestHash([
+      'native-dossier-definition',
+      ownerId,
+      sourceId,
+      sourceRevision,
+      HOSTED_TEMPLATE_VERSION,
+      PHONE_COMPILER_REVISION,
+    ]);
+    const existing = await this.typedReceipt(ownerId, definitionKey);
+    if (existing) {
+      const prior = await this.getManualSubmission(existing.workflowId, mutationId, ownerId);
+      if (prior) {
+        const running = wait ? this.running.get(prior.id) : undefined;
+        return running ?? prior;
+      }
+    }
+    if (
+      source.revoked ||
+      source.revision !== sourceRevision ||
+      Date.parse(source.expiresAt) <= Date.now() ||
+      source.live?.provider !== 'native'
+    )
+      throw new WorkflowApiError('Review a current native source for this dossier', 409);
+    const grant = await assertHostedNativeSource(this.runtime, ownerId, source.live);
+    const spec: DigestSpec = {
+      version: 1,
+      template: 'morning',
+      sourceId,
+      sourceRevision,
+      timeZone: String(digestRecord(grant.scope).timeZone),
+      localTime: '08:00',
+      enabled: false,
+      manualOnly: true,
+    };
+    const receipt = await this.typedMutation(
+      ownerId,
+      definitionKey,
+      digestPhoneSpec(spec, source),
+      undefined,
+      undefined,
+      spec
+    );
+    const execution = await this.startReviewedWorkflow(
+      receipt.workflowId,
+      mutationId,
+      receipt.versionId,
+      {},
+      ownerId,
+      (workflow) => {
+        if (
+          workflow.metadata?.elizaOwnerEntityId !== ownerId ||
+          !validateDigestSpec(JSON.parse(String(workflow.metadata?.[HOSTED_SPEC]))).manualOnly
+        )
+          throw new WorkflowApiError('Dossier owner changed', 409);
+      },
+      { sourceId, sourceRevision }
+    );
+    if (wait) {
+      const running = this.running.get(execution.id);
+      if (running) return running;
+    }
+    return execution;
+  }
   async listHostedDigests(ownerId: string) {
-    return (
+    const rows = (
       await this.getDb()
         .select()
         .from(embeddedWorkflows)
         .where(eq(embeddedWorkflows.agentId, this.tenantId))
-    )
-      .filter(
-        (row) =>
-          row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
-          row.workflow.metadata?.[HOSTED_SPEC]
-      )
+    ).filter(
+      (row) =>
+        row.workflow.metadata?.elizaOwnerEntityId === ownerId &&
+        row.workflow.metadata?.[HOSTED_SPEC]
+    );
+    const definitions = rows
       .map((row) => ({
-        id: row.id,
-        versionId: row.versionId,
-        name: row.name,
-        spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata![HOSTED_SPEC]))),
-        active: row.active,
-        removed: isWorkflowRemoved(row.workflow),
-      }));
+        row,
+        spec: validateDigestSpec(JSON.parse(String(row.workflow.metadata?.[HOSTED_SPEC]))),
+      }))
+      .filter(({ spec }) => !spec.manualOnly);
+    if (!definitions.length) return [];
+    const sources = await this.getDb()
+      .select()
+      .from(hostedSources)
+      .where(
+        and(
+          eq(hostedSources.agentId, this.tenantId),
+          eq(hostedSources.ownerId, ownerId),
+          inArray(hostedSources.id, [...new Set(definitions.map(({ spec }) => spec.sourceId))])
+        )
+      );
+    const states = new Map(
+      sources.map((source) => [
+        source.id,
+        digestSourceState({ ...source.source, revoked: source.revoked }),
+      ])
+    );
+    return definitions.map(({ row, spec }) => ({
+      id: row.id,
+      versionId: row.versionId,
+      name: row.name,
+      spec,
+      active: row.active,
+      removed: isWorkflowRemoved(row.workflow),
+      sourceState: states.get(spec.sourceId) ?? 'revoked',
+    }));
   }
   async digestResults(ownerId: string, clientId: string) {
     const where = and(
@@ -639,7 +999,7 @@ export class EmbeddedWorkflowService extends Service {
         })
       )
       .digest('hex');
-    return this.getDb().transaction(async (tx) => {
+    const receipt = await this.getDb().transaction(async (tx) => {
       const identity = and(
         eq(typedMutations.agentId, this.tenantId),
         eq(typedMutations.ownerId, ownerId),
@@ -729,7 +1089,7 @@ export class EmbeddedWorkflowService extends Service {
             elizaOwnerEntityId: ownerId,
             ...(hosted ? { [HOSTED_SPEC]: JSON.stringify(hosted) } : {}),
           },
-          ...(hosted
+          ...(hosted && !hosted.manualOnly
             ? {
                 active: hosted.enabled,
                 schedule: {
@@ -738,6 +1098,11 @@ export class EmbeddedWorkflowService extends Service {
                   enabled: hosted.enabled,
                 },
               }
+            : {}),
+          // A reviewed local-time trigger carries its durable schedule. Every typed save
+          // stays paused: the owner turns the schedule on separately for this exact version.
+          ...(!hosted && spec.trigger.kind === 'time'
+            ? { schedule: phoneTriggerSchedule(spec.trigger) }
             : {}),
         };
       if (current) {
@@ -769,6 +1134,24 @@ export class EmbeddedWorkflowService extends Service {
         });
       return receipt;
     });
+    // A saved edit is paused; disarm any schedule armed for the previous version.
+    if (!hosted) await this.syncScheduleAfterCommit(receipt.workflowId);
+    return receipt;
+  }
+  /** Schedule repair after a committed change; startup recovery retries a failed sync. */
+  private async syncScheduleAfterCommit(workflowId: string): Promise<void> {
+    try {
+      await this.syncSchedule(await this.getWorkflow(workflowId));
+    } catch (error) {
+      logger.warn(
+        {
+          src: 'plugin:workflow:schedule',
+          workflowId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Typed workflow schedule sync pending'
+      );
+    }
   }
   async typedReceipt(ownerId: string, mutationId: string) {
     const [row] = await this.getDb()
@@ -1130,7 +1513,7 @@ export class EmbeddedWorkflowService extends Service {
         })
       );
     return {
-      data: params?.limit ? workflows.slice(0, params.limit) : workflows,
+      data: params?.limit === undefined ? workflows : workflows.slice(0, Math.max(0, params.limit)),
     };
   }
 
@@ -1142,25 +1525,61 @@ export class EmbeddedWorkflowService extends Service {
     throw new WorkflowApiError('Use reviewed receipt-preserving removal', 409);
   }
 
-  async activateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
-    return this.setActive(id, true);
+  async activateWorkflow(
+    id: string,
+    expectedVersionId?: string
+  ): Promise<WorkflowDefinitionResponse> {
+    return this.setActive(id, true, expectedVersionId);
   }
 
-  async deactivateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
-    return this.setActive(id, false);
+  async deactivateWorkflow(
+    id: string,
+    expectedVersionId?: string
+  ): Promise<WorkflowDefinitionResponse> {
+    return this.setActive(id, false, expectedVersionId);
   }
 
-  private async setActive(id: string, active: boolean): Promise<WorkflowDefinitionResponse> {
+  /** `expectedVersionId` binds the change to the exact version the owner reviewed. */
+  private async setActive(
+    id: string,
+    active: boolean,
+    expectedVersionId?: string
+  ): Promise<WorkflowDefinitionResponse> {
     const response = await this.getDb().transaction(async (tx) => {
       const where = and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id));
       const [current] = await tx.select().from(embeddedWorkflows).where(where).for('update');
       if (!current) throw new WorkflowApiError('Workflow not found', 404);
-      if (active && current.workflow.metadata?.[PHONE_SPEC_KEY])
-        throw new WorkflowApiError(
-          'Manual typed workflows require explicit runs; timed admission is unavailable',
-          409
-        );
+      if (expectedVersionId !== undefined && current.versionId !== expectedVersionId)
+        throw new WorkflowApiError('Workflow changed; review again', 409, {
+          code: 'WORKFLOW_ACTIVATION_NOT_APPLIED',
+          workflowId: id,
+          expectedVersionId,
+        });
+      if (active && current.workflow.metadata?.[PHONE_SPEC_KEY]) {
+        const trigger = storedPhoneTimeTrigger(current.workflow.metadata);
+        if (!trigger)
+          throw new WorkflowApiError(
+            'Manual typed workflows run only when the owner starts them; there is no schedule to enable',
+            409
+          );
+        // Arming a phone schedule needs the owner's review of this exact version; a
+        // version-free activation (for example a model-invoked action) is refused.
+        if (expectedVersionId === undefined)
+          throw new WorkflowApiError(
+            'Turn on a typed workflow schedule for the exact version you reviewed',
+            409
+          );
+        // Only the schedule derived from the reviewed trigger may be armed.
+        if (!isDeepStrictEqual(current.workflow.schedule, phoneTriggerSchedule(trigger)))
+          throw new WorkflowApiError(
+            'Stored schedule differs from the reviewed trigger; save the workflow again',
+            409
+          );
+      }
       requireMutable(current.workflow);
+      // A stored schedule that cannot be armed must not commit as active.
+      if (active && current.workflow.schedule?.enabled)
+        scheduleNextRunAtMs(current.workflow.schedule, Date.now());
       await tx
         .insert(workflowRevisions)
         .values(this.revisionValues(id, current, active ? 'activate' : 'deactivate'));
@@ -1247,8 +1666,43 @@ export class EmbeddedWorkflowService extends Service {
       if (this.scheduleLocks.get(requested.id) === work) this.scheduleLocks.delete(requested.id);
     }
   }
+  /** True when a scheduled digest's reviewed source is revoked or expired. */
+  private async hostedSourceLapsed(workflow: WorkflowDefinitionResponse): Promise<boolean> {
+    if (!workflow.metadata?.[HOSTED_SPEC]) return false;
+    const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
+    if (spec.manualOnly) return false;
+    const [row] = await this.getDb()
+      .select()
+      .from(hostedSources)
+      .where(
+        and(
+          eq(hostedSources.agentId, this.tenantId),
+          eq(hostedSources.ownerId, String(workflow.metadata.elizaOwnerEntityId || '')),
+          eq(hostedSources.id, spec.sourceId)
+        )
+      );
+    return !row || digestSourceState({ ...row.source, revoked: row.revoked }) !== 'current';
+  }
   private async syncActiveSchedule(workflow: WorkflowDefinitionResponse): Promise<void> {
-    if (workflow.metadata?.[HOSTED_SPEC] && workflow.active && workflow.schedule?.enabled) {
+    const hosted = Boolean(workflow.metadata?.[HOSTED_SPEC]),
+      typedTrigger = hosted ? undefined : storedPhoneTimeTrigger(workflow.metadata);
+    if ((hosted || typedTrigger) && workflow.active && workflow.schedule?.enabled) {
+      // Renewal saves a new reviewed version and re-arms this schedule.
+      if (hosted && (await this.hostedSourceLapsed(workflow))) {
+        await this.removeSchedule(workflow.id);
+        return;
+      }
+      if (
+        typedTrigger &&
+        !isDeepStrictEqual(workflow.schedule, phoneTriggerSchedule(typedTrigger))
+      ) {
+        await this.removeSchedule(workflow.id);
+        logger.warn(
+          { src: 'plugin:workflow:schedule', workflowId: workflow.id },
+          'Typed schedule differs from its reviewed trigger; not armed'
+        );
+        return;
+      }
       const tasks = await this.runtime.getTasks({
         agentIds: [this.runtime.agentId],
         tags: [...WORKFLOW_TRIGGER_TAGS],
@@ -1256,7 +1710,8 @@ export class EmbeddedWorkflowService extends Service {
       if (
         tasks.some(
           (task) =>
-            task.metadata?.hostedVersionId === workflow.versionId &&
+            (task.metadata?.hostedVersionId === workflow.versionId ||
+              task.metadata?.reviewedVersionId === workflow.versionId) &&
             (task.metadata?.trigger as { workflowId?: string } | undefined)?.workflowId ===
               workflow.id
         )
@@ -1267,10 +1722,7 @@ export class EmbeddedWorkflowService extends Service {
     const schedule = workflow.schedule;
     if (!workflow.active || !schedule?.enabled) return;
     const now = Date.now();
-    const nextRunAtMs = computeNextCronRunAtMs(schedule.cron, now, schedule.timezone);
-    if (nextRunAtMs === null) {
-      throw new WorkflowApiError(`Invalid workflow cron schedule: ${schedule.cron}`, 400);
-    }
+    const nextRunAtMs = scheduleNextRunAtMs(schedule, now);
     const triggerId = stringToUuid(`workflow-schedule:${this.tenantId}:${workflow.id}`);
     const trigger: TriggerConfig = {
       version: TRIGGER_SCHEMA_VERSION,
@@ -1298,12 +1750,18 @@ export class EmbeddedWorkflowService extends Service {
         blocking: true,
         updatedAt: now,
         updateInterval: Math.max(1, nextRunAtMs - now),
-        ...(workflow.metadata?.[HOSTED_SPEC]
+        ...(hosted
           ? {
               hostedVersionId: workflow.versionId,
               idempotencyKey: `${workflow.id}:${Math.floor(nextRunAtMs / 60000)}`,
             }
-          : {}),
+          : typedTrigger
+            ? {
+                // The dispatcher passes each exact occurrence and this version to admission.
+                reviewedVersionId: workflow.versionId,
+                idempotencyKey: `${workflow.id}:${Math.floor(nextRunAtMs / 60000)}`,
+              }
+            : {}),
         trigger,
       },
     });
@@ -1342,10 +1800,17 @@ export class EmbeddedWorkflowService extends Service {
     versionId: string,
     input: Record<string, unknown>,
     ownerId: string,
-    authorize: (workflow: WorkflowDefinitionResponse) => void
+    authorize: (workflow: WorkflowDefinitionResponse) => void,
+    dossier?: { sourceId: string; sourceRevision: string }
   ): Promise<WorkflowExecution> {
-    const snapshot = cloneJson(input);
+    let snapshot = cloneJson(input);
+    if (dossier && Object.keys(snapshot).length)
+      throw new WorkflowApiError('Dossier occurrence is server-owned', 400);
     const accepted = await this.getDb().transaction(async (tx) => {
+      if (dossier)
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify(['native-dossier-request', this.tenantId, ownerId, submissionId])},0))`
+        );
       const [row] = await tx
         .select()
         .from(embeddedWorkflows)
@@ -1354,8 +1819,16 @@ export class EmbeddedWorkflowService extends Service {
       if (!row) throw new WorkflowApiError('Workflow not found', 404);
       const workflow = responseFromStored(row);
       authorize(workflow);
-      if (workflow.metadata?.[HOSTED_SPEC])
-        throw new WorkflowApiError('Hosted digests use their reviewed schedule', 409);
+      if (workflow.metadata?.[HOSTED_SPEC]) {
+        const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
+        if (
+          !dossier ||
+          !spec.manualOnly ||
+          spec.sourceId !== dossier.sourceId ||
+          spec.sourceRevision !== dossier.sourceRevision
+        )
+          throw new WorkflowApiError('Hosted digests require their reviewed admission path', 409);
+      } else if (dossier) throw new WorkflowApiError('Dossier definition unavailable', 409);
       requireMutable(workflow);
       const [prior] = await tx
         .select()
@@ -1363,14 +1836,20 @@ export class EmbeddedWorkflowService extends Service {
         .where(
           and(
             eq(manualSubmissions.agentId, this.tenantId),
-            eq(manualSubmissions.workflowId, id),
+            ...(dossier
+              ? [eq(manualSubmissions.ownerId, ownerId)]
+              : [eq(manualSubmissions.workflowId, id)]),
             eq(manualSubmissions.submissionId, submissionId)
           )
         )
         .limit(1);
       if (prior) {
         if (prior.ownerId !== ownerId) throw new WorkflowApiError('Submission not found', 404);
-        if (prior.versionId !== versionId || !isDeepStrictEqual(prior.input, snapshot))
+        if (
+          prior.workflowId !== id ||
+          prior.versionId !== versionId ||
+          (!dossier && !isDeepStrictEqual(prior.input, snapshot))
+        )
           throw new WorkflowApiError('Submission key already bound to another request', 409);
         return { runId: prior.runId, fresh: false, workflow };
       }
@@ -1381,6 +1860,19 @@ export class EmbeddedWorkflowService extends Service {
           submissionId,
           expectedVersionId: versionId,
         });
+      if (dossier) {
+        const occurrence = Date.now();
+        snapshot = {
+          hostedDigest: await digestAdmission(
+            tx,
+            this.tenantId,
+            workflow,
+            occurrence,
+            occurrence,
+            false
+          ),
+        };
+      }
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
@@ -1443,7 +1935,41 @@ export class EmbeddedWorkflowService extends Service {
       if (!row) throw new WorkflowApiError('Workflow not found', 404);
       const workflow = responseFromStored(row);
       let hosted: Record<string, unknown> | undefined;
+      let typed: TypedScheduleAdmission | undefined;
+      // Hosted digests are typed definitions too, but keep their own reviewed admission below.
+      const typedScheduled =
+        Boolean(workflow.metadata?.[PHONE_SPEC_KEY]) &&
+        !workflow.metadata?.[HOSTED_SPEC] &&
+        (options.mode === 'trigger' || options.mode === 'schedule');
+      const typedTrigger = typedScheduled ? storedPhoneTimeTrigger(workflow.metadata) : undefined;
+      if (typedScheduled) {
+        // A typed workflow is admitted by a schedule only at an exact occurrence of its
+        // reviewed local-time trigger, bound to the version that armed the schedule.
+        if (!typedTrigger)
+          throw new WorkflowApiError(
+            'Manual typed workflows run only when the owner starts them',
+            409
+          );
+        const context = digestRecord(options.triggerData ?? options.input),
+          scheduledAt = context.scheduledAtMs;
+        if (
+          typeof scheduledAt !== 'number' ||
+          !Number.isSafeInteger(scheduledAt) ||
+          scheduledAt > Date.now() + 1000 ||
+          context.workflowVersionId !== workflow.versionId
+        )
+          throw new WorkflowApiError(
+            'Scheduled workflow requires its exact current occurrence',
+            409
+          );
+        options = {
+          ...options,
+          idempotencyKey: `typed-time:${workflow.id}:${workflow.versionId}:${scheduledAt}`,
+        };
+      }
       if (workflow.metadata?.[HOSTED_SPEC]) {
+        if (validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC]))).manualOnly)
+          throw new WorkflowApiError('Dossiers require explicit owner submission', 409);
         const context = digestRecord(options.triggerData ?? options.input),
           scheduledAt = context.scheduledAtMs;
         if (
@@ -1481,6 +2007,41 @@ export class EmbeddedWorkflowService extends Service {
       requireMutable(workflow);
       if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
         throw new WorkflowApiError('Workflow is paused', 409);
+      // Resident digests and typed phone schedules keep their own admission below.
+      const missed =
+        !workflow.metadata?.[HOSTED_SPEC] &&
+        !typedTrigger &&
+        options.mode === 'trigger' &&
+        recordsMissedOccurrences(this.runtime)
+          ? missedOccurrence(options.scheduledAtMs, Date.now())
+          : undefined;
+      if (typedTrigger) {
+        typed = typedScheduleAdmission(
+          typedTrigger,
+          Number((options.triggerData ?? options.input)?.scheduledAtMs),
+          Date.now(),
+          computeNextCronRunAtMs
+        );
+        // One run at a time: an occurrence never stacks behind a run still waiting
+        // for phone approvals or reconciliation; it is recorded and not run.
+        const [active] = await tx
+          .select({ id: embeddedExecutions.id })
+          .from(embeddedExecutions)
+          .where(
+            and(
+              eq(embeddedExecutions.agentId, this.tenantId),
+              eq(embeddedExecutions.workflowId, id),
+              eq(embeddedExecutions.finished, false)
+            )
+          )
+          .limit(1);
+        if (active && typed.status === 'ready')
+          typed = {
+            ...typed,
+            status: 'overlap',
+            text: 'An earlier run of this workflow was still active. This occurrence did not run.',
+          };
+      }
       if (workflow.metadata?.[HOSTED_SPEC]) {
         const scheduledAt = Number((options.triggerData ?? options.input)?.scheduledAtMs);
         hosted = await digestAdmission(tx, this.tenantId, workflow, Date.now(), scheduledAt);
@@ -1499,23 +2060,40 @@ export class EmbeddedWorkflowService extends Service {
           hosted = {
             ...hosted,
             status: 'overlap',
-            text: 'An earlier occurrence is still active. This occurrence did not run.',
+            text: DIGEST_OVERLAP_TEXT,
           };
       }
+      const settled = hosted
+        ? hosted.status !== 'ready'
+          ? hosted
+          : undefined
+        : typed && typed.status !== 'ready'
+          ? {
+              status: typed.status,
+              scheduledAt: typed.scheduledAt,
+              text: typed.text,
+              ...(typed.skippedLocalTime ? { skippedLocalTime: typed.skippedLocalTime } : {}),
+            }
+          : missed;
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
         workflowVersionId: workflow.versionId,
         workflowName: workflow.name,
         mode: options.mode ?? 'manual',
-        status: hosted && hosted.status !== 'ready' ? 'finished' : 'queued',
-        finished: !!hosted && hosted.status !== 'ready',
-        ...(hosted && hosted.status !== 'ready' ? { stoppedAt: nowIso(), output: hosted } : {}),
+        status: settled ? 'finished' : 'queued',
+        finished: !!settled,
+        ...(settled ? { stoppedAt: nowIso(), output: settled } : {}),
+        ...(settled?.status === 'missed'
+          ? { missedOccurrenceAt: String(settled.scheduledAt) }
+          : {}),
         startedAt: nowIso(),
         input: cloneJson(
           hosted
             ? { ...options.input, ...options.triggerData, hostedDigest: hosted }
-            : (options.input ?? options.triggerData ?? {})
+            : typed
+              ? { ...options.triggerData, [TYPED_SCHEDULE_INPUT]: typed }
+              : (options.input ?? options.triggerData ?? {})
         ),
         events: [],
         approvals: [],
@@ -1539,6 +2117,12 @@ export class EmbeddedWorkflowService extends Service {
       if (pending.finished) await writeDigestResult(tx, this.tenantId, workflow, pending);
       return { workflow, pending, fresh: true };
     });
+    if (
+      accepted.fresh &&
+      accepted.pending.finished &&
+      (accepted.pending.output as Record<string, unknown> | undefined)?.paused === true
+    )
+      await this.syncSchedule(accepted.workflow);
     if (accepted.fresh && !accepted.pending.finished) {
       const controller = new AbortController();
       this.controllers.set(accepted.pending.id, controller);
@@ -1560,6 +2144,10 @@ export class EmbeddedWorkflowService extends Service {
     const pending = await this.startWorkflow(id, options);
     const running = this.running.get(pending.id);
     if (!running) return pending;
+    // A scheduled typed run can wait for phone approvals for hours. The scheduler only
+    // admits the occurrence; awaiting the run here would stall every other scheduled task.
+    if ((pending.input as Record<string, unknown> | undefined)?.[TYPED_SCHEDULE_INPUT])
+      return pending;
     const completed = await running;
     if (completed.status === 'failed' && options.throwOnError !== false) {
       throw new WorkflowApiError(
@@ -1601,7 +2189,9 @@ export class EmbeddedWorkflowService extends Service {
           Date.parse(source.expiresAt) <= Date.now()
         )
           throw new WorkflowApiError('Hosted source grant expired or was revoked', 409);
-        if (source.live) await assertHostedGoogleSource(this.runtime, owner, source.live);
+        if (source.live?.provider === 'native')
+          await assertHostedNativeSource(this.runtime, owner, source.live);
+        else if (source.live) await assertHostedGoogleSource(this.runtime, owner, source.live);
       };
       if (workflow.metadata?.[HOSTED_SPEC]) {
         const context = digestRecord(pending.input.hostedDigest),
@@ -1622,15 +2212,27 @@ export class EmbeddedWorkflowService extends Service {
             output: admission,
           };
           await this.saveExecution(unavailable);
+          if ((admission as Record<string, unknown>).paused === true)
+            await this.syncSchedule(workflow);
           return unavailable;
         }
         const spec = validateDigestSpec(JSON.parse(String(workflow.metadata[HOSTED_SPEC])));
         const owner = String(workflow.metadata.elizaOwnerEntityId || '');
         const source = await digestSource(this.getDb(), this.tenantId, owner, spec.sourceId);
         if (source.live) {
-          const fresh = await readHostedGoogleSource(this.runtime, owner, source.live, {
-            signal: controller.signal,
-          });
+          const fresh =
+            source.live.provider === 'native'
+              ? await readHostedNativeSource(
+                  this.runtime,
+                  owner,
+                  source.live,
+                  String(context.scheduledAt),
+                  controller.signal,
+                  spec.template
+                )
+              : await readHostedGoogleSource(this.runtime, owner, source.live, {
+                  signal: controller.signal,
+                });
           await assertLiveGrant();
           const compiled = phoneDraftDefinition(
             validatePhoneSpec(digestPhoneSpec(spec, { ...source, ...fresh }))
@@ -1645,10 +2247,14 @@ export class EmbeddedWorkflowService extends Service {
             ...running.input,
             hostedDigest: {
               ...context,
+              ...('receipt' in fresh ? { nativeReadReceipt: fresh.receipt } : {}),
               source: {
                 ...digestRecord(context.source),
                 observedAt: fresh.observedAt,
-                type: 'live_selected_google_read',
+                type:
+                  source.live.provider === 'native'
+                    ? 'live_selected_native_read'
+                    : 'live_selected_google_read',
               },
             },
           };
@@ -1739,6 +2345,8 @@ export class EmbeddedWorkflowService extends Service {
       const completed: WorkflowExecution = {
         ...running,
         status: result.status,
+        reconciliation: undefined,
+        error: undefined,
         finished: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status),
         stoppedAt: ['cancelled', 'continued', 'failed', 'finished'].includes(result.status)
           ? nowIso()
@@ -1750,15 +2358,55 @@ export class EmbeddedWorkflowService extends Service {
         ...(result.nextRunId ? { nextRunId: result.nextRunId } : {}),
       };
       await this.saveExecution(completed);
+      if (completed.status === 'waiting-timer') this.scheduleTimerResume(completed);
+      else if (completed.status === 'waiting-event' && result.wakeAtMs !== undefined) {
+        // Smithers checks a wait's timeout only when the run is called again.
+        // A far deadline is re-armed when the resumed run still waits.
+        const delayMs = Math.min(Math.max(result.wakeAtMs - Date.now(), 0) + 100, 2_147_483_647);
+        this.scheduleWorkerReconciliation(completed, delayMs);
+      }
       return completed;
     } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        [
+          'WORKFLOW_WORKER_RUNNING',
+          'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+          'WORKFLOW_WORKER_UNRESOLVED',
+        ].includes(String(error.code))
+      ) {
+        const message = error instanceof Error ? error.message : String(error);
+        const unresolved: WorkflowExecution = {
+          ...running,
+          finished: false,
+          stoppedAt: null,
+          reconciliation: {
+            state: error.code === 'WORKFLOW_WORKER_RUNNING' ? 'worker-running' : 'outcome-unknown',
+            message,
+          },
+          error: { message },
+        };
+        await this.saveExecution(unresolved);
+        if (unresolved.reconciliation?.state === 'worker-running') {
+          this.scheduleWorkerReconciliation(unresolved);
+        } else {
+          const pending = this.workerReconciliations.get(unresolved.id);
+          if (pending) clearTimeout(pending.timer);
+          this.workerReconciliations.delete(unresolved.id);
+        }
+        return unresolved;
+      }
       // error-policy:J1 child-process failures become explicit failed run state.
+      const workerTermination = workerTerminationFromError(error);
       const failed: WorkflowExecution = {
         ...running,
         status: controller.signal.aborted ? 'cancelled' : 'failed',
         finished: true,
         stoppedAt: nowIso(),
         error: {
+          ...(workerTermination ? { workerTermination } : {}),
           message: error instanceof Error ? error.message : String(error),
           ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
         },
@@ -1825,7 +2473,10 @@ export class EmbeddedWorkflowService extends Service {
         return {
           execution: cloneJson(row.execution),
           request: row.execution.cancellationRequestedAt
-            ? { requestedAt: row.execution.cancellationRequestedAt, replayed: true }
+            ? {
+                requestedAt: row.execution.cancellationRequestedAt,
+                replayed: true,
+              }
             : null,
         };
       const execution = {
@@ -2004,6 +2655,9 @@ export class EmbeddedWorkflowService extends Service {
       );
       if (!canonical || canonical.status !== decision || canonical.requestDigest !== requestDigest)
         throw new WorkflowApiError('Approval outcome unknown; refresh its receipt', 503);
+      const pendingEntry = (execution.approvals ?? []).find(
+        (item) => item.nodeId === nodeId && item.iteration === iteration
+      );
       execution.approvals = [
         ...(execution.approvals ?? []).filter(
           (item) => item.nodeId !== nodeId || item.iteration !== iteration
@@ -2014,13 +2668,17 @@ export class EmbeddedWorkflowService extends Service {
           nodeId,
           iteration,
           status: decision,
-          requestedAt: receipt.decidedAt ?? nowIso(),
+          requestedAt: pendingEntry?.requestedAt ?? nowIso(),
           decidedAt: canonical.decidedAt,
           decidedBy: ownerId,
           prompt: receipt.summary,
         },
       ];
-      await tx.update(embeddedExecutions).set({ execution }).where(where);
+      // receipt.summary is workflow text; snapshot it like saveExecution does.
+      await tx
+        .update(embeddedExecutions)
+        .set({ execution: cloneJson(execution) })
+        .where(where);
     });
     await this.resumeExecution(await this.getExecution(runId));
     return this.approvalReceipts(runId);
@@ -2155,15 +2813,21 @@ export class EmbeddedWorkflowService extends Service {
   async listExecutions(
     params: { workflowId?: string; limit?: number } = {}
   ): Promise<{ data: WorkflowExecution[] }> {
-    const rows = await this.getDb()
+    const query = this.getDb()
       .select()
       .from(embeddedExecutions)
-      .where(eq(embeddedExecutions.agentId, this.tenantId))
-      .orderBy(desc(embeddedExecutions.startedAt));
-    const data = rows
-      .filter((row) => !params.workflowId || row.workflowId === params.workflowId)
-      .map((row) => cloneJson(row.execution));
-    return { data: params.limit ? data.slice(0, params.limit) : data };
+      .where(
+        and(
+          eq(embeddedExecutions.agentId, this.tenantId),
+          params.workflowId ? eq(embeddedExecutions.workflowId, params.workflowId) : undefined
+        )
+      )
+      .orderBy(desc(embeddedExecutions.startedAt))
+      .$dynamic();
+    const rows = await (params.limit === undefined
+      ? query
+      : query.limit(Math.max(0, params.limit)));
+    return { data: rows.map((row) => cloneJson(row.execution)) };
   }
 
   async getExecution(id: string): Promise<WorkflowExecution> {

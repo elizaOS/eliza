@@ -3,9 +3,12 @@
 export * from "./action.js";
 export * from "./adapter.js";
 export * from "./card.js";
+export * from "./cloud-adapter.js";
+export * from "./coverage.js";
 export * from "./errors.js";
 export * from "./google.js";
 export * from "./managed-provider/index.js";
+export * from "./navigation.js";
 export { default, mapsPlugin } from "./plugin.js";
 export * from "./service.js";
 export * from "./store.js";

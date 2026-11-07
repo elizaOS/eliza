@@ -4,7 +4,7 @@ import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/co
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,
-} from "@elizaos/core/agent-backup-limits";
+} from "@elizaos/core/protocol";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import {

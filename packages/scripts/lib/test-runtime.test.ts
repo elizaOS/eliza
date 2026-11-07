@@ -50,3 +50,24 @@ test("runtime wrapper resolves its repository outside the working directory and 
   );
   assert.equal(result.status, 7, result.stderr);
 });
+
+test("preserves the caller's pinned Bun ahead of the home installation", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "eliza-pinned-runtime-"));
+  try {
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ engines: { node: process.versions.node } }),
+    );
+    const callerToolchain = path.join(root, "pinned-tools");
+    const env = buildTestRuntimeEnv(
+      { PATH: callerToolchain },
+      { repoRoot: root, execPath: process.execPath },
+    );
+    const entries = env.PATH.split(path.delimiter);
+    assert.equal(entries[0], callerToolchain);
+    const fallback = entries.indexOf(path.join(os.homedir(), ".bun", "bin"));
+    assert.ok(fallback === -1 || fallback > entries.indexOf(callerToolchain));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

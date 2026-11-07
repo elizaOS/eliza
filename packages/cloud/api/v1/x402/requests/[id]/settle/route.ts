@@ -4,18 +4,18 @@
  * X-PAYMENT / PAYMENT-SIGNATURE or as body.paymentPayload.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   X402PaymentRequestError,
   x402PaymentRequestsService,
-} from "@/lib/services/x402-payment-requests";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/x402-payment-requests";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

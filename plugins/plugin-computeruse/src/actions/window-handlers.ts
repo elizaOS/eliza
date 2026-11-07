@@ -36,13 +36,14 @@ export async function handleWindowOp(
   params: WindowActionParams,
   callback?: HandlerCallback,
   approvalOptions: ApprovalRelayOptions = {},
+  signal?: AbortSignal,
 ): Promise<ActionResult> {
   params.action ??= "list";
 
   const result = await withApprovalRelay(
     service,
     callback,
-    () => service.executeWindowAction(params),
+    () => service.executeWindowAction(params, signal),
     approvalOptions,
   );
   const text = formatWindowResultText(params, result);

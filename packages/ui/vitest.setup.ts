@@ -2,6 +2,7 @@
  * Global vitest setup: web-stream and Buffer polyfills plus the shared jsdom
  * environment fixups the suite relies on.
  */
+
 import { Buffer } from "node:buffer";
 import {
   ReadableStream,
@@ -9,6 +10,10 @@ import {
   WritableStream,
 } from "node:stream/web";
 import { TextDecoder } from "node:util";
+import {
+  createMemoryStorage,
+  installIdleResizeObserver,
+} from "@elizaos/testing/browser-mocks";
 
 // Deterministic timezone for any test that renders a localized date/number.
 // Set (overridably) so `toLocale*` / `Intl` output is identical on every
@@ -43,16 +48,7 @@ if (typeof Element !== "undefined") {
   }
 }
 
-// jsdom has no layout observer. Components backed by React Flow and Radix
-// still install one during effects, so provide the inert browser contract for
-// tests that do not explicitly drive resize callbacks.
-if (typeof globalThis.ResizeObserver === "undefined") {
-  globalThis.ResizeObserver = class {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  } as unknown as typeof ResizeObserver;
-}
+installIdleResizeObserver();
 
 // Real browsers stamp events on the same monotonic clock `performance.now()`
 // reads (a DOMHighResTimeStamp relative to timeOrigin); jsdom stamps them with
@@ -91,23 +87,6 @@ if (typeof Event !== "undefined") {
 // function` on hosts running Node ≥25 (CI's Node 24 gates the global behind a
 // flag and is unaffected). Install a real in-memory Storage on both access
 // paths, only when the present one is broken — never overwrite a working one.
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
-}
 
 if (typeof window !== "undefined") {
   for (const name of ["localStorage", "sessionStorage"] as const) {

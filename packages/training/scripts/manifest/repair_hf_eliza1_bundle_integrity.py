@@ -22,10 +22,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Mapping
 
-try:
-    from scripts.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS  # type: ignore
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS
 
 
 @dataclass(frozen=True, slots=True)

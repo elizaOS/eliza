@@ -12,7 +12,7 @@ import {
 	type IAgentRuntime,
 	logger,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";
@@ -203,9 +203,7 @@ export {
 	resolveDiscordGuildEntry,
 	resolveDiscordShouldRequireMention,
 	resolveDiscordUserAllowed,
-	resolveGroupDmAllow,
 	shouldEmitDiscordReactionNotification,
-	validateMessageAllowed,
 } from "./allowlist";
 export {
 	DEFAULT_DISCORD_AUDIO_LANES,

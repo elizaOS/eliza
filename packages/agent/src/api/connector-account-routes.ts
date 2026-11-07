@@ -28,8 +28,8 @@ import {
   isPrivacyLevel,
   type Metadata,
   parseCanonicalInteger,
-  type ReadJsonBodyOptions,
 } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
 
 import { extractRows } from "@elizaos/plugin-sql";
 import type { infer as ZodInfer } from "zod";
@@ -566,6 +566,12 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     enabled: account.status !== "disabled" && account.status !== "revoked",
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
+    // The refresh action stores the sync time in metadata; the account card
+    // reads it from the top level.
+    lastSyncedAt:
+      typeof metadata.lastSyncedAt === "number"
+        ? metadata.lastSyncedAt
+        : undefined,
     metadata: redactAuditMetadata(metadata),
   };
 }

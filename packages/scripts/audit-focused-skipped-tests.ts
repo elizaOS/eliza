@@ -15,7 +15,7 @@
  *   2. ORPHANED skips — a hardcoded `it.skip("test name", fn)` / `.todo` / `xit`
  *      / `xdescribe` that is NOT traceable. A disabled test is acceptable only
  *      when its nearby window carries one of: a tracking ref (`#<number>`, an
- *      issue/PR URL, `TODO(#<number>)`, or a `.pr-deny-list.json` reference), a
+ *      issue/PR URL or `TODO(#<number>)`), a
  *      self-documenting reason (env/platform/dependency gate), or a Playwright
  *      skip `annotation` with a `description`. Runtime *conditional* skips
  *      (`cond ? describe : describe.skip`, `test.skip(!process.env.X, "…")`,
@@ -125,10 +125,10 @@ export function testSourceExclusionRecords(
 // `test.skip(!process.env.X, "…")` / `it.skip("not on linux", fn)` (self-documenting).
 // A bare `it.skip("adds two numbers", fn)` — a real test name with no reason and
 // no ownership — is the orphaned case this gate catches.
-// Tracking refs: a GitHub issue/PR, pending-work marker, or tracked-suppression file
-// (`.pr-deny-list.json` / deny-list — the repo's ui-smoke suppression registry).
+// Tracking refs must identify an issue/PR or numbered pending-work marker.
+// The retired manual UI inventory is not a suppression authority.
 const TRACKING_REF =
-  /#\d{2,}|github\.com\/[^\s)]+\/(?:issues|pull)\/\d+|TODO\s*\(\s*#?\d+|tracked?\b[^\n]*#?\d+|\bdeny-?list\b|pr-deny/i;
+  /#\d{2,}|github\.com\/[^\s)]+\/(?:issues|pull)\/\d+|TODO\s*\(\s*#?\d+|tracked?\b[^\n]*#?\d+/i;
 // Self-documenting-reason markers, incl. Playwright's official `annotation: {
 // type: "skip", description: "…" }` form.
 const REASON_MARKER =
@@ -1974,9 +1974,9 @@ function selfTest() {
       expect: [],
     },
     {
-      name: "allows skip referencing the deny-list suppression file",
+      name: "rejects a skip referencing the retired manual deny-list",
       src: '// tracked on ui-smoke .pr-deny-list.json\nit.skip("flow X", () => {});',
-      expect: [],
+      expect: ["orphaned-skip"],
     },
     {
       name: "allows skip with #issue ref on same line",

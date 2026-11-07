@@ -1,7 +1,7 @@
 // Handles admin cloud API v1 admin docker nodes provision route traffic with privileged auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: provision a new Hetzner Cloud node into the Docker pool.
@@ -16,11 +16,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * keys without redeploying the API).
  */
 
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { HetznerCloudError } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth";
-import { HetznerCloudError } from "@/lib/services/containers/hetzner-cloud-api";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { logger } from "@/lib/utils/logger";
 
 const provisionSchema = z.object({
   /** Optional logical id; auto-generated if omitted. */

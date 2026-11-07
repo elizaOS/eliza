@@ -57,14 +57,6 @@ export const HookMappingSchema = z
   .strict()
   .optional();
 
-export const InternalHookHandlerSchema = z
-  .object({
-    event: z.string(),
-    module: z.string(),
-    export: z.string().optional(),
-  })
-  .strict();
-
 const HookConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -91,7 +83,6 @@ export const InstallRecordSchema = z
 export const InternalHooksSchema = z
   .object({
     enabled: z.boolean().optional(),
-    handlers: z.array(InternalHookHandlerSchema).optional(),
     entries: z.record(z.string(), HookConfigSchema).optional(),
     load: z
       .object({

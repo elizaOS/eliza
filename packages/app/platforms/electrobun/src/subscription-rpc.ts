@@ -1,9 +1,7 @@
-/** Implements Electrobun desktop subscription rpc ts behavior for app shell integration. */
-
 import type {
 	SubscriptionProviderStatus,
 	SubscriptionStatusResponse,
-} from "@elizaos/core/contracts/first-run-options";
+} from "@elizaos/host/protocol";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, optionalString } from "./rpc-parse-utils";
 

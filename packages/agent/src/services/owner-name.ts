@@ -1,12 +1,13 @@
 /**
  * Reads and writes the configured owner display name, persisted at `ui.ownerName`
  * in the Eliza config. Both accessors normalize the value (coerce to trimmed
- * string, drop empties, and repair invalid Unicode) and swallow config load/save
- * failures, returning null / false rather than throwing. Display names are
+ * string, drop empties, and repair invalid Unicode). Config failures remain
+ * distinguishable from an unset name or invalid input. Display names are
  * preserved in full because they later become model-visible identity context.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -29,8 +30,12 @@ export async function fetchConfiguredOwnerName(): Promise<string | null> {
     const config = loadElizaConfig() as Record<string, unknown>;
     const ui = isRecord(config.ui) ? config.ui : null;
     return normalizeOwnerName(ui?.ownerName);
-  } catch {
-    return null;
+  } catch (cause) {
+    // error-policy:J2 Corrupt configuration is not an unset owner identity.
+    throw new ElizaError("Failed to read configured owner name", {
+      code: "OWNER_NAME_READ_FAILED",
+      cause,
+    });
   }
 }
 
@@ -45,15 +50,21 @@ export async function persistConfiguredOwnerName(
   try {
     const config = loadElizaConfig() as Record<string, unknown>;
     const ui = isRecord(config.ui) ? config.ui : {};
-    saveElizaConfig({
+    const next = {
       ...config,
       ui: {
         ...ui,
         ownerName: normalized,
       },
-    });
+    } as Parameters<typeof saveElizaConfig>[0];
+    saveElizaConfig(next);
+    mirrorSavedConfigToLive(next);
     return true;
-  } catch {
-    return false;
+  } catch (cause) {
+    // error-policy:J2 Preserve a failed commit for the calling action boundary.
+    throw new ElizaError("Failed to persist configured owner name", {
+      code: "OWNER_NAME_WRITE_FAILED",
+      cause,
+    });
   }
 }

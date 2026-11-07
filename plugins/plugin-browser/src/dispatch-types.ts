@@ -67,11 +67,16 @@ export class BrowserDispatchFailure extends Error {
   readonly targetId: string | null;
   /** Whether fallback to another target is safe for this failure kind. */
   readonly fallbackSafe: boolean;
+  /**
+   * Optional stable cause within `kind`, defined by the target that raised it
+   * (for example `reply-timeout`). Callers match this, never `message`.
+   */
+  readonly reason: string | undefined;
 
   constructor(
     kind: BrowserDispatchFailureKind,
     message: string,
-    options?: { targetId?: string | null; cause?: unknown },
+    options?: { targetId?: string | null; cause?: unknown; reason?: string },
   ) {
     super(
       message,
@@ -80,6 +85,7 @@ export class BrowserDispatchFailure extends Error {
     this.kind = kind;
     this.targetId = options?.targetId ?? null;
     this.fallbackSafe = kind === "UNSUPPORTED" || kind === "UNAVAILABLE";
+    this.reason = options?.reason;
     Object.setPrototypeOf(this, BrowserDispatchFailure.prototype);
   }
 }
@@ -108,6 +114,7 @@ const IDEMPOTENT_SUBACTIONS: ReadonlySet<BrowserWorkspaceSubaction> = new Set([
   "errors",
   "network",
   "diff",
+  "wait",
 ]);
 
 /**
@@ -119,6 +126,10 @@ const IDEMPOTENT_SUBACTIONS: ReadonlySet<BrowserWorkspaceSubaction> = new Set([
  */
 export function isIdempotentBrowserSubaction(
   subaction: BrowserWorkspaceSubaction,
+  options?: { script?: string },
 ): boolean {
+  if (subaction === "wait" && options?.script?.trim()) {
+    return false;
+  }
   return IDEMPOTENT_SUBACTIONS.has(subaction);
 }

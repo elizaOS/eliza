@@ -6,7 +6,7 @@
 import type * as React from "react";
 
 import { useAgentElement } from "../../agent-surface/useAgentElement";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "./button";
 
 export interface SegmentedControlItem<T extends string> {

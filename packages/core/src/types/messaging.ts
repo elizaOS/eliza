@@ -1,11 +1,11 @@
 /**
  * Messaging transport contracts: `TargetInfo` and send-handler signatures for
- * delivering a message to a platform, the socket/stream event payloads, UI
- * control messages, and the `IMessagingAdapter` server/channel model. The seam
- * between the runtime and connector plugins that actually send messages.
+ * delivering a message to a platform, UI control messages, and the
+ * `IMessagingAdapter` server/channel model. The seam between the runtime and
+ * connector plugins that actually send messages.
  */
 import type { Memory } from "./memory";
-import type { Content, UUID } from "./primitives";
+import type { Content, Metadata, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
@@ -24,13 +24,13 @@ export interface TargetInfo {
 	 * and matches the actual drop behavior.
 	 */
 	parentChannelId?: string;
-	/**
-	 * Connector account identifier for multi-account sources.
-	 * Omitted/undefined targets use the legacy source-only route.
-	 */
+	/** Connector account identifier. Omission selects source-only routing. */
 	accountId?: string;
 	roomId?: UUID;
 	entityId?: UUID;
+	/** Internal client_chat callback handoff: the message processor owns this
+	 * simple response's durable row. Not inferred from Content.responseId alone. */
+	responseMemoryId?: UUID;
 }
 
 /** One local bookkeeping failure after the provider accepted a message. */
@@ -132,19 +132,14 @@ export type SendHandlerOutcome =
 			message: string;
 	  };
 
-/**
- * Function result for platform sends. Returning a `Memory` remains the legacy
- * delivered receipt. Connectors that suppress, reject, or accept without a
- * persisted `Memory` return a structural outcome; `undefined` remains supported
- * for legacy connectors but carries no delivery evidence.
- */
+/** A Memory is a persisted delivery receipt. Structural outcomes represent suppression, rejection, or acceptance without a Memory. Undefined carries no delivery evidence. */
 export type SendHandlerResult = Promise<
-	// biome-ignore lint/suspicious/noConfusingVoidType: legacy connectors return Promise<void>; new connectors may return Memory for persistence.
+	// biome-ignore lint/suspicious/noConfusingVoidType: connectors may return void or a persisted Memory.
 	Memory | SendHandlerOutcome | undefined | void
 >;
 
 /** Public-feed handlers may return ordered receipts for multipart delivery. */
-// biome-ignore lint/suspicious/noConfusingVoidType: legacy post connectors return Promise<void>.
+// biome-ignore lint/suspicious/noConfusingVoidType: post connectors may return Promise<void>.
 export type PostHandlerResult = Promise<Memory | Memory[] | undefined | void>;
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -257,11 +252,7 @@ export function isSendHandlerOutcome(
 	);
 }
 
-/**
- * Exhaustive semantic view of a send-handler return. Downstream callers use
- * this rather than truthiness so explicit refusal, partial acceptance,
- * in-flight work, and legacy `undefined` cannot become fabricated success.
- */
+/** Classifies every send result explicitly so refusal, partial acceptance, in-flight work, and undefined never imply successful delivery. */
 export type SendHandlerDisposition =
 	| {
 			kind: "delivered";
@@ -311,7 +302,7 @@ function memoryProviderMessageId(memory: Memory): string | undefined {
 	return typeof memory.id === "string" ? memory.id : undefined;
 }
 
-/** Convert every legacy and structural handler return into explicit semantics. */
+/** Normalizes handler returns into explicit delivery semantics. */
 export function inspectSendHandlerResult(
 	value: Awaited<SendHandlerResult>,
 ): SendHandlerDisposition {
@@ -436,61 +427,6 @@ export type SendHandlerFunction = (
 	content: Content,
 ) => SendHandlerResult;
 
-export enum SOCKET_MESSAGE_TYPE {
-	ROOM_JOINING = 1,
-	MESSAGE_SEND = 2,
-	MESSAGE = 3,
-	ACK = 4,
-	THINKING = 5,
-	CONTROL = 6,
-}
-
-/**
- * WebSocket/SSE event names for message streaming.
- * Used for real-time streaming of agent responses to clients.
- *
- * Event flow:
- * 1. First `messageStreamChunk` indicates stream start
- * 2. Multiple `messageStreamChunk` events with text chunks
- * 3. `messageBroadcast` event with complete message (indicates stream end)
- * 4. `messageStreamError` if an error occurs during streaming
- */
-export const MESSAGE_STREAM_EVENT = {
-	/** Text chunk during streaming. First chunk indicates stream start. */
-	messageStreamChunk: "messageStreamChunk",
-	/** Error occurred during streaming */
-	messageStreamError: "messageStreamError",
-	/** Complete message broadcast (existing event, indicates stream end) */
-	messageBroadcast: "messageBroadcast",
-} as const;
-
-export type MessageStreamEventType =
-	(typeof MESSAGE_STREAM_EVENT)[keyof typeof MESSAGE_STREAM_EVENT];
-
-/**
- * Payload for messageStreamChunk event
- * Uses camelCase for client-facing WebSocket events (JS convention)
- */
-export interface MessageStreamChunkPayload {
-	messageId: UUID;
-	chunk: string;
-	index: number;
-	channelId: string;
-	agentId: UUID;
-}
-
-/**
- * Payload for messageStreamError event
- * Uses camelCase for client-facing WebSocket events (JS convention)
- */
-export interface MessageStreamErrorPayload {
-	messageId: UUID;
-	channelId: string;
-	agentId: UUID;
-	error: string;
-	partialText?: string;
-}
-
 /**
  * Control message actions that can be sent to the frontend
  */
@@ -522,52 +458,6 @@ export interface ControlMessage {
 	/** Room ID to ensure signal is directed to the correct chat window */
 	roomId: UUID;
 }
-
-/**
- * Handler options for async message processing (User → Agent)
- * Follows the core pattern: HandlerOptions, HandlerCallback, etc.
- */
-export interface MessageHandlerOptions {
-	/**
-	 * Called when the agent generates a response
-	 * If provided, method returns immediately (async mode)
-	 * If not provided, method waits for response (sync mode)
-	 */
-	onResponse?: (content: Content) => Promise<void>;
-
-	/**
-	 * Called if an error occurs during processing
-	 */
-	onError?: (error: Error) => Promise<void>;
-
-	/**
-	 * Called when processing is complete
-	 */
-	onComplete?: () => Promise<void>;
-}
-
-/**
- * Result of sending a message to an agent (User → Agent)
- * Follows the core pattern: ActionResult, ProviderResult, GenerateTextResult, etc.
- */
-export interface MessageUsage {
-	inputTokens: number;
-	outputTokens: number;
-	model: string;
-}
-
-export interface MessageResult {
-	messageId: UUID;
-	userMessage?: Memory;
-	agentResponses?: Content[];
-	usage?: MessageUsage;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Database Messaging Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-import type { Metadata } from "./primitives";
 
 /**
  * Message Server
@@ -650,17 +540,15 @@ export interface MessagingMessage {
  * ```typescript
  * const messagingAdapter = runtime.getMessagingAdapter();
  * if (messagingAdapter) {
- *   const server = await messagingAdapter.createMessageServer({
- *     name: "Discord Server",
- *     sourceType: "discord",
- *     sourceId: "1234567890"
- *   });
+ * const server = await messagingAdapter.createMessageServer({
+ * name: "Discord Server",
+ * sourceType: "discord",
+ * sourceId: "1234567890"
+ * });
  * }
  * ```
  */
 export interface IMessagingAdapter {
-	// ── Message Server Methods ──────────────────────────────────────────
-
 	/**
 	 * Create a new message server
 	 *
@@ -715,8 +603,6 @@ export interface IMessagingAdapter {
 		messageServerId: UUID,
 		agentId: UUID,
 	): Promise<void>;
-
-	// ── Channel Methods ─────────────────────────────────────────────────
 
 	/**
 	 * Create a new channel
@@ -788,8 +674,6 @@ export interface IMessagingAdapter {
 	 */
 	isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean>;
 
-	// ── Message Methods ─────────────────────────────────────────────────
-
 	/**
 	 * Create a new message
 	 *
@@ -838,11 +722,16 @@ export interface IMessagingAdapter {
 	 * @param channelId The channel to fetch messages from
 	 * @param limit Max messages to return (default 50)
 	 * @param beforeTimestamp Get messages before this timestamp (for pagination)
+	 * @param beforeMessageId Continue the cursor from the row that carries
+	 * `beforeTimestamp`: rows sharing that timestamp but sorting before this id
+	 * are still returned. Without it a same-timestamp group wider than `limit`
+	 * silently loses its remainder on the next page.
 	 */
 	getMessagesForChannel(
 		channelId: UUID,
 		limit?: number,
 		beforeTimestamp?: Date,
+		beforeMessageId?: UUID,
 	): Promise<MessagingMessage[]>;
 
 	/**

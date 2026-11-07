@@ -21,14 +21,11 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import {
-  isLoopbackBindHost,
-  resolveApiBindHost,
-} from "@elizaos/core/runtime-env";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { isLoopbackBindHost } from "@elizaos/core/protocol";
+import { readAliasedEnv, resolveApiBindHost } from "@elizaos/host/protocol";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
+import { theme } from "../terminal.js";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
@@ -123,7 +120,14 @@ async function waitForProofMatch(
   const interval = options.pollIntervalMs ?? 500;
   const start = Date.now();
   while (Date.now() - start < options.timeoutMs) {
-    const seen = await options.reader();
+    let seen: string | null;
+    try {
+      seen = await options.reader();
+    } catch {
+      // The proof file may be unreadable until the operator fixes its
+      // permissions; keep polling until the documented timeout.
+      seen = null;
+    }
     if (seen !== null && seen.trim() === options.challenge) return true;
     await new Promise((resolve) => setTimeout(resolve, interval));
   }

@@ -9,7 +9,7 @@
  * config/plugin mutation routes to keep the in-memory plugin graph consistent.
  */
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { supportsRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import type { ResolvedPlugin } from "../runtime/plugin-types.ts";
 

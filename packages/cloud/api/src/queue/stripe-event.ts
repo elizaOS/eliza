@@ -1,22 +1,26 @@
+import {
+  projectLegacyStripeCheckoutReceipt,
+  projectStripeCheckoutReceipt,
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-receipt";
 /**
- * Redis queue consumer for Stripe events.
+ * Outbox consumer for Stripe events.
  *
  * Runs the heavy fan-out that used to live inline in /api/stripe/webhook
  * before the queue refactor — org credits, revenue splits,
  * redeemable earnings, cache invalidation, Discord notifications, and
  * invoice rows. The webhook route now just verifies the signature,
- * dedupes by event ID via webhook_events, enqueues, and returns 200.
+ * records the event in its webhook_events dedupe row, and returns 200.
  *
  * Idempotency strategy:
  *   - The webhook route uses webhook_events.tryCreate(event.id) so
  *     Stripe's at-least-once retries are caught BEFORE this consumer
  *     ever runs.
- *   - For queue retries (transient downstream failures, e.g. DB blip),
+ *   - For outbox retries and repeat runs after a lost lease (transient downstream failures, e.g. DB blip),
  *     this consumer additionally re-checks each downstream write:
  *       * creditsService.getTransactionByStripePaymentIntent
  *       * redeemableEarningsService.addEarnings({ dedupeBySourceId: true })
  *       * invoicesService.getByStripeInvoiceId
- *   - These guards make a queue retry safe to apply even if a previous
+ *   - These guards make a repeat run safe to apply even if a previous
  *     attempt got partway through.
  *
  * Organization subscription deliveries route on the live Stripe status to
@@ -36,47 +40,46 @@
  *     retries.
  *   - Transient failures (DB error, downstream timeout, etc.) return
  *     `retry` with backoff across cron ticks. After the retry budget is
- *     exhausted, the Redis queue helper promotes the message to
- *     stripe-events:dlq and the cron releases its webhook_events dedupe
- *     marker so a Stripe resend can re-enter.
+ *     exhausted, the outbox dead-letters the row; a Stripe resend of the
+ *     event makes it due again.
  */
 
 import { createHmac } from "node:crypto";
-import { eq } from "drizzle-orm";
-import type Stripe from "stripe";
-import { ZodError } from "zod";
-import { dbRead } from "@/db/helpers";
-import { organizationsRepository } from "@/db/repositories/organizations";
-import { usersRepository } from "@/db/repositories/users";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import type { DrainResult } from "@/lib/queue/redis-queue";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { autoTopUpService } from "@/lib/services/auto-top-up";
-import { autoTopUpChargeBreakdownFromMetadata } from "@/lib/services/auto-top-up-charge-breakdown";
-import { creditsService } from "@/lib/services/credits";
-import { discordService } from "@/lib/services/discord";
-import { invoicesService } from "@/lib/services/invoices";
-import { invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
-import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import {
   CONTAINER_BACKED_TARGET_REJECTION_REASON,
   provisioningJobService,
-} from "@/lib/services/provisioning-jobs";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { referralsService } from "@/lib/services/referrals";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { reconcileStripeScheduledCancellationLifecycle } from "@/lib/services/stripe-scheduled-cancellation-lifecycle";
-import { reconcileStripeTerminalLifecycle } from "@/lib/services/stripe-terminal-lifecycle";
+} from "@elizaos/cloud-shared/agents";
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { referralSignupsRepository } from "@elizaos/cloud-shared/db/repositories/referrals";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { DrainResult } from "@elizaos/cloud-shared/lib/redis-queue";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up";
+import { autoTopUpChargeBreakdownFromMetadata } from "@elizaos/cloud-shared/lib/services/auto-top-up-charge-breakdown";
+import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
+import { discordService } from "@elizaos/cloud-shared/lib/services/discord";
+import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
+import { invalidateOrgTierCache } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import { JOB_TYPES } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { referralsService } from "@elizaos/cloud-shared/lib/services/referrals";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { reconcileStripeScheduledCancellationLifecycle } from "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle";
+import { reconcileStripeTerminalLifecycle } from "@elizaos/cloud-shared/lib/services/stripe-terminal-lifecycle";
 import {
   subscriptionPolicyFailureReason,
   typedFailure,
-} from "@/lib/services/subscription-lifecycle-failures";
-import { requireStripe } from "@/lib/stripe";
-import { STRIPE_API_VERSION } from "@/lib/stripe-api-version";
-import { logger } from "@/lib/utils/logger";
-
-import type { StripeEventMessage } from "./types";
+} from "@elizaos/cloud-shared/lib/services/subscription-lifecycle-failures";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
+import { eq } from "drizzle-orm";
+import type Stripe from "stripe";
+import { ZodError } from "zod";
 
 const MAX_CREDITS = 10000;
 
@@ -98,7 +101,14 @@ export const STRIPE_MAX_CREDITS = MAX_CREDITS;
  * Returns null when the input is not a finite positive number within bounds.
  */
 export function parseAndValidateCredits(creditsStr: string): number | null {
-  const credits = Number.parseFloat(creditsStr);
+  // Number.parseFloat stops at the first non-digit ("25junk" -> 25), so a
+  // malformed metadata value was silently honored as a deliberate credit
+  // amount instead of being rejected. Require the whole trimmed value to
+  // be decimal, mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const trimmed = creditsStr.trim();
+  const credits = /^\+?\d+(?:\.\d+)?$/.test(trimmed)
+    ? Number(trimmed)
+    : Number.NaN;
   if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CREDITS) {
     return null;
   }
@@ -273,6 +283,16 @@ const UNOWNED_SUBSCRIPTION_INCIDENTS: Record<
     reason: string;
   }
 > = {
+  "invoice.created": {
+    kind: "event_processing",
+    severity: "warning",
+    reason: "unowned_upgrade_invoice",
+  },
+  "invoice.paid": {
+    kind: "event_processing",
+    severity: "error",
+    reason: "unowned_upgrade_invoice",
+  },
   "customer.subscription.trial_will_end": {
     kind: "provider_drift",
     severity: "warning",
@@ -334,7 +354,9 @@ async function acknowledgeUnownedSubscriptionEvent(
   const opened =
     incident && stripeSubscriptionId
       ? await (
-          await import("@/lib/services/subscription-event-incidents")
+          await import(
+            "@elizaos/cloud-shared/lib/services/subscription-event-incidents"
+          )
         ).openSubscriptionEventIncident({
           stripeSubscriptionId,
           livemode: event.livemode,
@@ -417,7 +439,9 @@ async function classifySubscriptionFailure(
         failure?.code !== "SUBSCRIPTION_RENEWAL_UNAVAILABLE"
       )
         await (
-          await import("@/lib/services/subscription-event-incidents")
+          await import(
+            "@elizaos/cloud-shared/lib/services/subscription-event-incidents"
+          )
         ).openSubscriptionEventIncident({
           stripeSubscriptionId,
           livemode: event.livemode,
@@ -483,6 +507,41 @@ function warnOnUnexpectedApiVersion(event: Stripe.Event): void {
     );
 }
 
+async function reconcileUpgradeTarget(
+  delivery: StripeEventDelivery,
+  live: unknown,
+) {
+  const { reconcileOrganizationUpgradeSubscriptionEvent } = await import(
+    "@elizaos/cloud-shared/lib/services/organization-upgrade-subscription-event"
+  );
+  return reconcileOrganizationUpgradeSubscriptionEvent(delivery.body, live);
+}
+
+/** Capture is independently durable, but never converts a failed current lifecycle into success. */
+async function reconcileLifecycleWithUpgradeEvidence(
+  delivery: StripeEventDelivery,
+  live: unknown,
+  reconcileLifecycle: () => Promise<unknown>,
+) {
+  let failure: { error: unknown } | null = null;
+  try {
+    await reconcileLifecycle();
+  } catch (error) {
+    failure = { error };
+  }
+  try {
+    await reconcileUpgradeTarget(delivery, live);
+  } catch (error) {
+    if (failure)
+      throw new AggregateError(
+        [failure.error, error],
+        "Current lifecycle and original upgrade evidence both require reconciliation",
+      );
+    throw error;
+  }
+  if (failure) throw failure.error;
+}
+
 /**
  * Owns organization subscription deliveries. Routes on the live Stripe status
  * (fetched once here; each owner re-retrieves after capturing its revisions),
@@ -500,7 +559,7 @@ async function processSubscriptionEvent(
       event.data.object.mode === "subscription"
     ) {
       const { reconcileSubscriptionCheckout } = await import(
-        "@/lib/services/subscription-checkout"
+        "@elizaos/cloud-shared/lib/services/subscription-checkout"
       );
       await reconcileSubscriptionCheckout(event.data.object.id);
       return "ack";
@@ -519,27 +578,79 @@ async function processSubscriptionEvent(
       switch (live.status) {
         case "canceled":
         case "incomplete_expired":
-          await reconcileStripeTerminalLifecycle(delivery.body);
+          await reconcileLifecycleWithUpgradeEvidence(delivery, live, () =>
+            reconcileStripeTerminalLifecycle(delivery.body),
+          );
           return "ack";
         case "past_due":
         case "unpaid":
-          await (
-            await import("@/lib/services/stripe-dunning-lifecycle")
-          ).reconcileStripeDunningLifecycle(
-            delivery.body,
-            stripeSubscriptionId,
+          await reconcileLifecycleWithUpgradeEvidence(
+            delivery,
+            live,
+            async () =>
+              (
+                await import(
+                  "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
+                )
+              ).reconcileStripeDunningLifecycle(
+                delivery.body,
+                event.data.object.id,
+              ),
           );
           return "ack";
         case "active":
+          if (
+            live.cancel_at_period_end ||
+            live.cancel_at !== null ||
+            live.schedule !== null ||
+            live.pause_collection !== null
+          ) {
+            await reconcileLifecycleWithUpgradeEvidence(delivery, live, () =>
+              reconcileStripeScheduledCancellationLifecycle(delivery.body),
+            );
+            return "ack";
+          }
+          if ((await reconcileUpgradeTarget(delivery, live)).owned)
+            return "ack";
           await reconcileStripeScheduledCancellationLifecycle(delivery.body);
           return "ack";
         default:
+          await reconcileUpgradeTarget(delivery, live);
           return await acknowledgeUnownedSubscriptionEvent(
             event,
             stripeSubscriptionId,
             `live_status_${live.status}`,
           );
       }
+    }
+    if (event.type === "customer.subscription.pending_update_applied") {
+      stripeSubscriptionId = event.data.object.id;
+      const live =
+        await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
+      if ((await reconcileUpgradeTarget(delivery, live)).owned) return "ack";
+      return acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        "pending_update_not_owned",
+      );
+    }
+    if (
+      (event.type === "invoice.created" || event.type === "invoice.paid") &&
+      event.data.object.billing_reason === "subscription_update"
+    ) {
+      stripeSubscriptionId = invoiceSubscriptionId(event.data.object);
+      const { reconcileOrganizationUpgradeInvoiceEvent } = await import(
+        "@elizaos/cloud-shared/lib/services/organization-upgrade-invoice-event"
+      );
+      const result = await reconcileOrganizationUpgradeInvoiceEvent(
+        delivery.body,
+      );
+      if (result.owned) return "ack";
+      return await acknowledgeUnownedSubscriptionEvent(
+        event,
+        stripeSubscriptionId,
+        "original_upgrade_command_unavailable",
+      );
     }
     if (
       event.type === "invoice.paid" &&
@@ -548,7 +659,7 @@ async function processSubscriptionEvent(
       warnOnUnexpectedApiVersion(event);
       stripeSubscriptionId = invoiceSubscriptionId(event.data.object);
       const { reconcileStripePaidRenewal } = await import(
-        "@/lib/services/stripe-paid-renewal"
+        "@elizaos/cloud-shared/lib/services/stripe-paid-renewal"
       );
       await reconcileStripePaidRenewal(delivery.body);
       return "ack";
@@ -573,7 +684,9 @@ async function processSubscriptionEvent(
         await requireStripe().subscriptions.retrieve(stripeSubscriptionId);
       if (live.status === "past_due" || live.status === "unpaid") {
         await (
-          await import("@/lib/services/stripe-dunning-lifecycle")
+          await import(
+            "@elizaos/cloud-shared/lib/services/stripe-dunning-lifecycle"
+          )
         ).reconcileStripeDunningLifecycle(delivery.body, stripeSubscriptionId);
         return "ack";
       }
@@ -626,7 +739,7 @@ export async function processStripeEvent(
   if (delivery.body.appBilling) {
     try {
       const { appBillingReconciliation } = await import(
-        "@/lib/services/app-billing-reconciliation"
+        "@elizaos/cloud-shared/lib/services/app-billing-reconciliation"
       );
       await appBillingReconciliation.processPersisted(
         delivery.body.appBilling.receiptKey,
@@ -750,21 +863,9 @@ async function handleCheckoutSessionCompleted(
   let legacyCutoverApplied = false;
   let legacyAlreadyApplied = false;
   if (checkoutOrderId) {
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
-    const settlement = await stripeCheckoutOrdersService.settle({
-      checkoutOrderId,
-      clientReferenceId: session.client_reference_id,
-      metadataOrderId: session.metadata?.checkout_order_id ?? null,
-      checkoutSessionId: session.id,
-      paymentIntentId,
-      paymentStatus: session.payment_status,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-      customerId,
-    });
+    const settlement = await stripeCheckoutOrdersService.settle(
+      projectStripeCheckoutReceipt(session, paymentIntentId, checkoutOrderId),
+    );
     organizationId = settlement.order.organization_id;
     userId = settlement.order.initiated_by_user_id;
     credits = Number(settlement.order.credits_to_grant);
@@ -775,23 +876,9 @@ async function handleCheckoutSessionCompleted(
     purchaseType === "custom_amount" ||
     purchaseType === "credit_pack"
   ) {
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
-    const settlement = await stripeCheckoutOrdersService.settleLegacy({
-      checkoutSessionId: session.id,
-      paymentIntentId,
-      paymentStatus: session.payment_status,
-      amountTotal: session.amount_total,
-      currency: session.currency,
-      customerId,
-      organizationId: session.metadata?.organization_id ?? null,
-      initiatedByUserId: session.metadata?.user_id ?? null,
-      purchaseType,
-      creditPackId: session.metadata?.credit_pack_id ?? null,
-      claimedCredits: session.metadata?.credits ?? null,
-    });
+    const settlement = await stripeCheckoutOrdersService.settleLegacy(
+      projectLegacyStripeCheckoutReceipt(session, paymentIntentId),
+    );
     organizationId = settlement.organizationId;
     userId = settlement.initiatedByUserId;
     purchaseType = settlement.purchaseType;
@@ -1437,8 +1524,15 @@ async function handlePaymentIntentSucceeded(
   }
 
   const affiliateFeeStr = paymentIntent.metadata?.affiliate_fee_amount;
+  // Number.parseFloat stops at the first non-digit ("25junk" -> 25), so a
+  // malformed metadata value was silently honored as a deliberate fee amount
+  // instead of being rejected. Require the whole trimmed value to be decimal,
+  // mirroring parseAndValidateCredits above.
+  const affiliateFeeTrimmed = affiliateFeeStr?.trim() ?? "";
   const affiliateFeeAmount = affiliateFeeStr
-    ? Number.parseFloat(affiliateFeeStr)
+    ? /^\+?\d+(?:\.\d+)?$/.test(affiliateFeeTrimmed)
+      ? Number(affiliateFeeTrimmed)
+      : Number.NaN
     : 0;
   const affiliateOwnerId = paymentIntent.metadata?.affiliate_owner_id;
   const affiliateCodeId = paymentIntent.metadata?.affiliate_code_id;
@@ -1689,9 +1783,57 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 }
 
 /**
+ * Whether this payment intent belongs to a top-up whose credit grant has not
+ * committed yet: a paid Checkout session for an unsettled order or a legacy
+ * custom-amount purchase, a succeeded auto top-up payment intent, or
+ * a succeeded one-time payment intent. Payments that never grant credits
+ * (retired mini-app purchases, subscription invoices) report false.
+ */
+async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
+  const stripe = requireStripe();
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntentId,
+    limit: 1,
+  });
+  const session = sessions.data[0];
+  if (session) {
+    if (session.mode !== "payment" || session.payment_status !== "paid")
+      return false;
+    if (retiredMiniappPayment(session.metadata)) return false;
+    const orderId = session.metadata?.checkout_order_id;
+    if (orderId) {
+      const order = await stripeCheckoutOrdersService.get(orderId);
+      return (
+        order !== null &&
+        order.status !== "settled" &&
+        order.status !== "failed"
+      );
+    }
+    // Of the legacy session shapes only `custom_amount` still settles a grant;
+    // a legacy `credit_pack` session is quarantined by `settleLegacy` and
+    // never grants, so its reversal has nothing to wait for.
+    return (
+      session.metadata?.type === "custom_amount" &&
+      !!session.metadata?.organization_id
+    );
+  }
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  if (paymentIntent.status !== "succeeded") return false;
+  if (retiredMiniappPayment(paymentIntent.metadata)) return false;
+  // A succeeded auto top-up intent is credited by `payment_intent.succeeded`;
+  // a canceled attempt never reaches a succeeded intent.
+  if (paymentIntent.metadata?.auto_top_up_attempt_id) return true;
+  return (
+    paymentIntent.metadata?.type === "one_time" &&
+    !!paymentIntent.metadata?.organization_id
+  );
+}
+
+/**
  * Claw back org credits for the portion of a top-up charge that Stripe reversed.
- * Durable pack orders claw back the exact granted credits in proportion to the
- * reversed provider charge; legacy balance top-ups remain 1:1. Credits are
+ * Durable pack orders and fee-inclusive auto top-ups claw back the exact granted
+ * credits in proportion to the reversed provider charge; legacy balance top-ups
+ * remain 1:1. Credits are
  * removed up to the original grant and the org's current balance. Any
  * unrecovered portion is recorded on the clawback transaction metadata because
  * the organizations table has a nonnegative balance constraint. Only the DELTA
@@ -1702,17 +1844,33 @@ async function clawbackForReversal(params: {
   paymentIntentId: string | undefined;
   usdReversed: number;
   idempotencyKey: string;
+  /** Prefix shared by the idempotency keys whose amounts `usdReversed` accumulates. */
+  reversalSeries: string;
   source: string;
   reference: string;
 }): Promise<void> {
-  const { paymentIntentId, usdReversed, idempotencyKey, source, reference } =
-    params;
+  const {
+    paymentIntentId,
+    usdReversed,
+    idempotencyKey,
+    reversalSeries,
+    source,
+    reference,
+  } = params;
   if (!paymentIntentId || usdReversed <= 0) return;
 
   // Only top-ups that actually granted org credits are clawable.
   const grant =
     await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
   if (!grant) {
+    if (await topUpGrantPending(paymentIntentId)) {
+      // Stripe does not guarantee event ordering: the reversal can arrive
+      // before the event that grants the credits. Retry until the grant
+      // commits instead of acknowledging and leaving the refunded credits.
+      throw new Error(
+        `Credit grant for PI ${paymentIntentId} is not yet available for ${source} ${reference}`,
+      );
+    }
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no credit grant for PI ${paymentIntentId}; nothing to claw back`,
     );
@@ -1730,7 +1888,15 @@ async function clawbackForReversal(params: {
 
   const checkoutOrder =
     await stripeCheckoutOrdersService.getByPaymentIntent(paymentIntentId);
-  const chargeAmountCents = checkoutOrder?.charge_amount_cents ?? null;
+  const autoTopUpCharge = checkoutOrder
+    ? null
+    : autoTopUpChargeBreakdownFromMetadata(grant.metadata);
+  const autoTopUpChargeMicros = autoTopUpCharge
+    ? parseCreditMicros(autoTopUpCharge.totalChargeUsd)
+    : null;
+  const chargeAmountCents =
+    checkoutOrder?.charge_amount_cents ??
+    (autoTopUpChargeMicros ? autoTopUpChargeMicros / 10_000n : null);
   const reversedCents = BigInt(Math.round(usdReversed * 100));
   const reversedMicros = reversedCents * 10_000n;
   const targetMicros =
@@ -1744,10 +1910,56 @@ async function clawbackForReversal(params: {
         )
       : minBigInt(reversedMicros, grantAmountMicros);
   const cappedUsdReversed = Number(targetMicros) / 1_000_000;
+  if (
+    autoTopUpCharge &&
+    (parseCreditMicros(autoTopUpCharge.affiliateMarkupUsd) ?? 0n) > 0n &&
+    chargeAmountCents &&
+    chargeAmountCents > 0n
+  ) {
+    // The charge also paid the affiliate fee as payable earnings; take back
+    // the same share of it, or a refunded or disputed charge still pays out.
+    await redeemableEarningsService.reverseAutoTopUpAffiliateFee({
+      paymentIntentId,
+      reversedCents,
+      chargeCents: chargeAmountCents,
+      reversalSeries,
+      idempotencyKey,
+    });
+  }
+  const purchaseCents = chargeAmountCents ?? grantAmountMicros / 10_000n;
+  if (!autoTopUpCharge && purchaseCents > 0n) {
+    // A referred buyer's Checkout purchase also paid the referrers revenue
+    // splits as earnings; take back the same share of those. Only a referral
+    // that existed when the credits were granted owes splits: a code applied
+    // after the purchase never booked any, so it must not hold the clawback.
+    const referral = checkoutOrder
+      ? await referralSignupsRepository.findByReferredUserId(
+          checkoutOrder.initiated_by_user_id,
+        )
+      : null;
+    const owedSplits =
+      checkoutOrder && referral && referral.created_at <= grant.created_at
+        ? (
+            await referralsService.calculateRevenueSplits(
+              checkoutOrder.initiated_by_user_id,
+              Number(purchaseCents) / 100,
+            )
+          ).splits.filter((split) => split.amount > 0)
+        : [];
+    await redeemableEarningsService.reverseRevenueSplits({
+      paymentIntentId,
+      reversedCents,
+      chargeCents: purchaseCents,
+      reversalSeries,
+      idempotencyKey,
+      owedRecipients: owedSplits.map((split) => split.userId),
+    });
+  }
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
     amount: cappedUsdReversed,
     cumulativeTargetAmount: cappedUsdReversed,
+    reversalSeries,
     originalPaymentIntentId: paymentIntentId,
     description: `Stripe ${source} clawback — ${reference}`,
     stripePaymentIntentId: idempotencyKey,
@@ -1761,7 +1973,13 @@ async function clawbackForReversal(params: {
             original_charge_usd: (Number(chargeAmountCents) / 100).toFixed(2),
             original_credits_granted: formatCreditMicros(grantAmountMicros),
           }
-        : {}),
+        : autoTopUpCharge
+          ? {
+              auto_top_up_attempt_id: grant.metadata.auto_top_up_attempt_id,
+              original_charge_usd: autoTopUpCharge.totalChargeUsd,
+              original_credits_granted: formatCreditMicros(grantAmountMicros),
+            }
+          : {}),
       source,
       reference,
     },
@@ -1792,6 +2010,9 @@ async function handleChargeRefunded(event: Stripe.Event): Promise<void> {
     // Key on the cumulative amount so each new partial-refund total is a distinct
     // idempotent clawback, while a re-delivery of the same state is a no-op.
     idempotencyKey: `stripe:refund:${charge.id}:${charge.amount_refunded}`,
+    // `amount_refunded` accumulates refunds only; a dispute on the same charge
+    // states its own amount.
+    reversalSeries: `stripe:refund:${charge.id}:`,
     source: "charge.refunded",
     reference: `charge ${charge.id}`,
   });
@@ -1813,6 +2034,7 @@ async function handleChargeDisputeFundsWithdrawn(
     paymentIntentId,
     usdReversed: (dispute.amount ?? 0) / 100,
     idempotencyKey: `stripe:dispute:${dispute.id}`,
+    reversalSeries: `stripe:dispute:${dispute.id}`,
     source: "charge.dispute.funds_withdrawn",
     reference: `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`,
   });
@@ -1865,12 +2087,24 @@ async function handleChargeDisputeFundsReinstated(
     );
   }
 
+  if (paymentIntentId) {
+    const reinstatement = {
+      paymentIntentId,
+      reversalSeries: clawbackKey,
+      reinstatementKey: `${clawbackKey}:reinstated`,
+    };
+    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee(
+      reinstatement,
+    );
+    await redeemableEarningsService.reinstateRevenueSplits(reinstatement);
+  }
+
   // Stripe returned the disputed funds, so the unrecovered shortfall is no
   // longer owed: clear the hold this clawback placed first (#22930). Its
   // outstanding amount is frozen at release, which keeps the repayment
   // returned below stable across redeliveries.
   const { releaseShortfallHoldForReinstatement } = await import(
-    "@/db/repositories/payment-reversal-holds"
+    "@elizaos/cloud-shared/db/repositories/payment-reversal-holds"
   );
   const hold = await releaseShortfallHoldForReinstatement({
     clawbackTransactionId: clawback.id,
@@ -1920,6 +2154,12 @@ async function handleChargeDisputeFundsReinstated(
       `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
       { clawbackAmount: clawback.amount, disputeAmount: dispute.amount },
     );
+    await reapplyRefundAfterReinstatement(
+      dispute,
+      paymentIntentId,
+      source,
+      reference,
+    );
     await settleShortfallsAfterCredit(clawback.organization_id, source);
     return;
   }
@@ -1942,7 +2182,44 @@ async function handleChargeDisputeFundsReinstated(
   logger.info(
     `[Stripe Queue] Reinstated $${reinstatedUsd.toFixed(2)} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
   );
+  await reapplyRefundAfterReinstatement(
+    dispute,
+    paymentIntentId,
+    source,
+    reference,
+  );
   await settleShortfallsAfterCredit(clawback.organization_id, source);
+}
+
+/**
+ * A refund of the same charge that landed while the dispute was open took
+ * nothing back, because the dispute had already reversed the grant and the
+ * affiliate fee (one charge reverses them once across its series). Winning the
+ * dispute returns that share, but the refund still stands: apply the charge's
+ * current cumulative refund again, with the same key and series as
+ * `charge.refunded`, so the refund keeps its reversal.
+ */
+async function reapplyRefundAfterReinstatement(
+  dispute: Stripe.Dispute,
+  paymentIntentId: string | undefined,
+  source: string,
+  reference: string,
+): Promise<void> {
+  if (!paymentIntentId || !dispute.charge) return;
+  const charge =
+    typeof dispute.charge === "string"
+      ? await requireStripe().charges.retrieve(dispute.charge)
+      : dispute.charge;
+  const refundedCents = charge.amount_refunded ?? 0;
+  if (refundedCents <= 0) return;
+  await clawbackForReversal({
+    paymentIntentId,
+    usdReversed: refundedCents / 100,
+    idempotencyKey: `stripe:refund:${charge.id}:${refundedCents}`,
+    reversalSeries: `stripe:refund:${charge.id}:`,
+    source,
+    reference,
+  });
 }
 
 /**
@@ -1955,7 +2232,9 @@ async function settleShortfallsAfterCredit(
   organizationId: string,
   source: string,
 ): Promise<boolean> {
-  const { billingHoldService } = await import("@/lib/services/billing-hold");
+  const { billingHoldService } = await import(
+    "@elizaos/cloud-shared/lib/services/billing-hold"
+  );
   const settlement =
     await billingHoldService.settleOutstandingShortfalls(organizationId);
   if (settlement.appliedUsd !== "0.000000") {

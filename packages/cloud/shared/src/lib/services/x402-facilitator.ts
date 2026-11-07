@@ -1545,7 +1545,7 @@ class X402FacilitatorService {
       ]) {
         let key: string | null;
         try {
-          key = await secretsService.get("system", keyName);
+          key = await secretsService.getSystemSecret(keyName);
         } catch (error) {
           // error-policy:J2 context-adding rethrow; a secrets read failure must not masquerade as an absent key.
           throw new Error(`[x402-facilitator] Failed to read ${keyName} from secrets service`, {
@@ -1587,7 +1587,7 @@ class X402FacilitatorService {
       // Try org-level facilitator key.
       let key: string | null;
       try {
-        key = await secretsService.get("system", "FACILITATOR_PRIVATE_KEY");
+        key = await secretsService.getSystemSecret("FACILITATOR_PRIVATE_KEY");
       } catch (error) {
         // error-policy:J2 context-adding rethrow; a secrets read failure must not masquerade as an absent key.
         throw new Error(

@@ -12,11 +12,12 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
-import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
-import { abortableResponse } from "./abortable-request";
+import { ElizaError } from "@elizaos/core/protocol";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics.js";
+import { abortableResponse } from "./abortable-request.js";
 
 export interface NativeStreamAgentRequestOptions {
+  ownerId?: string;
   method?: string;
   path: string;
   headers?: Record<string, string>;

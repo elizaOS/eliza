@@ -16,18 +16,21 @@
  * runtime does, through the owner-scoped proxy middleware registered before
  * every handler here and on each sibling.
  */
-import { type Context, Hono } from "hono";
-import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@/lib/mobile-push/types";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
+import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@elizaos/cloud-shared/lib/mobile-push/types";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   coordinateSharedPushList,
   coordinateSharedPushRegister,
   coordinateSharedPushUnregister,
-} from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestAgentEvents,
   sharedRestAgentStart,
@@ -47,8 +50,9 @@ import {
   sharedRestStreamSettings,
   sharedRestViewNavigate,
   sharedRestViews,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
@@ -159,6 +163,18 @@ function isPersonalSharedAgent(
     !("error" in value) &&
     "agentKind" in value &&
     value.agentKind === "personal"
+  );
+}
+
+function androidPushUnsupported(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      error: "Android push is not available for Personal Shared agents",
+      code: "mobile_push_platform_unsupported",
+    },
+    422,
   );
 }
 
@@ -315,7 +331,7 @@ async function memoriesResponse(
   },
 ): Promise<Response> {
   const { sharedMemoryRestRequest } = await import(
-    "@/lib/services/shared-runtime/shared-memory-rest-adapter"
+    "@elizaos/cloud-shared/lib/services/shared-runtime/shared-memory-rest-adapter"
   );
   const result = await sharedMemoryRestRequest({
     path,
@@ -568,7 +584,7 @@ app.post("/", async (c) => {
     const platform = body?.platform;
     const token = typeof body?.token === "string" ? body.token.trim() : "";
     if (
-      platform !== "ios" ||
+      (platform !== "ios" && platform !== "android") ||
       !token ||
       token.length > MAX_MOBILE_PUSH_TOKEN_CHARACTERS
     ) {
@@ -578,6 +594,10 @@ app.post("/", async (c) => {
         400,
       );
     }
+    // The Shared tier sends through APNs only. A well-formed Android (FCM)
+    // registration is refused as unsupported, not as an invalid request, and
+    // is never stored as if it could be delivered.
+    if (platform === "android") return androidPushUnsupported(c);
     await coordinateSharedPushRegister(
       r.agentId,
       { platform, token },

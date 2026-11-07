@@ -1,8 +1,8 @@
 /**
  * `registerDefaultWalletChainHandlers` builds and registers the default
  * `WalletChainHandler`s on the `WalletBackendService`: one EVM handler per
- * configured chain (transfer/swap/bridge, delegating swap to `SwapAction`
- * and bridge to `routeEvmBridge`), a Solana handler (native SOL transfer
+ * configured chain (transfer/swap/bridge/gov, delegating swap to `SwapAction`,
+ * bridge to `routeEvmBridge` and gov to `routeEvmGovernance`), a Solana handler (native SOL transfer
  * plus SPL transfer/swap via Jupiter, built by hand rather than through a
  * shared SDK), and a pump.fun handler that requests a serialized buy
  * transaction from PumpPortal's trade-local API, signs it through the
@@ -28,26 +28,18 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import {
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
+  type SendOptions,
+  SendTransactionError,
   SystemProgram,
   type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import {
-  type Address,
-  type Chain,
-  encodeFunctionData,
-  parseAbi,
-  parseUnits,
-} from "viem";
+import bs58 from "bs58";
+import { type Address, type Chain, encodeFunctionData, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import type { WalletBackendService } from "../services/wallet-backend-service.js";
 import type {
@@ -56,6 +48,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
   WalletRouterSimulation,
+  WalletSignerMetadata,
 } from "../types/wallet-router.js";
 import type { SolanaSigner } from "../wallet/backend.js";
 import { buildSendTxParams } from "./evm/actions/helpers";
@@ -63,10 +56,16 @@ import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
 import { routeEvmBridge } from "./evm/bridge-router";
 import { DEFAULT_CHAINS, NATIVE_TOKEN_ADDRESS } from "./evm/constants";
+import { parseEvmBaseUnits } from "./evm/exact-units";
+import { routeEvmGovernance } from "./evm/gov-router";
 import { initWalletProvider } from "./evm/providers/wallet";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
+import {
+  parseSolanaTokenBaseUnits,
+  SOLANA_SWAP_AMOUNT_INVALID,
+} from "./solana/exact-base-units.js";
 import {
   fetchJupiterJson,
   resolveJupiterApiBaseUrl,
@@ -76,6 +75,7 @@ import {
   getWalletKey,
 } from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
+import { buildSplTransferInstructions } from "./solana/spl-transfer";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
@@ -129,12 +129,10 @@ function configuredEvmChains(runtime: IAgentRuntime): Array<{
 }
 
 function evmAliases(key: string, chain: Chain): string[] {
-  const aliases = new Set<string>([
-    key,
-    chain.name,
-    String(chain.id),
-    chain.nativeCurrency.symbol,
-  ]);
+  const aliases = new Set<string>([key, chain.name, String(chain.id)]);
+  if (chain.nativeCurrency.symbol !== "ETH") {
+    aliases.add(chain.nativeCurrency.symbol);
+  }
   if (key === "mainnet") {
     aliases.add("ethereum");
     aliases.add("eth");
@@ -146,15 +144,83 @@ function isEvmAddress(value: string): value is Address {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
-function isNativeEvmToken(value: string | undefined, chain: Chain): boolean {
+/**
+ * Preflight counterpart to the recipient format checks the transfer
+ * executors run (`executeEvmTransfer` rejects a non-EVM recipient,
+ * `executeSolanaTransfer` constructs a `PublicKey` from it). Those checks
+ * run after the financial confirmation gate, so a malformed recipient the
+ * planner produced was confirmed by the user before it failed. Validate
+ * the format here so the refusal lands before the confirmation prompt,
+ * mirroring the governance preflight in `validateWalletGovParams`.
+ */
+export function validateWalletTransferParams(
+  params: WalletRouterParams,
+  signerKind: WalletSignerMetadata["kind"],
+): string | null {
+  if (!params.recipient) {
+    return "recipient is required for transfer.";
+  }
+  if (signerKind === "evm" && !isEvmAddress(params.recipient)) {
+    return "recipient must be a valid EVM address.";
+  }
+  if (signerKind === "solana") {
+    try {
+      new PublicKey(params.recipient);
+    } catch {
+      return "recipient must be a valid Solana base58 address.";
+    }
+  }
+  return null;
+}
+
+function isNativeEvmToken(
+  value: string | undefined,
+  nativeSymbol: string | undefined,
+): boolean {
   if (!value) return true;
   const normalized = value.toLowerCase();
   return (
     normalized === "native" ||
-    normalized === "eth" ||
-    normalized === chain.nativeCurrency.symbol.toLowerCase() ||
+    normalized === nativeSymbol?.toLowerCase() ||
     normalized === NATIVE_TOKEN_ADDRESS.toLowerCase()
   );
+}
+
+/**
+ * Preflight counterpart to the token checks the transfer and swap executors
+ * run. `resolveEvmTokenAddress` takes the native token or a contract address,
+ * and resolves a symbol only through a registered token data service.
+ * `resolveSolanaMint` takes SOL or a mint address and resolves no symbol.
+ * Those checks run after the financial confirmation gate, so a symbol the
+ * planner produced ("USDC") was confirmed by the user before it failed.
+ */
+export function validateWalletTokenParams(
+  params: WalletRouterParams,
+  handler: Pick<WalletChainHandler, "name" | "signer" | "tokens">,
+  hasTokenDataService: boolean,
+): string | null {
+  const nativeSymbol = handler.tokens.find((token) => token.native)?.symbol;
+  for (const name of ["fromToken", "toToken"] as const) {
+    const token = params[name];
+    if (!token || (name === "toToken" && params.subaction !== "swap")) {
+      continue;
+    }
+    if (
+      handler.signer.kind === "solana" &&
+      !isSolanaMintAddress(resolveSolanaMint(token))
+    ) {
+      return `${name} "${token}" must be SOL or a Solana token mint address. Token symbols are not resolved on Solana.`;
+    }
+    if (
+      handler.signer.kind === "evm" &&
+      !hasTokenDataService &&
+      !isNativeEvmToken(token, nativeSymbol) &&
+      !isEvmAddress(token)
+    ) {
+      return `${name} "${token}" must be the native token or a token contract address on ${handler.name}. No token data service is registered to resolve a symbol.`;
+    }
+  }
+  return null;
 }
 
 async function resolveTokenViaService(
@@ -182,7 +248,7 @@ async function resolveEvmTokenAddress(
   chain: Chain,
   context: WalletRouterContext,
 ): Promise<Address> {
-  if (isNativeEvmToken(token, chain)) {
+  if (isNativeEvmToken(token, chain.nativeCurrency.symbol)) {
     return NATIVE_TOKEN_ADDRESS;
   }
   if (token && isEvmAddress(token)) {
@@ -226,6 +292,9 @@ function transactionToExecution(
       value: tx.value.toString(),
       data: tx.data,
       chainId: tx.chainId ?? chain.id,
+      ...(tx.confirmationStatus === "unconfirmed"
+        ? { confirmationStatus: "unconfirmed" }
+        : {}),
     },
   };
 }
@@ -286,7 +355,7 @@ async function executeEvmTransfer(
   const data = encodeFunctionData({
     abi: transferAbi,
     functionName: "transfer",
-    args: [recipient, parseUnits(params.amount ?? "", decimals)],
+    args: [recipient, parseEvmBaseUnits(params.amount ?? "", decimals)],
   });
 
   const hash = await walletClient.sendTransaction(
@@ -370,7 +439,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     chain: key,
     name: chain.name,
     aliases,
-    supportedActions: ["transfer", "swap", "bridge"],
+    supportedActions: ["transfer", "swap", "bridge", "gov"],
     tokens: [
       {
         symbol: chain.nativeCurrency.symbol,
@@ -387,7 +456,7 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
     },
     dryRun: {
       supported: true,
-      supportedActions: ["transfer", "swap", "bridge"],
+      supportedActions: ["transfer", "swap", "bridge", "gov"],
       description:
         "Prepare mode and dry-run return route metadata without signing.",
     },
@@ -400,6 +469,9 @@ function createEvmHandler(key: string, chain: Chain): WalletChainHandler {
       }
       if (params.subaction === "bridge") {
         return routeEvmBridge(params, context, key, chain);
+      }
+      if (params.subaction === "gov") {
+        return routeEvmGovernance(params, context, key, chain);
       }
       throw new Error(`${chain.name} does not support ${params.subaction}.`);
     },
@@ -616,6 +688,26 @@ function validatePumpFunBuyParams(params: WalletRouterParams): {
   return { mint, amountSol };
 }
 
+/**
+ * Preflight counterpart to `validatePumpFunBuyParams`, which runs inside
+ * `executePumpFunBuy` and `simulatePumpFunBuy` — after the financial
+ * confirmation gate. A malformed mint the planner produced (a token symbol,
+ * an EVM address, a non-canonical base58 string) was therefore confirmed by
+ * the user before it failed. Run the same checks here so the refusal lands
+ * before the confirmation prompt, mirroring the governance preflight in
+ * `validateWalletGovParams`.
+ */
+export function validateWalletPumpFunBuyParams(
+  params: WalletRouterParams,
+): string | null {
+  try {
+    validatePumpFunBuyParams(params);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 interface PumpFunTradeLocalSettings {
   readonly tradeLocalUrl: string;
   readonly priorityFee: number;
@@ -821,6 +913,31 @@ async function getSolanaTokenDecimals(
   throw new Error(`Unable to fetch token decimals for ${mintAddress}`);
 }
 
+function parseSolanaTransferLamports(amount: string | undefined): number {
+  let lamports: InstanceType<typeof BigNumber>;
+  try {
+    lamports = new BigNumber(amount ?? "0").multipliedBy(LAMPORTS_PER_SOL);
+  } catch (cause) {
+    // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
+    throw new ElizaError("SOL transfer amount is not a valid decimal value.", {
+      code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+      cause,
+    });
+  }
+  if (
+    !lamports.isFinite() ||
+    lamports.lte(0) ||
+    !lamports.isInteger() ||
+    lamports.gt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new ElizaError(
+      "SOL transfer amount must be a positive finite value exactly representable in safe integer lamports.",
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return lamports.toNumber();
+}
+
 async function executeSolanaTransfer(
   params: WalletRouterParams,
   context: WalletRouterContext,
@@ -828,58 +945,45 @@ async function executeSolanaTransfer(
   if (!params.recipient) {
     throw new Error("recipient is required for Solana transfer.");
   }
+  const tokenMint = resolveSolanaMint(params.fromToken);
+  let lamports: number | null = null;
+  let tokenBaseUnits: bigint | null = null;
+  let tokenDecimals = 0;
+  let connection: Connection | null = null;
+  if (tokenMint === SOL_MINT) {
+    // Reject an inexact lamport amount before a signer or RPC lookup.
+    lamports = parseSolanaTransferLamports(params.amount);
+  } else {
+    connection = getSolanaConnection(context.runtime);
+    tokenDecimals = await getSolanaTokenDecimals(connection, tokenMint);
+    tokenBaseUnits = parseSolanaTokenBaseUnits(params.amount, tokenDecimals);
+  }
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
     throw new Error("Solana keypair is not available.");
   }
-  const connection = getSolanaConnection(context.runtime);
+  connection ??= getSolanaConnection(context.runtime);
   const recipientPubkey = new PublicKey(params.recipient);
-  const tokenMint = resolveSolanaMint(params.fromToken);
   const instructions: TransactionInstruction[] = [];
 
-  if (tokenMint === SOL_MINT) {
+  if (lamports !== null) {
     instructions.push(
       SystemProgram.transfer({
         fromPubkey: senderKeypair.publicKey,
         toPubkey: recipientPubkey,
-        lamports: Math.round(Number(params.amount) * LAMPORTS_PER_SOL),
+        lamports,
       }),
     );
-  } else {
-    const mintPubkey = new PublicKey(tokenMint);
-    const decimals = await getSolanaTokenDecimals(connection, tokenMint);
-    const adjustedAmount = BigInt(
-      new BigNumber(params.amount ?? "0")
-        .multipliedBy(new BigNumber(10).pow(decimals))
-        .integerValue()
-        .toFixed(0),
-    );
-    const senderAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      senderKeypair.publicKey,
-    );
-    const recipientAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      recipientPubkey,
-    );
-    const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
-    if (!recipientAtaInfo) {
-      instructions.push(
-        createAssociatedTokenAccountInstruction(
-          senderKeypair.publicKey,
-          recipientAta,
-          recipientPubkey,
-          mintPubkey,
-        ),
-      );
-    }
+  } else if (tokenBaseUnits !== null) {
     instructions.push(
-      createTransferInstruction(
-        senderAta,
-        recipientAta,
+      ...(await buildSplTransferInstructions(
+        connection,
+        new PublicKey(tokenMint),
         senderKeypair.publicKey,
-        adjustedAmount,
-      ),
+        recipientPubkey,
+        tokenBaseUnits,
+        tokenDecimals,
+      )),
     );
   }
 
@@ -891,9 +995,15 @@ async function executeSolanaTransfer(
   }).compileToV0Message();
   const transaction = new VersionedTransaction(message);
   transaction.sign([senderKeypair]);
-  const signature = await connection.sendTransaction(transaction, {
-    skipPreflight: false,
-  });
+
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      { skipPreflight: false },
+      latestBlockhash,
+      "Solana transfer failed on-chain",
+    );
 
   return {
     status: "submitted",
@@ -907,7 +1017,83 @@ async function executeSolanaTransfer(
     to: params.recipient,
     amount: params.amount,
     fromToken: tokenMint,
+    metadata: {
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
+    },
   };
+}
+
+/**
+ * Send a signed Solana transaction and classify its outcome.
+ *
+ * - SendTransactionError: the RPC answered and rejected the transaction
+ *   (with skipPreflight: false this includes preflight rejections, where the
+ *   node does NOT broadcast). A definitive failure: rethrow. A retry is safe.
+ *   Per @solana/web3.js v1.98.4 the error's "action" field reflects the
+ *   skipPreflight option, not the cause, so only the error type is used.
+ * - Any other send error (network failure, timeout, lost response): the
+ *   broadcast status is uncertain and the transaction may have landed. Do
+ *   NOT throw (a retry risks a duplicate spend). Return unconfirmed with the
+ *   signature derived from the signed transaction for manual verification.
+ * - confirmation.value.err: an explicit on-chain failure. Throw; a retry is
+ *   safe.
+ * - Any other confirmation error (timeout, RPC error): the outcome is
+ *   uncertain. Return unconfirmed; never report it as success or failure.
+ *   An explorer "not found" is not proof that the transaction was not sent.
+ */
+async function sendAndConfirmSolanaTransaction(
+  connection: Connection,
+  transaction: VersionedTransaction,
+  sendOptions: SendOptions,
+  latestBlockhash: Readonly<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }>,
+  failurePrefix: string,
+): Promise<{
+  signature: string;
+  confirmationStatus: "confirmed" | "unconfirmed";
+  sendUncertain: boolean;
+}> {
+  let signature: string;
+  try {
+    signature = await connection.sendTransaction(transaction, sendOptions);
+  } catch (error) {
+    if (error instanceof SendTransactionError) {
+      throw error;
+    }
+    return {
+      signature: bs58.encode(transaction.signatures[0]),
+      confirmationStatus: "unconfirmed",
+      sendUncertain: true,
+    };
+  }
+
+  let confirmation: Awaited<ReturnType<Connection["confirmTransaction"]>>;
+  try {
+    confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed",
+    );
+  } catch {
+    // error-policy:J2 the transaction was sent; its outcome is unknown.
+    return {
+      signature,
+      confirmationStatus: "unconfirmed",
+      sendUncertain: false,
+    };
+  }
+  if (confirmation.value.err) {
+    throw new Error(
+      `${failurePrefix}: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+  return { signature, confirmationStatus: "confirmed", sendUncertain: false };
 }
 
 interface JupiterSwapBuild {
@@ -934,10 +1120,13 @@ async function fetchJupiterSwapTransaction(
   const inputMint = resolveSolanaMint(params.fromToken);
   const outputMint = resolveSolanaMint(params.toToken);
   const decimals = await getSolanaTokenDecimals(connection, inputMint);
-  const adjustedAmount = new BigNumber(params.amount ?? "0")
-    .multipliedBy(new BigNumber(10).pow(decimals))
-    .integerValue()
-    .toFixed(0);
+  // Reject a fractional base unit before the quote so Jupiter cannot be asked
+  // for more tokens than the user named. integerValue() half-up did that.
+  const adjustedAmount = parseSolanaTokenBaseUnits(
+    params.amount,
+    decimals,
+    SOLANA_SWAP_AMOUNT_INVALID,
+  ).toString();
 
   const quoteParams = new URLSearchParams({
     inputMint,
@@ -1093,25 +1282,19 @@ async function executeSolanaSwap(
   transaction.sign([keypair]);
 
   const latestBlockhash = await connection.getLatestBlockhash();
-  const signature = await connection.sendTransaction(transaction, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed",
-  });
 
-  const confirmation = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    },
-    "confirmed",
-  );
-  if (confirmation.value.err) {
-    throw new Error(
-      `Transaction failed: ${JSON.stringify(confirmation.value.err)}`,
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+      },
+      latestBlockhash,
+      "Transaction failed",
     );
-  }
 
   return {
     status: "submitted",
@@ -1125,6 +1308,10 @@ async function executeSolanaSwap(
     amount: params.amount,
     fromToken: inputMint,
     toToken: outputMint,
+    metadata: {
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
+    },
   };
 }
 

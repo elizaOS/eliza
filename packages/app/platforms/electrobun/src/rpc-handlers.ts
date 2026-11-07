@@ -9,9 +9,9 @@
  */
 
 import * as fs from "node:fs";
+import type { SecureStoreSecretKind } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { Utils } from "electrobun/bun";
 import { deriveAgentVaultId } from "../../../src/security/agent-vault-id";
-import type { SecureStoreSecretKind } from "../../../src/security/platform-secure-store";
 import {
 	createNodePlatformSecureStore,
 	describeNodePlatformSecureStore,
@@ -88,7 +88,10 @@ import {
 	getStartupDiagnosticLogTail,
 	getStartupDiagnosticsSnapshot,
 } from "./native/agent";
-import { getBrowserWorkspaceManager } from "./native/browser-workspace";
+import {
+	type BrowserWorkspaceRendererCaller,
+	getBrowserWorkspaceManager,
+} from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
@@ -236,20 +239,11 @@ async function syncPermissionsToRestApi(
 	}
 }
 
-/**
- * Structural type for the Electrobun RPC instance used in rpc-handlers.
- * The createRPC return value exposes setRequestHandler, but the base
- * RPCWithTransport interface does not include it.
- *
- * `any` is an explicit escape hatch here: the individual handlers are fully
- * typed at their call-sites via `Parameters<typeof manager.method>[0]`, so
- * type safety lives in the concrete handler definitions, not this wrapper.
- */
-type ElectrobunRpcWithHandlers = {
-	// biome-ignore lint/suspicious/noExplicitAny: Electrobun doesn't export a typed setRequestHandler interface; individual handlers are typed at call-sites
-	setRequestHandler?: (handlers: Record<string, (params: any) => any>) => void;
-	// biome-ignore lint/suspicious/noExplicitAny: bun→renderer request proxy; methods typed at call-sites
-	request?: Record<string, (params: any) => Promise<any>>;
+type ElectrobunRendererRpc = {
+	request?: {
+		browserWorkspaceRendererEvaluate: BrowserWorkspaceRendererCaller["evaluate"];
+		browserWorkspaceRendererGetTabRect: BrowserWorkspaceRendererCaller["getTabRect"];
+	};
 };
 
 export {
@@ -264,11 +258,11 @@ export {
  * evaluate JS in a tab or read its bounds). Those calls go through
  * `rpc.request.<method>(...)` — the typed bun→webview side of the RPC.
  *
- * Must be called once per RPC instance, after the RPC is created. Passing
- * `null` clears the caller (used when tearing down a window).
+ * Bind only the main window, which owns the browser tabs. Passing `null`
+ * clears its caller during teardown.
  */
 export function wireBrowserWorkspaceCaller(
-	rpc: ElectrobunRpcWithHandlers | null | undefined,
+	rpc: ElectrobunRendererRpc | null | undefined,
 ): void {
 	const browserWorkspace = getBrowserWorkspaceManager();
 	const rendererRequest = rpc?.request;
@@ -284,18 +278,6 @@ export function wireBrowserWorkspaceCaller(
 	}
 }
 
-/**
- * Build the bun-side RPC request handlers map.
- *
- * Pure factory — produces the handlers object that can be passed to either:
- *   - `BrowserView.defineRPC<ElizaDesktopRPCSchema>({ handlers: { requests } })`
- *     (preferred; type-checked against the schema at compile time)
- *   - `rpc.setRequestHandler(...)` (legacy; required only until all call
- *     sites are migrated to constructor-time RPC injection)
- *
- * Each handler receives typed params and must return the typed response
- * matching `ElizaDesktopRPCSchema.bun.requests[method]`.
- */
 /**
  * Required-keys map: every method in `ElizaDesktopRPCSchema.bun.requests`
  * must have a handler whose `params` and return type match the schema.
@@ -1583,32 +1565,4 @@ export function buildBunRpcHandlers({
 		shellControllerDeliver: async (params: unknown) =>
 			requireShellControllerEndpoint(shellControllerEndpoint).deliver(params),
 	};
-}
-
-/**
- * Legacy: register all RPC request handlers post-hoc on an existing rpc
- * instance via `setRequestHandler`. Kept for call sites that haven't yet
- * migrated to constructor-time `BrowserView.defineRPC<Schema>` injection.
- *
- * New code should prefer:
- *
- *   const rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
- *     handlers: { requests: buildBunRpcHandlers({ sendToWebview }) },
- *   });
- *   const win = new BrowserWindow({ rpc, ... });
- *   wireBrowserWorkspaceCaller(rpc);
- */
-export function registerRpcHandlers(
-	rpc: ElectrobunRpcWithHandlers | null | undefined,
-	sendToWebview: SendToWebview,
-): void {
-	if (!rpc) {
-		logger.error("[RPC] No RPC instance provided");
-		return;
-	}
-
-	wireBrowserWorkspaceCaller(rpc);
-	rpc.setRequestHandler?.(buildBunRpcHandlers({ sendToWebview }));
-
-	logger.info("[RPC] All handlers registered");
 }

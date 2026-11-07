@@ -10,7 +10,7 @@
 
 import { ElizaError } from "./errors";
 import type { ActionParameters } from "./types/components.js";
-import { toWellFormedUnicode } from "./utils/well-formed";
+import { toWellFormedUnicode } from "./utils/unicode";
 
 export const MAX_ACTION_PARAMETER_DEPTH = 32;
 export const MAX_ACTION_PARAMETER_NODES = 2_048;
@@ -120,10 +120,7 @@ export function parseActionParams(
 	const parsed =
 		typeof paramsInput === "string"
 			? parseActionParamsJson(paramsInput)
-			: (paramsInput ?? null);
-	if (parsed === null || parsed === undefined) {
-		return new Map();
-	}
+			: paramsInput;
 	return parseActionParamsRecord(parsed, newWalkContext());
 }
 
@@ -133,7 +130,7 @@ function parseActionParamsJson(input: string): unknown | null {
 		return null;
 	}
 	try {
-		return JSON.parse(trimmed) as unknown;
+		return JSON.parse(trimmed);
 	} catch {
 		// error-policy:J3 action parameters cross an untrusted model boundary;
 		// malformed JSON is an explicit invalid result.
@@ -222,7 +219,17 @@ function collectActionsFromEntries(
 				);
 			}
 			if (Object.keys(params).length > 0) {
-				result.set(actionName.trim().toUpperCase(), params);
+				const normalizedName = actionName.trim().toUpperCase();
+				// An empty name is not an action; skip it like the other
+				// non-action entries above instead of storing an "" key.
+				if (normalizedName === "") continue;
+				// Two distinct raw names that normalize to the same key are
+				// ambiguous input. Fail loudly instead of silently dropping
+				// one action's parameters.
+				if (result.has(normalizedName)) {
+					failUnbounded({ duplicateAction: true });
+				}
+				result.set(normalizedName, params);
 			}
 		} finally {
 			ctx.visiting.delete(paramsValue);
@@ -251,7 +258,7 @@ function toActionParameterValueInner(
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return value;
 	}
-	if (!value || typeof value !== "object") {
+	if (typeof value !== "object") {
 		if (!visitAlreadyReserved) reserve(ctx, 1);
 		return inspectRecord("primitiveToString", () => String(value));
 	}

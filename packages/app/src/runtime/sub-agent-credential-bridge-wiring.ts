@@ -29,15 +29,13 @@ import {
   Service,
 } from "@elizaos/core";
 import {
+  createCredentialTunnelService,
+  createSubAgentCredentialBridgeAdapter,
   SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   subAgentCredentialsPlugin,
 } from "@elizaos/plugin-assistant";
-import {
-  createCredentialTunnelService,
-  createSubAgentCredentialBridgeAdapter,
-} from "../services/credential-tunnel-service.js";
 
 const BRIDGE_ACTIONS_MARKER_SERVICE = "SubAgentCredentialBridgeActions";
 

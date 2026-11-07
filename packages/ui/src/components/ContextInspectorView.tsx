@@ -16,12 +16,12 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  type ContextInspectorEntry,
-  type ContextInspectorResponse,
-  client,
-} from "../api";
-import { useAppSelector } from "../state";
+import { client } from "../api/client";
+import type {
+  ContextInspectorEntry,
+  ContextInspectorResponse,
+} from "../api/client-types-chat";
+import { useAppSelector } from "../state/app-store";
 import { PagePanel } from "./composites/page-panel";
 import { Button } from "./ui/button";
 import { ShellViewAgentSurface } from "./views/ShellViewAgentSurface";

@@ -1,3 +1,10 @@
+import {
+	beginRequestOperationAttempt,
+	bindRequestOperationResult,
+	getBoundOperationDenialAttempt,
+	getBoundOperationDenialOperation,
+} from "../actions/task-extraction-context";
+import { copyBoundOperationDenial } from "./operation-restriction-projection";
 /**
  * Executes one planner-selected tool call against its Action: resolves the
  * action, applies role and connector-account gates, validates
@@ -5,8 +12,10 @@
  * inside the trajectory / action-routing context, and emits ACTION_STARTED /
  * ACTION_COMPLETED around a normalized ActionResult.
  */
+
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
+import { ElizaError } from "../errors.ts";
 import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
@@ -42,6 +51,7 @@ import type { ContentValue } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
 import { withActiveRoutingContexts } from "../utils/context-routing";
+import { isObjectRecord, isPlainObject } from "../utils/type-guards";
 import { resolveActionEventWorldId } from "./action-event-world";
 import {
 	actionGateFailure,
@@ -50,19 +60,18 @@ import {
 } from "./action-gate";
 import {
 	actionFailureResult as failureResult,
+	normalizeActionResult,
 	settleActionHandler,
 	stringifyActionError as stringifyError,
 } from "./action-handler-settlement";
-import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
+import { observeOwnerToolExecution } from "./owner-tool-execution-observer";
 import type { PlannerToolCall } from "./planner-types.ts";
 import {
 	buildTurnEntityAliases,
 	type EntityAliasCapabilityMap,
 	resolveEntityAliasRefs,
 } from "./tool-arg-aliases";
-
-export type PlannedToolCall = PlannerToolCall;
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
@@ -76,7 +85,7 @@ export interface ExecutePlannedToolCallContext {
 	responses?: Memory[];
 	/**
 	 * Explicit per-turn alias grants for redaction placeholders in tool args
-	 * (#20091). When absent, the executor mints the map itself via
+	 *. When absent, the executor mints the map itself via
 	 * `buildTurnEntityAliases` from the composed state, resolved roles, and
 	 * canonical owner context; supplying it lets a planner boundary pass a
 	 * pre-authorized capability map. Never sourced from ambient settings.
@@ -98,10 +107,6 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	/** Projected settlement for turn-owned recovery before buffered callbacks. */
 	onBeforeCallbacks?: (result: ActionResult) => void;
 };
-
-function isContentRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 const MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH = 8;
 const MAX_ACTION_RESULT_DIAGNOSTIC_NODES = 1_024;
@@ -156,7 +161,7 @@ function projectActionResultDiagnosticValue(
 	if (typeof value === "string") {
 		return redactDiagnosticString(value, redactDiagnosticText);
 	}
-	if (typeof value !== "object" || value === null) {
+	if (typeof value !== "object") {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
 	if (depth >= MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH || seen.has(value)) {
@@ -267,6 +272,8 @@ function projectActionResultDiagnosticValue(
 	}
 }
 
+const SUPPRESSED_RESULT_KEYS: ReadonlySet<string> = new Set(["data", "values"]);
+
 function actionResultToContentRecord(
 	result: ActionResult,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
@@ -278,9 +285,9 @@ function actionResultToContentRecord(
 		new WeakSet<object>(),
 		0,
 		{ nodes: 0 },
-		options.suppressData ? new Set(["data", "values"]) : undefined,
+		options.suppressData ? SUPPRESSED_RESULT_KEYS : undefined,
 	);
-	return isContentRecord(projectedResult) ? projectedResult : {};
+	return isObjectRecord(projectedResult) ? projectedResult : {};
 }
 
 function sensitiveActionResultMarker(
@@ -351,6 +358,13 @@ export function projectActionResultForClipboard(
 			: undefined;
 	const safeActionName = actionName ?? resultActionName;
 	const safeControlData = {
+		...(getBoundOperationDenialAttempt(result)
+			? {
+					code: result.data?.code,
+					executionStatus: "not_started",
+					executed: false,
+				}
+			: {}),
 		...(safeActionName ? { actionName: safeActionName } : {}),
 		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
 		...(result.data?.retryable === false ? { retryable: false } : {}),
@@ -364,7 +378,7 @@ export function projectActionResultForClipboard(
 			? { suppressPlannerReply: true }
 			: {}),
 	};
-	return {
+	const projected: ActionResult = {
 		success: result.success,
 		...(result.text !== undefined ? { text: result.text } : {}),
 		...(result.transcriptVisibility !== undefined
@@ -406,6 +420,11 @@ export function projectActionResultForClipboard(
 			? { continueChain: result.continueChain }
 			: {}),
 	};
+	const projectionAttempt = getBoundOperationDenialAttempt(result);
+	if (projectionAttempt)
+		bindRequestOperationResult(projected, projectionAttempt);
+	copyBoundOperationDenial(result, projected, projectionAttempt);
+	return projected;
 }
 
 function projectSettledResultForObserver(
@@ -493,7 +512,7 @@ function publishSettledResult(
 }
 
 function readMetadataString(message: Memory, key: string): string | undefined {
-	const metadata = isContentRecord(message.metadata) ? message.metadata : null;
+	const metadata = isObjectRecord(message.metadata) ? message.metadata : null;
 	const value = metadata?.[key];
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim()
@@ -557,10 +576,26 @@ function runWithMessageTrajectoryContext<T>(
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	const ownerExecutionId = runtime.ownerToolExecutionObserver
+		? crypto.randomUUID()
+		: undefined;
+	const gateCapture = (
+		gate: OwnerCapture["gate"],
+		gateOutcome: OwnerCapture["gateOutcome"],
+	): OwnerCapture | undefined =>
+		runtime.ownerToolExecutionObserver
+			? {
+					runtime,
+					executionId: ownerExecutionId,
+					phase: "gate",
+					gate,
+					gateOutcome,
+				}
+			: undefined;
 	// Perf probe (#latency): per-segment wall clock for one executed tool call,
 	// logged as a single summary line. Diagnostic only; never alters behavior.
 	const perfT0 = Date.now();
@@ -593,6 +628,9 @@ export async function executePlannedToolCall(
 					retryable: false,
 				},
 			),
+			{
+				ownerCapture: gateCapture("lookup", "denied"),
+			},
 		);
 	}
 
@@ -624,6 +662,9 @@ export async function executePlannedToolCall(
 			toolCall,
 			redactDiagnosticText,
 			failureResult(action.name, gateFailure),
+			{
+				ownerCapture: gateCapture("role-context", "denied"),
+			},
 		);
 	}
 	if (action.disclosureGate?.require === "owner_exclusive") {
@@ -639,24 +680,116 @@ export async function executePlannedToolCall(
 					action.name,
 					`Owner-private disclosure denied: ${disclosure.reason}`,
 				),
+				{
+					ownerCapture: gateCapture("disclosure", "denied"),
+				},
 			);
 		}
 	}
 
-	// Provider adapters own wire-format parsing. The executor accepts only the
-	// declared argument object; guessing legacy envelopes can change an effect.
+	// Mint the host attempt before schema rejection: an out-of-request operation
+	// remains outside the task even when the planner supplies malformed args.
+	const requestOperationAttempt = executorCtx.state
+		? beginRequestOperationAttempt({
+				runtime,
+				state: executorCtx.state,
+				message: executorCtx.message,
+				action,
+			})
+		: undefined;
+	if (action.restrictRequestOperation) {
+		const restriction: unknown = runWithActionRoutingContext(
+			{
+				actionName: action.name,
+				modelClass: action.modelClass,
+				messageId: executorCtx.message.id,
+				requestMessage: executorCtx.message,
+				requestState: executorCtx.state,
+				requestRuntime: runtime,
+				hostAttemptId: ownerExecutionId,
+				requestOperationAttempt,
+			},
+			() =>
+				action.restrictRequestOperation?.({
+					runtime,
+					message: executorCtx.message,
+					state: executorCtx.state,
+					action,
+					params: toolCall.params,
+				}),
+		);
+		if (restriction !== undefined) {
+			// A callback cannot grant execution or manufacture outside-task proof.
+			// Invalid/async/lookalike output is a failed admission, never a pass.
+			if (
+				!isObjectRecord(restriction) ||
+				restriction.success !== false ||
+				!getBoundOperationDenialOperation(restriction) ||
+				!requestOperationAttempt ||
+				getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
+			) {
+				return emitToolResult(
+					toolCall,
+					redactDiagnosticText,
+					failureResult(
+						action.name,
+						"Invalid request-operation restriction result",
+						{
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							acceptance: "rejected",
+							executionStatus: "not_started",
+							executed: false,
+							retryable: false,
+						},
+						{
+							kind: "handler_error",
+							boundary: "handler",
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							retryable: false,
+						},
+					),
+				);
+			}
+			return emitToolResult(
+				toolCall,
+				redactDiagnosticText,
+				normalizeActionResult(
+					action.name,
+					restriction,
+					requestOperationAttempt,
+				),
+			);
+		}
+	}
+
+	// Provider adapters parse wire formats. Execution accepts only declared argument objects;
+	// guessing envelopes can change effects.
 	if (
 		"args" in toolCall ||
 		"arguments" in toolCall ||
-		(toolCall.params !== undefined && !isPlainRecord(toolCall.params))
+		(toolCall.params !== undefined && !isPlainObject(toolCall.params))
 	) {
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				"Tool arguments must be a plain object in params",
+				failureResult(
+					action.name,
+					"Tool arguments must be a plain object in params",
+					{ acceptance: "rejected", executionStatus: "not_started" },
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
+			{
+				ownerCapture: gateCapture("schema", "denied"),
+			},
 		);
 	}
 	const argsForValidation = dropEmptyOptionalArgs(
@@ -664,7 +797,7 @@ export async function executePlannedToolCall(
 		toolCall.params ?? {},
 	);
 	// Prompt-side redaction placeholders (matrix F16) resolve ONLY through the
-	// per-turn alias capability map (#20091): aliases the composed state proves
+	// per-turn alias capability map: aliases the composed state proves
 	// redaction emitted, on an owner-authorized turn, with values derived from
 	// canonical owner resolution — never an ambient getSetting keyed by
 	// model-authored text. Recorded tool calls keep the placeholder; this
@@ -678,10 +811,35 @@ export async function executePlannedToolCall(
 			executorCtx.userRoles,
 		));
 	perfMark("aliases");
-	const validation = validateToolArgs(
-		action,
-		resolveEntityAliasRefs(entityAliases, argsForValidation),
-	);
+	const resolvedArgs = resolveEntityAliasRefs(entityAliases, argsForValidation);
+	let validation: ReturnType<typeof validateToolArgs>;
+	try {
+		validation = validateToolArgs(action, resolvedArgs);
+	} catch (error) {
+		if (
+			!(error instanceof ElizaError) ||
+			error.code !== "ACTION_DEFINITION_INVALID"
+		)
+			throw error;
+		return emitToolResult(
+			toolCall,
+			redactDiagnosticText,
+			failureResult(
+				action.name,
+				error.message,
+				{ error, retryable: false, executionStatus: "not_started" },
+				{
+					kind: "missing_capability",
+					boundary: "capability",
+					code: "ACTION_DEFINITION_INVALID",
+					retryable: false,
+				},
+			),
+			{
+				ownerCapture: gateCapture("schema", "failed"),
+			},
+		);
+	}
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
 		// removing only arguments the schema rejected. Keeping this structural
@@ -691,17 +849,32 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				validation.errors.join("; ") ||
-					`Invalid arguments for action ${action.name}`,
-				{
-					parameterErrors: validation.errors,
-					...(invalidParameterNames.length > 0
-						? { invalidParameterNames }
-						: {}),
-				},
+				failureResult(
+					action.name,
+					validation.errors.join("; ") ||
+						`Invalid arguments for action ${action.name}`,
+					{
+						acceptance: "rejected",
+						executionStatus: "not_started",
+						parameterErrors: validation.errors,
+						...(invalidParameterNames.length > 0
+							? { invalidParameterNames }
+							: {}),
+					},
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
+			{
+				ownerCapture: gateCapture("schema", "denied"),
+			},
 		);
 	}
 	const previousResults = [...(executorCtx.previousResults ?? [])];
@@ -754,6 +927,9 @@ export async function executePlannedToolCall(
 						retryable: true,
 					},
 				),
+				{
+					ownerCapture: gateCapture("action-validation", "failed"),
+				},
 			);
 		}
 		if (!valid) {
@@ -771,6 +947,9 @@ export async function executePlannedToolCall(
 						retryable: false,
 					},
 				),
+				{
+					ownerCapture: gateCapture("action-validation", "denied"),
+				},
 			);
 		}
 	}
@@ -793,13 +972,16 @@ export async function executePlannedToolCall(
 				accountPolicy.reason ??
 					`Action ${action.name} is not allowed for the selected connector account`,
 			),
+			{
+				ownerCapture: gateCapture("connector-account", "denied"),
+			},
 		);
 	}
 	perfMark("accountPolicy");
 	options.abortSignal?.throwIfAborted();
 
-	const messageId = executorCtx.message.id as UUID | undefined;
-	const roomId = executorCtx.message.roomId as UUID;
+	const messageId = executorCtx.message.id;
+	const roomId = executorCtx.message.roomId;
 	let actionEventWorldId: Promise<UUID> | undefined;
 	const getActionEventWorldId = () => {
 		actionEventWorldId ??= resolveActionEventWorldId(
@@ -890,6 +1072,7 @@ export async function executePlannedToolCall(
 					settleActionHandler({
 						runtime,
 						action,
+						operationAttempt: requestOperationAttempt,
 						callback: protectedCallback,
 						beforeCallbacks: (result) =>
 							publishSettledResult(runtime, action, result, onBeforeCallbacks),
@@ -905,7 +1088,7 @@ export async function executePlannedToolCall(
 							if (currentGateFailure)
 								return failureResult(action.name, currentGateFailure);
 							options.abortSignal?.throwIfAborted();
-							// Egress (#10469): this is the true execution boundary. Restore real
+							// Egress: this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
 							// and trajectory upstream kept the placeholders. Fail loud if the model
 							// emitted a this-turn placeholder we cannot resolve, so a placeholder is
@@ -922,7 +1105,7 @@ export async function executePlannedToolCall(
 									{ failOnUnresolved: true },
 								);
 							}
-							// Egress (#10469 / #7007): restore real named-entity PII here too —
+							// Egress: restore real named-entity PII here too —
 							// including the REPLY action's own text, so the tool call runs against the
 							// real recipient and the user sees their real contacts, while the model,
 							// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
@@ -934,6 +1117,15 @@ export async function executePlannedToolCall(
 									handlerOptions.parameters,
 								);
 							}
+							observeOwnerToolExecution(runtime, () => ({
+								phase: "started",
+								gate: "execution",
+								gateOutcome: "executed",
+								actionName: action.name,
+								executionId: ownerExecutionId,
+								toolCallId: toolCall.id,
+								args: handlerOptions.parameters,
+							}));
 							const routingContext = {
 								actionName: action.name,
 								modelClass: action.modelClass,
@@ -941,6 +1133,11 @@ export async function executePlannedToolCall(
 									? undefined
 									: executorCtx.replyOwner,
 								messageId: executorCtx.message.id,
+								requestMessage: executorCtx.message,
+								requestState: executorCtx.state,
+								requestRuntime: runtime,
+								hostAttemptId: ownerExecutionId,
+								requestOperationAttempt,
 							};
 							try {
 								return await runWithActionRoutingContext(routingContext, () =>
@@ -963,7 +1160,7 @@ export async function executePlannedToolCall(
 					// Raw here by design: completeActionTrajectoryStep owns the
 					// diagnostic projection for every settlement, so the handler-adjacent
 					// copy stays exact and the egress copy is projected once.
-					parameters: isContentRecord(validation.args) ? validation.args : {},
+					parameters: isObjectRecord(validation.args) ? validation.args : {},
 					projectResult: (result) =>
 						projectSettledResultForObserver(action, result),
 				},
@@ -1064,15 +1261,52 @@ export async function executePlannedToolCall(
 	}
 	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {
 		suppressData: suppressActionResult,
+		ownerCapture: runtime.ownerToolExecutionObserver
+			? {
+					runtime,
+					executionId: ownerExecutionId,
+					phase: "settled",
+					gate: "execution",
+					gateOutcome: resultForEvent.success ? "executed" : "failed",
+				}
+			: undefined,
 	});
 }
 
+interface OwnerCapture {
+	runtime: IAgentRuntime;
+	executionId?: string;
+	phase: "gate" | "settled";
+	gate:
+		| "lookup"
+		| "role-context"
+		| "disclosure"
+		| "schema"
+		| "action-validation"
+		| "connector-account"
+		| "execution";
+	gateOutcome: "denied" | "failed" | "executed";
+}
+
 async function emitToolResult(
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	result: ActionResult,
-	options: { suppressData?: boolean } = {},
+	options: { suppressData?: boolean; ownerCapture?: OwnerCapture } = {},
 ): Promise<ActionResult> {
+	if (options.ownerCapture) {
+		const observation = options.ownerCapture;
+		observeOwnerToolExecution(observation.runtime, () => ({
+			phase: observation.phase,
+			gate: observation.gate,
+			gateOutcome: observation.gateOutcome,
+			actionName: toolCall.name,
+			executionId: observation.executionId,
+			toolCallId: toolCall.id,
+			...(observation.phase === "gate" ? { args: toolCall.params } : {}),
+			result,
+		}));
+	}
 	const streamingContext = getStreamingContext();
 	const status = result.success ? "completed" : "failed";
 	const streamingToolCall = plannedToolCallToStreamingToolCall(
@@ -1111,7 +1345,7 @@ async function withResolvedUserRoles(
 }
 
 function plannedToolCallToStreamingToolCall(
-	toolCall: PlannerToolCall | PlannedToolCall,
+	toolCall: PlannerToolCall,
 	status: "completed" | "failed",
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
@@ -1156,16 +1390,6 @@ function actionResultToStreamingResult(
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult, redactDiagnosticText);
-}
-
-export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 /**

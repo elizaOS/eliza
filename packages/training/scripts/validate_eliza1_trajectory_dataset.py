@@ -22,8 +22,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 TRAINING_ROOT = SCRIPT_DIR.parent
 DEFAULT_ALIAS_PATH = TRAINING_ROOT / "config" / "eliza1_action_aliases.json"
 
-sys.path.insert(0, str(SCRIPT_DIR))
-from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+from eliza_training.prepare_eliza1_trajectory_dataset import (  # noqa: E402
     TARGET_CHAT_TEMPLATE,
     TARGET_MODEL_FAMILY,
     NATIVE_BOUNDARIES,
@@ -33,7 +32,7 @@ from prepare_eliza1_trajectory_dataset import (  # noqa: E402
     load_action_manifest,
     trajectory_record_to_eliza_native,
 )
-from format_for_training import format_record  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
 
 LOG = logging.getLogger("validate-eliza1-trajectories")
 

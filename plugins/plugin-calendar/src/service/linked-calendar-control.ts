@@ -5,8 +5,8 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { type UpdateLifeOpsLinkedCalendarControlRequest } from "@elizaos/core/contracts/calendar";
 import { executeRawSql, sqlInteger, sqlQuote } from "../internal/sql.js";
 
 export interface LinkedCalendarDestination {

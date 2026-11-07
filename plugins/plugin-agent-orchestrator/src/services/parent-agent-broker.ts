@@ -1209,7 +1209,7 @@ async function runCloudCommand(args: {
         decision.autoAuthorize &&
         decision.estimatedCostUsd &&
         decision.estimatedCostUsd > 0
-          ? addSessionSpendUsd(args.sessionId, decision.estimatedCostUsd)
+          ? await addSessionSpendUsd(args.sessionId, decision.estimatedCostUsd)
           : null;
       return { spendDecision: decision, runningTotalUsd: committedUsd };
     },

@@ -2,10 +2,17 @@
 import { eq } from "drizzle-orm";
 import { writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
-import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
+import {
+  type AllowanceEligibilityOptions,
+  readEligibleSubscriptionAllowance,
+} from "../../db/repositories/subscription-allowance-eligibility";
 import { organizations } from "../../db/schemas/organizations";
 
-export async function readAgentFundingAccount(organizationId: string) {
+export async function readAgentFundingAccount(
+  organizationId: string,
+  /** Compute admission passes the managed-compute payment grace so it agrees with compute funding. */
+  options: AllowanceEligibilityOptions = {},
+) {
   return writeTransaction(async (tx) => {
     const [organization] = await tx
       .select({
@@ -17,7 +24,14 @@ export async function readAgentFundingAccount(organizationId: string) {
       .for("update");
     if (!organization) return null;
     const now = await readPostLockDatabaseNow(tx);
-    const allowance = await readEligibleSubscriptionAllowance(tx, organizationId, now, false);
+    const allowance = await readEligibleSubscriptionAllowance(
+      tx,
+      organizationId,
+      now,
+      false,
+      undefined,
+      options,
+    );
     return {
       ...organization,
       eligible_subscription_allowance: allowance ? allowance.available_amount : "0.000000",

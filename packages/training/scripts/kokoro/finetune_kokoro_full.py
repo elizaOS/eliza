@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
 """Real **full** fine-tune of Kokoro-82M (StyleTTS-2 + iSTFTNet).
 
-Unlike the LoRA path in ``finetune_kokoro.py`` and the static mel-fit voice
-clone in ``extract_voice_embedding.py``, this script unfreezes **every
-parameter** of the loaded :class:`kokoro.KModel` (BERT, BERT encoder linear,
-prosody predictor, text encoder, iSTFTNet decoder) and trains them end-to-end
-against an LJSpeech-format corpus, minimizing a mel-spectrogram L1 loss between
-the model's synthesized audio and the ground-truth audio.
-
-Why a new file (not extending ``finetune_kokoro.py``)
------------------------------------------------------
-
-``finetune_kokoro.py`` requires ``model.forward_train`` and exits hard when
-the installed ``kokoro`` package doesn't expose it. The current PyPI release
-(``kokoro==0.9.4``) does NOT ship ``forward_train``; the
-``jonirajala/kokoro_training`` fork referenced in the spec turns out to be a
-*from-scratch 22M-parameter simplified transformer*, not a fine-tune harness
-for the real ``hexgrad/Kokoro-82M`` (StyleTTS-2 + iSTFTNet). Vendoring it
-wouldn't help.
-
 This module bypasses ``forward_train`` entirely. The trick: re-implement the
 exact computational graph from ``KModel.forward_with_tokens`` locally (same
 math, no ``@torch.no_grad`` decorator) and let gradients flow into every
@@ -78,13 +60,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
 # Add the parent scripts dir at the END so `training.optimizer` resolves but
 # the local `kokoro/` dir doesn't shadow the pip-installed `kokoro` package.
 _SCRIPTS_DIR = str(ROOT.parent)
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.append(_SCRIPTS_DIR)
-from _config import load_config  # noqa: E402
+from eliza_training.kokoro._config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kokoro.finetune_full")
@@ -95,7 +74,7 @@ VOICE_BUCKETS = 510
 
 
 # ---------------------------------------------------------------------------
-# Train stats — shape-compatible with finetune_kokoro.py's TrainStats so the
+# Train stats shared by training manifest construction so the
 # downstream manifest schema stays stable across the two scripts.
 # ---------------------------------------------------------------------------
 
@@ -241,7 +220,7 @@ def _update_top_k(
 
 
 # ---------------------------------------------------------------------------
-# Real training path. Imports torch lazily; mirrors finetune_kokoro.py shape.
+# Real training path. Imports torch lazily.
 # ---------------------------------------------------------------------------
 
 
@@ -257,7 +236,7 @@ def _import_torch_stack() -> dict[str, Any]:
         ) from exc
 
     try:
-        from training.optimizer import (  # type: ignore  # noqa: PLC0415
+        from eliza_training.training.optimizer import (  # type: ignore  # noqa: PLC0415
             build_apollo_mini_optimizer,
             build_apollo_optimizer,
         )
@@ -275,8 +254,7 @@ def _import_torch_stack() -> dict[str, Any]:
 
 def _build_optimizer(stack: dict[str, Any], params: Any, cfg: dict[str, Any]):
     optim_name = cfg["optimizer"]
-    # APOLLO-only policy per packages/training/AGENTS.md. Same factory as
-    # finetune_kokoro.py — keep the two paths consistent.
+    # Use the shared optimizer factory.
     if optim_name == "apollo":
         if stack["build_apollo_optimizer"] is None:
             raise SystemExit(

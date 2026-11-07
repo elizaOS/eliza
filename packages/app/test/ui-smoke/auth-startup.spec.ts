@@ -84,6 +84,7 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
       reason: "remote_auth_required",
       access: {
         mode: "remote",
+        role: "GUEST",
         passwordConfigured: true,
         ownerConfigured: true,
       },
@@ -145,12 +146,55 @@ test("unavailable auth probe shows startup failure instead of password sign-in",
     page.getByText(/auth probe could not reach \/api\/auth\/me/i),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Retry Startup" }),
+    page.getByRole("button", { name: "Retry connection" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Sign in$/i })).toHaveCount(
     0,
   );
   await expect(page.getByText("Sign in with your password.")).toHaveCount(0);
+  const before = await page.evaluate(() => ({
+    activeServer: localStorage.getItem("elizaos:active-server"),
+    activeConversation: localStorage.getItem("eliza:chat:activeConversationId"),
+  }));
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.getByRole("button", { name: "Connection settings" }).click();
+    await expect(page.getByTestId("add-remote-url")).toBeVisible();
+    await expect(page.getByTestId("add-remote-token")).toHaveValue("");
+    await expect(page.getByText("Start Over", { exact: true })).toHaveCount(0);
+    expect(
+      await page.evaluate(() => ({
+        activeServer: localStorage.getItem("elizaos:active-server"),
+        activeConversation: localStorage.getItem(
+          "eliza:chat:activeConversationId",
+        ),
+      })),
+    ).toEqual(before);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath(`connection-settings-${viewport.width}.png`),
+      fullPage: true,
+    });
+    await page.getByTestId("add-remote-token").scrollIntoViewIfNeeded();
+    await expect(page.getByTestId("add-remote-token")).toBeInViewport();
+    await page.getByTestId("add-remote-submit").scrollIntoViewIfNeeded();
+    await expect(page.getByTestId("add-remote-submit")).toBeInViewport();
+    await page.screenshot({
+      path: test
+        .info()
+        .outputPath(`connection-settings-${viewport.width}-form-end.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Connection settings" }).click();
+    await expect(page.getByTestId("add-remote-url")).toHaveCount(0);
+  }
 });
 
 test("cloud bootstrap auth renders bootstrap token gate instead of pairing", async ({

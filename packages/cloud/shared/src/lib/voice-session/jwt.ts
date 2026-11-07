@@ -23,18 +23,17 @@
 
 import { jwtVerify, SignJWT } from "jose";
 import {
+  type AuthenticationStateStore,
+  buildAuthenticationState,
+} from "../auth/authentication-state";
+import {
   getAlgorithm,
   getKeyId,
   getPrivateKey,
   getPublicKey,
   isJWKSConfigured,
 } from "../auth/jwks";
-import {
-  buildRedisClient,
-  type CompatibleRedis,
-  hasRedisConfig,
-  isCloudflareWorkerRuntime,
-} from "../cache/redis-factory";
+import { isCloudflareWorkerRuntime } from "../cache/redis-factory";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
@@ -208,7 +207,7 @@ function readClaim(payload: Record<string, unknown>, key: string): string {
 export async function verifyVoiceSessionToken(
   token: string,
   expected?: Partial<VoiceSessionTokenClaims>,
-  options?: { now?: () => number; store?: CompatibleRedis },
+  options?: { now?: () => number; store?: AuthenticationStateStore },
 ): Promise<VoiceSessionTokenVerifyResult> {
   if (!isVoiceSessionJwtConfigured()) {
     throw new VoiceSessionTokenError(
@@ -283,16 +282,16 @@ export async function verifyVoiceSessionToken(
 // Revocation store (per-`jti`), mirroring the internal-JWT denylist contract.
 // ---------------------------------------------------------------------------
 
-let cachedRedis: CompatibleRedis | null = null;
-let testRedisOverride: CompatibleRedis | null = null;
+let cachedRedis: AuthenticationStateStore | null = null;
+let testRedisOverride: AuthenticationStateStore | null = null;
 
-function getRedis(): CompatibleRedis | null {
+function getRedis(): AuthenticationStateStore | null {
   if (testRedisOverride) return testRedisOverride;
   if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
   // On Workers, Redis credentials are on `c.env` (via getCloudAwareEnv), not
   // plain process.env, so the session directory + revocation store resolve in
   // production instead of silently reporting "not configured".
-  const client = buildRedisClient(getCloudAwareEnv());
+  const client = buildAuthenticationState(getCloudAwareEnv());
   if (client && !isCloudflareWorkerRuntime()) cachedRedis = client;
   return client;
 }
@@ -301,7 +300,9 @@ function getRedis(): CompatibleRedis | null {
  * Test-only: inject a fake revocation store so the revoke->verify contract can
  * be exercised without a live Redis. Pass null to clear.
  */
-export function __setVoiceSessionRevocationStoreForTests(store: CompatibleRedis | null): void {
+export function __setVoiceSessionRevocationStoreForTests(
+  store: AuthenticationStateStore | null,
+): void {
   testRedisOverride = store;
 }
 
@@ -314,7 +315,7 @@ function revocationKey(jti: string): string {
  * durable across workers. When false, revocation relies on the short TTL only.
  */
 export function isVoiceSessionRevocationConfigured(): boolean {
-  return hasRedisConfig(getCloudAwareEnv());
+  return Boolean(buildAuthenticationState(getCloudAwareEnv()));
 }
 
 /**
@@ -347,7 +348,10 @@ export async function revokeVoiceSessionToken(jti: string, expSeconds?: number):
  * token is treated as revoked (never `catch -> allow`). When no store is
  * configured, revocation is genuinely unsupported and this returns false.
  */
-async function readVoiceSessionRevocation(jti: string, store?: CompatibleRedis): Promise<boolean> {
+async function readVoiceSessionRevocation(
+  jti: string,
+  store?: AuthenticationStateStore,
+): Promise<boolean> {
   const redis = store ?? getRedis();
   if (!redis) return false;
   let lastError: unknown;
@@ -373,7 +377,7 @@ async function readVoiceSessionRevocation(jti: string, store?: CompatibleRedis):
 
 export async function isVoiceSessionTokenRevoked(
   jti: string,
-  store?: CompatibleRedis,
+  store?: AuthenticationStateStore,
 ): Promise<boolean> {
   try {
     return await readVoiceSessionRevocation(jti, store);
@@ -467,7 +471,7 @@ function claimKey(jti: string): string {
 export async function claimVoiceSessionToken(
   jti: string,
   expSeconds: number,
-  store?: CompatibleRedis,
+  store?: AuthenticationStateStore,
 ): Promise<boolean> {
   const redis = store ?? getRedis();
   if (!redis) return true;

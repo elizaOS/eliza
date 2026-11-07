@@ -12,8 +12,8 @@
  * alongside an on-device bundle), plus the derived curated-app / channel /
  * provider maps. `--check` re-runs the generator and fails on drift for CI.
  *
- *   bun run --cwd packages/core generate:first-party           # rewrite generated.json
- *   bun run --cwd packages/core generate:first-party --check   # CI drift gate
+ * bun run --cwd packages/core generate:first-party # rewrite generated.json
+ * bun run --cwd packages/core generate:first-party --check # CI drift gate
  */
 
 import { execFileSync } from "node:child_process";
@@ -27,6 +27,7 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ElizaCuratedAppDefinition } from "./apps.js";
 import { type RegistryEntry, registryEntrySchema } from "./schema.js";
 
 // Resolve biome from the repo-root package.json, not this file: this package
@@ -71,109 +72,68 @@ const PROVIDER_MAP_PATH = join(HERE, "provider-plugin-map.json");
 // build OPTIONAL_PLUGIN_MAP instead of hand-maintaining the alias table. Entries
 // opt in by listing bare ids in `shortIds` (e.g. evm/solana/wallet -> wallet).
 const SHORTID_MAP_PATH = join(HERE, "short-id-plugin-map.json");
-interface CuratedAppDefinition {
-	slug: string;
-	canonicalName: string;
-	aliases: string[];
-}
 export function collectCuratedAppDefinitions(
 	entries: RegistryEntry[],
-): CuratedAppDefinition[] {
-	return entries
-		.filter((e) => Boolean(e.curatedApp))
-		.sort((a, b) => {
-			const aOrder =
-				typeof a.curatedApp?.order === "number" &&
-				Number.isFinite(a.curatedApp.order)
-					? a.curatedApp.order
-					: 0;
-			const bOrder =
-				typeof b.curatedApp?.order === "number" &&
-				Number.isFinite(b.curatedApp.order)
-					? b.curatedApp.order
-					: 0;
-			return (
-				aOrder - bOrder ||
-				(a.curatedApp?.slug ?? "").localeCompare(b.curatedApp?.slug ?? "")
-			);
-		})
-		.map((e) => ({
-			slug: e.curatedApp?.slug ?? "",
+): ElizaCuratedAppDefinition[] {
+	const curated: Array<{
+		entry: RegistryEntry;
+		curatedApp: NonNullable<RegistryEntry["curatedApp"]>;
+	}> = [];
+	for (const entry of entries) {
+		if (entry.curatedApp) curated.push({ entry, curatedApp: entry.curatedApp });
+	}
+	return curated
+		.sort(
+			(a, b) =>
+				a.curatedApp.order - b.curatedApp.order ||
+				a.curatedApp.slug.localeCompare(b.curatedApp.slug),
+		)
+		.map(({ entry, curatedApp }) => ({
+			slug: curatedApp.slug,
 			// canonicalName is the entry's npm package; every curated entry declares one.
-			canonicalName: e.npmName ?? "",
-			aliases: e.curatedApp?.aliases ?? [],
+			canonicalName: entry.npmName ?? "",
+			aliases: curatedApp.aliases,
 		}));
 }
-// Derive the channel -> plugin-package map from connector entries' `channels`.
-// This replaces the hand-maintained CHANNEL_PLUGIN_MAP duplicated in agent +
-// app. Keys are sorted for a stable artifact; consumers read by key.
+// Map each claimed key to its entry's npm package, with keys sorted for
+// reproducible output. Two packages claiming one key fail generation.
+function collectClaimMap(
+	entries: RegistryEntry[],
+	label: string,
+	claimedKeys: (entry: RegistryEntry) => Iterable<string>,
+): Record<string, string> {
+	const map = new Map<string, string>();
+	for (const e of entries) {
+		if (!e.npmName) continue;
+		for (const key of claimedKeys(e)) {
+			const existing = map.get(key);
+			if (existing && existing !== e.npmName) {
+				throw new Error(
+					`[registry/generate] ${label} "${key}" claimed by both ${existing} and ${e.npmName}`,
+				);
+			}
+			map.set(key, e.npmName);
+		}
+	}
+	return Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : 1)));
+}
 export function collectChannelPluginMap(
 	entries: RegistryEntry[],
 ): Record<string, string> {
-	const map: Record<string, string> = {};
-	for (const e of entries) {
-		if (!e.npmName) continue;
-		for (const channel of e.channels ?? []) {
-			if (map[channel] && map[channel] !== e.npmName) {
-				throw new Error(
-					`[registry/generate] channel "${channel}" claimed by both ${map[channel]} and ${e.npmName}`,
-				);
-			}
-			map[channel] = e.npmName;
-		}
-	}
-	return Object.fromEntries(
-		Object.keys(map)
-			.sort()
-			.map((k) => [k, map[k]]),
-	);
+	return collectClaimMap(entries, "channel", (e) => e.channels);
 }
-// Derive the short-id -> plugin-package map from entries' `shortIds`. This
-// replaces the hand-maintained OPTIONAL_PLUGIN_MAP alias table for entries that
-// declare a registry entry. Keys are sorted for a stable artifact. Conflicting
-// claims fail loudly at generation time so drift cannot silently ship — the
-// same guarantee CHANNEL_PLUGIN_MAP gives channel aliases.
 export function collectShortIdPluginMap(
 	entries: RegistryEntry[],
 ): Record<string, string> {
-	const map: Record<string, string> = {};
-	for (const e of entries) {
-		if (!e.npmName) continue;
-		for (const shortId of e.shortIds ?? []) {
-			if (map[shortId] && map[shortId] !== e.npmName) {
-				throw new Error(
-					`[registry/generate] short id "${shortId}" claimed by both ${map[shortId]} and ${e.npmName}`,
-				);
-			}
-			map[shortId] = e.npmName;
-		}
-	}
-	return Object.fromEntries(
-		Object.keys(map)
-			.sort()
-			.map((k) => [k, map[k]]),
-	);
+	return collectClaimMap(entries, "short id", (e) => e.shortIds);
 }
 export function collectProviderPluginMap(
 	entries: RegistryEntry[],
 ): Record<string, string> {
-	const map: Record<string, string> = {};
-	for (const e of entries) {
-		if (!e.npmName) continue;
-		for (const [envKey, field] of Object.entries(e.config ?? {})) {
-			if (field.autoEnableProvider !== true) continue;
-			if (map[envKey] && map[envKey] !== e.npmName) {
-				throw new Error(
-					`[registry/generate] provider env key "${envKey}" claimed by both ${map[envKey]} and ${e.npmName}`,
-				);
-			}
-			map[envKey] = e.npmName;
-		}
-	}
-	return Object.fromEntries(
-		Object.keys(map)
-			.sort()
-			.map((k) => [k, map[k]]),
+	return collectClaimMap(entries, "provider env key", (e) =>
+		Object.keys(e.config).filter(
+			(envKey) => e.config[envKey].autoEnableProvider === true,
+		),
 	);
 }
 interface SourcedEntry {

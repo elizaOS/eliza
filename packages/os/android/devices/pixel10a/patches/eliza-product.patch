@@ -1,0 +1,15 @@
+--- a/vendor/google_devices/stallion/stallion.mk
++++ b/vendor/google_devices/stallion/stallion.mk
+@@ -4,10 +4,10 @@
+ include vendor/google_devices/stallion/adevtool-version-check.mk
+ 
+ ifneq ($(BUILD_ID),CP3A.261005.005)
+-  $(error BUILD_ID: expected CP3A.261005.005, got $(BUILD_ID))
++  $(warning BUILD_ID: factory CP3A.261005.005; using Eliza AOSP $(BUILD_ID))
+ endif
+ 
+-$(call inherit-product, vendor/adevtool/config/mk/google_devices/device/stallion/device.mk)
++$(call inherit-product, vendor/alphaphone/stallion/device.mk)
+ 
+ PRODUCT_SOONG_NAMESPACES += \
+     vendor/google_devices/stallion/apk-parser-config \

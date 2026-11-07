@@ -7,6 +7,7 @@
  * is done in integer domain to avoid floating point precision errors.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { Address } from "viem";
 
 /** Minimal token info required for formatting */
@@ -24,6 +25,9 @@ export interface TokenInfo {
  * @param amount - Human-readable amount, e.g. "1.5" or "1000"
  * @param decimals - Token decimal places (e.g. 6 for USDC, 18 for WETH)
  * @returns Raw on-chain amount as bigint
+ * @throws ElizaError when the amount has non-zero digits past `decimals`
+ *   (unrepresentable precision) — mirrors parseEvmBaseUnits and
+ *   parseSolanaTokenBaseUnits. Trailing zeros past `decimals` are accepted.
  *
  * @example
  * toRaw("1.5", 6)   // → 1500000n  (1.5 USDC)
@@ -54,9 +58,19 @@ export function toRaw(amount: string | bigint, decimals: number): bigint {
   const intPart = abs.slice(0, dotIndex);
   let fracPart = abs.slice(dotIndex + 1);
 
-  // Truncate or pad fractional part to `decimals` digits
+  // Precision the token cannot hold is an error, not a silent truncation.
+  // Zero digits past `decimals` name the same amount and are accepted.
+  if (fracPart.length > decimals && /[1-9]/.test(fracPart.slice(decimals))) {
+    throw new ElizaError(
+      `toRaw: amount "${amount}" is not exactly representable in ${decimals} decimal places.`,
+      { code: "AMOUNT_NOT_REPRESENTABLE" },
+    );
+  }
+
+  // Truncate (only zero digits remain, checked above) or pad fractional
+  // part to `decimals` digits
   if (fracPart.length > decimals) {
-    fracPart = fracPart.slice(0, decimals); // truncate (floor for positive amounts)
+    fracPart = fracPart.slice(0, decimals);
   } else {
     fracPart = fracPart.padEnd(decimals, "0");
   }

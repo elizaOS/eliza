@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "profile": "nonprivileged-launcher",
+  "launcher": {
+    "brand": "eliza",
+    "moduleName": "Eliza",
+    "packageName": "ai.elizaos.app"
+  },
+  "defaultPermissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.POST_NOTIFICATIONS"
+  ],
+  "products": {
+    "eliza_cf_x86_64_phone": {
+      "partition": "product",
+      "nativeTarget": "cuttlefish"
+    },
+    "eliza_cf_arm64_phone": { "partition": "product", "nativeTarget": null },
+    "eliza_cf_riscv64_phone": { "partition": "product", "nativeTarget": null },
+    "eliza_cf_riscv64_e1_phone": {
+      "partition": "product",
+      "nativeTarget": null
+    },
+    "eliza_grizzly_phone": { "partition": "product", "nativeTarget": null },
+    "eliza_gsi_arm64": { "partition": "system", "nativeTarget": null },
+    "eliza_gsi_x86_64": { "partition": "system", "nativeTarget": null }
+  }
+}

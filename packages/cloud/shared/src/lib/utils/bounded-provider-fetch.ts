@@ -1,5 +1,5 @@
 /** Maps cloud messaging provider bounds and typed failures to the shared REST transport. */
-import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
+import { boundedFetch } from "@elizaos/cloud-services-common/transport";
 import { ElizaError } from "@elizaos/core";
 
 export interface BoundedProviderFetchOptions {

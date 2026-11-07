@@ -1,0 +1,20 @@
+--- a/vendor/google_devices/stallion/stallion.mk
++++ b/vendor/google_devices/stallion/stallion.mk
+@@ -156,7 +156,7 @@
+     ZillaSlab-MediumItalic.ttf \
+     ZillaSlab-SemiBold.ttf \
+     ZillaSlab-SemiBoldItalic.ttf \
+-    android.frameworks.stats-V3-ndk.vendor \
++    android.frameworks.stats-V1-cpp.vendor \
+     com.android.extensions.computercontrol \
+     com.android.hardware.biometrics.face.virtual \
+     computercontrol.extension.xml \
+@@ -4212,7 +4212,7 @@
+     vendor/google_devices/stallion/proprietary/vendor/lib64/aconfig_gpu_flags_c_lib.so:$(TARGET_COPY_OUT_VENDOR)/lib64/aconfig_gpu_flags_c_lib.so \
+     vendor/google_devices/stallion/proprietary/vendor/lib64/aconfig_gsc_flags_c_lib.so:$(TARGET_COPY_OUT_VENDOR)/lib64/aconfig_gsc_flags_c_lib.so \
+     vendor/google_devices/stallion/proprietary/vendor/lib64/android.frameworks.sensorservice-V1-ndk.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.frameworks.sensorservice-V1-ndk.so \
+-    vendor/google_devices/stallion/proprietary/vendor/lib64/android.frameworks.stats-V1-cpp.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.frameworks.stats-V1-cpp.so \
++    vendor/google_devices/stallion/proprietary/vendor/lib64/android.frameworks.stats-V3-ndk.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.frameworks.stats-V3-ndk.so \
+     vendor/google_devices/stallion/proprietary/vendor/lib64/android.frameworks.stats-V1-ndk.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.frameworks.stats-V1-ndk.so \
+     vendor/google_devices/stallion/proprietary/vendor/lib64/android.frameworks.stats-V2-ndk.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.frameworks.stats-V2-ndk.so \
+     vendor/google_devices/stallion/proprietary/vendor/lib64/android.hardware.audio.common-V5-ndk.so:$(TARGET_COPY_OUT_VENDOR)/lib64/android.hardware.audio.common-V5-ndk.so \

@@ -36,22 +36,12 @@ function getCliName() {
       if (pkg.name) {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
-        if (name === "elizaos" || name === "elizaos" || name.includes("eliza"))
-          return "eliza";
         if (name === "elizaos" || name.includes("eliza")) return "eliza";
         return name;
       }
     }
   } catch (_e) {
     // Ignore parsing errors
-  }
-
-  // Fallbacks based on directory structure
-  if (
-    process.cwd().includes("eliza-workspace") ||
-    process.cwd().includes("eliza")
-  ) {
-    return "eliza";
   }
 
   return "eliza";
@@ -194,10 +184,7 @@ function installWindows() {
 }
 
 function main() {
-  const disableFlag =
-    process.env.ELIZA_NO_VISION_DEPS === "1" ||
-    process.env.ELIZA_NO_VISION_DEPS === "1";
-  if (disableFlag) {
+  if (process.env.ELIZA_NO_VISION_DEPS === "1") {
     return;
   }
 

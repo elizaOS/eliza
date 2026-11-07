@@ -4,23 +4,23 @@
  * IDs, or rollback image pairs; those resolve from primary durable state.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
+import {
+  provisioningJobService,
+  readAdminCanaryImageJobData,
+} from "@elizaos/cloud-shared/agents";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
 import {
   ForbiddenError,
   failureResponse,
   NotFoundError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { adminAgentImageRolloutService } from "@/lib/services/admin-agent-image-rollout";
-import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
-import {
-  provisioningJobService,
-  readAdminCanaryImageJobData,
-} from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { adminAgentImageRolloutService } from "@elizaos/cloud-shared/lib/services/admin-agent-image-rollout";
+import { JOB_TYPES } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const digestSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/);
 const requestIdSchema = z

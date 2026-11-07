@@ -8,8 +8,8 @@
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../config/boot-config";
-import { useAppSelector } from "../../state";
+import { getBootConfig } from "../../config/boot-config-store";
+import { useAppSelector } from "../../state/app-store";
 import { formatUptime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { IS_POPOUT } from "./helpers";

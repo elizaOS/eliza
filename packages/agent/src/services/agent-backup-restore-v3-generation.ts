@@ -7,10 +7,8 @@
  */
 import { createHash } from "node:crypto";
 import path from "node:path";
-import {
-  ElizaError,
-  parseAgentBackupRestoreV3CandidateReceipt,
-} from "@elizaos/core";
+import { parseAgentBackupRestoreV3CandidateReceipt } from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type AgentBackupRestoreV3CandidateAssemblyInput,
   assembleAgentBackupRestoreV3Candidate,

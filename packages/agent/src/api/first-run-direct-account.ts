@@ -9,13 +9,10 @@ import {
   createRuntimeAccountStoragePolicy,
   deleteAccount,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
-import {
-  ElizaError,
-  type LinkedAccountConfig,
-  resolveStateDir,
-} from "@elizaos/core";
+} from "@elizaos/auth/auth";
+import { probeDirectApiKey } from "@elizaos/auth/providers";
+import type { LinkedAccountConfig } from "@elizaos/contracts";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

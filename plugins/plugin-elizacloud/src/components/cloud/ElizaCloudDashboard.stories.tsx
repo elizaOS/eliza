@@ -3,7 +3,7 @@
  * and authentication status surfaces.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { mockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
+import { mockApp } from "../../../../../packages/ui/src/storybook/mock-providers.helpers";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 
 /**

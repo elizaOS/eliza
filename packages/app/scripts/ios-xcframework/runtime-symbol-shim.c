@@ -310,10 +310,13 @@ int64_t llama_init_context(const char * model_path, const char * params_json) {
         model_params.main_gpu = -1;
         model_params.use_extra_bufts = false;
     }
-    model_params.use_mmap = json_bool_param(
-        params_json,
-        "use_mmap",
-        model_params.use_mmap);
+    // llama.cpp replaced use_mmap with load_mode. Keep the default (auto)
+    // unless the caller sets use_mmap.
+    if (find_json_key(params_json, "use_mmap") != NULL) {
+        model_params.load_mode = json_bool_param(params_json, "use_mmap", true)
+            ? LLAMA_LOAD_MODE_MMAP
+            : LLAMA_LOAD_MODE_NONE;
+    }
 
     struct llama_model * model = llama_model_load_from_file(
         model_path,

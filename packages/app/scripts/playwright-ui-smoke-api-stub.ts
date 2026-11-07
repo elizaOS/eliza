@@ -17,6 +17,8 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
+import { handleInteractionsRoutes } from "../../agent/src/api/interactions-routes.ts";
+import { fixtureAgentStatus } from "../test/fixtures/agent-status.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -357,6 +359,7 @@ const stubAuthSession = {
 
 const stubAuthAccess = {
   mode: "local",
+  role: "OWNER",
   passwordConfigured: false,
   ownerConfigured: true,
 };
@@ -494,29 +497,6 @@ const emptyWalletNfts = {
   solana: null,
 };
 
-const emptyWalletTradingProfile = {
-  window: "30d",
-  source: "all",
-  generatedAt: new Date(0).toISOString(),
-  summary: {
-    totalSwaps: 0,
-    buyCount: 0,
-    sellCount: 0,
-    settledCount: 0,
-    successCount: 0,
-    revertedCount: 0,
-    tradeWinRate: null,
-    txSuccessRate: null,
-    winningTrades: 0,
-    evaluatedTrades: 0,
-    realizedPnlBnb: "0",
-    volumeBnb: "0",
-  },
-  pnlSeries: [],
-  tokenBreakdown: [],
-  recentSwaps: [],
-};
-
 const emptyWalletMarketSource = {
   providerId: "coingecko",
   providerName: "CoinGecko",
@@ -638,31 +618,6 @@ const emptyLifeOpsSocialSummary = {
   },
   dataSources: [],
   fetchedAt: smokeGeneratedAt,
-};
-
-const emptyBrowserBridgeSettings = {
-  enabled: true,
-  trackingMode: "current_tab",
-  allowBrowserControl: false,
-  requireConfirmationForAccountAffecting: true,
-  incognitoEnabled: false,
-  siteAccessMode: "current_site_only",
-  grantedOrigins: [],
-  blockedOrigins: [],
-  maxRememberedTabs: 10,
-  pauseUntil: null,
-  metadata: {},
-  updatedAt: null,
-};
-
-const emptyBrowserBridgePackageStatus = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  safariWebExtensionPath: null,
-  releaseManifest: null,
 };
 
 const stubCharacter = {
@@ -1453,7 +1408,7 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
         componentExport: view.componentExport,
         provenance: provenance.mode,
         expectedBundlePath: `plugins/${view._smokePluginDirName}/dist/views/bundle.js`,
-        hint: "Build the plugin view bundle (bun run build-views) before running the audit; audit mode refuses to fabricate a placeholder.",
+        hint: "Build the plugin view bundle (bun run build:views) before running the audit; audit mode refuses to fabricate a placeholder.",
       });
       return;
     }
@@ -1563,21 +1518,16 @@ async function drainRequest(req) {
 
 function workbenchOverview() {
   return {
-    tasks: [],
     triggers: [],
     todos: [],
     summary: {
-      totalTasks: 0,
-      completedTasks: 0,
       totalTriggers: 0,
       activeTriggers: 0,
       totalTodos: 0,
       completedTodos: 0,
     },
-    tasksAvailable: false,
     triggersAvailable: false,
     todosAvailable: false,
-    lifeopsAvailable: false,
   };
 }
 
@@ -2779,14 +2729,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/status") {
-    sendJson(req, res, 200, {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      startup: { phase: "running", attempt: 0 },
-      pendingRestart: false,
-      pendingRestartReasons: [],
-    });
+    sendJson(
+      req,
+      res,
+      200,
+      fixtureAgentStatus({
+        startup: { phase: "running", attempt: 0 },
+        pendingRestart: false,
+        pendingRestartReasons: [],
+      }),
+    );
     return;
   }
 
@@ -3565,23 +3517,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/wallet/os-store") {
-    sendJson(req, res, 200, {
-      available: true,
-      backend: "in-house",
-      evmKeyInOsStore: true,
-      solanaKeyInOsStore: true,
-      envKeysPresent: false,
-    });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/wallet/os-store") {
-    const body = (await readJsonBody(req)) || {};
-    sendJson(req, res, 200, { ok: true, action: body.action ?? null });
-    return;
-  }
-
   if (req.method === "POST" && url.pathname === "/api/wallet/refresh-cloud") {
     sendJson(req, res, 200, {
       ok: true,
@@ -3621,19 +3556,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "POST" &&
-    url.pathname === "/api/wallet/production-defaults"
-  ) {
-    await readJsonBody(req);
-    sendJson(req, res, 200, {
-      ok: true,
-      updated: true,
-      warnings: [],
-    });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/wallet/balances") {
     sendJson(req, res, 200, emptyWalletBalances);
     return;
@@ -3641,11 +3563,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/wallet/nfts") {
     sendJson(req, res, 200, emptyWalletNfts);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/wallet/trading/profile") {
-    sendJson(req, res, 200, emptyWalletTradingProfile);
     return;
   }
 
@@ -3716,7 +3633,17 @@ const server = http.createServer(async (req, res) => {
   // route's designed-empty response instead of surfacing the catch-all 501 as
   // a product console error in lifecycle, interaction, and visual coverage.
   if (req.method === "GET" && url.pathname === "/api/computer-use/sessions") {
-    sendJson(req, res, 200, { sessions: [] });
+    sendJson(req, res, 200, {
+      sessions: [],
+      events: [],
+      readiness: {
+        capture: { available: false, tool: "unavailable" },
+        input: { available: false, tool: "unavailable" },
+        browser: { available: false, tool: "unavailable" },
+        vision: { available: false, modelType: "unavailable" },
+        approvalMode: "disabled",
+      },
+    });
     return;
   }
 
@@ -3781,11 +3708,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/inbox/chats") {
     sendJson(req, res, 200, { chats: [], unreadCount: 0 });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/registry/status") {
-    sendJson(req, res, 200, { connected: false, online: false });
     return;
   }
 
@@ -4055,19 +3977,6 @@ const server = http.createServer(async (req, res) => {
 
   if (
     req.method === "GET" &&
-    url.pathname === "/api/coding-agents/coordinator/status"
-  ) {
-    sendJson(req, res, 200, {
-      supervisionLevel: "autonomous",
-      taskCount: 0,
-      tasks: [],
-      pendingConfirmations: 0,
-    });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
     url.pathname === "/api/coding-agents/coordinator/threads"
   ) {
     sendJson(req, res, 200, { threads: [], total: 0 });
@@ -4087,6 +3996,25 @@ const server = http.createServer(async (req, res) => {
       safariPackagePath: null,
       releaseManifest: null,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/interactions/composer") {
+    await handleInteractionsRoutes({
+      req,
+      res,
+      method: req.method ?? "GET",
+      pathname: url.pathname,
+      runtime: null,
+      json: (_res, data, status = 200) => sendJson(req, res, status, data),
+      error: (_res, message, status = 500) =>
+        sendJson(req, res, status, { error: message }),
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/reminders") {
+    sendJson(req, res, 200, { reminders: [] });
     return;
   }
 
@@ -4145,6 +4073,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/lifeops/inbox") {
     sendJson(req, res, 200, emptyLifeOpsInbox);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/family-workflows/email-options"
+  ) {
+    sendJson(req, res, 200, { options: { accounts: [], recipients: [] } });
     return;
   }
 
@@ -4454,7 +4390,6 @@ const server = http.createServer(async (req, res) => {
   ) {
     sendJson(req, res, 200, {
       preferences: SMOKE_NETWORK_POLICY_PREFERENCES,
-      isOwner: true,
     });
     return;
   }

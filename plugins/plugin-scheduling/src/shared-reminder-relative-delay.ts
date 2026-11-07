@@ -57,7 +57,36 @@ const NUMBER_WORDS: Readonly<Record<string, number>> = {
   eight: 8,
   nine: 9,
   ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
 };
+
+/** A number word, or a hyphenated tens-and-units word ("forty-five"). */
+function numberWordValue(word: string): number | undefined {
+  if (NUMBER_WORDS[word] !== undefined) return NUMBER_WORDS[word];
+  const compound =
+    /^(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)-(one|two|three|four|five|six|seven|eight|nine)$/.exec(
+      word,
+    );
+  return compound
+    ? (NUMBER_WORDS[compound[1]] ?? 0) + (NUMBER_WORDS[compound[2]] ?? 0)
+    : undefined;
+}
 
 export type ExplicitSharedReminderDelay =
   | { kind: "absent" }
@@ -75,6 +104,14 @@ interface DelayCandidate {
   invalidComposition: boolean;
 }
 
+function isWordApostrophe(text: string, index: number): boolean {
+  return (
+    (text[index] === "'" || text[index] === "’") &&
+    /[\p{L}\p{N}]/u.test(text[index - 1] ?? "") &&
+    /[\p{L}\p{N}]/u.test(text[index + 1] ?? "")
+  );
+}
+
 function maskQuotedText(text: string): string {
   const closingQuote = new Map([
     ['"', '"'],
@@ -87,13 +124,23 @@ function maskQuotedText(text: string): string {
   let cursor = 0;
   while (cursor < text.length) {
     const closer = closingQuote.get(text[cursor] ?? "");
-    if (!closer) {
+    // Outside a quote, an apostrophe following a word is word punctuation,
+    // including a trailing possessive such as James'.
+    if (
+      !closer ||
+      ((text[cursor] === "'" || text[cursor] === "’") &&
+        /[\p{L}\p{N}]/u.test(text[cursor - 1] ?? ""))
+    ) {
       out.push(text[cursor] ?? "");
       cursor += 1;
       continue;
     }
     let end = cursor + 1;
-    while (end < text.length && text[end] !== "\n" && text[end] !== closer) {
+    while (
+      end < text.length &&
+      text[end] !== "\n" &&
+      (text[end] !== closer || isWordApostrophe(text, end))
+    ) {
       end += 1;
     }
     if (text[end] === closer) {
@@ -101,10 +148,10 @@ function maskQuotedText(text: string): string {
       cursor = end + 1;
       continue;
     }
-    // Unmatched opener (e.g. a contraction apostrophe): emit just the opener
-    // and rescan from the next char so a later quoted span is still masked.
-    out.push(text[cursor] ?? "");
-    cursor += 1;
+    // An unmatched quote is not authority to run its contents. Word
+    // apostrophes were handled above; keep the rest of this line masked.
+    out.push(" ".repeat(end - cursor));
+    cursor = end;
   }
   return out.join("");
 }
@@ -208,14 +255,33 @@ function extendDuration(text: string, candidate: DelayCandidate): void {
   }
 }
 
+function findCommandCorrection(text: string, end: number, pattern: RegExp) {
+  const suffix = text.slice(end);
+  const immediate = suffix.match(pattern);
+  if (immediate) return { match: immediate, start: end };
+  // A correction can follow the reminder body in a separate sentence or
+  // clause. Require an explicit correction marker; body text is not a command.
+  for (const boundary of suffix.matchAll(
+    /[.!?;\n]\s*(?=(?:actually|instead)\b)/gi,
+  )) {
+    const start = end + (boundary.index ?? 0);
+    const match = text.slice(start).match(pattern);
+    if (match) return { match, start };
+  }
+  return undefined;
+}
+
 function applyImmediateRevisions(
   text: string,
   candidate: DelayCandidate,
 ): void {
   while (true) {
-    const revision = text
-      .slice(candidate.end)
-      .match(IMMEDIATE_REVISION_PATTERN);
+    const correction = findCommandCorrection(
+      text,
+      candidate.end,
+      IMMEDIATE_REVISION_PATTERN,
+    );
+    const revision = correction?.match;
     const rawNumber = revision?.[1];
     const rawUnit = revision?.[2]?.toLowerCase();
     if (!revision || !rawNumber || !(rawUnit && rawUnit in UNIT_MILLISECONDS)) {
@@ -228,7 +294,7 @@ function applyImmediateRevisions(
       },
     ];
     candidate.invalidComposition = false;
-    candidate.end += revision[0].length;
+    candidate.end = (correction?.start ?? candidate.end) + revision[0].length;
     extendDuration(text, candidate);
   }
 }
@@ -237,7 +303,9 @@ function hasLaterCancellation(
   text: string,
   candidate: DelayCandidate,
 ): boolean {
-  return LATER_CANCELLATION_PATTERN.test(text.slice(candidate.end));
+  return Boolean(
+    findCommandCorrection(text, candidate.end, LATER_CANCELLATION_PATTERN),
+  );
 }
 
 function collectCandidates(text: string): DelayCandidate[] {
@@ -294,11 +362,10 @@ function parseCandidate(candidate: DelayCandidate): number | undefined {
   for (const term of candidate.terms) {
     const normalizedNumber = term.rawNumber.toLowerCase();
     const amount =
-      NUMBER_WORDS[normalizedNumber] !== undefined
-        ? NUMBER_WORDS[normalizedNumber]
-        : DECIMAL_TOKEN.test(normalizedNumber)
-          ? Number(normalizedNumber)
-          : Number.NaN;
+      numberWordValue(normalizedNumber) ??
+      (DECIMAL_TOKEN.test(normalizedNumber)
+        ? Number(normalizedNumber)
+        : Number.NaN);
     const milliseconds = amount * UNIT_MILLISECONDS[term.unit];
     if (
       !Number.isFinite(amount) ||

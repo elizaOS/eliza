@@ -1,54 +1,6 @@
-/**
- * Pure composition layer for `getConfig`, `getAuthStatus`, `getAuthMe`.
- *
- * Same shape as boot-progress.ts and first-run-rpc.ts — the body of
- * the HTTP readers is the transitional carrier; the typed contract on
- * the renderer side is the load-bearing surface and stays stable when
- * the agent runtime merges into this Bun process.
- *
- * Failure semantics (critical):
- *
- *   - When the agent has no port yet (early-startup poll), the
- *     composer **throws AGENT_NOT_READY**. It never fabricates a
- *     placeholder snapshot. Returning a "fake" {required: false} or
- *     {complete: false} shape would be authoritatively wrong — the
- *     renderer can't tell our placeholder apart from a real answer
- *     and risks rendering a UI that doesn't match reality (e.g. a
- *     LoginView when the actual server says local-loopback).
- *
- *   - When the agent IS ready but the HTTP reader hits a transient
- *     transport error (timeout, 5xx), the composer also throws.
- *     Renderer-side wrappers catch and fall through to their HTTP
- *     fallback, which then surfaces a real transport error to the
- *     polling loop. Same semantics the renderer already had before
- *     RPC was in the picture.
- *
- *   - When the agent answers with a structured 401 (auth required),
- *     the composer returns the parsed `AuthMeSnapshot.unauthorized`.
- *     That IS an authoritative answer — different from "not ready".
- *
- * `getAuthMe` is the one wrinkle: the upstream returns 401 with a
- * structured body when unauthenticated. We capture that body in
- * `AuthMeSnapshot.unauthorized` so callers can drive the LoginView
- * correctly. But only when the agent itself returned that 401 —
- * never as a placeholder for "agent hasn't started yet".
- */
+/** Typed desktop snapshots preserve upstream authentication and readiness failures. */
+import { ROLE_RANK, type RoleGateRole } from "@elizaos/core/protocol";
 
-/**
- * Error thrown by composers when the agent isn't ready to answer
- * (no port assigned yet). Caller patterns:
- *
- *   try {
- *     return await rpc.request.getAuthMe();
- *   } catch (err) {
- *     if (err instanceof AgentNotReadyError) {
- *       // fall through to HTTP / keep polling
- *     }
- *   }
- *
- * `cause` is preserved through electrobun RPC's structured clone so
- * the renderer side can introspect if needed.
- */
 export class AgentNotReadyError extends Error {
 	override readonly name = "AgentNotReadyError";
 	constructor(method: string) {
@@ -214,19 +166,10 @@ export type AuthMeReader = (port: number) => Promise<AuthMeSnapshot | null>;
 function readUnauthorizedBody(
 	body: Record<string, unknown>,
 ): AuthMeSnapshot["unauthorized"] | null {
-	const access = body.access;
-	if (!access || typeof access !== "object") return null;
-	const acc = access as Record<string, unknown>;
+	const access = readAuthAccess(body);
 	const reason = typeof body.reason === "string" ? body.reason : null;
-	if (reason === null) return null;
-	return {
-		reason,
-		access: {
-			mode: typeof acc.mode === "string" ? acc.mode : "remote",
-			passwordConfigured: acc.passwordConfigured === true,
-			ownerConfigured: acc.ownerConfigured === true,
-		},
-	};
+	if (!access || reason === null) return null;
+	return { reason, access };
 }
 
 function readAuthIdentity(
@@ -263,22 +206,24 @@ function readAuthAccess(
 ): AuthMeSnapshot["access"] {
 	if (!body.access || typeof body.access !== "object") return undefined;
 	const access = body.access as Record<string, unknown>;
+	if (typeof access.role !== "string" || !Object.hasOwn(ROLE_RANK, access.role))
+		return undefined;
 	return {
+		role: access.role as RoleGateRole,
 		mode: typeof access.mode === "string" ? access.mode : "remote",
 		passwordConfigured: access.passwordConfigured === true,
 		ownerConfigured: access.ownerConfigured === true,
 	};
 }
 
-function readAuthorizedBody(body: Record<string, unknown>): AuthMeSnapshot {
-	const snap: AuthMeSnapshot = {};
+function readAuthorizedBody(
+	body: Record<string, unknown>,
+): AuthMeSnapshot | null {
 	const identity = readAuthIdentity(body);
 	const session = readAuthSession(body);
 	const access = readAuthAccess(body);
-	if (identity) snap.identity = identity;
-	if (session) snap.session = session;
-	if (access) snap.access = access;
-	return snap;
+	if (!identity || !session || !access) return null;
+	return { identity, session, access };
 }
 
 export const readAuthMeViaHttp: AuthMeReader = async (port) => {

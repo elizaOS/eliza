@@ -68,7 +68,6 @@ describe("LifeOps inbox triage schema bootstrap", () => {
   });
 
   // PRD Journey #7 — Priority Ranking
-  // PRD ref: packages/docs/prd-lifeops-executive-assistant.md
   //   Suite B (`ea.inbox.daily-brief-ranks-urgent-before-low-priority`).
   // Lane: PR (in-process) + post-merge (in-process)
   it("ranks high-urgency triage entries before low-urgency ones in unresolved/digest queries", async () => {

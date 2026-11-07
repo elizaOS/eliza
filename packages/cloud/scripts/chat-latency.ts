@@ -17,6 +17,7 @@ const TARGETS = new Set(["direct", "gateway", "paired", "dedicated"]);
 const DEDICATED_REQUEST_MODES = new Set(["browser-literal", "instrumented"]);
 const REASONING_EFFORTS = new Set(["omit", "none", "low", "medium", "high"]);
 const DELTA_STREAM_PROTOCOL = "delta-v2";
+const PROOF_TEMPERATURE = 0;
 const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
 const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
 const SAFE_RESPONSE_HEADERS = [
@@ -49,11 +50,21 @@ function boundedInteger(value, label, minimum, maximum) {
   return parsed;
 }
 
-export function parseProbeCase(raw, fallbackMaxTokens = 512) {
+// "max" leaves the output boundary to the provider/model rather than imposing
+// a synthetic cap that can exhaust the completion in reasoning alone.
+function parseMaxTokens(value) {
+  if (value === "max" || value === null) return null;
+  if (!/^[1-9]\d*$/.test(String(value))) {
+    throw new Error("max_tokens must be a positive integer or max");
+  }
+  return boundedInteger(value, "max_tokens", 1, Number.MAX_SAFE_INTEGER);
+}
+
+export function parseProbeCase(raw, fallbackMaxTokens = null) {
   const parts = String(raw).split("@");
   if (parts.length > 3) {
     throw new Error(
-      `Probe case must be model[@reasoning_effort][@max_tokens]: ${raw}`,
+      `Probe case must be model[@reasoning_effort][@max_tokens|max]: ${raw}`,
     );
   }
   const model = parts[0]?.trim();
@@ -62,12 +73,7 @@ export function parseProbeCase(raw, fallbackMaxTokens = 512) {
   if (!REASONING_EFFORTS.has(reasoningEffort)) {
     throw new Error(`Unsupported reasoning effort in probe case: ${raw}`);
   }
-  const maxTokens = boundedInteger(
-    parts[2]?.trim() || fallbackMaxTokens,
-    "max_tokens",
-    1,
-    16_384,
-  );
+  const maxTokens = parseMaxTokens(parts[2]?.trim() || fallbackMaxTokens);
   return { model, reasoningEffort, maxTokens };
 }
 
@@ -213,7 +219,11 @@ export function buildOpenAiRequestBody(probeCase, prompt, promptCacheKey) {
     messages: [{ role: "user", content: prompt }],
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: probeCase.maxTokens,
+    ...(probeCase.maxTokens === null
+      ? {}
+      : { max_tokens: probeCase.maxTokens }),
+    // Control sampling identically on both sides of the synthetic nonce probe.
+    temperature: PROOF_TEMPERATURE,
     ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
   };
   if (probeCase.reasoningEffort !== "omit") {
@@ -451,6 +461,31 @@ function requestSignal(timeoutMs) {
   return timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
 }
 
+const GATEWAY_WARMING_MAX_RETRIES = 4;
+const GATEWAY_WARMING_MAX_WAIT_MS = 2_000;
+
+/** Delay before retrying a structured gateway warming refusal, else null. */
+async function gatewayWarmingDelayMs(target, response) {
+  if (target !== "gateway" || response.status !== 503) return null;
+  let body;
+  try {
+    body = await response.clone().json();
+  } catch {
+    // error-policy:J3 a non-JSON 503 is a real failure, not warming.
+    return null;
+  }
+  const code = body?.error?.code ?? body?.code;
+  const warming =
+    (typeof code === "string" && code.endsWith("_cache_warming")) ||
+    code === "inference_admission_unavailable" ||
+    (code === "service_unavailable" && body?.details?.retryable === true);
+  if (!warming) return null;
+  const retryAfter = Number(response.headers.get("retry-after"));
+  const delayMs =
+    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000;
+  return Math.min(delayMs, GATEWAY_WARMING_MAX_WAIT_MS);
+}
+
 export async function probeOpenAi({
   target,
   probeCase,
@@ -465,6 +500,7 @@ export async function probeOpenAi({
   fetchImpl = fetch,
 }) {
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
+  metadata = { ...metadata, temperature: PROOF_TEMPERATURE };
   const prompt = buildProofPrompt(promptOverride, expectedProof);
   // Gateway telemetry only adopts the dedicated runtime's lower-case 32-hex
   // trace schema, so this probe can correlate its sent and echoed id.
@@ -473,22 +509,38 @@ export async function probeOpenAi({
   const url = `${root + (target === "direct" ? "/v1" : "/api/v1")}/chat/completions`;
   const startedAt = performance.now();
   let response;
+  let warmingRetries = 0;
   try {
-    response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        "X-Eliza-Trace-Id": traceId,
-        "X-Eliza-Telemetry": "full",
-        "User-Agent": "eliza-chat-latency/1.0",
-      },
-      body: JSON.stringify(
-        buildOpenAiRequestBody(probeCase, prompt, promptCacheKey),
-      ),
-      signal: requestSignal(timeoutMs),
-    });
+    const send = () =>
+      fetchImpl(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          "X-Eliza-Trace-Id": traceId,
+          "X-Eliza-Telemetry": "full",
+          "User-Agent": "eliza-chat-latency/1.0",
+        },
+        body: JSON.stringify(
+          buildOpenAiRequestBody(probeCase, prompt, promptCacheKey),
+        ),
+        signal: requestSignal(timeoutMs),
+      });
+    response = await send();
+    // The gateway decides from caches only; an entry still hydrating answers
+    // with a structured retryable 503 that the Eliza Cloud client retries.
+    // Retry it the same way, keep timing from the first attempt so cold cost
+    // stays visible, and record how many refusals the request absorbed.
+    for (
+      let delayMs = await gatewayWarmingDelayMs(target, response);
+      delayMs !== null && warmingRetries < GATEWAY_WARMING_MAX_RETRIES;
+      delayMs = await gatewayWarmingDelayMs(target, response)
+    ) {
+      warmingRetries += 1;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      response = await send();
+    }
   } catch (error) {
     return {
       ...baseRecord(target, sequence, metadata),
@@ -516,6 +568,7 @@ export async function probeOpenAi({
       maxTokens: probeCase.maxTokens,
       traceId: response.headers.get("x-eliza-trace-id") || traceId,
       status: response.status,
+      warmingRetries,
       responseHeadersMs,
       totalMs: round(performance.now() - startedAt),
       headers,
@@ -540,6 +593,7 @@ export async function probeOpenAi({
     reasoningEffort: probeCase.reasoningEffort,
     maxTokens: probeCase.maxTokens,
     status: response.status,
+    warmingRetries,
     traceId: response.headers.get("x-eliza-trace-id") || traceId,
     responseHeadersMs,
     firstEventMs: stream.firstEventMs,
@@ -975,7 +1029,7 @@ function printHelp() {
       "Usage: chat-latency.ts --target direct|gateway|paired|dedicated [options]",
       "",
       "OpenAI-compatible targets:",
-      "  --case model[@omit|none|low|medium|high][@max_tokens] (repeatable)",
+      "  --case model[@omit|none|low|medium|high][@max_tokens|max] (repeatable)",
       "  --model model (repeatable; uses --reasoning-effort and --max-tokens)",
       "  --target paired counterbalances identical direct/gateway requests",
       "",
@@ -1007,7 +1061,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       "dedicated-request-mode": { type: "string", default: "instrumented" },
       "base-url": { type: "string" },
       prompt: { type: "string" },
-      "max-tokens": { type: "string", default: "512" },
+      "max-tokens": { type: "string", default: "max" },
       repeat: { type: "string", default: "1" },
       "timeout-ms": { type: "string", default: "0" },
       "api-key-env": { type: "string" },
@@ -1038,12 +1092,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     0,
     180_000,
   );
-  const fallbackMaxTokens = boundedInteger(
-    values["max-tokens"],
-    "max-tokens",
-    1,
-    16_384,
-  );
+  const fallbackMaxTokens = parseMaxTokens(values["max-tokens"]);
   const idleMs = boundedInteger(values["idle-ms"], "idle-ms", 0, 300_000);
   const pairIntervalMs = boundedInteger(
     values["pair-interval-ms"],
@@ -1069,7 +1118,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     }
     cases = values.model.map((model) =>
       parseProbeCase(
-        `${model}@${effort}@${fallbackMaxTokens}`,
+        `${model}@${effort}@${fallbackMaxTokens ?? "max"}`,
         fallbackMaxTokens,
       ),
     );

@@ -27,13 +27,7 @@ import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 
 const ACTION_NAME = "AUTOFILL";
 
-const FIELD_PURPOSES = [
-  "email",
-  "password",
-  "name",
-  "phone",
-  "custom",
-] as const;
+export const FIELD_PURPOSES = ["email", "password", "name", "phone"] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
@@ -46,23 +40,22 @@ interface AutofillParams {
   field?: string;
   domain?: string;
   url?: string;
-  confirmed?: boolean;
 }
 
 const SUBACTIONS: SubactionsMap<AutofillSubaction> = {
   fill: {
     description:
-      "Request a one-field autofill via the browser extension password manager. Refused on non-whitelisted domains.",
+      "Request a one-field autofill via the browser extension password manager. Needs the tab url, or domain when url is omitted. Refused on non-whitelisted domains.",
     descriptionCompressed:
-      "autofill one field(field,domain) extension+password-manager allowlist-gated",
-    required: ["field", "domain"],
-    optional: ["url"],
+      "autofill one field(field,url|domain) extension+password-manager allowlist-gated",
+    required: ["field"],
+    optional: ["url", "domain"],
   },
   whitelist_add: {
     description:
-      "Add a domain to the autofill allowlist. Requires confirmed:true.",
-    descriptionCompressed: "add domain autofill allowlist confirmed-true",
-    required: ["domain", "confirmed"],
+      "Add a domain to the autofill allowlist. Asks the owner first; the domain is added only after the owner replies yes on a follow-up turn and the same call is repeated.",
+    descriptionCompressed: "add domain autofill allowlist two-turn-confirm",
+    required: ["domain"],
   },
   whitelist_list: {
     description:
@@ -97,7 +90,9 @@ async function saveUserDomains(
   if (!hasRuntimeCache(runtime)) {
     throw new Error("AUTOFILL_WHITELIST_CACHE_UNAVAILABLE");
   }
-  await runtime.setCache(WHITELIST_CACHE_KEY, domains);
+  if ((await runtime.setCache(WHITELIST_CACHE_KEY, domains)) === false) {
+    throw new Error("AUTOFILL_WHITELIST_WRITE_FAILED");
+  }
 }
 
 async function effectiveWhitelist(
@@ -132,32 +127,45 @@ function readDeviceBusConfig(
   return { url, token: readString(DEVICE_BUS_TOKEN_ENV) };
 }
 
-const AUTOFILL_NEEDS_INPUT_ERRORS = new Set([
-  "MISSING_TAB_URL",
-  "INVALID_TAB_URL",
-  "MISSING_DOMAIN",
-  "INVALID_DOMAIN",
-  "INVALID_FIELD_PURPOSE",
-  "CONFIRMATION_REQUIRED",
-  "PERSISTENCE_UNAVAILABLE",
-  "FEATURE_NOT_ENABLED",
-  "FEATURE_DISABLED",
-]);
+const AUTOFILL_FAILURE_MESSAGES: Record<string, string> = {
+  MISSING_TAB_URL:
+    "I need the page url or the site domain to request an autofill.",
+  INVALID_TAB_URL:
+    "That url or domain is not a valid site address, so nothing was filled.",
+  MISSING_DOMAIN: "Which domain should I add to the autofill whitelist?",
+  INVALID_DOMAIN:
+    "That is not a valid domain, so nothing was added to the autofill whitelist.",
+  INVALID_FIELD_PURPOSE: `Autofill supports these fields only: ${FIELD_PURPOSES.join(", ")}.`,
+  CANCELLED: "Cancelled. Nothing was added.",
+  PERSISTENCE_UNAVAILABLE:
+    "I could not save the autofill whitelist, so the domain was not added.",
+  EXTENSION_UNREACHABLE:
+    "I could not reach the browser extension, so nothing was filled.",
+};
 
-function failure(error: string, extra?: Record<string, unknown>): ActionResult {
-  const needsInput = AUTOFILL_NEEDS_INPUT_ERRORS.has(error);
+/**
+ * Failed autofill result with a message for the owner. Only
+ * CONFIRMATION_REQUIRED is a confirmation gate: the other codes cannot be
+ * resolved by an owner yes, so they do not carry `requiresConfirmation`.
+ */
+function failure(
+  error: string,
+  extra?: Record<string, unknown>,
+  text: string = AUTOFILL_FAILURE_MESSAGES[error] ?? error,
+): ActionResult {
+  const requiresConfirmation = error === "CONFIRMATION_REQUIRED";
   return {
-    text: "",
+    text,
     success: false,
     values: {
       success: false,
       error,
-      ...(needsInput ? { requiresConfirmation: true } : {}),
+      ...(requiresConfirmation ? { requiresConfirmation: true } : {}),
     },
     data: {
       actionName: ACTION_NAME,
       error,
-      ...(needsInput ? { requiresConfirmation: true } : {}),
+      ...(requiresConfirmation ? { requiresConfirmation: true } : {}),
       ...extra,
     },
   };
@@ -224,10 +232,11 @@ async function handleFill(
     await requireFeatureEnabled(runtime, "browser.automation");
   } catch (error) {
     if (error instanceof FeatureNotEnabledError) {
-      return failure(error.code, {
-        featureKey: error.featureKey,
-        message: error.message,
-      });
+      return failure(
+        error.code,
+        { featureKey: error.featureKey, message: error.message },
+        error.message,
+      );
     }
     throw error;
   }
@@ -281,18 +290,16 @@ async function handleFill(
   });
   if (!dispatch.dispatched) {
     return {
-      text: "",
+      text: AUTOFILL_FAILURE_MESSAGES.EXTENSION_UNREACHABLE,
       success: false,
       values: {
         success: false,
         reason: "extension-unreachable",
-        requiresConfirmation: true,
         via: dispatch.via,
       },
       data: {
         actionName: ACTION_NAME,
         reason: "extension-unreachable",
-        requiresConfirmation: true,
         via: dispatch.via,
         ...(dispatch.detail ? { detail: dispatch.detail } : {}),
       },
@@ -338,20 +345,6 @@ async function handleWhitelistAdd(
   if (!normalized) {
     return failure("INVALID_DOMAIN", { input: rawDomain });
   }
-  const prompt = `Add ${normalized} to the autofill whitelist?`;
-  const decision = await requireConfirmation({
-    runtime,
-    message,
-    actionName: "AUTOFILL_WHITELIST_ADD",
-    pendingKey: `whitelist:${normalized}`,
-    prompt,
-  });
-  if (decision.status !== "confirmed") {
-    return failure(
-      decision.status === "pending" ? "CONFIRMATION_REQUIRED" : "CANCELLED",
-      { domain: normalized, awaitingUserInput: decision.status === "pending" },
-    );
-  }
   const existing = await loadUserDomains(runtime);
   const existingNormalized = existing
     .map((e) => normalizeAutofillDomain(e))
@@ -370,6 +363,27 @@ async function handleWhitelistAdd(
         source: alreadyShipped ? "default" : "user",
       },
     };
+  }
+  const prompt = `Add ${normalized} to the autofill whitelist?`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "AUTOFILL_WHITELIST_ADD",
+    pendingKey: `whitelist:${normalized}`,
+    prompt,
+  });
+  if (decision.status === "pending") {
+    return failure(
+      "CONFIRMATION_REQUIRED",
+      { domain: normalized, awaitingUserInput: true },
+      `${prompt} Reply yes to confirm or no to cancel.`,
+    );
+  }
+  if (decision.status !== "confirmed") {
+    return failure("CANCELLED", {
+      domain: normalized,
+      awaitingUserInput: false,
+    });
   }
   const next = [...existingNormalized, normalized];
   try {

@@ -24,7 +24,7 @@ import type {
 } from "@elizaos/core";
 import { useSyncExternalStore } from "react";
 import { client } from "../api/client";
-import { toSwarmActivity } from "../views/swarm-activity.js";
+import { toSwarmActivity } from "./swarm-activity.js";
 
 /** Cap on retained tool steps per sub-agent — a long task must not grow unbounded. */
 const MAX_STEPS_PER_AGENT = 60;
@@ -117,7 +117,7 @@ function statusFromLifecycle(
     case "stopped":
       return prev === "running" ? "success" : "idle";
     case "ready":
-      return prev === "idle" ? "idle" : prev;
+      return "idle";
     default:
       return prev;
   }
@@ -223,24 +223,36 @@ function applyEvent(raw: SwarmEvent): void {
   agent.updatedAt = Math.max(agent.updatedAt, activity.timestamp);
   entry.lastSeq = Math.max(entry.lastSeq, activity.seq);
 
+  // Streamed output means the sub-agent is working. The orchestrator emits
+  // `ready` before the first prompt, so only this moves it out of idle.
+  const markRunning = () => {
+    if (agent.status !== "waiting" && acceptsSeq(seqs.status, activity.seq)) {
+      agent.status = "running";
+      seqs.status = activity.seq;
+    }
+  };
+
   switch (activity.kind) {
     case "message":
       if (acceptsSeq(seqs.text, activity.seq)) {
         agent.currentText = activity.text;
         seqs.text = activity.seq;
       }
+      markRunning();
       break;
     case "reasoning":
       if (acceptsSeq(seqs.reasoning, activity.seq)) {
         agent.currentReasoning = activity.text;
         seqs.reasoning = activity.seq;
       }
+      markRunning();
       break;
     case "plan":
       if (acceptsSeq(seqs.plan, activity.seq)) {
         agent.plan = activity.entries;
         seqs.plan = activity.seq;
       }
+      markRunning();
       if (acceptsSeq(entry.planSeq, activity.seq)) {
         // The most-recently-updated plan is also the task-level checklist so a
         // single-agent task surfaces its todos at the card root.
@@ -266,10 +278,7 @@ function applyEvent(raw: SwarmEvent): void {
       if (agent.steps.length > MAX_STEPS_PER_AGENT) {
         agent.steps.splice(0, agent.steps.length - MAX_STEPS_PER_AGENT);
       }
-      if (agent.status !== "waiting" && acceptsSeq(seqs.status, activity.seq)) {
-        agent.status = "running";
-        seqs.status = activity.seq;
-      }
+      markRunning();
       break;
     }
     case "lifecycle":
@@ -347,24 +356,3 @@ export function useTaskActivity(taskId: string): TaskActivity {
     () => EMPTY_TASK,
   );
 }
-
-/** Test-only: feed a raw event and read the resulting snapshot without a socket. */
-export const __taskActivityInternals = {
-  applyEvent,
-  // Binds the WS handler exactly as `useTaskActivity` does (ref-counted), so a
-  // test can exercise the real `pty-session-event` reconstruction seam without
-  // React / a DOM environment.
-  subscribe: subscribeTask,
-  getSnapshot: (taskId: string): TaskActivity =>
-    tasks.get(taskId)?.snapshot ?? EMPTY_TASK,
-  limits: {
-    maxTasks: MAX_TASKS,
-    maxSubagentsPerTask: MAX_SUBAGENTS_PER_TASK,
-  },
-  reset: (): void => {
-    tasks.clear();
-    if (wsUnsub) wsUnsub();
-    wsUnsub = null;
-    refCount = 0;
-  },
-};

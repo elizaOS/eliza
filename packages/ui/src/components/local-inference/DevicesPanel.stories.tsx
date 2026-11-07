@@ -1,7 +1,7 @@
 /** Storybook stories for DevicesPanel — multi-device, single CPU-only, and empty/null states. */
 
+import type { DeviceBridgeStatus } from "@elizaos/contracts";
 import type { Meta, StoryObj } from "@storybook/react";
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { DevicesPanel } from "./DevicesPanel";
 
@@ -23,7 +23,6 @@ const desktopAndPhone: DeviceBridgeStatus = {
       connectedSince,
       score: 372,
       activeRequests: 2,
-      isPrimary: true,
     },
     {
       deviceId: "device-iphone",
@@ -38,15 +37,10 @@ const desktopAndPhone: DeviceBridgeStatus = {
       connectedSince,
       score: 46,
       activeRequests: 0,
-      isPrimary: false,
     },
   ],
   primaryDeviceId: "device-mac",
   pendingRequests: 2,
-  deviceId: "device-mac",
-  capabilities: null,
-  loadedPath: "/models/eliza-1-2b.gguf",
-  connectedSince,
 };
 
 const singleCpuOnly: DeviceBridgeStatus = {
@@ -65,15 +59,10 @@ const singleCpuOnly: DeviceBridgeStatus = {
       connectedSince,
       score: 116,
       activeRequests: 0,
-      isPrimary: true,
     },
   ],
   primaryDeviceId: "device-pi",
   pendingRequests: 0,
-  deviceId: "device-pi",
-  capabilities: null,
-  loadedPath: null,
-  connectedSince,
 };
 
 const noDevices: DeviceBridgeStatus = {
@@ -81,10 +70,6 @@ const noDevices: DeviceBridgeStatus = {
   devices: [],
   primaryDeviceId: null,
   pendingRequests: 0,
-  deviceId: null,
-  capabilities: null,
-  loadedPath: null,
-  connectedSince: null,
 };
 
 const meta = {

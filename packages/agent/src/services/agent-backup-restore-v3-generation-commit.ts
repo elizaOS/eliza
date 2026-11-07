@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import path from "node:path";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import {

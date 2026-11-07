@@ -418,9 +418,9 @@
         "plugins/plugin-vision/test/vision.real.e2e.test.ts"
       ],
       "scriptedRealServices": [
-        "packages/testing/scripts/scenario-runner/real-llm-attachment-smoke.ts",
-        "packages/testing/scripts/scenario-runner/real-service-audio-roundtrip.ts",
-        "packages/testing/scripts/scenario-runner/real-service-voice-e2e.ts"
+        "packages/scripts/provider-smokes/real-llm-attachment-smoke.ts",
+        "packages/scripts/provider-smokes/real-service-audio-roundtrip.ts",
+        "packages/scripts/provider-smokes/real-service-voice-e2e.ts"
       ]
     }
   }

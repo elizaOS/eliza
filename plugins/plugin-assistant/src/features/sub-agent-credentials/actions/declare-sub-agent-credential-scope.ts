@@ -47,6 +47,8 @@ function getBridge(runtime: IAgentRuntime): SubAgentCredentialBridge | null {
 
 export const declareSubAgentCredentialScopeAction: Action = {
   name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+  roleGate: { minRole: "OWNER" },
+  contexts: ["code", "agent_internal"],
   description:
     "Declare a short-lived credential scope for a spawned coding sub-agent. Returns a one-time bearer token plus the request ids dispatched to collect missing values from the owner.",
   descriptionCompressed:
@@ -94,28 +96,10 @@ export const declareSubAgentCredentialScopeAction: Action = {
     },
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-  ): Promise<boolean> => {
-    if (!getBridge(runtime)) return false;
-    const params = readParams(options);
-    if (
-      typeof params.childSessionId !== "string" ||
-      params.childSessionId.trim().length === 0
-    ) {
-      return false;
-    }
-    if (
-      !Array.isArray(params.credentialKeys) ||
-      params.credentialKeys.length === 0
-    ) {
-      return false;
-    }
-    return true;
-  },
+  // Availability only: the planner tool surface calls validate without
+  // arguments. The schema and the handler check the arguments.
+  validate: async (runtime: IAgentRuntime): Promise<boolean> =>
+    getBridge(runtime) !== null,
 
   handler: async (
     runtime: IAgentRuntime,
@@ -166,7 +150,9 @@ export const declareSubAgentCredentialScopeAction: Action = {
       `[SubAgentCreds:declare_scope] childSessionId=${childSessionId} scopeId=${scope.credentialScopeId} keys=${credentialKeys.length}`,
     );
 
-    const text = `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys).`;
+    const text = scope.sensitiveRequestFailure
+      ? `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys), but the owner request was not delivered via ${scope.sensitiveRequestFailure.target}: ${scope.sensitiveRequestFailure.message}. The child cannot receive a credential until a request reaches the owner.`
+      : `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys).`;
     if (callback) {
       // The scoped token is NEVER surfaced through the user-facing callback —
       // only the scope id and key list. Callers that need the token read it
@@ -179,16 +165,24 @@ export const declareSubAgentCredentialScopeAction: Action = {
           credentialScopeId: scope.credentialScopeId,
           expiresAt: scope.expiresAt,
           sensitiveRequestIds: [...scope.sensitiveRequestIds],
+          ...(scope.sensitiveRequestFailure
+            ? {
+                sensitiveRequestFailure: `${scope.sensitiveRequestFailure.target}: ${scope.sensitiveRequestFailure.message}`,
+              }
+            : {}),
           credentialKeys,
         },
       });
     }
 
     return {
-      success: true,
+      success: !scope.sensitiveRequestFailure,
       text,
       data: {
         actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+        ...(scope.sensitiveRequestFailure
+          ? { code: "SENSITIVE_REQUEST_NOT_DELIVERED" }
+          : {}),
         credentialScopeId: scope.credentialScopeId,
         scopedToken: scope.scopedToken,
         expiresAt: scope.expiresAt,

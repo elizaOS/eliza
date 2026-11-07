@@ -12,7 +12,7 @@
  * work, not wrapping a one-line insert.
  */
 
-import { and, eq, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type DomainRegistrantInfo,
@@ -202,9 +202,12 @@ export async function getOwnDomainRow(
 }
 
 /**
- * Delete external rows that are still unverified after `olderThanMs` — the
+ * Delete external rows that were never verified after `olderThanMs` — the
  * reclaim path that stops an unproven attach from squatting a domain forever.
- * Returns the number of rows released. Intended for a periodic cron.
+ * A row that was verified and later lost its TXT record is not reclaimed: it
+ * no longer resolves and no longer holds the hostname, and its owner can
+ * restore the record and verify again. Returns the number of rows released.
+ * Intended for a periodic cron.
  */
 export async function releaseStaleUnverifiedExternals(olderThanMs: number): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanMs);
@@ -213,6 +216,7 @@ export async function releaseStaleUnverifiedExternals(olderThanMs: number): Prom
     .where(
       and(
         eq(managedDomains.verified, false),
+        isNull(managedDomains.verifiedAt),
         eq(managedDomains.registrar, "external"),
         lte(managedDomains.createdAt, cutoff),
       ),
@@ -279,6 +283,10 @@ export async function listCloudflareRenewalsDue(
 /**
  * Cloudflare-registered, active, verified domains that are not yet confirmed
  * live. The health-check cron probes each domain's origin and flips `isLive`.
+ *
+ * The candidate set is unbounded: an unreachable origin stays `isLive = false`
+ * across ticks. Order by the oldest check stamp (never-checked rows first) so
+ * each batch advances through the backlog instead of re-probing the same rows.
  */
 export async function listCloudflareNeedingHealthCheck(limit: number): Promise<ManagedDomain[]> {
   return await dbRead.query.managedDomains.findMany({
@@ -288,6 +296,7 @@ export async function listCloudflareNeedingHealthCheck(limit: number): Promise<M
       eq(managedDomains.verified, true),
       eq(managedDomains.isLive, false),
     ),
+    orderBy: [sql`${managedDomains.lastHealthCheck} asc nulls first`, asc(managedDomains.id)],
     limit,
   });
 }
@@ -395,10 +404,19 @@ export async function syncStatus(input: SyncStatusInput): Promise<ManagedDomain>
 }
 
 /**
- * Detach a domain from any resource without deleting the row. The
- * registration itself stays active until expiration.
+ * Detach a domain from its resource. A Cloudflare-registered domain keeps its
+ * row: the registration stays active until expiration. An external domain has
+ * no registration here, only a one-time TXT proof, so detaching releases it:
+ * the row is deleted, which frees the hostname for its current owner, and a
+ * later attach must prove control again.
  */
 export async function unassignFromResource(domainId: string): Promise<ManagedDomain> {
+  const [released] = await dbWrite
+    .delete(managedDomains)
+    .where(and(eq(managedDomains.id, domainId), eq(managedDomains.registrar, "external")))
+    .returning();
+  if (released) return released;
+
   const [updated] = await dbWrite
     .update(managedDomains)
     .set({

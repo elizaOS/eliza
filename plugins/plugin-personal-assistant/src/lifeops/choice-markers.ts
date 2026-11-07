@@ -4,19 +4,7 @@
  * command back as owner text instead of invoking a private callback API.
  */
 
-import type { ApprovalAction } from "./approval-queue.types.js";
-
-export function buildApprovalChoiceText(input: {
-  requestId: string;
-  reason: string;
-  action: ApprovalAction;
-}): string {
-  return `${input.reason}
-[CHOICE:approval-${input.requestId} id=${input.requestId}]
-approve ${input.requestId}=Approve
-reject ${input.requestId}=Deny
-[/CHOICE]`;
-}
+export { buildApprovalChoiceText } from "@elizaos/plugin-assistant";
 
 export function appendCheckinAckChoiceMarker(
   summaryText: string,

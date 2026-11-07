@@ -3,6 +3,82 @@
  * children that remain alive while their health endpoint stops responding.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
+
+export class DevelopmentReadinessError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DevelopmentReadinessError";
+  }
+}
+
+/**
+ * Await a host-specific health predicate. The host supplies startup and polling
+ * budgets; cancellation is checked again after a probe so a late healthy reply
+ * cannot admit a stack that already stopped. Probes must honor the supplied
+ * signal to release their own sockets and other resources.
+ *
+ * @param {(signal: AbortSignal) => Promise<boolean>} probe
+ * @param {{label: string, timeoutMs: number, intervalMs: number,
+ * signal?: AbortSignal, alive?: () => boolean}} options
+ */
+export async function waitForDevelopmentReady(probe, options) {
+  const { label, timeoutMs, intervalMs, signal, alive = () => true } = options;
+  for (const value of [timeoutMs, intervalMs]) {
+    if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) {
+      throw new DevelopmentReadinessError(
+        "Readiness durations must be positive Node timer values",
+      );
+    }
+  }
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () =>
+      deadline.abort(
+        new DevelopmentReadinessError(
+          `${label} did not become ready within ${Math.round(timeoutMs / 1000)} seconds.`,
+        ),
+      ),
+    timeoutMs,
+  );
+  const operation = signal
+    ? AbortSignal.any([signal, deadline.signal])
+    : deadline.signal;
+  let aborted = () => {};
+  const interrupted = new Promise((_, reject) => {
+    aborted = () => reject(operation.reason);
+    operation.addEventListener("abort", aborted, { once: true });
+  });
+  // Keep cancellation handled even while the polling delay owns the active wait.
+  void interrupted.catch(() => {});
+  const assertCurrent = () => {
+    operation.throwIfAborted();
+    if (!alive())
+      throw new DevelopmentReadinessError(
+        `${label} exited before it was ready. Check its startup log.`,
+      );
+  };
+  try {
+    for (;;) {
+      assertCurrent();
+      const ready = await Promise.race([
+        Promise.resolve().then(() => probe(operation)),
+        interrupted,
+      ]);
+      assertCurrent();
+      if (ready) return;
+      await delay(intervalMs, undefined, { signal: operation });
+    }
+  } catch (error) {
+    // error-policy:J2 preserve the caller/deadline reason when abort interrupts a poll.
+    operation.throwIfAborted();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    operation.removeEventListener("abort", aborted);
+  }
+}
+
 /**
  * Watch the launcher PID that owns a development supervisor. A changed parent
  * means the shell, task runner, or desktop session that requested the dev stack

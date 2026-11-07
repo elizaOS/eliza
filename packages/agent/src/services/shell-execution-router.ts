@@ -21,14 +21,16 @@ import type { Dirent } from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { sanitizeSpawnEnv } from "@elizaos/core";
 import {
   applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/host";
+import {
   isIosMobile,
   type RuntimeExecutionMode,
-  resolveHostExecutable,
   resolveRuntimeExecutionMode,
-  sanitizeSpawnEnv,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";

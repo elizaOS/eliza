@@ -185,49 +185,26 @@ export class ApprovalService extends Service {
 	 * @example
 	 * ```typescript
 	 * const result = await approvalService.requestApproval({
-	 *   name: 'EXEC_APPROVAL',
-	 *   description: 'Execute command: rm -rf /tmp/cache',
-	 *   roomId: message.roomId,
-	 *   options: STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY,
-	 *   timeoutMs: 120000,
-	 *   timeoutDefault: 'deny',
-	 *   onSelect: async (option, task, runtime) => {
-	 *     if (option === 'allow-always') {
-	 *       await addToAllowlist(command);
-	 *     }
-	 *   },
+	 * name: 'EXEC_APPROVAL',
+	 * description: 'Execute command: rm -rf /tmp/cache',
+	 * roomId: message.roomId,
+	 * options: STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY,
+	 * timeoutMs: 120000,
+	 * timeoutDefault: 'deny',
+	 * onSelect: async (option, task, runtime) => {
+	 * if (option === 'allow-always') {
+	 * await addToAllowlist(command);
+	 * }
+	 * },
 	 * });
 	 *
 	 * if (result.success && result.selectedOption !== 'deny') {
-	 *   await executeCommand();
+	 * await executeCommand();
 	 * }
 	 * ```
 	 */
 	async requestApproval(request: ApprovalRequest): Promise<ApprovalResult> {
-		// Ensure task worker is registered for this approval type
-		await this.ensureWorkerRegistered(request);
-
-		// Create the approval task
-		const taskId = await this.runtime.createTask({
-			name: request.name,
-			description: request.description,
-			roomId: request.roomId,
-			entityId: request.entityId,
-			tags: ["AWAITING_CHOICE", "APPROVAL", ...(request.tags ?? [])],
-			metadata: {
-				options: request.options.map((opt) => ({
-					name: opt.name,
-					description: opt.description ?? "",
-				})),
-				approvalRequest: {
-					timeoutMs: request.timeoutMs,
-					timeoutDefault: request.timeoutDefault,
-					allowedRoles: request.allowedRoles ?? ["OWNER", "ADMIN"],
-					createdAt: Date.now(),
-				},
-				...(request.metadata ?? {}),
-			},
-		});
+		const taskId = await this.createApprovalTask(request, false);
 
 		logger.info(
 			{
@@ -241,35 +218,21 @@ export class ApprovalService extends Service {
 			"Approval request created",
 		);
 
-		// Create pending approval tracker
 		return new Promise<ApprovalResult>((resolve, reject) => {
-			const now = Date.now();
 			const pending: PendingApproval = {
 				taskId,
 				request,
-				createdAt: now,
+				createdAt: Date.now(),
 				resolve,
 				reject,
 			};
-
-			// Set up timeout if specified
-			if (request.timeoutMs && request.timeoutMs > 0) {
-				pending.expiresAt = now + request.timeoutMs;
-				pending.timeoutHandle = setTimeout(() => {
-					void this.handleTimeout(taskId).catch((error) => {
-						// error-policy:J1 Timer callbacks are an asynchronous process
-						// boundary; reject the waiting caller and report the failure.
-						this.runtime.reportError("ApprovalService.timeout", error, {
-							taskId,
-						});
-						this.pendingApprovals.delete(taskId);
-						pending.reject(
-							error instanceof Error ? error : new Error(String(error)),
-						);
-					});
-				}, request.timeoutMs);
-			}
-
+			// error-policy:J1 Timer callbacks are an asynchronous process
+			// boundary; reject the waiting caller and report the failure.
+			this.armTimeout(pending, "ApprovalService.timeout", (error) =>
+				pending.reject(
+					error instanceof Error ? error : new Error(String(error)),
+				),
+			);
 			this.pendingApprovals.set(taskId, pending);
 		});
 	}
@@ -279,33 +242,7 @@ export class ApprovalService extends Service {
 	 * Useful when you don't need to block on the approval result.
 	 */
 	async requestApprovalAsync(request: ApprovalRequest): Promise<UUID> {
-		// Ensure task worker is registered for this approval type
-		await this.ensureWorkerRegistered(request);
-
-		// Create the approval task
-		const taskId = await this.runtime.createTask({
-			name: request.name,
-			description: request.description,
-			roomId: request.roomId,
-			entityId: request.entityId,
-			tags: ["AWAITING_CHOICE", "APPROVAL", ...(request.tags ?? [])],
-			metadata: {
-				options: request.options.map((opt) => ({
-					name: opt.name,
-					description: opt.description ?? "",
-				})),
-				approvalRequest: {
-					timeoutMs: request.timeoutMs,
-					timeoutDefault: request.timeoutDefault,
-					allowedRoles: request.allowedRoles ?? ["OWNER", "ADMIN"],
-					createdAt: Date.now(),
-					isAsync: true,
-				},
-				onSelectCallback: !!request.onSelect,
-				onTimeoutCallback: !!request.onTimeout,
-				...(request.metadata ?? {}),
-			},
-		});
+		const taskId = await this.createApprovalTask(request, true);
 
 		logger.info(
 			{
@@ -327,25 +264,67 @@ export class ApprovalService extends Service {
 				resolve: () => {},
 				reject: () => {},
 			};
-
-			if (request.timeoutMs && request.timeoutMs > 0) {
-				pending.expiresAt = Date.now() + request.timeoutMs;
-				pending.timeoutHandle = setTimeout(() => {
-					void this.handleTimeout(taskId).catch((error) => {
-						// error-policy:J1 Fire-and-forget approvals have no awaiting caller,
-						// so the diagnostic channel is their observable failure boundary.
-						this.runtime.reportError("ApprovalService.asyncTimeout", error, {
-							taskId,
-						});
-						this.pendingApprovals.delete(taskId);
-					});
-				}, request.timeoutMs);
-			}
-
+			// error-policy:J1 Fire-and-forget approvals have no awaiting caller,
+			// so the diagnostic channel is their observable failure boundary.
+			this.armTimeout(pending, "ApprovalService.asyncTimeout");
 			this.pendingApprovals.set(taskId, pending);
 		}
 
 		return taskId;
+	}
+
+	/** Register the worker for this approval type, then persist its AWAITING_CHOICE task. */
+	private async createApprovalTask(
+		request: ApprovalRequest,
+		isAsync: boolean,
+	): Promise<UUID> {
+		await this.ensureWorkerRegistered(request);
+		return this.runtime.createTask({
+			name: request.name,
+			description: request.description,
+			roomId: request.roomId,
+			entityId: request.entityId,
+			tags: ["AWAITING_CHOICE", "APPROVAL", ...(request.tags ?? [])],
+			metadata: {
+				options: request.options.map((opt) => ({
+					name: opt.name,
+					description: opt.description ?? "",
+				})),
+				approvalRequest: {
+					timeoutMs: request.timeoutMs,
+					timeoutDefault: request.timeoutDefault,
+					allowedRoles: request.allowedRoles ?? ["OWNER", "ADMIN"],
+					createdAt: Date.now(),
+					...(isAsync ? { isAsync: true } : {}),
+				},
+				...(isAsync
+					? {
+							onSelectCallback: !!request.onSelect,
+							onTimeoutCallback: !!request.onTimeout,
+						}
+					: {}),
+				...(request.metadata ?? {}),
+			},
+		});
+	}
+
+	/** Arm the request timeout; a failed timeout handler is reported and drops the pending entry. */
+	private armTimeout(
+		pending: PendingApproval,
+		scope: string,
+		onError?: (error: unknown) => void,
+	): void {
+		const { timeoutMs } = pending.request;
+		if (!timeoutMs || timeoutMs <= 0) return;
+		const { taskId } = pending;
+		pending.expiresAt = pending.createdAt + timeoutMs;
+		pending.timeoutHandle = setTimeout(() => {
+			void this.handleTimeout(taskId).catch((error) => {
+				this.runtime.reportError(scope, error, { taskId });
+				this.pendingApprovals.delete(taskId);
+				onError?.(error);
+			});
+		}, timeoutMs);
 	}
 
 	/**
@@ -380,17 +359,16 @@ export class ApprovalService extends Service {
 	 * Get all pending approvals for a room
 	 */
 	async getPendingApprovals(roomId: UUID): Promise<Task[]> {
-		const tasks = await this.runtime.getTasks({
+		return this.runtime.getTasks({
 			roomId,
 			tags: ["AWAITING_CHOICE", "APPROVAL"],
 			agentIds: [this.runtime.agentId],
 		});
-		return tasks;
 	}
 
 	/**
 	 * Get every pending approval across all rooms for this agent. Powers the
-	 * canonical "needs your response" surface (#9449), which aggregates the
+	 * canonical "needs your response" surface, which aggregates the
 	 * agent's blocked-on-user decisions rather than scoping to one room.
 	 */
 	async getAllPendingApprovals(): Promise<Task[]> {
@@ -403,7 +381,7 @@ export class ApprovalService extends Service {
 	/**
 	 * List every in-flight approval as a canonical {@link PendingUserAction} — the
 	 * shared "the agent is waiting on you" shape that a needs-attention UI, a
-	 * provider, and the home-attention ranker all read (see #9449, Pillar C).
+	 * provider, and the home-attention ranker all read.
 	 *
 	 * Unlike {@link getPendingApprovals} (room-scoped raw `Task`s with no caller),
 	 * this is agent-wide and pre-normalized, so callers don't reshape per surface.
@@ -441,6 +419,9 @@ export class ApprovalService extends Service {
 	private async handleTimeout(taskId: UUID): Promise<void> {
 		const pending = this.pendingApprovals.get(taskId);
 		if (!pending) return;
+		// Take the approval before the first await, so a racing selection or
+		// cancel cannot also settle it (tla/ApprovalService.tla, AtMostOneCallback).
+		this.pendingApprovals.delete(taskId);
 
 		const { request } = pending;
 
@@ -468,8 +449,6 @@ export class ApprovalService extends Service {
 			resolvedAt: Date.now(),
 		});
 
-		this.pendingApprovals.delete(taskId);
-
 		// Delete the task
 		await this.runtime.deleteTask(taskId);
 	}
@@ -483,13 +462,6 @@ export class ApprovalService extends Service {
 		selectedOption: string,
 		resolvedBy?: UUID,
 	): Promise<void> {
-		const pending = this.pendingApprovals.get(taskId);
-
-		// Clear timeout
-		if (pending?.timeoutHandle) {
-			clearTimeout(pending.timeoutHandle);
-		}
-
 		const task = await this.runtime.getTask(taskId);
 		if (!task) {
 			logger.warn(
@@ -497,6 +469,13 @@ export class ApprovalService extends Service {
 				"Task not found for approval selection",
 			);
 			return;
+		}
+		// Take the approval before onSelect runs: a racing timeout, cancel or
+		// second selection then finds nothing (tla/ApprovalService.tla).
+		const pending = this.pendingApprovals.get(taskId);
+		if (pending) {
+			this.pendingApprovals.delete(taskId);
+			if (pending.timeoutHandle) clearTimeout(pending.timeoutHandle);
 		}
 
 		const request = pending?.request;
@@ -515,23 +494,26 @@ export class ApprovalService extends Service {
 
 		// Call onSelect callback if provided
 		if (request?.onSelect) {
-			await request.onSelect(selectedOption, task, this.runtime);
+			try {
+				await request.onSelect(selectedOption, task, this.runtime);
+			} catch (error) {
+				// error-policy:J1 the taken approval must still settle its caller.
+				pending?.reject(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+				throw error;
+			}
 		}
 
-		// Resolve the pending promise
-		if (pending) {
-			pending.resolve({
-				selectedOption,
-				success: !isCancel,
-				timedOut: false,
-				cancelled: isCancel,
-				taskId,
-				resolvedBy,
-				resolvedAt: Date.now(),
-			});
-
-			this.pendingApprovals.delete(taskId);
-		}
+		pending?.resolve({
+			selectedOption,
+			success: !isCancel,
+			timedOut: false,
+			cancelled: isCancel,
+			taskId,
+			resolvedBy,
+			resolvedAt: Date.now(),
+		});
 	}
 
 	/**
@@ -570,7 +552,7 @@ export class ApprovalService extends Service {
 					return true; // No role restriction
 				}
 
-				// #12087 Item 8: resolve the sender's role from the message via
+				//: resolve the sender's role from the message via
 				// checkSenderRole, which hashes the room's serverId once through the
 				// world lookup. The prior getUserServerRole(runtime, entityId,
 				// room.worldId) passed an ALREADY-hashed worldId as serverId, so it
@@ -645,7 +627,10 @@ export async function requestConfirmation(
 	}
 
 	const result = await service.requestApproval({
-		name: `CONFIRM_${Date.now()}`,
+		// One worker name for every confirmation: the worker is registered once
+		// per name, choices resolve by task id, and every confirmation shares the
+		// same default allowed roles, so a per-call name only leaked workers.
+		name: "CONFIRM",
 		description: params.description,
 		roomId: params.roomId,
 		entityId: params.entityId,

@@ -8,6 +8,36 @@
  * influence, no lyrics) and their own pricing family ("sfx").
  */
 
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getAudioProvider } from "@elizaos/cloud-shared/lib/providers/audio/registry";
+import {
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateSfxGenerationCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  getSupportedSfxModelDefinition,
+  SUPPORTED_SFX_MODEL_IDS,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  assertGeneratedMediaStorageHeadroom,
+  discardGeneratedMediaObject,
+  storeGeneratedAudio,
+} from "@elizaos/cloud-shared/lib/storage/generated-media-storage";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  Bindings,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -17,28 +47,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { getAudioProvider } from "@/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@/lib/providers/audio/types";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateSfxGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  getSupportedSfxModelDefinition,
-  SUPPORTED_SFX_MODEL_IDS,
-} from "@/lib/services/ai-pricing-definitions";
-import { contentSafetyService } from "@/lib/services/content-safety";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import {
-  assertGeneratedMediaStorageHeadroom,
-  discardGeneratedMediaObject,
-  putGeneratedMediaObject,
-  type StoredGeneratedMedia,
-} from "@/lib/storage/generated-media-storage";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
 const DEFAULT_SFX_MODEL = "elevenlabs/sound_effects_v1";
 const MAX_PROMPT_LENGTH = 500;
@@ -50,7 +58,6 @@ const sfxRequestSchema = z.object({
   promptInfluence: z.coerce.number().min(0).max(1).optional(),
   seed: z.coerce.number().int().min(0).max(2_147_483_647).optional(),
   outputFormat: z.string().trim().max(64).optional(),
-  extraInput: z.record(z.string(), z.unknown()).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -65,68 +72,6 @@ function providerConfigured(env: Bindings, provider: string): boolean {
     return Boolean(envString(env, "FAL_KEY") ?? envString(env, "FAL_API_KEY"));
   }
   return Boolean(envString(env, "ELEVENLABS_API_KEY"));
-}
-
-function extensionForContentType(contentType: string): string {
-  if (contentType.includes("wav")) return "wav";
-  if (contentType.includes("L16") || contentType.includes("pcm")) return "pcm";
-  if (contentType.includes("basic")) return "ulaw";
-  return "mp3";
-}
-
-interface StoredAudio {
-  url: string;
-  file_name?: string;
-  file_size?: number;
-  content_type?: string;
-}
-
-async function storeGeneratedSfx(
-  env: Bindings,
-  organizationId: string,
-  generated: GeneratedAudio,
-  keyPrefix: string,
-  customMetadata: Record<string, string>,
-): Promise<{ stored: StoredAudio; storage: StoredGeneratedMedia | null }> {
-  if (generated.source === "hosted") {
-    // Provider-hosted results never touch Cloud R2, so they use no storage.
-    return {
-      stored: {
-        url: generated.url,
-        file_name: generated.fileName,
-        file_size: generated.fileSize,
-        content_type: generated.contentType,
-      },
-      storage: null,
-    };
-  }
-
-  if (!env.BLOB) {
-    throw new Error("R2 storage is not configured");
-  }
-  const ext = extensionForContentType(generated.contentType);
-  const key = `${keyPrefix}/${crypto.randomUUID()}.${ext}`;
-  const body = generated.bytes.buffer.slice(
-    generated.bytes.byteOffset,
-    generated.bytes.byteOffset + generated.bytes.byteLength,
-  ) as ArrayBuffer;
-  // Byte results count toward the organization storage quota (#20956).
-  const storage = await putGeneratedMediaObject(env, {
-    organizationId,
-    key,
-    body,
-    contentType: generated.contentType,
-    customMetadata,
-  });
-  return {
-    stored: {
-      url: storage.url,
-      file_name: key.split("/").at(-1),
-      file_size: storage.sizeBytes,
-      content_type: generated.contentType,
-    },
-    storage,
-  };
 }
 
 app.post("/", async (c) => {
@@ -295,7 +240,6 @@ app.post("/", async (c) => {
       promptInfluence: request.promptInfluence,
       seed: request.seed,
       outputFormat: request.outputFormat,
-      extraInput: request.extraInput,
       apiKeys: {
         FAL_KEY: envString(c.env, "FAL_KEY"),
         FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
@@ -310,7 +254,7 @@ app.post("/", async (c) => {
       },
     });
 
-    const { stored: audio, storage } = await storeGeneratedSfx(
+    const { stored: audio, storage } = await storeGeneratedAudio(
       c.env,
       user.organization_id,
       generated,
@@ -419,16 +363,21 @@ app.post("/", async (c) => {
     // error-policy:J1 translate the route failure after reconciling the durable
     // reservation according to whether provider dispatch actually began.
     if (admission && !chargeSettled) {
-      const settlementMode = providerDispatchStarted ? "unknown" : "release";
+      // A clear provider rejection means no generation was accepted.
+      const providerRejected =
+        providerDispatchStarted && isKnownUnacceptedProviderError(error);
+      const settlementMode =
+        providerDispatchStarted && !providerRejected ? "unknown" : "release";
       logger.error("[GenerateSfx] Generation failed after admission", {
         ...settlementContext,
         providerDispatchStarted,
         settlementMode,
         error: error instanceof Error ? error.message : String(error),
       });
-      const release = providerDispatchStarted
-        ? admission.settleUnknown()
-        : admission.settle(0);
+      const release =
+        providerDispatchStarted && !providerRejected
+          ? admission.settleUnknown()
+          : admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
         logger.error("[GenerateSfx] Failed to reconcile reservation", {

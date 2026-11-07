@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.publish import deprecate_legacy_qwen3_repos as P  # noqa: E402
+from eliza_training.publish import deprecate_legacy_qwen3_repos as P  # noqa: E402
 
 
 def test_build_updates_targets_only_retired_pre_gemma_tiers() -> None:

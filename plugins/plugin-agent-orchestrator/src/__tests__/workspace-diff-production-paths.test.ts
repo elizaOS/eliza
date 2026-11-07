@@ -48,6 +48,62 @@ describe("workspace diff production paths", () => {
     expect(summarizeChangeSet(result)).toContain("Changed 1 file: session.txt");
   });
 
+  it("reads a workdir below the repository root relative to that workdir", async () => {
+    // A package inside a monorepo: Git reports paths from the repository root.
+    const workdir = join(dir, "packages", "app");
+    mkdirSync(join(workdir, "src"), { recursive: true });
+    mkdirSync(join(dir, "packages", "other"), { recursive: true });
+    writeFileSync(join(workdir, "src", "index.ts"), "export const a = 1;\n");
+    writeFileSync(join(workdir, "README.md"), "app\n");
+    writeFileSync(join(workdir, "notes.md"), "notes\n");
+    writeFileSync(join(workdir, "config.ts"), "export const c = 1;\n");
+    writeFileSync(join(dir, "packages", "other", "x.ts"), "x\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "monorepo");
+    writeFileSync(join(workdir, "notes.md"), "dirty before spawn\n");
+    writeFileSync(join(workdir, "config.ts"), "export const c = 2;\n");
+    const baseline = await captureBaselineSha(workdir);
+    const baselineDirty = await captureBaselineDirty(workdir);
+    expect(baselineDirty).toEqual([
+      "packages/app/config.ts",
+      "packages/app/notes.md",
+    ]);
+
+    // Another package changes while the session runs.
+    writeFileSync(join(dir, "packages", "other", "x.ts"), "x\ny\n");
+    // Tool writes: one clean file, one already dirty at spawn.
+    writeFileSync(join(workdir, "src", "index.ts"), "export const a = 2;\n");
+    writeFileSync(join(workdir, "config.ts"), "export const c = 3;\n");
+    // Shell write to a tracked file (no tool path).
+    writeFileSync(join(workdir, "README.md"), "app\nshell edit\n");
+
+    const result = await captureChangeSet(
+      workdir,
+      baseline,
+      [join(workdir, "src", "index.ts"), join(workdir, "config.ts")],
+      baselineDirty,
+    );
+    expect(result?.changedFiles).toEqual([
+      "src/index.ts",
+      "config.ts",
+      "README.md",
+    ]);
+    expect(result?.fileDiffs?.map((entry) => entry.path)).toEqual(
+      result?.changedFiles,
+    );
+    for (const line of [
+      "+export const a = 2;",
+      "+export const c = 3;",
+      "+shell edit",
+    ]) {
+      expect(result?.diff).toContain(line);
+    }
+    expect(result?.diff).not.toContain("+y");
+    expect(
+      verifyChangedFilesOnDisk(workdir, result?.changedFiles ?? []).verified,
+    ).toBe(true);
+  });
+
   it("falls back to tool-path evidence outside git and verifies artifacts", async () => {
     const plain = mkdtempSync(join(tmpdir(), "workspace-diff-plain-"));
     try {
@@ -144,6 +200,35 @@ describe("workspace diff production paths", () => {
     expect(explicit?.diff).toContain("+untracked content");
   });
 
+  it("does not render a tracked tool path that matches the base as a new file", async () => {
+    const unchanged = "notes\t☃.txt";
+    writeFileSync(join(dir, unchanged), "kept as is\n");
+    git("add", unchanged);
+    git("commit", "-q", "-m", "notes");
+    const baseline = await captureBaselineSha(dir);
+    // Edited through a tool and then reverted, or rewritten with the same bytes.
+    writeFileSync(join(dir, "tracked.txt"), "debug line\n");
+    writeFileSync(join(dir, "tracked.txt"), "base\n");
+    writeFileSync(join(dir, unchanged), "kept as is\n");
+    writeFileSync(join(dir, "session.txt"), "created by tool\n");
+
+    const result = await captureChangeSet(dir, baseline, [
+      join(dir, "tracked.txt"),
+      join(dir, unchanged),
+      join(dir, "session.txt"),
+    ]);
+    expect(result?.fileDiffs).toEqual([
+      { path: "tracked.txt", diff: "" },
+      { path: unchanged, diff: "" },
+      {
+        path: "session.txt",
+        diff: expect.stringContaining("+created by tool"),
+      },
+    ]);
+    expect(result?.diff).not.toContain("+base");
+    expect(result?.diff).not.toContain("+kept as is");
+  });
+
   it("reads rename records without treating the original path as another status", async () => {
     const renamed = "renamed\t☃.txt";
     git("mv", "tracked.txt", renamed);
@@ -186,20 +271,15 @@ describe("workspace diff production paths", () => {
     });
   });
 
-  it("rejects failed Git output even when an external diff emitted a prefix", async () => {
+  it("rejects failed Git output even when the patch emitted a prefix", async () => {
     git("branch", "review-base");
     writeFileSync(join(dir, "tracked.txt"), "after\n");
-    git("add", "tracked.txt");
+    writeFileSync(join(dir, "unreadable.txt"), "blob removed below\n");
+    git("add", "tracked.txt", "unreadable.txt");
     git("commit", "-q", "-m", "change");
-    const helper = join(dir, "failed-diff.sh");
-    writeFileSync(
-      helper,
-      "#!/bin/sh\nprintf 'partial diff output\\n'\nexit 2\n",
-      {
-        mode: 0o700,
-      },
-    );
-    git("config", "diff.external", helper);
+    // The file list needs no blob; the patch prints tracked.txt, then fails.
+    const blob = git("rev-parse", "HEAD:unreadable.txt");
+    rmSync(join(dir, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
     await expect(
       capturePrGateChangeSet(dir, "review-base"),
     ).rejects.toMatchObject({

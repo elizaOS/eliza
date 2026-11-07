@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 
-import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 
 const RUNTIME_CREDENTIAL_RECORD_VERSION = 1 as const;

@@ -13,7 +13,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid, toWellFormedUnicode } from "@elizaos/core";
+import { stringToUuid, toWellFormedUnicode } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -115,11 +115,17 @@ export const automationTerminalBridgeProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        "[automation-terminal-bridge] Error:",
-        error instanceof Error ? error.message : String(error),
-      );
-      return { text: "", values: {}, data: {} };
+      // error-policy:J4 a failed room or history read must not read as "no
+      // linked conversation": surface it and tell the model the bridge is
+      // missing.
+      runtime.reportError("AutomationTerminalBridgeProvider.get", error, {
+        roomId: message.roomId,
+      });
+      return {
+        text: "The linked terminal conversation is unavailable because its history read failed. Do not infer that the operator left no instructions; state the gap.",
+        values: { terminalBridgeUnavailable: true },
+        data: { terminalBridgeUnavailable: true },
+      };
     }
   },
 };

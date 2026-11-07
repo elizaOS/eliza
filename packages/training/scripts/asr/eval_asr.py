@@ -48,10 +48,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parents[3]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT.parent))
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
@@ -225,7 +223,7 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     model.eval()
 
     # Load val corpus.
-    from finetune_asr import _load_corpus, _extract_features  # noqa: PLC0415
+    from eliza_training.asr.finetune_asr import _load_corpus, _extract_features  # noqa: PLC0415
 
     _, val_records = _load_corpus(data_dir, cfg)
     log.info("evaluating on %d val clips", len(val_records))

@@ -1,7 +1,7 @@
 /** Native form boundary used by reusable compositions that submit user input. */
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 export const SemanticForm = React.forwardRef<
   HTMLFormElement,

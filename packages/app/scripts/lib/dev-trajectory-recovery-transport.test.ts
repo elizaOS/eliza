@@ -7,10 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDevTrajectoryRecoveryCoordinator } from "./dev-trajectory-recovery.ts";
 
 const fixture = fileURLToPath(
-  new URL(
-    "./__tests__/fixtures/trajectory-recovery-transport-child.ts",
-    import.meta.url,
-  ),
+  new URL("./fixtures/trajectory-recovery-transport-child.ts", import.meta.url),
 );
 const children = new Set();
 const owner = () => ({
@@ -176,7 +173,7 @@ describe("Bun dev supervisor", () => {
   it("runs the actual Bun parent coordinator and Bun child through exact-exit recovery", () => {
     const supervisorFixture = fileURLToPath(
       new URL(
-        "./__tests__/fixtures/trajectory-recovery-supervisor-parent.ts",
+        "./fixtures/trajectory-recovery-supervisor-parent.ts",
         import.meta.url,
       ),
     );

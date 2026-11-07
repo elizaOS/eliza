@@ -118,10 +118,14 @@ export function isBotLoopGateEnabled(runtime: IAgentRuntime): boolean {
  */
 export function botLoopMaxAgentTurns(runtime: IAgentRuntime): number {
   const raw = runtime.getSetting("ELIZA_BOT_LOOP_MAX_AGENT_TURNS");
-  const parsed =
-    raw === undefined || raw === null
-      ? Number.NaN
-      : Number.parseInt(String(raw), 10);
+  if (raw === undefined || raw === null)
+    return DEFAULT_BOT_LOOP_MAX_AGENT_TURNS;
+  // Number.parseInt stops at the first non-digit, so "3junk" parsed to a
+  // finite 3 and was accepted as a deliberate setting instead of falling
+  // back to the default. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = String(raw).trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) {
     return DEFAULT_BOT_LOOP_MAX_AGENT_TURNS;
   }

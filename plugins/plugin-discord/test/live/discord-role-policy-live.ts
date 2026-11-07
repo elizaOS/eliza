@@ -26,7 +26,7 @@ import {
 	sendToAgentAction,
 	startCodingTaskAction,
 } from "@elizaos/plugin-agent-orchestrator";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 
 type DiscordConfig = {
 	env?: {

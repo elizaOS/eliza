@@ -16,7 +16,7 @@
 
 import { CloudCog } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import { isDirectCloudSharedAgentBase } from "../../../api/client-cloud";
 import { openCloudBillingConsole } from "../../../cloud/billing-console";
 import { loadPendingCloudHandoff } from "../../../cloud/handoff/pending-handoff-store";
@@ -204,11 +204,3 @@ export function AgentProvisioningWidget(
     </div>
   );
 }
-
-export const AGENT_PROVISIONING_HOME_WIDGET = {
-  pluginId: "cloud-agent",
-  id: "cloud-agent.provisioning",
-  order: 60,
-  signalKinds: ["activity"],
-  Component: AgentProvisioningWidget,
-} as const;

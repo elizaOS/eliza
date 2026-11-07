@@ -10,6 +10,7 @@ import {
   type Provider,
   type State,
 } from '@elizaos/core';
+import { notRunOccurrence } from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 
 export const workflowStatusProvider: Provider = {
@@ -60,9 +61,13 @@ export const workflowStatusProvider: Provider = {
           const executions = await service.getWorkflowExecutions(workflow.id, 1);
           if (executions.length > 0) {
             const lastExec = executions[0];
+            const notRun = notRunOccurrence(lastExec);
             const execEmoji =
               lastExec.status === 'finished' ? '✅' : lastExec.status === 'failed' ? '❌' : '⏳';
-            status += `   Last run: ${execEmoji} ${lastExec.status} at ${new Date(lastExec.startedAt).toLocaleString()}\n`;
+            // A missed or overlapping occurrence is a finished record of a run that never happened.
+            status += notRun
+              ? `   Last run: ⏭️ ${notRun.status} — scheduled for ${new Date(notRun.scheduledAt).toLocaleString()}, did not run\n`
+              : `   Last run: ${execEmoji} ${lastExec.status} at ${new Date(lastExec.startedAt).toLocaleString()}\n`;
           }
         } catch (error) {
           // error-policy:J4 The workflow list remains useful, but the missing

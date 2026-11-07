@@ -1,11 +1,11 @@
 /** Runs the google calendar state mock-service support script for deterministic local test fixtures. */
-import crypto from "node:crypto";
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CALENDAR_EVENTS,
   LIFEOPS_SIMULATOR_OWNER,
   type LifeOpsSimulatorCalendarEvent,
 } from "../../../../plugins/plugin-personal-assistant/test/support/fixtures/lifeops-simulator.ts";
+import { fixtureNow, fixtureUuid } from "./fixture-context.ts";
 import { MockHttpError } from "./mock-http-error.ts";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -191,7 +191,7 @@ export function createGoogleCalendarMockState(opts?: {
     events: new Map(),
   };
   if (opts?.simulator) {
-    const now = Date.now();
+    const now = fixtureNow();
     for (const event of LIFEOPS_SIMULATOR_CALENDAR_EVENTS) {
       const googleEvent = simulatorEventToGoogleEvent(event, now);
       state.events.set(
@@ -493,7 +493,7 @@ function listEvents(
   return jsonFixture({
     kind: "calendar#events",
     summary: calendar.summary,
-    updated: new Date().toISOString(),
+    updated: new Date(fixtureNow()).toISOString(),
     timeZone: calendar.timeZone ?? "UTC",
     accessRole: calendar.accessRole,
     items: page.map((event) => eventResponse(event)),
@@ -507,8 +507,8 @@ function buildEvent(
   calendarId: string,
   body: RequestBody,
 ): GoogleCalendarMockEvent {
-  const now = new Date().toISOString();
-  const id = `evt-${crypto.randomUUID()}`;
+  const now = new Date(fixtureNow()).toISOString();
+  const id = `evt-${fixtureUuid()}`;
   const summary = optionalString(body.summary, "summary") || "Untitled event";
   return {
     id,
@@ -561,7 +561,7 @@ function applyEventPatch(
   if (body.attendees !== undefined) {
     event.attendees = readAttendees(body.attendees);
   }
-  event.updated = new Date().toISOString();
+  event.updated = new Date(fixtureNow()).toISOString();
 }
 
 function createEvent(
@@ -606,7 +606,7 @@ function moveEvent(
 
   state.events.delete(eventKey(calendarId, eventId));
   event.calendarId = destination;
-  event.updated = new Date().toISOString();
+  event.updated = new Date(fixtureNow()).toISOString();
   state.events.set(eventKey(destination, eventId), event);
   return jsonFixture(eventResponse(event));
 }
@@ -621,7 +621,7 @@ function deleteEvent(
   if (event.deleted) return jsonError(410, "Requested entity was deleted.");
   event.deleted = true;
   event.status = "cancelled";
-  event.updated = new Date().toISOString();
+  event.updated = new Date(fixtureNow()).toISOString();
   return { statusCode: 204, body: null };
 }
 

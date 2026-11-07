@@ -16,8 +16,6 @@ import {
 const SUBACTION_ALIASES: Record<string, TokenInfoSubaction> = {
   lookup: "token",
   info: "token",
-  "token-info": "token",
-  token_info: "token",
   pairs: "chain_pairs",
   "new pairs": "new_pairs",
   "new-pairs": "new_pairs",
@@ -148,15 +146,24 @@ export function parseTokenInfoParams(
   const raw = readParams(options);
   const content =
     typeof message.content.text === "string" ? message.content.text : "";
-  const subaction =
-    normalizeTokenInfoSubaction(
-      raw.action ?? raw.subaction ?? raw.operation ?? raw.kind,
-    ) ?? inferTokenInfoSubaction(message, state);
-  const target = readStringParam(raw, "target", "provider", "source");
-  const query =
-    readStringParam(raw, "query", "token", "symbol") ??
-    (subaction === "search" ? content : undefined);
   const address = readStringParam(raw, "address", "tokenAddress", "wallet");
+  const explicitQuery = readStringParam(raw, "query", "token", "symbol");
+  // `operation` is the declared planner argument. `raw.subaction` and
+  // `raw.action` carry the WALLET discriminator (`token_info`) on the planner
+  // path, not a token-info subaction, so they only match when a direct caller
+  // put a real subaction there. With no explicit subaction, a declared
+  // `address` or `query` names the token to look up; only a request with
+  // neither is classified from the message text.
+  const subaction =
+    normalizeTokenInfoSubaction(raw.operation) ??
+    normalizeTokenInfoSubaction(raw.subaction) ??
+    normalizeTokenInfoSubaction(raw.kind) ??
+    normalizeTokenInfoSubaction(raw.action) ??
+    (address || explicitQuery
+      ? "token"
+      : inferTokenInfoSubaction(message, state));
+  const target = readStringParam(raw, "target", "provider", "source");
+  const query = explicitQuery ?? (subaction === "search" ? content : undefined);
   const timeframeRaw = readStringParam(raw, "timeframe");
   const timeframe =
     timeframeRaw === "1h" || timeframeRaw === "6h" || timeframeRaw === "24h"

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop credentials ts behavior for app shell integration. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -521,16 +520,10 @@ export async function readChromiumCookies(
 // ── Eliza Cloud (browser cookie auto-import) ─────────────────────────
 
 async function scanElizaCloudBrowserSession(): Promise<DetectedProvider | null> {
-	// Check the host-only canonical auth cookies first, then the transitional
-	// legacy host while users' existing browser sessions age out.
 	// The privy-token JWT is in-memory only (not persisted to SQLite),
 	// but privy-session indicates an active browser session exists.
 	let hasSession = false;
-	for (const hostname of [
-		"eliza.app",
-		"cloud.eliza.app",
-		"www.elizacloud.ai",
-	]) {
+	for (const hostname of ["eliza.app", "cloud.eliza.app"]) {
 		const cookies = await readChromiumCookies(hostname, ["privy-session"]);
 		if (cookies.some((cookie) => cookie.name === "privy-session")) {
 			hasSession = true;

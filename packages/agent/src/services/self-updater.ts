@@ -7,7 +7,7 @@ import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReleaseChannel } from "@elizaos/core";
+import type { ReleaseChannel } from "@elizaos/contracts";
 import { CHANNEL_DIST_TAGS } from "./update-checker.ts";
 
 const NPM_PACKAGE_NAME = "elizaos";
@@ -99,6 +99,12 @@ export function detectInstallMethod(): InstallMethod {
   if (!elizaBin) {
     return isLocalDev() ? "local-dev" : "unknown";
   }
+
+  // Check the unresolved path first: snap installs symlink /snap/bin/eliza to
+  // /usr/bin/snap, so realpathSync loses the /snap/ component and snap would
+  // be misdetected as apt.
+  const raw = elizaBin.replace(/\\/g, "/");
+  if (raw.includes("/snap/")) return "snap";
 
   let resolved: string;
   try {

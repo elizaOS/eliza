@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import {
@@ -14,10 +14,8 @@ import {
 } from "../../app/src/api/auth/sessions.ts";
 import { resolveSessionTokenRole } from "../../app/src/api/auth.ts";
 import { handleAuthSessionRoutes } from "../../app/src/api/auth-session-routes.ts";
-import {
-  type AuthRepository,
-  authStoreForRuntime,
-} from "../../app/src/services/auth-store.ts";
+import type { AuthRepository } from "../../app/src/services/auth-repository.ts";
+import { authStoreForRuntime } from "../../app/src/services/auth-store.ts";
 import { startApiServer } from "../src/api/server.ts";
 import {
   getAgentHostBridge,

@@ -6,21 +6,21 @@
  *   2. Secrets (modal)
  */
 
-import {
-  buildWalletRpcUpdateRequest,
-  resolveInitialWalletRpcSelections,
-} from "@elizaos/core/contracts/wallet";
 import type {
   WalletConfigUpdateRequest,
   WalletRpcSelections,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import {
+  buildWalletRpcUpdateRequest,
+  resolveInitialWalletRpcSelections,
+} from "@elizaos/contracts";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { navigateBrowserPath } from "../../app-navigate-view";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {

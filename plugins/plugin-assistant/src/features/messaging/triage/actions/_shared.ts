@@ -11,12 +11,18 @@ import type {
   ActionParameter,
   AgentContext,
   HandlerOptions,
+  IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
+import {
+  hasActionContext,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
+import type { TriageService } from "../triage-service.ts";
 import {
   ALL_MESSAGE_SOURCES,
+  MANAGE_OPERATION_KINDS,
   type ManageOperation,
   type MessageSource,
   type SearchMessagesFilters,
@@ -36,10 +42,12 @@ export function validateMessageAction(
   return hasActionContext(message, state, { contexts });
 }
 
+/** The exact source values the triage adapters accept, for schemas and errors. */
+export const SUPPORTED_MESSAGE_SOURCES_TEXT = ALL_MESSAGE_SOURCES.join(", ");
+
 export const messageSourceParameter: ActionParameter = {
   name: "sources",
-  description:
-    "Optional message sources to include, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
+  description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}. A source with no connected inbox adapter is rejected.`,
   required: false,
   schema: {
     type: "array" as const,
@@ -132,17 +140,59 @@ function asStringList(value: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-function asSourceList(value: unknown): MessageSource[] | undefined {
+/**
+ * Parse a source filter. An unsupported value is an error, not a dropped
+ * filter: dropping it widens the request to every connected source.
+ */
+function parseSourceList(
+  value: unknown,
+): { sources: MessageSource[] | undefined } | { error: string } {
   const strings = asStringList(value);
-  if (!strings) return undefined;
+  if (!strings) return { sources: undefined };
   const out: MessageSource[] = [];
   for (const s of strings) {
     const lower = s.toLowerCase();
-    if ((ALL_MESSAGE_SOURCES as readonly string[]).includes(lower)) {
-      out.push(lower as MessageSource);
+    if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(lower)) {
+      return {
+        error: `source "${lower}" is not a supported message source; use one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
+      };
+    }
+    out.push(lower as MessageSource);
+  }
+  return { sources: out };
+}
+
+/**
+ * An explicitly requested inbox source that cannot be listed is an error.
+ * The sweep skips it, so the caller would report an inbox it never read as
+ * empty.
+ */
+export function unlistableSourcesError(
+  runtime: IAgentRuntime,
+  service: TriageService,
+  sources: readonly MessageSource[] | undefined,
+): string | undefined {
+  if (!sources) return undefined;
+  const problems: string[] = [];
+  for (const source of sources) {
+    const adapter = service.getAdapter(source);
+    if (!adapter) {
+      problems.push(`${source} (no inbox adapter is connected)`);
+    } else if (!adapter.capabilities().list) {
+      problems.push(`${source} (its adapter cannot list messages)`);
+    } else if (!adapter.isAvailable(runtime)) {
+      // An unavailable adapter lists nothing, which reads as an empty inbox.
+      problems.push(`${source} (its connector is not connected)`);
     }
   }
-  return out.length > 0 ? out : undefined;
+  if (problems.length === 0) return undefined;
+  const listable = service
+    .listAdapters()
+    .filter(
+      (adapter) => adapter.capabilities().list && adapter.isAvailable(runtime),
+    )
+    .map((adapter) => adapter.source);
+  return `Cannot read the inbox for: ${problems.join(", ")}. Sources that can be read: ${listable.length > 0 ? listable.join(", ") : "none"}.`;
 }
 
 function parseSenderParam(
@@ -171,11 +221,28 @@ export interface MessageLookupHints {
   content?: string;
 }
 
+/**
+ * A lookup with no sender and no content matches the newest message from
+ * anyone, so an action that writes to its target must not run on one.
+ */
+const MESSAGE_TARGET_REQUIRED =
+  "messageId or a sender/content hint is required";
+
+function hasLookupTarget(lookup: MessageLookupHints): boolean {
+  return (
+    lookup.sender?.identifier !== undefined ||
+    lookup.sender?.displayName !== undefined ||
+    lookup.content !== undefined
+  );
+}
+
 function parseMessageLookupHints(
   params: Record<string, unknown>,
-): MessageLookupHints {
+): MessageLookupHints | { error: string } {
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     sender: parseSenderParam(params.sender ?? params.from),
     content: asString(params.content ?? params.query ?? params.q),
   };
@@ -192,6 +259,28 @@ function asTimestampMs(value: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Parse a search window bound. A supplied value that cannot be read is an
+ * error, not an absent bound: dropping it searches the whole history.
+ */
+function parseTimeBound(
+  value: unknown,
+  field: "since" | "until",
+): { ms: number | undefined } | { error: string } {
+  if (value === undefined || value === null) return { ms: undefined };
+  if (typeof value === "number" && Number.isFinite(value)) return { ms: value };
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (text.length === 0) return { ms: undefined };
+    // Up to four digits is a calendar year; a longer digit run is epoch ms.
+    const ms = /^\d{5,}$/.test(text) ? Number(text) : Date.parse(text);
+    if (Number.isFinite(ms)) return { ms };
+  }
+  return {
+    error: `${field} must be an ISO 8601 date or epoch milliseconds`,
+  };
+}
+
 export interface TriageParams {
   sources?: MessageSource[];
   worldIds?: string[];
@@ -201,10 +290,12 @@ export interface TriageParams {
 }
 export function parseTriageParams(
   options: HandlerOptions | undefined,
-): TriageParams {
+): TriageParams | { error: string } {
   const params = getParams(options);
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     sinceMs: asNumber(params.sinceMs),
@@ -221,10 +312,12 @@ export interface ListInboxParams {
 }
 export function parseListInboxParams(
   options: HandlerOptions | undefined,
-): ListInboxParams {
+): ListInboxParams | { error: string } {
   const params = getParams(options);
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
   return {
-    sources: asSourceList(params.sources ?? params.source),
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     limit: asNumber(params.limit),
@@ -312,7 +405,30 @@ function stripPlaceholderSignature(body: string): string {
   return text.trim();
 }
 
-function asReplyBody(params: Record<string, unknown>): string | undefined {
+const PLACEHOLDER_REPLY_BODY =
+  "body is a placeholder, not reply text; pass the exact reply text in body";
+
+/**
+ * A model sometimes fills `body` with a template slot such as
+ * "[insert reply here]". Only a body that is one bracketed span is treated as
+ * that slot; ordinary text that starts with "Please provide the message..." is
+ * a real reply.
+ */
+function isPlaceholderReplyBody(body: string): boolean {
+  if (!/^\[[^[\]]*\]$/.test(body)) return false;
+  return (
+    /^\[\s*(?:please\s+provide|provide|insert|add)\s+(?:the\s+)?(?:reply|message|body|content)\b/i.test(
+      body,
+    ) ||
+    /\b(?:reply|message|body)\s+content\s+(?:here|required|needed)\b/i.test(
+      body,
+    )
+  );
+}
+
+function asReplyBody(
+  params: Record<string, unknown>,
+): { body: string | undefined } | { error: string } {
   const body = asString(
     params.body ??
       params.reply ??
@@ -321,18 +437,11 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
       params.message ??
       params.messageBody,
   );
-  if (!body) return undefined;
-  if (
-    /^\[?\s*(?:please\s+provide|provide|insert|add)\s+(?:the\s+)?(?:reply|message|body|content)/i.test(
-      body,
-    ) ||
-    /\b(?:reply|message|body)\s+content\s+(?:here|required|needed)\b/i.test(
-      body,
-    )
-  ) {
-    return undefined;
-  }
-  return stripPlaceholderSignature(body);
+  if (!body) return { body: undefined };
+  if (isPlaceholderReplyBody(body)) return { error: PLACEHOLDER_REPLY_BODY };
+  const stripped = stripPlaceholderSignature(body);
+  if (!stripped) return { error: PLACEHOLDER_REPLY_BODY };
+  return { body: stripped };
 }
 
 export function parseDraftReplyParams(
@@ -342,9 +451,16 @@ export function parseDraftReplyParams(
   const messageId = asString(
     params.messageId ?? params.inReplyToId ?? params.id,
   );
-  const body = asReplyBody(params);
+  const reply = asReplyBody(params);
+  if ("error" in reply) return reply;
+  const body = reply.body;
   if (!body) return { error: "body is required" };
-  return { messageId, body, lookup: parseMessageLookupHints(params) };
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  if (!messageId && !hasLookupTarget(lookup)) {
+    return { error: MESSAGE_TARGET_REQUIRED };
+  }
+  return { messageId, body, lookup };
 }
 
 export interface DraftFollowupParams {
@@ -365,7 +481,9 @@ export function parseDraftFollowupParams(
     !sourceStr ||
     !(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceStr)
   ) {
-    return { error: "source must be one of the supported message sources" };
+    return {
+      error: `source must be one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
+    };
   }
   const source = sourceStr as MessageSource;
   const body = asString(params.body ?? params.text ?? params.message);
@@ -420,20 +538,60 @@ export function parseSendDraftParams(
 
 export function parseSearchMessagesParams(
   options: HandlerOptions | undefined,
-): SearchMessagesFilters {
+): SearchMessagesFilters | { error: string } {
   const params = getParams(options);
   const sender = parseSenderParam(params.sender);
-  return {
-    sources: asSourceList(params.sources ?? params.source),
+  const parsedSources = parseSourceList(params.sources ?? params.source);
+  if ("error" in parsedSources) return parsedSources;
+  const gmailOnly =
+    parsedSources.sources?.length === 1 && parsedSources.sources[0] === "gmail";
+  const queryValues = [params.query, params.content, params.q].filter(
+    (value) => value !== undefined,
+  );
+  if (gmailOnly && queryValues.some((value) => typeof value !== "string"))
+    return { error: "Search query aliases must be strings." };
+  const queryAliases = queryValues
+    .map((value) => asString(value))
+    .filter((value): value is string => value !== undefined);
+  if (gmailOnly && new Set(queryAliases).size > 1)
+    return {
+      error:
+        "Conflicting search query aliases: provide one exact query; content and q cannot replace a different query.",
+    };
+
+  const since = parseTimeBound(params.sinceMs ?? params.since, "since");
+  if ("error" in since) return since;
+  const until = parseTimeBound(params.untilMs ?? params.until, "until");
+  if ("error" in until) return until;
+  const filters: SearchMessagesFilters = {
+    sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     sender,
-    content: asString(params.content ?? params.query ?? params.q),
+    content: gmailOnly
+      ? queryAliases[0]
+      : asString(params.content ?? params.query ?? params.q),
     tags: asStringList(params.tags),
-    sinceMs: asTimestampMs(params.sinceMs ?? params.since),
-    untilMs: asTimestampMs(params.untilMs ?? params.until),
+    sinceMs: since.ms,
+    untilMs: until.ms,
     limit: asNumber(params.limit),
   };
+  if (
+    gmailOnly &&
+    !filters.content &&
+    !filters.sender?.identifier &&
+    !filters.sender?.displayName &&
+    !filters.tags?.length &&
+    filters.sinceMs === undefined &&
+    filters.untilMs === undefined &&
+    !filters.worldIds?.length &&
+    !filters.channelIds?.length
+  )
+    return {
+      error:
+        "Search requires at least one requested query, sender, label, date, account, or channel constraint. Use MESSAGE_LIST_INBOX only for an explicitly unfiltered inbox request.",
+    };
+  return filters;
 }
 
 export interface ManageMessageParams {
@@ -453,7 +611,7 @@ export function parseManageMessageParams(
   if (sourceStr) {
     if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceStr)) {
       return {
-        error: `source "${sourceStr}" is not a supported message source`,
+        error: `source "${sourceStr}" is not a supported message source; use one of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}`,
       };
     }
     source = sourceStr as MessageSource;
@@ -464,7 +622,7 @@ export function parseManageMessageParams(
     params.messageOperation ??
     (params.operation === "manage" ? undefined : params.operation) ??
     params.op;
-  let operation: ManageOperation | undefined;
+  let operation: ManageOperation | { error: string } | undefined;
   if (opRaw && typeof opRaw === "object" && !Array.isArray(opRaw)) {
     const r = opRaw as Record<string, unknown>;
     const kind = asString(r.kind)?.toLowerCase();
@@ -474,22 +632,22 @@ export function parseManageMessageParams(
   }
   if (!operation) {
     return {
-      error:
-        "operation.kind is required (archive|trash|spam|mark_read|label_add|label_remove|tag_add|tag_remove|mute_thread|unsubscribe)",
+      error: `manageOperation is required (${MANAGE_OPERATION_KINDS.join("|")})`,
     };
   }
-  return {
-    messageId,
-    source,
-    operation,
-    lookup: parseMessageLookupHints(params),
-  };
+  if ("error" in operation) return operation;
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  if (!messageId && !hasLookupTarget(lookup)) {
+    return { error: MESSAGE_TARGET_REQUIRED };
+  }
+  return { messageId, source, operation, lookup };
 }
 
 function parseOperation(
   kind: string | undefined,
   params: Record<string, unknown>,
-): ManageOperation | undefined {
+): ManageOperation | { error: string } | undefined {
   switch (kind) {
     case "archive":
       return { kind: "archive" };
@@ -503,26 +661,32 @@ function parseOperation(
     }
     case "label_add": {
       const label = asString(params.label);
-      if (!label) return undefined;
+      if (!label) {
+        return { error: "label is required for manageOperation=label_add" };
+      }
       return { kind: "label_add", label };
     }
     case "label_remove": {
       const label = asString(params.label);
-      if (!label) return undefined;
+      if (!label) {
+        return { error: "label is required for manageOperation=label_remove" };
+      }
       return { kind: "label_remove", label };
     }
     case "tag_add": {
       const tag = asString(params.tag);
-      if (!tag) return undefined;
+      if (!tag) {
+        return { error: "tag is required for manageOperation=tag_add" };
+      }
       return { kind: "tag_add", tag };
     }
     case "tag_remove": {
       const tag = asString(params.tag);
-      if (!tag) return undefined;
+      if (!tag) {
+        return { error: "tag is required for manageOperation=tag_remove" };
+      }
       return { kind: "tag_remove", tag };
     }
-    case "mute_thread":
-      return { kind: "mute_thread" };
     case "unsubscribe":
       return { kind: "unsubscribe" };
     case "block":
@@ -539,13 +703,32 @@ export interface ScheduleDraftSendParams {
 }
 export function parseScheduleDraftSendParams(
   options: HandlerOptions | undefined,
+  timeZone: string,
 ): ScheduleDraftSendParams | { error: string } {
   const params = getParams(options);
   const draftId = asString(params.draftId ?? params.id);
   if (!draftId) return { error: "draftId is required" };
-  const sendAtMs = asTimestampMs(params.sendAtMs ?? params.sendAt ?? params.at);
+  const rawSendAt = params.sendAtMs ?? params.sendAt ?? params.at;
+  // The planner writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const sendAtMs = asTimestampMs(
+    typeof rawSendAt === "string"
+      ? resolveScheduledAtIsoInTimeZone(rawSendAt, timeZone)
+      : rawSendAt,
+  );
   if (sendAtMs === undefined) {
-    return { error: "sendAtMs (number) or sendAt (ISO string) is required" };
+    return {
+      error:
+        "sendAt is required as an ISO 8601 timestamp or epoch milliseconds",
+    };
+  }
+  // A time that is already past is sent on the next scheduler tick, so a
+  // misread value (epoch seconds, a bare year, a blank) would send the draft
+  // at once while the action reports it as scheduled.
+  if (sendAtMs <= Date.now()) {
+    return {
+      error: `sendAt must be in the future (got ${new Date(sendAtMs).toISOString()})`,
+    };
   }
   return { draftId, sendAtMs };
 }
@@ -562,6 +745,14 @@ export function parseRespondToMessageParams(
   const messageId = asString(
     params.messageId ?? params.inReplyToId ?? params.id,
   );
-  const body = asReplyBody(params);
-  return { messageId, body, lookup: parseMessageLookupHints(params) };
+  // A supplied body that is refused is an error: dropping it would let the
+  // handler queue a generated acknowledgment in place of the dictated reply.
+  const reply = asReplyBody(params);
+  if ("error" in reply) return reply;
+  const lookup = parseMessageLookupHints(params);
+  if ("error" in lookup) return lookup;
+  if (!messageId && !hasLookupTarget(lookup)) {
+    return { error: MESSAGE_TARGET_REQUIRED };
+  }
+  return { messageId, body: reply.body, lookup };
 }

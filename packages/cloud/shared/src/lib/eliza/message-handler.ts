@@ -21,7 +21,7 @@ import { v4 as uuidv4 } from "uuid";
 import { roomsRepository } from "../../db/repositories";
 import { connectionCache } from "../cache/connection-cache";
 import { anonymousSessionsService } from "../services/anonymous-sessions";
-import { charactersService } from "../services/characters/characters";
+import { charactersService } from "../services/characters";
 import { discordService } from "../services/discord";
 import { generateRoomTitle } from "../services/room-title";
 import type { DialogueMetadata } from "../types/message-content";
@@ -239,7 +239,9 @@ export class MessageHandler {
 
     const entityUuid = stringToUuid(entityId) as UUID;
     const roomUuid = roomId as UUID;
-    const worldId = stringToUuid("eliza-world") as UUID;
+    // Agent-scoped: world ids are a global key and world reads are
+    // agent-scoped, so one shared id would collide across agents.
+    const worldId = createUniqueUuid(this.runtime, "eliza-world");
     const serverId = stringToUuid("eliza-server") as UUID;
 
     const displayName =

@@ -146,7 +146,12 @@ export const formContextProvider: Provider = {
         contextState = formService.getSessionContext(session);
         const form = formService.getForm(session.formId);
         // Build template values from session (for {{placeholders}} in labels, askPrompt, etc.)
-        const templateValues = buildTemplateValues(session);
+        // WHY pass controls: a sensitive control's value must be masked before
+        // it can be rendered into a model-facing or user-facing string.
+        const templateValues = buildTemplateValues(
+          session,
+          form?.controls ?? [],
+        );
         // WHY resolve: Form definitions may use {{variable}} in label, description, askPrompt; renderTemplate substitutes from session
         const resolve = (v?: string): string | undefined =>
           renderTemplate(v, templateValues);

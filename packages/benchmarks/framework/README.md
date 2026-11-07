@@ -1,17 +1,12 @@
-# Eliza Framework Benchmark
+# Framework benchmark
 
-Measures the overhead of the elizaOS framework itself: a TypeScript (Bun) harness drives a real `AgentRuntime` with a deterministic mock-LLM plugin and in-memory DB, reporting latency, throughput, pipeline breakdown, memory, and startup across 20 scenarios.
+Measures runtime overhead with a real AgentRuntime and controlled model responses. Live-model runs are optional.
 
-This directory is part of `packages/benchmarks`.
-
-Build from the repository root:
+From the repository root:
 
 ```bash
-bun run --cwd packages/benchmarks build:plugin
+bun run --cwd packages/benchmarks/framework/typescript typecheck
+bun run --cwd packages/benchmarks/framework/typescript bench:quick
 ```
 
-Test from the repository root:
-
-```bash
-bun run --cwd packages/benchmarks test:py
-```
+Reports default to `test-results/benchmark-framework/`. Set `BENCHMARK_OUTPUT_ROOT` or pass an explicit output path to use another directory. `compare.ts --dir=...` and `visualize.py <directory>` can read existing archives. The root Python test lane does not exercise this TypeScript workload.

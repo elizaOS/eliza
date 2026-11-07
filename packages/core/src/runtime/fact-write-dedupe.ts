@@ -34,18 +34,6 @@ import type { IAgentRuntime } from "../types/runtime";
 const DEDUPE_CANDIDATE_POOL = 120;
 
 /**
- * Canonical form for fact-text equality: case-, punctuation-, and
- * whitespace-insensitive, unicode-aware. An empty key never matches (so
- * punctuation-only or empty texts are never deduped against each other).
- */
-export function normalizeFactTextKey(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
-}
-
-/**
  * Returns the existing `facts` row equivalent to `memory` (same normalized
  * text, same room, same entity), or null when the write should proceed. Rows
  * sharing `memory.id` are ignored — same-id idempotence is the adapter's
@@ -55,9 +43,9 @@ export async function findEquivalentFact(
 	runtime: Pick<IAgentRuntime, "getMemories">,
 	memory: Memory,
 ): Promise<Memory | null> {
-	const text =
-		typeof memory.content?.text === "string" ? memory.content.text : "";
-	const key = normalizeFactTextKey(text);
+	// Exact text after trimming outer whitespace; signs, case and spacing
+	// carry meaning.
+	const key = memory.content.text?.trim();
 	if (!key || !memory.roomId) return null;
 
 	const existing = await runtime.getMemories({
@@ -70,9 +58,7 @@ export async function findEquivalentFact(
 		if (!isActiveMemoryEvidence(candidate)) continue;
 		if (!candidate.id || candidate.id === memory.id) continue;
 		if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue;
-		const candidateText =
-			typeof candidate.content?.text === "string" ? candidate.content.text : "";
-		if (normalizeFactTextKey(candidateText) === key) return candidate;
+		if (candidate.content.text?.trim() === key) return candidate;
 	}
 	return null;
 }
@@ -91,12 +77,12 @@ function readFactMetadata(memory: Memory): FactMetadata {
  *
  * - `confidence` — strictly higher (or present where the kept row has none).
  * - `kind` — present where the kept row has none. The FACTS reader defaults a
- *   missing kind to `durable`, so an explicit stamp is always more precise;
- *   an already-set kind is never flipped here (durable/current transitions
- *   belong to the reflection pass).
+ * missing kind to `durable`, so an explicit stamp is always more precise;
+ * an already-set kind is never flipped here (durable/current transitions
+ * belong to the reflection pass).
  * - `validAt` / `lastConfirmedAt` — strictly more recent (or newly present):
- *   a re-asserted `current` fact should not keep decaying from its first
- *   observation's timestamp.
+ * a re-asserted `current` fact should not keep decaying from its first
+ * observation's timestamp.
  */
 export function mergeStrongerFactMetadata(
 	existing: Memory,

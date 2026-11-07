@@ -11,7 +11,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { processToolResult } from "../processing";
+import { processResourceResult, processToolResult } from "../processing";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -131,5 +131,52 @@ describe("processToolResult error status", () => {
 
     expect(result.toolOutput).toBe("requested data");
     expect(result.isError).toBe(false);
+  });
+});
+
+describe("text blocks across several content items", () => {
+  it("keeps consecutive tool text blocks on separate lines", () => {
+    const { toolOutput } = processToolResult(
+      {
+        content: [
+          { type: "text", text: "Found 2 open issues:" },
+          { type: "text", text: "#12 Login fails" },
+          { type: "text", text: "#15 Crash on save" },
+        ],
+      },
+      "github",
+      "list_issues",
+      runtime,
+      messageEntityId
+    );
+    expect(toolOutput).toBe("Found 2 open issues:\n#12 Login fails\n#15 Crash on save");
+  });
+
+  it("keeps a single tool text block unchanged", () => {
+    const { toolOutput } = processToolResult(
+      { content: [{ type: "text", text: "done" }] },
+      "github",
+      "list_issues",
+      runtime,
+      messageEntityId
+    );
+    expect(toolOutput).toBe("done");
+  });
+
+  it("keeps text and binary resource contents on separate lines", () => {
+    const { resourceContent } = processResourceResult(
+      {
+        contents: [
+          { uri: "file:///a.txt", text: "alpha" },
+          { uri: "file:///b.txt", text: "beta" },
+          { uri: "file:///c.png", blob: "AAAA", mimeType: "image/png" },
+        ],
+      },
+      "file:///a.txt",
+      runtime,
+      "files",
+      messageEntityId
+    );
+    expect(resourceContent).toBe("alpha\nbeta\n[Binary data - image/png]");
   });
 });

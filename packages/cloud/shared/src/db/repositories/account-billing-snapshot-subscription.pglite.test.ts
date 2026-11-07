@@ -165,6 +165,28 @@ test("current-source read preserves exact allowance and strips all provider auth
       },
     },
   });
+  const { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } = await import(
+    "../../lib/services/subscription-funding-policy"
+  );
+  if (actual.status !== "available" || actual.value.fundingPolicy?.status !== "available")
+    throw new Error("Expected an observed funding policy");
+  const policy = actual.value.fundingPolicy;
+  expect(policy).toEqual({
+    status: "available",
+    source: "subscription-funding-operation-taxonomy",
+    observedAt: "2026-08-20T12:00:00.000Z",
+    value: {
+      schemaVersion: 1,
+      operationClasses: SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
+      requiresRequestEligibility: true,
+    },
+  });
+  expect(policy.value.operationClasses.voice).toBe("allowance_eligible");
+  expect(policy.value.operationClasses.domain).toBe("cash_only");
+  expect(policy.value.operationClasses.unclassified).toBe("cash_only");
+  // A caller can mutate its serialized snapshot without mutating server enforcement.
+  Reflect.set(policy.value.operationClasses, "voice", "cash_only");
+  expect(SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION.voice).toBe("allowance_eligible");
   // The durable subscription id is the cancel/undo command subject (already echoed by the
   // cancellation DTO); provider identifiers, tenant id and digests never cross this boundary.
   expect(actual).toMatchObject({
@@ -256,6 +278,10 @@ test("observed expiry makes allowance unavailable to spend without pretending th
   expect(await snapshot(ORG_A, "2026-09-01T00:00:00.000Z")).toMatchObject({
     status: "available",
     value: {
+      fundingPolicy: {
+        status: "available",
+        value: { requiresRequestEligibility: true },
+      },
       allowance: {
         status: "available",
         value: {

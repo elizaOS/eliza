@@ -1,18 +1,21 @@
 // Handles v1 cloud API v1 eliza agents agentid discord oauth route traffic with route-local auth expectations.
 import { randomBytes } from "node:crypto";
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
   sanitizeRelativeRedirectPath,
-} from "@/lib/security/redirect-validation";
-import { discordAutomationService } from "@/lib/services/discord-automation";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { discordAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "POST, OPTIONS";
 const LOOPBACK_REDIRECT_ORIGINS = [
@@ -29,7 +32,7 @@ const oauthLinkSchema = z.object({
 
 function resolveManagedReturnUrl(rawValue: string | undefined): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const defaultPath = "/cloud/settings?tab=agents";
+  const defaultPath = "/cloud/agents";
 
   if (!rawValue) {
     return new URL(defaultPath, baseUrl).toString();

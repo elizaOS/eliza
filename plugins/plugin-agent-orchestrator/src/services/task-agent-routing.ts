@@ -6,9 +6,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { CODING_AGENT_BACKENDS } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { CODING_AGENT_BACKENDS } from "@elizaos/core/contracts/coding-agent-capabilities";
 import { readConfigEnvKey } from "./config-env.js";
 
 export const KNOWN_ADAPTER_TYPES = new Set<string>(CODING_AGENT_BACKENDS);
@@ -255,7 +255,8 @@ export function resolveWorkdirByConvention(
       continue;
     }
     for (const name of entries) {
-      // Match the directory name as a contiguous phrase. Hyphens and
+      // Match the directory name as a contiguous phrase, on word boundaries
+      // like route terms, so `site` does not match "website". Hyphens and
       // spaces are interchangeable so `camping-car-europe` matches
       // "camping car europe" and vice versa.
       const variants = new Set([
@@ -265,7 +266,7 @@ export function resolveWorkdirByConvention(
       ]);
       for (const variant of variants) {
         if (variant.length < 4) continue; // skip generic tokens like "app"
-        if (haystack.includes(variant)) {
+        if (containsPhrase(haystack, variant)) {
           matches.push(path.join(root, name));
           break;
         }
@@ -336,9 +337,14 @@ export function resolveRouteForWorkdir(
       continue;
     }
     const relative = path.relative(canonicalRouteRoot, target);
+    // Containment is about the ".." segment, not the ".." prefix: a child
+    // directory named "..data" is inside the tree, not an escape. (The
+    // coding-tools path helper makes the same distinction.)
     const contained =
       relative === "" ||
-      (!relative.startsWith("..") && !path.isAbsolute(relative));
+      (relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative));
     if (contained) candidates.push({ route, canonicalRouteRoot });
   }
   // A route table may intentionally contain a broad checkout plus narrower

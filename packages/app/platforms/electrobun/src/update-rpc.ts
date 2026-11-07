@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop update rpc ts behavior for app shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, nullableString } from "./rpc-parse-utils";
 import type {

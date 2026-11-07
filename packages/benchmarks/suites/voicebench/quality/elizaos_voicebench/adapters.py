@@ -126,7 +126,9 @@ def build_adapter(
 def _build_text_adapter(agent: str) -> TextFn:
     if agent == "eliza":
         server_mgr = None
-        if not os.environ.get("ELIZA_API_BASE") and not os.environ.get("ELIZA_BENCH_URL"):
+        if not os.environ.get("ELIZA_API_BASE") and not os.environ.get(
+            "ELIZA_BENCH_URL"
+        ):
             from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
 
             server_mgr = ElizaServerManager()
@@ -148,7 +150,9 @@ def _build_text_adapter(agent: str) -> TextFn:
         client.wait_until_ready(timeout=120)
 
         async def _call(prompt: str) -> str:
-            resp = client.send_message(prompt, context={"benchmark": "voicebench-quality"})
+            resp = client.send_message(
+                prompt, context={"benchmark": "voicebench-quality"}
+            )
             return resp.text
 
         return _call
@@ -159,7 +163,9 @@ def _build_text_adapter(agent: str) -> TextFn:
         client = HermesClient()
 
         async def _call(prompt: str) -> str:
-            resp = client.send_message(prompt, context={"benchmark": "voicebench-quality"})
+            resp = client.send_message(
+                prompt, context={"benchmark": "voicebench-quality"}
+            )
             return resp.text
 
         return _call
@@ -170,7 +176,9 @@ def _build_text_adapter(agent: str) -> TextFn:
         client = OpenClawClient()
 
         async def _call(prompt: str) -> str:
-            resp = client.send_message(prompt, context={"benchmark": "voicebench-quality"})
+            resp = client.send_message(
+                prompt, context={"benchmark": "voicebench-quality"}
+            )
             return resp.text
 
         return _call
@@ -190,7 +198,7 @@ def _build_stt(provider: str) -> SttFn:
         return _transcribe_groq
 
     if provider in {"eliza1", "eliza-1", "eliza1-asr"}:
-        from .clients.eliza1_asr import Eliza1ASRClient  # noqa: WPS433
+        from benchmarks.lib import Eliza1ASR as Eliza1ASRClient  # noqa: WPS433
 
         eliza1_client = Eliza1ASRClient()
 

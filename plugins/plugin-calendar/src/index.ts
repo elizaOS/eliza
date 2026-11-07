@@ -2,6 +2,7 @@
 
 export {
   buildWideLookupRange,
+  registerCalendarActionHostAdapter,
   resolveCalendarMutationCandidates,
 } from "./actions/calendar-handler.js";
 export {
@@ -46,8 +47,10 @@ export {
   extractCalendarPlanWithLlm,
   registerConflictDetectHostAdapter,
 } from "./actions/index.js";
+export { createCalendarMutationApprovalGateway } from "./actions/mutation-approval.js";
 export {
   type CalendarClientMethods,
+  createCalendarApi,
   installCalendarClient,
 } from "./api/client-calendar.js";
 export {
@@ -63,6 +66,7 @@ export {
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
 } from "./calendar-action-schema.js";
+export { calendarReadParameters } from "./calendar-read-parameters.js";
 export {
   CalendarSection,
   type CalendarSectionProps,
@@ -106,10 +110,13 @@ export {
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
 export {
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
   normalizeCalendarAttendees,
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,
   resolveCalendarEventRange,
+  resolveCalendarWindow,
+  resolveNextCalendarEventWindow,
 } from "./internal/calendar-normalize.js";
 export {
   ELIZA_CALENDAR_ACCOUNT_ID,
@@ -129,6 +136,10 @@ export {
 } from "./internal/recurrence.js";
 export * from "./meetings/index.js";
 export * from "./microsoft/index.js";
+export {
+  CALENDAR_MUTATION_PORT_SERVICE,
+  resolveCalendarApproval,
+} from "./mutations/resolve.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
 export * from "./providers/index.js";
 export { registerCalendarApp } from "./register.js";

@@ -11,6 +11,11 @@
  * gateway.
  */
 
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
 import {
   type EffectReceipt,
   ElizaError,
@@ -19,11 +24,6 @@ import {
   normalizeEffectReceipt,
   toElizaError,
 } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
 import { normalizeCalendarTimeZone } from "./internal/calendar-normalize.js";
 import { INTERNAL_URL } from "./internal/detail.js";
 import { CalendarServiceError } from "./internal/errors.js";
@@ -31,7 +31,10 @@ import { formatCalendarEventDateTime } from "./internal/format.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
+  CalendarLocalTimeError,
+  calendarLocalTimeClarification,
   getZonedDateParts,
+  isRealCalendarDay,
 } from "./internal/time.js";
 import { CalendarService } from "./service/CalendarService.js";
 
@@ -171,6 +174,16 @@ function feedWindow(
       month: Number(match[2]),
       day: Number(match[3]),
     };
+    if (
+      startDate.year < 1 ||
+      startDate.year > 9999 ||
+      !isRealCalendarDay(startDate.year, startDate.month, startDate.day)
+    ) {
+      throw validationError(
+        '"date" must be a real calendar day in YYYY-MM-DD.',
+        "date",
+      );
+    }
   } else {
     const today = getZonedDateParts(now, timeZone);
     startDate = { year: today.year, month: today.month, day: today.day };
@@ -355,10 +368,10 @@ async function dispatchCapability(
 
 /**
  * Execute one Calendar view capability against a resolved service. Expected
- * domain failures (validation, 4xx service refusals) become explicit
- * `success: false` results with honest user-facing text; systemic failures
- * (5xx, unknown capability, programming errors) propagate to the shared views
- * route boundary.
+ * domain failures (validation, 4xx service refusals, skipped or repeated local
+ * times) become explicit `success: false` results with honest user-facing
+ * text; systemic failures (5xx, unknown capability, programming errors)
+ * propagate to the shared views route boundary.
  */
 export async function interact(
   capability: string,
@@ -380,6 +393,14 @@ export async function interact(
       now,
     );
   } catch (error) {
+    if (error instanceof CalendarLocalTimeError) {
+      return {
+        success: false,
+        text: error.message,
+        data: calendarLocalTimeClarification(error),
+        error: { code: error.code, message: error.message },
+      };
+    }
     if (error instanceof CalendarServiceError && error.status < 500) {
       return {
         success: false,

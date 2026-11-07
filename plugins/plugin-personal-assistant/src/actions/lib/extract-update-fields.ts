@@ -6,6 +6,15 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
+import { describeNowForPrompt } from "../../lifeops/time.js";
+import {
+  validateCadenceKind,
+  validatePositiveNumber,
+  validatePriority,
+  validateTitle,
+  validateWeekdays,
+  validateWindows,
+} from "./extracted-field-validators.js";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",
@@ -99,7 +108,7 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 
 function parseTimeOfDay(value: string): string | null {
   const normalized = value.trim().toLowerCase();
-  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b/);
+  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b(?!\s*(?:am|pm)\b)/);
   if (hhmmMatch) {
     const hour = Number(hhmmMatch[1]);
     const minute = Number(hhmmMatch[2]);
@@ -129,6 +138,20 @@ function parseTimeOfDay(value: string): string | null {
   }
   const rawHour = Number(clockMatch[1]);
   const minute = Number(clockMatch[2] ?? "0");
+  // Clock-hour tokens only name the 12-hour dial. Without a range check,
+  // "25am" silently becomes "01:00" (25 % 12) and "5:99pm" emits the invalid
+  // time "17:99". The sibling parseClockToken in actions/life.ts already
+  // rejects out-of-range clock hours the same way.
+  if (
+    !Number.isFinite(rawHour) ||
+    !Number.isFinite(minute) ||
+    rawHour < 1 ||
+    rawHour > 12 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
   const meridiem = clockMatch[3];
   const hour =
     meridiem === "am"
@@ -139,67 +162,12 @@ function parseTimeOfDay(value: string): string | null {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function validateTitle(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function validateCadenceKind(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return VALID_CADENCE_KINDS.has(normalized) ? normalized : null;
-}
-
-function validateWindows(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const normalized = value
-    .filter((item: unknown) => typeof item === "string")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  return normalized.length > 0 ? normalized : null;
-}
-
-function validateWeekdays(value: unknown): number[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const normalized = value.filter(
-    (item: unknown) =>
-      typeof item === "number" &&
-      Number.isInteger(item) &&
-      item >= 0 &&
-      item <= 6,
-  );
-  return normalized.length > 0 ? normalized : null;
-}
-
-function validatePositiveNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-  return value;
-}
-
-function validatePriority(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  return Math.max(1, Math.min(5, Math.round(value)));
-}
-
 function buildUpdateFields(
   parsed: Record<string, unknown>,
 ): ExtractedUpdateFields {
   return {
     title: validateTitle(parsed.title),
-    cadenceKind: validateCadenceKind(parsed.cadenceKind),
+    cadenceKind: validateCadenceKind(parsed.cadenceKind, VALID_CADENCE_KINDS),
     windows: validateWindows(parsed.windows),
     weekdays: validateWeekdays(parsed.weekdays),
     timeOfDay:
@@ -229,6 +197,7 @@ function buildRepairPrompt(args: {
   currentTitle: string;
   currentCadenceKind: string;
   currentWindows: string[];
+  nowDescription: string;
   rawResponse: string;
 }): string {
   return [
@@ -244,6 +213,7 @@ function buildRepairPrompt(args: {
     `Current task: ${promptText(args.currentTitle)}`,
     `Current cadence kind: ${promptText(args.currentCadenceKind)}`,
     `Current windows: [${args.currentWindows.join(", ")}]`,
+    `Current date and time: ${args.nowDescription}`,
     `User request: ${promptText(args.intent)}`,
     "Previous invalid output:",
     promptText(args.rawResponse),
@@ -264,9 +234,16 @@ export async function extractUpdateFieldsWithLlm(args: {
   currentTitle: string;
   currentCadenceKind: string;
   currentWindows: string[];
+  /** Zone the extracted date fields are resolved in. */
+  timeZone: string;
+  now?: Date;
 }): Promise<ExtractedUpdateFields> {
   const { runtime, intent, currentTitle, currentCadenceKind, currentWindows } =
     args;
+  const nowDescription = describeNowForPrompt(
+    args.now ?? new Date(),
+    args.timeZone,
+  );
 
   const prompt = [
     "The user wants to update an existing task/habit. Extract ONLY the fields they want to change.",
@@ -274,6 +251,7 @@ export async function extractUpdateFieldsWithLlm(args: {
     "",
     `Current task: "${currentTitle}"`,
     `Current schedule: ${currentCadenceKind}, windows: [${currentWindows.join(", ")}]`,
+    `Current date and time: ${nowDescription}`,
     "",
     "Return a JSON object with these fields (null = no change requested):",
     "- title: new name if user wants to rename",
@@ -309,7 +287,15 @@ export async function extractUpdateFieldsWithLlm(args: {
     prompt,
     parser: (raw) => {
       const parsedObject = parseStructuredRecord(raw);
-      return parsedObject ? buildUpdateFields(parsedObject) : null;
+      if (!parsedObject) return null;
+      const fields = buildUpdateFields(parsedObject);
+      if (
+        (fields.cadenceKind ?? currentCadenceKind) === "once" &&
+        typeof parsedObject.description === "string" &&
+        parsedObject.description.trim().length > 0
+      )
+        fields.description = parsedObject.description;
+      return fields;
     },
     buildRepairPrompt: (rawFirstPass) =>
       buildRepairPrompt({
@@ -317,6 +303,7 @@ export async function extractUpdateFieldsWithLlm(args: {
         currentTitle,
         currentCadenceKind,
         currentWindows,
+        nowDescription,
         rawResponse: rawFirstPass,
       }),
   });

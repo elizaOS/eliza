@@ -25,6 +25,7 @@ import type {
   OrchestratorTaskDocument,
   OrchestratorTaskMessage,
 } from "./orchestrator-task-types.js";
+import { wordTokens } from "./word-tokens.js";
 
 export const CURATED_CODING_MEMORY_FILENAME = "NOTES.eliza.md";
 
@@ -272,11 +273,9 @@ function boundedNoteText(input: string): string {
 }
 
 function normalizeNoteKey(text: string): string {
-  return redactCodingMemoryText(text)
-    .toLowerCase()
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+  return wordTokens(
+    redactCodingMemoryText(text).replace(/`([^`]+)`/g, "$1"),
+  ).join(" ");
 }
 
 function tokens(text: string): Set<string> {
@@ -494,11 +493,13 @@ function mergeNotes(
   const merged = [...existing];
   for (const note of incoming) {
     const noteTokens = tokens(note.text);
+    const noteKey = normalizeNoteKey(note.text);
     const duplicate = merged.find(
       (candidate) =>
         candidate.repoKey === note.repoKey &&
         candidate.tenantHash === note.tenantHash &&
-        (normalizeNoteKey(candidate.text) === normalizeNoteKey(note.text) ||
+        // An empty key carries no identity; never let it merge distinct notes.
+        ((noteKey.length > 0 && normalizeNoteKey(candidate.text) === noteKey) ||
           jaccard(tokens(candidate.text), noteTokens) >= 0.72),
     );
     if (duplicate) {

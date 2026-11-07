@@ -3,7 +3,7 @@
  * name/category so every app gets stable, distinct placeholder art without a
  * stored asset. Hashing the name keeps the choice stable across renders.
  */
-import { hashString } from "@elizaos/core/utils/string-hash";
+import { hashArtworkSeed as hashString } from "@elizaos/core/protocol";
 
 export interface AppHeroArtworkSource {
   name: string;

@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { BRAND_PATHS, LOGO_FILES } from "../../brand/index.js";
 import { Button } from "../../components/ui/button";
-import { isSafeNavigationUrl } from "../lib/navigation-url";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import { confirmTelegramAccountClaim } from "../public-pages/lib/steward-session";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {

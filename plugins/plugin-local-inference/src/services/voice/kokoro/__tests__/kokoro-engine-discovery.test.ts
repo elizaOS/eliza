@@ -1,5 +1,11 @@
 /** Covers Kokoro engine config resolution and GGUF/model-dir discovery. Deterministic. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
@@ -78,6 +84,32 @@ describe("resolveKokoroEngineConfig", () => {
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
+
+	// chmod cannot remove read access for uid 0 or on Windows, where the
+	// listing succeeds and this assertion would fail despite correct behaviour.
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"propagates an unreadable voices dir instead of reporting no model staged",
+		() => {
+			const fx = makeStaged({
+				modelFile: "kokoro-82m-v1_0.gguf",
+				voices: ["af_bella.bin"],
+			});
+			cleanups.push(fx.cleanup);
+			process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
+			const voicesDir = path.join(fx.root, "voices");
+			chmodSync(voicesDir, 0o000);
+			try {
+				// A staged-but-unreadable voices dir is a broken install, not an
+				// install without a voice: callers must not report "no Kokoro
+				// model staged" (workbench-real-services.ts:615).
+				expect(() => resolveKokoroEngineConfig()).toThrow(
+					/failed to list Kokoro voices/,
+				);
+			} finally {
+				chmodSync(voicesDir, 0o700);
+			}
+		},
+	);
 
 	it("returns the canonical Samantha default when staged", () => {
 		const fx = makeStaged({

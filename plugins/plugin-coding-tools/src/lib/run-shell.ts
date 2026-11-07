@@ -28,12 +28,12 @@ import {
   sanitizeSpawnEnv,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/core/config/runtime-mode";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
-} from "@elizaos/core/host-execution-env";
-import { type ShellOutputArtifact } from "./shell-output-artifact.js";
+} from "@elizaos/host";
+import { resolveRuntimeExecutionMode } from "@elizaos/host/protocol";
+import type { ShellOutputArtifact } from "./shell-output-artifact.js";
 import {
   ForegroundShellCapture,
   type ShellCaptureProjection,

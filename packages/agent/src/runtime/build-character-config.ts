@@ -11,15 +11,17 @@
 import {
   type Character,
   type CharacterInput,
-  getDefaultStylePreset,
   mergeCharacterDefaults,
   normalizeCharacterLanguage,
+  stringToUuid,
+} from "@elizaos/core";
+import {
+  type ElizaConfig,
+  getDefaultStylePreset,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 import {
   applyAdvancedCapabilitySettings,
@@ -36,6 +38,32 @@ import { projectConnectorSettings } from "./project-connector-settings.ts";
  * database — not the config file — so we only provide sensible defaults here
  * for the initial setup.
  */
+/**
+ * The name that the agent id and the name-derived chat ids (web-chat world,
+ * message server, rooms) use. It stays the same when the agent is renamed, so
+ * those ids, and the data stored under them, stay the same too.
+ */
+export function agentIdentityName(character: {
+  name?: string;
+  settings?: Record<string, unknown>;
+}): string | undefined {
+  // Core character validation moves unknown settings keys into
+  // `settings.extra`, so a validated character (for example one restored
+  // from a backup) keeps the identity name there.
+  const extra = character.settings?.extra as
+    | Record<string, unknown>
+    | undefined;
+  for (const identityName of [
+    character.settings?.identityName,
+    extra?.identityName,
+  ]) {
+    // Trimmed, so every caller seeds its ids from the same string.
+    if (typeof identityName === "string" && identityName.trim())
+      return identityName.trim();
+  }
+  return character.name;
+}
+
 /** @internal Exported for testing. */
 export function buildCharacterFromConfig(config: ElizaConfig): Character {
   const agentEntry = config.agents?.list?.[0];
@@ -66,6 +94,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     configuredName ??
     bundledPreset?.name ??
     getDefaultStylePreset(language).name;
+  const identityName = agentEntry?.identityName?.trim() || name;
 
   const bio = agentEntry?.bio ??
     bundledPreset?.bio ?? [
@@ -143,8 +172,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "WHATSAPP_SESSION_PATH",
     "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
     "WHATSAPP_API_VERSION",
-    "WHATSAPP_DM_POLICY",
-    "WHATSAPP_GROUP_POLICY",
     "WHATSAPP_ALLOW_FROM",
     "WHATSAPP_GROUP_ALLOW_FROM",
     "TELEGRAM_ACCOUNT_PHONE",
@@ -171,8 +198,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MATRIX_ACCOUNTS",
     // ElizaCloud secrets
     "ELIZAOS_CLOUD_API_KEY",
-    "ELIZAOS_CLOUD_BASE_URL",
-    "ELIZAOS_CLOUD_ENABLED",
     // Wallet / blockchain secrets
     "EVM_PRIVATE_KEY",
     "SOLANA_PRIVATE_KEY",
@@ -208,6 +233,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // (homeserver URL, user/room/device IDs, the verify allow-list, on/off flags),
   // so redacting them only corrupted output (room names, the agent's own id).
   const publicConnectorConfigKeys = [
+    // Cloud routing values are public configuration, not redaction seeds.
+    "ELIZAOS_CLOUD_BASE_URL",
+    "ELIZAOS_CLOUD_ENABLED",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_REDIRECT_URI",
     "ELIZA_EXTERNAL_BASE_URL",
@@ -221,6 +249,10 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MATRIX_REQUIRE_MENTION",
     "MATRIX_VERIFY_ALLOWLIST",
     "MATRIX_PERSONAL",
+    // WhatsApp access policies are behaviour flags (open, pairing, allowlist,
+    // disabled). As secrets they replaced those words in every message.
+    "WHATSAPP_DM_POLICY",
+    "WHATSAPP_GROUP_POLICY",
   ];
   for (const key of publicConnectorConfigKeys) {
     const value = process.env[key];
@@ -268,6 +300,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   Object.assign(secrets, connectorProjection.secrets);
 
   return mergeCharacterDefaults({
+    // The runtime derives the agent id from the name; a renamed agent keeps
+    // the id of its identity name.
+    ...(identityName !== name ? { id: stringToUuid(identityName) } : {}),
     name,
     ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,
@@ -280,7 +315,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     ...(mappedExamples ? { messageExamples: mappedExamples } : {}),
     ...(knowledge ? { knowledge } : {}),
     advancedMemory,
-    settings: connectorProjection.settings,
+    settings: { ...connectorProjection.settings, identityName },
     secrets,
   });
 }

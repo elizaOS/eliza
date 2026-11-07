@@ -10,7 +10,7 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
-import { satisfiesRoleGate } from "@elizaos/core/access-control/role-primitives";
+import { satisfiesRoleGate } from "@elizaos/core/protocol";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRole } from "../hooks/useRole.tsx";

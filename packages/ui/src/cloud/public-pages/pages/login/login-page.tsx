@@ -16,16 +16,16 @@
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BRAND_PATHS, LOGO_FILES } from "../../../../brand/index.js";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
+import { useBranding } from "../../../../config/branding-react.hooks";
 import { isLoopbackStagingStewardDevelopment } from "../../../../state/loopback-steward-development";
 import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
   subscribeCloudAuthComplete,
-} from "../../../auth/cloud-auth-complete-signal";
+} from "../../../cloud-auth-complete-signal";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
@@ -44,7 +44,13 @@ function StewardLoginSectionFallback() {
   );
 }
 
-function LoginBackground({ children }: { children: React.ReactNode }) {
+export function LoginBackground({
+  children,
+  plain = false,
+}: {
+  children: React.ReactNode;
+  plain?: boolean;
+}) {
   return (
     <div className="theme-cloud relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt">
       {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
@@ -79,7 +85,13 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
             1080×1240) where the OAuth / wallet rows fell below an unscrollable
             fold — see login-page.safe-area.test.tsx. */}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
-          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
+          <div
+            className={
+              plain
+                ? "my-auto w-full max-w-sm shrink-0 py-8 text-txt"
+                : "my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]"
+            }
+          >
             {children}
           </div>
         </div>
@@ -102,6 +114,7 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
 }
 
 function PublicLoginPage(): React.JSX.Element {
+  const branding = useBranding();
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const handoffSessionId = sessionIdFromLoginReturnTo(
@@ -109,7 +122,9 @@ function PublicLoginPage(): React.JSX.Element {
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
-  usePageTitle(t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza" }));
+  useDocumentTitle(
+    t("cloud.login.metaTitle", { defaultValue: "Sign In | {{appName}}" }),
+  );
 
   useEffect(() => {
     if (!handoffSessionId) return;
@@ -140,7 +155,7 @@ function PublicLoginPage(): React.JSX.Element {
             <p className="text-sm text-muted">
               {t("cloud.login.handoffCompleteBody", {
                 defaultValue:
-                  "Return to the Eliza app tab to continue. You can close this window.",
+                  "Return to the {{appName}} app tab to continue. You can close this window.",
               })}
             </p>
           </div>
@@ -172,12 +187,18 @@ function PublicLoginPage(): React.JSX.Element {
     <LoginBackground>
       <main className="space-y-7">
         <div className="space-y-3 text-center">
-          <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
-            alt="Eliza"
-            className="mx-auto h-8 w-auto"
-            draggable={false}
-          />
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt={branding.appName}
+              className="mx-auto h-8 w-auto"
+              draggable={false}
+            />
+          ) : (
+            <p className="font-sans text-2xl font-semibold">
+              {branding.appName}
+            </p>
+          )}
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {

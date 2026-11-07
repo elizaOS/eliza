@@ -12,7 +12,7 @@ import type {
   ConnectorAccountCreateInput,
   ConnectorAccountRecord,
   ConnectorAccountRole,
-} from "../../api/client-agent";
+} from "../../api/client-agent-connector-accounts";
 import {
   type UseConnectorAccountsResult,
   useConnectorAccounts,

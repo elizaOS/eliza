@@ -1,13 +1,12 @@
 // Handles v1 cloud API v1 eliza launch sessions sessionid route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { cache } from "@/lib/cache/client";
+
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
 import {
-  type ManagedLaunchSessionPayload,
+  consumeLaunchSession,
   resolveElizaLaunchAllowedOrigins,
-  resolveLaunchSessionCacheKey,
-} from "@/lib/services/eliza-managed-launch";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-managed-launch";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 function getCorsHeaders(origin: string | null): HeadersInit {
   const allowedOrigins = new Set(resolveElizaLaunchAllowedOrigins());
@@ -38,9 +37,7 @@ async function __hono_GET(
 ) {
   const { sessionId } = await params;
   const headers = getCorsHeaders(request.headers.get("origin"));
-  const payload = await cache.getAndDelete<ManagedLaunchSessionPayload>(
-    resolveLaunchSessionCacheKey(sessionId),
-  );
+  const payload = await consumeLaunchSession(sessionId);
 
   if (!payload) {
     return Response.json(

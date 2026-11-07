@@ -3,8 +3,8 @@
  * family packet generation, review, drafting, and canonical approval enqueue.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { ZodError } from "zod";
 import type {
   FamilyPacketEmailDelivery,

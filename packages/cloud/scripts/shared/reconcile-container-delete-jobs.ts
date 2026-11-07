@@ -7,7 +7,7 @@
  * first and attach the report to the issue before applying.
  *
  * Usage:
- *   DATABASE_URL=postgres://... bun scripts/reconcile-container-delete-jobs.ts [--apply]
+ *   DATABASE_URL=postgres://... bun packages/cloud/scripts/shared/reconcile-container-delete-jobs.ts [--apply]
  */
 
 import process from "node:process";

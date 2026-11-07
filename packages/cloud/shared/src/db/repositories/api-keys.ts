@@ -70,14 +70,17 @@ export class ApiKeysRepository {
    * primary in one statement. Callers keep their own rejection ordering; a
    * missing user or organization is returned as null rather than filtered.
    */
-  async findIdentityByHashConsistent(hash: string): Promise<
+  async findIdentityByHashConsistent(
+    hash: string,
+    tx?: DbTransaction,
+  ): Promise<
     | {
         apiKey: ApiKey;
         user: (User & { organization: Organization | null }) | null;
       }
     | undefined
   > {
-    const [row] = await dbWrite
+    const [row] = await (tx ?? dbWrite)
       .select({ apiKey: apiKeys, user: users, organization: organizations })
       .from(apiKeys)
       .leftJoin(users, eq(users.id, apiKeys.user_id))
@@ -274,8 +277,12 @@ export class ApiKeysRepository {
   /**
    * Updates an existing API key.
    */
-  async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
-    const [updated] = await dbWrite
+  async update(
+    id: string,
+    data: Partial<NewApiKey>,
+    tx?: DbTransaction,
+  ): Promise<ApiKey | undefined> {
+    const [updated] = await (tx ?? dbWrite)
       .update(apiKeys)
       .set({
         ...data,
@@ -416,8 +423,39 @@ export class ApiKeysRepository {
     return tombstone;
   }
 
-  async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
-    await dbWrite
+  /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
+  async tombstoneExactStandardCredential(
+    id: string,
+    keyHash: string,
+    revokedAt: Date,
+    tx?: DbTransaction,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await (tx ?? dbWrite)
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.key_hash, keyHash),
+          isNull(apiKeys.deleted_at),
+          isNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
+  }
+
+  async deactivateUserKeysByName(userId: string, name: string, tx?: DbTransaction): Promise<void> {
+    await (tx ?? dbWrite)
       .update(apiKeys)
       .set({
         is_active: false,
@@ -496,8 +534,12 @@ export class ApiKeysRepository {
    * org (billing + access), and the plaintext is encrypted under the org's
    * DEK, so the keys can be neither kept nor re-scoped — they are revoked.
    */
-  async deactivateByUserAndOrganization(userId: string, organizationId: string): Promise<void> {
-    await dbWrite
+  async deactivateByUserAndOrganization(
+    userId: string,
+    organizationId: string,
+    tx?: DbTransaction,
+  ): Promise<void> {
+    await (tx ?? dbWrite)
       .update(apiKeys)
       .set({
         is_active: false,

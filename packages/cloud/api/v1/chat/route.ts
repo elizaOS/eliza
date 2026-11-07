@@ -6,6 +6,72 @@
  * anonymous counter mirrors run under `waitUntil`.
  */
 
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import type { AnonymousSession } from "@elizaos/cloud-shared/db/repositories/anonymous-sessions";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getAnonymousUser,
+  reserveAnonymousMessageSlot,
+} from "@elizaos/cloud-shared/lib/auth-anonymous";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import { resolveModel } from "@elizaos/cloud-shared/lib/models";
+import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
+import {
+  mergeAnthropicCotProviderOptions,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  getAiProviderConfigurationError,
+  getLanguageModel,
+  hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import {
+  type AnonymousChatGateCredential,
+  type AnonymousChatGateLease,
+  commitAnonymousChatSlot,
+  markAnonymousChatSlotDispatched,
+  refundAnonymousChatSlot,
+  reserveAnonymousChatSlot,
+  resolveAnonymousChatContext,
+} from "@elizaos/cloud-shared/lib/services/anonymous-chat-admission";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { conversationsService } from "@elizaos/cloud-shared/lib/services/conversations";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+  DEFAULT_OUTPUT_TOKENS,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
@@ -13,74 +79,6 @@ import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import {
-  getAnonymousUser,
-  reserveAnonymousMessageSlot,
-} from "@/lib/auth-anonymous";
-import {
-  enforceOrgRateLimit,
-  OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import { resolveModel } from "@/lib/models";
-import { estimateTokens } from "@/lib/pricing";
-import {
-  mergeAnthropicCotProviderOptions,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  getAiProviderConfigurationError,
-  getLanguageModel,
-  hasLanguageModelProviderConfigured,
-  isProviderConfigurationError,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import { billUsage } from "@/lib/services/ai-billing";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import {
-  type AnonymousChatGateCredential,
-  type AnonymousChatGateLease,
-  commitAnonymousChatSlot,
-  markAnonymousChatSlotDispatched,
-  refreshAnonymousChatModeration,
-  refundAnonymousChatSlot,
-  reserveAnonymousChatSlot,
-  resolveAnonymousChatContext,
-} from "@/lib/services/anonymous-chat-admission";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { contentModerationService } from "@/lib/services/content-moderation";
-import { conversationsService } from "@/lib/services/conversations";
-import {
-  type CreditReconciliationResult,
-  type CreditReservation,
-  creditsService,
-  DEFAULT_OUTPUT_TOKENS,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { generationsService } from "@/lib/services/generations";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
-import {
-  admitOrganizationInference,
-  InferenceAdmissionUnavailableError,
-} from "@/lib/services/organization-inference-admission";
-import { usageService } from "@/lib/services/usage";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const ROUTE_MAX_DURATION = 800;
 const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
@@ -135,16 +133,6 @@ function extractTextFromParts(
   return parts.map((part) => (part.type === "text" ? part.text : "")).join("");
 }
 
-function getMessageText(message: UIMessage | { content?: string }): string {
-  if ("parts" in message && Array.isArray(message.parts)) {
-    return extractTextFromParts(message.parts);
-  }
-  if ("content" in message && typeof message.content === "string") {
-    return message.content;
-  }
-  return "";
-}
-
 async function getRequestApiKey(
   c: AppContext,
 ): Promise<ApiKeyIdentity | undefined> {
@@ -156,14 +144,16 @@ async function getRequestApiKey(
   const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return undefined;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
+  const { apiKeysService } = await import(
+    "@elizaos/cloud-shared/lib/services/api-keys"
+  );
   const validated = await apiKeysService.validateApiKey(apiKey);
   return validated ? { id: validated.id } : undefined;
 }
 
-function retryableWarmingResponse(c: AppContext, area: string): Response {
+function retryableUnavailableResponse(c: AppContext, area: string): Response {
   return c.json(
-    { error: `${area} authorization is warming. Retry shortly.` },
+    { error: `${area} authorization is unavailable. Retry shortly.` },
     503,
     { "Retry-After": "1" },
   );
@@ -215,15 +205,8 @@ app.post("/", async (c) => {
       typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
     // error-policy:J4 Hono intentionally throws outside Workers; local tools
-    // retain compatibility, while enabled Worker admission fails closed below.
+    // keep the synchronous primary admission.
     executionCtx = undefined;
-  }
-  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
-    logger.error(
-      "chat-api",
-      "Worker execution context is unavailable for cache-only inference",
-    );
-    return retryableWarmingResponse(c, "Inference");
   }
 
   let settleReservation:
@@ -268,8 +251,8 @@ app.post("/", async (c) => {
       "id" | "session_token" | "message_count" | "messages_limit"
     > | null = null;
     let anonymousCredential: AnonymousChatGateCredential | null = null;
-    let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let apiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let guardOrganizationId: string | undefined;
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -280,12 +263,8 @@ app.post("/", async (c) => {
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
-        cacheOnly: true,
         deferStrongCredentialCheck: requestIsValid,
       });
-      if (authResolution.kind === "warming") {
-        return retryableWarmingResponse(c, "Authentication");
-      }
       if (authResolution.kind === "suspended") {
         const denial = resolveInferenceAuthStandingDenial(authResolution, {
           route: "chat",
@@ -326,21 +305,20 @@ app.post("/", async (c) => {
         apiKey = authResolution.ctx.apiKeyId
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
-        moderationAlreadyChecked = true;
         admissionSnapshot = authResolution.ctx.admission;
+        apiKeyRateLimit =
+          "apiKeyRateLimit" in authResolution.ctx
+            ? authResolution.ctx.apiKeyRateLimit
+            : undefined;
         admissionCredential = authResolution.credential;
         if (invalidRequestResponse) return invalidRequestResponse;
       } else {
         if (invalidRequestResponse) return invalidRequestResponse;
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
-          executionCtx,
         );
         if (anonymousResolution.kind === "missing") {
           return c.json({ error: "Authentication required" }, 401);
-        }
-        if (anonymousResolution.kind === "warming") {
-          return retryableWarmingResponse(c, "Anonymous session");
         }
         if (anonymousResolution.kind === "rejected") {
           return c.json(
@@ -349,7 +327,7 @@ app.post("/", async (c) => {
           );
         }
         if (anonymousResolution.kind === "unavailable") {
-          return retryableWarmingResponse(c, "Anonymous session");
+          return retryableUnavailableResponse(c, "Anonymous session");
         }
         if (anonymousResolution.blocked) {
           return c.json(
@@ -372,7 +350,6 @@ app.post("/", async (c) => {
           messages_limit: anonymousCredential.context.messagesLimit,
         };
         isAnonymous = true;
-        moderationAlreadyChecked = true;
       }
     } else {
       const authedUser = await getCurrentUser(c);
@@ -408,17 +385,19 @@ app.post("/", async (c) => {
             cacheOnly: Boolean(executionCtx),
             executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
             apiKeyId: apiKey?.id,
+            apiKeyRateLimit,
+            userId: user.id,
           },
         );
       } catch (error) {
-        // error-policy:J1 the dashboard protocol exposes a cold policy cache as
-        // retryable unavailability and never falls through to database policy.
+        // error-policy:J1 the dashboard protocol exposes an unprovable policy
+        // as retryable unavailability.
         if (error instanceof OrgRateLimitCacheNotReadyError) {
           return c.json(
             {
-              error:
-                "Rate-limit authorization cache is warming. Retry shortly.",
+              error: "Rate-limit authorization is unavailable. Retry shortly.",
               retryable: true,
             },
             503,
@@ -467,7 +446,6 @@ app.post("/", async (c) => {
     const modelConfig = resolveModel(tierOrModel);
     const selectedModel = modelConfig.modelId;
     const provider = modelConfig.provider;
-    const lastMessage = messages[messages.length - 1];
     const lastRawMessage = rawMessages[rawMessages.length - 1];
     const metadata =
       lastRawMessage?.metadata && typeof lastRawMessage.metadata === "object"
@@ -479,57 +457,8 @@ app.post("/", async (c) => {
       return c.json({ error: getAiProviderConfigurationError() }, 503);
     }
 
-    if (!moderationAlreadyChecked) {
-      const blocked = await contentModerationService.shouldBlockUser(user.id);
-      if (blocked) {
-        logger.warn("chat-api", "User blocked due to moderation violations", {
-          userId: user.id,
-        });
-        return c.json(
-          {
-            error:
-              "Your account has been suspended due to policy violations. Please contact support.",
-          },
-          403,
-        );
-      }
-    }
-
-    const lastMessageText = getMessageText(lastMessage);
-    if (lastMessageText) {
-      const moderationTask = contentModerationService.moderateInBackground(
-        lastMessageText,
-        user.id,
-        conversationId,
-        (result) => {
-          logger.warn("chat-api", "Async moderation detected violation", {
-            userId: user.id,
-            categories: result.flaggedCategories,
-            action: result.action,
-          });
-          if (executionCtx && anonymousCredential) {
-            executionCtx.waitUntil(
-              refreshAnonymousChatModeration(anonymousCredential).catch(
-                (error) => {
-                  // error-policy:J7 the violation is durable in Postgres; this
-                  // cache refresh failure is separately observable.
-                  logger.error(
-                    "chat-api",
-                    "Anonymous moderation cache refresh failed",
-                    {
-                      userId: user.id,
-                      error:
-                        error instanceof Error ? error.message : String(error),
-                    },
-                  );
-                },
-              ),
-            );
-          }
-        },
-      );
-      executionCtx?.waitUntil(moderationTask);
-    }
+    // Chat content is not moderated, synchronously or in the background.
+    // Account standing is part of the cached auth decision above.
 
     const requestId = crypto.randomUUID();
     providerLogContext = {
@@ -544,11 +473,8 @@ app.post("/", async (c) => {
           requestId,
           executionCtx,
         );
-        if (
-          leaseResolution.kind === "warming" ||
-          leaseResolution.kind === "unavailable"
-        ) {
-          return retryableWarmingResponse(c, "Anonymous quota");
+        if (leaseResolution.kind === "unavailable") {
+          return retryableUnavailableResponse(c, "Anonymous quota");
         }
         if (leaseResolution.kind === "rejected") {
           return c.json(
@@ -666,11 +592,10 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError ||
-          error instanceof AiPricingCacheWarmingError ||
+          error instanceof InferenceBillingUnavailableError ||
           error instanceof AiPricingCacheUnavailableError
         ) {
-          return retryableWarmingResponse(c, "Billing");
+          return retryableUnavailableResponse(c, "Billing");
         }
         throw error;
       }
@@ -705,11 +630,6 @@ app.post("/", async (c) => {
         cotBudget ?? undefined,
       ),
       onFinish: async ({ text, usage, finishReason }) => {
-        assertModelOutputComplete({
-          finishReason,
-          provider,
-          model: selectedModel,
-        });
         await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
             await settleUnknownReservation?.();
@@ -843,6 +763,11 @@ app.post("/", async (c) => {
             });
           }
         });
+        assertModelOutputComplete({
+          finishReason,
+          provider,
+          model: selectedModel,
+        });
       },
       onAbort: async () => {
         await settleOffResponsePath(executionCtx, async () => {
@@ -973,7 +898,7 @@ app.post("/", async (c) => {
     }
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       logger.error("chat-api", "Provider dispatch admission failed closed", {
         ...providerLogContext,
@@ -984,7 +909,7 @@ app.post("/", async (c) => {
             ? `${error.cause.name}: ${error.cause.message}`
             : undefined,
       });
-      return retryableWarmingResponse(c, "Billing");
+      return retryableUnavailableResponse(c, "Billing");
     }
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : String(error),

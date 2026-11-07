@@ -14,14 +14,15 @@ import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
 import { decodePathComponent } from "@elizaos/agent/api/server-helpers";
 import {
+  authStoreForRuntime,
   ensureRouteAuthorized,
   ensureSessionForRequest,
   getCompatApiToken,
   getProvidedApiToken,
+  isTrustedLocalRequest,
   tokenMatches,
-} from "@elizaos/app/api/auth";
-import { isTrustedLocalRequest } from "@elizaos/app/api/compat-route-shared";
-import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
+} from "@elizaos/app/auth";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   resolveOwnerEntityIdOrDefault,
@@ -31,13 +32,12 @@ import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-  type LegacyRouteHandler,
-  type HttpPlugin as Plugin,
-  type Route,
-} from "@elizaos/core/api/http-plugin";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/host";
+import type {
+  LegacyRouteHandler,
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/host/protocol";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
@@ -162,7 +162,16 @@ export async function requireLifeOpsRouteOwnerAdminAccess(args: {
     if (await requestHasOwnerRouteRole({ req, res, runtime })) {
       return true;
     }
-  } catch {
+  } catch (cause) {
+    // error-policy:J1 boundary translation — the gate fails closed when the
+    // auth/session store throws, and reports the fault so a store outage is
+    // not read as a missing role.
+    // The query string is left out: it carries request data, and reported
+    // context is logged and read by the RECENT_ERRORS provider.
+    runtime.reportError("LifeOps.routeAccess", cause, {
+      method: req.method,
+      path: new URL(req.url ?? "/", requestBaseUrl(req)).pathname,
+    });
     error(res, "LifeOps route access could not be verified", 403);
     return false;
   }
@@ -289,14 +298,12 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/capabilities" },
-  { type: "GET", path: "/api/lifeops/calendar/feed" },
   { type: "POST", path: "/api/lifeops/calendar/imported-data/purge" },
   { type: "POST", path: "/api/lifeops/calendar/seed" },
   { type: "GET", path: "/api/lifeops/calendar/sources" },
   { type: "POST", path: "/api/lifeops/calendar/sources" },
   { type: "GET", path: "/api/lifeops/calendar/meeting-auto-join" },
   { type: "PUT", path: "/api/lifeops/calendar/meeting-auto-join" },
-  { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
   { type: "GET", path: "/api/lifeops/calendar/sync-control" },
@@ -491,22 +498,6 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/status",
-  },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/health/:provider/callback",
-    public: true,
-    name: "lifeops.health.callback",
-    publicReason:
-      "Health connector OAuth callbacks must accept provider redirects.",
-  },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/health/:provider/success",
-    public: true,
-    name: "lifeops.health.success",
-    publicReason:
-      "Health connector OAuth success landing must render after provider redirects.",
   },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },

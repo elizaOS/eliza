@@ -6,12 +6,12 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarSummary,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/contracts";
 import { CalendarServiceError } from "./errors.js";
 
 export const ELIZA_CALENDAR_PROVIDER = "eliza" as const;
@@ -160,7 +160,11 @@ export function createElizaCalendarEvent(args: {
     side: "owner",
     calendarId: ELIZA_CALENDAR_ID,
     title,
-    description: args.request.description?.trim() ?? "",
+    // A verified source note carries exact authored body bytes. Ordinary
+    // structured descriptions retain their existing whitespace normalization.
+    description: args.request.sourceNote
+      ? (args.request.description ?? "")
+      : (args.request.description?.trim() ?? ""),
     location: args.request.location?.trim() ?? "",
     status: "confirmed",
     startAt: args.startAt,

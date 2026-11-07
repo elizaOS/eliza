@@ -9,8 +9,8 @@
     "paths": {
       "@elizaos/app": ["../../packages/app/src/index.ts"],
       "@elizaos/app/*": ["../../packages/app/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],

@@ -6,6 +6,11 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { LoginAuth } from "../../sdk/auth";
 
 const databaseUrl = process.env.LOGIN_TEST_DATABASE_URL;
+if (process.env.LOGIN_REQUIRE_POSTGRES_TESTS === "1" && !databaseUrl) {
+  throw new Error(
+    "LOGIN_TEST_DATABASE_URL is required by the PostgreSQL test lane",
+  );
+}
 
 test.skipIf(!databaseUrl)(
   "PostgreSQL login preserves sessions under enforced tenant isolation and rejects schema drift",
@@ -78,6 +83,106 @@ test.skipIf(!databaseUrl)(
       process.env.SKIP_MIGRATIONS = "1";
       server = await startLoginServer({ port: 0 });
       let base = `http://127.0.0.1:${server.port}`;
+      const idempotency = await import("../api/middleware/idempotency");
+      expect(idempotency.defaultIdempotencyStore).toBeInstanceOf(
+        idempotency.DatabaseIdempotencyStore,
+      );
+      const receiptStore = () => {
+        const store = idempotency.defaultIdempotencyStore;
+        if (!(store instanceof idempotency.DatabaseIdempotencyStore)) {
+          throw new Error(
+            "Hosted login did not select database replay protection",
+          );
+        }
+        return store;
+      };
+      const receiptKey = `postgres-replay-${randomBytes(8).toString("hex")}`;
+      const receipt = {
+        fingerprint: "authenticated-request-fingerprint",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      };
+      const reservations = await Promise.all(
+        Array.from({ length: 12 }, () =>
+          receiptStore().reserve(receiptKey, receipt),
+        ),
+      );
+      expect(reservations.filter((entry) => entry === undefined)).toHaveLength(
+        1,
+      );
+      expect(
+        reservations.filter((entry) => entry?.status === "processing"),
+      ).toHaveLength(11);
+      await receiptStore().setCompleted(receiptKey, {
+        status: 201,
+        headers: [["content-type", "application/octet-stream"]],
+        body: new Uint8Array([0, 128, 255]).buffer,
+      });
+      const { transferLoginState } = await import("../auth/store-transfer");
+      const [storedReceipt] = await owner<{ value: string }[]>`
+        SELECT value FROM auth_kv_store WHERE namespace = 'idempotency' AND id = ${receiptKey}
+      `;
+      const transferredKey = `transferred-${receiptKey}`;
+      const transferSnapshot = {
+        capturedAtMs: Date.now(),
+        entries: [
+          {
+            key: `idempotency:${transferredKey}`,
+            value: storedReceipt.value,
+            expiresAtMs: receipt.expiresAt,
+          },
+          {
+            key: "auth:token:transfer-fixture",
+            value: "fixture-refresh-token",
+            expiresAtMs: receipt.expiresAt,
+          },
+          {
+            key: "auth:challenge:expired-transfer",
+            value: "expired",
+            expiresAtMs: Date.now() - 1_000,
+          },
+        ],
+      };
+      expect(
+        await transferLoginState(owner, transferSnapshot, "validate"),
+      ).toMatchObject({ live: 2, applied: false });
+      expect(await receiptStore().get(transferredKey)).toBeUndefined();
+      expect(
+        await transferLoginState(owner, transferSnapshot, "apply-quiesced"),
+      ).toMatchObject({ live: 2, applied: true });
+      expect(await receiptStore().get(transferredKey)).toMatchObject({
+        status: "completed",
+      });
+      const { PostgresBackend } = await import("../auth/store-backends");
+      const importedTokens = new PostgresBackend("token");
+      expect(await importedTokens.get("transfer-fixture")).toBe(
+        "fixture-refresh-token",
+      );
+      const beforeConflict =
+        await owner`SELECT value FROM auth_kv_store WHERE namespace = 'token' AND id = 'transfer-fixture'`;
+      await expect(
+        transferLoginState(
+          owner,
+          {
+            ...transferSnapshot,
+            entries: [
+              {
+                ...transferSnapshot.entries[0],
+                key: "idempotency:must-not-publish",
+              },
+              { ...transferSnapshot.entries[1], value: "conflicting-token" },
+            ],
+          },
+          "apply-quiesced",
+        ),
+      ).rejects.toMatchObject({ code: "LOGIN_STATE_TRANSFER_CONFLICT" });
+      expect(await receiptStore().get("must-not-publish")).toBeUndefined();
+      expect([
+        ...(await owner`SELECT value FROM auth_kv_store WHERE namespace = 'token' AND id = 'transfer-fixture'`),
+      ]).toEqual([...beforeConflict]);
+      expect(
+        await transferLoginState(owner, transferSnapshot, "apply-quiesced"),
+      ).toMatchObject({ live: 2, conflicts: 0 });
       const nonceResponse = await fetch(`${base}/auth/nonce`, {
         headers: { Origin: "https://eliza.app" },
       });
@@ -117,13 +222,26 @@ test.skipIf(!databaseUrl)(
         SELECT tenant_id AS "tenantId", actor_id AS "actorId"
         FROM audit_events WHERE action = 'auth.login'
       `;
-      expect(auditRows).toEqual([
+      expect([...auditRows]).toEqual([
         { tenantId: `eth:${account.address.toLowerCase()}`, actorId: userId },
       ]);
       await server.stop();
       server = undefined;
       server = await startLoginServer({ port: 0 });
       base = `http://127.0.0.1:${server.port}`;
+      const replay = await receiptStore().get(receiptKey);
+      expect(replay?.status).toBe("completed");
+      expect(replay?.response?.status).toBe(201);
+      expect(
+        new Uint8Array(replay?.response?.body ?? new ArrayBuffer(0)),
+      ).toEqual(new Uint8Array([0, 128, 255]));
+      expect(await receiptStore().reserve(receiptKey, receipt)).toMatchObject({
+        status: "completed",
+      });
+      await owner`UPDATE auth_kv_store SET expires_at = now() - interval '1 second'
+        WHERE namespace = 'idempotency' AND id = ${receiptKey}`;
+      expect(await receiptStore().reserve(receiptKey, receipt)).toBeUndefined();
+      await receiptStore().delete(receiptKey);
       const headers = {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -213,6 +331,103 @@ test.skipIf(!databaseUrl)(
       ).toMatchObject({ authenticated: false });
       await server.stop();
       server = undefined;
+      const {
+        closeDb,
+        getDb,
+        tenantContextForInternalJob,
+        withTenantRlsTransaction,
+        withTenantTransactionDatabase,
+        webhookConfigs,
+        waitUntilTenantDatabaseTask,
+      } = await import("../db/index");
+      const { PersistentQueue, WebhookDispatcher } = await import(
+        "../webhooks/index"
+      );
+      const { sql } = await import("drizzle-orm");
+      const { dispatchWebhook } = await import(
+        "../api/services/webhook-dispatch"
+      );
+      const dispatched: string[] = [];
+      class QueueDispatcher extends WebhookDispatcher {
+        override async dispatch(event: import("../shared/index").WebhookEvent) {
+          // The worker must release its tenant transaction before network I/O.
+          const context = await getDb().execute(
+            sql`SELECT NULLIF(current_setting('steward.tenant_id', true), '') AS tenant_id`,
+          );
+          expect([...context]).toEqual([{ tenant_id: null }]);
+          const claims =
+            await owner`SELECT id FROM webhook_deliveries WHERE tenant_id = ${event.tenantId} AND status = 'processing'`;
+          expect(claims).toHaveLength(1);
+          dispatched.push(event.tenantId);
+          return { success: true, attempts: 1, deliveredAt: new Date() };
+        }
+      }
+      const queue = new PersistentQueue(new QueueDispatcher());
+      const queueTenants = ["queue-one", "queue-two"];
+      try {
+        for (const tenantId of queueTenants) {
+          await owner`INSERT INTO tenants(id, name, api_key_hash) VALUES (${tenantId}, ${tenantId}, ${tenantId})`;
+          await withTenantRlsTransaction(
+            getDb(),
+            "postgres-js",
+            tenantContextForInternalJob({ tenantId, job: "queue-fixture" }),
+            (tx) =>
+              withTenantTransactionDatabase(tx, { tenantId }, async () => {
+                const [config] = await getDb()
+                  .insert(webhookConfigs)
+                  .values({
+                    tenantId,
+                    url: "https://queue.example.test",
+                    secret: "fixture",
+                  })
+                  .returning();
+                if (tenantId === "queue-two") {
+                  // Register delayed work without awaiting it; the owner must
+                  // drain this and the webhook task it schedules before commit.
+                  void waitUntilTenantDatabaseTask(async () => {
+                    await Bun.sleep(20);
+                    dispatchWebhook(
+                      tenantId,
+                      "dashboard",
+                      "user.wallet_created",
+                      {},
+                    );
+                  });
+                  return;
+                }
+                await queue.enqueue(
+                  {
+                    type: "webhook.test",
+                    tenantId,
+                    timestamp: new Date(),
+                    data: {},
+                  },
+                  config,
+                );
+              }),
+          );
+        }
+        expect(await getDb().select().from(webhookConfigs)).toEqual([]);
+        const pending =
+          await owner`SELECT status, attempts FROM webhook_deliveries ORDER BY tenant_id`;
+        expect([...pending]).toEqual([
+          { status: "pending", attempts: 0 },
+          { status: "pending", attempts: 0 },
+        ]);
+        expect(await queue.processQueue()).toHaveLength(2);
+        expect(dispatched.sort()).toEqual(queueTenants);
+        const receipts =
+          await owner`SELECT tenant_id, status, attempts FROM webhook_deliveries ORDER BY tenant_id`;
+        expect([...receipts]).toEqual(
+          queueTenants.map((tenant_id) => ({
+            tenant_id,
+            status: "delivered",
+            attempts: 1,
+          })),
+        );
+      } finally {
+        await closeDb();
+      }
       await owner`UPDATE drizzle.__drizzle_migrations SET hash = ${"0".repeat(64)} WHERE id = (SELECT min(id) FROM drizzle.__drizzle_migrations)`;
       await expect(startLoginServer({ port: 0 })).rejects.toMatchObject({
         code: "LOGIN_STARTUP_FAILED",
@@ -233,5 +448,5 @@ test.skipIf(!databaseUrl)(
       await admin.end();
     }
   },
-  60_000,
+  300_000,
 );

@@ -5,19 +5,22 @@
  * `side` query param scopes the result to OWNER, AGENT, or TEAM accounts.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   listManagedGoogleConnectorAccounts,
-} from "@/lib/services/agent-google-connector";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
 import {
   OAUTH_CONNECTION_ROLES,
   type OAuthStandardConnectionRole,
   parseOAuthConnectionRole,
-} from "@/lib/services/oauth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 const ACCOUNT_ROLES = [
@@ -32,6 +35,7 @@ app.get("/", async (c) => {
     if (rawSide !== null && !side) {
       return c.json({ error: "side must be OWNER, AGENT, or TEAM." }, 400);
     }
+    if (!side || side === "OWNER") await requirePrivateOwnerAccess(c, user);
     const sides = side ? [side] : ACCOUNT_ROLES;
     const accounts = (
       await Promise.all(

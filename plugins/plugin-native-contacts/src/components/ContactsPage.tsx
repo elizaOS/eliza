@@ -3,7 +3,7 @@
  * surface, keeping the shared UI package free of Contacts-specific framing.
  */
 
-import { PluginPageFrame } from "@elizaos/ui/components";
+import { PluginPageFrame } from "@elizaos/ui";
 import { ContactsView } from "./ContactsView.tsx";
 
 export function ContactsPage(): React.JSX.Element {

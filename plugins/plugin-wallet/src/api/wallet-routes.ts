@@ -7,17 +7,6 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, type ElizaConfig, logger } from "@elizaos/core";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core/api/route-helpers";
-import { normalizeWalletRpcSelections } from "@elizaos/core/contracts/wallet";
-import {
-  PostWalletGenerateRequestSchema,
-  PostWalletImportRequestSchema,
-  PostWalletPrimaryRequestSchema,
-} from "@elizaos/core/contracts/wallet-routes";
 import type {
   WalletBalancesResponse,
   WalletChain,
@@ -32,7 +21,19 @@ import type {
   WalletRpcChain,
   WalletRpcSelections,
   WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import {
+  normalizeWalletRpcSelections,
+  PostWalletGenerateRequestSchema,
+  PostWalletImportRequestSchema,
+  PostWalletPrimaryRequestSchema,
+} from "@elizaos/contracts";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import type {
+  ElizaConfig,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/host/protocol";
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of
@@ -53,6 +54,8 @@ export interface WalletRpcReadinessSnapshot {
 }
 
 import * as ethers from "ethers";
+import { prefixEvmHex } from "../chains/evm/routes/evm-hex.js";
+import type { WalletBackendService } from "../services/wallet-backend-service.js";
 
 type CloudWalletProvider = "privy" | "steward";
 interface CloudWalletDescriptor {
@@ -309,6 +312,15 @@ export interface WalletRouteDependencies {
   };
   isCloudWalletEnabled: () => boolean;
   persistConfigEnv: (key: string, value: string) => Promise<void>;
+  /**
+   * Durably stores local wallet private keys wherever `saveConfig` will not
+   * (OS-store mode strips keys from disk config). All-or-nothing: rejects,
+   * with prior stored keys restored, when any key cannot be stored.
+   */
+  persistWalletPrivateKeys: (
+    config: ElizaConfig,
+    keys: Partial<Record<"EVM_PRIVATE_KEY" | "SOLANA_PRIVATE_KEY", string>>,
+  ) => Promise<void>;
   createIntegrationTelemetrySpan: (
     args: CreateIntegrationTelemetrySpanArgs,
   ) => IntegrationTelemetrySpan;
@@ -354,6 +366,19 @@ function readPrimaryMap(config: ElizaConfig): WalletPrimaryMap {
     }
   }
   return out;
+}
+/**
+ * Browser-wallet signing in this process uses the local key only. A
+ * cloud-primary chain shows the cloud address, so signing for it with the
+ * local key would spend from a wallet the user did not select.
+ */
+function cloudPrimarySigningRefusal(
+  config: ElizaConfig,
+  chain: WalletChainKind,
+): string | null {
+  if (readPrimaryMap(config)[chain] !== "cloud") return null;
+  const label = chain === "evm" ? "EVM" : "Solana";
+  return `The primary ${label} wallet is the Eliza Cloud wallet, and this agent has no signer for it. Make the local ${label} wallet primary to sign with it.`;
 }
 function coerceCloudProvider(value: unknown): CloudWalletProvider {
   return value === "privy" || value === "steward" ? value : "privy";
@@ -489,7 +514,7 @@ export interface WalletRouteContext
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
   config: ElizaConfig;
   saveConfig: (config: ElizaConfig) => void;
-  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
+  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => Promise<boolean>;
   resolveWalletExportRejection: (
     req: http.IncomingMessage,
     body: WalletExportRequestBody,
@@ -515,6 +540,12 @@ const LOCAL_WALLET_SOURCE_ENV_KEYS: Record<WalletChain, string> = {
   evm: "WALLET_SOURCE_EVM",
   solana: "WALLET_SOURCE_SOLANA",
 };
+const WALLET_KEY_ENV_NAMES = [
+  "EVM_PRIVATE_KEY",
+  "SOLANA_PRIVATE_KEY",
+  "SOLANA_PUBLIC_KEY",
+  "WALLET_PUBLIC_KEY",
+] as const;
 type BrowserSolanaCluster = "mainnet" | "devnet" | "testnet";
 interface BrowserEvmTransactionRequest {
   broadcast: boolean;
@@ -567,7 +598,7 @@ function normalizeBrowserHexData(value: unknown): string | undefined {
   if (!trimmed) {
     return undefined;
   }
-  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+  return prefixEvmHex(trimmed);
 }
 function safeParseBrowserBigInt(value: string): bigint {
   try {
@@ -583,7 +614,7 @@ function resolveLocalBrowserEvmWallet(): ethers.Wallet {
   if (!evmKey) {
     throw new Error("Local EVM wallet signing is unavailable.");
   }
-  return new ethers.Wallet(evmKey.startsWith("0x") ? evmKey : `0x${evmKey}`);
+  return new ethers.Wallet(prefixEvmHex(evmKey));
 }
 function base58DecodeBrowser(value: string): Buffer {
   if (!value.length) {
@@ -598,7 +629,13 @@ function base58DecodeBrowser(value: string): Buffer {
     number = number * 58n + BigInt(index);
   }
   const hex = number.toString(16);
-  const bytes = Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+  // number === 0n means the input was all "1"s (empty numeric section);
+  // the hex conversion above would emit a spurious zero byte, so start
+  // from empty bytes and let the leading-zero prefix carry the value.
+  const bytes =
+    number === 0n
+      ? Buffer.alloc(0)
+      : Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
   let leadingZeroes = 0;
   for (const character of value) {
     if (character !== "1") {
@@ -655,28 +692,49 @@ function resolveLocalBrowserSolanaSeed(
     seed,
   };
 }
+/**
+ * Strict, canonical base64. Buffer.from silently skips invalid characters, so
+ * a malformed payload would otherwise sign or relay different bytes than the
+ * caller sent (an all-invalid string signs an empty message).
+ */
+function decodeBrowserBase64(value: string, field: string): Buffer {
+  const normalized = value.trim();
+  const bytes = Buffer.from(normalized, "base64");
+  const canonical = bytes.toString("base64");
+  // Padded input must be fully padded ("Zg==", not "Zg="); unpadded input
+  // must be exactly the canonical encoding without its padding.
+  const padded = normalized.endsWith("=");
+  if (
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) ||
+    bytes.length === 0 ||
+    (padded
+      ? canonical !== normalized
+      : canonical.replace(/=+$/, "") !== normalized)
+  )
+    throw new BrowserWalletInputError(`${field} must be valid base64.`);
+  return bytes;
+}
 function resolveBrowserSolanaMessageBytes(
   body: Record<string, unknown>,
 ): Buffer {
   const messageBase64 = normalizeBrowserString(body.messageBase64);
   if (messageBase64) {
-    return Buffer.from(messageBase64, "base64");
+    return decodeBrowserBase64(messageBase64, "messageBase64");
   }
   const message = normalizeBrowserString(body.message);
   if (!message) {
-    throw new Error("message or messageBase64 is required.");
+    throw new BrowserWalletInputError("message or messageBase64 is required.");
   }
   return Buffer.from(message, "utf8");
 }
-function resolveBrowserWalletMessagePayload(
+export function resolveBrowserWalletMessagePayload(
   message: string,
 ): string | Uint8Array {
   const trimmed = message.trim();
-  if (
-    trimmed.startsWith("0x") &&
-    trimmed.length >= 4 &&
-    trimmed.length % 2 === 0
-  ) {
+  // The consent preview treats 0x and 0X as the same hex payload. The signer
+  // must use that same rule, or the dialog shows "Hi" while the wallet signs
+  // the text "0X4869".
+  if (/^0x/i.test(trimmed) && trimmed.length >= 4 && trimmed.length % 2 === 0) {
     try {
       return ethers.getBytes(trimmed);
     } catch {
@@ -724,10 +782,11 @@ async function signLocalBrowserSolanaMessage(
 }
 /**
  * A browser-wallet HTTP request sent data that fails input validation
- * (malformed cluster, missing transaction payload). The route translates
- * this to a 400 response — a client error the caller must fix — while
- * signer, key, and network failures keep the 503 signer-unavailable
- * status so clients do not retry a payload that can never be valid.
+ * (malformed cluster, missing transaction payload, missing sign-message
+ * payload). The route translates this to a 400 response — a client error
+ * the caller must fix — while signer, key, and network failures keep the
+ * 503 signer-unavailable status so clients do not retry a payload that can
+ * never be valid.
  */
 class BrowserWalletInputError extends Error {
   constructor(message: string) {
@@ -782,37 +841,32 @@ async function signLocalBrowserSolanaTransaction(
   if (!transactionBase64) {
     throw new BrowserWalletInputError("transactionBase64 is required.");
   }
+  const txBytes = decodeBrowserBase64(transactionBase64, "transactionBase64");
   const broadcast = normalizeBrowserBoolean(body.broadcast, false);
   const cluster = normalizeBrowserSolanaCluster(body.cluster);
   const { address, seed } = resolveLocalBrowserSolanaSeed(deriveSolanaAddress);
   const { Keypair, VersionedTransaction, Transaction, Connection } =
     await loadBrowserSolanaWeb3();
   const keypair = Keypair.fromSeed(new Uint8Array(seed));
-  const txBytes = Buffer.from(transactionBase64, "base64");
   let signedBytes: Uint8Array;
   let broadcastSignature: string | undefined;
   try {
     const versioned = VersionedTransaction.deserialize(txBytes);
     versioned.sign([keypair]);
     signedBytes = versioned.serialize();
-    if (broadcast) {
-      const connection = new Connection(
-        browserSolanaClusterRpcUrl(cluster),
-        "confirmed",
-      );
-      broadcastSignature = await connection.sendRawTransaction(signedBytes);
-    }
-  } catch (_error) {
+  } catch {
+    // The fallback only covers the serialization format: a versioned
+    // transaction that fails to deserialize is retried as a legacy one.
     const legacy = Transaction.from(txBytes);
     legacy.partialSign(keypair);
     signedBytes = legacy.serialize();
-    if (broadcast) {
-      const connection = new Connection(
-        browserSolanaClusterRpcUrl(cluster),
-        "confirmed",
-      );
-      broadcastSignature = await connection.sendRawTransaction(signedBytes);
-    }
+  }
+  if (broadcast) {
+    const connection = new Connection(
+      browserSolanaClusterRpcUrl(cluster),
+      "confirmed",
+    );
+    broadcastSignature = await connection.sendRawTransaction(signedBytes);
   }
   return {
     address,
@@ -1009,13 +1063,28 @@ export async function handleWalletRoutes(
     )
       ? "Steward vault is configured. Consider importing keys directly into the vault instead of storing plaintext keys locally."
       : undefined;
+    const envBeforeImport = Object.fromEntries(
+      WALLET_KEY_ENV_NAMES.map((name) => [name, process.env[name]]),
+    );
     const result = deps.importWallet(chain, body.privateKey);
     if (!result.success) {
       error(res, result.error ?? "Import failed", 422);
       return true;
     }
-    if (!config.env) config.env = {};
     const envKey = chain === "evm" ? "EVM_PRIVATE_KEY" : "SOLANA_PRIVATE_KEY";
+    try {
+      await deps.persistWalletPrivateKeys(config, {
+        [envKey]: process.env[envKey] ?? "",
+      });
+    } catch (err) {
+      for (const [name, value] of Object.entries(envBeforeImport)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      error(res, `Failed to store imported wallet key: ${String(err)}`, 500);
+      return true;
+    }
+    if (!config.env) config.env = {};
     (config.env as Record<string, string>)[envKey] = process.env[envKey] ?? "";
     persistPrimarySelection(config, chain, "local");
     let configSaveWarning: string | undefined;
@@ -1207,14 +1276,33 @@ export async function handleWalletRoutes(
       return true;
     }
     // ── Legacy local key generation (fallback) ────────────────────────
+    const evmWallet =
+      targetChain === "both" || targetChain === "evm"
+        ? deps.generateWalletForChain("evm")
+        : null;
+    const solanaWallet =
+      targetChain === "both" || targetChain === "solana"
+        ? deps.generateWalletForChain("solana")
+        : null;
+    try {
+      await deps.persistWalletPrivateKeys(config, {
+        ...(evmWallet ? { EVM_PRIVATE_KEY: evmWallet.privateKey } : {}),
+        ...(solanaWallet
+          ? { SOLANA_PRIVATE_KEY: solanaWallet.privateKey }
+          : {}),
+      });
+    } catch (err) {
+      error(res, `Failed to store generated wallet key: ${String(err)}`, 500);
+      return true;
+    }
     if (!config.env) config.env = {};
     const generated: Array<{
       chain: WalletChain;
       address: string;
     }> = [];
     const generatedChains: WalletChain[] = [];
-    if (targetChain === "both" || targetChain === "evm") {
-      const result = deps.generateWalletForChain("evm");
+    if (evmWallet) {
+      const result = evmWallet;
       process.env.EVM_PRIVATE_KEY = result.privateKey;
       (config.env as Record<string, string>).EVM_PRIVATE_KEY =
         result.privateKey;
@@ -1223,8 +1311,8 @@ export async function handleWalletRoutes(
       generated.push({ chain: "evm", address: result.address });
       logger.info(`[eliza-api] Generated EVM wallet: ${result.address}`);
     }
-    if (targetChain === "both" || targetChain === "solana") {
-      const result = deps.generateWalletForChain("solana");
+    if (solanaWallet) {
+      const result = solanaWallet;
       setSolanaWalletEnv(result.privateKey);
       (config.env as Record<string, string>).SOLANA_PRIVATE_KEY =
         result.privateKey;
@@ -1282,6 +1370,14 @@ export async function handleWalletRoutes(
       runtime: ctx.runtime ?? null,
       getWalletAddresses: () => primaryAddresses,
     });
+    // Chat wallet writes go through the wallet router. Report the refusal it
+    // would return so readiness here matches what an execute request gets.
+    const executionBlockedReason =
+      capability.executionBlockedReason ??
+      ctx.runtime
+        ?.getService<WalletBackendService>("wallet-backend")
+        ?.getExecutionRefusal("evm") ??
+      null;
     const alchemyKeySet = Boolean(process.env.ALCHEMY_API_KEY?.trim());
     const ankrKeySet = Boolean(process.env.ANKR_API_KEY?.trim());
     const nodeRealSet = Boolean(process.env.NODEREAL_BSC_RPC_URL?.trim());
@@ -1322,13 +1418,16 @@ export async function handleWalletRoutes(
       automationMode: capability.automationMode,
       pluginEvmLoaded: capability.pluginEvmLoaded,
       pluginEvmRequired: capability.pluginEvmRequired,
-      executionReady: capability.executionReady,
-      executionBlockedReason: capability.executionBlockedReason,
+      executionReady: executionBlockedReason === null,
+      executionBlockedReason,
       evmSigningCapability: capability.evmSigningCapability,
       evmSigningReason: capability.evmSigningReason,
-      solanaSigningAvailable: primaryAddresses.solanaAddress
-        ? localSolanaSignerAvailable || primary.solana === "cloud"
-        : false,
+      // Solana signing in this process is local-key only; a cloud-primary
+      // Solana wallet has no signer here.
+      solanaSigningAvailable:
+        primary.solana !== "cloud" &&
+        Boolean(primaryAddresses.solanaAddress) &&
+        localSolanaSignerAvailable,
     };
     const dual = buildDualWalletShape(config, addresses, isCloudWalletEnabled);
     if (dual) {
@@ -1363,6 +1462,11 @@ export async function handleWalletRoutes(
         error(res, "message is required.", 400);
         return true;
       }
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "evm");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalEvmKey) {
         error(res, "No browser EVM signer is available.", 503);
         return true;
@@ -1375,6 +1479,11 @@ export async function handleWalletRoutes(
       return true;
     }
     if (pathname === "/api/wallet/browser-solana-sign-message") {
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "solana");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana signer is available.", 503);
         return true;
@@ -1385,11 +1494,22 @@ export async function handleWalletRoutes(
           await signLocalBrowserSolanaMessage(body, deriveSolanaAddress),
         );
       } catch (err) {
+        // Invalid request input is a client error, not a signer outage:
+        // replying 503 would invite clients to retry an unusable payload.
+        if (err instanceof BrowserWalletInputError) {
+          error(res, err.message, 400);
+          return true;
+        }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
       return true;
     }
     if (pathname === "/api/wallet/browser-solana-transaction") {
+      const cloudPrimary = cloudPrimarySigningRefusal(config, "solana");
+      if (cloudPrimary) {
+        error(res, cloudPrimary, 503);
+        return true;
+      }
       if (!hasLocalSolanaKey) {
         error(res, "No browser Solana transaction signer is available.", 503);
         return true;
@@ -1408,6 +1528,11 @@ export async function handleWalletRoutes(
         }
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
+      return true;
+    }
+    const cloudPrimary = cloudPrimarySigningRefusal(config, "evm");
+    if (cloudPrimary) {
+      error(res, cloudPrimary, 503);
       return true;
     }
     if (!hasLocalEvmKey) {
@@ -1699,25 +1824,6 @@ export async function handleWalletRoutes(
       ok: true,
       ...(configSaveWarning ? { warnings: [configSaveWarning] } : {}),
     });
-    return true;
-  }
-  if (method === "GET" && pathname === "/api/wallet/approvals/stream") {
-    error(
-      res,
-      "Wallet approval streaming requires the Steward wallet route bridge.",
-      503,
-    );
-    return true;
-  }
-  const approvalDecision = /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(
-    pathname,
-  );
-  if (method === "POST" && approvalDecision) {
-    error(
-      res,
-      "Wallet approval decisions require the Steward wallet route bridge.",
-      503,
-    );
     return true;
   }
   // POST /api/wallet/export — removed (no plaintext key export from the agent API).

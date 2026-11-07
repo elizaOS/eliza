@@ -1,7 +1,10 @@
 /**
  * Shared helpers for safely reading values from untyped config objects.
  */
-import { asNonEmptyString, asRecord } from "@elizaos/core/type-guards";
+import {
+  asNonEmptyString,
+  asObjectRecord as asRecord,
+} from "@elizaos/core/protocol";
 
 export { asRecord };
 export function readString(

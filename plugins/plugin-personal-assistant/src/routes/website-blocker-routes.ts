@@ -7,8 +7,12 @@
  * the reconciler cannot leave a window of unprotected state.
  */
 
+import type {
+  LifeOpsOccurrence,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 import {
   getSelfControlStatus,
   isWebsiteBlockedByPolicy,
@@ -17,10 +21,6 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
-import {
-  type LifeOpsOccurrence,
-  type LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { listCallerDefinitions } from "../lifeops/domains/definition-authorization.js";
 import { defaultOwnerEntityId } from "../lifeops/service-normalize.js";
 import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";

@@ -11,9 +11,10 @@
  * rejection instead of silently publishing different content. Approved
  * handoffs are materialized elsewhere (RESOLVE_REQUEST), never here.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,
@@ -30,6 +31,13 @@ import {
   normalizeMealCandidateInput,
   normalizeMealParticipantsInput,
 } from "./action-io.js";
+import {
+  FOOD_CONSTRAINT_SCHEMA,
+  FOOD_INVENTORY_LOT_SCHEMA,
+  FOOD_MEAL_SCHEMA,
+  FOOD_PARTICIPANTS_SCHEMA,
+  FOOD_PREFERENCE_SCHEMA,
+} from "./action-schema.js";
 import { type FoodDomainService, getFoodDomainService } from "./service.js";
 import type { MealPlanEvaluation } from "./types.js";
 
@@ -245,23 +253,23 @@ export function createFoodDomainAction(
       {
         name: "constraint",
         description:
-          "Typed hard food constraint with kind, excluded tags, subject entity, and provenance.",
+          "Typed hard food constraint with kind, excluded tags, the member it applies to, and provenance.",
         subactions: ["put_constraint"],
-        schema: { type: "object", additionalProperties: true },
+        schema: FOOD_CONSTRAINT_SCHEMA,
       },
       {
         name: "preference",
         description:
           "Typed soft food preference with preferred/avoided tags, weight, and provenance.",
         subactions: ["put_preference"],
-        schema: { type: "object", additionalProperties: true },
+        schema: FOOD_PREFERENCE_SCHEMA,
       },
       {
         name: "lot",
         description:
           "Inventory lot observation with quantity, unit, confidence state, and provenance.",
         subactions: ["record_inventory"],
-        schema: { type: "object", additionalProperties: true },
+        schema: FOOD_INVENTORY_LOT_SCHEMA,
       },
       {
         name: "plannedFor",
@@ -282,7 +290,7 @@ export function createFoodDomainAction(
           "publish_meal_plan",
           "request_shopping_handoff",
         ],
-        schema: { type: "object", additionalProperties: true },
+        schema: FOOD_MEAL_SCHEMA,
       },
       {
         name: "participants",
@@ -293,10 +301,7 @@ export function createFoodDomainAction(
           "publish_meal_plan",
           "request_shopping_handoff",
         ],
-        schema: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
+        schema: FOOD_PARTICIPANTS_SCHEMA,
       },
       {
         name: "expectedContentSha256",

@@ -17,6 +17,7 @@ import {
   queryAllBrowserWorkspaceSelector,
   resolveBrowserWorkspaceElement,
   resolveBrowserWorkspaceFindElement,
+  resolveBrowserWorkspaceFindElements,
   resolveWebBrowserWorkspaceCommandDocument,
 } from "./browser-workspace-elements.js";
 import {
@@ -907,6 +908,24 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
   });
 }
 
+/**
+ * A user clicking into a filled field types after its text. jsdom leaves an
+ * untouched field's caret at 0, so keyboard insertion would prepend; a later
+ * explicit selection still wins.
+ */
+function placeCaretAtEndOnFocus(element: Element): void {
+  const tag = element.tagName;
+  if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  const input = element as HTMLInputElement | HTMLTextAreaElement;
+  try {
+    if (input.selectionStart === null) return;
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  } catch {
+    // error-policy:J3 input types without a selection API keep no caret.
+  }
+}
+
 export async function executeWebBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult> {
@@ -991,20 +1010,24 @@ export async function executeWebBrowserWorkspaceDomCommand(
             command,
             command.selector,
           );
+          let count: number;
+          if (semanticCommand?.findBy) {
+            count = resolveBrowserWorkspaceFindElements(
+              document,
+              semanticCommand,
+            ).length;
+          } else {
+            // Plain CSS, or the `css:` semantic spelling: count every match.
+            const cssSelector = semanticCommand?.selector ?? command.selector;
+            count = queryAllBrowserWorkspaceSelector(
+              document,
+              cssSelector,
+            ).length;
+          }
           return {
             mode: "web",
             subaction: command.subaction,
-            value: semanticCommand
-              ? Number(
-                  Boolean(
-                    resolveBrowserWorkspaceFindElement(
-                      document,
-                      semanticCommand,
-                    ),
-                  ),
-                )
-              : queryAllBrowserWorkspaceSelector(document, command.selector)
-                  .length,
+            value: count,
           };
         }
 
@@ -1114,6 +1137,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
           case "focus":
             if (typeof (element as HTMLElement).focus === "function") {
               (element as HTMLElement).focus();
+              placeCaretAtEndOnFocus(element);
             }
             return {
               mode: "web",
@@ -1229,6 +1253,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         }
         if (typeof (element as HTMLElement).focus === "function") {
           (element as HTMLElement).focus();
+          placeCaretAtEndOnFocus(element);
         }
         return {
           mode: "web",
@@ -1273,11 +1298,27 @@ export async function executeWebBrowserWorkspaceDomCommand(
           active,
           command.subaction === "keyboardtype" ? "type" : "keyboardinserttext",
         );
-        const nextValue =
-          command.subaction === "keyboardtype"
-            ? `${control.value ?? ""}${command.value ?? ""}`
-            : (command.value ?? "");
-        setBrowserWorkspaceControlValue(control, nextValue);
+        const text = command.value ?? "";
+        if (control.tagName === "SELECT") {
+          const nextValue =
+            command.subaction === "keyboardtype"
+              ? `${control.value}${text}`
+              : text;
+          setBrowserWorkspaceControlValue(control, nextValue);
+        } else {
+          const input = control as HTMLInputElement | HTMLTextAreaElement;
+          if (!input.readOnly && !input.matches(":disabled")) {
+            const { selectionStart, selectionEnd } = input;
+            if (selectionStart !== null && selectionEnd !== null) {
+              // Both keyboard commands insert at the caret or replace the
+              // selected text. Leave the caret after the inserted text.
+              input.setRangeText(text, selectionStart, selectionEnd, "end");
+            } else {
+              // Input types without a selection API retain append behavior.
+              setBrowserWorkspaceControlValue(input, `${input.value}${text}`);
+            }
+          }
+        }
         return {
           mode: "web",
           subaction: command.subaction,
@@ -1320,13 +1361,92 @@ export async function executeWebBrowserWorkspaceDomCommand(
         const element = resolveTarget();
         const form = findClosestBrowserWorkspaceForm(element);
 
-        if (key === "Enter" && form) {
-          await submitWebBrowserWorkspaceForm(tab, form);
+        if (key === "Enter" && element?.tagName === "TEXTAREA") {
+          const textarea = element as HTMLTextAreaElement;
+          if (!textarea.readOnly && !textarea.matches(":disabled")) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            setBrowserWorkspaceControlValue(
+              textarea,
+              `${textarea.value.slice(0, start)}\n${textarea.value.slice(end)}`,
+            );
+            textarea.setSelectionRange(start + 1, start + 1);
+          }
+          return { mode: "web", subaction: command.subaction, value: { key } };
+        }
+        if (
+          key === "Enter" &&
+          (element?.tagName === "BUTTON" ||
+            (element?.tagName === "INPUT" &&
+              ["submit", "image", "button", "reset"].includes(
+                (element as HTMLInputElement).type,
+              )))
+        ) {
+          const result = await activateWebBrowserWorkspaceElement(
+            tab,
+            element,
+            "click",
+          );
+          return { ...result, subaction: command.subaction };
+        }
+        // Text controls submit through the default button. Without one, only
+        // a form with at most one control that blocks implicit submission does.
+        const blocksImplicitSubmission = (control: Element) =>
+          control.tagName === "INPUT" &&
+          [
+            "text",
+            "search",
+            "url",
+            "tel",
+            "email",
+            "password",
+            "date",
+            "month",
+            "week",
+            "time",
+            "datetime-local",
+            "number",
+          ].includes((control as HTMLInputElement).type);
+        const implicitSubmit =
+          key === "Enter" &&
+          form !== null &&
+          element !== null &&
+          blocksImplicitSubmission(element) &&
+          !element.matches(":disabled");
+        const submitter = implicitSubmit
+          ? Array.from(document.querySelectorAll("button, input")).find(
+              (control): control is HTMLButtonElement | HTMLInputElement =>
+                (control as HTMLButtonElement | HTMLInputElement).form ===
+                  form &&
+                ((control.tagName === "BUTTON" &&
+                  (control as HTMLButtonElement).type === "submit") ||
+                  (control.tagName === "INPUT" &&
+                    ["image", "submit"].includes(
+                      (control as HTMLInputElement).type,
+                    ))),
+            )
+          : undefined;
+        if (
+          implicitSubmit &&
+          !submitter?.matches(":disabled") &&
+          (submitter ||
+            Array.from(form.elements).filter(blocksImplicitSubmission).length <=
+              1)
+        ) {
+          const invalid = await submitWebBrowserWorkspaceForm(
+            tab,
+            form,
+            submitter,
+          );
           return {
             mode: "web",
             subaction: command.subaction,
             tab: cloneWebBrowserWorkspaceTabState(tab),
-            value: { key, url: tab.url },
+            value: {
+              key,
+              url: tab.url,
+              ...(invalid ? { submitted: false, invalid } : {}),
+            },
           };
         }
 
@@ -1351,6 +1471,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         }
         if (typeof (element as HTMLElement).focus === "function") {
           (element as HTMLElement).focus();
+          placeCaretAtEndOnFocus(element);
         }
         return {
           mode: "web",

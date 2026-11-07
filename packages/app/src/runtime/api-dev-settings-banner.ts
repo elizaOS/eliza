@@ -14,12 +14,9 @@ import {
   isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
-import {
-  type DevSettingsRow,
-  formatDevSettingsTable,
-} from "../dev-settings-table.js";
+import { type DevSettingsRow, formatDevSettingsTable } from "../dev-tools.js";
 import { prependDevSubsystemFigletHeading } from "./dev-settings-figlet-heading";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {

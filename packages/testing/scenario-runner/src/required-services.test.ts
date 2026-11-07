@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Required-service preflight regressions over real AgentRuntime instances.
  * Service classes are deterministic; registration, startup, retry, and stop

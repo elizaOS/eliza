@@ -28,6 +28,18 @@ export function isOrganizationPolicyStamp(
       policy.projectionRevision === null &&
       policy.catalogVersion === null
     );
+  if (policy.source === "promo_grant")
+    return (
+      policy.effectiveUntil !== null &&
+      typeof policy.sourceGrantId === "string" &&
+      policy.sourceGrantId.length > 0 &&
+      policy.sourceSubscriptionId === null &&
+      policy.sourceRevision === null &&
+      typeof policy.projectionRevision === "string" &&
+      /^(0|[1-9][0-9]*)$/.test(policy.projectionRevision) &&
+      typeof policy.catalogVersion === "string" &&
+      policy.catalogVersion.length > 0
+    );
   return (
     policy.source === "subscription" &&
     typeof policy.sourceSubscriptionId === "string" &&
@@ -48,6 +60,7 @@ export function sameOrganizationPolicyStamp(
     left.generation === right.generation &&
     left.source === right.source &&
     left.sourceSubscriptionId === right.sourceSubscriptionId &&
+    (left.sourceGrantId ?? null) === (right.sourceGrantId ?? null) &&
     left.sourceRevision === right.sourceRevision &&
     left.projectionRevision === right.projectionRevision &&
     left.catalogVersion === right.catalogVersion &&

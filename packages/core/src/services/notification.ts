@@ -5,11 +5,11 @@
  * with a runtime handle — an action, a scheduled-task dispatcher, a workflow
  * completion hook, an orchestrator event — calls `notify(...)`. The service:
  *
- *   1. stamps a canonical `AgentNotification`,
- *   2. persists it to a durable inbox (DB-backed runtime cache; survives
- *      restart), collapsing by `groupKey`,
- *   3. fans it out live on the agent event bus as `stream: "notification"`,
- *      which the server already forwards over WebSocket to every client.
+ * 1. stamps a canonical `AgentNotification`,
+ * 2. persists it to a durable inbox (DB-backed runtime cache; survives
+ * restart), collapsing by `groupKey`,
+ * 3. fans it out live on the agent event bus as `stream: "notification"`,
+ * which the server already forwards over WebSocket to every client.
  *
  * Clients (in-app center, toast, desktop OS, mobile native) render FROM the
  * one shape. The inbox is the source of truth for history + unread state; live
@@ -23,9 +23,16 @@ import {
 	DEFAULT_NOTIFICATION_CATEGORY,
 	DEFAULT_NOTIFICATION_SOURCE,
 	defaultPriorityForCategory,
+	NATIVE_NOTIFICATION_PAGE_BYTES,
+	NATIVE_NOTIFICATION_PAGE_LIMIT,
+	NATIVE_NOTIFICATION_RECORD_BYTES,
+	type NativeNotification,
+	type NativeNotificationPage,
+	type NativeNotificationQuery,
 	NOTIFICATION_COUNT_KEY,
 	NOTIFICATION_STREAM,
 	type NotificationEventData,
+	type NotificationInboxSnapshot,
 	type NotificationInput,
 	type NotificationPriority,
 	type NotificationQuery,
@@ -35,6 +42,8 @@ import {
 import { asUUID, type UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { Service, ServiceType } from "../types/service.ts";
+import { utf8ByteLength } from "../utils/unicode.ts";
+import { validateUuid } from "../utils/uuid.ts";
 
 const RECOVERY_BASE_DELAY_MS = 1_000;
 const RECOVERY_MAX_DELAY_MS = 30_000;
@@ -143,9 +152,46 @@ function isEventBus(value: unknown): value is EventBusLike {
 	);
 }
 
+const UUID_LOWER_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Presentation routes a native record may carry; producer URLs never cross. */
+const NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([
+	"/chat",
+	"/automations",
+	"/clock",
+	"/notes",
+	"/calendar",
+	"/reminders",
+	"/tasks",
+	"/apps/tasks",
+]);
+function jsonByteLength(value: unknown): number {
+	return utf8ByteLength(JSON.stringify(value));
+}
+
+function hasControlCharacter(value: string): boolean {
+	for (let index = 0; index < value.length; index++) {
+		const code = value.charCodeAt(index);
+		if (code < 32 || code === 127) return true;
+	}
+	return false;
+}
+
 /** Generate a fresh notification id. */
 function newNotificationId(): UUID {
 	return asUUID(crypto.randomUUID());
+}
+
+/** Typed native protocol errors are translated by the HTTP owner. */
+export class NotificationNativeError extends Error {
+	constructor(
+		readonly code: string,
+		message: string,
+		readonly status = 400,
+	) {
+		super(message);
+		this.name = "NotificationNativeError";
+	}
 }
 
 export class NotificationService extends Service {
@@ -155,6 +201,10 @@ export class NotificationService extends Service {
 
 	/** Newest-last ordered list (mirrors the persisted store). */
 	private notifications: AgentNotification[] = [];
+	private nativeEpoch: string = crypto.randomUUID();
+	private nativeSequence = 0;
+	private nativeSequences: Record<string, number> = {};
+	private persistenceUncertain = false;
 	private notificationWriteTail: Promise<void> = Promise.resolve();
 	/**
 	 * Set once {@link stop} begins. Write admission closes immediately so a
@@ -174,7 +224,12 @@ export class NotificationService extends Service {
 				),
 			);
 		}
-		const operation = this.notificationWriteTail.then(write, write);
+		const admitted = async () => {
+			// An unreadable ambiguous commit cannot authorize a later overwrite or fence.
+			if (this.persistenceUncertain) await this.reconcilePersistFailure();
+			return write();
+		};
+		const operation = this.notificationWriteTail.then(admitted, admitted);
 		// error-policy:J5 the caller observes `operation`; the tail converts either
 		// outcome to completion so a rejected write cannot poison later mutations.
 		this.notificationWriteTail = operation.then(
@@ -331,46 +386,122 @@ export class NotificationService extends Service {
 		this.notifications = [];
 	}
 
-	/** Load persisted notifications from the DB-backed cache. */
+	/** Load/migrate the single persisted inbox before publishing readiness. */
 	private async hydrate(): Promise<void> {
-		const stored = await this.runtime.getCache<AgentNotification[]>(
-			this.cacheKey,
-		);
-		if (Array.isArray(stored)) {
-			this.notifications = stored.filter(
-				(n) => n && typeof n.id === "string" && n.title,
-			);
+		const stored = await this.runtime.getCache<unknown>(this.cacheKey);
+		if (stored == null || Array.isArray(stored)) {
+			// Legacy insertion order is the durable order; timestamps never become a fence.
+			this.notifications = Array.isArray(stored)
+				? stored.filter((n) => n && typeof n.id === "string" && n.title)
+				: [];
+			for (const n of this.notifications) {
+				if (Object.hasOwn(this.nativeSequences, n.id)) {
+					throw new NotificationNativeError(
+						"NOTIFICATION_INBOX_INVALID",
+						"Duplicate persisted notification id",
+						503,
+					);
+				}
+				this.nativeSequences[n.id] = ++this.nativeSequence;
+			}
+			await this.persist();
+		} else {
+			this.restore(stored);
 		}
 	}
 
+	private snapshot(): NotificationInboxSnapshot {
+		const nativeSequences: Record<string, number> = {};
+		for (const n of this.notifications)
+			nativeSequences[n.id] = this.nativeSequences[n.id];
+		return {
+			version: 2,
+			notifications: this.notifications,
+			nativeEpoch: this.nativeEpoch,
+			nativeSequence: this.nativeSequence,
+			nativeSequences,
+		};
+	}
+
+	private restore(value: unknown): void {
+		const invalid = () =>
+			new NotificationNativeError(
+				"NOTIFICATION_INBOX_INVALID",
+				"Invalid persisted notification coordinates",
+				503,
+			);
+		if (!value || typeof value !== "object" || Array.isArray(value))
+			throw invalid();
+		const state = value as NotificationInboxSnapshot;
+		if (
+			state.version !== 2 ||
+			typeof state.nativeEpoch !== "string" ||
+			!UUID_LOWER_PATTERN.test(state.nativeEpoch) ||
+			!Number.isSafeInteger(state.nativeSequence) ||
+			state.nativeSequence < 0 ||
+			!Array.isArray(state.notifications) ||
+			!state.nativeSequences ||
+			typeof state.nativeSequences !== "object" ||
+			Array.isArray(state.nativeSequences) ||
+			Object.keys(state.nativeSequences).length !== state.notifications.length
+		)
+			throw invalid();
+		let previous = 0;
+		for (const n of state.notifications) {
+			if (
+				!n ||
+				typeof n.id !== "string" ||
+				!n.title ||
+				!Object.hasOwn(state.nativeSequences, n.id)
+			)
+				throw invalid();
+			const sequence = state.nativeSequences[n.id];
+			if (
+				!Number.isSafeInteger(sequence) ||
+				sequence <= previous ||
+				sequence > state.nativeSequence
+			)
+				throw invalid();
+			previous = sequence;
+		}
+		this.notifications = state.notifications;
+		this.nativeEpoch = state.nativeEpoch;
+		this.nativeSequence = state.nativeSequence;
+		this.nativeSequences = state.nativeSequences;
+	}
+
 	private async persist(): Promise<void> {
-		if (!(await this.runtime.setCache(this.cacheKey, this.notifications))) {
+		const state = this.snapshot();
+		if (!(await this.runtime.setCache(this.cacheKey, state))) {
 			throw new Error(
 				"[NotificationService] notification cache persistence was rejected",
 			);
 		}
+		this.nativeSequences = state.nativeSequences;
 	}
 
-	private async reconcilePersistFailure(
-		previous: AgentNotification[],
-	): Promise<void> {
-		const stored = await this.runtime.getCache<AgentNotification[]>(
-			this.cacheKey,
-		);
-		this.notifications = Array.isArray(stored)
-			? stored.filter(
-					(entry) => entry && typeof entry.id === "string" && entry.title,
-				)
-			: previous;
+	private async reconcilePersistFailure(): Promise<void> {
+		this.persistenceUncertain = true;
+		const stored = await this.runtime.getCache<unknown>(this.cacheKey);
+		// Startup persisted version2 before any writes. Missing/legacy state after
+		// that boundary is data loss or a competing old writer, not an empty inbox.
+		if (stored == null) {
+			throw new NotificationNativeError(
+				"NOTIFICATION_INBOX_INVALID",
+				"Notification snapshot disappeared",
+				503,
+			);
+		}
+		this.restore(stored);
+		this.persistenceUncertain = false;
 	}
 
-	private async failAfterMutationPersistence(
-		previous: AgentNotification[],
-		cause: unknown,
-	): Promise<never> {
+	private async failAfterMutationPersistence(cause: unknown): Promise<never> {
 		try {
-			await this.reconcilePersistFailure(previous);
+			await this.reconcilePersistFailure();
 		} catch (reconcileCause) {
+			// error-policy:J2 preserve both the write ambiguity and failed
+			// authoritative reconciliation for the receipt-owning caller.
 			throw new AggregateError(
 				[cause, reconcileCause],
 				"notification persistence and reconciliation failed",
@@ -409,7 +540,8 @@ export class NotificationService extends Service {
 			const grouped = this.notifications.filter(
 				(entry) => entry.groupKey === input.groupKey,
 			);
-			if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
+			if (grouped.length === 1 && isExact(grouped[0]))
+				return this.withNativeCoordinates(grouped[0]);
 			return this.notifySerialized(input, false);
 		});
 	}
@@ -418,10 +550,16 @@ export class NotificationService extends Service {
 		input: NotificationInput,
 		coalesceGroup: boolean,
 	): Promise<AgentNotification> {
-		const previousNotifications = [...this.notifications];
 		const title = input.title?.trim();
 		if (!title) {
 			throw new Error("[NotificationService] notification.title is required");
+		}
+		if (this.nativeSequence >= Number.MAX_SAFE_INTEGER) {
+			throw new NotificationNativeError(
+				"NOTIFICATION_SEQUENCE_EXHAUSTED",
+				"Notification sequence exhausted",
+				503,
+			);
 		}
 
 		const category = input.category ?? DEFAULT_NOTIFICATION_CATEGORY;
@@ -467,7 +605,11 @@ export class NotificationService extends Service {
 		const notification: AgentNotification = {
 			id: newNotificationId(),
 			title,
-			body: input.body?.trim() || undefined,
+			body: input.body?.trim()
+				? category === "reminder" && input.source === "lifeops"
+					? input.body
+					: input.body.trim()
+				: undefined,
 			category,
 			priority,
 			source: input.source ?? DEFAULT_NOTIFICATION_SOURCE,
@@ -481,22 +623,16 @@ export class NotificationService extends Service {
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
-		this.notifications.push(notification);
+		this.nativeSequences = {
+			...this.nativeSequences,
+			[notification.id]: ++this.nativeSequence,
+		};
+		this.notifications = [...this.notifications, notification];
 
 		try {
 			await this.persist();
 		} catch (error) {
-			try {
-				await this.reconcilePersistFailure(previousNotifications);
-			} catch (reconcileError) {
-				// error-policy:J2 preserve both the write ambiguity and failed
-				// authoritative reconciliation for the receipt-owning caller.
-				throw new AggregateError(
-					[error, reconcileError],
-					"notification persistence and reconciliation failed",
-				);
-			}
-			throw error;
+			await this.failAfterMutationPersistence(error);
 		}
 		// Durable inbox state is authoritative. Fan out only after persistence so
 		// a failed write cannot expose a ghost success to live clients.
@@ -510,23 +646,46 @@ export class NotificationService extends Service {
 			},
 			`[NotificationService] ${notification.source}: ${notification.title}`,
 		);
-		return notification;
+		return this.withNativeCoordinates(notification);
 	}
 
 	private broadcast(
 		notification: AgentNotification,
 		type: NotificationEventData["type"] = "notification",
+		removed = false,
 	): void {
-		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
-		if (!isEventBus(bus)) {
-			return; // No live bus (headless/test) — inbox API still serves it.
-		}
-		const data: NotificationEventData = {
-			type,
-			notification,
-			unreadCount: this.getUnreadCount(),
-		};
 		try {
+			const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
+			if (!isEventBus(bus)) {
+				return; // No live bus (headless/test) — inbox API still serves it.
+			}
+			const data: NotificationEventData = {
+				type,
+				notification: removed
+					? { ...notification }
+					: this.withNativeCoordinates(notification),
+				unreadCount: this.getUnreadCount(),
+				...(removed ? { removed: true } : {}),
+			};
+			try {
+				if (!removed)
+					data.nativeNotification = this.projectNative(notification);
+			} catch (error) {
+				if (!(error instanceof NotificationNativeError)) throw error;
+				data.nativeProjectionError = {
+					code: error.code,
+					notificationId: notification.id,
+					nativeEpoch: this.nativeEpoch,
+					nativeSequence: this.nativeSequences[notification.id],
+				};
+				this.runtime.reportError(
+					"NotificationService.nativeProjection",
+					error,
+					{
+						notificationId: notification.id,
+					},
+				);
+			}
 			bus.emit({
 				runId: notification.id,
 				stream: NOTIFICATION_STREAM,
@@ -534,24 +693,163 @@ export class NotificationService extends Service {
 				agentId: notification.agentId,
 			});
 		} catch (error) {
-			// error-policy:J7 durable notification success must not be reversed by
-			// a diagnostic/live-fanout observer failure.
-			this.runtime.reportError("NotificationService.broadcast", error, {
-				notificationId: notification.id,
-			});
-			logger.warn(
-				{ error, notificationId: notification.id },
-				"[NotificationService] live fan-out failed after durable persistence",
+			// error-policy:J7 every fan-out stage is observational after the
+			// durable mutation, including lookup, construction and diagnostics.
+			try {
+				this.runtime.reportError("NotificationService.broadcast", error, {
+					notificationId: notification.id,
+				});
+				logger.warn(
+					{ error, notificationId: notification.id },
+					"[NotificationService] live fan-out failed after durable persistence",
+				);
+			} catch {
+				// error-policy:J7 a broken diagnostic observer cannot reverse a committed write.
+			}
+		}
+	}
+
+	private withNativeCoordinates(n: AgentNotification): AgentNotification {
+		return {
+			...n,
+			nativeEpoch: this.nativeEpoch,
+			nativeSequence: this.nativeSequences[n.id],
+		};
+	}
+
+	/** Closed native projection shared by live events and native inbox pages. */
+	private projectNative(n: AgentNotification): NativeNotification {
+		const record: NativeNotification = {
+			id: n.id,
+			title: n.title,
+			body: n.body ?? "",
+			category: n.category,
+			priority: n.priority,
+			createdAt: n.createdAt,
+			readAt: n.readAt ?? null,
+			expiresAt: n.expiresAt ?? null,
+			nativeEpoch: this.nativeEpoch,
+			nativeSequence: this.nativeSequences[n.id],
+		};
+		// Navigation is a closed presentation route; producer URLs and credentials never cross.
+		if (n.deepLink && NATIVE_DEEP_LINKS.has(n.deepLink))
+			record.deepLink = n.deepLink;
+		if (n.groupKey != null) record.groupKey = n.groupKey;
+		const data: NonNullable<NativeNotification["data"]> = {};
+		if (
+			n.data?.ownerType === "clock" ||
+			n.data?.ownerType === "reminder" ||
+			n.data?.ownerType === "occurrence"
+		)
+			data.ownerType = n.data.ownerType;
+		for (const field of ["conversationId", "messageId"] as const) {
+			const id = validateUuid(n.data?.[field]);
+			if (id) data[field] = id;
+		}
+		if (Object.keys(data).length) record.data = data;
+		if (
+			record.title.length > 512 ||
+			record.body.length > 4096 ||
+			record.title.includes("\0") ||
+			record.body.includes("\0") ||
+			(record.groupKey != null &&
+				(record.groupKey.length > 512 ||
+					hasControlCharacter(record.groupKey))) ||
+			jsonByteLength(record) > NATIVE_NOTIFICATION_RECORD_BYTES
+		) {
+			throw new NotificationNativeError(
+				"NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
+				"Notification cannot fit the native record contract",
+				413,
 			);
 		}
+		return record;
+	}
+
+	/** A page waits for durable writes; its append fence stays fixed across later requests.
+	 * Deletion/read/expiry can change between pages. No filtered subset may close a sequence gap. */
+	async listNativePage(
+		query: NativeNotificationQuery = {},
+	): Promise<NativeNotificationPage> {
+		await this.notificationWriteTail;
+		if (this.persistenceUncertain || this.stopped)
+			throw new NotificationNativeError(
+				"NOTIFICATION_INBOX_UNAVAILABLE",
+				"Notification inbox is not durably available",
+				503,
+			);
+		if (query.nativeEpoch != null && query.nativeEpoch !== this.nativeEpoch)
+			throw new NotificationNativeError(
+				"NATIVE_NOTIFICATION_EPOCH_CHANGED",
+				"Notification inbox epoch changed",
+				409,
+			);
+		const after = query.afterSequence ?? 0,
+			through = query.throughSequence ?? this.nativeSequence;
+		const limit = query.limit ?? NATIVE_NOTIFICATION_PAGE_LIMIT;
+		if (
+			![after, through].every(
+				(value) => Number.isSafeInteger(value) && value >= 0,
+			) ||
+			through < after ||
+			through > this.nativeSequence ||
+			!Number.isSafeInteger(limit) ||
+			limit < 1 ||
+			limit > NATIVE_NOTIFICATION_PAGE_LIMIT ||
+			((after > 0 || query.throughSequence != null) && !query.nativeEpoch)
+		) {
+			throw new NotificationNativeError(
+				"INVALID_NATIVE_NOTIFICATION_CURSOR",
+				"Invalid native notification cursor or limit",
+			);
+		}
+		const page: NativeNotificationPage = {
+			notifications: [],
+			nativeEpoch: this.nativeEpoch,
+			throughSequence: through,
+			nextSequence: through,
+			complete: true,
+			unreadCount: this.getUnreadCount(),
+			serviceStatus: "ready",
+		};
+		for (const n of this.notifications) {
+			const sequence = this.nativeSequences[n.id];
+			if (sequence <= after || sequence > through) continue;
+			if (page.notifications.length >= limit) {
+				page.complete = false;
+				break;
+			}
+			const projected = this.projectNative(n);
+			page.notifications.push(projected);
+			// Include the complete envelope in the encoded budget, not just the row array.
+			if (jsonByteLength(page) + 1 > NATIVE_NOTIFICATION_PAGE_BYTES) {
+				page.notifications.pop();
+				if (!page.notifications.length)
+					throw new NotificationNativeError(
+						"NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
+						"Notification cannot fit a native page",
+						413,
+					);
+				page.complete = false;
+				break;
+			}
+		}
+		if (!page.complete)
+			page.nextSequence =
+				page.notifications[page.notifications.length - 1].nativeSequence;
+		if (!page.complete && page.nextSequence <= after)
+			throw new NotificationNativeError(
+				"INVALID_NATIVE_NOTIFICATION_CURSOR",
+				"Native page did not advance",
+				503,
+			);
+		return page;
 	}
 
 	/** List notifications, newest first, with optional filtering. */
 	list(query: NotificationQuery = {}): AgentNotification[] {
 		const now = Date.now();
-		let result = [...this.notifications]
-			.filter((n) => !isExpired(n, now))
-			.reverse();
+		let result = this.notifications.filter((n) => !isExpired(n, now)).reverse();
 		if (query.unreadOnly) {
 			result = result.filter((n) => !n.readAt);
 		}
@@ -561,7 +859,7 @@ export class NotificationService extends Service {
 		if (typeof query.limit === "number" && query.limit >= 0) {
 			result = result.slice(0, query.limit);
 		}
-		return result;
+		return result.map((n) => this.withNativeCoordinates(n));
 	}
 
 	/**
@@ -570,12 +868,30 @@ export class NotificationService extends Service {
 	 * user-facing inbox reads should continue to call {@link list}.
 	 */
 	listIncludingExpired(): AgentNotification[] {
-		return [...this.notifications].reverse();
+		return this.notifications
+			.map((n) => this.withNativeCoordinates(n))
+			.reverse();
 	}
 
 	/** The lossless inbox has no item-count capacity boundary. */
 	getAvailableCapacity(): number {
 		return Number.POSITIVE_INFINITY;
+	}
+
+	/** Internal read-receipt consumers must not observe an uncommitted read mark. */
+	async listDurableIncludingExpired(): Promise<AgentNotification[]> {
+		let pending: Promise<void>;
+		do {
+			pending = this.notificationWriteTail;
+			await pending;
+		} while (pending !== this.notificationWriteTail);
+		if (this.persistenceUncertain || this.stopped)
+			throw new NotificationNativeError(
+				"NOTIFICATION_INBOX_UNAVAILABLE",
+				"Notification inbox is not durably available",
+				503,
+			);
+		return this.listIncludingExpired();
 	}
 
 	getUnreadCount(): number {
@@ -622,15 +938,16 @@ export class NotificationService extends Service {
 		if (!notification || notification.readAt) {
 			return false;
 		}
-		const previous = this.notifications;
+		const updated = { ...notification, readAt: Date.now() };
 		this.notifications = this.notifications.map((entry) =>
-			entry.id === id ? { ...entry, readAt: Date.now() } : entry,
+			entry.id === id ? updated : entry,
 		);
 		try {
 			await this.persist();
 		} catch (error) {
-			return this.failAfterMutationPersistence(previous, error);
+			return this.failAfterMutationPersistence(error);
 		}
+		this.broadcast(updated, "notification_update");
 		return true;
 	}
 
@@ -653,7 +970,6 @@ export class NotificationService extends Service {
 			return 0;
 		}
 		const now = Date.now();
-		const previous = this.notifications;
 		const changedNotifications: AgentNotification[] = [];
 		this.notifications = this.notifications.map((entry) => {
 			if (entry.groupKey !== groupKey || entry.readAt) return entry;
@@ -665,7 +981,7 @@ export class NotificationService extends Service {
 			try {
 				await this.persist();
 			} catch (error) {
-				return this.failAfterMutationPersistence(previous, error);
+				return this.failAfterMutationPersistence(error);
 			}
 			for (const n of changedNotifications) {
 				// Push a non-interruptive update so open clients clear unread state without
@@ -682,21 +998,25 @@ export class NotificationService extends Service {
 	}
 
 	private async markAllReadSerialized(): Promise<number> {
+		const updated: AgentNotification[] = [];
 		let changed = 0;
 		const now = Date.now();
-		const previous = this.notifications;
 		this.notifications = this.notifications.map((entry) => {
 			if (entry.readAt) return entry;
 			changed++;
-			return { ...entry, readAt: now };
+			const notification = { ...entry, readAt: now };
+			updated.push(notification);
+			return notification;
 		});
 		if (changed > 0) {
 			try {
 				await this.persist();
 			} catch (error) {
-				return this.failAfterMutationPersistence(previous, error);
+				return this.failAfterMutationPersistence(error);
 			}
 		}
+		for (const notification of updated)
+			this.broadcast(notification, "notification_update");
 		return changed;
 	}
 
@@ -706,7 +1026,7 @@ export class NotificationService extends Service {
 	}
 
 	private async removeSerialized(id: string): Promise<boolean> {
-		const previous = this.notifications;
+		const notification = this.notifications.find((entry) => entry.id === id);
 		const before = this.notifications.length;
 		this.notifications = this.notifications.filter((n) => n.id !== id);
 		const removed = this.notifications.length !== before;
@@ -714,8 +1034,10 @@ export class NotificationService extends Service {
 			try {
 				await this.persist();
 			} catch (error) {
-				return this.failAfterMutationPersistence(previous, error);
+				return this.failAfterMutationPersistence(error);
 			}
+			if (notification)
+				this.broadcast(notification, "notification_update", true);
 		}
 		return removed;
 	}
@@ -723,13 +1045,15 @@ export class NotificationService extends Service {
 	/** Clear the entire inbox. */
 	async clear(): Promise<void> {
 		return this.enqueueWrite(async () => {
-			const previous = this.notifications;
+			const removed = this.notifications;
 			this.notifications = [];
 			try {
 				await this.persist();
 			} catch (error) {
-				return this.failAfterMutationPersistence(previous, error);
+				return this.failAfterMutationPersistence(error);
 			}
+			for (const notification of removed)
+				this.broadcast(notification, "notification_update", true);
 		});
 	}
 }

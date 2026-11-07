@@ -1,3 +1,8 @@
+import {
+  bindRequestOperationProjection,
+  copyRequestOperationResult,
+  getRequestOperationIssuer,
+} from "@elizaos/core";
 /**
  * Nested planner descent for a parent action's declared sub-actions: resolves and
  * gates the child actions (context + role policy, cycle detection), exposes each
@@ -33,6 +38,7 @@ import {
   projectActionResultForClipboard,
   promotedSubactionDescription,
   promotedSubactionParent,
+  readActionFailureProvenance,
   stableJsonStringify,
 } from "@elizaos/core";
 import {
@@ -260,8 +266,16 @@ function priorNonRetryableSubstep(
     for (const candidate of [...subSteps].reverse()) {
       if (!candidate || typeof candidate !== "object") continue;
       const record = candidate as Record<string, unknown>;
+      const failure = readActionFailureProvenance(record);
+      const invalidDefinition =
+        failure?.kind === "missing_capability" &&
+        failure.code === "ACTION_DEFINITION_INVALID" &&
+        failure.retryable === false &&
+        typeof record.action === "string" &&
+        normalizeSubPlannerActionIdentifier(record.action) ===
+          normalizeSubPlannerActionIdentifier(toolCall.name);
       if (
-        record.callDigest === digest &&
+        (record.callDigest === digest || invalidDefinition) &&
         record.success === false &&
         record.retryable === false
       ) {
@@ -369,7 +383,12 @@ export async function runSubPlanner(
     childActionNames: [...childActionNames],
   });
 
+  const requestOperationIssuer = getRequestOperationIssuer(
+    params.runtime,
+    params.ctx.message,
+  );
   return runPlannerLoop({
+    requestOperationIssuer,
     runtime: params.runtime,
     context,
     config: params.config,
@@ -461,7 +480,16 @@ export async function runSubPlanner(
         rawResult,
         resolvedChildAction.name,
       );
+      if (result !== rawResult && requestOperationIssuer) {
+        bindRequestOperationProjection(
+          rawResult,
+          result,
+          requestOperationIssuer,
+        );
+        copyRequestOperationResult(rawResult, result);
+      }
       return actionResultToPlannerToolResult(result, {
+        requestOperationIssuer,
         summary: summarizeActionResultForPlanner(
           resolvedChildAction,
           result,

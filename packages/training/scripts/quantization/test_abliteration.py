@@ -20,7 +20,6 @@ attributes on the GPT-2 layers before invoking the module.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -28,10 +27,8 @@ import torch
 import torch.nn as nn
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from abliteration_apply import (  # noqa: E402
+from eliza_training.quantization.abliteration_apply import (  # noqa: E402
     AbliterationRecipe,
     abliterate_model,
     compute_refusal_direction,

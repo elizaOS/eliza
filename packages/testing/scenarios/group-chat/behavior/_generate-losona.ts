@@ -143,6 +143,7 @@ function render(row: LoSoNARow, index: number): string {
     .filter((turn) => turn.turn_id !== row.elicitor_turn_id)
     .map((turn) => ({ speaker: turn.actor, text: turn.content }));
   const config = {
+    lane: "live-only",
     id: `groupchat.behavior.losona.${slug(index)}`,
     title: `Local norm adoption: ${row.event_id.replaceAll("_", " ")}`,
     source: "losona",
@@ -151,47 +152,7 @@ function render(row: LoSoNARow, index: number): string {
     elicitor: { speaker: elicitor.actor, text: elicitor.content },
     hiddenNorm: row.norm_statement,
   };
-  return `/**
- * Generated from Humalike-ai/LoSoNA (CC BY 4.0).
- * Do not hand-edit; run \`bun packages/testing/scenarios/group-chat/behavior/_generate-losona.ts\`.
- */
-import { scenario } from "@elizaos/testing";
-import {
-  buildNormProbeSetup,
-  type NormProbeConfig,
-} from "./_factory.ts";
-
-const config = ${JSON.stringify(config, null, 2)} satisfies NormProbeConfig;
-const setup = buildNormProbeSetup(config);
-
-export default scenario({
-  lane: "live-only",
-  id: ${JSON.stringify(config.id)},
-  title: ${JSON.stringify(config.title)},
-  domain: "group-chat",
-  ...setup,
-  turns: [
-    {
-      ...setup.messageTurn,
-      assertResponse(text: string) {
-        if (text.trim().length === 0) {
-          return "the elicitor requires a group-chat reply that demonstrates the inferred norm";
-        }
-      },
-    },
-  ],
-  finalChecks: [
-    {
-      type: "judgeRubric",
-      name: "local-norm-adoption",
-      minimumScore: 0.8,
-      rubric:
-        \`Judge only the subject agent's reply to the final elicitor. The group's hidden local norm is: \${config.hiddenNorm}\` +
-        " The target norm must be inferred only from peer demonstrations in the visible transcript. Score 1.0 only if the reply follows the functional norm naturally in the current context. Mere discussion or naming of the norm does not count. Score 0.0 if it violates the norm or responds as a generic assistant instead of a group member.",
-    },
-  ],
-});
-`;
+  return `normProbeScenario(${JSON.stringify(config, null, 2)})`;
 }
 
 async function main(): Promise<void> {
@@ -224,13 +185,9 @@ async function main(): Promise<void> {
       await rm(join(OUT_DIR, entry));
     }
   }
-  await Promise.all(
-    rows.map((row, index) =>
-      writeFile(
-        join(OUT_DIR, `groupchat.behavior.losona.${slug(index)}.scenario.ts`),
-        render(row, index),
-      ),
-    ),
+  await writeFile(
+    join(OUT_DIR, "losona.scenarios.ts"),
+    `/** Generated from Humalike-ai/LoSoNA (CC BY 4.0). */\nimport { normProbeScenario } from "./_factory.ts";\nexport default [\n${rows.map(render).join(",\n")}\n];\n`,
   );
 
   const format = spawnSync(

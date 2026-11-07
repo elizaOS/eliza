@@ -7,7 +7,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
-import { osKeychainMasterKey } from "@elizaos/auth/vault/master-key";
+import { osKeychainMasterKey } from "@elizaos/auth/vault";
 import { ElizaError, type UUID } from "@elizaos/core";
 
 const SERVICE = "eliza.runtime-installation-identity.v1";

@@ -26,6 +26,7 @@ import {
   type FusedWakeEvent,
   probeFusedWake,
   subscribeFusedWake,
+  subscribeFusedWakeStatus,
 } from "./fused-wake-bridge";
 import {
   DEFAULT_CONFIRM_WINDOW_MS,
@@ -110,11 +111,16 @@ export function useWakeController(
     fusedWakeSource = subscribeFusedWake,
   } = options;
 
-  // Probe the available wake sources once. The fused on-device path is preferred
-  // when the native host has bridged it (window.__ELIZA_FUSED_WAKE__); Swabble is
-  // the Web-Speech fallback. A host can still override `capabilities` explicitly.
+  // The fused on-device path is preferred while its native detector is running
+  // (window.__ELIZA_FUSED_WAKE__). The host reports start and stop, so follow
+  // that status instead of probing once. Swabble is the Web-Speech fallback. A
+  // host can still override `capabilities` explicitly.
   const swabblePresent = React.useMemo(() => probeSwabble(), []);
-  const fusedPresent = React.useMemo(() => probeFusedWake(), []);
+  const fusedPresent = React.useSyncExternalStore(
+    subscribeFusedWakeStatus,
+    probeFusedWake,
+    () => false,
+  );
   const capabilities = React.useMemo<WakeCapabilities>(
     () =>
       options.capabilities ?? {

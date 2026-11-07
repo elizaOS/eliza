@@ -3,14 +3,14 @@
  * Settle a verified x402 payment on-chain. No auth — payment IS auth.
  */
 
-import { Hono } from "hono";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { x402FacilitatorService } from "@elizaos/cloud-shared/lib/services/x402-facilitator";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -4,11 +4,16 @@
  * intents are handed back to the parent view's handlers; this file owns the
  * input surface, not the network call.
  */
+import {
+  Button,
+  Checkbox,
+  type DocumentScope,
+  Input,
+  Textarea,
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { DocumentScope } from "@elizaos/ui/api";
-import { Button, Checkbox, Input, Textarea } from "@elizaos/ui/components";
-import { useAppSelector } from "@elizaos/ui/state";
 import {
   Bot,
   FileUp,

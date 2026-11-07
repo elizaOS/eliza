@@ -18,10 +18,12 @@
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
-    "vitest": "5.0.2"
+    "typescript": "^6.0.3"
   }
 }

@@ -4,20 +4,21 @@
  * Mobile lifecycle credentials are not addressable through either operation.
  */
 
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { assertCanManageApiKey } from "../_lib/key-access";
 
 import { updateApiKeySchema } from "../schemas";
 
@@ -42,6 +43,7 @@ app.delete("/", async (c) => {
       resourceId: id,
       c,
     });
+    assertCanManageApiKey(user, existingKey, "revoke");
 
     const audit = createTransactionalAudit();
     await apiKeysService.delete(id, async (tx) => {
@@ -76,6 +78,7 @@ app.patch("/", async (c) => {
       resourceId: id,
       c,
     });
+    assertCanManageApiKey(user, existingKey, "revoke");
 
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {

@@ -26,6 +26,7 @@ import type {
 import { respondToMessageAction } from "./respondToMessage.ts";
 
 const turn = { content: { text: "Reply to the message" } } as Memory;
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as const;
 
 function messageRef(overrides: Partial<MessageRef> = {}): MessageRef {
   return {
@@ -87,7 +88,26 @@ class RecordingAdapter extends BaseMessageAdapter {
 }
 
 function runtime(): IAgentRuntime {
-  return { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+  return { agentId: AGENT_ID } as IAgentRuntime;
+}
+
+/** A runtime whose send policy holds every draft, recording what it held. */
+function holdingRuntime(requireApproval = true): {
+  runtime: IAgentRuntime;
+  held: DraftRequest[];
+} {
+  const current = runtime();
+  const held: DraftRequest[] = [];
+  registerSendPolicy(current, {
+    async shouldRequireApproval() {
+      return requireApproval;
+    },
+    async enqueueApproval(_runtime, draft) {
+      held.push(draft);
+      return { requestId: "approval-1", preview: draft.body };
+    },
+  });
+  return { runtime: current, held };
 }
 
 function register(adapter: RecordingAdapter): void {
@@ -143,7 +163,7 @@ describe("respondToMessageAction", () => {
   it("uses an explicit message id and sends the supplied body", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const callbackMessages: Array<{ text?: string; action?: string }> = [];
     const callback: HandlerCallback = async (content) => {
       callbackMessages.push(content);
@@ -216,9 +236,14 @@ describe("respondToMessageAction", () => {
     ]);
     register(adapter);
 
-    await respondToMessageAction.handler(runtime(), turn, undefined, {
-      parameters: { sender: "Alice", content: "updated figures" },
-    } as never);
+    await respondToMessageAction.handler(
+      holdingRuntime().runtime,
+      turn,
+      undefined,
+      {
+        parameters: { sender: "Alice", content: "updated figures" },
+      } as never,
+    );
 
     expect(adapter.created).toHaveLength(1);
     expect(adapter.created[0]).toMatchObject({
@@ -258,20 +283,111 @@ describe("respondToMessageAction", () => {
     async (_name, fields, expected) => {
       const adapter = new RecordingAdapter();
       register(adapter);
-      getDefaultMessageRefStore().saveMessage(messageRef(fields));
+      getDefaultMessageRefStore().saveMessage(messageRef(fields), AGENT_ID);
 
-      await respondToMessageAction.handler(runtime(), turn, undefined, {
-        parameters: { messageId: "message-1" },
-      } as never);
+      // The policy would send directly; a generated body is held regardless.
+      const { runtime: current, held } = holdingRuntime(false);
+      const result = await respondToMessageAction.handler(
+        current,
+        turn,
+        undefined,
+        { parameters: { messageId: "message-1" } } as never,
+      );
 
       expect(adapter.created[0]?.body).toBe(expected);
+      expect(held.map((draft) => draft.body)).toEqual([expected]);
+      expect(adapter.sent).toEqual([]);
+      expect(result.data).toMatchObject({ pending: true });
     },
   );
+
+  it("refuses an omitted body when no send policy can hold the reply", async () => {
+    const adapter = new RecordingAdapter();
+    register(adapter);
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
+
+    const result = await respondToMessageAction.handler(
+      runtime(),
+      turn,
+      undefined,
+      { parameters: { messageId: "message-1" } } as never,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "body is required: no send policy is registered to hold a generated acknowledgment for approval",
+    });
+    expect(adapter.created).toEqual([]);
+    expect(adapter.sent).toEqual([]);
+  });
+
+  it("rejects a reply with no message id and no sender or content hint", async () => {
+    const adapter = new RecordingAdapter([
+      messageRef({ id: "older", externalId: "older", receivedAtMs: 1_000 }),
+      messageRef({ id: "newest", externalId: "newest", receivedAtMs: 2_000 }),
+    ]);
+    register(adapter);
+
+    const result = await respondToMessageAction.handler(
+      runtime(),
+      turn,
+      undefined,
+      { parameters: { body: "Tomorrow works" } } as never,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      text: "messageId or a sender/content hint is required",
+      error: "messageId or a sender/content hint is required",
+    });
+    expect(adapter.created).toEqual([]);
+    expect(adapter.sent).toEqual([]);
+  });
+
+  it("holds a dictated body verbatim and never swaps a refused body for an acknowledgment", async () => {
+    const adapter = new RecordingAdapter();
+    register(adapter);
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
+    const { runtime: currentRuntime, held } = holdingRuntime();
+
+    const dictated = await respondToMessageAction.handler(
+      currentRuntime,
+      turn,
+      undefined,
+      {
+        parameters: {
+          messageId: "message-1",
+          body: "Insert the reply-to header and resend, thanks.",
+        },
+      } as never,
+    );
+    expect(dictated.success).toBe(true);
+    expect(held.map((draft) => draft.body)).toEqual([
+      "Insert the reply-to header and resend, thanks.",
+    ]);
+
+    const placeholder = await respondToMessageAction.handler(
+      currentRuntime,
+      turn,
+      undefined,
+      {
+        parameters: { messageId: "message-1", body: "[Insert reply here]" },
+      } as never,
+    );
+    expect(placeholder).toEqual({
+      success: false,
+      text: "body is a placeholder, not reply text; pass the exact reply text in body",
+      error:
+        "body is a placeholder, not reply text; pass the exact reply text in body",
+    });
+    expect(held).toHaveLength(1);
+    expect(adapter.created).toHaveLength(1);
+  });
 
   it("queues an approval-gated reply and sends only when its executor runs", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const currentRuntime = runtime();
     let pendingDraft: DraftRequest | undefined;
     let executor: (() => Promise<{ externalId: string }>) | undefined;
@@ -336,7 +452,7 @@ describe("respondToMessageAction", () => {
   it("sends immediately when the registered policy does not require approval", async () => {
     const adapter = new RecordingAdapter();
     register(adapter);
-    getDefaultMessageRefStore().saveMessage(messageRef());
+    getDefaultMessageRefStore().saveMessage(messageRef(), AGENT_ID);
     const currentRuntime = runtime();
     const policy: SendPolicy = {
       async shouldRequireApproval() {

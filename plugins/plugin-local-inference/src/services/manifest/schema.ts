@@ -5,7 +5,7 @@
  * contract independently of native kernel requirements.
  */
 
-import type { LocalRuntimeKernel } from "@elizaos/core/contracts/local-inference";
+import type { LocalRuntimeKernel } from "@elizaos/contracts";
 import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
@@ -61,7 +61,7 @@ export function bundleTierSlug(tier: Eliza1Tier): string {
 // speaks in terms of the optimization, not the .metal/.comp file.
 //
 // The relationship to the runtime-side `LocalRuntimeKernel` enum (the
-// llama.cpp-handle layer, declared in `@elizaos/core/contracts/local-inference`)
+// llama.cpp-handle layer, declared in `@elizaos/contracts`)
 // is made explicit by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`
 // below — that is the single source of truth for the manifest↔runtime kernel
 // bridge.
@@ -82,7 +82,7 @@ export type Eliza1RequiredRuntimeKernel =
 //
 // `Eliza1Kernel` (this module, the bundle-manifest layer) names the *named
 // optimization* a bundle advertises; `LocalRuntimeKernel`
-// (`@elizaos/core/contracts/local-inference`, the llama.cpp-handle layer) names
+// (`@elizaos/contracts`, the llama.cpp-handle layer) names
 // the *fork kernel handle* the binary must expose. They overlap but are not the
 // same enum:
 //
@@ -661,11 +661,13 @@ const eliza1SourceModelEntry = z.object({
 // the "base, not fine-tuned" plan is auditable: which upstream repo each
 // shipped component is converted from, and whether v1 fine-tuning was
 // applied (always `false` for the base-v1 release). The contract validator
-// enforces per-component coverage for `base-v1`.
+// enforces per-component coverage for `base-v1`. `sourceModels` is a partial
+// map (a Zod 4 `z.record` over an enum would demand every slot, including
+// components the bundle does not ship).
 export const Eliza1ProvenanceSchema = z.object({
 	releaseState: z.enum(ELIZA_1_RELEASE_STATES),
 	finetuned: z.boolean(),
-	sourceModels: z.record(
+	sourceModels: z.partialRecord(
 		z.enum(ELIZA_1_PROVENANCE_SLOTS),
 		eliza1SourceModelEntry,
 	),

@@ -10,10 +10,8 @@
  * z-layer.
  */
 
-import {
-  type TranscriptSegment,
-  transcriptPlainText,
-} from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
+import { transcriptPlainText } from "@elizaos/core/protocol";
 import {
   Check,
   Copy,
@@ -32,12 +30,13 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { client, type MessageAttachment } from "../../api";
+import { client } from "../../api/client";
+import type { MessageAttachment } from "../../api/client-types-chat";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useRole } from "../../hooks/useRole";
-import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
+import { Z_SHELL_OVERLAY } from "../../utils/floating-layers";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";

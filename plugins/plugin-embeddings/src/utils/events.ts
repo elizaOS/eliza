@@ -46,5 +46,13 @@ export function emitModelUsageEvent(
     },
   };
 
-  runtime.emitEvent(EventType.MODEL_USED, payload);
+  // MODEL_USED is accounting telemetry: a throwing consumer must not turn a
+  // served embedding into an unhandled rejection, and must not be dropped
+  // silently either. Observe the failure through the runtime's error channel,
+  // as the OpenAI, Anthropic, and elizacloud providers already do.
+  void Promise.resolve(runtime.emitEvent(EventType.MODEL_USED, payload)).catch((error) => {
+    runtime.reportError("EmbeddingsModelUsage.emitEvent", error, {
+      modelType: String(type),
+    });
+  });
 }

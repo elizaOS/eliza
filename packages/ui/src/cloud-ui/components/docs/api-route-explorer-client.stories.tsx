@@ -1,9 +1,10 @@
 /**
  * Storybook stories for the API route explorer.
  */
+
+import type { DiscoveredApiRouteDto } from "@elizaos/cloud-sdk";
 import type { Meta, StoryObj } from "@storybook/react";
 import { expect, userEvent, within } from "storybook/test";
-import type { DiscoveredApiRouteDto } from "../../types/cloud-api";
 import { ApiRouteExplorerClient } from "./api-route-explorer-client";
 
 const routes: DiscoveredApiRouteDto[] = [

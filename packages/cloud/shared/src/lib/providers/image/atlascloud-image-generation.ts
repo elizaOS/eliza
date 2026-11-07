@@ -1,4 +1,5 @@
 /** Implements Atlas Cloud's asynchronous image submit, poll, and download protocol. */
+import { APICallError } from "ai";
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
@@ -171,7 +172,13 @@ export async function generateAtlasCloudImageWithFetch(
       (typeof submitPayload.msg === "string" && submitPayload.msg) ||
       (typeof submitPayload.message === "string" && submitPayload.message) ||
       `Atlas image generation failed: ${submitResponse.status}`;
-    throw new Error(message);
+    // Keep the status so billing can tell a rejection from an ambiguous failure.
+    throw new APICallError({
+      message,
+      url: submitResponse.url,
+      requestBodyValues: {},
+      statusCode: submitResponse.status,
+    });
   }
 
   const submitted = parsePrediction(submitPayload);

@@ -75,15 +75,38 @@ async function auditEmit(
  * Value: list of attempt timestamps within the current window.
  */
 const pairAttempts = new Map<string, number[]>();
+const MAX_TRACKED_PAIR_USERS = 10_000;
+
+function pruneExpiredPairAttempts(now: number): void {
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  for (const [userId, attempts] of pairAttempts) {
+    if (!attempts.some((ts) => ts > windowStart)) {
+      pairAttempts.delete(userId);
+    }
+  }
+}
 
 function isRateLimited(userId: string): boolean {
   const now = Date.now();
   const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  if (pairAttempts.size >= MAX_TRACKED_PAIR_USERS) {
+    pruneExpiredPairAttempts(now);
+  }
   const attempts = (pairAttempts.get(userId) ?? []).filter(
     (ts) => ts > windowStart,
   );
-  pairAttempts.set(userId, attempts);
+  if (attempts.length === 0) {
+    pairAttempts.delete(userId);
+  } else {
+    pairAttempts.set(userId, attempts);
+  }
   if (attempts.length >= RATE_LIMIT_MAX_ATTEMPTS) {
+    return true;
+  }
+  if (
+    !pairAttempts.has(userId) &&
+    pairAttempts.size >= MAX_TRACKED_PAIR_USERS
+  ) {
     return true;
   }
   attempts.push(now);

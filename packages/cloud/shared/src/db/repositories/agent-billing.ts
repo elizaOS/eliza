@@ -733,6 +733,8 @@ export class AgentBillingRepository {
       tx,
       input.organizationId,
       await readPostLockDatabaseNow(tx),
+      undefined,
+      { managedComputePaymentGrace: true },
     );
     const fundingAvailable = new Decimal(organization.credit_balance).plus(
       allowance.status === "available" && allowance.period

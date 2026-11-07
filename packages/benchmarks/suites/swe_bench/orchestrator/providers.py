@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from benchmarks.swe_bench.providers import (
+from benchmarks.suites.swe_bench.providers import (
     ElizaCodeProvider,
     SWEAgentProvider,
     SWEBenchTraceHook,

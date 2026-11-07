@@ -1,31 +1,35 @@
 /** Serves registration-bound app identity and Google delegation through the canonical user consent owner. */
-import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
-import { z } from "zod";
-import { appsRepository } from "@/db/repositories/apps";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { readAppClientBasicAuthorization } from "@/lib/auth/app-delegation-auth";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { requireUser } from "@/lib/auth/workers-hono-auth";
+
+import { requireUser } from "@elizaos/cloud-shared/auth";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { readAppClientBasicAuthorization } from "@elizaos/cloud-shared/lib/auth/app-delegation-auth";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
 import {
   initiateManagedGoogleConnection,
   listManagedGoogleConnectorAccounts,
-} from "@/lib/services/agent-google-connector";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
 import {
   AgentGoogleConnectorError,
   googleFetch,
-} from "@/lib/services/agent-google-connector/shared";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector/shared";
 import {
   AppDelegationError,
   type AppDelegationService,
   appDelegationBindingSchema,
-} from "@/lib/services/app-delegation";
-import { appDelegationService } from "@/lib/services/app-delegation-adapter";
+} from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appDelegationService } from "@elizaos/cloud-shared/lib/services/app-delegation-adapter";
 import {
   type AppGoogleCapability,
   validateAppGoogleRequest,
-} from "@/lib/services/app-delegation-google";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/app-delegation-google";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { z } from "zod";
 
 const googleCapabilities = z.enum([
   "google.basic_identity",

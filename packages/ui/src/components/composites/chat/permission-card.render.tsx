@@ -4,7 +4,7 @@
  * inline-render permission prompts detected in message text without guarding.
  */
 
-import { isPermissionId } from "@elizaos/core/contracts/permissions";
+import { isPermissionId } from "@elizaos/core/protocol";
 import type * as React from "react";
 import { PermissionCard, type PermissionCardProps } from "./permission-card";
 import type { PermissionCardPayload } from "./permission-card.helpers";

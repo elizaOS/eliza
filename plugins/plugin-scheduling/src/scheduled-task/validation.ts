@@ -8,9 +8,12 @@
  * on violation.
  */
 
+import { isValidTimeZone } from "@elizaos/contracts";
+import { parseCronExpression } from "@elizaos/core";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type { EscalationLadderRegistry } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
+import { OWNER_LOCAL_TZ } from "./trigger-tz.js";
 import {
   type ScheduledTask,
   type ScheduledTaskInput,
@@ -22,6 +25,7 @@ import {
   type ScheduledTaskSubjectKind,
   TASK_EXECUTION_PROFILES,
 } from "./types.js";
+import { isOwnerWindowKey } from "./window-bounds.js";
 
 export class ScheduledTaskValidationError extends Error {
   readonly code = "scheduled_task_validation_failed";
@@ -110,9 +114,34 @@ function isValidIso(value: unknown): boolean {
   return isNonEmptyString(value) && !Number.isNaN(new Date(value).getTime());
 }
 
+/** Longest length of each month, January first; February counts a leap day. */
+const MONTH_MAX_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * False for a parseable cron expression with no possible date, such as
+ * `0 0 30 2 *`. Core finds no next run for it and repeats a full-year scan on
+ * every tick. When both day fields are restricted core fires on either one, so
+ * the day-of-week field alone makes the schedule reachable.
+ */
+export function cronHasCalendarDate(
+  schedule: NonNullable<ReturnType<typeof parseCronExpression>>,
+): boolean {
+  if (schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted) {
+    return true;
+  }
+  for (const month of schedule.month) {
+    const maxDay = MONTH_MAX_DAYS[month - 1] ?? 0;
+    for (const day of schedule.dayOfMonth) {
+      if (day <= maxDay) return true;
+    }
+  }
+  return false;
+}
+
 function validateTrigger(
   trigger: Record<string, unknown>,
   path: string,
+  newTrigger: boolean,
 ): string[] {
   const issues: string[] = [];
   switch (trigger.kind) {
@@ -124,9 +153,32 @@ function validateTrigger(
     case "cron":
       if (!isNonEmptyString(trigger.expression)) {
         issues.push(`${path}.trigger.expression must be a non-empty string`);
+      } else if (newTrigger) {
+        const schedule = parseCronExpression(trigger.expression);
+        if (!schedule) {
+          // Core's cron scheduler returns no next run for an expression it
+          // cannot parse, so the task would never fire.
+          issues.push(
+            `${path}.trigger.expression must be a valid 5-field cron expression`,
+          );
+        } else if (!cronHasCalendarDate(schedule)) {
+          issues.push(
+            `${path}.trigger.expression names a date that never occurs`,
+          );
+        }
       }
       if (trigger.tz !== undefined && !isNonEmptyString(trigger.tz)) {
         issues.push(`${path}.trigger.tz must be a non-empty string`);
+      } else if (
+        newTrigger &&
+        trigger.tz !== undefined &&
+        trigger.tz !== OWNER_LOCAL_TZ &&
+        !isValidTimeZone(trigger.tz)
+      ) {
+        // Core's cron scheduler evaluates a zone it cannot resolve on UTC.
+        issues.push(
+          `${path}.trigger.tz must be a valid IANA time zone or "${OWNER_LOCAL_TZ}"`,
+        );
       }
       break;
     case "interval":
@@ -154,6 +206,10 @@ function validateTrigger(
     case "during_window":
       if (!isNonEmptyString(trigger.windowKey)) {
         issues.push(`${path}.trigger.windowKey must be a non-empty string`);
+      } else if (!isOwnerWindowKey(trigger.windowKey)) {
+        issues.push(
+          `${path}.trigger.windowKey must be one of: morning, afternoon, evening, night, morning_or_night, morning_or_evening`,
+        );
       }
       break;
     case "event":
@@ -271,6 +327,7 @@ function validateTaskRef(
   path: string,
   depth: number,
   seen: WeakSet<object>,
+  newPipeline: boolean,
 ): string[] {
   if (typeof ref === "string") {
     return ref.trim().length > 0 ? [] : [`${path} must be a non-empty task id`];
@@ -292,17 +349,33 @@ function validateTaskRef(
       path,
       depth: depth + 1,
       seen,
+      newTrigger: newPipeline,
+      newPipeline,
     });
   } finally {
     if (trackRef) seen.delete(ref);
   }
 }
 
+/**
+ * `newTrigger` and `newPipeline` mark the task's trigger and its inline
+ * pipeline children as caller input, which must be a cron schedule core can
+ * run. A stored task keeps a trigger that was accepted before these checks,
+ * so an import or an edit of another field does not refuse it.
+ */
 export function validateScheduledTaskInput(
   input: ScheduledTaskInput,
   deps: ScheduledTaskValidationDeps,
-  opts: { path?: string; depth?: number; seen?: WeakSet<object> } = {},
+  opts: {
+    path?: string;
+    depth?: number;
+    seen?: WeakSet<object>;
+    newTrigger?: boolean;
+    newPipeline?: boolean;
+  } = {},
 ): string[] {
+  const newTrigger = opts.newTrigger ?? false;
+  const newPipeline = opts.newPipeline ?? false;
   const path = opts.path ?? "task";
   const depth = opts.depth ?? 0;
   const seen = opts.seen ?? new WeakSet<object>();
@@ -344,7 +417,7 @@ export function validateScheduledTaskInput(
   if (!input.trigger || !isRecord(input.trigger)) {
     issues.push(`${path}.trigger must be an object`);
   } else {
-    issues.push(...validateTrigger(input.trigger, path));
+    issues.push(...validateTrigger(input.trigger, path, newTrigger));
   }
 
   if (input.subject !== undefined) {
@@ -529,6 +602,7 @@ export function validateScheduledTaskInput(
               `${path}.pipeline.${key}[${index}]`,
               depth,
               seen,
+              newPipeline,
             ),
           );
         });

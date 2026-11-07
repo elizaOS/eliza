@@ -9,8 +9,6 @@ import {
   type AuthorizedInteractionAction,
   authorizeInteractionDispatch,
   computeInteractionActionDigest,
-  type EffectReceipt,
-  ElizaError,
   INTERACTION_CONTRACT_VERSION,
   type InteractionAction,
   type InteractionCapabilitySet,
@@ -18,6 +16,10 @@ import {
   type InteractionConfirmationGrantConsumer,
   type InteractionProfileGrantVerifier,
   type InteractionSession,
+} from "@elizaos/contracts/node";
+import {
+  type EffectReceipt,
+  ElizaError,
   normalizeEffectReceipt,
 } from "@elizaos/core";
 import type {

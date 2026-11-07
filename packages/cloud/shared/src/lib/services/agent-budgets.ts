@@ -31,6 +31,7 @@ import { emailService } from "./email";
 
 const DEFAULT_LOW_BUDGET_THRESHOLD = new Decimal(5);
 const DEFAULT_AUTO_REFILL_THRESHOLD = new Decimal(10);
+const AUTO_REFILL_COOLDOWN_MS = 60 * 60 * 1000;
 
 function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -72,6 +73,13 @@ export interface AllocateBudgetParams {
   amount: number;
   fromOrgCredits?: boolean; // Deduct from org credits when allocating
   description?: string;
+  /**
+   * An auto-refill is re-checked on the locked budget row: it is skipped when
+   * the balance is already above the threshold or a refill happened within
+   * the cooldown, and it records last_refill_at in the same transaction, so
+   * two overlapping triggers refill once.
+   */
+  autoRefill?: { threshold: Decimal; cooldownMs?: number };
 }
 
 export interface RefillBudgetParams {
@@ -456,8 +464,10 @@ class AgentBudgetService {
     success: boolean;
     newBalance: number;
     error?: string;
+    /** An auto-refill found no refill needed on the locked row. */
+    skipped?: boolean;
   }> {
-    const { agentId, amount, fromOrgCredits = true, description } = params;
+    const { agentId, amount, fromOrgCredits = true, description, autoRefill } = params;
 
     if (!isPositiveFiniteNumber(amount)) {
       return {
@@ -532,6 +542,20 @@ class AgentBudgetService {
         }
 
         const currentAllocated = parsed.allocated;
+        if (autoRefill) {
+          const available = currentAllocated.minus(parsed.spent);
+          const refilledRecently =
+            autoRefill.cooldownMs !== undefined &&
+            lockedBudget.last_refill_at !== null &&
+            lockedBudget.last_refill_at.getTime() > Date.now() - autoRefill.cooldownMs;
+          if (available.gt(autoRefill.threshold) || refilledRecently) {
+            return {
+              success: false,
+              skipped: true,
+              newBalance: available.toNumber(),
+            };
+          }
+        }
         const newAllocated = currentAllocated.plus(amount);
         const newBalance = newAllocated.minus(parsed.spent);
 
@@ -548,6 +572,7 @@ class AgentBudgetService {
             pause_reason:
               lockedBudget.pause_reason === "Budget depleted" ? null : lockedBudget.pause_reason,
             low_budget_alert_sent: false, // Reset alert flag
+            ...(autoRefill ? { last_refill_at: new Date() } : {}),
             updated_at: new Date(),
           })
           .where(eq(agentBudgets.id, lockedBudget.id));
@@ -619,9 +644,10 @@ class AgentBudgetService {
       return false;
     }
 
-    // Cooldown check - don't refill more than once per hour
+    // Cooldown check - don't refill more than once per hour (re-checked on
+    // the locked row in allocateBudget).
     if (budget.last_refill_at) {
-      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const hourAgo = new Date(Date.now() - AUTO_REFILL_COOLDOWN_MS);
       if (budget.last_refill_at > hourAgo) {
         logger.debug("[AgentBudgets] Auto-refill skipped (cooldown)", {
           agentId,
@@ -656,18 +682,40 @@ class AgentBudgetService {
       return false;
     }
 
-    const result = await this.refillBudget({
+    let threshold: Decimal;
+    try {
+      threshold = this.parseOptionalBudgetDecimal(
+        "auto_refill_threshold",
+        budget.auto_refill_threshold,
+        DEFAULT_AUTO_REFILL_THRESHOLD,
+      );
+    } catch (error) {
+      if (error instanceof InvalidAgentBudgetNumericValueError) {
+        logger.error("[AgentBudgets] Invalid auto-refill threshold", {
+          agentId,
+          value: budget.auto_refill_threshold,
+        });
+        return false;
+      }
+      throw error;
+    }
+
+    const result = await this.allocateBudget({
       agentId,
       amount: refillAmount.toNumber(),
+      fromOrgCredits: true,
       description: "Auto-refill",
+      autoRefill: { threshold, cooldownMs: AUTO_REFILL_COOLDOWN_MS },
     });
 
-    if (result.success) {
-      await dbWrite
-        .update(agentBudgets)
-        .set({ last_refill_at: new Date(), updated_at: new Date() })
-        .where(eq(agentBudgets.id, budget.id));
+    if (result.skipped) {
+      logger.debug("[AgentBudgets] Auto-refill skipped (already refilled)", {
+        agentId,
+      });
+      return false;
+    }
 
+    if (result.success) {
       logger.info("[AgentBudgets] Auto-refill completed", {
         agentId,
         amount: refillAmount.toNumber(),
@@ -878,18 +926,19 @@ class AgentBudgetService {
           continue;
         }
 
-        // Let errors propagate but track them for batch reporting
-        const result = await this.refillBudget({
+        // Let errors propagate but track them for batch reporting. The
+        // threshold is re-checked on the locked row: this list was read
+        // before the loop, and a deduction-triggered refill may have run.
+        const result = await this.allocateBudget({
           agentId: budget.agent_id,
           amount: refillAmount.toNumber(),
+          fromOrgCredits: true,
           description: "Auto-refill",
+          autoRefill: { threshold },
         });
 
+        if (result.skipped) continue;
         if (result.success) {
-          await dbWrite
-            .update(agentBudgets)
-            .set({ last_refill_at: new Date(), updated_at: new Date() })
-            .where(eq(agentBudgets.id, budget.id));
           processed++;
         } else {
           logger.error("[AgentBudgets] Auto-refill failed", {

@@ -145,6 +145,30 @@ describe("LocalInferenceService activation prewarm", () => {
 		);
 	});
 
+	it("reports a failed switch that kept the previous model as an error", async () => {
+		const service = new LocalInferenceService();
+		const runtime = makeRuntime();
+		const installed = makeInstalledModel("eliza-1-test");
+		const prewarm = vi
+			.spyOn(localInferenceEngine, "prewarmConversation")
+			.mockResolvedValue(true);
+		vi.spyOn(service, "getInstalled").mockResolvedValue([installed]);
+		// The coordinator restored the previously-active model after the
+		// requested one failed to load.
+		vi.spyOn(ActiveModelCoordinator.prototype, "switchTo").mockResolvedValue({
+			...readyState("previous-model"),
+			error: `Could not switch to "${installed.id}" (out of memory); "previous-model" is still active.`,
+		});
+
+		await expect(
+			service.setActive(runtime, installed.id),
+		).rejects.toMatchObject({
+			code: "LOCAL_MODEL_SWITCH_FAILED",
+			message: expect.stringContaining("out of memory"),
+		});
+		expect(prewarm).not.toHaveBeenCalled();
+	});
+
 	it("does not prewarm when activation is not ready", async () => {
 		const service = new LocalInferenceService();
 		const runtime = makeRuntime();

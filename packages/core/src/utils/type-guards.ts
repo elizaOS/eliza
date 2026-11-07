@@ -1,7 +1,7 @@
 /**
  * Runtime type guards that narrow `unknown` to record-shaped values. This is
- * the single implementation module; `../type-guards.ts` re-exports the loose
- * variants under that leaf's historical names.
+ * the single implementation module. Public names distinguish plain records from
+ * arbitrary non-array objects.
  *
  * Strict: `isPlainObject` accepts only object-literal / null-prototype objects,
  * rejecting built-ins (Date, Map, typed arrays, Error, Promise, …) and class

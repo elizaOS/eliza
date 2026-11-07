@@ -15,6 +15,8 @@ export interface PushTokenRecord {
   platform: PushPlatform;
   /** Unix ms when first registered (refreshed on re-registration). */
   createdAt: number;
+  /** Android native receiver can project non-collapsible reminder data. */
+  reminderDataNotifications?: true;
 }
 
 /** Stable cache key the registry persists under (scoped per agent). */
@@ -159,14 +161,34 @@ export class PushTokenRegistry {
   }
 
   /** Validate and durably register a device token. */
-  async register(platform: PushPlatform, token: string): Promise<void> {
+  async register(
+    platform: PushPlatform,
+    token: string,
+    reminderDataNotifications?: boolean,
+  ): Promise<void> {
     const validPlatform = assertValidPlatform(platform);
     const trimmed = assertValidToken(token);
+    if (
+      (reminderDataNotifications !== undefined &&
+        typeof reminderDataNotifications !== "boolean") ||
+      (reminderDataNotifications === true && validPlatform !== "android")
+    ) {
+      throw new ElizaError(
+        "[PushTokenRegistry] invalid reminder data capability",
+        {
+          code: PUSH_TOKEN_INVALID_CODE,
+          severity: "ephemeral",
+        },
+      );
+    }
     await this.mutate((candidate) => {
       candidate.set(trimmed, {
         token: trimmed,
         platform: validPlatform,
         createdAt: Date.now(),
+        ...(reminderDataNotifications === true
+          ? { reminderDataNotifications: true as const }
+          : {}),
       });
       evictOldestPushTokens(candidate);
     });
@@ -275,7 +297,7 @@ function normalizePersistedTokens(stored: unknown): {
 /**
  * True when `stored` is already exactly the canonical persisted form of
  * `canonical` (same length, same order, and each element is a plain object with
- * exactly the three canonical fields equal to the normalized values). Used to
+ * exactly the canonical fields (plus negotiated capability) equal to the normalized values). Used to
  * suppress a repair write on an already-clean load.
  */
 function isCanonicalPersistedArray(
@@ -287,12 +309,17 @@ function isCanonicalPersistedArray(
     const raw = stored[i];
     if (typeof raw !== "object" || raw === null) return false;
     const record = raw as Record<string, unknown>;
-    if (Object.keys(record).length !== 3) return false;
     const expected = canonical[i];
+    if (
+      Object.keys(record).length !==
+      (expected.reminderDataNotifications ? 4 : 3)
+    )
+      return false;
     if (
       record.token !== expected.token ||
       record.platform !== expected.platform ||
-      record.createdAt !== expected.createdAt
+      record.createdAt !== expected.createdAt ||
+      record.reminderDataNotifications !== expected.reminderDataNotifications
     ) {
       return false;
     }
@@ -344,5 +371,13 @@ function parsePushTokenRecord(value: unknown): PushTokenRecord | null {
     return null;
   }
 
-  return { token, platform: record.platform, createdAt };
+  return {
+    token,
+    platform: record.platform,
+    createdAt,
+    ...(record.platform === "android" &&
+    record.reminderDataNotifications === true
+      ? { reminderDataNotifications: true as const }
+      : {}),
+  };
 }

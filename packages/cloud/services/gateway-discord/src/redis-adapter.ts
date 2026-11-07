@@ -28,6 +28,7 @@ function getRequireCJS(): NodeJS.Require {
 }
 
 interface IoRedisLike {
+  eval(...args: Array<string | number>): Promise<unknown>;
   get(key: string): Promise<string | null>;
   set(...args: Array<string | number>): Promise<string | null>;
   setex(key: string, seconds: number, value: string): Promise<string>;
@@ -82,6 +83,14 @@ export class UpstashCompatRedis {
 
   constructor(client: IoRedisLike) {
     this.client = client;
+  }
+
+  async eval(
+    script: string,
+    keys: string[],
+    args: Array<string | number>,
+  ): Promise<unknown> {
+    return this.client.eval(script, keys.length, ...keys, ...args);
   }
 
   async get<T = string>(key: string): Promise<T | null> {

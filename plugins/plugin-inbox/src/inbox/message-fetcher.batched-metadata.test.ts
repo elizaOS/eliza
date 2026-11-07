@@ -52,6 +52,7 @@ function fixture() {
       text: `Complete message ${index} with final detail`,
       source: "discord",
     },
+    metadata: { type: "message", messageIdFull: `discord-message-${index}` },
   }));
   const calls = {
     worlds: [] as UUID[][],
@@ -113,7 +114,7 @@ describe("chat feed batched metadata", () => {
       expect(result.map((message) => message.deepLink)).toEqual(
         order.map(
           (index) =>
-            `https://discord.com/channels/${index === 2 ? "@me" : `guild-${index}`}/channel-${index}/${f.memories[index].id}`,
+            `https://discord.com/channels/${index === 2 ? "@me" : `guild-${index}`}/channel-${index}/discord-message-${index}`,
         ),
       );
       expect(f.calls.worlds).toEqual([f.worldIds]);

@@ -4,9 +4,9 @@ import { delegationRecords } from "./db/delegation-records";
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
  */
 
-import type { IAgentRuntime, ProcessEnvLike } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
-import { ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { type IAgentRuntime, type ProcessEnvLike, type Plugin, ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
+
+
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -39,7 +39,6 @@ import {
 // Cloud services
 import { CloudGoogleDelegationService } from "./services/cloud-google-delegation";
 import { CloudAuthService } from "./services/cloud-auth";
-import { CloudBackupService } from "./services/cloud-backup";
 import { CloudBootstrapServiceImpl } from "./services/cloud-bootstrap";
 import { CloudBridgeService } from "./services/cloud-bridge";
 import { CloudContainerService } from "./services/cloud-container";
@@ -314,9 +313,8 @@ export const elizaOSCloudPlugin: Plugin = {
   //   1. CloudAuthService — must start first (other services depend on it)
   //   2. CloudBootstrapServiceImpl — pure trust-anchor accessor; no deps
   //   3. CloudManagedGatewayRelayService — optional local-runtime relay via shared cloud ingress
-  //   4. CloudContainerService — needs auth to list/create containers
+  //   4. CloudContainerService — needs auth to list containers
   //   5. CloudBridgeService — needs auth for WebSocket connections
-  //   6. CloudBackupService — needs auth for snapshot API calls
   services: [
     CloudAuthService,
     CloudGoogleDelegationService,
@@ -325,7 +323,6 @@ export const elizaOSCloudPlugin: Plugin = {
     CloudModelRegistryService,
     CloudContainerService,
     CloudBridgeService,
-    CloudBackupService,
   ],
 
   // ─── Cloud Providers ─────────────────────────────────────────────────
@@ -543,7 +540,6 @@ export const elizaOSCloudPlugin: Plugin = {
 
   async dispose(runtime) {
     // Stop in reverse dependency order (auth last since others depend on it).
-    await runtime.getService(CloudBackupService.serviceType)?.stop();
     await runtime.getService(CloudBridgeService.serviceType)?.stop();
     await runtime.getService(CloudContainerService.serviceType)?.stop();
     await runtime.getService(CloudModelRegistryService.serviceType)?.stop();
@@ -629,3 +625,7 @@ export { validateCloudBaseUrl } from "./cloud/validate-url";
 export * from "./plugin";
 export * from "./register-routes";
 export * from "./cloud";
+
+export type { CloudProxyConfigLike } from "./lib/config-like";
+
+export { getCloudInferenceFailure } from "./utils/inference-diagnostics";

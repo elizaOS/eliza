@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Replays the headless pre-init/post-init bridge order against a real runtime,
  * proving the local boot hook reuses the canonical service without a dead loader.

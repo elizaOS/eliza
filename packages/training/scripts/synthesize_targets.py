@@ -42,13 +42,12 @@ from typing import Any
 
 import yaml
 
-from lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
+from eliza_training.lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import ElizaRecord, build, stable_id  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.eliza_record import ElizaRecord, build, stable_id  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 REGISTRY_FILE = ROOT / "datasets.yaml"
 PROMPTS_REGISTRY = ROOT / "data" / "prompts" / "registry.json"

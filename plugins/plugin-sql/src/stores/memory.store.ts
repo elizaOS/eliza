@@ -39,6 +39,8 @@ export class MemoryStore implements Store {
     const tableName = params.tableName;
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
+    // `0` is an explicit empty page. A truthy check skipped LIMIT and returned
+    // every matching row.
     const effectiveLimit = params.limit ?? params.count;
 
     if (offset !== undefined && offset < 0) {
@@ -86,9 +88,9 @@ export class MemoryStore implements Store {
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
       const rows = await (async () => {
-        if (effectiveLimit && offset !== undefined && offset > 0) {
+        if (effectiveLimit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
-        } else if (effectiveLimit) {
+        } else if (effectiveLimit !== undefined) {
           return baseQuery.limit(effectiveLimit);
         } else if (offset !== undefined && offset > 0) {
           return baseQuery.offset(offset);
@@ -145,7 +147,7 @@ export class MemoryStore implements Store {
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
-      const rows = params.limit ? await query.limit(params.limit) : await query;
+      const rows = params.limit !== undefined ? await query.limit(params.limit) : await query;
 
       return rows.map((row) => ({
         id: row.id as UUID,

@@ -6,7 +6,6 @@ export const heavyOnlyE2EPaths = [
   "packages/app/test/app/memory-relationships.real.e2e.test.ts",
   "packages/app/test/app/qa-checklist.real.e2e.test.ts",
   "packages/app/src/services/local-inference/engine.e2e.test.ts",
-  "packages/ui/src/services/local-inference/engine.e2e.test.ts",
 ];
 
 export const checkoutDependentE2EPaths = [

@@ -125,6 +125,19 @@ function fail(text: string, error: string): ActionResult {
 }
 
 /**
+ * Strict boolean, mirroring MEMORY: a planner that cannot produce a real
+ * `true` must not be able to mutate the experience graph. Checked after the
+ * arguments are validated and before any store call, so a bad id or score is
+ * reported on the first call instead of after the user confirmed.
+ */
+function confirmationRequired(op: ExperienceOp): ActionResult {
+  return fail(
+    `Refusing to ${op}: pass confirm:true to acknowledge this destructive action.`,
+    "EXPERIENCE_CONFIRMATION_REQUIRED",
+  );
+}
+
+/**
  * Same strong-match bar MEMORY's delete-by-query uses: 1 for a whole-phrase
  * hit, plus the fraction of query terms present. Deletion requires >= 1
  * (whole phrase, or every term) — search-style partial matches must not be
@@ -189,6 +202,7 @@ async function doUpdate(
       "EXPERIENCE_NO_FIELDS",
     );
   }
+  if (params.confirm !== true) return confirmationRequired("update");
 
   const updated = await experienceService.updateExperience(
     experienceId,
@@ -232,6 +246,7 @@ async function doDelete(
         "EXPERIENCE_INVALID_ID",
       );
     }
+    if (params.confirm !== true) return confirmationRequired("delete");
     const deleted = await experienceService.deleteExperience(experienceId);
     if (!deleted) {
       return fail(
@@ -250,7 +265,8 @@ async function doDelete(
   if (!query) {
     return fail("experienceId or query is required.", "EXPERIENCE_MISSING_ID");
   }
-
+  // The lookup is read-only: report no match or an ambiguous match on the
+  // first call instead of after the caller has already confirmed.
   const candidates = await experienceService.queryExperiences({
     query,
   });
@@ -279,6 +295,12 @@ async function doDelete(
   }
 
   const target = matched[0];
+  if (params.confirm !== true) {
+    return fail(
+      `Refusing to delete experience ${target.id} (${toWellFormedUnicode(target.learning)}): pass confirm:true to acknowledge this destructive action.`,
+      "EXPERIENCE_CONFIRMATION_REQUIRED",
+    );
+  }
   const deleted = await experienceService.deleteExperience(target.id);
   if (!deleted) {
     return fail(
@@ -350,8 +372,7 @@ export const manageExperienceAction: Action = {
     },
     {
       name: "tags",
-      description:
-        "update: replacement tag list (array or comma-separated string).",
+      description: "update: replacement tag list, one string per tag.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
@@ -451,15 +472,6 @@ export const manageExperienceAction: Action = {
         "EXPERIENCE_INVALID_OP",
       );
     }
-    // Strict boolean, mirroring MEMORY: a planner that cannot produce a real
-    // `true` must not be able to mutate the experience graph.
-    if (params.confirm !== true) {
-      return fail(
-        `Refusing to ${op}: pass confirm:true to acknowledge this destructive action.`,
-        "EXPERIENCE_CONFIRMATION_REQUIRED",
-      );
-    }
-
     const result =
       op === "update"
         ? await doUpdate(experienceService, params)

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop preload validation ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 

@@ -13,12 +13,9 @@ import type {
   LifeOpsScheduleMealLabel,
   LifeOpsScheduleRegularity,
   LifeOpsUnclearReason,
-} from "@elizaos/core/contracts/personal-assistant";
-import {
-  parseIsoMs,
-  roundConfidence,
-} from "@elizaos/core/lifeops-normalize/time-util";
-import { asRecord } from "@elizaos/core/type-guards";
+} from "@elizaos/contracts";
+import { parseIsoMs, roundConfidence } from "@elizaos/contracts";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import type {
   LifeOpsScheduleDeviceKind,
   LifeOpsScheduleMergedState,

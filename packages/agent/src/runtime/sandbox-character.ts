@@ -11,15 +11,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { type CharacterSettings, logger } from "@elizaos/core";
+import { resolveElizaPackageRootSync } from "@elizaos/host";
 import {
   type AgentConfig,
-  type CharacterSettings,
-  logger,
+  type ElizaConfig,
   normalizeFirstRunProviderId,
-  resolveElizaPackageRootSync,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
-import type { ElizaConfig } from "../config/config.ts";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 
 /** Injectable local-file seam used by deterministic character-loader tests. */

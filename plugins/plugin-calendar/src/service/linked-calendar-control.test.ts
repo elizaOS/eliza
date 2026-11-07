@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CalendarService } from "./CalendarService.js";
 import type { CalendarHostGate } from "./gate.js";
 import { LinkedCalendarControlRepository } from "./linked-calendar-control.js";
@@ -819,4 +819,118 @@ describe("durable linked calendar review", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: "LINKED_CALENDAR_DESTINATION_REQUIRED" });
     expect(await h.controls().read()).toEqual(initial);
   });
+});
+
+it("selects and resumes an exact managed owner destination without a local Google service, and rejects revoked access", async () => {
+  const h = await harness();
+  await h.pg.exec(
+    "CREATE TABLE app_calendar.life_calendar_events (agent_id TEXT, provider TEXT, side TEXT, grant_id TEXT, start_at TEXT)",
+  );
+  const grantId = `alpha-google:${"a".repeat(64)}`;
+  let writable = true;
+  const operations: string[] = [];
+  vi.stubEnv(
+    "ELIZA_MANAGED_CALENDAR_READ_BROKER",
+    "http://127.0.0.1:1/__alpha-owner-gmail",
+  );
+  vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
+  vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
+    const input = JSON.parse(String(init.body)).calendar;
+    operations.push(input.operation);
+    return Response.json(
+      input.operation === "sources"
+        ? {
+            calendars: [
+              {
+                provider: "google",
+                side: "owner",
+                grantId,
+                connectorAccountId: grantId,
+                calendarId: "managed-calendar",
+                summary: "Synthetic Calendar",
+                accessRole: "writer",
+              },
+            ],
+          }
+        : {
+            version: 1,
+            grantId,
+            calendarId: "managed-calendar",
+            accountId: "managed-account",
+            read: true,
+            write: writable,
+            idempotentCreate: true,
+            conditionalWrites: true,
+            providerExactlyOnce: false,
+          },
+    );
+  });
+  try {
+    const runtime = {
+      ...h.runtime(),
+      getService: () => {
+        throw Error("No local Google service expected");
+      },
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const service = new CalendarService(runtime);
+    service.setGate({
+      getGoogleConnectorAccounts: async () => {
+        throw Error(
+          "Managed admission must not fall back to local credentials",
+        );
+      },
+    } as unknown as CalendarHostGate);
+    const selected = await service.executeLinkedCalendarControl(
+      new URL("http://localhost"),
+      {
+        operation: "select",
+        expectedRevision: 0,
+        idempotencyKey: "select-managed",
+        destination: {
+          connectorAccountId: grantId,
+          providerCalendarId: "managed-calendar",
+        },
+      },
+    );
+    expect(selected.paused).toBe(true);
+    writable = false;
+    await expect(
+      service.executeLinkedCalendarControl(new URL("http://localhost"), {
+        operation: "resume",
+        expectedRevision: selected.revision,
+        idempotencyKey: "resume-revoked",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+    });
+    expect((await service.getLinkedCalendarControl()).paused).toBe(true);
+    writable = true;
+    const resumed = await service.executeLinkedCalendarControl(
+      new URL("http://localhost"),
+      {
+        operation: "resume",
+        expectedRevision: selected.revision,
+        idempotencyKey: "resume-managed",
+      },
+    );
+    expect(resumed.paused).toBe(false);
+    expect(resumed.destination).toEqual({
+      connectorAccountId: grantId,
+      providerCalendarId: "managed-calendar",
+    });
+    await Reflect.get(service, "linkedCalendarDrain");
+    expect(
+      operations.every((operation) =>
+        ["sources", "write-capabilities"].includes(operation),
+      ),
+    ).toBe(true);
+    expect(
+      await h.pg.query("SELECT * FROM app_calendar.linked_calendar_events"),
+    ).toMatchObject({ rows: [] });
+  } finally {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  }
 });

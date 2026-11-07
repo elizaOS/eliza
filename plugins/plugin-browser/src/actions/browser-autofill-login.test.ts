@@ -1,149 +1,137 @@
-/**
- * Production-boundary regression for browser login autofill when the live tab
- * evaluator finds no password input. Vault and workspace transports are mocked;
- * the real executeBrowserAutofillLogin result translation runs.
- */
-
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { JSDOM } from "jsdom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  vault: {},
-  getAutofillAllowed: vi.fn(),
-  getSavedLogin: vi.fn(),
-  listSavedLogins: vi.fn(),
-  isBrowserWorkspaceBridgeConfigured: vi.fn(),
-  listBrowserWorkspaceTabs: vi.fn(),
-  evaluateBrowserWorkspaceTab: vi.fn(),
+const evaluateBrowserWorkspaceTab = vi.fn();
+
+vi.mock("../workspace/browser-workspace.js", () => ({
+  isBrowserWorkspaceBridgeConfigured: () => true,
+  listBrowserWorkspaceTabs: async () => [
+    {
+      id: "tab-1",
+      title: "Login",
+      url: "https://example.test/login",
+      partition: "persist:main",
+      kind: "standard",
+      visible: true,
+      createdAt: 0,
+      updatedAt: 0,
+      lastFocusedAt: 0,
+    },
+  ],
+  evaluateBrowserWorkspaceTab: (request: { script: string }) =>
+    evaluateBrowserWorkspaceTab(request),
 }));
 
 vi.mock("@elizaos/auth/vault", () => ({
-  createManager: () => ({ vault: mocks.vault }),
-  getAutofillAllowed: mocks.getAutofillAllowed,
-  getSavedLogin: mocks.getSavedLogin,
-  listSavedLogins: mocks.listSavedLogins,
-}));
-
-vi.mock("../workspace/browser-workspace.js", () => ({
-  isBrowserWorkspaceBridgeConfigured: mocks.isBrowserWorkspaceBridgeConfigured,
-  listBrowserWorkspaceTabs: mocks.listBrowserWorkspaceTabs,
-  evaluateBrowserWorkspaceTab: mocks.evaluateBrowserWorkspaceTab,
+  createManager: () => ({ vault: {} }),
+  getAutofillAllowed: async () => true,
+  getSavedLogin: async () => ({
+    username: "ada@example.test",
+    password: "hunter2",
+    lastModified: 1,
+  }),
+  listSavedLogins: async () => [
+    { username: "ada@example.test", lastModified: 1 },
+  ],
 }));
 
 const { executeBrowserAutofillLogin } = await import(
   "./browser-autofill-login.js"
 );
 
-describe("executeBrowserAutofillLogin", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.isBrowserWorkspaceBridgeConfigured.mockReturnValue(true);
-    mocks.getAutofillAllowed.mockResolvedValue(true);
-    mocks.getSavedLogin.mockResolvedValue({
-      username: "alice",
-      password: "vault-password",
-    });
-    mocks.listSavedLogins.mockResolvedValue([]);
-    mocks.listBrowserWorkspaceTabs.mockResolvedValue([
-      { id: "tab-login", url: "https://example.com/login" },
-    ]);
+/** Run the production snippet inside a real DOM, as the tab eval transport does. */
+function servePage(html: string) {
+  const dom = new JSDOM(html, {
+    url: "https://example.test/login",
+    runScripts: "outside-only",
   });
+  evaluateBrowserWorkspaceTab.mockImplementation(
+    ({ script }: { script: string }) => dom.window.eval(script) as unknown,
+  );
+  return dom;
+}
 
-  it("returns a failed action result when the evaluated tab has no password input", async () => {
-    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
-      ok: false,
-      reason: "no_password_input",
-    });
+const runtime = { getService: () => null } as unknown as IAgentRuntime;
+const message = { content: { text: "" } } as Memory;
 
-    const result = await executeBrowserAutofillLogin({} as never, undefined, {
-      parameters: {
-        domain: "example.com",
-        username: "alice",
-      },
-    } as never);
-
-    expect(mocks.evaluateBrowserWorkspaceTab).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({
-      success: false,
-      values: {
-        success: false,
-        error: "AGENT_AUTOFILL_NO_INPUTS",
-        domain: "example.com",
-        tabId: "tab-login",
-        filled: false,
-        fillReason: "no_password_input",
-        subaction: "autofill-login",
-      },
-      data: {
-        actionName: "BROWSER",
-        subaction: "autofill-login",
-        domain: "example.com",
-        tabId: "tab-login",
-        filled: false,
-        fillReason: "no_password_input",
-      },
-    });
-    expect(result.text).toContain("No password input found");
-    expect(JSON.stringify(result)).not.toContain("vault-password");
+async function autofill() {
+  return executeBrowserAutofillLogin(runtime, message, {
+    parameters: { domain: "example.test", submit: true },
   });
+}
 
-  it("preserves a complete evaluated-tab failure reason", async () => {
-    const reason = `browser-evaluation-failed:${"detail-".repeat(100)}`;
-    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
-      ok: false,
-      reason,
-    });
+beforeEach(() => {
+  evaluateBrowserWorkspaceTab.mockReset();
+});
 
-    const result = await executeBrowserAutofillLogin({} as never, undefined, {
-      parameters: {
-        domain: "example.com",
-        username: "alice",
-      },
-    } as never);
+describe("BROWSER autofill-login submission receipt", () => {
+  it("reports the control that blocked the submission", async () => {
+    const dom = servePage(`<!doctype html><html><body>
+			<form action="/session" method="post">
+				<input type="email" name="user">
+				<input type="password" name="pass">
+				<input type="text" name="tenant" required>
+			</form>
+		</body></html>`);
+    let submitted = false;
+    dom.window.document
+      .querySelector("form")
+      ?.addEventListener("submit", () => {
+        submitted = true;
+      });
 
+    const result = await autofill();
+
+    expect(submitted).toBe(false);
     expect(result.success).toBe(false);
-    expect(result.values).toMatchObject({ fillReason: reason });
-    expect(result.data).toMatchObject({ fillReason: reason });
-    expect(result.text).toContain(reason);
+    expect(result.values?.submitted).toBe(false);
+    expect(result.values?.invalid).toEqual({
+      name: "tenant",
+      message: expect.any(String),
+    });
+    expect(result.text).toContain("did not submit");
+    expect(result.text).toContain("tenant");
   });
 
-  it.each([
-    undefined,
-    {},
-    { ok: true, filled: {} },
-    { ok: false, filled: { password: true } },
-  ])("fails closed for malformed evaluator result %#", async (rawResult) => {
-    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue(rawResult);
+  it("does not claim a submission when the page has no submit control", async () => {
+    const dom = servePage(`<!doctype html><html><body>
+			<div><input type="text" name="user"><input type="password" name="pass"></div>
+		</body></html>`);
+    let submitted = false;
+    dom.window.document.addEventListener("submit", () => {
+      submitted = true;
+    });
 
-    const result = await executeBrowserAutofillLogin({} as never, undefined, {
-      parameters: { domain: "example.com", username: "alice" },
-    } as never);
+    const result = await autofill();
 
+    expect(submitted).toBe(false);
     expect(result.success).toBe(false);
-    expect(result.values).toMatchObject({
-      success: false,
-      error: "AGENT_AUTOFILL_NO_INPUTS",
-      filled: false,
-    });
-    expect(JSON.stringify(result)).not.toContain("vault-password");
+    expect(result.values?.submitted).toBe(false);
+    expect(result.text).toContain("did not submit");
   });
 
-  it("preserves a verified password-fill result as success", async () => {
-    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
-      ok: true,
-      filled: { username: true, password: true },
-      submitted: false,
-    });
+  it("still reports a submission the page accepted", async () => {
+    const dom = servePage(`<!doctype html><html><body>
+			<form action="/session" method="post">
+				<input type="email" name="user">
+				<input type="password" name="pass">
+				<button type="submit">Sign in</button>
+			</form>
+		</body></html>`);
+    let submitted = false;
+    dom.window.document
+      .querySelector("form")
+      ?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        submitted = true;
+      });
 
-    const result = await executeBrowserAutofillLogin({} as never, undefined, {
-      parameters: { domain: "example.com", username: "alice" },
-    } as never);
+    const result = await autofill();
 
-    expect(result).toMatchObject({
-      success: true,
-      values: { success: true, filled: true, submitted: false },
-      data: { filled: true },
-    });
-    expect(result.text).toContain("Filled login on example.com");
-    expect(JSON.stringify(result)).not.toContain("vault-password");
+    expect(submitted).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.values?.submitted).toBe(true);
+    expect(result.text).toContain("submitted");
   });
 });

@@ -27,19 +27,21 @@ import sys
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - lean benchmark envs may omit python-dotenv
+
     def load_dotenv(*_args: object, **_kwargs: object) -> bool:
         return False
 
+
 load_dotenv()
 
-from suites.bfcl.runner import BFCLRunner  # noqa: E402
-from suites.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
-from suites.bfcl.types import (  # noqa: E402
+from benchmarks.suites.bfcl.runner import BFCLRunner  # noqa: E402
+from benchmarks.suites.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
+from benchmarks.suites.bfcl.types import (  # noqa: E402
     BFCLCategory,
     BFCLConfig,
     BFCL_V3_SCORING_CATEGORIES,
 )
-from suites.bfcl.reporting import print_results  # noqa: E402
+from benchmarks.suites.bfcl.reporting import print_results  # noqa: E402
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -177,7 +179,8 @@ Environment Variables:
         help="Skip report generation",
     )
     run_parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose output",
     )
@@ -297,7 +300,11 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             if args.sample
             else list(dataset)
         )
-        cases = expand_test_cases(base_cases) if config.include_edge_scenarios else base_cases
+        cases = (
+            expand_test_cases(base_cases)
+            if config.include_edge_scenarios
+            else base_cases
+        )
         if args.validate_scenarios:
             validate_test_cases(cases)
         print(
@@ -317,19 +324,23 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     runner = BFCLRunner(
         config,
         use_mock_agent=args.mock,
-        provider=getattr(args, 'provider', None),
-        model=getattr(args, 'model', None),
+        provider=getattr(args, "provider", None),
+        model=getattr(args, "model", None),
     )
 
     try:
         # Show which model is being used
         if not args.mock:
             harness = (
-                os.environ.get("BENCHMARK_HARNESS")
-                or os.environ.get("BENCHMARK_AGENT")
-                or ""
-            ).strip().lower()
-            arg_provider = getattr(args, 'provider', None)
+                (
+                    os.environ.get("BENCHMARK_HARNESS")
+                    or os.environ.get("BENCHMARK_AGENT")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
+            arg_provider = getattr(args, "provider", None)
             display_provider = (
                 harness
                 if harness in {"hermes", "openclaw"} and arg_provider == "eliza"
@@ -345,7 +356,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                 print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")
                 print("   Provider: eliza (elizaOS TypeScript benchmark bridge)")
             else:
-                from suites.bfcl.models import get_default_model_config, get_model_config
+                from benchmarks.suites.bfcl.models import (
+                    get_default_model_config,
+                    get_model_config,
+                )
 
                 model_config = None
                 if args.model:
@@ -399,20 +413,21 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"\n❌ Benchmark failed: {e}")
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         return 1
 
 
 def show_models(args: argparse.Namespace) -> int:
     """List available models."""
-    from suites.bfcl.models import (
+    from benchmarks.suites.bfcl.models import (
         PROVIDER_CONFIGS,
         SUPPORTED_MODELS,
         get_available_providers,
         get_model_display_info,
     )
 
-    if getattr(args, 'all', False):
+    if getattr(args, "all", False):
         # Show all supported models
         print("\n📋 All Supported Models\n")
 
@@ -423,13 +438,23 @@ def show_models(args: argparse.Namespace) -> int:
                 provider_config = PROVIDER_CONFIGS[current_provider]
                 is_available = current_provider in get_available_providers()
                 status = "✓" if is_available else "✗"
-                env_hint = f"({provider_config.api_key_env})" if not provider_config.is_local else "(local)"
+                env_hint = (
+                    f"({provider_config.api_key_env})"
+                    if not provider_config.is_local
+                    else "(local)"
+                )
                 print(f"\n{status} {current_provider.value.upper()} {env_hint}")
 
             default_marker = " [DEFAULT]" if config.is_default else ""
-            cost = f"${config.cost_per_1k_tokens:.5f}/1K tokens" if config.cost_per_1k_tokens else "free"
+            cost = (
+                f"${config.cost_per_1k_tokens:.5f}/1K tokens"
+                if config.cost_per_1k_tokens
+                else "free"
+            )
             print(f"    {model_name}: {config.display_name}")
-            print(f"        Max tokens: {config.max_tokens}, Cost: {cost}{default_marker}")
+            print(
+                f"        Max tokens: {config.max_tokens}, Cost: {cost}{default_marker}"
+            )
     else:
         # Show available models
         print("\n" + get_model_display_info())
@@ -455,7 +480,7 @@ def show_models(args: argparse.Namespace) -> int:
 
 def show_info(args: argparse.Namespace) -> int:
     """Show benchmark information."""
-    from suites.bfcl.types import LEADERBOARD_SCORES
+    from benchmarks.suites.bfcl.types import LEADERBOARD_SCORES
 
     if args.baselines:
         print("\n📊 BFCL Leaderboard Baselines\n")

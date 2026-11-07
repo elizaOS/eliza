@@ -15,15 +15,12 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
-} from "@elizaos/core/meetings";
-import type {
   Transcript,
   TranscriptCaptureSharingState,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingStatusEvent } from "../../api/client-meetings";
-import { ViewHeader } from "../shared/ViewHeader";
 import {
   type MeetingAwareTranscriptSummary,
   TranscriptsView,
@@ -236,7 +233,6 @@ export function TranscriptsPage(): React.JSX.Element {
   );
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <ViewHeader title="Transcripts" />
       <div className="min-h-0 flex-1 overflow-hidden">
         <TranscriptsView
           transcripts={transcripts}

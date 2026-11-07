@@ -17,18 +17,18 @@
  */
 
 import {
-  type ConnectorAccount,
-  getConnectorAccountManager,
-  type IAgentRuntime,
-} from "@elizaos/core";
-import {
+  fail,
   type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
   type LifeOpsGmailMessageSummary,
   type LifeOpsGmailSearchFeed,
   type LifeOpsGoogleCapability,
-} from "@elizaos/core/contracts/personal-assistant";
-import { fail } from "@elizaos/core/lifeops-normalize/service-normalize";
+} from "@elizaos/contracts";
+import {
+  type ConnectorAccount,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import type {
   GoogleMessageSummary,
   GoogleParsedMailto,
@@ -83,7 +83,6 @@ function googleCapabilitiesForAccount(
   }
   if (scopes.some((scope) => scope.includes("gmail.send"))) {
     capabilities.add("google.gmail.send");
-    capabilities.add("google.gmail.triage");
   }
   if (
     scopes.some(

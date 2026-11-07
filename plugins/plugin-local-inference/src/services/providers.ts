@@ -17,11 +17,12 @@
  */
 import fs from "node:fs/promises";
 import type {
+	LinkedAccountProviderId,
 	ProviderEnableState,
 	ProviderId,
 	ProviderMeta,
 	ProviderStatus,
-} from "@elizaos/core/contracts/local-inference-providers";
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
@@ -183,7 +184,7 @@ const GROK_PROVIDER: ProviderDefinition = {
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState(): Promise<ProviderEnableState> {
 		const key =
-			process.env.GROK_API_KEY?.trim() ?? process.env.XAI_API_KEY?.trim();
+			process.env.GROK_API_KEY?.trim() || process.env.XAI_API_KEY?.trim();
 		return key
 			? { enabled: true, reason: "API key set" }
 			: { enabled: false, reason: "No API key" };
@@ -198,9 +199,11 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
 		"Eliza-hosted inference routed through your subscription. No API key to manage.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
 	async getEnableState(): Promise<ProviderEnableState> {
+		// Linking Eliza Cloud stores its key in ELIZAOS_CLOUD_API_KEY.
 		const token =
-			process.env.ELIZA_CLOUD_TOKEN?.trim() ??
-			process.env.ELIZACLOUD_TOKEN?.trim() ??
+			process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+			process.env.ELIZA_CLOUD_TOKEN?.trim() ||
+			process.env.ELIZACLOUD_TOKEN?.trim() ||
 			process.env.ELIZAOS_API_KEY?.trim();
 		return token
 			? { enabled: true, reason: "Cloud token set" }
@@ -289,7 +292,7 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState(): Promise<ProviderEnableState> {
 		const key =
-			process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim();
+			process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
 		return key
 			? { enabled: true, reason: "API key set" }
 			: { enabled: false, reason: "No API key" };
@@ -385,29 +388,9 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	GROK_PROVIDER,
 	MISTRAL_PROVIDER,
 ];
-interface LinkedAccountLike {
-	enabled?: boolean;
-	health?: string;
-}
-type OptionalAccountPoolModule = {
-	getDefaultAccountPool?: () => {
-		list?: (providerId: string) => LinkedAccountLike[];
-	};
-};
-async function listLinkedAccounts(
-	providerId: string,
-): Promise<LinkedAccountLike[]> {
-	try {
-		const dynamicImport = new Function("id", "return import(id)") as (
-			id: string,
-		) => Promise<OptionalAccountPoolModule>;
-		const appCoreAccountPoolSpecifier = "@elizaos/app/account-pool";
-		const mod = await dynamicImport(appCoreAccountPoolSpecifier);
-		const pool = mod.getDefaultAccountPool?.();
-		return pool?.list?.(providerId) ?? [];
-	} catch {
-		return [];
-	}
+async function listLinkedAccounts(providerId: LinkedAccountProviderId) {
+	const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
+	return getDefaultAccountPool().list(providerId);
 }
 async function apiKeyOrLinkedAccountState(
 	providerId: "deepseek-api" | "zai-api" | "moonshot-api",

@@ -8,7 +8,10 @@
  * runtime — no live model, DB, or real payment provider.
  */
 
-import type { SensitiveRequestDispatchRegistry } from "@elizaos/core";
+import {
+  type SensitiveRequestDispatchRegistry,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import {
   PAYMENT_BUS_CLIENT_SERVICE,
@@ -249,6 +252,73 @@ describe("PAYMENT", () => {
     expect(ok).toBe(false);
   });
 
+  test("validate passes without arguments when a payment service is registered", async () => {
+    // The planner tool surface calls validate with no options.
+    const ok = await paymentAction.validate?.(
+      createRuntime({
+        [PAYMENT_REQUESTS_CLIENT_SERVICE]: { create: vi.fn() },
+      }) as never,
+      message() as never,
+      undefined,
+    );
+    expect(ok).toBe(true);
+  });
+
+  test("validate fails without arguments when no payment service is registered", async () => {
+    const ok = await paymentAction.validate?.(
+      createRuntime({}) as never,
+      message() as never,
+      undefined,
+    );
+    expect(ok).toBe(false);
+  });
+
+  test("a fractional amountCents is rejected by the declared schema", () => {
+    const validation = validateToolArgs(paymentAction, {
+      action: "create_request",
+      provider: "stripe",
+      amountCents: 12.5,
+      paymentContext: { kind: "any_payer" },
+    });
+
+    expect(validation.valid).toBe(false);
+  });
+
+  test("create_request without paymentContext reaches the handler's error", async () => {
+    const create = vi.fn();
+    const runtime = createRuntime({
+      [PAYMENT_REQUESTS_CLIENT_SERVICE]: { create },
+    });
+    const options = {
+      parameters: {
+        action: "create_request",
+        provider: "stripe",
+        amountCents: 1200,
+      },
+    };
+
+    expect(validateToolArgs(paymentAction, options.parameters).errors).toEqual(
+      [],
+    );
+    expect(
+      await paymentAction.validate?.(
+        runtime as never,
+        message() as never,
+        undefined,
+        options as never,
+      ),
+    ).toBe(true);
+    const result = await paymentAction.handler(
+      runtime as never,
+      message() as never,
+      undefined,
+      options as never,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.text).toBe("Invalid or missing paymentContext");
+    expect(create).not.toHaveBeenCalled();
+  });
+
   test("deliver_link dispatches via the registered adapter for an eligible target", async () => {
     const deliver = vi
       .fn()
@@ -390,6 +460,19 @@ describe("PAYMENT", () => {
     expect(verifyProof).toHaveBeenCalledWith("pay_1", { sig: "0xabc" });
     expect(result.data?.valid).toBe(true);
     expect(result.data?.payerIdentity).toBe("user-9");
+  });
+
+  test("the declared schema accepts a provider proof payload with fields", () => {
+    const parameters = {
+      action: "verify_payload",
+      paymentRequestId: "pay_1",
+      proof: { txHash: "0xabc", network: "base" },
+    };
+
+    const validation = validateToolArgs(paymentAction, parameters);
+
+    expect(validation.errors).toEqual([]);
+    expect(validation.args).toEqual(parameters);
   });
 
   test("verify_payload returns invalid when bus rejects proof", async () => {

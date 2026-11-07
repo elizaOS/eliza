@@ -1,0 +1,200 @@
+name: Production PITR Named Safety Backup
+run-name: Production named safety backup ${{ github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      error_recipient_public_key:
+        description: Optional base64 RSA SPKI public key for bounded encrypted failure evidence; no retry
+        required: false
+        type: string
+        default: ''
+      review_expires_utc:
+        description: Reviewed UTC expiry, within one hour; does not authorize stage or commit
+        required: true
+        type: string
+      approved_volume_receipt:
+        description: SHA256 of the exact reviewed immutable volume instance ID
+        required: true
+        type: string
+      reconcile_operation_receipt:
+        description: Optional exact operation-name SHA256; selects read-only reconciliation and never creates a backup
+        required: false
+        default: ""
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: production-railway-database-authority-audit
+  cancel-in-progress: false
+jobs:
+  backup:
+    name: Create one protected named safety backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Require canonical main source
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::Production database authority audits must run from refs/heads/main"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies without lifecycle mutation
+        run: bun install --frozen-lockfile --no-save --ignore-scripts
+
+      - name: Validate protected audit configuration
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_DATABASE_URL" = "true" ] || missing+=(DATABASE_URL)
+          [ "$HAS_RAILWAY_TOKEN" = "true" ] || missing+=(RAILWAY_TOKEN)
+          for name in \
+            RAILWAY_PROJECT_ID \
+            RAILWAY_ENVIRONMENT_ID; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [ -n "${RAILWAY_POSTGRES_SERVICE_ID:-}" ] && \
+            [[ ! "$RAILWAY_POSTGRES_SERVICE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            missing+=(RAILWAY_POSTGRES_SERVICE_ID)
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing or invalid protected production audit setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Protected production audit settings are configured; values were not printed."
+
+      - name: Install pinned Railway CLI
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-production-db-audit"
+          archive="$RUNNER_TEMP/railway-v5.38.0-production-db-audit.tar.gz"
+          mkdir -m 0700 "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Capture private read-only Railway authority evidence
+        id: authority_capture
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
+          mkdir -m 0700 "$evidence_dir"
+          capture() {
+            local label="$1"
+            local output="$2"
+            shift 2
+            if ! "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
+              echo "::error::Railway $label read failed; raw output was not printed"
+              exit 1
+            fi
+            chmod 0600 "$output" "$evidence_dir/${label}.stderr"
+          }
+          common=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+          )
+          capture status "$evidence_dir/status.json" \
+            railway status "${common[@]}" --json
+          capture services "$evidence_dir/services.json" \
+            railway service list "${common[@]}" --json
+          bun packages/cloud/scripts/admin/resolve-production-railway-postgres-service.ts \
+            --status-json "$evidence_dir/status.json" \
+            --services-json "$evidence_dir/services.json" \
+            --service-id-output "$evidence_dir/resolved-service-id"
+          resolved_service_id="$(<"$evidence_dir/resolved-service-id")"
+          echo "::add-mask::$resolved_service_id"
+          capture variables "$evidence_dir/variables.json" \
+            railway variable list "${common[@]}" \
+              --service "$resolved_service_id" --json
+          resolved_service_id=""
+          echo "Captured private Railway target evidence without printing inventory or variables."
+
+      - name: Capture fresh read-only database authority
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
+          # Schema readiness may fail; the backup operator separately requires exact authority match.
+          set +e
+          env -u GITHUB_STEP_SUMMARY bun --no-env-file packages/cloud/scripts/admin/audit-production-railway-database-authority.ts \
+            --status-json "$evidence_dir/status.json" --services-json "$evidence_dir/services.json" \
+            --variables-json "$evidence_dir/variables.json" \
+            --resolved-service-id-file "$evidence_dir/resolved-service-id" \
+            > "$evidence_dir/report.json" 2> "$evidence_dir/authority.stderr"
+          set -e
+          test -s "$evidence_dir/report.json"
+      - name: Create and prove one named safety backup
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          PITR_APPROVED_VOLUME_RECEIPT: ${{ inputs.approved_volume_receipt }}
+          PITR_RECONCILE_OPERATION_RECEIPT: ${{ inputs.reconcile_operation_receipt }}
+          PITR_REVIEW_EXPIRES_UTC: ${{ inputs.review_expires_utc }}
+          PITR_ERROR_RECIPIENT_PUBLIC_KEY: ${{ inputs.error_recipient_public_key }}
+        run: |
+          set -euo pipefail
+          umask 077
+          export BACKUP_EVIDENCE_DIR="$RUNNER_TEMP/production-db-authority-audit"
+          bun --no-env-file packages/cloud/scripts/admin/pitr-safety-backup-operator.ts \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload encrypted provider failure only
+        if: always() && inputs.error_recipient_public_key != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: backup-provider-failure-sealed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-db-authority-audit/provider-failure-envelope.json
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Destroy private backup evidence
+        if: ${{ always() }}
+        run: |
+          set +e
+          evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
+          if [ -d "$evidence_dir" ]; then
+            find "$evidence_dir" -type f -exec shred -f -u -- {} +
+            find "$evidence_dir" -depth -type d -empty -delete
+          fi
+          exit 0

@@ -1,10 +1,4 @@
-/**
- * Linear matcher for planner wildcard action hints. `wildcardCandidateRegex`
- * used to join literal segments with `.*` and run a JS regex; a model hint
- * like `A*A*A*…*Z` against a catalog name of A's is exponential and hangs
- * the retrieve-actions stage on the request thread. Honest hints are
- * `GMAIL_*` / `*_DRAFT` (one or two stars). This walk is O(name × parts).
- */
+/** Matches planner action wildcards in O(name × parts), avoiding exponential regular-expression backtracking on untrusted hints. */
 
 /** True when `name` matches `^parts[0].*parts[1].*…parts[n]$`. */
 export function matchActionWildcardParts(
@@ -30,6 +24,7 @@ export function matchActionWildcardParts(
 		pos = found + literal.length;
 	}
 
+	if (parts.length === 1) return name === last;
 	if (last) {
 		if (!name.endsWith(last)) return false;
 		if (pos > name.length - last.length) return false;

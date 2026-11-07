@@ -1447,6 +1447,36 @@ function resolveTextParams(
   };
 }
 
+const ANTHROPIC_ERROR_TYPE_STATUS: Readonly<Record<string, number>> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529,
+};
+
+function toAnthropicStreamError(error: unknown): unknown {
+  if (error instanceof Error || typeof error !== "object" || error === null) {
+    return error;
+  }
+  const body = error as { type?: unknown; message?: unknown };
+  const message =
+    typeof body.message === "string" && body.message.trim()
+      ? body.message.trim()
+      : "Anthropic stream error";
+  const streamError = new Error(message) as Error & { statusCode?: number; data?: unknown };
+  const statusCode =
+    typeof body.type === "string" ? ANTHROPIC_ERROR_TYPE_STATUS[body.type] : undefined;
+  if (statusCode !== undefined) streamError.statusCode = statusCode;
+  streamError.data = { type: "error", error: body };
+  return streamError;
+}
+
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   params: GenerateTextParams,
@@ -1659,6 +1689,9 @@ async function generateTextWithModel(
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
+    // The runtime's cancellation signal (GenerateTextParams.signal) must reach
+    // the HTTP request, or a stopped turn keeps generating to maxOutputTokens.
+    ...(paramsWithAttachments.signal ? { abortSignal: paramsWithAttachments.signal } : {}),
   };
 
   const operationName = `${modelType} request using ${modelName}`;
@@ -1681,7 +1714,13 @@ async function generateTextWithModel(
   // text chunks and discard the parsed object, so fall through to generateText.
   if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
-      const streamResult = streamText(generateParams);
+      let streamError: unknown;
+      const streamResult = streamText({
+        ...generateParams,
+        onError: ({ error }) => {
+          streamError = toAnthropicStreamError(error);
+        },
+      });
       // error-policy:J5 unhandled-rejection suppression — provider metadata is
       // usage-normalization enrichment only; the underlying stream failure is
       // observed in `textStreamWithUsage` (finishReason await rethrows).
@@ -1712,16 +1751,24 @@ async function generateTextWithModel(
         );
         return normalizedUsage;
       });
-      const finishReasonPromise = Promise.resolve(streamResult.finishReason).then(
-        (finishReason) => {
-          assertModelOutputComplete({
-            finishReason,
-            provider: "anthropic",
-            model: modelName,
-          });
-          return finishReason;
-        }
-      );
+      // The finish-reason check waits for the usage promise, which emits
+      // MODEL_USED, so billed tokens are reported before an incomplete
+      // output is rejected, and the rejection carries the usage and the
+      // output cap as evidence. A usage rejection maps to undefined, so it
+      // cannot change the finish result.
+      const finishReasonPromise = Promise.all([
+        Promise.resolve(streamResult.finishReason),
+        usagePromise.catch((): undefined => undefined),
+      ]).then(([finishReason, usage]) => {
+        assertModelOutputComplete({
+          finishReason,
+          provider: "anthropic",
+          model: modelName,
+          maxTokens: resolved.maxTokens,
+          usage,
+        });
+        return finishReason;
+      });
       // error-policy:J5 unhandled-rejection suppression — usage emission is
       // telemetry; the underlying stream failure is observed in
       // `textStreamWithUsage` (finishReason await rethrows), never here.
@@ -1744,7 +1791,7 @@ async function generateTextWithModel(
           // error-policy:J2 context-adding rethrow — formatModelError wraps the
           // provider error with `cause`; an errored/empty stream surfaces to
           // the consumer instead of silently yielding "".
-          throw formatModelError(operationName, error);
+          throw formatModelError(operationName, streamError ?? error);
         } finally {
           if (completed) {
             await usagePromise.catch(ignoreUsageError);
@@ -1790,13 +1837,19 @@ async function generateTextWithModel(
   }
 
   try {
-    const response = await executeWithRetry(operationName, () => generateText(generateParams));
+    const response = await executeWithRetry(
+      operationName,
+      () => generateText(generateParams),
+      undefined,
+      paramsWithAttachments.signal
+    );
 
-    assertModelOutputComplete({
-      finishReason: response.finishReason,
-      provider: "anthropic",
-      model: modelName,
-    });
+    const normalizedUsage = response.usage
+      ? normalizeAnthropicUsage(
+          response.usage as AnthropicUsageWithCache,
+          response.providerMetadata
+        )
+      : undefined;
 
     if (response.usage) {
       // Normalize BEFORE emitting so MODEL_USED (and the structured cache
@@ -1805,13 +1858,20 @@ async function generateTextWithModel(
         runtime,
         modelType,
         resolved.prompt,
-        normalizeAnthropicUsage(
-          response.usage as AnthropicUsageWithCache,
-          response.providerMetadata
-        ) ?? (response.usage as AnthropicUsageWithCache),
+        normalizedUsage ?? (response.usage as AnthropicUsageWithCache),
         modelName
       );
     }
+
+    // Billed tokens are reported before an incomplete output is rejected,
+    // and the rejection carries the usage and the output cap as evidence.
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+      maxTokens: resolved.maxTokens,
+      usage: normalizedUsage,
+    });
 
     if (shouldReturnNativeResult) {
       return buildNativeTextResult(response, modelName) as string & NativeGenerateTextResult;

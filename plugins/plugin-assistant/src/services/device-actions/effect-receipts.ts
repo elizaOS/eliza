@@ -1,6 +1,26 @@
-import { type EffectReceipt, normalizeEffectReceipt } from "@elizaos/core";
+import { createHash } from "node:crypto";
+import {
+  isNamedTargetOperation,
+  validateNamedTargetResult,
+} from "@elizaos/contracts";
+import {
+  type EffectReceipt,
+  normalizeEffectReceipt,
+  type PlannerToolResult,
+} from "@elizaos/core";
 import type { ApprovalEnqueueResult } from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
+import { namedTargetValidators } from "./foreground-review-contract.ts";
+import {
+  isPhoneDial,
+  phoneDialReceiptOutcome,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
+  isSmsSend,
+  smsBindingText,
+  validateSmsResult,
+} from "./sms-contract.ts";
 
 /** Only call after authenticated proposal lookup and operation-result validation.
  * Proof refers to persisted queue/native operation identities, never payload text. */
@@ -38,7 +58,73 @@ export function deviceActionEffectReceipts(
     provider?.outcome === "applied" &&
     typeof provider.operationId === "string"
   ) {
-    const read = deviceOperationIsRead(operation.type);
+    if (isSmsSend(operation)) {
+      validateSmsResult(
+        operation,
+        provider.result,
+        provider.operationId,
+        createHash("sha256").update(smsBindingText(operation)).digest("hex"),
+      );
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device.sms.submit",
+          resource: { kind: "device.sms.submission", id: provider.operationId },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: true,
+          },
+          outcome: "applied",
+          commit: {
+            kind: "provider_accepted",
+            id: provider.operationId,
+            committedAt: request.updatedAt.toISOString(),
+          },
+          // This receipt only proves submission. The typed result separately records modem/delivery evidence.
+        }),
+      ];
+    }
+    if (isPhoneDial(operation)) {
+      // Applied means only that the dial screen opened with the reviewed number.
+      // A stored result that names no opened dial screen never becomes an
+      // applied handoff receipt, whatever outcome the stored receipt carries.
+      if (
+        phoneDialReceiptOutcome(
+          validatePhoneDialResult(operation, provider.result),
+        ) !== "applied"
+      )
+        throw new Error("Dial receipt outcome conflicts with native evidence");
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device.phone.dial_handoff",
+          resource: {
+            kind: "device.phone.dial_handoff",
+            id: provider.operationId,
+          },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: true,
+          },
+          outcome: "applied",
+          commit: {
+            kind: "provider_accepted",
+            id: provider.operationId,
+            committedAt: request.updatedAt.toISOString(),
+          },
+        }),
+      ];
+    }
+    const read = deviceOperationIsRead(operation);
+    const noMatch =
+      isNamedTargetOperation(operation) &&
+      validateNamedTargetResult(
+        operation,
+        provider.result,
+        namedTargetValidators,
+      ).basis === "no-match";
     const evidence = {
       ...base,
       receiptId: execution.attemptId,
@@ -50,7 +136,7 @@ export function deviceActionEffectReceipts(
     // snapshot stays in ActionResult.data; no new read occurs during retrieval.
     return [
       normalizeEffectReceipt(
-        read
+        read || noMatch
           ? {
               ...evidence,
               idempotency: {
@@ -58,8 +144,9 @@ export function deviceActionEffectReceipts(
                 replayed: false,
               },
               outcome: "noop",
-              reason:
-                "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
+              reason: noMatch
+                ? "The reviewed name matched no local record; no resource was changed."
+                : "Retrieved the immutable historical selected-read snapshot; no resource was changed or reread.",
             }
           : {
               ...evidence,
@@ -134,34 +221,106 @@ export function deviceApprovalPersistenceReceipt(
 }
 
 /** Exhaustive closed operation union: new operations require explicit classification. */
-function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
-  switch (type) {
+function deviceOperationIsRead(operation: DeviceOperation): boolean {
+  switch (operation.type) {
     case "maps_read_selected":
     case "notes_read_selected":
+    case "notes_query":
+    case "notes_search":
+    case "calendar_availability":
     case "reminder_read_selected":
+    case "calendar_read_next":
     case "calendar_read_selected":
     case "read_selected_notes":
     case "read_calendar_range":
+    case "read_selected_reminders":
       return true;
+    case "calendar_named":
+      return operation.action === "read";
+    case "notes_named":
+    case "reminder_named":
     case "notes_update":
     case "notes_delete":
     case "reminder_update":
     case "reminder_complete":
     case "reminder_snooze":
     case "reminder_cancel":
+    case "calendar_create_local":
     case "calendar_create":
     case "calendar_update":
     case "calendar_delete":
+    case "sms_send":
+    case "phone_dial":
+    case "clock_handoff":
+    case "clock_alarm":
+    case "camera_capture_photo":
     case "create_note":
     case "create_reminder":
+    case "reminder_create":
     case "open_view":
     case "browser_navigate":
     case "post_notification":
     case "speak_text":
       return false;
     default: {
-      const unreachable: never = type;
-      throw new Error("Unclassified device operation: " + unreachable);
+      const unreachable: never = operation;
+      throw new Error(`Unclassified device operation: ${unreachable}`);
     }
+  }
+}
+
+/** A durable proposal is a user-input barrier, never proof of its requested effect. */
+export const DEVICE_APPROVAL_REVIEW_TEXT =
+  "Review this request on your phone before it can run.";
+export function isPersistedDeviceApprovalPause(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
+  return (
+    data?.awaitingUserInput === true &&
+    data.approvalRequired === true &&
+    isPersistedPendingDeviceProposal(result)
+  );
+}
+/** A durable proposal bound to the owner's current message that the requesting
+ * phone runs right after the reply (direct-request mode). It waits for the
+ * device, not for owner input, and is still no proof of its effect. */
+export function isRequestedDeviceHandoff(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
+  return (
+    data?.directRequest === true &&
+    data.awaitingDeviceExecution === true &&
+    data.awaitingUserInput !== true &&
+    isPersistedPendingDeviceProposal(result)
+  );
+}
+function isPersistedPendingDeviceProposal(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
+  if (
+    result?.success !== true ||
+    data?.state !== "pending" ||
+    data.executed !== false ||
+    typeof data.proposalId !== "string"
+  )
+    return false;
+  try {
+    const receipt = normalizeEffectReceipt(data.approvalPersistence);
+    if (
+      receipt.operation !== "device.approval.create" ||
+      receipt.receiptId !== data.proposalId ||
+      receipt.resource.kind !== "device.approval" ||
+      receipt.resource.id !== data.proposalId
+    )
+      return false;
+    return receipt.outcome === "applied"
+      ? receipt.commit?.kind === "durable" &&
+          receipt.commit.id === data.proposalId
+      : receipt.outcome === "noop" && receipt.idempotency.replayed === true;
+  } catch {
+    return false;
   }
 }

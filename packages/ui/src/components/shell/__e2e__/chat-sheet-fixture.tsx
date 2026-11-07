@@ -6,7 +6,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import { GlassStyles } from "../../../glass";
+import { GlassStyles } from "../../../glass/GlassSurface";
 import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { CaptureIntent, ShellController } from "../useShellController";

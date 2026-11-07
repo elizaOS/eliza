@@ -142,5 +142,24 @@ describe("INBOX compatibility entrypoint", () => {
       expect(data.platforms).toEqual(["gmail", "slack"]);
       expect(data.items.map((item) => item.id)).toEqual(["s-1", "g-1"]);
     });
+
+    it("reports slack as unchecked, not empty, when no slack source exists", async () => {
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["slack"],
+      });
+      const data = result.data as {
+        items: InboxItem[];
+        degraded: Array<{ platform: string; error: string }>;
+      };
+      expect(data.items).toEqual([]);
+      expect(data.degraded).toEqual([
+        { platform: "slack", error: "no inbox source registered for slack" },
+      ]);
+      expect(result.text).toContain(
+        "No messages from reachable platforms for this window.",
+      );
+      expect(result.text).not.toContain("Your inbox is empty");
+    });
   });
 });

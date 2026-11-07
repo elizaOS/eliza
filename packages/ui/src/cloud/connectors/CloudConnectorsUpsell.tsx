@@ -12,14 +12,14 @@
 
 import { Cloud, Plug, RadioTower } from "lucide-react";
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import {
   SettingsGroup,
   SettingsRow,
   SettingsStack,
 } from "../../components/settings/settings-layout";
 import { Button } from "../../components/ui/button";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
 

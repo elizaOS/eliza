@@ -35,6 +35,13 @@ export const sceneProvider: Provider = {
     "display, focused window, apps, OCR boxes, AX nodes, VLM annotations; coords local",
   contexts: ["browser", "automation", "admin"],
   contextGate: { anyOf: ["browser", "automation", "admin"] },
+  // Live desktop scene (focused window, apps, OCR text, accessibility
+  // tree) is owner context, same as the computer-state provider
+  // (#12094 item 3). Without this gate the provider runs on every
+  // plain guest turn: empty active contexts skip the context filter,
+  // and the host chokepoint only wraps providers that declare a
+  // restricting role gate.
+  roleGate: { minRole: "OWNER" },
   cacheStable: false,
   cacheScope: "turn",
   get: async (

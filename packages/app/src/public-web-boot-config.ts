@@ -8,8 +8,7 @@
  */
 
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
-import { resolveIosRuntimeConfig } from "./ios-runtime";
+import { getBootConfig, resolveCloudApiBase, setBootConfig } from "@elizaos/ui";
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
 
@@ -20,22 +19,22 @@ type RuntimeEnv = Record<string, string | boolean | undefined>;
 export function seedPublicWebBootConfig(
   env: RuntimeEnv = import.meta.env as RuntimeEnv,
 ): void {
-  const runtime = resolveIosRuntimeConfig(env);
-  configureStoredStewardTokenScope(runtime.cloudApiBase);
+  const cloudApiBase = resolveCloudApiBase(env);
+  configureStoredStewardTokenScope(cloudApiBase);
   const current = getBootConfig();
   const applicationBillingSlot =
     typeof env.VITE_ELIZA_APPLICATION_SLOT === "string"
       ? env.VITE_ELIZA_APPLICATION_SLOT
       : undefined;
   if (
-    current.cloudApiBase === runtime.cloudApiBase &&
+    current.cloudApiBase === cloudApiBase &&
     current.applicationBillingSlot === applicationBillingSlot
   ) {
     return;
   }
   setBootConfig({
     ...current,
-    cloudApiBase: runtime.cloudApiBase,
+    cloudApiBase: cloudApiBase,
     applicationBillingSlot,
   });
 }

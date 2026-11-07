@@ -1,3 +1,5 @@
+import type { RoleGateRole } from "@elizaos/core/protocol";
+import type { DetachedSurface } from "./surface-windows";
 /**
  * elizaOS Desktop RPC Schema for Electrobun
  *
@@ -12,27 +14,25 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
-import type { JsonValue } from "@elizaos/core";
-import type {
-	AgentAutomationMode as SharedAgentAutomationMode,
-	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-} from "@elizaos/core/api/agent-api-types";
-import type { SubscriptionStatusResponse } from "@elizaos/core/contracts/first-run-options";
-import type { ExistingElizaInstallInfo } from "@elizaos/core/contracts/host-types";
-import type {
-	PermissionId,
-	PermissionState,
-} from "@elizaos/core/contracts/permissions";
 import type {
 	EncryptedRemoteControlEnvelope,
+	ExistingElizaInstallInfo,
 	RemoteCommandAction,
 	RemoteControllerPlatform,
 	RemoteControllerPublicIdentity,
 	RemoteJsonValue,
 	RemoteTargetPublicIdentity,
+	TradePermissionMode as SharedTradePermissionMode,
 	SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
-import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
+import type { JsonValue } from "@elizaos/core";
+import type {
+	PermissionId,
+	PermissionState,
+	AgentAutomationMode as SharedAgentAutomationMode,
+	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+} from "@elizaos/core/protocol";
+import type { SubscriptionStatusResponse } from "@elizaos/host/protocol";
 import type { RPCSchema } from "electrobun/bun";
 import type {
 	DatabaseBackupResult,
@@ -136,7 +136,7 @@ export interface NavigateBrowserWorkspaceTabRequest {
 export type {
 	ExistingElizaInstallInfo,
 	ExistingElizaInstallSource,
-} from "@elizaos/core/contracts/host-types";
+} from "@elizaos/contracts";
 export interface StateDirMigrationResult {
 	ok: boolean;
 	migrated: boolean;
@@ -393,7 +393,7 @@ export type {
 	PermissionId,
 	PermissionState,
 	PermissionStatus,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 export type SystemPermissionId = PermissionId;
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
@@ -912,7 +912,7 @@ export interface FirstRunStatusSnapshot {
 /**
  * Typed response for `getFirstRunOptions` — provider/model catalogs +
  * style presets used by the first-run UI. Mirrors the first-run options
- * structure in `@elizaos/core/contracts/firstRun`, narrowed to the
+ * structure in `@elizaos/contracts`, narrowed to the
  * subset the server actually returns at `/api/first-run/options`
  * (server source: `first-run-routes.ts:328`). Fields are kept structural
  * (`unknown`/`Record<string, unknown>`) for items whose shape lives
@@ -1026,6 +1026,7 @@ export interface AuthMeSnapshot {
 	};
 	access?: {
 		mode: string;
+		role: RoleGateRole;
 		passwordConfigured: boolean;
 		ownerConfigured: boolean;
 	};
@@ -1034,6 +1035,7 @@ export interface AuthMeSnapshot {
 		reason: string;
 		access: {
 			mode: string;
+			role: RoleGateRole;
 			passwordConfigured: boolean;
 			ownerConfigured: boolean;
 		};
@@ -1917,14 +1919,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopOpenSurfaceWindow: {
 				params: {
-					surface:
-						| "chat"
-						| "browser"
-						| "release"
-						| "triggers"
-						| "plugins"
-						| "connectors"
-						| "cloud";
+					surface: DetachedSurface;
 					browse?: string;
 					alwaysOnTop?: boolean;
 				};
@@ -3330,382 +3325,3 @@ export type ElizaDesktopRPCSchema = {
 		};
 	}>;
 };
-// ============================================================================
-// Channel ↔ RPC Method Mapping
-// ============================================================================
-/**
- * Maps legacy colon-separated desktop channel names to camelCase RPC
- * method names. Used by the renderer bridge for backward compatibility.
- */
-export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
-	// Agent
-	"agent:start": "agentStart",
-	"agent:stop": "agentStop",
-	"agent:restart": "agentRestart",
-	"agent:restartClearLocalDb": "agentRestartClearLocalDb",
-	"agent:status": "agentStatus",
-	"agent:inspectExistingInstall": "agentInspectExistingInstall",
-	"agent:migrateStateDir": "agentMigrateStateDir",
-	"agent:postReset": "agentPostReset",
-	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
-	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
-	"agent:getConfig": "getConfig",
-	"agent:updateConfig": "updateConfig",
-	"agent:getConfigSchema": "getConfigSchema",
-	"agent:getAgentAutomationMode": "getAgentAutomationMode",
-	"agent:setAgentAutomationMode": "setAgentAutomationMode",
-	"agent:getTradePermissionMode": "getTradePermissionMode",
-	"agent:setTradePermissionMode": "setTradePermissionMode",
-	// Desktop: Tray
-	"desktop:createTray": "desktopCreateTray",
-	"desktop:updateTray": "desktopUpdateTray",
-	"desktop:destroyTray": "desktopDestroyTray",
-	"desktop:setTrayMenu": "desktopSetTrayMenu",
-	// Desktop: Shortcuts
-	"desktop:registerShortcut": "desktopRegisterShortcut",
-	"desktop:unregisterShortcut": "desktopUnregisterShortcut",
-	"desktop:unregisterAllShortcuts": "desktopUnregisterAllShortcuts",
-	"desktop:isShortcutRegistered": "desktopIsShortcutRegistered",
-	"desktop:startFnHoldMonitor": "desktopStartFnHoldMonitor",
-	"desktop:stopFnHoldMonitor": "desktopStopFnHoldMonitor",
-	// Desktop: Auto Launch
-	"desktop:setAutoLaunch": "desktopSetAutoLaunch",
-	"desktop:getAutoLaunchStatus": "desktopGetAutoLaunchStatus",
-	// Desktop: Window
-	"desktop:setWindowOptions": "desktopSetWindowOptions",
-	"desktop:getWindowBounds": "desktopGetWindowBounds",
-	"desktop:setWindowBounds": "desktopSetWindowBounds",
-	"desktop:setBottomBarExpanded": "desktopSetBottomBarExpanded",
-	"desktop:minimizeWindow": "desktopMinimizeWindow",
-	"desktop:unminimizeWindow": "desktopUnminimizeWindow",
-	"desktop:maximizeWindow": "desktopMaximizeWindow",
-	"desktop:unmaximizeWindow": "desktopUnmaximizeWindow",
-	"desktop:closeWindow": "desktopCloseWindow",
-	"desktop:showWindow": "desktopShowWindow",
-	"desktop:hideWindow": "desktopHideWindow",
-	"desktop:focusWindow": "desktopFocusWindow",
-	"desktop:isWindowMaximized": "desktopIsWindowMaximized",
-	"desktop:isWindowMinimized": "desktopIsWindowMinimized",
-	"desktop:isWindowVisible": "desktopIsWindowVisible",
-	"desktop:isWindowFocused": "desktopIsWindowFocused",
-	"desktop:setAlwaysOnTop": "desktopSetAlwaysOnTop",
-	"desktop:setFullscreen": "desktopSetFullscreen",
-	"desktop:setOpacity": "desktopSetOpacity",
-	// Desktop: Notifications
-	"desktop:showNotification": "desktopShowNotification",
-	"desktop:closeNotification": "desktopCloseNotification",
-	"desktop:showBackgroundNotice": "desktopShowBackgroundNotice",
-	// Desktop: Power
-	"desktop:getPowerState": "desktopGetPowerState",
-	// Desktop: Screen
-	"desktop:getPrimaryDisplay": "desktopGetPrimaryDisplay",
-	"desktop:getAllDisplays": "desktopGetAllDisplays",
-	"desktop:getCursorPosition": "desktopGetCursorPosition",
-	// Desktop: Message Box
-	"desktop:showMessageBox": "desktopShowMessageBox",
-	// Desktop: App
-	"desktop:quit": "desktopQuit",
-	"desktop:relaunch": "desktopRelaunch",
-	"desktop:applyUpdate": "desktopApplyUpdate",
-	"desktop:checkForUpdates": "desktopCheckForUpdates",
-	"desktop:getUpdaterState": "desktopGetUpdaterState",
-	"desktop:getVersion": "desktopGetVersion",
-	"desktop:getBuildInfo": "desktopGetBuildInfo",
-	"desktop:isPackaged": "desktopIsPackaged",
-	"desktop:getDockIconVisibility": "desktopGetDockIconVisibility",
-	"desktop:setDockIconVisibility": "desktopSetDockIconVisibility",
-	"desktop:getPath": "desktopGetPath",
-	"desktop:getStartupDiagnostics": "desktopGetStartupDiagnostics",
-	"launch:progress": "launchProgress",
-	"launch:eventsTail": "launchEventsTail",
-	"launch:retry": "launchRetry",
-	"launch:openDiagnosticsView": "launchOpenDiagnosticsView",
-	"launch:createBugReportBundle": "launchCreateBugReportBundle",
-	"database:status": "databaseStatus",
-	"database:recoveryPreview": "databaseRecoveryPreview",
-	"database:backupPglite": "databaseBackupPglite",
-	"database:resetPglite": "databaseResetPglite",
-	"desktop:getRuntimeMode": "desktopGetRuntimeMode",
-	"desktop:openLogsFolder": "desktopOpenLogsFolder",
-	"desktop:createBugReportBundle": "desktopCreateBugReportBundle",
-	"desktop:beep": "desktopBeep",
-	"desktop:showSelectionContextMenu": "desktopShowSelectionContextMenu",
-	"desktop:getSessionSnapshot": "desktopGetSessionSnapshot",
-	"desktop:clearSessionData": "desktopClearSessionData",
-	"desktop:getWebGpuBrowserStatus": "desktopGetWebGpuBrowserStatus",
-	"desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
-	"desktop:openSettingsWindow": "desktopOpenSettingsWindow",
-	"desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
-	"desktop:openAppWindow": "desktopOpenAppWindow",
-	"desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
-	// Remote Plugins
-	"dynamic-view:register": "dynamicViewRegister",
-	"dynamic-view:unregister": "dynamicViewUnregister",
-	"dynamic-view:list": "dynamicViewList",
-	"dynamic-view:open": "dynamicViewOpen",
-	"dynamic-view:close": "dynamicViewClose",
-	"dynamic-view:push": "dynamicViewPush",
-	"dynamic-view:sessions": "dynamicViewSessions",
-	"trace:sessionStart": "traceSessionStart",
-	"trace:sessionComplete": "traceSessionComplete",
-	"trace:sessionCancel": "traceSessionCancel",
-	"trace:sessionError": "traceSessionError",
-	"trace:eventRecord": "traceEventRecord",
-	"trace:sessionList": "traceSessionList",
-	"trace:sessionGet": "traceSessionGet",
-	"trace:sessionSummary": "traceSessionSummary",
-	"trace:eventsTail": "traceEventsTail",
-	"trace:eventsSearch": "traceEventsSearch",
-	"trace:viewOpen": "traceViewOpen",
-	"voice:status": "voiceStatus",
-	"voice:components": "voiceComponents",
-	"voice:start": "voiceStart",
-	"voice:stop": "voiceStop",
-	"voice:interrupt": "voiceInterrupt",
-	"voice:injectTranscript": "voiceInjectTranscript",
-	"voice:speak": "voiceSpeak",
-	"voice:transcribeAudio": "voiceTranscribeAudio",
-	"voice:synthesizeSpeech": "voiceSynthesizeSpeech",
-	"voice:latency": "voiceLatency",
-	"voice:recentTurns": "voiceRecentTurns",
-	// Browser Workspace
-	"browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
-	"browser-workspace:openTab": "browserWorkspaceOpenTab",
-	"browser-workspace:navigateTab": "browserWorkspaceNavigateTab",
-	"browser-workspace:showTab": "browserWorkspaceShowTab",
-	"browser-workspace:hideTab": "browserWorkspaceHideTab",
-	"browser-workspace:closeTab": "browserWorkspaceCloseTab",
-	"browser-workspace:snapshotTab": "browserWorkspaceSnapshotTab",
-	// Desktop: Clipboard
-	"desktop:writeToClipboard": "desktopWriteToClipboard",
-	"desktop:readFromClipboard": "desktopReadFromClipboard",
-	"desktop:clearClipboard": "desktopClearClipboard",
-	"desktop:clipboardAvailableFormats": "desktopClipboardAvailableFormats",
-	// Desktop: Shell
-	"desktop:openExternal": "desktopOpenExternal",
-	"desktop:openBrowser": "desktopOpenBrowser",
-	"desktop:showItemInFolder": "desktopShowItemInFolder",
-	"desktop:openPath": "desktopOpenPath",
-	// Desktop: File Dialogs
-	"desktop:showOpenDialog": "desktopShowOpenDialog",
-	"desktop:showSaveDialog": "desktopShowSaveDialog",
-	"desktop:pickWorkspaceFolder": "desktopPickWorkspaceFolder",
-	"desktop:resolveWorkspaceFolderBookmark":
-		"desktopResolveWorkspaceFolderBookmark",
-	"desktop:releaseWorkspaceFolderBookmarks":
-		"desktopReleaseWorkspaceFolderBookmarks",
-	// Gateway
-	"gateway:startDiscovery": "gatewayStartDiscovery",
-	"gateway:stopDiscovery": "gatewayStopDiscovery",
-	"gateway:isDiscovering": "gatewayIsDiscovering",
-	"gateway:getDiscoveredGateways": "gatewayGetDiscoveredGateways",
-	// Permissions
-	"permissions:check": "permissionsCheck",
-	"permissions:checkFeature": "permissionsCheckFeature",
-	"permissions:request": "permissionsRequest",
-	"permissions:getAll": "permissionsGetAll",
-	"permissions:getPlatform": "permissionsGetPlatform",
-	"permissions:isShellEnabled": "permissionsIsShellEnabled",
-	"permissions:setShellEnabled": "permissionsSetShellEnabled",
-	"permissions:clearCache": "permissionsClearCache",
-	"permissions:openSettings": "permissionsOpenSettings",
-	// Location
-	"location:getCurrentPosition": "locationGetCurrentPosition",
-	"location:watchPosition": "locationWatchPosition",
-	"location:clearWatch": "locationClearWatch",
-	"location:getLastKnownLocation": "locationGetLastKnownLocation",
-	// Camera
-	"camera:getDevices": "cameraGetDevices",
-	"camera:startPreview": "cameraStartPreview",
-	"camera:stopPreview": "cameraStopPreview",
-	"camera:switchCamera": "cameraSwitchCamera",
-	"camera:capturePhoto": "cameraCapturePhoto",
-	"camera:startRecording": "cameraStartRecording",
-	"camera:stopRecording": "cameraStopRecording",
-	"camera:getRecordingState": "cameraGetRecordingState",
-	"camera:checkPermissions": "cameraCheckPermissions",
-	"camera:requestPermissions": "cameraRequestPermissions",
-	// Canvas
-	"canvas:createWindow": "canvasCreateWindow",
-	"canvas:destroyWindow": "canvasDestroyWindow",
-	"canvas:navigate": "canvasNavigate",
-	"canvas:eval": "canvasEval",
-	"canvas:snapshot": "canvasSnapshot",
-	"canvas:a2uiPush": "canvasA2uiPush",
-	"canvas:a2uiReset": "canvasA2uiReset",
-	"canvas:show": "canvasShow",
-	"canvas:hide": "canvasHide",
-	"canvas:resize": "canvasResize",
-	"canvas:focus": "canvasFocus",
-	"canvas:getBounds": "canvasGetBounds",
-	"canvas:setBounds": "canvasSetBounds",
-	"canvas:setAlwaysOnTop": "canvasSetAlwaysOnTop",
-	"canvas:listWindows": "canvasListWindows",
-	// Game
-	"game:openWindow": "gameOpenWindow",
-	// Screencapture
-	"screencapture:getSources": "screencaptureGetSources",
-	"screencapture:takeScreenshot": "screencaptureTakeScreenshot",
-	"screencapture:captureWindow": "screencaptureCaptureWindow",
-	"screencapture:startRecording": "screencaptureStartRecording",
-	"screencapture:stopRecording": "screencaptureStopRecording",
-	"screencapture:pauseRecording": "screencapturePauseRecording",
-	"screencapture:resumeRecording": "screencaptureResumeRecording",
-	"screencapture:getRecordingState": "screencaptureGetRecordingState",
-	"screencapture:startFrameCapture": "screencaptureStartFrameCapture",
-	"screencapture:stopFrameCapture": "screencaptureStopFrameCapture",
-	"screencapture:isFrameCaptureActive": "screencaptureIsFrameCaptureActive",
-	"screencapture:saveScreenshot": "screencaptureSaveScreenshot",
-	"screencapture:switchSource": "screencaptureSwitchSource",
-	"screencapture:setCaptureTarget": "screencaptureSetCaptureTarget",
-	// Swabble
-	"swabble:start": "swabbleStart",
-	"swabble:stop": "swabbleStop",
-	"swabble:isListening": "swabbleIsListening",
-	"fusedWake:start": "fusedWakeStart",
-	"fusedWake:stop": "fusedWakeStop",
-	"fusedWake:isListening": "fusedWakeIsListening",
-	"swabble:getConfig": "swabbleGetConfig",
-	"swabble:updateConfig": "swabbleUpdateConfig",
-	"swabble:audioChunk": "swabbleAudioChunk",
-	// TalkMode
-	"talkmode:start": "talkmodeStart",
-	"talkmode:stop": "talkmodeStop",
-	"talkmode:speak": "talkmodeSpeak",
-	"talkmode:stopSpeaking": "talkmodeStopSpeaking",
-	"talkmode:getState": "talkmodeGetState",
-	"talkmode:isEnabled": "talkmodeIsEnabled",
-	"talkmode:isSpeaking": "talkmodeIsSpeaking",
-	"talkmode:updateConfig": "talkmodeUpdateConfig",
-	"talkmode:audioChunk": "talkmodeAudioChunk",
-	// Context Menu
-	"contextMenu:askAgent": "contextMenuAskAgent",
-	"contextMenu:createSkill": "contextMenuCreateSkill",
-	"contextMenu:quoteInChat": "contextMenuQuoteInChat",
-	// Credentials
-	"credentials:scanProviders": "credentialsScanProviders",
-	"credentials:scanAndValidate": "credentialsScanAndValidate",
-	"secureStore:get": "secureStoreGet",
-	"secureStore:set": "secureStoreSet",
-	"secureStore:delete": "secureStoreDelete",
-	"secureStore:status": "secureStoreStatus",
-	"runtimeCredential:store": "runtimeCredentialStore",
-	"runtimeCredential:delete": "runtimeCredentialDelete",
-	"runtimeCredential:deleteRecord": "runtimeCredentialDeleteRecord",
-	"sshRuntime:inspectHost": "sshRuntimeInspectHost",
-	"sshRuntime:start": "sshRuntimeStart",
-	"sshRuntime:stop": "sshRuntimeStop",
-	"sshRuntime:status": "sshRuntimeStatus",
-	"sshRuntime:request": "sshRuntimeRequest",
-	"remoteController:getOrCreateIdentity": "remoteControllerGetOrCreateIdentity",
-	"remoteController:createCommand": "remoteControllerCreateCommand",
-	"remoteController:openResult": "remoteControllerOpenResult",
-	"remoteController:openStartReceipt": "remoteControllerOpenStartReceipt",
-	"remoteController:clearSessionState": "remoteControllerClearSessionState",
-	"remoteController:acknowledgeEnqueue": "remoteControllerAcknowledgeEnqueue",
-	"remoteTarget:enroll": "remoteTargetEnroll",
-	"remoteTarget:getIdentity": "remoteTargetGetIdentity",
-	"remoteTarget:createPairingChallenge": "remoteTargetCreatePairingChallenge",
-	"remoteTarget:readPairingChallenge": "remoteTargetReadPairingChallenge",
-	"remoteTarget:confirmPairing": "remoteTargetConfirmPairing",
-	"remoteTarget:activate": "remoteTargetActivate",
-	"remoteTarget:compensateActivation": "remoteTargetCompensateActivation",
-	"remoteTarget:commitActivation": "remoteTargetCommitActivation",
-	"remoteTarget:start": "remoteTargetStart",
-	"remoteTarget:stop": "remoteTargetStop",
-	"remoteTarget:status": "remoteTargetStatus",
-	"remoteTarget:revoke": "remoteTargetRevoke",
-	"remoteTarget:finalizeHostRevoke": "remoteTargetFinalizeHostRevoke",
-	// GPU Window
-	"gpuWindow:create": "gpuWindowCreate",
-	"gpuWindow:destroy": "gpuWindowDestroy",
-	"gpuWindow:show": "gpuWindowShow",
-	"gpuWindow:hide": "gpuWindowHide",
-	"gpuWindow:setBounds": "gpuWindowSetBounds",
-	"gpuWindow:getInfo": "gpuWindowGetInfo",
-	"gpuWindow:list": "gpuWindowList",
-	// GPU View
-	"gpuView:create": "gpuViewCreate",
-	"gpuView:destroy": "gpuViewDestroy",
-	"gpuView:setFrame": "gpuViewSetFrame",
-	"gpuView:setTransparent": "gpuViewSetTransparent",
-	"gpuView:setHidden": "gpuViewSetHidden",
-	"gpuView:getNativeHandle": "gpuViewGetNativeHandle",
-	"gpuView:list": "gpuViewList",
-	// Steward Sidecar
-	"steward:getStatus": "stewardGetStatus",
-	"steward:isLocalEnabled": "stewardIsLocalEnabled",
-	"steward:start": "stewardStart",
-	"steward:restart": "stewardRestart",
-	"steward:reset": "stewardReset",
-	// Native Editor Bridge
-	"editorBridge:listEditors": "editorBridgeListEditors",
-	"editorBridge:openInEditor": "editorBridgeOpenInEditor",
-	"editorBridge:getSession": "editorBridgeGetSession",
-	"editorBridge:clearSession": "editorBridgeClearSession",
-	// Workspace File Watcher
-	"fileWatcher:start": "fileWatcherStart",
-	"fileWatcher:stop": "fileWatcherStop",
-	"fileWatcher:stopAll": "fileWatcherStopAll",
-	"fileWatcher:list": "fileWatcherList",
-	"fileWatcher:getStatus": "fileWatcherGetStatus",
-};
-/**
- * Maps legacy desktop push channel names to RPC message names.
- * Used by the renderer bridge to subscribe to push events.
- */
-export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
-	"agent:status": "agentStatusUpdate",
-	"gateway:discovery": "gatewayDiscovery",
-	"permissions:changed": "permissionsChanged",
-	"desktop:trayMenuClick": "desktopTrayMenuClick",
-	"desktop:trayClick": "desktopTrayClick",
-	"desktop:shortcutPressed": "desktopShortcutPressed",
-	"desktop:fnHoldChanged": "desktopFnHoldChanged",
-	"desktop:windowFocus": "desktopWindowFocus",
-	"desktop:windowBlur": "desktopWindowBlur",
-	"desktop:windowMaximize": "desktopWindowMaximize",
-	"desktop:windowUnmaximize": "desktopWindowUnmaximize",
-	"desktop:windowClose": "desktopWindowClose",
-	"desktop:shutdownStarted": "desktopShutdownStarted",
-	"desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
-	"canvas:windowEvent": "canvasWindowEvent",
-	"kiosk:viewEvent": "kioskViewEvent",
-	"talkmode:audioChunkPush": "talkmodeAudioChunkPush",
-	"talkmode:stateChanged": "talkmodeStateChanged",
-	"talkmode:speakComplete": "talkmodeSpeakComplete",
-	"talkmode:transcript": "talkmodeTranscript",
-	"talkmode:error": "talkmodeError",
-	"swabble:wakeWord": "swabbleWakeWord",
-	"swabble:stateChange": "swabbleStateChanged",
-	"swabble:transcript": "swabbleTranscript",
-	"swabble:error": "swabbleError",
-	"swabble:audioChunkPush": "swabbleAudioChunkPush",
-	"voice:fusedWake": "voiceFusedWake",
-	"voice:fusedWakeState": "voiceFusedWakeState",
-	"contextMenu:askAgent": "contextMenuAskAgent",
-	"contextMenu:createSkill": "contextMenuCreateSkill",
-	"contextMenu:quoteInChat": "contextMenuQuoteInChat",
-	apiBaseUpdate: "apiBaseUpdate",
-	shareTargetReceived: "shareTargetReceived",
-	"location:update": "locationUpdate",
-	"desktop:updateAvailable": "desktopUpdateAvailable",
-	"desktop:updateReady": "desktopUpdateReady",
-	// GPU Window push events
-	"gpuWindow:closed": "gpuWindowClosed",
-	// Steward sidecar
-	stewardStatusUpdate: "stewardStatusUpdate",
-	// WebGPU browser support
-	"webgpu:browserStatus": "webGpuBrowserStatus",
-	// Workspace file watcher
-	"fileWatcher:fileChanged": "workspaceFileChanged",
-	// Editor bridge
-	"editorBridge:sessionChanged": "editorSessionChanged",
-};
-/**
- * Reverse mapping: RPC message name → legacy desktop push channel name.
- */
-export const RPC_MESSAGE_TO_PUSH_CHANNEL: Record<string, string> =
-	Object.fromEntries(
-		Object.entries(PUSH_CHANNEL_TO_RPC_MESSAGE).map(([k, v]) => [v, k]),
-	);

@@ -4,9 +4,40 @@
  * never accepts caller time or escapes to a global database connection.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  not,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+import { ensureInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
+import {
+  bindRenewalInvoiceAuthority,
+  type RenewalInvoiceAuthority,
+} from "../../lib/services/renewal-invoice-authority";
+import {
+  bindRenewalInvoiceDetails,
+  type RenewalInvoiceDetails,
+} from "../../lib/services/renewal-invoice-details";
+import {
+  bindRenewalSettlementDetails,
+  type RenewalSettlementDetails,
+} from "../../lib/services/renewal-settlement-details";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
+import {
+  SUBSCRIPTION_PAYMENT_GRACE_MS,
+  withSubscriptionPaymentGrace,
+} from "../../lib/services/subscription-payment-grace";
 import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
@@ -22,6 +53,7 @@ import {
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
+import { subscriptionGrants } from "../schemas/subscription-grants";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import {
   type BillingFundingScope,
@@ -38,7 +70,13 @@ const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const TERMINAL_SUBSCRIPTION_STATUSES = ["canceled", "incomplete_expired"] as const;
 
 /** Why an open period stops accepting new allowance spending. */
-export type AllowancePeriodRetirementReason = "period_ended" | "subscription_terminal";
+export type AllowancePeriodRetirementReason =
+  | "period_ended"
+  | "subscription_terminal"
+  /** A subscription-grant bucket overlapped by a newly paid subscription period. */
+  | "superseded_by_paid"
+  /** A bucket of a subscription grant that support revoked. */
+  | "grant_revoked";
 
 export interface AllowancePeriodExpirySweepStats {
   scanned: number;
@@ -57,6 +95,58 @@ async function sha256Hex(parts: readonly string[]): Promise<string> {
 /** Treats the exact expiry instant as expired for both reserve and settlement decisions. */
 export function isAllowanceExpired(databaseNow: Date, expiresAt: Date): boolean {
   return databaseNow.getTime() >= expiresAt.getTime();
+}
+
+/**
+ * True for a paid platform period whose renewal is pending at `at`: its
+ * subscription is active or in dunning `grace`, is not set to cancel, and
+ * still points at this period, and `at` is before the period expiry plus the
+ * shared payment grace and before any stored dunning grace expiry. This is the
+ * window the organization quota policy keeps funded. Managed agent compute may
+ * spend such a period after its expiry, so the expire job keeps it open. A
+ * published renewal moves the subscription to the next period, which ends
+ * this state.
+ */
+export function paidRenewalPendingAt(at: SQL): SQL {
+  const periods = subscriptionAllowancePeriods;
+  const grace = sql.raw(`interval '${SUBSCRIPTION_PAYMENT_GRACE_MS} milliseconds'`);
+  return sql`(${periods.billing_scope_id} IS NULL
+    AND ${periods.grant_source} = 'paid_invoice'
+    AND ${periods.expires_at} + ${grace} > ${at}
+    AND EXISTS (SELECT 1 FROM ${billingSubscriptions}
+      WHERE ${billingSubscriptions.id} = ${periods.subscription_id}
+        AND ${billingSubscriptions.organization_id} = ${periods.organization_id}
+        AND ${billingSubscriptions.status} IN ('active', 'grace')
+        AND (${billingSubscriptions.grace_expires_at} IS NULL
+          OR ${billingSubscriptions.grace_expires_at} > ${at})
+        AND NOT ${billingSubscriptions.cancel_at_period_end}
+        AND ${billingSubscriptions.current_period_end} = ${periods.period_end}))`;
+}
+
+/** Last instant managed agent compute may spend `period`: while its renewal is pending, its expiry plus the payment grace, bounded by any dunning grace expiry; else its expiry. */
+export async function managedComputeAllowanceDeadline(
+  tx: DbTransaction,
+  period: { id: string; expires_at: Date },
+  databaseNow: Date,
+): Promise<Date> {
+  const [pending] = await tx
+    .select({ graceExpiresAt: billingSubscriptions.grace_expires_at })
+    .from(subscriptionAllowancePeriods)
+    .innerJoin(
+      billingSubscriptions,
+      eq(billingSubscriptions.id, subscriptionAllowancePeriods.subscription_id),
+    )
+    .where(
+      and(
+        eq(subscriptionAllowancePeriods.id, period.id),
+        paidRenewalPendingAt(sql`${databaseNow.toISOString()}::timestamptz`),
+      ),
+    );
+  if (!pending) return period.expires_at;
+  const paymentGraceEnd = withSubscriptionPaymentGrace(period.expires_at);
+  return pending.graceExpiresAt && pending.graceExpiresAt < paymentGraceEnd
+    ? pending.graceExpiresAt
+    : paymentGraceEnd;
 }
 
 function conflict(message: string, context: Record<string, unknown>): never {
@@ -110,18 +200,20 @@ async function lockPeriod(
       context: { organizationId, periodId },
     });
   }
-  await tx
-    .select({ id: billingSubscriptions.id })
-    .from(billingSubscriptions)
-    .where(
-      and(
-        eq(billingSubscriptions.organization_id, organizationId),
-        fundingScopePredicate(billingSubscriptions, billingScope),
-        eq(billingSubscriptions.id, hint.subscriptionId),
-      ),
-    )
-    .limit(1)
-    .for("update");
+  // A subscription-grant bucket has no subscription source to lock.
+  if (hint.subscriptionId !== null)
+    await tx
+      .select({ id: billingSubscriptions.id })
+      .from(billingSubscriptions)
+      .where(
+        and(
+          eq(billingSubscriptions.organization_id, organizationId),
+          fundingScopePredicate(billingSubscriptions, billingScope),
+          eq(billingSubscriptions.id, hint.subscriptionId),
+        ),
+      )
+      .limit(1)
+      .for("update");
   const [period] = await tx
     .select()
     .from(subscriptionAllowancePeriods)
@@ -162,7 +254,8 @@ export interface ReserveAllowanceInput {
    * The caller's own reservation deadline. It is persisted on the reservation
    * independently of the allowance period expiry, which only bounds new
    * allowance spending; settlement after period expiry forfeits the unused
-   * allowance through `expired_refund`. Defaults to the period expiry.
+   * allowance through `expired_refund`, except while the period is in its
+   * renewal payment grace. Defaults to the period expiry.
    */
   expiresAt?: Date;
 }
@@ -180,7 +273,10 @@ export interface FinalizeAllowanceInput {
   purchasedCreditRefundTransactionId: string | null;
 }
 
-type AuthorityResult = {
+const LOCKED_FUNDING_TRANSACTION = Symbol("lockedFundingTransaction");
+
+export type AllowanceFundingAuthority = {
+  readonly [LOCKED_FUNDING_TRANSACTION]: DbTransaction;
   reservation: typeof billingFundingReservations.$inferSelect;
   allocations: (typeof billingFundingAllocations.$inferSelect)[];
   period: typeof subscriptionAllowancePeriods.$inferSelect;
@@ -211,6 +307,28 @@ async function findAllowancePeriodId(
 }
 
 export class SubscriptionAllowanceRepository {
+  /** Reuses only rows locked by this repository in the same transaction and scope. */
+  assertLockedAuthority(
+    tx: DbTransaction,
+    organizationId: string,
+    authority: AllowanceFundingAuthority,
+    billingScope?: BillingFundingScope,
+  ): void {
+    const rows = [authority.reservation, authority.period, ...authority.allocations];
+    if (
+      authority[LOCKED_FUNDING_TRANSACTION] !== tx ||
+      rows.some(
+        (row) =>
+          row.organization_id !== organizationId ||
+          row.billing_scope_id !== (billingScope?.scopeId ?? null) ||
+          row.merchant_key !== (billingScope?.merchantKey ?? "platform"),
+      )
+    )
+      conflict("Funding authority does not belong to this transaction and scope", {
+        organizationId,
+      });
+  }
+
   /** Opens one paid renewal bucket under the caller's organization/source/receipt transaction. Mutable consumption never participates in grant replay identity. */
   async grantRenewalInTransaction(
     tx: DbTransaction,
@@ -218,12 +336,41 @@ export class SubscriptionAllowanceRepository {
       source: BillingSubscription;
       invoiceId: string;
       requestDigest: string;
+      invoiceAuthority?: RenewalInvoiceAuthority;
+      invoiceDetails?: RenewalInvoiceDetails;
+      settlementDetails?: RenewalSettlementDetails;
       databaseNow: Date;
     },
   ) {
+    await ensureInferencePolicyMutation(tx, input.source.organization_id);
+
     const { source } = input;
     assertOrganizationSubscription(source);
     requireDigest(input.requestDigest);
+    const invoiceAuthority = input.invoiceAuthority
+      ? bindRenewalInvoiceAuthority(
+          input.invoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        )
+      : undefined;
+    if (input.invoiceDetails && !invoiceAuthority)
+      conflict("Invoice details require original invoice authority", {
+        subscriptionId: source.id,
+      });
+    const invoiceDetails =
+      input.invoiceDetails && invoiceAuthority
+        ? bindRenewalInvoiceDetails(input.invoiceDetails, invoiceAuthority)
+        : undefined;
+    if (input.settlementDetails && (!invoiceDetails || !invoiceAuthority))
+      conflict("Settlement details require original invoice details", {
+        subscriptionId: source.id,
+      });
+    const settlementDetails =
+      input.settlementDetails && invoiceDetails && invoiceAuthority
+        ? bindRenewalSettlementDetails(input.settlementDetails, invoiceDetails, invoiceAuthority)
+        : undefined;
     if (!source.current_period_start || !source.current_period_end)
       conflict("Renewal period is missing", { subscriptionId: source.id });
     const amount = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version)
@@ -250,6 +397,8 @@ export class SubscriptionAllowanceRepository {
       conflict("Renewal invoice and period identities disagree", { subscriptionId: source.id });
     const existing = matches[0];
     if (existing) {
+      if (existing.subscription_revision === null)
+        conflict("Renewal requires subscription revision authority", { periodId: existing.id });
       const [revision] = await tx
         .select()
         .from(billingSubscriptionRevisions)
@@ -301,6 +450,56 @@ export class SubscriptionAllowanceRepository {
         conflict("Renewal grant replay differs from immutable invoice authority", {
           subscriptionId: source.id,
         });
+      // Preserve the first evidence; never backfill a historical grant from today's provider state.
+      if (invoiceAuthority && grant.metadata.renewalInvoiceAuthority !== undefined) {
+        const retained = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        if (retained.digest !== invoiceAuthority.digest)
+          conflict("Renewal invoice evidence differs from original grant", {
+            subscriptionId: source.id,
+          });
+      }
+      if (grant.metadata.renewalInvoiceDetails !== undefined) {
+        const originalAuthority = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        const retainedDetails = bindRenewalInvoiceDetails(
+          grant.metadata.renewalInvoiceDetails,
+          originalAuthority,
+        );
+        if (invoiceDetails && retainedDetails.digest !== invoiceDetails.digest)
+          conflict("Renewal invoice details differ from original grant", {
+            subscriptionId: source.id,
+          });
+      }
+      if (grant.metadata.renewalSettlementDetails !== undefined) {
+        const originalAuthority = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        const originalInvoice = bindRenewalInvoiceDetails(
+          grant.metadata.renewalInvoiceDetails,
+          originalAuthority,
+        );
+        const retained = bindRenewalSettlementDetails(
+          grant.metadata.renewalSettlementDetails,
+          originalInvoice,
+          originalAuthority,
+        );
+        if (settlementDetails && retained.digest !== settlementDetails.digest)
+          conflict("Settlement details differ from original grant", {
+            subscriptionId: source.id,
+          });
+      }
       return { period: existing, replayed: true };
     }
     // The funding selector is organization-scoped: another source's future bucket must not overlap either.
@@ -310,6 +509,7 @@ export class SubscriptionAllowanceRepository {
           id: subscriptionAllowancePeriods.id,
           billingScopeId: subscriptionAllowancePeriods.billing_scope_id,
           subscriptionId: subscriptionAllowancePeriods.subscription_id,
+          grantSource: subscriptionAllowancePeriods.grant_source,
         })
         .from(subscriptionAllowancePeriods)
         .where(
@@ -327,6 +527,17 @@ export class SubscriptionAllowanceRepository {
     // resubscription in the same period is granted instead of conflicting.
     for (const candidate of await overlapping()) {
       if (candidate.billingScopeId !== null || candidate.subscriptionId === source.id) continue;
+      // A paid period takes precedence over an overlapping subscription-grant
+      // bucket. Later grant buckets stay open for after the paid subscription ends.
+      if (candidate.grantSource === "promo_grant") {
+        await this.retirePeriodInTransaction(tx, {
+          organizationId: source.organization_id,
+          periodId: candidate.id,
+          reason: "superseded_by_paid",
+        });
+        continue;
+      }
+      if (candidate.subscriptionId === null) continue;
       const [predecessor] = await tx
         .select({ status: billingSubscriptions.status })
         .from(billingSubscriptions)
@@ -388,9 +599,24 @@ export class SubscriptionAllowanceRepository {
       clawed_back_before: "0.000000",
       clawed_back_after: "0.000000",
       request_digest: input.requestDigest,
+      metadata: {
+        ...(invoiceAuthority ? { renewalInvoiceAuthority: invoiceAuthority } : {}),
+        ...(invoiceDetails ? { renewalInvoiceDetails: invoiceDetails } : {}),
+        ...(settlementDetails ? { renewalSettlementDetails: settlementDetails } : {}),
+      },
       idempotency_key: `renewal:${source.provider_environment}:${input.invoiceId}`,
       occurred_at: input.databaseNow,
     });
+    // Historical invoice settlement must record funding without briefly publishing
+    // an open balance. Use the existing expiry journal in this same transaction.
+    if (period.expires_at <= (await readPostLockDatabaseNow(tx))) {
+      const retired = await this.retirePeriodInTransaction(tx, {
+        organizationId: source.organization_id,
+        periodId: period.id,
+        reason: "period_ended",
+      });
+      return { period: retired.period, replayed: false };
+    }
     return { period, replayed: false };
   }
 
@@ -412,6 +638,8 @@ export class SubscriptionAllowanceRepository {
     retired: boolean;
     forfeitedAmount: CanonicalMoney;
   }> {
+    await ensureInferencePolicyMutation(tx, input.organizationId);
+
     const databaseNow = await lockOrganization(tx, input.organizationId);
     const [scope] = await tx
       .select({
@@ -444,9 +672,32 @@ export class SubscriptionAllowanceRepository {
         conflict("Allowance period has not ended at post-lock database time", {
           periodId: period.id,
         });
+    } else if (input.reason === "superseded_by_paid") {
+      if (period.grant_source !== "promo_grant" || billingScope)
+        conflict("Only a subscription-grant bucket can be superseded", { periodId: period.id });
+    } else if (input.reason === "grant_revoked") {
+      if (period.grant_source !== "promo_grant" || billingScope || period.promo_grant_id === null)
+        conflict("Only a subscription-grant bucket can be revoked", { periodId: period.id });
+      const [grant] = await tx
+        .select({ revoked_at: subscriptionGrants.revoked_at })
+        .from(subscriptionGrants)
+        .where(
+          and(
+            eq(subscriptionGrants.id, period.promo_grant_id),
+            eq(subscriptionGrants.organization_id, input.organizationId),
+          ),
+        );
+      if (!grant || grant.revoked_at === null)
+        conflict("Allowance source grant is not revoked", { periodId: period.id });
     } else {
+      if (period.subscription_id === null)
+        conflict("Allowance source subscription is not terminal", { periodId: period.id });
       if (billingScope)
         conflict("App-scoped allowance retirement belongs to its app lifecycle owner", {
+          periodId: period.id,
+        });
+      if (!period.subscription_id)
+        conflict("Terminal subscription retirement requires a subscription", {
           periodId: period.id,
         });
       const [source] = await tx
@@ -518,8 +769,10 @@ export class SubscriptionAllowanceRepository {
 
   /**
    * Expire job: retires every open period that has ended, plus platform periods
-   * whose source subscription reached a terminal lifecycle state. Each period is
-   * retired in its own transaction so one conflict cannot block the batch.
+   * whose source subscription reached a terminal lifecycle state. A paid period
+   * whose renewal is pending stays open through the payment grace for managed
+   * agent compute. Each period is retired in its own transaction so one
+   * conflict cannot block the batch.
    */
   async expireEndedPeriods(
     options: { batchSize?: number; maxBatches?: number } = {},
@@ -553,6 +806,7 @@ export class SubscriptionAllowanceRepository {
         .where(
           and(
             eq(subscriptionAllowancePeriods.state, "open"),
+            not(paidRenewalPendingAt(sql`clock_timestamp()`)),
             or(
               sql`${subscriptionAllowancePeriods.expires_at} <= clock_timestamp()`,
               and(
@@ -600,7 +854,10 @@ export class SubscriptionAllowanceRepository {
     return stats;
   }
 
-  async reserve(tx: DbTransaction, input: ReserveAllowanceInput): Promise<AuthorityResult> {
+  async reserve(
+    tx: DbTransaction,
+    input: ReserveAllowanceInput,
+  ): Promise<AllowanceFundingAuthority> {
     requireDigest(input.requestDigest);
     const databaseNow = await lockOrganization(tx, input.organizationId);
     const [existing] = await tx
@@ -635,10 +892,18 @@ export class SubscriptionAllowanceRepository {
         purchasedCreditReservationTransactionId: input.purchasedCreditReservationTransactionId,
         expiresAt: input.expiresAt ?? period.expires_at,
       });
-      return { ...replay, period, replayed: true, databaseNow };
+      return { ...replay, period, replayed: true, databaseNow, [LOCKED_FUNDING_TRANSACTION]: tx };
     }
     const period = await lockPeriod(tx, input.organizationId, input.periodId, input.billingScope);
-    if (period.state !== "open" || isAllowanceExpired(databaseNow, period.expires_at)) {
+    if (
+      period.state !== "open" ||
+      period.period_start > databaseNow ||
+      (isAllowanceExpired(databaseNow, period.expires_at) &&
+        isAllowanceExpired(
+          databaseNow,
+          await managedComputeAllowanceDeadline(tx, period, databaseNow),
+        ))
+    ) {
       conflict("Allowance is expired at post-lock database time", { periodId: period.id });
     }
     const available = moneyToMicros(period.available_amount, "period.availableAmount");
@@ -712,11 +977,21 @@ export class SubscriptionAllowanceRepository {
       request_digest: input.requestDigest,
       occurred_at: databaseNow,
     });
-    return { ...funding, period: updatedPeriod, replayed: false, databaseNow };
+    return {
+      ...funding,
+      period: updatedPeriod,
+      replayed: false,
+      databaseNow,
+      [LOCKED_FUNDING_TRANSACTION]: tx,
+    };
   }
 
-  async finalize(tx: DbTransaction, input: FinalizeAllowanceInput): Promise<AuthorityResult> {
-    return this.finish(tx, input, "settlement");
+  async finalize(
+    tx: DbTransaction,
+    input: FinalizeAllowanceInput,
+    authority?: AllowanceFundingAuthority,
+  ): Promise<AllowanceFundingAuthority> {
+    return this.finish(tx, input, "settlement", authority);
   }
 
   async cancel(
@@ -725,7 +1000,7 @@ export class SubscriptionAllowanceRepository {
       FinalizeAllowanceInput,
       "actualAllowanceAmount" | "actualPurchasedCreditAmount" | "uncollectedOverageAmount"
     >,
-  ): Promise<AuthorityResult> {
+  ): Promise<AllowanceFundingAuthority> {
     return this.finish(
       tx,
       {
@@ -742,22 +1017,38 @@ export class SubscriptionAllowanceRepository {
     tx: DbTransaction,
     input: FinalizeAllowanceInput,
     kind: "settlement" | "cancellation",
-  ): Promise<AuthorityResult> {
+    authority?: AllowanceFundingAuthority,
+  ): Promise<AllowanceFundingAuthority> {
     requireDigest(input.requestDigest);
-    const databaseNow = await lockOrganization(tx, input.organizationId);
-    const periodId = await findAllowancePeriodId(
-      tx,
-      input.organizationId,
-      input.reservationId,
-      input.billingScope,
-    );
-    const period = await lockPeriod(tx, input.organizationId, periodId, input.billingScope);
-    const locked = await subscriptionFundingReservationsRepository.lockById(
-      tx,
-      input.organizationId,
-      input.reservationId,
-      input.billingScope,
-    );
+    if (authority) {
+      this.assertLockedAuthority(tx, input.organizationId, authority, input.billingScope);
+      if (authority.reservation.id !== input.reservationId)
+        conflict("Funding authority belongs to another reservation", {
+          reservationId: input.reservationId,
+        });
+    }
+    const databaseNow = authority
+      ? await readPostLockDatabaseNow(tx)
+      : await lockOrganization(tx, input.organizationId);
+    const periodId =
+      authority?.period.id ??
+      (await findAllowancePeriodId(
+        tx,
+        input.organizationId,
+        input.reservationId,
+        input.billingScope,
+      ));
+    const period =
+      authority?.period ??
+      (await lockPeriod(tx, input.organizationId, periodId, input.billingScope));
+    const locked =
+      authority ??
+      (await subscriptionFundingReservationsRepository.lockById(
+        tx,
+        input.organizationId,
+        input.reservationId,
+        input.billingScope,
+      ));
     const allowanceAllocation = locked.allocations.find((row) => row.source === "allowance");
     if (!allowanceAllocation) throw new Error("Allowance allocation disappeared");
     if (locked.reservation.status !== "reserved") {
@@ -774,7 +1065,7 @@ export class SubscriptionAllowanceRepository {
         conflict("Reservation has a different terminal result", {
           reservationId: locked.reservation.id,
         });
-      return { ...locked, period, replayed: true, databaseNow };
+      return { ...locked, period, replayed: true, databaseNow, [LOCKED_FUNDING_TRANSACTION]: tx };
     }
     const reserved = moneyToMicros(
       allowanceAllocation.reserved_amount,
@@ -787,9 +1078,16 @@ export class SubscriptionAllowanceRepository {
       });
     const released = reserved - actual;
     // A period retired early (terminal subscription) or already expired never
-    // regains available allowance; the unused reservation is forfeited.
+    // regains available allowance; the unused reservation is forfeited. A paid
+    // period in its renewal payment grace is still spendable by managed agent
+    // compute, so its unused reservation returns to available.
     const expiredRelease =
-      period.state !== "open" || isAllowanceExpired(databaseNow, period.expires_at);
+      period.state !== "open" ||
+      (isAllowanceExpired(databaseNow, period.expires_at) &&
+        isAllowanceExpired(
+          databaseNow,
+          await managedComputeAllowanceDeadline(tx, period, databaseNow),
+        ));
     const availableBefore = moneyToMicros(period.available_amount, "period.availableAmount");
     const reservedBefore = moneyToMicros(period.reserved_amount, "period.reservedAmount");
     const settledBefore = moneyToMicros(period.settled_amount, "period.settledAmount");
@@ -880,7 +1178,14 @@ export class SubscriptionAllowanceRepository {
       purchasedCreditRefundTransactionId: input.purchasedCreditRefundTransactionId,
       databaseNow,
     });
-    return { ...terminal, period: updatedPeriod, databaseNow };
+    const result = {
+      ...terminal,
+      period: updatedPeriod,
+      databaseNow,
+      [LOCKED_FUNDING_TRANSACTION]: tx,
+    };
+    if (authority) Object.assign(authority, result);
+    return result;
   }
 }
 

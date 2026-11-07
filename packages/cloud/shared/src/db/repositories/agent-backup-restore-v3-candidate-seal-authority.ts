@@ -14,7 +14,7 @@ import {
   parseAgentBackupRestoreV3CandidateSealAuthorization,
   parseAgentBackupRestoreV3CandidateSealAuthorizationRequest,
   parseAgentBackupRestoreV3StagingSession,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts";
 import { and, eq, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import type { DbTransaction } from "../client";

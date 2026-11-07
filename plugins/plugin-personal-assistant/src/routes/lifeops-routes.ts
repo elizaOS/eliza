@@ -12,32 +12,8 @@
  * authorized and only re-checks that a runtime is present.
  */
 import type http from "node:http";
-import {
-  checkRateLimit,
-  createIntegrationTelemetrySpan,
-  type RateLimitConfig,
-} from "@elizaos/agent";
-import {
-  type AgentRuntime,
-  logger,
-  type Memory,
-  requireConfirmation,
-  type UUID,
-} from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/core/api/route-helpers";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import {
-  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
-  type CalendarOwnerMutationGateway,
-  type CalendarRouteService,
-  CalendarService,
-  CalendarServiceError,
-  handleCalendarRoutes,
-} from "@elizaos/plugin-calendar";
-import {
-  LIFEOPS_SCHEDULE_STATE_SCOPES,
-  type SyncLifeOpsScheduleObservationsRequest,
-} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent";
+import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import {
   type AcknowledgeLifeOpsReminderRequest,
   type CaptureLifeOpsActivitySignalRequest,
@@ -79,6 +55,7 @@ import {
   type RelockLifeOpsWebsiteAccessRequest,
   type ResolveLifeOpsWebsiteAccessCallbackRequest,
   type RunLifeOpsWorkflowRequest,
+  SELF_ENTITY_ID,
   type SeedLifeOpsGmailRequest,
   type SendLifeOpsGmailBatchReplyRequest,
   type SendLifeOpsGmailMessageRequest,
@@ -92,7 +69,31 @@ import {
   type UpdateLifeOpsWorkflowRequest,
   type UpsertLifeOpsChannelPolicyRequest,
   type VerifyLifeOpsTelegramConnectorRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
+  createIntegrationTelemetrySpan,
+  EventType,
+  isElizaError,
+  logger,
+  type Memory,
+  requireConfirmation,
+  type UUID,
+} from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+  type CalendarRouteService,
+  CalendarService,
+  CalendarServiceError,
+  handleCalendarRoutes,
+} from "@elizaos/plugin-calendar";
+import {
+  LIFEOPS_SCHEDULE_STATE_SCOPES,
+  type SyncLifeOpsScheduleObservationsRequest,
+} from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { GoalsServiceError } from "@elizaos/plugin-goals/goal-normalize";
 import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,
@@ -729,7 +730,12 @@ async function runRoute(
     });
     return true;
   } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
+    // Goals CRUD delegates to @elizaos/plugin-goals, whose typed failures carry
+    // their own HTTP status just like LifeOpsServiceError.
+    if (
+      error instanceof LifeOpsServiceError ||
+      error instanceof GoalsServiceError
+    ) {
       const logFn =
         error.status === 401
           ? logger.debug.bind(logger)
@@ -768,6 +774,48 @@ async function runRoute(
   }
 }
 /**
+ * Upper bound a calendar read waits for the deferred calendar service. Stays
+ * under the client's 10s default GET timeout so an absent service still
+ * answers its 503 before the caller aborts.
+ */
+const DEFERRED_CALENDAR_SERVICE_WAIT_MS = 8_000;
+/**
+ * These routes mount when the runtime reports ready, but
+ * `@elizaos/plugin-calendar` registers in the deferred plugin wave after it,
+ * and `getServiceLoadPromise` rejects a service type that is not registered
+ * yet. While deferred boot is pending and the calendar type is still unknown,
+ * waits for the calendar service to start or for the bound to elapse; the
+ * caller then resolves the service as usual, so an absent or failed service
+ * keeps its 503.
+ */
+async function waitForDeferredCalendarService(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (
+    getDeferredBootStatus().settled ||
+    runtime.getServiceRegistrationStatus(CalendarService.serviceType) !==
+      "unknown"
+  ) {
+    return;
+  }
+  let onServiceStarted: (() => Promise<void>) | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await new Promise<void>((resolve) => {
+      onServiceStarted = async () => {
+        if (runtime.getService(CalendarService.serviceType)) resolve();
+      };
+      runtime.registerEvent(EventType.SERVICE_STARTED, onServiceStarted);
+      timeout = setTimeout(resolve, DEFERRED_CALENDAR_SERVICE_WAIT_MS);
+    });
+  } finally {
+    clearTimeout(timeout);
+    if (onServiceStarted) {
+      runtime.unregisterEvent(EventType.SERVICE_STARTED, onServiceStarted);
+    }
+  }
+}
+/**
  * Runs an owner-gated calendar route against the singleton calendar service.
  * Calendar owns its domain service; constructing a LifeOpsService here would
  * expose only the compatibility subset and silently omit source administration.
@@ -792,6 +840,11 @@ async function runCalendarRoute(
   }
   try {
     let loaded = runtime.getService(CalendarService.serviceType);
+    // Reads only: a mutation is never held across deferred plugin registration.
+    if (!loaded && ctx.method === "GET") {
+      await waitForDeferredCalendarService(runtime);
+      loaded = runtime.getService(CalendarService.serviceType);
+    }
     if (!loaded) {
       try {
         loaded = await runtime.getServiceLoadPromise(
@@ -848,6 +901,25 @@ async function runCalendarRoute(
       ctx.error(ctx.res, error.message, error.status);
       return true;
     }
+    // Skipped or repeated local times are rejected before any write.
+    if (isElizaError(error) && error.code.startsWith("CALENDAR_LOCAL_TIME_")) {
+      span.failure({
+        statusCode: 409,
+        error,
+        errorKind: "calendar_local_time",
+      });
+      ctx.json(
+        ctx.res,
+        {
+          error: error.message,
+          code: error.code,
+          requiresInput: true,
+          timeClarification: error.context,
+        },
+        409,
+      );
+      return true;
+    }
     runtime.reportError("CalendarRoutes.ownerBoundary", error, { operation });
     logger.error(
       { boundary: "calendar", operation },
@@ -875,125 +947,6 @@ function _parseConnectorRefreshDetailFromQuery(
       parseConnectorModeQuery(ctx.url.searchParams.get("mode")) ??
       defaults.mode,
   }));
-}
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-function serializeInlineScriptValue(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, "\\u003c");
-}
-function writeHtml(
-  res: http.ServerResponse,
-  status: number,
-  title: string,
-  message: string,
-  refreshDetail?: {
-    side?: LifeOpsConnectorSide;
-    mode?: LifeOpsConnectorMode;
-  },
-): void {
-  const refreshScript = refreshDetail
-    ? `
-    <script>
-      (() => {
-        const payload = ${serializeInlineScriptValue({
-          type: "lifeops-google-connector-refresh",
-          detail: {
-            ...refreshDetail,
-            source: "callback",
-          },
-        })};
-        if (window.opener && typeof window.opener.postMessage === "function") {
-          // LifeOps google-connector callback is served from the same agent host as the opener (same-origin popup).
-          // Pin to window.location.origin (agent origin) — cross-origin openers will not receive this postMessage
-          // and will rely on BroadcastChannel/localStorage fallback below. This is fail-closed, not a wildcard leak.
-          window.opener.postMessage(payload, window.location.origin);
-        }
-        if (typeof BroadcastChannel === "function") {
-          for (const channelName of [
-            "elizaos:lifeops:google-connector",
-            "eliza:lifeops:google-connector",
-          ]) {
-            const channel = new BroadcastChannel(channelName);
-            channel.postMessage(payload);
-            channel.close();
-          }
-        }
-        if (typeof localStorage !== "undefined") {
-          for (const storageKey of [
-            "elizaos:lifeops:google-connector-refresh",
-            "eliza:lifeops:google-connector-refresh",
-          ]) {
-            localStorage.setItem(
-              storageKey,
-              JSON.stringify({
-                ...payload,
-                at: Date.now(),
-              }),
-            );
-            localStorage.removeItem(storageKey);
-          }
-        }
-      })();
-    </script>`
-    : "";
-  res.statusCode = status;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.end(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #f5f1e8;
-        color: #18120d;
-        font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
-      }
-      main {
-        width: min(32rem, calc(100vw - 2rem));
-        padding: 2rem;
-        border: 1px solid rgba(24, 18, 13, 0.12);
-        border-radius: 1.25rem;
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 24px 80px rgba(24, 18, 13, 0.08);
-      }
-      h1 {
-        margin: 0 0 0.75rem;
-        font-size: 1.25rem;
-      }
-      p {
-        margin: 0;
-        line-height: 1.5;
-        color: rgba(24, 18, 13, 0.78);
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>${escapeHtml(title)}</h1>
-      <p>${escapeHtml(message)}</p>
-    </main>
-    ${refreshScript}
-    <script>
-      window.setTimeout(() => {
-        if (typeof window.close === "function") {
-          window.close();
-        }
-      }, 250);
-    </script>
-  </body>
-</html>`);
 }
 export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
@@ -1197,8 +1150,6 @@ export async function handleLifeOpsRoutes(
     typeof value.reconcileLinkedCalendar === "function" &&
     "resolveLinkedCalendarConflict" in value &&
     typeof value.resolveLinkedCalendarConflict === "function" &&
-    "rebindLinkedCalendar" in value &&
-    typeof value.rebindLinkedCalendar === "function" &&
     "disconnectLinkedCalendar" in value &&
     typeof value.disconnectLinkedCalendar === "function" &&
     "reconcileLinkedCalendarProviderChanges" in value &&
@@ -1275,8 +1226,6 @@ export async function handleLifeOpsRoutes(
             linkId,
             request,
           ),
-        rebindLinkedCalendar: (requestUrl, linkId, request) =>
-          mutationGateway().rebindLinkedCalendar(requestUrl, linkId, request),
         disconnectLinkedCalendar: (requestUrl, linkId, request) =>
           mutationGateway().disconnectLinkedCalendar(
             requestUrl,
@@ -1890,52 +1839,6 @@ export async function handleLifeOpsRoutes(
         ),
       );
     });
-  }
-  const healthCallbackMatch = pathname.match(
-    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
-  );
-  if (method === "GET" && healthCallbackMatch) {
-    const provider = parseHealthConnectorProviderPath(ctx, healthCallbackMatch);
-    if (!provider) return true;
-    const service = getService(ctx);
-    if (!service) return true;
-    try {
-      await ensureRouteSchema(ctx.state.runtime);
-      const status = await service.completeHealthConnectorCallback(url);
-      if (status.provider !== provider) {
-        throw new LifeOpsServiceError(
-          409,
-          "Health connector callback provider did not match the request path.",
-        );
-      }
-      writeHtml(
-        res,
-        200,
-        `${provider} Connected`,
-        `${provider} health data is now available in Eliza. You can close this window.`,
-      );
-      return true;
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        writeHtml(res, error.status, "Health Connection Failed", error.message);
-        return true;
-      }
-      throw error;
-    }
-  }
-  const healthSuccessMatch = pathname.match(
-    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/success$/,
-  );
-  if (method === "GET" && healthSuccessMatch) {
-    const provider = parseHealthConnectorProviderPath(ctx, healthSuccessMatch);
-    if (!provider) return true;
-    writeHtml(
-      res,
-      200,
-      `${provider} Connected`,
-      `${provider} health data is now available in Eliza. You can close this window.`,
-    );
-    return true;
   }
   if (method === "GET" && pathname === "/api/lifeops/health/summary") {
     if (rateLimitRequest(ctx, "default")) return true;

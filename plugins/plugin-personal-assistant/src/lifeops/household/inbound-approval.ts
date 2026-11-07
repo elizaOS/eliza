@@ -7,6 +7,10 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+  normalizeEntityIdentityHandle,
+  normalizeEntityIdentityPlatform,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   getConnectorIdentityMetadataMapping,
   type IAgentRuntime,
@@ -199,7 +203,7 @@ function uniqueClaims(
 ): Array<{ platform: string; handle: string }> {
   const seen = new Set<string>();
   return claims.filter((claim) => {
-    const platform = claim.platform.trim().toLowerCase();
+    const platform = normalizeEntityIdentityPlatform(claim.platform);
     const handle = claim.handle.trim().toLowerCase();
     if (!platform || !handle) return false;
     const key = `${platform}\0${handle}`;
@@ -575,10 +579,14 @@ export async function resolveVerifiedHouseholdInboundEntityId(
   for (const claim of identity.identityClaims) {
     const candidates = await entityStore.resolve({ identity: claim });
     for (const candidate of candidates) {
+      // The same rule `resolve()` matched with: a contact saved as
+      // `@handle` and a connector claim of the bare `handle` are one identity.
       const verified = candidate.entity.identities.some(
         (stored) =>
-          stored.platform.toLowerCase() === claim.platform.toLowerCase() &&
-          stored.handle.toLowerCase() === claim.handle.toLowerCase() &&
+          normalizeEntityIdentityPlatform(stored.platform) ===
+            normalizeEntityIdentityPlatform(claim.platform) &&
+          normalizeEntityIdentityHandle(stored.platform, stored.handle) ===
+            normalizeEntityIdentityHandle(claim.platform, claim.handle) &&
           stored.verified,
       );
       if (verified) {

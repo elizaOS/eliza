@@ -27,6 +27,8 @@ export const DEFAULT_QUARANTINED_SUITES = [
  * dependencies for the lifetime of the Bun process. Bun's `--isolate` keeps
  * test globals separate but does not restore those process-wide module mocks,
  * so these suites need a process boundary from their alphabetical neighbors.
+ * Real HTTP moderation also owns a temporary fetch redirect and must not
+ * inherit neighboring safety-service mocks.
  */
 export const DEFAULT_PROCESS_ISOLATED_SUITES = [
   "src/lib/services/shared-runtime/shared-runtime-chat.test.ts",
@@ -535,4 +537,9 @@ export function buildQuarantinePassArgs(quarantinedSuites, passthroughArgs) {
     forwarded.push(arg);
   }
   return ["--isolate", ...quarantinedSuites, ...forwarded];
+}
+
+/** A watchdog deadline remains a failure even if the child handles termination cleanly. */
+export function supervisedBunExitStatus(result) {
+  return result.timedOut ? 124 : result.status;
 }

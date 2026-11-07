@@ -3,7 +3,7 @@
  *
  * The server-side bridge between the unified notification rail and remote push
  * transports (APNs / FCM). It subscribes to the AgentEventService bus and, for
- * every `stream:"notification"` event, fans the notification out to all
+ * new `stream:"notification"` events, fans the notification out to all
  * registered device push tokens via the matching provider.
  *
  * DELIVERY POLICY (intentionally simple, documented):
@@ -19,10 +19,10 @@
  * With NO provider configured the service still starts (so the registry/routes
  * stay live) but logs once at debug and does nothing on each notification.
  *
- * VERIFIABILITY: subscription, no-op-when-unconfigured, token lookup, dispatch
- * routing (ios→apns, android→fcm), and dead-token removal are unit-tested with
- * an injected fake provider. Real network delivery is NOT tested — it needs
- * live APNs/FCM credentials and a physical device.
+ * VERIFIABILITY: real inbox/token persistence and event dispatch reach a
+ * loopback HTTP receiver through the production FCM serializer in the agent
+ * transport test. Google delivery and OS display still require credentials
+ * and physical acceptance.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -104,6 +104,7 @@ export class NotificationPushService extends Service {
 
   /** Subscribe to the notification rail (idempotent). */
   async attach(): Promise<void> {
+    if (this.unsubscribe) return;
     const anyConfigured =
       this.providers.ios.isConfigured() ||
       this.providers.android.isConfigured();
@@ -114,7 +115,13 @@ export class NotificationPushService extends Service {
       );
     }
 
-    const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
+    // getService starts registered services lazily and can return null while
+    // startup is pending. Registry readiness must not permanently miss the bus.
+    const bus =
+      this.runtime.getService(ServiceType.AGENT_EVENT) ??
+      (this.runtime.hasService(ServiceType.AGENT_EVENT)
+        ? await this.runtime.getServiceLoadPromise(ServiceType.AGENT_EVENT)
+        : null);
     if (!isSubscribableBus(bus)) {
       // No event bus (headless/test boot without AgentEventService): nothing to
       // subscribe to. The registry + routes still function for diagnostics.
@@ -154,7 +161,15 @@ export class NotificationPushService extends Service {
     return this.registry;
   }
 
+  /** Registration only claims OS delivery when this host can fan out pushes. */
+  isDeliveryEnabled(platform: PushPlatform): boolean {
+    return this.unsubscribe !== null && this.providers[platform].isConfigured();
+  }
+
   private async onNotification(event: AgentEventPayload): Promise<void> {
+    // Read-state updates synchronize the inbox; they must not re-alert devices.
+    // Older producers without an event type retain their delivery behavior.
+    if (event.data?.type === "notification_update") return;
     const notification = event.data?.notification;
     if (!isAgentNotification(notification)) return;
 
@@ -173,7 +188,15 @@ export class NotificationPushService extends Service {
     for (const record of tokens) {
       const provider = this.providers[record.platform];
       if (!provider.isConfigured()) continue;
-      await this.dispatch(provider, record.platform, record.token, message);
+      await this.dispatch(
+        provider,
+        record.platform,
+        record.token,
+        record.platform === "android" &&
+          record.reminderDataNotifications === true
+          ? { ...message, androidReminderDataNotifications: true }
+          : message,
+      );
     }
   }
 
@@ -221,9 +244,21 @@ function toPushMessage(notification: AgentNotification): PushMessage {
   };
   if (notification.deepLink) data.deepLink = notification.deepLink;
   if (notification.groupKey) data.groupKey = notification.groupKey;
+  for (const key of ["conversationId", "messageId"] as const) {
+    const value = notification.data?.[key];
+    if (typeof value === "string") data[key] = value;
+  }
+  const ownerType = notification.data?.ownerType;
+  if (
+    notification.category === "reminder" &&
+    (ownerType === "occurrence" || ownerType === "calendar_event")
+  ) {
+    data.ownerType = ownerType;
+  }
   return {
     title: notification.title,
     body: notification.body,
+    priority: notification.priority,
     data,
   };
 }

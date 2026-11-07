@@ -16,7 +16,8 @@
  * This script reads each workspace package.json, takes its `name`
  * (typically `@elizaos/<basename>`), and ensures each configured
  * `node_modules/@elizaos/<basename>` resolves to the workspace dir via
- * a relative symlink. Idempotent — skips packages that already resolve.
+ * a relative symlink, or a junction on Windows. Idempotent — skips packages
+ * that already resolve.
  */
 
 import {
@@ -98,7 +99,11 @@ function ensureSymlink(linkPath, targetDir) {
   }
   mkdirSync(dirname(linkPath), { recursive: true });
   const rel = relative(dirname(linkPath), targetDir);
-  symlinkSync(rel, linkPath, "dir");
+  symlinkSync(
+    process.platform === "win32" ? targetDir : rel,
+    linkPath,
+    process.platform === "win32" ? "junction" : "dir",
+  );
   return true;
 }
 

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
-import type { AuthRepository } from "../../services/auth-store";
+import type { AuthRepository } from "../../services/auth-repository";
 import { appendAuditEvent, resolveAuditLogPath } from "./audit";
 
 it.each([null, new Error("database unavailable")])(

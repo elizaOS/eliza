@@ -16,9 +16,7 @@
  * 3. **Long-lived children** (see `launch()`):
  *    - **API** — `bun dev-server` unless `--no-api`; `bun --watch` is opt-in.
  *    - **Watch + default** — Vite **dev** server + `ELIZA_RENDERER_URL` for Electrobun (HMR).
- *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
- *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
- *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
+ *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` (passes `vite --force`).
  *    - **Electrobun** — `bun run dev` in `packages/app/platforms/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
@@ -67,11 +65,11 @@ import {
 import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-settings-banner-style";
+import { colorizeDevSettingsStartupBanner } from "@elizaos/app/dev-tools";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.ts";
 import { createApiSupervisor } from "./lib/api-supervisor.ts";
@@ -279,7 +277,6 @@ Options:
                      Select the exact local Cloud environment (default: staging)
   --no-api           Skip the API server (Electrobun + renderer only)
   --force-renderer   Force vite build before starting (even if dist is fresh)
-  --rollup-watch     Use vite build --watch instead of vite dev (requires ELIZA_DESKTOP_VITE_WATCH=1)
   --vite-force       Pass --force to Vite (clear dep optimization cache on dev server start)
   -h, --help         Show this help
 
@@ -289,7 +286,6 @@ Secrets are redacted. Run without --help to see them.
 
 Environment (CI / automation; flags override where noted):
   ELIZA_DESKTOP_RENDERER_BUILD=always   Same as --force-renderer
-  ELIZA_DESKTOP_VITE_BUILD_WATCH=1      Same as --rollup-watch (with ELIZA_DESKTOP_VITE_WATCH=1)
   ELIZA_VITE_FORCE=1 / ELIZA_VITE_FORCE=1   Same as --vite-force
   ELIZA_DESKTOP_SCREENSHOT_SERVER=0     Disable screenshot dev server
   ELIZA_DESKTOP_DEV_LOG=0               Disable aggregated log file
@@ -332,26 +328,32 @@ const rendererBuildSkipRequested =
 const viteWatch = process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce = viteDepForceCli || process.env.ELIZA_VITE_FORCE === "1";
-const viteRollupWatchCli = process.argv.includes("--rollup-watch");
-/** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
-const viteRollupWatch =
-  viteWatch &&
-  (viteRollupWatchCli || process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
-/** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
-const viteDevServer = viteWatch && !viteRollupWatch;
+const viteDevServer = viteWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */
 const screenshotServerOptOut = (() => {
   const v = process.env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
   return v === "0" || v === "false" || v === "no" || v === "off";
 })();
 const screenshotServerEnabled = !screenshotServerOptOut;
-const preferredScreenshotPort = Number.parseInt(
-  process.env.ELIZA_SCREENSHOT_SERVER_PORT || "31339",
-  10,
+// Number.parseInt stops at the first non-digit, so "8080junk" parsed to
+// 8080 and was silently accepted instead of falling back to the default.
+// Require the whole trimmed value to be decimal, mirroring
+// resolveGenerationTimeoutMs in the discord plugin.
+const parsePortPreference = (
+  raw: string | undefined,
+  fallback: number,
+): number => {
+  const text = (raw ?? "").trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const preferredScreenshotPort = parsePortPreference(
+  process.env.ELIZA_SCREENSHOT_SERVER_PORT,
+  31339,
 );
-const preferredBrowserWorkspacePort = Number.parseInt(
-  process.env.ELIZA_BROWSER_WORKSPACE_PORT || "31340",
-  10,
+const preferredBrowserWorkspacePort = parsePortPreference(
+  process.env.ELIZA_BROWSER_WORKSPACE_PORT,
+  31340,
 );
 const screenshotToken = screenshotServerEnabled
   ? randomBytes(24).toString("hex")
@@ -632,10 +634,6 @@ async function warmApiRoute(port, pathname, { timeout = 30_000 } = {}) {
 
 async function warmApiRoutes(port) {
   const routes = [
-    { pathname: "/api/apps", timeout: 90_000 },
-    { pathname: "/api/coding-agents/coordinator/status", timeout: 60_000 },
-    { pathname: "/api/apps/installed", timeout: 90_000 },
-    { pathname: "/api/apps/runs", timeout: 30_000 },
     { pathname: "/api/computer-use/approvals", timeout: 30_000 },
     { pathname: "/api/drop/status", timeout: 30_000 },
   ];
@@ -680,7 +678,6 @@ let shuttingDown = false;
 const namesForLog = [];
 if (!skipApi) namesForLog.push("api");
 if (viteDevServer) namesForLog.push("vite");
-if (viteRollupWatch) namesForLog.push("vite");
 namesForLog.push("electrobun");
 const PREFIX_PAD = Math.max(...namesForLog.map((n) => n.length));
 
@@ -844,11 +841,9 @@ async function launch() {
     forceRenderer,
     forceRendererCli,
     viteWatch,
-    viteRollupWatch,
     viteDevServer,
     viteDepForce,
     viteDepForceCli,
-    viteRollupWatchCli,
     ranInitialViteBuild,
     rendererStaleReason: rendererDistStale
       ? "dist missing or older than renderer sources"
@@ -1003,8 +998,7 @@ async function launch() {
   if (viteDevServer) {
     await assertDevPortsAvailable([uiDevPort]);
     console.log(
-      "\n[eliza] Vite dev server (HMR) for desktop — Electrobun loads ELIZA_RENDERER_URL.\n" +
-        `    (Slow Rollup watch: ELIZA_DESKTOP_VITE_BUILD_WATCH=1 with ELIZA_DESKTOP_VITE_WATCH=1)\n`,
+      "\n[eliza] Vite dev server (HMR) for desktop — Electrobun loads ELIZA_RENDERER_URL.\n",
     );
     if (viteDepForce) {
       console.log(
@@ -1026,16 +1020,6 @@ async function launch() {
     });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
-  }
-
-  if (viteRollupWatch) {
-    const viteWatchCommand = resolveViteCommand({
-      appDir,
-      viteArgs: ["build", "--watch"],
-    });
-    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
-      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-    });
   }
 
   const electrobunChild = pushChild(

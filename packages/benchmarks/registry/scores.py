@@ -6,80 +6,43 @@ import math
 import runpy
 from typing import cast
 
-try:
-    from benchmarks.action_calling_contract import (
-        ACTION_CALLING_METRIC_NAMES,
-        score_action_calling_case,
-    )
-    from benchmarks.bench_cli_types import (
-        JSONValue,
-        ScoreExtraction,
-        expect_dict,
-        expect_float,
-        expect_list,
-        get_optional,
-        get_required,
-    )
-    from benchmarks.publication_contracts import (
-        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
-        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
-        ACTION_CALLING_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
-        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
-        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
-        WEBSHOP_FULL_REPORT_CONTRACT,
-        action_calling_report_contract_reason,
-        canonical_identifier_manifest_sha256,
-        canonical_json_sha256,
-        webshop_report_contract_reason,
-    )
-except ImportError:
-    from action_calling_contract import (  # type: ignore[no-redef]
-        ACTION_CALLING_METRIC_NAMES,
-        score_action_calling_case,
-    )
-    from bench_cli_types import (  # type: ignore[no-redef]
-        JSONValue,
-        ScoreExtraction,
-        expect_dict,
-        expect_float,
-        expect_list,
-        get_optional,
-        get_required,
-    )
-    from publication_contracts import (  # type: ignore[no-redef]
-        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
-        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
-        ACTION_CALLING_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
-        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
-        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
-        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
-        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
-        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
-        WEBSHOP_FULL_REPORT_CONTRACT,
-        action_calling_report_contract_reason,
-        canonical_identifier_manifest_sha256,
-        canonical_json_sha256,
-        webshop_report_contract_reason,
-    )
+from benchmarks.action_calling_contract import (
+    ACTION_CALLING_METRIC_NAMES,
+    score_action_calling_case,
+)
+from benchmarks.bench_cli_types import (
+    JSONValue,
+    ScoreExtraction,
+    expect_count,
+    expect_dict,
+    expect_float,
+    expect_list,
+    get_optional,
+    get_required,
+)
+from benchmarks.publication_contracts import (
+    ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
+    ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
+    ACTION_CALLING_FULL_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+    ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+    ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+    WEBSHOP_FULL_REPORT_CONTRACT,
+    action_calling_report_contract_reason,
+    canonical_identifier_manifest_sha256,
+    canonical_json_sha256,
+    webshop_report_contract_reason,
+)
 
 
 def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
@@ -93,7 +56,9 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_score", ctx="bfcl:metrics"),
         ctx="bfcl:overall_score",
     )
-    total_tests = get_optional(metrics, "total_tests") or 0
+    total_tests = expect_count(
+        get_required(metrics, "total_tests", ctx="bfcl:metrics"), ctx="bfcl:total_tests"
+    )
     error_analysis = get_optional(metrics, "error_analysis")
     if total_tests == 0:
         no_ground_truth = 0
@@ -156,7 +121,9 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
     )
-    total_tasks = get_optional(metrics, "total_tasks") or 0
+    total_tasks = expect_count(
+        get_required(metrics, "total_tasks", ctx="realm:metrics"), ctx="realm:total_tasks"
+    )
     if total_tasks == 0:
         raise ValueError("realm: zero-task score is not publishable")
     return ScoreExtraction(
@@ -192,8 +159,10 @@ def _score_from_mint_json(data: JSONValue) -> ScoreExtraction:
             ),
             ctx=f"mint:{config_key}.overall_success_rate",
         )
-        total_tasks = int(get_optional(metrics, "total_tasks") or 0)
-        passed_tasks = int(get_optional(metrics, "passed_tasks") or 0)
+        total_tasks = expect_count(get_required(metrics, "total_tasks", ctx=f"mint:{config_key}"), ctx=f"mint:{config_key}.total_tasks")
+        passed_tasks = expect_count(get_required(metrics, "passed_tasks", ctx=f"mint:{config_key}"), ctx=f"mint:{config_key}.passed_tasks")
+        if passed_tasks > total_tasks:
+            raise ValueError(f"mint:{config_key}: passed_tasks exceeds total_tasks")
         return rate, total_tasks, passed_tasks
 
     candidates: list[tuple[str, float, int, int]] = []
@@ -233,7 +202,7 @@ def _score_from_agentbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_success_rate", ctx="agentbench:root"),
         ctx="agentbench:overall_success_rate",
     )
-    total = expect_float(
+    total = expect_count(
         get_required(root, "total_tasks", ctx="agentbench:root"),
         ctx="agentbench:total_tasks",
     )
@@ -277,7 +246,7 @@ def _score_from_contextbench_json(data: JSONValue) -> ScoreExtraction:
             get_required(metrics, "overall_accuracy", ctx="context_bench:metrics"),
             ctx="context_bench:overall_accuracy",
         )
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(metrics, "total_tasks", ctx="context_bench:metrics"),
         ctx="context_bench:total_tasks",
     )
@@ -344,7 +313,7 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(summary, "accuracy", ctx="terminal_bench:summary"),
         ctx="terminal_bench:accuracy",
     )
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(summary, "total_tasks", ctx="terminal_bench:summary"),
         ctx="terminal_bench:total_tasks",
     )
@@ -414,7 +383,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         if isinstance(raw, dict):
             raw = raw.get("pass_hat_k", raw.get("pass@1", raw.get("score")))
         overall = expect_float(raw, ctx="tau_bench:pass@1")
-    num_tasks = expect_float(
+    num_tasks = expect_count(
         get_required(root, "num_tasks", ctx="tau_bench:root")
         if "num_tasks" in root
         else get_required(root, "total_tasks", ctx="tau_bench:root"),
@@ -557,13 +526,27 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
     results = root.get("results")
-    if root.get("mock") is True or root.get("smoke") is True or root.get("baseline") or root.get("evaluator_feedback_repairs") or (
-        isinstance(root.get("dataset_provenance"), dict) and root["dataset_provenance"].get("dataset") == "synthetic"
-    ) or (
-        isinstance(results, list)
-        and any(isinstance(row, dict) and "smoke_validated" in str(row.get("status", "")) for row in results)
+    if (
+        root.get("mock") is True
+        or root.get("smoke") is True
+        or root.get("baseline")
+        or root.get("evaluator_feedback_repairs")
+        or (
+            isinstance(root.get("dataset_provenance"), dict)
+            and root["dataset_provenance"].get("dataset") == "synthetic"
+        )
+        or (
+            isinstance(results, list)
+            and any(
+                isinstance(row, dict)
+                and "smoke_validated" in str(row.get("status", ""))
+                for row in results
+            )
+        )
     ):
-        raise ValueError("swe_bench: structural smoke validation is not a publishable resolution score")
+        raise ValueError(
+            "swe_bench: structural smoke validation is not a publishable resolution score"
+        )
     summary = expect_dict(
         get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary"
     )
@@ -571,7 +554,7 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
         get_required(summary, "resolve_rate", ctx="swe_bench:summary"),
         ctx="swe_bench:resolve_rate",
     )
-    total_instances = expect_float(
+    total_instances = expect_count(
         get_required(summary, "total_instances", ctx="swe_bench:summary"),
         ctx="swe_bench:total_instances",
     )
@@ -593,8 +576,13 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_swebench_orchestrated_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench_orchestrated:root")
     execution = root.get("execution")
-    if not isinstance(execution, dict) or execution.get("orchestration_verified") is not True:
-        raise ValueError("swe_bench_orchestrated: missing real TASKS/ACP orchestration evidence")
+    if (
+        not isinstance(execution, dict)
+        or execution.get("orchestration_verified") is not True
+    ):
+        raise ValueError(
+            "swe_bench_orchestrated: missing real TASKS/ACP orchestration evidence"
+        )
     _score_from_swebench_json(root)
     metrics_obj = get_optional(root, "metrics")
     if isinstance(metrics_obj, dict):
@@ -647,10 +635,7 @@ def _attest_installed_orchestrator_lifecycle_sources() -> None:
 
     from pathlib import Path
 
-    if __package__ is not None and __package__.startswith("benchmarks."):
-        from benchmarks.orchestrator_lifecycle import contract as lifecycle_contract
-    else:
-        from orchestrator_lifecycle import contract as lifecycle_contract  # type: ignore[no-redef]
+    from benchmarks.suites.orchestrator_lifecycle import contract as lifecycle_contract
 
     loaded_hint = getattr(lifecycle_contract, "LIFECYCLE_SYSTEM_HINT", None)
     loaded_tools = getattr(lifecycle_contract, "LIFECYCLE_TASKS_TOOLS", None)
@@ -715,26 +700,13 @@ def _score_from_orchestrator_lifecycle_json(data: JSONValue) -> ScoreExtraction:
     from dataclasses import asdict
     from pathlib import Path
 
-    try:
-        from benchmarks.orchestrator_lifecycle.dataset import (
-            LifecycleDataset,
-            scenario_corpus_sha256,
-        )
-        from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-        from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
-        from benchmarks.orchestrator_lifecycle.types import TurnRecord
-    except ImportError:
-        from orchestrator_lifecycle.dataset import (  # type: ignore[no-redef]
-            LifecycleDataset,
-            scenario_corpus_sha256,
-        )
-        from orchestrator_lifecycle.evaluator import (  # type: ignore[no-redef]
-            LifecycleEvaluator,
-        )
-        from orchestrator_lifecycle.events import (  # type: ignore[no-redef]
-            extract_lifecycle_events,
-        )
-        from orchestrator_lifecycle.types import TurnRecord  # type: ignore[no-redef]
+    from benchmarks.suites.orchestrator_lifecycle.dataset import (
+        LifecycleDataset,
+        scenario_corpus_sha256,
+    )
+    from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.suites.orchestrator_lifecycle.events import extract_lifecycle_events
+    from benchmarks.suites.orchestrator_lifecycle.types import TurnRecord
 
     _attest_installed_orchestrator_lifecycle_sources()
 
@@ -1102,14 +1074,14 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_step_accuracy", ctx="mind2web:root"),
         ctx="mind2web:overall_step_accuracy",
     )
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(root, "total_tasks", ctx="mind2web:root"),
         ctx="mind2web:total_tasks",
     )
     if total_tasks <= 0:
         raise ValueError("mind2web: zero-task score is not publishable")
     if root.get("synthetic_calibration") is not True:
-        total_trials = expect_float(
+        total_trials = expect_count(
             get_required(root, "total_trials", ctx="mind2web:root"),
             ctx="mind2web:total_trials",
         )
@@ -1130,7 +1102,7 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
             get_required(root, "scenario_counts", ctx="mind2web:root"),
             ctx="mind2web:scenario_counts",
         )
-        scenario_total = expect_float(
+        scenario_total = expect_count(
             get_required(scenario_counts, "total", ctx="mind2web:scenario_counts"),
             ctx="mind2web:scenario_counts.total",
         )
@@ -1191,7 +1163,7 @@ def _score_from_visualwebbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_accuracy", ctx="visualwebbench:root"),
         ctx="visualwebbench:overall_accuracy",
     )
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(root, "total_tasks", ctx="visualwebbench:root"),
         ctx="visualwebbench:total_tasks",
     )
@@ -1236,15 +1208,13 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
         raise ValueError(
             "vision_language: stub runtime report is not publishable as a real harness score"
         )
-    sample_count = expect_float(
+    sample_count = expect_count(
         get_required(root, "sample_count", ctx="vision_language:root"),
         ctx="vision_language:sample_count",
     )
     if sample_count <= 0:
         raise ValueError("vision_language: zero-sample report is not publishable")
-    if not sample_count.is_integer():
-        raise ValueError("vision_language: sample_count must be an integer")
-    error_count = expect_float(
+    error_count = expect_count(
         get_required(root, "error_count", ctx="vision_language:root"),
         ctx="vision_language:error_count",
     )
@@ -1287,10 +1257,6 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-
-
-
-
 def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from OSWorld benchmark results."""
     root = expect_dict(data, ctx="osworld:root")
@@ -1298,7 +1264,7 @@ def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_success_rate", ctx="osworld:root"),
         ctx="osworld:overall_success_rate",
     )
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(root, "total_tasks", ctx="osworld:root"),
         ctx="osworld:total_tasks",
     )
@@ -1337,15 +1303,15 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
         if not isinstance(entry, dict):
             continue
         name_raw = entry.get("handlerName")
-        if isinstance(name_raw, str) and "eliza" in name_raw.lower():
+        if isinstance(name_raw, str) and (
+            "eliza" in name_raw.lower() or "harness bridge" in name_raw.lower()
+        ):
             target = entry
             break
     if target is None:
         raise ValueError("configbench: no Eliza handler entry found")
     overall_raw = target.get("overallScore")
-    overall = expect_float(
-        overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore"
-    )
+    overall = expect_float(overall_raw, ctx="configbench:overallScore")
     security_raw = target.get("securityScore")
     capability_raw = target.get("capabilityScore")
     return ScoreExtraction(
@@ -1429,15 +1395,13 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_accuracy", ctx="mmau:root"),
         ctx="mmau:overall_accuracy",
     )
-    total_samples = expect_float(
+    total_samples = expect_count(
         get_required(root, "total_samples", ctx="mmau:root"),
         ctx="mmau:total_samples",
     )
     if total_samples <= 0:
         raise ValueError("mmau: zero-sample score is not publishable")
-    if not total_samples.is_integer():
-        raise ValueError("mmau: total_samples must be an integer")
-    error_count = expect_float(
+    error_count = expect_count(
         get_required(root, "error_count", ctx="mmau:root"),
         ctx="mmau:error_count",
     )
@@ -1868,7 +1832,7 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                 f"{sorted(unknown_parity_lanes)}"
             )
         parity_pass_count = int(
-            expect_float(
+            expect_count(
                 get_required(
                     parity_summary,
                     "pass_count",
@@ -1878,7 +1842,7 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             )
         )
         parity_fail_count = int(
-            expect_float(
+            expect_count(
                 get_required(
                     parity_summary,
                     "fail_count",
@@ -1888,7 +1852,7 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             )
         )
         parity_skip_count = int(
-            expect_float(
+            expect_count(
                 get_required(
                     parity_summary,
                     "skip_count",
@@ -2015,7 +1979,7 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
                 "voicebench: real score requires a groq, elevenlabs, "
                 "local-cerebras, or local-eliza1 profile"
             )
-        sample_count = expect_float(
+        sample_count = expect_count(
             get_required(root, "sampleCount", ctx="voicebench:root"),
             ctx="voicebench:sampleCount",
         )
@@ -2047,7 +2011,7 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
         ),
         ctx=f"voicebench:summary.{mode_key}.avgEndToEndMs",
     )
-    runs = expect_float(
+    runs = expect_count(
         mode_summary.get("runs") or 0, ctx=f"voicebench:summary.{mode_key}.runs"
     )
     if runs <= 0:
@@ -2105,11 +2069,11 @@ def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     """Extract only the complete, provenance-pinned campaign workload."""
     root = expect_dict(data, ctx="webshop:root")
-    total_tasks = expect_float(
+    total_tasks = expect_count(
         get_required(root, "total_tasks", ctx="webshop:root"),
         ctx="webshop:total_tasks",
     )
-    total_trials = expect_float(
+    total_trials = expect_count(
         get_required(root, "total_trials", ctx="webshop:root"),
         ctx="webshop:total_trials",
     )
@@ -2201,10 +2165,6 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-
-
-
-
 def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from Solana Gauntlet benchmark results.
 
@@ -2247,8 +2207,6 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
             "capital": get_optional(components, "capital") or 0,
         },
     )
-
-
 
 
 def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction:
@@ -2389,11 +2347,11 @@ def _score_from_multitask_bench_json(data: JSONValue) -> ScoreExtraction:
     if set(lane_by_n) != {1, 5, 10}:
         raise ValueError("multitask_bench: complete N=1/5/10 lanes are required")
     for n, lane in lane_by_n.items():
-        tasks_total = expect_float(
+        tasks_total = expect_count(
             get_required(lane, "tasks_total", ctx=f"multitask_bench:n{n}"),
             ctx=f"multitask_bench:n{n}.tasks_total",
         )
-        tasks_completed = expect_float(
+        tasks_completed = expect_count(
             get_required(lane, "tasks_completed", ctx=f"multitask_bench:n{n}"),
             ctx=f"multitask_bench:n{n}.tasks_completed",
         )
@@ -2665,31 +2623,6 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_eliza_format_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="eliza_format:root")
-    metrics_obj = get_optional(root, "metrics")
-    metrics = (
-        expect_dict(metrics_obj, ctx="eliza_format:metrics")
-        if isinstance(metrics_obj, dict)
-        else root
-    )
-    score_raw = get_optional(metrics, "score")
-    if score_raw is None:
-        score_raw = get_optional(root, "score")
-    score = expect_float(score_raw, ctx="eliza_format:score")
-    return ScoreExtraction(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "score": score,
-            "format_ok": metrics.get("format_ok") or 0,
-            "content_ok": metrics.get("content_ok") or 0,
-            "examples": metrics.get("examples") or metrics.get("n") or 0,
-        },
-    )
-
-
 def _standard_benchmark_metrics(
     metrics: dict[str, JSONValue],
     *,
@@ -2720,7 +2653,7 @@ def _score_from_mmlu_json(data: JSONValue) -> ScoreExtraction:
     score = expect_float(
         get_required(metrics, "score", ctx="mmlu:metrics"), ctx="mmlu:score"
     )
-    n = expect_float(get_required(metrics, "n", ctx="mmlu:metrics"), ctx="mmlu:n")
+    n = expect_count(get_required(metrics, "n", ctx="mmlu:metrics"), ctx="mmlu:n")
     if n <= 0:
         raise ValueError("mmlu:n must be positive")
     return ScoreExtraction(
@@ -2741,7 +2674,7 @@ def _score_from_humaneval_json(data: JSONValue) -> ScoreExtraction:
     score = expect_float(
         get_required(metrics, "score", ctx="humaneval:metrics"), ctx="humaneval:score"
     )
-    n = expect_float(
+    n = expect_count(
         get_required(metrics, "n", ctx="humaneval:metrics"), ctx="humaneval:n"
     )
     if n <= 0:
@@ -2762,7 +2695,7 @@ def _score_from_gsm8k_json(data: JSONValue) -> ScoreExtraction:
     score = expect_float(
         get_required(metrics, "score", ctx="gsm8k:metrics"), ctx="gsm8k:score"
     )
-    n = expect_float(get_required(metrics, "n", ctx="gsm8k:metrics"), ctx="gsm8k:n")
+    n = expect_count(get_required(metrics, "n", ctx="gsm8k:metrics"), ctx="gsm8k:n")
     if n <= 0:
         raise ValueError("gsm8k:n must be positive")
     return ScoreExtraction(
@@ -2784,7 +2717,7 @@ def _score_from_mt_bench_json(data: JSONValue) -> ScoreExtraction:
     score = expect_float(
         get_required(metrics, "score", ctx="mt_bench:metrics"), ctx="mt_bench:score"
     )
-    n = expect_float(
+    n = expect_count(
         get_required(metrics, "n", ctx="mt_bench:metrics"), ctx="mt_bench:n"
     )
     if n <= 0:
@@ -2810,7 +2743,7 @@ def _score_from_trajectory_replay_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "score", ctx="trajectory_replay:metrics"),
         ctx="trajectory_replay:score",
     )
-    n = expect_float(
+    n = expect_count(
         get_required(metrics, "n", ctx="trajectory_replay:metrics"),
         ctx="trajectory_replay:n",
     )
@@ -2849,7 +2782,7 @@ def _score_from_clawbench_json(data: JSONValue) -> ScoreExtraction:
         score_val = 0.0
         passed = 0
         total = 0
-    total_float = expect_float(total, ctx="clawbench:total")
+    total_float = expect_count(total, ctx="clawbench:total")
     if total_float <= 0:
         raise ValueError("clawbench: zero-check score is not publishable")
     return ScoreExtraction(
@@ -2886,15 +2819,15 @@ def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
             "openclaw_bench: incomplete all-task report is not publishable"
         )
     if complete is True:
-        expected_tasks = expect_float(
+        expected_tasks = expect_count(
             get_required(root, "expected_tasks", ctx="openclaw:root"),
             ctx="openclaw:expected_tasks",
         )
-        completed_tasks = expect_float(
+        completed_tasks = expect_count(
             get_required(root, "tasks_completed", ctx="openclaw:root"),
             ctx="openclaw:tasks_completed",
         )
-        failed_tasks = expect_float(
+        failed_tasks = expect_count(
             get_required(root, "failed_tasks", ctx="openclaw:root"),
             ctx="openclaw:failed_tasks",
         )
@@ -2971,9 +2904,9 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
 
     def _metric_number(key: str) -> float | None:
         value = metrics_dict.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if value is None:
             return None
-        return float(value)
+        return expect_count(value, ctx=f"hermes_env:metrics.{key}")
 
     # A score derived from rollouts that ALL failed to complete is not a real
     # measurement — like the placeholder-only gate above, publishing it would
@@ -3003,7 +2936,7 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
         metrics_dict["duration_s"] = duration
     return ScoreExtraction(
         score=score,
-        unit="ratio",
+        unit="ratio" if metric_keys & {"accuracy", "pass_rate", "avg_composite_score", "survival_rate"} else "reward",
         higher_is_better=higher,
         metrics=metrics_dict,
     )

@@ -14,17 +14,14 @@ Run:
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]  # packages/training/scripts/
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from eliza_reward_fn import RewardComponents  # noqa: E402
-from synth.judge_filter import (  # noqa: E402
+from eliza_training.eliza_reward_fn import RewardComponents  # noqa: E402
+from eliza_training.synth.judge_filter import (  # noqa: E402
     extract_record,
     filter_stream,
     judge_record,

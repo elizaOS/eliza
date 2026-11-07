@@ -9,12 +9,20 @@ import { fileURLToPath } from "node:url";
 const android = fileURLToPath(new URL("../../android", import.meta.url));
 test("Android make rejects unsupported targets before build or provisioning", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "android make-"));
+  // Make target names cannot contain spaces, so the launcher lives apart from
+  // the space-containing directory that exercises recipe quoting.
+  const launcherDirectory = await mkdtemp(path.join(tmpdir(), "android-repo-"));
   try {
     await writeFile(
       path.join(directory, "node"),
       '#!/bin/sh\nprintf "NODE_STARTED %s\\n" "$@"\ncase "$1" in *build-aosp.ts) printf "RISCV_OPTIONAL=%s\\n" "${ELIZA_BUN_RISCV64_OPTIONAL-unset}";; esac\n',
       { mode: 0o700 },
     );
+    // A pre-provisioned launcher keeps this test offline: the digest-pinned
+    // download in provision-repo.sh is release provisioning, not entrypoint
+    // validation, and must not run here.
+    const repoLauncher = path.join(launcherDirectory, "repo");
+    await writeFile(repoLauncher, "#!/bin/sh\nexit 1\n", { mode: 0o700 });
     const run = (target, arch) =>
       spawnSync(
         "make",
@@ -27,6 +35,7 @@ test("Android make rejects unsupported targets before build or provisioning", as
           `ARCH=${arch}`,
           `ELIZAOS_ELIZA_ROOT=${directory}`,
           `AOSP_ROOT=${directory}`,
+          `REPO_LAUNCHER=${repoLauncher}`,
         ],
         {
           encoding: "utf8",
@@ -59,6 +68,12 @@ test("Android make rejects unsupported targets before build or provisioning", as
         1,
         target,
       );
+      if (target === "bootstrap") {
+        assert.ok(
+          result.stdout.split("\n").includes(`NODE_STARTED ${repoLauncher}`),
+          "bootstrap uses the provisioned repo launcher",
+        );
+      }
     }
     const valid = run("build-e1", "riscv64");
     assert.equal(valid.status, 0, valid.stderr);
@@ -74,5 +89,6 @@ test("Android make rejects unsupported targets before build or provisioning", as
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
+    await rm(launcherDirectory, { recursive: true, force: true });
   }
 });

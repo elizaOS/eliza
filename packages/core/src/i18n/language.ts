@@ -34,17 +34,25 @@ export function normalizeLanguage(input: unknown): UiLanguage {
 	if (UI_LANGUAGE_SET.has(trimmed)) return trimmed as UiLanguage;
 
 	const lower = trimmed.toLowerCase();
-	if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
+	// zh-TW, zh-HK, and zh-Hant are Traditional Chinese. The only Chinese UI
+	// is zh-CN, which is also the country fallback for TW/HK/MO.
+	if (lower === "zh" || lower.startsWith("zh-")) {
 		return "zh-CN";
 	}
 	if (lower === "en" || lower.startsWith("en-")) {
 		return "en";
 	}
-	if (lower.startsWith("ko")) return "ko";
-	if (lower.startsWith("es")) return "es";
-	if (lower.startsWith("pt")) return "pt";
-	if (lower.startsWith("vi")) return "vi";
-	if (lower.startsWith("tl") || lower.startsWith("fil")) return "tl";
-	if (lower.startsWith("ja")) return "ja";
+	if (lower === "ko" || lower.startsWith("ko-")) return "ko";
+	if (lower === "es" || lower.startsWith("es-")) return "es";
+	if (lower === "pt" || lower.startsWith("pt-")) return "pt";
+	if (lower === "vi" || lower.startsWith("vi-")) return "vi";
+	if (
+		lower === "tl" ||
+		lower.startsWith("tl-") ||
+		lower === "fil" ||
+		lower.startsWith("fil-")
+	)
+		return "tl";
+	if (lower === "ja" || lower.startsWith("ja-")) return "ja";
 	return DEFAULT_UI_LANGUAGE;
 }

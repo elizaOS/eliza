@@ -53,7 +53,7 @@ import {
 import { Label } from "../../components/ui/label";
 import { Separator } from "../../components/ui/separator";
 import { Skeleton } from "../../components/ui/skeleton";
-import { cn } from "../lib/utils";
+import { cn } from "../../utils/cn";
 
 type ConnectionCardStatus =
   | "loading"
@@ -90,8 +90,6 @@ interface ConnectionCardProps {
   errorMessage?: string;
   /** Optional retry included in the section-level recovery action. */
   onRetry?: () => void;
-  /** @deprecated Recovery copy is standardized by ConnectionStatusNotice. */
-  retryLabel?: string;
   /** Status badge shown in the header when connected */
   statusBadge?: ReactNode;
   /** Additional CSS classes */

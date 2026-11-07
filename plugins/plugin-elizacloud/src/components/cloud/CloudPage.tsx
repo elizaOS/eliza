@@ -4,7 +4,7 @@
  * plugin surface.
  */
 
-import { PluginPageFrame } from "@elizaos/ui/components";
+import { PluginPageFrame } from "@elizaos/ui";
 import type { JSX } from "react";
 import { CloudView, type CloudViewProps } from "./CloudView.tsx";
 

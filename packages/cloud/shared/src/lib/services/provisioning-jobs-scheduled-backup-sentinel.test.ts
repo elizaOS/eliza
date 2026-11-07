@@ -36,6 +36,12 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import {
+  listRecoverableAgentComputeStopIntents,
+  provisioningJobService,
+  rearmRecoverableAgentComputeStopIntentOnce,
+  resolveAgentSuspendAuthorization,
+} from "@elizaos/cloud-shared/node";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
@@ -50,12 +56,6 @@ import { activeBillingService } from "./active-billing";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { SandboxPower } from "./eliza-sandbox/lifecycle/power";
 import { JOB_TYPES } from "./provisioning-job-types";
-import {
-  listRecoverableAgentComputeStopIntents,
-  provisioningJobService,
-  rearmRecoverableAgentComputeStopIntentOnce,
-  resolveAgentSuspendAuthorization,
-} from "./provisioning-jobs";
 import type { SandboxProvider } from "./sandbox-provider-types";
 
 const PGLITE_TIMEOUT = 300_000;

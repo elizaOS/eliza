@@ -60,9 +60,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from training.model_registry import get as registry_get  # noqa: E402
+from eliza_training.training.model_registry import get as registry_get  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -520,7 +519,7 @@ def main() -> int:
     if args.entropix:
         cmd += [
             "--logits-processors",
-            "scripts.inference.entropix_sampler:VLLMEntropixProcessor",
+            "eliza_training.inference.entropix_sampler:VLLMEntropixProcessor",
         ]
     pretty = " \\\n  ".join(shlex.quote(c) for c in cmd)
     log.info("assembled vllm command:\n  %s", pretty)
@@ -553,7 +552,7 @@ def _run_with_heartbeat(serve_cmd: list[str], *, port: int, stats_out: str) -> i
     hb_cmd = [
         sys.executable,
         "-m",
-        "scripts.inference.heartbeat",
+        "eliza_training.inference.heartbeat",
         "--vllm-metrics-url",
         metrics_url,
         "--out",
@@ -565,7 +564,7 @@ def _run_with_heartbeat(serve_cmd: list[str], *, port: int, stats_out: str) -> i
     log.info("launching vllm: %s", " ".join(shlex.quote(c) for c in serve_cmd))
     serve_proc = subprocess.Popen(serve_cmd)
     log.info("launching heartbeat: %s", " ".join(shlex.quote(c) for c in hb_cmd))
-    # cwd=training/ so `python -m scripts.inference.heartbeat` resolves.
+    # cwd=training/ so `python -m eliza_training.inference.heartbeat` resolves.
     hb_cwd = str(Path(__file__).resolve().parent.parent.parent)
     try:
         hb_proc = subprocess.Popen(hb_cmd, cwd=hb_cwd)

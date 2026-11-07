@@ -16,6 +16,10 @@ import {
   runPlannerLoop,
 } from "../../runtime/planner-loop.ts";
 import {
+  capturePlannerReplyRecovery,
+  parseReplyRecoveryHistorySelection,
+} from "./egress-policy.ts";
+import {
   loadHistoryReferences,
   projectBackgroundHistory,
   projectReviewedHistory,
@@ -25,11 +29,11 @@ import {
 import { executeV5PlannedToolCall } from "./planned-tool.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
-function fixture(owner = "owner") {
+function fixture(owner = "owner", count = 30, retainFirst = true) {
   const context = {
     id: "turn",
     metadata: { roomId: "room", messageId: "turn" },
-    events: Array.from({ length: 30 }, (_, i) => ({
+    events: Array.from({ length: count }, (_, i) => ({
       id: `history:${i}`,
       type: "segment" as const,
       source: "prior-dialogue",
@@ -53,13 +57,15 @@ function fixture(owner = "owner") {
     scope,
     null,
     "evidence",
-    30,
+    count,
   );
   const checkpoint = applyHistoryRetentionReview(prepared, {
     sourceSetId: prepared.sourceSetId,
     complete: true,
-    retainSourceIds: ["h1"],
-    deferSourceIds: prepared.candidates.slice(1).map((s) => s.id),
+    retainSourceIds: retainFirst ? ["h1"] : [],
+    deferSourceIds: prepared.candidates
+      .slice(retainFirst ? 1 : 0)
+      .map((s) => s.id),
     uncertainSourceIds: [],
     dependencyGroups: [],
   });
@@ -329,9 +335,25 @@ it.each([
       runJsonModel: async ({ actionType, prompt }) => {
         expect(actionType).toBe("lifeops.calendar.extract_create_event");
         prompts.push(prompt);
+        const evidence = [
+          {
+            sourceId: `current:${message.id}`,
+            quote: String(message.content.text),
+          },
+        ];
         return {
           rawResponse: "{}",
-          parsed: { requiresInput: true, clarification: "What time?" },
+          parsed: {
+            requiresInput: true,
+            clarification: "What time?",
+            guestIntent: { state: "none", guests: [], evidence },
+            noteIntent: {
+              state: "none",
+              sourceNote: null,
+              descriptionMode: "extracted",
+              evidence,
+            },
+          },
         };
       },
       recentConversationTexts: async () => [],
@@ -508,5 +530,123 @@ it.each([
     expect(
       result.trajectory.modelBaseContext?.metadata?.backgroundHistory,
     ).toBeUndefined();
+  },
+);
+
+it.each([
+  "background",
+  "foreground",
+  "coding",
+  "restored",
+  "restored-metadata",
+  "restored-split",
+  "restored-context-only",
+  "null",
+  "full",
+  "stale",
+] as const)(
+  "recovery retains source-bound history and complete escape on 440 originals: %s",
+  (mode) => {
+    const { context, history } = fixture("owner", 440, false);
+    const full = withBackgroundHistory(context, history);
+    if (mode === "foreground")
+      full.metadata = {
+        ...full.metadata,
+        completionContext: {
+          mode: "selected",
+          sourceSetId: completionContextSources(full).sourceSetId,
+          complete: true,
+          relevantSourceIds: Array.from(
+            { length: 10 },
+            (_, i) => `h${431 + i}`,
+          ),
+          constraintSourceIds: [],
+          referentSourceIds: [],
+          pendingIntentSourceIds: [],
+        },
+      };
+    if (mode === "restored-metadata" || mode === "restored-context-only")
+      full.metadata = { ...full.metadata, plannerQueryTokensRestored: true };
+    if (mode === "null")
+      full.metadata = { ...full.metadata, completionContext: null };
+    if (mode === "full")
+      full.metadata = {
+        ...full.metadata,
+        completionContext: { mode: "full", complete: true },
+      };
+    if (mode === "stale") full.events[0].segment.content += " changed";
+    if (mode === "restored")
+      full.metadata = {
+        ...full.metadata,
+        backgroundHistory: undefined,
+        plannerQueryTokensRestored: true,
+      };
+    const before = structuredClone(full);
+    const current = {
+      id: "current-request",
+      type: "segment" as const,
+      source: "message-service",
+      segment: {
+        id: "current-request",
+        label: "current_request",
+        content: "What is in Weekend bag?",
+        stable: false,
+      },
+    };
+    full.events.push(current);
+    const pending = [{ name: "NOTES_GET", arguments: { id: "note-fixture" } }];
+    const evaluatorOutputs = [{ success: false, decision: "CONTINUE" }];
+    const recovery = capturePlannerReplyRecovery(
+      { character: {}, agentId: "agent" } as IAgentRuntime,
+      { id: "turn", roomId: "room", entityId: "owner", content: {} } as Memory,
+      {
+        context: full,
+        modelBaseContext:
+          mode === "restored-split"
+            ? {
+                ...full,
+                metadata: {
+                  ...full.metadata,
+                  backgroundHistory: undefined,
+                  plannerQueryTokensRestored: true,
+                },
+              }
+            : mode === "restored-context-only"
+              ? {
+                  ...full,
+                  metadata: {
+                    ...full.metadata,
+                    plannerQueryTokensRestored: undefined,
+                  },
+                }
+              : full,
+        plannedQueue: pending,
+        evaluatorOutputs,
+        codingMode: mode === "coding",
+      } as Parameters<typeof capturePlannerReplyRecovery>[2],
+    );
+    expect(recovery.context).toContain("original-0:");
+    expect(recovery.context).toContain("original-439:");
+    expect(recovery.context).toContain("What is in Weekend bag?");
+    expect(recovery.pendingToolCalls).toEqual(pending);
+    expect(recovery.evaluatorOutputs).toEqual(evaluatorOutputs);
+    const selected = parseReplyRecoveryHistorySelection(
+      recovery.historySelection,
+      recovery.context,
+    );
+    if (mode === "background" || mode === "foreground") {
+      expect(selected).toBeDefined();
+      expect(selected?.context).not.toContain("original-0:");
+      expect(selected?.context.match(/original-\d+:/g)).toHaveLength(10);
+      expect(selected?.context).toContain("What is in Weekend bag?");
+      expect(
+        parseReplyRecoveryHistorySelection(
+          selected,
+          recovery.context + " changed",
+        ),
+      ).toBeUndefined();
+    } else expect(selected).toBeUndefined();
+    expect(full.events.slice(0, -1)).toEqual(before.events);
+    expect(full.metadata).toEqual(before.metadata);
   },
 );

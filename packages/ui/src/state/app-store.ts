@@ -25,7 +25,7 @@
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ActionNoticeFn } from "./action-notice";
-import type { AppContextValue } from "./internal";
+import type { AppContextValue } from "./types";
 
 type Listener = () => void;
 
@@ -207,5 +207,3 @@ export function __setAppValueForTests(value: AppContextValue | null): void {
   store.value = value;
   for (const listener of store.listeners) listener();
 }
-
-export { shallowEqual as __appShallowEqual };

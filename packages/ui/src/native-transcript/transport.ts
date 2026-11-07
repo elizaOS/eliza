@@ -16,7 +16,7 @@ import {
   type TranscriptEvent,
   type TranscriptEventStream,
   type TtsAudioEvent,
-} from "./contract";
+} from "@elizaos/contracts";
 import {
   applyRendererTranscriptEvents,
   resetNativeTranscriptStoreForTests,
@@ -69,13 +69,6 @@ export function publishNativeTranscriptEvents(
     );
   }
   return stream;
-}
-
-/** Append one typed transcript snapshot. */
-export function publishNativeTranscriptEvent(
-  input: NativeTranscriptEventInput,
-): TranscriptEvent {
-  return publishNativeTranscriptEvents([input]).events[0];
 }
 
 /** Test-only reset for deterministic stream sequence assertions. */

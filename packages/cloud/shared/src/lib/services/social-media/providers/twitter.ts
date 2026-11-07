@@ -17,7 +17,12 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -42,6 +47,7 @@ async function twitterApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${TWITTER_API_BASE}${endpoint}`;
   const { data } = await withRetry<T>(
@@ -55,7 +61,7 @@ async function twitterApiRequest<T>(
         },
       }),
     async (response) => response.json(),
-    { platform: "twitter", maxRetries: 3 },
+    { platform: "twitter", maxRetries: 3, ...retry },
   );
   return data;
 }
@@ -296,26 +302,40 @@ export const twitterProvider: SocialMediaProvider = {
 
       const response = await twitterApiRequest<{
         data: { id: string; text: string };
-      }>("/tweets", credentials.accessToken, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      }>(
+        "/tweets",
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+        // A replay after a timeout or a 5xx is refused by X as duplicate
+        // content, which turned a published tweet into a reported failure.
+        { replayUnknownOutcome: false },
+      );
+
+      // A 2xx body without the created tweet's id is not a publication
+      // receipt: X may have published, so the outcome stays unknown and
+      // the credit is held instead of refunded (the slack/telegram rule).
+      const postId = response?.data?.id;
+      if (typeof postId !== "string" || !postId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "twitter",
+          new Error("X response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "twitter",
         success: true,
-        postId: response.data.id,
-        postUrl: `https://twitter.com/i/status/${response.data.id}`,
+        postId,
+        postUrl: `https://twitter.com/i/status/${postId}`,
       };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter post becomes the {success:false}
       // PostResult the credit-refund flow depends on, never a fabricated success.
       logger.error("[Twitter] Post failed", { error });
-      return {
-        platform: "twitter",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("twitter", error);
     }
   },
 
@@ -437,10 +457,18 @@ export const twitterProvider: SocialMediaProvider = {
         "/users/me",
         credentials.accessToken,
       );
-      await twitterApiRequest(`/users/${userResponse.data.id}/likes`, credentials.accessToken, {
-        method: "POST",
-        body: JSON.stringify({ tweet_id: postId }),
-      });
+      await twitterApiRequest(
+        `/users/${userResponse.data.id}/likes`,
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ tweet_id: postId }),
+        },
+        // X refuses a duplicate like, so a replay after a timeout or a 5xx
+        // replaces a delivered like with a failure the caller refunds. The
+        // create path in this file passes the same flag.
+        { replayUnknownOutcome: false },
+      );
       return { success: true };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter like becomes a typed
@@ -462,19 +490,23 @@ export const twitterProvider: SocialMediaProvider = {
         "/users/me",
         credentials.accessToken,
       );
-      await twitterApiRequest(`/users/${userResponse.data.id}/retweets`, credentials.accessToken, {
-        method: "POST",
-        body: JSON.stringify({ tweet_id: postId }),
-      });
+      await twitterApiRequest(
+        `/users/${userResponse.data.id}/retweets`,
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ tweet_id: postId }),
+        },
+        // X refuses a duplicate retweet, so a replay after a timeout or a 5xx
+        // replaces a delivered repost with a failure the caller refunds. The
+        // create path in this file passes the same flag.
+        { replayUnknownOutcome: false },
+      );
       return { platform: "twitter", success: true, postId };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter repost becomes the {success:false}
       // PostResult the caller inspects, never a fabricated success.
-      return {
-        platform: "twitter",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("twitter", error);
     }
   },
 };

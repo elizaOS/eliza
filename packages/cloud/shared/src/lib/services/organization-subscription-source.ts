@@ -2,7 +2,11 @@
 import { ElizaError } from "@elizaos/core";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 
-type OrganizationSubscription = BillingSubscription & {
+type OrganizationSource = Pick<
+  BillingSubscription,
+  "billing_scope_id" | "merchant_key" | "plan_key" | "pending_plan_key" | "status"
+>;
+type OrganizationSubscription<T extends OrganizationSource> = T & {
   billing_scope_id: null;
   merchant_key: "platform";
   plan_key: "plus_monthly" | "pro_monthly";
@@ -10,9 +14,9 @@ type OrganizationSubscription = BillingSubscription & {
   status: Exclude<BillingSubscription["status"], "trialing" | "paused">;
 };
 
-export function assertOrganizationSubscription(
-  source: BillingSubscription,
-): asserts source is OrganizationSubscription {
+export function assertOrganizationSubscription<T extends OrganizationSource>(
+  source: T,
+): asserts source is OrganizationSubscription<T> {
   if (
     source.billing_scope_id !== null ||
     source.merchant_key !== "platform" ||

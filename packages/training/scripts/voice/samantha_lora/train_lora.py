@@ -46,8 +46,9 @@ Exit codes:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
+
 import argparse
-import hashlib
 import json
 import logging
 import os
@@ -74,12 +75,6 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _load_prep_manifest(run_dir: Path) -> dict[str, Any]:

@@ -72,7 +72,7 @@ function fixtures() {
   };
 }
 
-function runVerifier(values, environment = "staging") {
+function runVerifier(values, environment = "staging", workerHostname = "") {
   const directory = mkdtempSync(join(tmpdir(), "pages-domain-state-"));
   temporaryDirectories.push(directory);
   const paths = [
@@ -86,13 +86,51 @@ function runVerifier(values, environment = "staging") {
     writeFileSync(path, JSON.stringify(value));
     return path;
   });
+  const workerPath = join(directory, "worker.json");
+  writeFileSync(
+    workerPath,
+    JSON.stringify(values.tunnelWorker ?? { hostname: "", routes: {} }),
+  );
   return Bun.spawnSync(
-    [process.execPath, verifierPath, ...paths, environment],
+    [process.execPath, verifierPath, ...paths, environment, workerPath],
     {
+      env: { ...process.env, TF_VAR_tunnel_worker_hostname: workerHostname },
       stderr: "pipe",
       stdout: "pipe",
     },
   );
+}
+
+function cloudflareFixtures(environment) {
+  const values = fixtures();
+  const apex =
+    environment === "production"
+      ? "tunnel.eliza.app"
+      : "tunnel-staging.eliza.app";
+  const script = `eliza-tunnel-proxy-${environment}`;
+  const hostname = `${script}.example.workers.dev`;
+  values.tunnel = {};
+  values.tunnelWorker = { hostname, routes: {} };
+  for (const [key, name] of [
+    ["apex", apex],
+    ["wildcard", `*.${apex}`],
+  ]) {
+    values.tunnel[key] = {
+      id: "secret-id-canary",
+      name,
+      content: hostname,
+      type: "CNAME",
+      proxied: true,
+      roles: [`${key}-routing`],
+    };
+    values.tunnelWorker.routes[key] = {
+      id: "secret-id-canary",
+      pattern: `${name}/*`,
+      script,
+    };
+  }
+  values.canonical.certificate_packs.current.hosts = [`*.${apex}`];
+  return values;
 }
 
 describe("Pages-domain state verifier", () => {
@@ -142,5 +180,63 @@ describe("Pages-domain state verifier", () => {
     expect(result.stderr.toString()).toContain(
       "pages_domains has no managed Pages domains",
     );
+  });
+  test("accepts the selected Cloudflare tunnel in either environment", () => {
+    for (const environment of ["staging", "production"]) {
+      const values = cloudflareFixtures(environment);
+      const result = runVerifier(
+        values,
+        environment,
+        values.tunnelWorker.hostname,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr.toString()).toBe("");
+    }
+  });
+
+  test("refuses incomplete or cross-environment cutovers without disclosing values", () => {
+    const changes = [
+      (v) => {
+        delete v.tunnelWorker.routes.wildcard;
+      },
+      (v) => {
+        v.tunnelWorker.routes.apex.script = "eliza-tunnel-proxy-production";
+      },
+      (v) => {
+        v.tunnel.apex.content = "secret-origin-canary";
+      },
+      (v) => {
+        v.tunnel.wildcard.proxied = false;
+      },
+      (v) => {
+        v.tunnel.verification = fixtures().tunnel.verification;
+      },
+      (v) => {
+        v.canonical.certificate_packs.current.hosts = ["*.tunnel.eliza.app"];
+      },
+      (v) => {
+        v.canonical.certificate_packs.current.status = "pending_validation";
+      },
+      (v) => {
+        v.tunnelWorker.hostname = "secret-origin-canary";
+      },
+    ];
+    for (const change of changes) {
+      const values = cloudflareFixtures("staging");
+      const hostname = values.tunnelWorker.hostname;
+      change(values);
+      const result = runVerifier(values, "staging", hostname);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).not.toContain("secret-id-canary");
+      expect(result.stderr.toString()).not.toContain("secret-origin-canary");
+    }
+  });
+
+  test("does not infer cutover authority from proxied output", () => {
+    const values = cloudflareFixtures("staging");
+    expect(runVerifier(values).exitCode).toBe(1);
+    expect(
+      runVerifier(fixtures(), "staging", values.tunnelWorker.hostname).exitCode,
+    ).toBe(1);
   });
 });

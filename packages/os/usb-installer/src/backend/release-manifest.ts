@@ -2,12 +2,10 @@
 import type { KeyObject } from "node:crypto";
 import {
   assertEd25519Signature,
-  loadPinnedEd25519PublicKey,
-} from "./ed25519-trust";
-import {
   configuredReleaseSequenceStore,
+  loadPinnedEd25519PublicKey,
   type ReleaseSequenceStore,
-} from "./release-sequence-store";
+} from "@elizaos/os/trust";
 import type { ElizaOsImage } from "./types";
 import { hasTrustedChecksum } from "./write-safety";
 

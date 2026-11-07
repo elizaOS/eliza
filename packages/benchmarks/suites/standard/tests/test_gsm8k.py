@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.standard._base import MockClient
-from benchmarks.standard._cli import main_entry
-from benchmarks.standard.gsm8k import (
+from benchmarks.suites.standard._base import MockClient
+from benchmarks.suites.standard._cli import main_entry
+from benchmarks.suites.standard.gsm8k import (
     BENCHMARK_ID,
     SMOKE_FIXTURES,
     GSM8KRunner,

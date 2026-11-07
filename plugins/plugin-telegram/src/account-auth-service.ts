@@ -18,6 +18,7 @@ import {
 import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
+import { parseProvisioningBody } from "./provisioning-response.ts";
 
 export type TelegramAccountAuthStatus =
   | "idle"
@@ -578,10 +579,7 @@ async function sendProvisioningCode(phone: string): Promise<string> {
     signal: AbortSignal.timeout(15_000),
   });
   const text = await response.text();
-  if (text.includes("Sorry, too many tries")) {
-    throw new Error("Telegram provisioning is rate limited right now");
-  }
-  const parsed = JSON.parse(text) as unknown;
+  const parsed = parseProvisioningBody(text);
   const randomHash = extractRandomHash(parsed);
   if (!randomHash) {
     throw new Error("Telegram provisioning did not return a login token");
@@ -759,7 +757,9 @@ export class TelegramAccountAuthSession
       case "waiting_for_provisioning_code": {
         const provisioningCode = input.provisioningCode?.trim();
         if (!provisioningCode) {
-          throw new Error("Telegram provisioning code is required");
+          throw new ElizaError("Telegram provisioning code is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         if (!this.snapshot.phone || !this.provisioningRandomHash) {
           throw new Error("Telegram provisioning session is missing state");
@@ -781,7 +781,9 @@ export class TelegramAccountAuthSession
       case "waiting_for_telegram_code": {
         const telegramCode = input.telegramCode?.trim();
         if (!telegramCode) {
-          throw new Error("Telegram login code is required");
+          throw new ElizaError("Telegram login code is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         await this.ensureClientConnected();
         await this.completeTelegramCode(telegramCode);
@@ -790,14 +792,18 @@ export class TelegramAccountAuthSession
       case "waiting_for_password": {
         const password = input.password ?? "";
         if (!password.trim()) {
-          throw new Error("Telegram two-factor password is required");
+          throw new ElizaError("Telegram two-factor password is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         await this.ensureClientConnected();
         await this.completePassword(password);
         return this.getSnapshot();
       }
       default:
-        throw new Error("Telegram login is not waiting for input");
+        throw new ElizaError("Telegram login is not waiting for input", {
+          code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+        });
     }
   }
 

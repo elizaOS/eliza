@@ -11,11 +11,15 @@ import { logger, type Plugin } from "@elizaos/core";
  *
  * When multiple plugins define an action with the same `name`, only the first
  * occurrence is kept. This prevents "Action already registered" warnings from
- * elizaOS core. The function mutates each plugin's `actions` array in place.
+ * elizaOS core. Only host-owned descriptors may be supplied: the function
+ * replaces their action arrays. Repeated references are visited once.
  */
 export function deduplicatePluginActions(plugins: Plugin[]): void {
   const seen = new Set<string>();
+  const visited = new Set<Plugin>();
   for (const plugin of plugins) {
+    if (visited.has(plugin)) continue;
+    visited.add(plugin);
     if (plugin.actions) {
       plugin.actions = plugin.actions.filter((action) => {
         if (seen.has(action.name)) {

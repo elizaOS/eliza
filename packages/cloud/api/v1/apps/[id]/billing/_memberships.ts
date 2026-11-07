@@ -1,14 +1,15 @@
 /** Authorizes registered app backends to mirror accepted members without borrowing an owner's delegation. */
-import { z } from "zod";
-import { readAppClientBasicAuthorization } from "@/lib/auth/app-delegation-auth";
-import { AppDelegationError } from "@/lib/services/app-delegation";
-import { appDelegationService } from "@/lib/services/app-delegation-adapter";
+
+import { readAppClientBasicAuthorization } from "@elizaos/cloud-shared/lib/auth/app-delegation-auth";
+import { AppDelegationError } from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appDelegationService } from "@elizaos/cloud-shared/lib/services/app-delegation-adapter";
 import {
   genericBillingMembershipService,
   synchronizeAppBillingMemberInput,
-} from "@/lib/services/generic-billing-membership";
-import { configuredAppBillingEnvironment } from "@/lib/services/generic-billing-runtime-config";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-membership";
+import { configuredAppBillingEnvironment } from "@elizaos/cloud-shared/lib/services/generic-billing-runtime-config";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { z } from "zod";
 
 async function membershipBackend(c: AppContext) {
   const appId = z.string().uuid().parse(c.req.param("id"));

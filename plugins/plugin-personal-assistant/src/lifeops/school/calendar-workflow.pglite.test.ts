@@ -8,8 +8,8 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar";
 import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

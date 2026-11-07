@@ -1,7 +1,7 @@
 /** Attachment inventory and bounded decoding; filenames are metadata, never filesystem paths. */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { type GmailMimePartLike, walkGmailMimeParts } from "./gmail-mime-parts.js";
 import type { GoogleGmailAttachment, GoogleGmailAttachmentContent } from "./types.js";
 
@@ -14,9 +14,12 @@ export function attachmentUnavailable(): ElizaError {
 export function gmailAttachmentParts(payload: GmailMimePartLike | undefined) {
   const result: { descriptor: GoogleGmailAttachment; inlineData: string | null }[] = [];
   const seen = new Set<string>();
+  let isRoot = true;
   walkGmailMimeParts(payload, (part) => {
+    const partId = part.partId ?? (isRoot ? "" : undefined);
+    isRoot = false;
     if (!part.filename && !part.body?.attachmentId) return;
-    const { partId, filename, mimeType } = part;
+    const { filename, mimeType } = part;
     const size = part.body?.size;
     const attachmentId = part.body?.attachmentId ?? null;
     if (

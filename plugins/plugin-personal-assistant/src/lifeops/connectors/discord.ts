@@ -6,6 +6,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
@@ -47,16 +48,11 @@ export function createDiscordConnectorContribution(
     async send(payload: unknown): Promise<DispatchResult> {
       if (!isConnectorSendPayload(payload)) return rejectInvalidPayload();
       try {
-        // `sendDiscordMessage` returns the delivered target, not a per-message
-        // id, so we do not surface a `messageId` here (mislabeling a target id
-        // as a message id corrupts the dispatch state log). `messageId` is
-        // optional on the success variant, matching the Google connector.
-        //
         // Discord user ids and channel ids live in disjoint id spaces: a
         // user-typed target must go through the user→DM resolution path
         // (`users.fetch` → `createDM`) — fetching it as a channel fails with
         // 10003 Unknown Channel.
-        await service.sendDiscordMessage(
+        const result = await service.sendDiscordMessage(
           payload.targetKind === "user"
             ? { side: "owner", userId: payload.target, text: payload.message }
             : {
@@ -65,7 +61,27 @@ export function createDiscordConnectorContribution(
                 text: payload.message,
               },
         );
-        return { ok: true };
+        if (result.deliveryStatus === "failed") {
+          // Discord marked the message failed: it was not delivered, so a
+          // check-in may try the next channel.
+          return {
+            ok: false,
+            reason: "transport_error",
+            acceptance: "not_accepted",
+            userActionable: false,
+            message: "Discord reported the message as failed.",
+          };
+        }
+        const receipt = dispatchReceipt({
+          provider: "discord",
+          providerMessageId: result.providerMessageId,
+          payload,
+        });
+        // Without a provider message id the delivery stays unconfirmed: the
+        // scheduling ledger records it as ambiguous, never as a durable send.
+        return receipt
+          ? { ok: true, messageId: receipt.providerMessageId, receipt }
+          : { ok: true };
       } catch (error) {
         return errorToDispatchResult(error);
       }

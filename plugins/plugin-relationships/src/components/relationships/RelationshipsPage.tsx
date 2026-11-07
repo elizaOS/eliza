@@ -4,7 +4,7 @@
  * renderers share one header and tab contract.
  */
 
-import { FramedPage, FramedPageBody } from "@elizaos/ui/layouts";
+import { FramedPage, FramedPageBody } from "@elizaos/ui";
 import type { JSX, ReactNode } from "react";
 import { RelationshipsView } from "./RelationshipsView.tsx";
 

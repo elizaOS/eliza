@@ -14,7 +14,7 @@ import {
 import type {
   ApiKeyDisplay,
   ApiKeyStatus,
-} from "../../cloud-ui/components/data-list";
+} from "../../cloud-ui/components/data-list/api-keys-table";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";

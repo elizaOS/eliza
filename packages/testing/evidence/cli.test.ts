@@ -63,7 +63,12 @@ function initFixtureRepo(): string {
   fs.mkdirSync(auditDir, { recursive: true });
   fs.writeFileSync(path.join(auditDir, "home.png"), "png-bytes");
   fs.writeFileSync(path.join(auditDir, "home--hover.png"), "png-hover-bytes");
-  const scenarioDir = path.join(repo, "reports", "scenarios", "live");
+  const scenarioDir = path.join(
+    repo,
+    "test-results",
+    "scenario-runner",
+    "live",
+  );
   fs.mkdirSync(scenarioDir, { recursive: true });
   fs.writeFileSync(path.join(scenarioDir, "native.jsonl"), "{}\n");
   fs.writeFileSync(path.join(repo, "tracked.txt"), "tracked\n");

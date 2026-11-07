@@ -90,12 +90,21 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
+/**
+ * fs.glob resolves `.` segments against the search root (`./src/*.ts` and
+ * `src/./*.ts` mean `src/*.ts`); minimatch compares them literally, and a
+ * root-relative candidate never contains one.
+ */
+function withoutDotSegments(pattern: string): string {
+  return pattern.replace(/^(?:\.\/)+/, "").replace(/\/(?:\.\/)+/g, "/");
+}
+
 /** Runtime-independent glob matching with Node/fs.glob dot-segment semantics. */
 export function matchesGlobPattern(
   candidate: string,
   pattern: string,
 ): boolean {
-  return minimatch(candidate, pattern, {
+  return minimatch(candidate, withoutDotSegments(pattern), {
     dot: false,
     nocomment: true,
     nonegate: true,
@@ -109,6 +118,14 @@ type ReadDirectory = (
 const readDirectoryWithTypes: ReadDirectory = (directory) =>
   fs.readdir(directory, { withFileTypes: true });
 
+/** The search root itself could not be listed (missing, not a directory, unreadable). */
+class GlobRootUnreadableError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "GlobRootUnreadableError";
+  }
+}
+
 /**
  * Discover only entries physically reachable beneath `root`, without following
  * directory symlinks, then apply glob syntax to root-relative candidate names.
@@ -120,19 +137,27 @@ export async function walkContainedGlob(
   readDirectory: ReadDirectory = readDirectoryWithTypes,
 ): Promise<string[]> {
   const results: string[] = [];
-  const canMatchDescendants = /[\\/]/.test(pattern);
+  // A "**" segment can match a path separator even when the pattern itself
+  // contains no separator (a bare "**" matches nested paths), so it must
+  // also allow the walk to descend.
+  const relativePattern = withoutDotSegments(pattern);
+  const canMatchDescendants =
+    /[\\/]/.test(relativePattern) || relativePattern.includes("**");
 
   async function walk(dir: string): Promise<void> {
     let entries: Array<import("node:fs").Dirent>;
     try {
       entries = await readDirectory(dir);
-    } catch {
-      // error-policy:J6 best-effort walk; a directory that became unreadable
+    } catch (error) {
+      // A root that cannot be listed is an error, as it is for LS and GREP;
+      // reporting it as an empty match tells the caller no file exists there.
+      if (dir === root) throw new GlobRootUnreadableError(error);
+      // error-policy:J6 best-effort walk; a subdirectory that became unreadable
       // (permissions, race) is skipped so the remaining tree is still globbed.
       return;
     }
     for (const entry of entries) {
-      if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
+      if (entry.isDirectory() && EXCLUDED_DIR_NAMES.has(entry.name)) continue;
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (canMatchDescendants) await walk(abs);
@@ -222,6 +247,12 @@ export async function globHandler(
   try {
     candidates = await walkContainedGlob(root, pattern);
   } catch (error) {
+    if (error instanceof GlobRootUnreadableError) {
+      return failureToActionResult({
+        reason: "io_error",
+        message: `readdir failed: ${error.message}`,
+      });
+    }
     return failureToActionResult({
       reason: "invalid_param",
       message: `invalid glob pattern: ${error instanceof Error ? error.message : String(error)}`,

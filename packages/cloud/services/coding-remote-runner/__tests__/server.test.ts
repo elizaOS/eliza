@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -129,6 +130,28 @@ describe("coding remote runner HTTP runner", () => {
 
     expect(response.status).toBe(403);
     expect(await readFile(outside, "utf8")).toBe("secret");
+  });
+
+  it("does not create directories outside the workspace for a rejected write", async () => {
+    const escapeDir = await mkdtemp(
+      nodePath.join(tmpdir(), "coding-remote-runner-escape-"),
+    );
+    const escapedParent = nodePath.join(escapeDir, "nested");
+
+    const response = await handler()(
+      request(
+        `/v1/fs/file?path=../${nodePath.basename(escapeDir)}/nested/file.txt`,
+        { method: "PUT", body: "escape" },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect(
+      await stat(escapedParent).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
   });
 
   it("runs commands inside the workspace", async () => {

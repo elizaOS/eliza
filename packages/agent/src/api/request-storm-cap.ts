@@ -12,7 +12,8 @@
  */
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { logger, resolveSelfApiCredential } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { resolveSelfApiCredential } from "@elizaos/host/protocol";
 
 import { isLoopbackRemoteAddress } from "./loopback-trust.js";
 

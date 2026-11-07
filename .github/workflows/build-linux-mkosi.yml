@@ -153,7 +153,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -180,13 +180,11 @@ jobs:
           [[ "$EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]]
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test "$(dpkg --print-architecture)" = "${{ matrix.build-architecture }}"
-          node scripts/read-eliza-source-lock.ts --github-output > "$RUNNER_TEMP/eliza-source.outputs"
-          pinned_commit="$(sed -n 's/^commit=//p' "$RUNNER_TEMP/eliza-source.outputs")"
-          test "$DESKTOP_SOURCE_SHA" = "$pinned_commit"
+          test "$DESKTOP_SOURCE_SHA" = "$(git rev-parse HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
 
       - name: Download signed native desktop artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           repository: elizaOS/eliza
           run-id: ${{ inputs.desktop_run_id }}
@@ -234,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@6b31fa7e2d592e47d95d2a5e0520a7352d47ead5
+        uses: anchore/sbom-action/download-syft@a61e3c81cfa072d15e731a6c98ab810e75f2e1a6
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
@@ -383,14 +381,14 @@ jobs:
           fi
 
       - name: Attest built image and filesystem SBOM
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/canonical/*.raw.zst
             ${{ env.WORK_ROOT }}/canonical/*.spdx.json
 
       - name: Upload bounded pre-signing image
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-built-${{ matrix.architecture }}
           path: ${{ env.WORK_ROOT }}/upload/*
@@ -400,7 +398,7 @@ jobs:
 
       - name: Remove privileged build workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: sudo node ../scripts/rm-path-recursive.ts "$WORK_ROOT"
 
   sign-and-stage:
     if: github.event_name != 'pull_request' && vars.HETZNER_FLEET_ONLINE == 'true'
@@ -420,12 +418,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
       - name: Download exact pre-signing images
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: elizaos-linux-mkosi-built-*
           path: ${{ env.WORK_ROOT }}/unsigned
@@ -557,13 +555,13 @@ jobs:
           done
 
       - name: Attest exact signed publication inputs
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: |
             ${{ env.WORK_ROOT }}/publish/*/*
 
       - name: Upload x86_64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-x86_64
           path: ${{ env.WORK_ROOT }}/publish/x86_64/*
@@ -572,7 +570,7 @@ jobs:
           retention-days: 30
 
       - name: Upload arm64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-arm64
           path: ${{ env.WORK_ROOT }}/publish/arm64/*
@@ -581,7 +579,7 @@ jobs:
           retention-days: 30
 
       - name: Upload riscv64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-riscv64
           path: ${{ env.WORK_ROOT }}/publish/riscv64/*
@@ -590,7 +588,7 @@ jobs:
           retention-days: 30
 
       - name: Upload signed image discovery metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-image-metadata
           path: ${{ env.WORK_ROOT }}/publish/metadata/*
@@ -600,4 +598,4 @@ jobs:
 
       - name: Remove signing workspace
         if: always()
-        run: node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: node ../scripts/rm-path-recursive.ts "$WORK_ROOT"

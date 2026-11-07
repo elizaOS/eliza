@@ -12,7 +12,7 @@
  *
  * It drives the REAL resolver over a REAL on-disk credential store (throwaway
  * `ELIZA_HOME`) — same harness shape as `multi-account-rotation.test.ts`
- * (`writeAccount` / `setMeta` / `__resetDefaultAccountPoolForTests`). The only
+ * (`writeAccount` / `setMeta` / `resetDefaultAccountPoolAfterCredentialReset`). The only
  * synthetic element is the token *string*; the store, the pool, the priority
  * overlay round-trip, and `getAccessToken`'s credential read are the production
  * code path. Runs in CI with no secrets.
@@ -22,14 +22,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  getDefaultAccountPool,
+  resetDefaultAccountPoolAfterCredentialReset,
+} from "@elizaos/auth/accounts";
+import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/auth/account-storage";
+} from "@elizaos/auth/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  __resetDefaultAccountPoolForTests,
-  getDefaultAccountPool,
-} from "../account-pool.js";
 import { resolveProviderCredentialMulti } from "./credential-resolver.js";
 
 const PROVIDER = "anthropic-api";
@@ -83,11 +83,11 @@ beforeEach(() => {
   process.env.ELIZA_STATE_DIR = home;
   // A stray real key would mask the env-fallback vs pool distinction — clear it.
   delete process.env.ANTHROPIC_API_KEY;
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
 });
 
 afterEach(() => {
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
   if (prevHome === undefined) delete process.env.ELIZA_HOME;
   else process.env.ELIZA_HOME = prevHome;
   if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;

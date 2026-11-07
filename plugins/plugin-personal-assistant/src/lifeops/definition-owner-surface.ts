@@ -1,5 +1,5 @@
 /** Shared owner classification for action review and persisted UI projections. */
-import type { LifeOpsTaskDefinition } from "../contracts/index.js";
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { readNativeAppleReminderMetadata } from "./apple-reminders.js";
 
 const OWNER_DEFINITION_SURFACES = [

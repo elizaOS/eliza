@@ -44,12 +44,13 @@ export const Client = WorkerUnavailableCtor;
 export const BalancedPool = WorkerUnavailableCtor;
 export const RetryAgent = WorkerUnavailableCtor;
 export const EnvHttpProxyAgent = WorkerUnavailableCtor;
-export const setGlobalDispatcher = () => {};
-export const getGlobalDispatcher = () => {
+function unsupportedGlobalConfiguration(): never {
   throw new Error(NOT_AVAILABLE);
-};
-export const setGlobalOrigin = () => {};
-export const getGlobalOrigin = () => undefined;
+}
+export const setGlobalDispatcher = unsupportedGlobalConfiguration;
+export const getGlobalDispatcher = unsupportedGlobalConfiguration;
+export const setGlobalOrigin = unsupportedGlobalConfiguration;
+export const getGlobalOrigin = unsupportedGlobalConfiguration;
 
 export default {
   fetch,

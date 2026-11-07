@@ -6,7 +6,8 @@
  * (packages/app/scripts/alpha-dstack.ts verify-attestation).
  */
 import { createHash } from "node:crypto";
-import { logger, type Route } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
 import { collectDstackAttestation } from "../services/tee-dstack-evidence.ts";
 import { resolveDstackEvidenceConfiguration } from "../services/tee-dstack-release.ts";
 

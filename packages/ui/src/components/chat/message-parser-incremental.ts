@@ -19,9 +19,10 @@
  * it identity-memoizes and otherwise full-parses.
  */
 
-import { stripAssistantStageDirections } from "@elizaos/core/utils/assistant-text";
+import { stripAssistantStageDirections } from "@elizaos/core/protocol";
 import {
   collectSegmentRegions,
+  HIDDEN_TAG_BLOCK_RE,
   interleaveSegments,
   normalizeDisplayCore,
   normalizeDisplayText,
@@ -45,6 +46,8 @@ export interface StreamingParseCache {
   /** Exact raw text this cache was built from. */
   readonly raw: string;
   readonly analysisMode: boolean;
+  /** Whether `raw` was parsed as a still-growing (streaming) message. */
+  readonly streaming: boolean;
   /** Normalized (or raw, analysis mode) parse target for `raw`. */
   readonly target: string;
   /** Full `Segment[]` for `target` (returned verbatim on an identity hit). */
@@ -70,18 +73,19 @@ export interface StreamingParseResult {
   segments: Segment[];
   cache: StreamingParseCache;
 }
-const HIDDEN_BLOCK_RE =
-  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 /**
  * Largest raw offset `c ≥ fromCut` such that `normalizeDisplayCore` splits
  * cleanly there — `core(raw) === core(raw.slice(0,c)) + core(raw.slice(c))` —
  * and stays clean as raw grows at its tail. `normalizeDisplayCore`'s passes only
  * reach across a boundary via whitespace, an open `(`, a dangling `<`, an
- * unterminated `*`/`_` span, or an unclosed hidden block; a cut right after a
- * newline whose next char is non-whitespace and not `)`, with the prefix free of
- * dangling `<` and open/spanning hidden blocks, blocks all of them (proven by
- * the seam property test). Scans only `raw[fromCut..]` — `fromCut` is a prior
- * safe cut, so no hidden block spans it and no `<` dangles into it.
+ * unterminated `*`/`_` span, an unclosed hidden block, or an open backtick code
+ * span (prose normalization leaves code-span content untouched, so a cut inside
+ * a span would strip `*…*` text the full parse preserves as code); a cut right
+ * after a newline whose next char is non-whitespace and not `)`, with the
+ * prefix free of dangling `<`, open/spanning hidden blocks, and unmatched
+ * backtick runs, blocks all of them (proven by the seam property test). Scans
+ * only `raw[fromCut..]` — `fromCut` is a prior safe cut, so no hidden block
+ * spans it, no `<` dangles into it, and no code span is open at it.
  */
 export function computeSafeNormCut(raw: string, fromCut: number): number {
   // Hidden blocks intersecting [fromCut, end) all start at ≥ fromCut (fromCut is
@@ -92,11 +96,11 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     end: number;
   }> = [];
   let unclosedFrom = raw.length + 1;
-  HIDDEN_BLOCK_RE.lastIndex = 0;
+  HIDDEN_TAG_BLOCK_RE.lastIndex = 0;
   for (
-    let m = HIDDEN_BLOCK_RE.exec(window);
+    let m = HIDDEN_TAG_BLOCK_RE.exec(window);
     m !== null;
-    m = HIDDEN_BLOCK_RE.exec(window)
+    m = HIDDEN_TAG_BLOCK_RE.exec(window)
   ) {
     const start = fromCut + m.index;
     const end = start + m[0].length;
@@ -115,9 +119,37 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
   // whitespace into a separate window would strand `(\n…`. Mirrors the `)`
   // guard below (which blocks the symmetric `\s+\)` back-collapse).
   let openParenAt = -1;
+  // Backtick code-span state, mirroring how the full parse pairs runs: a run
+  // opens a span, a later run of the same length closes it, and runs never
+  // pair across a blank line (block boundaries delimit inline code). While a
+  // run is unmatched, prose normalization in the full parse leaves the span's
+  // content alone, so no cut may land inside it — normalizing the window on
+  // its own would leave the opening run unmatched there too and strip `*…*`
+  // text the full parse preserves as code.
+  let openBacktickRun = 0; // length of the unmatched opening run; 0 = outside
+  let pendingRun = 0; // backticks in the run that has not ended yet
+  let lineHasContent = false; // current line holds a non-whitespace char
   let bestCut = fromCut;
   for (let i = fromCut + 1; i < raw.length; i++) {
     const prev = raw[i - 1];
+    if (prev === "`") {
+      pendingRun += 1;
+      lineHasContent = true;
+    } else {
+      if (pendingRun > 0) {
+        if (openBacktickRun === 0) openBacktickRun = pendingRun;
+        else if (pendingRun === openBacktickRun) openBacktickRun = 0;
+        pendingRun = 0;
+      }
+      if (prev === "\n") {
+        // A blank line ends the block: an unmatched run before it is literal
+        // text there, and later runs open spans of their own.
+        if (!lineHasContent) openBacktickRun = 0;
+        lineHasContent = false;
+      } else if (prev !== " " && prev !== "\t" && prev !== "\r") {
+        lineHasContent = true;
+      }
+    }
     if (prev === "<") openLtAt = i - 1;
     else if (prev === ">") openLtAt = -1;
     if (prev === "(") openParenAt = i - 1;
@@ -136,6 +168,7 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     if (next === "*" || next === "_") continue;
     if (openLtAt !== -1) continue;
     if (openParenAt !== -1) continue;
+    if (openBacktickRun !== 0) continue;
     if (insideClosedBlock(i)) continue;
     if (i > unclosedFrom) break;
     bestCut = i;
@@ -271,12 +304,17 @@ function shiftSegmentOffsets(segment: Segment, by: number): Segment {
   };
 }
 /** Rebuild the cache from scratch with a full parse. */
-function fullRebuild(raw: string, analysisMode: boolean): StreamingParseResult {
-  const target = analysisMode ? raw : normalizeDisplayText(raw);
-  const segments = parseSegments(raw, analysisMode);
+function fullRebuild(
+  raw: string,
+  analysisMode: boolean,
+  streaming: boolean,
+): StreamingParseResult {
+  const target = analysisMode ? raw : normalizeDisplayText(raw, streaming);
+  const segments = parseSegments(raw, analysisMode, streaming);
   const cache: StreamingParseCache = {
     raw,
     analysisMode,
+    streaming,
     target,
     segments,
     hasTrigger: SEGMENT_TRIGGER_RE.test(target),
@@ -296,34 +334,37 @@ export function parseSegmentsStreaming(
   text: string,
   analysisMode: boolean,
   cache: StreamingParseCache | null,
+  streaming = true,
 ): StreamingParseResult {
   if (
     !cache ||
     cache.analysisMode !== analysisMode ||
+    cache.streaming !== streaming ||
     !text.startsWith(cache.raw)
   ) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   if (text === cache.raw) return { segments: cache.segments, cache };
-  if (analysisMode) return fullRebuild(text, analysisMode);
+  if (analysisMode) return fullRebuild(text, analysisMode, streaming);
   // Removing a stage direction enables whitespace cleanup across the whole
   // reply, including already cached prose. That normalization is not local.
   const normalizationTail = text.slice(cache.normRawCut);
   if (/[*_]/.test(normalizationTail)) {
     parserWork.normalizedChars += normalizationTail.length;
-    const visibleTail = stripHiddenDisplayContent(normalizationTail);
+    const visibleTail = stripHiddenDisplayContent(normalizationTail, streaming);
     if (stripAssistantStageDirections(visibleTail) !== visibleTail) {
-      return fullRebuild(text, analysisMode);
+      return fullRebuild(text, analysisMode, streaming);
     }
   }
   // ── Incremental normalize (clean-seam splice) ─────────────────────
   const normRawCut = computeSafeNormCut(text, cache.normRawCut);
   const windowCore =
     normRawCut > cache.normRawCut
-      ? normalizeDisplayCore(text.slice(cache.normRawCut, normRawCut))
+      ? // Not the end of the text: no trailing partial tag to cut.
+        normalizeDisplayCore(text.slice(cache.normRawCut, normRawCut), false)
       : "";
   const normStableCore = cache.normStableCore + windowCore;
-  const tailCore = normalizeDisplayCore(text.slice(normRawCut));
+  const tailCore = normalizeDisplayCore(text.slice(normRawCut), streaming);
   const target = (normStableCore + tailCore).trim();
   // Seam guard: the new target must extend the previously-stable target prefix.
   // A back-reaching rewrite that crossed the cut breaks this → full parse.
@@ -331,7 +372,7 @@ export function parseSegmentsStreaming(
     cache.targetStableCut > 0 &&
     !target.startsWith(cache.target.slice(0, cache.targetStableCut))
   ) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   if (!target) {
     const segments: Segment[] = [{ kind: "text", text: "" }];
@@ -376,7 +417,7 @@ export function parseSegmentsStreaming(
   const permissionMode =
     cache.permissionMode || target.includes(PERMISSION_MARKER);
   if (permissionMode) {
-    const rebuilt = fullRebuild(text, analysisMode);
+    const rebuilt = fullRebuild(text, analysisMode, streaming);
     return {
       segments: rebuilt.segments,
       cache: {
@@ -414,7 +455,7 @@ export function parseSegmentsStreaming(
   // global full parse than under this sliced tail scan; the sliced view would
   // render a widget where the full parse renders raw code. Full-parse instead.
   if (hasCoupledFencedUiSpecRisk(tailRegions, target)) {
-    return fullRebuild(text, analysisMode);
+    return fullRebuild(text, analysisMode, streaming);
   }
   const sortedTail = [...tailRegions].sort((a, b) => a.start - b.start);
   const tail = interleaveSegments(target, sortedTail, prevCut);
@@ -463,6 +504,7 @@ export function parseSegmentsStreaming(
     cache: {
       raw: text,
       analysisMode,
+      streaming,
       target,
       segments,
       hasTrigger: true,

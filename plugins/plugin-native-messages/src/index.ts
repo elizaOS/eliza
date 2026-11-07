@@ -8,4 +8,5 @@ export { MessagesPage } from "./components/MessagesPage";
 export { MessagesView } from "./components/MessagesView";
 export { appMessagesPlugin, default } from "./plugin";
 export * from "./register";
+export * from "./telephony-profile";
 export * from "./ui";

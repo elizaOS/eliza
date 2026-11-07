@@ -106,6 +106,9 @@ jobs:
           fi
           docker info
 
+      - name: Configure runner Docker Hub cache
+        uses: ./.github/actions/setup-public-image-cache
+
       - name: Free up disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -232,7 +235,7 @@ jobs:
         run: |
           cp packages/app/deploy/.dockerignore.ci .dockerignore
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -240,6 +243,9 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
         with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
             env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760

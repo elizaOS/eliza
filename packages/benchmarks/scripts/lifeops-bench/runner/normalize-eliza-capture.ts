@@ -1,6 +1,6 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { normalizeElizaCapture } from "../../../suites/lifeops-bench/runner/src/replay-capture.ts";
+import { normalizeElizaCapture } from "@elizaos/benchmark-eliza-host/capture";
 
 interface CliArgs {
   input: string;

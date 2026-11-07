@@ -29,16 +29,16 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import {
+  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
+  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
+  type AgentBackupRestoreV3ComponentReceipt,
+} from "@elizaos/contracts";
+import {
   type AgentBackupRestoreV3BootGrant,
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
   signAgentBackupRestoreV3Attestation,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
-import {
-  AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
-  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
-  type AgentBackupRestoreV3ComponentReceipt,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts/node";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import {

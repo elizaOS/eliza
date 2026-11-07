@@ -5,8 +5,8 @@
  * text to decide whether an event is safe for a child.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { hasRoleAccess, type IAgentRuntime, type Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   authenticatedHouseholdInboundIdentity,

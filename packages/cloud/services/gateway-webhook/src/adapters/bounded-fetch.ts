@@ -1,5 +1,5 @@
 /** Maps gateway provider bounds and public error identity to the shared REST transport. */
-import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
+import { boundedFetch } from "@elizaos/cloud-services-common/transport";
 
 export class GatewayProviderFetchError extends Error {
   override readonly name = "GatewayProviderFetchError";

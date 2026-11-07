@@ -120,7 +120,8 @@ function truncateLabel(value: string, maxLength = 80): string {
   // Back off one code unit when the cut would land between the halves of a
   // surrogate pair — otherwise the label ends in a lone high surrogate that
   // renders as U+FFFD in the documents view.
-  let end = maxLength - 1;
+  // Reserve 3 chars for the "..." suffix so the result fits maxLength.
+  let end = maxLength - 3;
   const lastKept = value.charCodeAt(end - 1);
   if (lastKept >= 0xd800 && lastKept <= 0xdbff) end -= 1;
   return `${value.slice(0, end).trimEnd()}...`;
@@ -328,9 +329,11 @@ export function getDocumentPreviewText(memory: Memory): string | undefined {
   const contentText = memory.content.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();
-  if (trimmed.length === 0 || looksLikeBase64(trimmed)) {
-    return undefined;
-  }
+  if (trimmed.length === 0) return undefined;
+  // Text that ingestion recorded as the document itself is shown as is; the
+  // base64 guess is only for records that do not say what their text is.
+  if (asRecord(memory.metadata)?.textBacked === true) return trimmed;
+  if (looksLikeBase64(trimmed)) return undefined;
   return trimmed;
 }
 

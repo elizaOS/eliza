@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-coding-tools",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
   "type": "module",
   "main": "dist/index.js",
@@ -25,6 +25,12 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./edge": {
+      "eliza-source": "./src/edge.ts",
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.js",
+      "default": "./dist/edge.js"
     }
   },
   "files": [
@@ -58,10 +64,12 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/plugin-web-search": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-web-search": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "cross-spawn": "^7.0.6",
+    "entities": "^4.5.0",
     "minimatch": "^10.2.6",
     "zod": "^4.6.5"
   },
@@ -73,7 +81,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.5",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {
@@ -116,24 +124,10 @@
         "max": 600000,
         "sensitive": false
       },
-      "CODING_TOOLS_SHELL_BG_BUDGET_MS": {
-        "type": "number",
-        "description": "Foreground budget. Shell invocations exceeding this auto-background and return a task_id (matches Claude's 15s ASSISTANT_BLOCKING_BUDGET_MS).",
-        "required": false,
-        "default": 15000,
-        "sensitive": false
-      },
       "CODING_TOOLS_MAX_FILE_SIZE_BYTES": {
         "type": "number",
         "description": "Optional selected-content byte budget for FILE reads. Requests exceeding it fail explicitly; no output is silently clipped.",
         "required": false,
-        "sensitive": false
-      },
-      "CODING_TOOLS_GREP_HEAD_LIMIT": {
-        "type": "number",
-        "description": "Default head_limit for GREP. Set to 0 to disable.",
-        "required": false,
-        "default": 250,
         "sensitive": false
       }
     }

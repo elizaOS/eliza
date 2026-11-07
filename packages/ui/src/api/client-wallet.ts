@@ -1,51 +1,32 @@
 /**
- * Wallet domain methods — wallet addresses/balances, BSC trading, steward,
- * trading profile, registry (ERC-8004), drop/mint, whitelist, twitter verify.
+ * Wallet domain methods — wallet addresses/balances, steward, drop/mint,
+ * whitelist, twitter verify.
  */
 
-import type { DropStatus, MintResult } from "@elizaos/core/contracts/drop";
-import type { VerificationResult } from "@elizaos/core/contracts/verification";
 import type {
-  BscTradeExecuteRequest,
-  BscTradeExecuteResponse,
-  BscTradePreflightResponse,
-  BscTradeQuoteRequest,
-  BscTradeQuoteResponse,
-  BscTradeTxStatusResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
+  DropStatus,
+  MintResult,
+  VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
   WalletMarketOverviewResponse,
   WalletNftsResponse,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileWindow,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import { ElizaClient } from "./client-base";
 import type {
-  ApplyProductionWalletDefaultsResponse,
-  RegistrationResult,
-  RegistryConfig,
-  RegistryStatus,
   VerificationMessageResponse,
-  WalletExportResult,
   WhitelistStatus,
-} from "./client-types";
+} from "./client-types-cloud";
+import type { WalletExportResult } from "./client-types-config";
+import { ApiError } from "./client-types-core";
 import type {
   StewardApprovalActionResponse,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
   StewardSignRequest,
-  StewardSignResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
 } from "./client-types-steward";
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
@@ -57,7 +38,7 @@ import type {
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getWalletAddresses(): Promise<WalletAddresses>;
     getWalletBalances(): Promise<WalletBalancesResponse>;
@@ -89,27 +70,7 @@ declare module "./client-base" {
       warnings?: string[];
     }>;
     exportWalletKeys(exportToken: string): Promise<WalletExportResult>;
-    getBscTradePreflight(
-      tokenAddress?: string,
-    ): Promise<BscTradePreflightResponse>;
-    getBscTradeQuote(
-      request: BscTradeQuoteRequest,
-    ): Promise<BscTradeQuoteResponse>;
-    executeBscTrade(
-      request: BscTradeExecuteRequest,
-    ): Promise<BscTradeExecuteResponse>;
-    executeBscTransfer(
-      request: BscTransferExecuteRequest,
-    ): Promise<BscTransferExecuteResponse>;
-    getBscTradeTxStatus(hash: string): Promise<BscTradeTxStatusResponse>;
     getStewardStatus(): Promise<StewardStatusResponse>;
-    getStewardAddresses(): Promise<StewardWalletAddressesResponse>;
-    getStewardBalance(chainId?: number): Promise<StewardBalanceResponse>;
-    getStewardTokens(chainId?: number): Promise<StewardTokenBalancesResponse>;
-    getStewardWebhookEvents(opts?: {
-      event?: StewardWebhookEventType;
-      since?: number;
-    }): Promise<StewardWebhookEventsResponse>;
     getStewardPolicies(): Promise<
       Array<{
         id: string;
@@ -142,7 +103,6 @@ declare module "./client-base" {
       txId: string,
       reason?: string,
     ): Promise<StewardApprovalActionResponse>;
-    signViaSteward(request: StewardSignRequest): Promise<StewardSignResponse>;
     signBrowserWalletMessage(
       message: string,
     ): Promise<BrowserWorkspaceWalletMessageSignatureResult>;
@@ -160,30 +120,6 @@ declare module "./client-base" {
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
     getWalletMarketOverview(): Promise<WalletMarketOverviewResponse>;
-    getWalletTradingProfile(
-      window?: WalletTradingProfileWindow,
-      source?: WalletTradingProfileSourceFilter,
-    ): Promise<WalletTradingProfileResponse>;
-    applyProductionWalletDefaults(): Promise<ApplyProductionWalletDefaultsResponse>;
-    getRegistryStatus(): Promise<RegistryStatus>;
-    registerAgent(params?: {
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }): Promise<RegistrationResult>;
-    updateRegistryTokenURI(tokenURI: string): Promise<{
-      ok: boolean;
-      txHash: string;
-    }>;
-    syncRegistryProfile(params?: {
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }): Promise<{
-      ok: boolean;
-      txHash: string;
-    }>;
-    getRegistryConfig(): Promise<RegistryConfig>;
     getDropStatus(): Promise<DropStatus>;
     mintAgent(params?: {
       name?: string;
@@ -256,83 +192,8 @@ ElizaClient.prototype.exportWalletKeys = async function (
     body: JSON.stringify({ confirm: true, exportToken }),
   });
 };
-ElizaClient.prototype.getBscTradePreflight = async function (
-  this: ElizaClient,
-  tokenAddress?,
-) {
-  return this.fetch("/api/wallet/trade/preflight", {
-    method: "POST",
-    body: JSON.stringify(
-      tokenAddress?.trim() ? { tokenAddress: tokenAddress.trim() } : {},
-    ),
-  });
-};
-ElizaClient.prototype.getBscTradeQuote = async function (
-  this: ElizaClient,
-  request,
-) {
-  return this.fetch("/api/wallet/trade/quote", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-};
-ElizaClient.prototype.executeBscTrade = async function (
-  this: ElizaClient,
-  request,
-) {
-  return this.fetch("/api/wallet/trade/execute", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-};
-ElizaClient.prototype.executeBscTransfer = async function (
-  this: ElizaClient,
-  request,
-) {
-  return this.fetch("/api/wallet/transfer/execute", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-};
-ElizaClient.prototype.getBscTradeTxStatus = async function (
-  this: ElizaClient,
-  hash,
-) {
-  return this.fetch(
-    `/api/wallet/trade/tx-status?hash=${encodeURIComponent(hash)}`,
-  );
-};
 ElizaClient.prototype.getStewardStatus = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-status");
-};
-ElizaClient.prototype.getStewardAddresses = async function (this: ElizaClient) {
-  return this.fetch("/api/wallet/steward-addresses");
-};
-ElizaClient.prototype.getStewardBalance = async function (
-  this: ElizaClient,
-  chainId?,
-) {
-  const qs =
-    chainId == null ? "" : `?chainId=${encodeURIComponent(String(chainId))}`;
-  return this.fetch(`/api/wallet/steward-balances${qs}`);
-};
-ElizaClient.prototype.getStewardTokens = async function (
-  this: ElizaClient,
-  chainId?,
-) {
-  const qs =
-    chainId == null ? "" : `?chainId=${encodeURIComponent(String(chainId))}`;
-  return this.fetch(`/api/wallet/steward-tokens${qs}`);
-};
-ElizaClient.prototype.getStewardWebhookEvents = async function (
-  this: ElizaClient,
-  opts?,
-) {
-  const params = new URLSearchParams();
-  if (opts?.event) params.set("event", opts.event);
-  if (opts?.since != null) params.set("since", String(opts.since));
-  const qs = params.toString();
-  return this.fetch(`/api/wallet/steward-webhook-events${qs ? `?${qs}` : ""}`);
 };
 ElizaClient.prototype.getStewardPolicies = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-policies");
@@ -358,7 +219,49 @@ ElizaClient.prototype.getStewardHistory = async function (
   return this.fetch(`/api/wallet/steward-tx-records${qs ? `?${qs}` : ""}`);
 };
 ElizaClient.prototype.getStewardPending = async function (this: ElizaClient) {
-  return this.fetch("/api/wallet/steward-pending-approvals");
+  const path = "/api/wallet/steward-pending-approvals";
+  const approvals: StewardPendingResponse = [];
+  let offset = 0;
+  for (;;) {
+    const res = await this.fetch<
+      | StewardPendingResponse
+      | {
+          approvals: StewardPendingResponse;
+          total: number;
+          offset: number;
+          limit: number;
+        }
+    >(offset === 0 ? path : `${path}?offset=${offset}`);
+    // Older local hosts return the complete array directly.
+    if (Array.isArray(res)) {
+      if (offset === 0) return res;
+      throw new ApiError({
+        kind: "http",
+        path,
+        message: "Approval pagination changed during loading",
+      });
+    }
+    if (
+      !res ||
+      !Array.isArray(res.approvals) ||
+      !Number.isSafeInteger(res.total) ||
+      res.total < 0 ||
+      res.offset !== offset ||
+      !Number.isSafeInteger(res.limit) ||
+      res.limit <= 0 ||
+      res.approvals.length > res.limit ||
+      (res.approvals.length === 0 && offset < res.total)
+    ) {
+      throw new ApiError({
+        kind: "http",
+        path,
+        message: "Invalid pending approvals response",
+      });
+    }
+    approvals.push(...res.approvals);
+    offset += res.approvals.length;
+    if (offset >= res.total) return approvals;
+  }
 };
 ElizaClient.prototype.approveStewardTx = async function (
   this: ElizaClient,
@@ -377,15 +280,6 @@ ElizaClient.prototype.rejectStewardTx = async function (
   return this.fetch("/api/wallet/steward-deny-tx", {
     method: "POST",
     body: JSON.stringify({ txId, reason }),
-  });
-};
-ElizaClient.prototype.signViaSteward = async function (
-  this: ElizaClient,
-  request,
-) {
-  return this.fetch("/api/wallet/steward-sign", {
-    method: "POST",
-    body: JSON.stringify(request),
   });
 };
 ElizaClient.prototype.sendBrowserWalletTransaction = async function (
@@ -428,55 +322,6 @@ ElizaClient.prototype.getWalletMarketOverview = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/wallet/market-overview");
-};
-ElizaClient.prototype.getWalletTradingProfile = async function (
-  this: ElizaClient,
-  window = "30d",
-  source = "all",
-) {
-  const params = new URLSearchParams({ window, source });
-  return this.fetch(`/api/wallet/trading/profile?${params.toString()}`);
-};
-ElizaClient.prototype.applyProductionWalletDefaults = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/wallet/production-defaults", {
-    method: "POST",
-    body: JSON.stringify({ confirm: true }),
-  });
-};
-ElizaClient.prototype.getRegistryStatus = async function (this: ElizaClient) {
-  return this.fetch("/api/registry/status");
-};
-ElizaClient.prototype.registerAgent = async function (
-  this: ElizaClient,
-  params?,
-) {
-  return this.fetch("/api/registry/register", {
-    method: "POST",
-    body: JSON.stringify(params ?? {}),
-  });
-};
-ElizaClient.prototype.updateRegistryTokenURI = async function (
-  this: ElizaClient,
-  tokenURI,
-) {
-  return this.fetch("/api/registry/update-uri", {
-    method: "POST",
-    body: JSON.stringify({ tokenURI }),
-  });
-};
-ElizaClient.prototype.syncRegistryProfile = async function (
-  this: ElizaClient,
-  params?,
-) {
-  return this.fetch("/api/registry/sync", {
-    method: "POST",
-    body: JSON.stringify(params ?? {}),
-  });
-};
-ElizaClient.prototype.getRegistryConfig = async function (this: ElizaClient) {
-  return this.fetch("/api/registry/config");
 };
 ElizaClient.prototype.getDropStatus = async function (this: ElizaClient) {
   return this.fetch("/api/drop/status");

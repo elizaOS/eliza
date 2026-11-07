@@ -215,12 +215,11 @@ export class AudioMonitor {
 				this.lastFlagged = this.buffers.length;
 			}
 			this.buffers.push(chunk);
-			const currentSize = this.buffers.reduce(
-				(acc, cur) => acc + cur.length,
-				0,
-			);
+			let currentSize = this.buffers.reduce((acc, cur) => acc + cur.length, 0);
 			while (currentSize > this.maxSize) {
-				this.buffers.shift();
+				const dropped = this.buffers.shift();
+				if (!dropped) break;
+				currentSize -= dropped.length;
 				this.lastFlagged--;
 			}
 		});

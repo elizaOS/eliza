@@ -16,7 +16,8 @@ import pytest
 
 from eliza_lifeops_bench.lifeworld import EntityKind, LifeWorld
 from eliza_lifeops_bench.lifeworld.entities import ReminderList
-from eliza_lifeops_bench.runner import LifeOpsBenchRunner, build_tool_manifest
+from eliza_lifeops_bench.lifeworld.executor import build_tool_manifest
+from eliza_lifeops_bench.runner import LifeOpsBenchRunner
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
@@ -83,8 +84,7 @@ class _NeverCalledExecutor:
 
     async def execute(self, context: Any) -> Any:
         raise AssertionError(
-            "denied batch reached the trusted executor: "
-            f"{context.action.name}"
+            f"denied batch reached the trusted executor: {context.action.name}"
         )
 
 

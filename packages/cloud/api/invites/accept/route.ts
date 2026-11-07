@@ -3,17 +3,17 @@
  * Accepts an organization invitation using the invitation token.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { invitesService } from "@/lib/services/invites";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { invitesService } from "@elizaos/cloud-shared/lib/services/invites";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -61,6 +61,9 @@ app.post("/", async (c) => {
     const status =
       errorMessage.includes("sign in with") ||
       errorMessage.includes("already a member") ||
+      errorMessage.includes("already used or revoked") ||
+      errorMessage.includes("has been revoked") ||
+      errorMessage.includes("already been accepted") ||
       errorMessage.includes("cannot join another organization")
         ? 409
         : errorMessage.includes("Invalid invite") ||

@@ -19,7 +19,7 @@ import {
   type MeetingArtifactPlatformParticipant,
   type MeetingArtifactSourceStream,
   type MeetingArtifactTranscriptSpan,
-} from "@elizaos/core/meeting-artifacts";
+} from "@elizaos/core/protocol";
 import { persistMeetingMedia } from "../../transcripts/meeting-transcript-writer.js";
 
 const ZOOM_API_BASE = "https://api.zoom.us/v2";
@@ -605,6 +605,24 @@ function importWarnings(
   return warnings;
 }
 
+/**
+ * The VTT files the transcript is read from. Zoom can list the same speech
+ * twice, as the audio transcript and as closed captions; reading both puts
+ * every utterance in the transcript twice. Use the audio transcript, and the
+ * captions only when there is none.
+ */
+function transcriptSources(
+  files: readonly DownloadedFile[],
+): readonly DownloadedFile[] {
+  const vtt = files.filter((file) => file.mimeType === "text/vtt");
+  const audioTranscripts = vtt.filter(
+    (file) =>
+      file.source.recording_type === "audio_transcript" ||
+      file.source.file_type?.toUpperCase() === "TRANSCRIPT",
+  );
+  return audioTranscripts.length > 0 ? audioTranscripts : vtt;
+}
+
 function buildZoomSharedMeetingArtifact(input: {
   requestedMeetingId: string;
   meeting: ZoomMeetingResponse;
@@ -614,7 +632,7 @@ function buildZoomSharedMeetingArtifact(input: {
   const nativeMeetingId = String(
     input.meeting.uuid ?? input.meeting.id ?? input.requestedMeetingId,
   );
-  const platformParticipants = input.participants.map(mapParticipant);
+  const platformParticipants = mergeParticipants(input.participants);
   const participantByName = new Map(
     platformParticipants
       .filter((participant) => participant.displayName)
@@ -631,14 +649,15 @@ function buildZoomSharedMeetingArtifact(input: {
       label: file.source.recording_type,
     }),
   );
-  const streamByMediaId = new Map(
-    sourceStreams.map((stream) => [stream.mediaRefId, stream]),
+  // Keyed by file, not media id: byte-identical transcript and caption files
+  // share a content-hash media id, and spans must name the file they came from.
+  const streamByFile = new Map(
+    input.files.map((file, index) => [file, sourceStreams[index]]),
   );
   const transcriptSpans: MeetingArtifactTranscriptSpan[] = [];
-  for (const file of input.files.filter(
-    (candidate) => candidate.mimeType === "text/vtt",
-  )) {
-    const stream = streamByMediaId.get(file.media.id);
+  const speakerLabels = new Map<string, string>();
+  for (const file of transcriptSources(input.files)) {
+    const stream = streamByFile.get(file);
     if (!stream) continue;
     for (const cue of parseWebVtt(file.bytes.toString("utf8"))) {
       const participant = cue.speakerLabel
@@ -647,6 +666,12 @@ function buildZoomSharedMeetingArtifact(input: {
       const speakerId = cue.speakerLabel
         ? `zoom-speaker:${stableLabel(cue.speakerLabel)}`
         : undefined;
+      if (speakerId && cue.speakerLabel && !speakerLabels.has(speakerId)) {
+        speakerLabels.set(
+          speakerId,
+          participant?.displayName ?? cue.speakerLabel,
+        );
+      }
       transcriptSpans.push({
         id: `${stream.id}:${cue.id}`,
         startMs: cue.startMs,
@@ -658,16 +683,6 @@ function buildZoomSharedMeetingArtifact(input: {
         sourceStreamId: stream.id,
       });
     }
-  }
-  const speakerLabels = new Map<string, string>();
-  for (const span of transcriptSpans) {
-    if (!span.speakerId) continue;
-    const cueLabel = span.platformParticipantId
-      ? platformParticipants.find(
-          (row) => row.id === span.platformParticipantId,
-        )?.displayName
-      : span.speakerId.replace(/^zoom-speaker:/, "").replace(/-/g, " ");
-    speakerLabels.set(span.speakerId, cueLabel ?? span.speakerId);
   }
   const artifact: MeetingArtifact = {
     schemaVersion: MEETING_ARTIFACT_SCHEMA_VERSION,
@@ -689,29 +704,35 @@ function buildZoomSharedMeetingArtifact(input: {
         scope: "owner-private",
       },
     },
-    media: input.files.map((file) => file.media),
+    // Byte-identical files (an audio transcript and its closed captions)
+    // share a content-hash media id; list each media item once.
+    media: [
+      ...new Map(
+        input.files.map((file) => [file.media.id, file.media]),
+      ).values(),
+    ],
     sourceStreams,
     platformParticipants,
-    diarizedSpeakers: [...speakerLabels].map(([id, displayName]) => ({
-      id,
-      sourceStreamIds: [
+    diarizedSpeakers: [...speakerLabels].map(([id, displayName]) => {
+      const spans = transcriptSpans.filter((span) => span.speakerId === id);
+      const platformParticipantIds = [
         ...new Set(
-          transcriptSpans
-            .filter((span) => span.speakerId === id)
-            .map((span) => span.sourceStreamId),
-        ),
-      ],
-      platformParticipantIds: [
-        ...new Set(
-          transcriptSpans
-            .filter((span) => span.speakerId === id)
+          spans
             .map((span) => span.platformParticipantId)
             .filter((value): value is string => Boolean(value)),
         ),
-      ],
-      name: { displayName, provenance: "platform", confidence: 1 },
-      status: "active",
-    })),
+      ];
+      return {
+        id,
+        sourceStreamIds: [...new Set(spans.map((span) => span.sourceStreamId))],
+        // A VTT speaker missing from the roster has no participant to cite.
+        ...(platformParticipantIds.length > 0
+          ? { platformParticipantIds }
+          : {}),
+        name: { displayName, provenance: "platform", confidence: 1 },
+        status: "active",
+      };
+    }),
     entityBindings: [],
     transcriptSpans,
     notes: [],
@@ -732,14 +753,41 @@ function buildZoomSharedMeetingArtifact(input: {
   return artifact;
 }
 
+/**
+ * Zoom returns one roster row per join, so a signed-in participant who rejoins
+ * repeats `id`. Collapse those rows into one participant that spans every join.
+ */
+function mergeParticipants(
+  participants: readonly ZoomParticipantResponse[],
+): MeetingArtifactPlatformParticipant[] {
+  const byId = new Map<string, MeetingArtifactPlatformParticipant>();
+  participants.forEach((participant, index) => {
+    const row = mapParticipant(participant, index);
+    const existing = byId.get(row.id);
+    if (!existing) {
+      byId.set(row.id, row);
+      return;
+    }
+    existing.displayName ??= row.displayName;
+    existing.joinedAtMs = boundMs(
+      existing.joinedAtMs,
+      row.joinedAtMs,
+      Math.min,
+    );
+    existing.leftAtMs = boundMs(existing.leftAtMs, row.leftAtMs, Math.max);
+  });
+  return [...byId.values()];
+}
+
 function mapParticipant(
   participant: ZoomParticipantResponse,
   index: number,
 ): MeetingArtifactPlatformParticipant {
+  // Zoom sends `id: ""` for guests who joined without signing in.
   const id =
-    participant.id ??
-    participant.user_id ??
-    participant.user_email ??
+    nonBlank(participant.id) ??
+    nonBlank(participant.user_id) ??
+    nonBlank(participant.user_email) ??
     `zoom-participant-${index + 1}`;
   return {
     id,
@@ -749,6 +797,20 @@ function mapParticipant(
   };
 }
 
+function nonBlank(value: string | undefined): string | undefined {
+  return value?.trim() ? value : undefined;
+}
+
+function boundMs(
+  current: number | undefined,
+  next: number | undefined,
+  pick: (a: number, b: number) => number,
+): number | undefined {
+  if (current === undefined) return next;
+  if (next === undefined) return current;
+  return pick(current, next);
+}
+
 function epochMs(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Date.parse(value);
@@ -756,6 +818,14 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 function parseWebVtt(value: string): VttCue[] {
+  const entities: Record<string, string> = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&nbsp;": "\u00a0",
+    "&lrm;": "\u200e",
+    "&rlm;": "\u200f",
+  };
   const blocks = value
     .replace(/^\uFEFF/, "")
     .split(/\r?\n\r?\n+/)
@@ -775,6 +845,10 @@ function parseWebVtt(value: string): VttCue[] {
       .slice(timingIndex + 1)
       .join(" ")
       .replace(/<[^>]+>/g, "")
+      .replace(
+        /&(?:amp|lt|gt|nbsp|lrm|rlm);/g,
+        (entity) => entities[entity] ?? entity,
+      )
       .trim();
     if (!rawText) continue;
     const speaker = /^([^:]{1,120}):\s+(.+)$/.exec(rawText);

@@ -229,5 +229,17 @@ export function filterConfigEnvForResponse(
     if (SENSITIVE_ENV_RESPONSE_KEYS.has(key.toUpperCase())) continue;
     filteredEnv[key] = value;
   }
+  // The denylist must apply to the nested env.vars block too: config env
+  // resolution reads vars first, so a denylisted key stored there is just as
+  // live as one at the top level.
+  const vars = filteredEnv.vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    const filteredVars: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(vars)) {
+      if (SENSITIVE_ENV_RESPONSE_KEYS.has(key.toUpperCase())) continue;
+      filteredVars[key] = value;
+    }
+    filteredEnv.vars = filteredVars;
+  }
   return { ...redactedConfig, env: filteredEnv };
 }

@@ -207,6 +207,11 @@ function resolveButton(button: "left" | "middle" | "right"): number {
   }
 }
 
+/** Whether `nutClickWithModifiers` can hold this modifier name. */
+export function nutSupportsModifier(modifier: string): boolean {
+  return Object.hasOwn(MODIFIER_KEYS, modifier.trim().toLowerCase());
+}
+
 function resolveModifierCodes(modifier: string): number[] {
   const m = nut();
   const names = MODIFIER_KEYS[modifier.trim().toLowerCase()];

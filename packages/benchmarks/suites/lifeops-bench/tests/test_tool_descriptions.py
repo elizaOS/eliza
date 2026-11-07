@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from eliza_lifeops_bench.runner import (
+from eliza_lifeops_bench.lifeworld.executor import (
     _DISCRIMINATORS,
     _TOOL_DESCRIPTIONS,
     _tool_parameters_for_action,
@@ -44,9 +44,13 @@ def test_life_verb_description_is_present_and_substantive(verb: str) -> None:
 def test_life_create_documents_kind_and_due() -> None:
     description = _TOOL_DESCRIPTIONS["LIFE_CREATE"]
     assert "kind" in description, "LIFE_CREATE description must call out the kind field"
-    assert "details" in description, "LIFE_CREATE description must mention the details payload"
+    assert "details" in description, (
+        "LIFE_CREATE description must mention the details payload"
+    )
     # The handler accepts ISO8601 due_at via details.due / details.due_at.
-    assert "due" in description.lower(), "LIFE_CREATE description must document due/due_at"
+    assert "due" in description.lower(), (
+        "LIFE_CREATE description must document due/due_at"
+    )
     # Detail kinds the handler dispatches on.
     for detail_kind in ("reminder", "alarm", "workout", "health_metric"):
         assert detail_kind in description, (

@@ -53,11 +53,10 @@ from typing import Any, Iterator
 import pyarrow.parquet as pq
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from format_for_training import _load_prompt_registry, render_handlebars  # noqa: E402
-from lib.eliza_record import build  # noqa: E402
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.format_for_training import _load_prompt_registry, render_handlebars  # noqa: E402
+from eliza_training.lib.eliza_record import build  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 RAW_DIR = ROOT / "data" / "raw" / "scambench" / "data"
 TRAIN_PARQUET = RAW_DIR / "train" / "train-00000-of-00001.parquet"

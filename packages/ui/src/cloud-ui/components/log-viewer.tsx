@@ -15,6 +15,7 @@ import * as React from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { CornerBrackets } from "../../components/ui/corner-brackets";
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import {
@@ -25,9 +26,8 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
+import { cn } from "../../utils/cn";
 import { formatTime } from "../../utils/format.js";
-import { cn } from "../lib/utils";
-import { CornerBrackets } from "./brand/corner-brackets";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 type BadgeTone = React.ComponentProps<typeof Badge>["tone"];

@@ -7,7 +7,7 @@ import type { RolesWorldMetadata } from "./roles";
 import type { Entity, World } from "./types/environment.js";
 import type { UUID } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime.js";
-import { stringToUuid } from "./utils";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 export async function resolveTrustedComponentSourceIds(
 	runtime: IAgentRuntime,
 	world: World | null,

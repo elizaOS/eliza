@@ -13,18 +13,18 @@
  * render correctly without any text inspection here.
  */
 
+import type {
+  TranscriptEvent,
+  TranscriptItem,
+  TranscriptViewModel,
+} from "@elizaos/contracts";
+import { reduceTranscriptEvents } from "@elizaos/contracts";
 import { type ReactNode, useMemo } from "react";
 import { parseSegments } from "../components/chat/message-parser-helpers";
 import { Alert } from "../components/ui/alert";
 import { Card } from "../components/ui/card";
 import { CodeBlock } from "../components/ui/code-block";
-import { cn } from "../lib/utils";
-import type {
-  TranscriptEvent,
-  TranscriptItem,
-  TranscriptViewModel,
-} from "./contract";
-import { reduceTranscriptEvents } from "./reduce";
+import { cn } from "../utils/cn";
 
 /** Fold a decoded event log into the render model (memoized by identity). */
 export function useTranscriptEvents(
@@ -47,8 +47,8 @@ export interface TranscriptViewProps {
 }
 
 /** Render agent prose + code via the shared chat parser; drop widget markers. */
-function renderAgentBody(text: string): ReactNode {
-  const segments = parseSegments(text, false);
+function renderAgentBody(text: string, streaming: boolean): ReactNode {
+  const segments = parseSegments(text, false, streaming);
   return segments.map((segment, index) => {
     const key = `${segment.kind}-${index}`;
     if (segment.kind === "text") {
@@ -100,7 +100,7 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
           data-role="agent"
           data-status={item.status}
         >
-          {renderAgentBody(item.text)}
+          {renderAgentBody(item.text, item.status === "streaming")}
         </div>
       );
     case "tool":

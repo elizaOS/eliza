@@ -1,7 +1,7 @@
 """Eliza adapter for ClawBench scenarios.
 
 This adapter runs ClawBench scenarios against the eliza benchmark server
-(``suites/lifeops-bench/runner/src/server.ts``) instead of the legacy Groq
+(``harnesses/eliza/runner/src/server.ts``) instead of the legacy Groq
 + mock-tools harness. It is the canonical entry point invoked by the
 benchmark registry's ``_clawbench_cmd``.
 
@@ -199,9 +199,7 @@ class ElizaClawBenchRunner:
             "thought": response.thought,
             "tool_calls": self.tool_calls,
             "tool_calls_total": len(self.tool_calls),
-            "tool_calls_by_type": dict(
-                Counter(tc["tool"] for tc in self.tool_calls)
-            ),
+            "tool_calls_by_type": dict(Counter(tc["tool"] for tc in self.tool_calls)),
             "duration_ms": duration_ms,
         }
 
@@ -233,18 +231,30 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run ClawBench scenarios against the eliza benchmark server"
     )
-    parser.add_argument("--scenario", "-s", default="inbox_triage", help="Scenario name")
-    parser.add_argument("--variant", "-v", default="optimized", help="AGENTS.md variant label")
+    parser.add_argument(
+        "--scenario", "-s", default="inbox_triage", help="Scenario name"
+    )
+    parser.add_argument(
+        "--variant", "-v", default="optimized", help="AGENTS.md variant label"
+    )
     parser.add_argument(
         "--output-dir",
         "-o",
         default=None,
         help="Directory to write trajectory_<scenario>_<ts>.json (default: ./outputs)",
     )
-    parser.add_argument("--list", "-l", action="store_true", help="List available scenarios")
-    parser.add_argument("--count-scenarios", action="store_true", help="Print scenario expansion counts")
-    parser.add_argument("--validate-scenarios", action="store_true", help="Validate expanded scenarios")
-    parser.add_argument("--json", "-j", action="store_true", help="Print full result JSON to stdout")
+    parser.add_argument(
+        "--list", "-l", action="store_true", help="List available scenarios"
+    )
+    parser.add_argument(
+        "--count-scenarios", action="store_true", help="Print scenario expansion counts"
+    )
+    parser.add_argument(
+        "--validate-scenarios", action="store_true", help="Validate expanded scenarios"
+    )
+    parser.add_argument(
+        "--json", "-j", action="store_true", help="Print full result JSON to stdout"
+    )
     parser.add_argument(
         "--start-server",
         action="store_true",

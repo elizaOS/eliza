@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders resolved by this route
 /**
  * Serves the public MCP catalog with validated filters and optional community
  * entries. Platform entries carry trust/health/availability metadata from the
@@ -6,8 +7,12 @@
  * withheld.
  */
 
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
 import { BUILTIN_MCP_PRICING } from "@elizaos/cloud-shared/billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -19,11 +24,6 @@ import {
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
 } from "@/api-app/lib/mcp/integration-catalog";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // SECURITY FIX: Validate query parameters to prevent DoS attacks
 // Whitelist allowed values and enforce length limits
@@ -158,7 +158,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       servers: {
         doordash: {
           type: "streamable-http",
-          url: "/api/mcps/doordash/streamable-http",
+          url: "${BASE_URL}/api/mcps/doordash/streamable-http",
         },
       },
     },
@@ -184,7 +184,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       servers: {
         "crypto-prices": {
           type: "streamable-http",
-          url: "/api/mcps/crypto/streamable-http",
+          url: "${BASE_URL}/api/mcps/crypto/streamable-http",
         },
       },
     },
@@ -201,14 +201,8 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     status: "live",
     icon: "clock",
     color: "#6366F1",
-    toolCount: 5,
-    features: [
-      "get_current_time",
-      "convert_timezone",
-      "format_date",
-      "calculate_time_diff",
-      "list_timezones",
-    ],
+    toolCount: 1,
+    features: ["get_current_time"],
     pricing: BUILTIN_MCP_PRICING.time,
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/time",
@@ -216,7 +210,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       servers: {
         "time-server": {
           type: "streamable-http",
-          url: "/api/mcps/time/streamable-http",
+          url: "${BASE_URL}/api/mcps/time/streamable-http",
         },
       },
     },
@@ -233,20 +227,15 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     status: "live",
     icon: "cloud",
     color: "#3B82F6",
-    toolCount: 4,
-    features: [
-      "get_current_weather",
-      "get_weather_forecast",
-      "compare_weather",
-      "search_location",
-    ],
+    toolCount: 2,
+    features: ["get_current_weather", "search_location"],
     pricing: BUILTIN_MCP_PRICING.weather,
     x402Enabled: false,
     configTemplate: {
       servers: {
         weather: {
           type: "streamable-http",
-          url: "/api/mcps/weather/streamable-http",
+          url: "${BASE_URL}/api/mcps/weather/streamable-http",
         },
       },
     },
@@ -541,7 +530,7 @@ app.get("/", async (c) => {
                     key,
                     {
                       ...value,
-                      url: value.url.replace("${BASE_URL}", ""),
+                      url: value.url.replace("${BASE_URL}", baseUrl),
                     },
                   ],
                 ),

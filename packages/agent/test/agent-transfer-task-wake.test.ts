@@ -1,7 +1,7 @@
 /** Encrypted agent transfer preserves pending deadlines through the real SQL
  * wake API and starts fresh destination claims without mutating source tasks. */
 import type { UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { exportAgent, importAgent } from "../src/services/agent-export.ts";
 

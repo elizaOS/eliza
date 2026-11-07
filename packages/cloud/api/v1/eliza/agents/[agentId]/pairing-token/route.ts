@@ -3,26 +3,33 @@
  * Token-capable remote agents always use the Worker-bound canonical hostname;
  * only the explicit local Docker provider may return a loopback relay URL.
  */
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { ApiError, errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import {
+  ApiError,
+  errorToResponse,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   getConfiguredElizaAgentPublicWebUiUrl,
   getElizaAgentDirectWebUiUrl,
-} from "@/lib/eliza-agent-web-ui";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { warmInferenceRateLimitGate } from "@/lib/services/inference-admission-gate";
-import { getPairingTokenService } from "@/lib/services/pairing-token";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { warmInferenceRateLimitGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { getPairingTokenService } from "@elizaos/cloud-shared/lib/services/pairing-token";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const CORS_METHODS = "POST, OPTIONS";
 

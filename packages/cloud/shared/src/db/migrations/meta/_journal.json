@@ -3361,6 +3361,342 @@
       "when": 1796083200127,
       "tag": "0509_managed_gmail_operation_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 480,
+      "version": "7",
+      "when": 1796083200128,
+      "tag": "0510_subscription_renewal_review_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1796083200129,
+      "tag": "0511_organization_plan_change_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1796083200130,
+      "tag": "0512_organization_upgrade_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1796083200131,
+      "tag": "0513_organization_upgrade_live_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1796083200132,
+      "tag": "0514_organization_upgrade_quote_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 485,
+      "version": "7",
+      "when": 1796083200133,
+      "tag": "0515_organization_upgrade_invoice_origins",
+      "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1796083200134,
+      "tag": "0516_organization_upgrade_paid_finalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1796083200135,
+      "tag": "0517_organization_upgrade_historical_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1796083200136,
+      "tag": "0518_organization_upgrade_historical_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1796083200137,
+      "tag": "0519_organization_upgrade_void_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1796083200138,
+      "tag": "0520_organization_downgrade_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1796083200139,
+      "tag": "0521_organization_schedule_effects",
+      "breakpoints": true
+    },
+    {
+      "idx": 492,
+      "version": "7",
+      "when": 1796083200140,
+      "tag": "0522_organization_schedule_quote_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1796083200141,
+      "tag": "0523_organization_schedule_compensation",
+      "breakpoints": true
+    },
+    {
+      "idx": 494,
+      "version": "7",
+      "when": 1796083200142,
+      "tag": "0524_organization_schedule_compensation_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 495,
+      "version": "7",
+      "when": 1796083200143,
+      "tag": "0525_organization_schedule_configured_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 496,
+      "version": "7",
+      "when": 1796083200144,
+      "tag": "0526_organization_schedule_configured_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 497,
+      "version": "7",
+      "when": 1796083200145,
+      "tag": "0527_organization_schedule_late_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1796083200146,
+      "tag": "0528_subscription_adjustment_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1796083200147,
+      "tag": "0529_subscription_adjustment_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 500,
+      "version": "7",
+      "when": 1796083200148,
+      "tag": "0530_subscription_invoice_event_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1796083200149,
+      "tag": "0531_subscription_invoice_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1796083200150,
+      "tag": "0532_subscription_invoice_capture_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1796083200151,
+      "tag": "0533_subscription_invoice_debt_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1796083200152,
+      "tag": "0534_subscription_allowance_invoice_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 505,
+      "version": "7",
+      "when": 1796083200153,
+      "tag": "0535_managed_gmail_read_state_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1796083200154,
+      "tag": "0536_rooms_connector_server_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1796083200155,
+      "tag": "0537_relationships_extraction_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1796083200156,
+      "tag": "0538_message_server_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 509,
+      "version": "7",
+      "when": 1796083200157,
+      "tag": "0539_agent_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 510,
+      "version": "7",
+      "when": 1796083200158,
+      "tag": "0540_embeddings_space_nonce_dim2048",
+      "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1796083200159,
+      "tag": "0541_app_pilot_redemptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 512,
+      "version": "7",
+      "when": 1796083200160,
+      "tag": "0542_subscription_grant_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 513,
+      "version": "7",
+      "when": 1796083200161,
+      "tag": "0543_app_pilot_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 514,
+      "version": "7",
+      "when": 1796083200162,
+      "tag": "0544_inference_funding_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 515,
+      "version": "7",
+      "when": 1796083200163,
+      "tag": "0545_inference_policy_mutation_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 516,
+      "version": "7",
+      "when": 1796083200164,
+      "tag": "0546_lifetime_subscription_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1796083200165,
+      "tag": "0547_subscription_grant_calendar_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 518,
+      "version": "7",
+      "when": 1796083200166,
+      "tag": "0548_agent_provisioning_deferred_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1796083200167,
+      "tag": "0549_drop_erc8004_agent_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1796083200168,
+      "tag": "0550_app_creator_audit_reference",
+      "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1796083200169,
+      "tag": "0551_native_app_publishers",
+      "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1796083200170,
+      "tag": "0552_inference_rate_policy_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1796083200171,
+      "tag": "0553_inference_policy_snapshot_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1796083200172,
+      "tag": "0554_subscription_cancellation_dispatch_settle",
+      "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1796083200173,
+      "tag": "0555_stripe_delivery_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1796083200174,
+      "tag": "0556_stripe_delivery_outbox_due_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1796083200175,
+      "tag": "0557_stripe_delivery_lease_check_validate",
+      "breakpoints": true
     }
   ]
 }

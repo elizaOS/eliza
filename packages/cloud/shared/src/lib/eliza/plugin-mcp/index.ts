@@ -13,7 +13,7 @@ export {
   type McpToolAction,
 } from "./actions/dynamic-tool-actions";
 // Re-export schema cache
-export { getSchemaCache, McpSchemaCache } from "./cache/schema-cache";
+export { getSchemaCache, McpSchemaCache } from "./schema-cache";
 // Re-export service
 export { McpService } from "./service";
 

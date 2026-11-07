@@ -22,8 +22,8 @@
 
 import bs58 from "bs58";
 import nacl from "tweetnacl";
+import type { AuthenticationStateStore } from "../auth/authentication-state";
 import { CacheKeys, CacheTTL } from "../cache/keys";
-import type { CompatibleRedis } from "../cache/redis-factory";
 
 const NONCE_BYTES = 16;
 const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -58,7 +58,7 @@ function randomNonceHex(): string {
 }
 
 export async function issueSiwsNonce(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   binding: SiwsNonceBinding,
 ): Promise<string> {
   const nonce = randomNonceHex();
@@ -80,7 +80,7 @@ function safeJsonParse(value: string): unknown {
  * assertions — preserving prior behavior for in-flight nonces after a deploy.
  */
 export async function readSiwsNonceBinding(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   nonce: string,
 ): Promise<SiwsNonceBinding | null> {
   const value = await redis.get<string>(CacheKeys.siws.nonce(nonce));
@@ -99,7 +99,7 @@ export async function readSiwsNonceBinding(
   return null;
 }
 
-async function consumeSiwsNonce(redis: CompatibleRedis, nonce: string): Promise<boolean> {
+async function consumeSiwsNonce(redis: AuthenticationStateStore, nonce: string): Promise<boolean> {
   const value = await redis.getdel(CacheKeys.siws.nonce(nonce));
   return value !== null;
 }
@@ -278,7 +278,7 @@ export function validateSIWSMessage(
 }
 
 export async function validateAndConsumeSIWS(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   message: string,
   signatureBase58: string,
   expectedHost: string,

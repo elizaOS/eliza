@@ -26,6 +26,8 @@ interface ServiceTrajectoryListItem {
   id: string;
   agentId: string;
   source: string;
+  scenarioId?: string | null;
+  batchId?: string | null;
   roomId?: string | null;
   entityId?: string | null;
   metadata?: Record<string, unknown>;
@@ -89,6 +91,8 @@ interface ServiceTrajectoryStep {
 interface ServiceTrajectory {
   trajectoryId: string;
   agentId: string;
+  scenarioId?: string;
+  batchId?: string;
   startTime: number;
   endTime?: number;
   steps: ServiceTrajectoryStep[];
@@ -207,6 +211,8 @@ function listItemToUi(
     totalCacheCreationInputTokens: item.totalCacheCreationInputTokens,
     agentId: item.agentId,
     source: item.source,
+    scenarioId: item.scenarioId ?? null,
+    batchId: item.batchId ?? null,
     roomId: item.roomId ?? metadataRoomId(metadata),
     entityId: item.entityId ?? metadataEntityId(metadata),
     metadata,
@@ -222,6 +228,52 @@ function listItemToUi(
 // Flatten the recorded steps into the flat UI arrays the viewer's phase
 // classifier (`summarizePhases`) reads: llmCalls keyed by stepType/purpose drive
 // HANDLE/PLAN/EVALUATE; the per-step action drives the ACTION phase.
+/** Control-flow facts only. Keep model text and tool arguments in the opt-in payload. */
+function stageDecision(stage: TrajectorySemanticStageRecord) {
+  if (stage.kind !== "evaluation" && stage.kind !== "planner") return null;
+  const summary: Record<string, string | number | boolean> = {
+    stageId: stage.stageId,
+    kind: stage.kind,
+  };
+  if (stage.iteration !== undefined) summary.iteration = stage.iteration;
+  if (stage.kind === "planner") {
+    const model = stage.payload.model;
+    if (model && typeof model === "object" && !Array.isArray(model)) {
+      const calls = model.toolCalls;
+      if (Array.isArray(calls)) summary.toolCallCount = calls.length;
+    }
+  } else {
+    const evaluation = stage.payload.evaluation;
+    if (
+      evaluation &&
+      typeof evaluation === "object" &&
+      !Array.isArray(evaluation)
+    ) {
+      if (
+        evaluation.decision === "FINISH" ||
+        evaluation.decision === "CONTINUE" ||
+        evaluation.decision === "NEXT_RECOMMENDED"
+      ) {
+        summary.decision = evaluation.decision;
+      }
+      for (const key of [
+        "success",
+        "protocolFailure",
+        "requestFullyCovered",
+        "gated",
+        "llmCallSkipped",
+        "typedReadAwaitingEvidence",
+        "typedReadFinal",
+        "typedReadRendered",
+      ]) {
+        if (typeof evaluation[key] === "boolean")
+          summary[key] = evaluation[key];
+      }
+    }
+  }
+  return summary;
+}
+
 function detailToUi(
   traj: ServiceTrajectory,
   roomContext?: ResolvedRoomContext | null,
@@ -233,10 +285,15 @@ function detailToUi(
   const providerAccesses: Array<Record<string, unknown>> = [];
   const toolEvents: Array<Record<string, unknown>> = [];
   const semanticStages: TrajectorySemanticStageRecord[] = [];
+  const stageDecisions: Array<Record<string, string | number | boolean>> = [];
 
   const steps = traj.steps;
   for (const step of steps) {
     if (step.semanticStages) {
+      for (const stage of step.semanticStages) {
+        const decision = stageDecision(stage);
+        if (decision) stageDecisions.push(decision);
+      }
       semanticStages.push(
         ...step.semanticStages.map((stage) =>
           includePayloads ? stage : { ...stage, payload: {} },
@@ -331,6 +388,8 @@ function detailToUi(
       ...(typeof metadata.source === "string"
         ? { source: metadata.source }
         : {}),
+      scenarioId: traj.scenarioId ?? null,
+      batchId: traj.batchId ?? null,
       roomId: metadataRoomId(metadata),
       entityId: metadataEntityId(metadata),
       metadata,
@@ -348,6 +407,7 @@ function detailToUi(
     toolEvents,
     evaluationEvents: [],
     semanticStages,
+    stageDecisions,
   };
 }
 
@@ -390,8 +450,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
   if (method !== "GET" || !pathname.startsWith("/api/trajectories")) {
     return false;
   }
-  // Only the read routes the viewer needs belong to this boundary. Unsupported
-  // mutation and export paths fall through for the API host to reject.
+  // Only the read routes the viewer needs belong to this boundary. Config,
+  // export and delete paths fall through to the API host's management routes.
   const isList = pathname === "/api/trajectories";
   let isStats = pathname === "/api/trajectories/stats";
   const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);

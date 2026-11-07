@@ -1,66 +1,42 @@
-// Exercises USB installer browser flows and screenshot quality gates.
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mockInstallerApi } from "./mock-installer-api";
-import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
-const ROUTES = [{ path: "/", name: "landing" }] as const;
 const ENABLE_VISUAL_SNAPSHOTS =
   process.env.ELIZAOS_USB_VISUAL_SNAPSHOTS === "1";
 
-const VIEWPORTS = [
-  { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
-] as const;
-
-async function prepare(page: Page) {
+test("installer renders its assets within the viewport", async ({
+  page,
+}, testInfo) => {
+  await mockInstallerApi(page);
+  await page.goto("/", { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(250);
-}
-
-function dynamicMask(page: Page) {
-  return [
-    page.locator("video"),
-    page.locator('[data-testid="cloud-video"]'),
-    page.locator(".animate-pulse"),
-    page.locator(".animate-spin"),
-    page.locator("[data-marquee]"),
-  ];
-}
-
-for (const viewport of VIEWPORTS) {
-  test.describe(`visual regression — ${viewport.name}`, () => {
-    test.use({ viewport: { width: viewport.width, height: viewport.height } });
-
-    for (const route of ROUTES) {
-      test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        await mockInstallerApi(page);
-        await page.goto(route.path, { waitUntil: "networkidle" });
-        await prepare(page);
-        await expect(
-          page.getByRole("heading", { name: "USB installer" }),
-        ).toBeVisible();
-        await expect(page.getByText("elizaOS Test USB")).toBeVisible();
-
-        if (ENABLE_VISUAL_SNAPSHOTS) {
-          await captureScreenshotWithQualityRetry(
-            page,
-            `${route.name} ${viewport.name}`,
-            {
-              fullPage: true,
-              mask: dynamicMask(page),
-              animations: "disabled",
-            },
-          );
-          await expect(page).toHaveScreenshot(
-            `${route.name}-${viewport.name}.png`,
-            {
-              fullPage: true,
-              mask: dynamicMask(page),
-              animations: "disabled",
-            },
-          );
-        }
-      });
-    }
-  });
-}
+  await expect(
+    page.getByRole("heading", { name: "USB installer" }),
+  ).toBeVisible();
+  await expect(page.getByText("elizaOS Test USB")).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "elizaOS", exact: true }),
+  ).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page
+        .getByRole("img", { name: "elizaOS", exact: true })
+        .evaluateAll((images) =>
+          images.every(
+            (image) =>
+              image instanceof HTMLImageElement &&
+              image.complete &&
+              image.naturalWidth > 0,
+          ),
+        ),
+    )
+    .toBe(true);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+  const options = { fullPage: true, animations: "disabled" as const };
+  const filename = `landing-${testInfo.project.name}.png`;
+  await page.screenshot({ ...options, path: testInfo.outputPath(filename) });
+  if (ENABLE_VISUAL_SNAPSHOTS)
+    await expect(page).toHaveScreenshot(filename, options);
+});

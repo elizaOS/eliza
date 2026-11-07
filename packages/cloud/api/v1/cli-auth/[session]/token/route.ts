@@ -5,11 +5,11 @@
  * /api/auth/cli-session and completed by the authenticated browser flow.
  */
 
+import { cliAuthSessionsService } from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
-import { getCorsHeaders } from "@/lib/utils/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

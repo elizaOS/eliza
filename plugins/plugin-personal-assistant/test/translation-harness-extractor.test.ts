@@ -105,9 +105,8 @@ function runHarness(fixture: string): {
   stderr: string;
 } {
   const fixturePath = path.join(fixtureDir, fixture);
-  // Use bun to invoke the harness so ts-morph resolves through the workspace
-  // bun store (ts-morph is transitively installed; never declared as a
-  // direct dep of any package, so plain `node` import resolution fails).
+  // Use the repository Bun runtime to invoke the harness. Its AST dependency
+  // belongs to packages/scripts, where the relocated CLI is owned.
   // Vitest's setup files override HOME with a sandboxed tmpdir, so we can't
   // rely on `~/.bun/bin/bun`. Probe known locations.
   const bunBinary = locateBun();

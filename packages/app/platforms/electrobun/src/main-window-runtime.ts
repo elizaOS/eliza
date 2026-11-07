@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop main window runtime ts behavior for app shell integration. */
 import type { BrowserWindow } from "electrobun/bun";
 import type { WebviewEvalRpc } from "./types.js";
 

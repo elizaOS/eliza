@@ -12,14 +12,14 @@
  * choosing a domain.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cloudflareRegistrarService } from "@elizaos/cloud-shared/lib/services/cloudflare-registrar";
+import { computeDomainPrice } from "@elizaos/cloud-shared/lib/services/domain-pricing";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
-import { computeDomainPrice } from "@/lib/services/domain-pricing";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SearchSchema = z.object({
   query: z.string().trim().min(1).max(100),

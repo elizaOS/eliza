@@ -120,6 +120,129 @@ describe("standalone scheduling tick", () => {
     expect(again.fires.filter((f) => f.outcome === "fired")).toEqual([]);
   });
 
+  it("fires an owner-local cron task in the zone saved in the plugin settings", async () => {
+    const runtime = makeFakeRuntime();
+    // The scheduling plugin settings field "Timezone" saves DEFAULT_TIMEZONE.
+    (runtime as { getSetting: unknown }).getSetting = (key: string) =>
+      key === "DEFAULT_TIMEZONE" ? "America/New_York" : undefined;
+    const service = await startServiceOn(runtime);
+    const runner = service.getRunner({
+      agentId: runtime.agentId,
+      now: () => new Date("2026-10-12T03:00:00.000Z"),
+    });
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "8am owner-local reminder",
+      trigger: { kind: "cron", expression: "0 8 * * *", tz: "owner_local" },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      // The SQL and record stores project the row's creation time here; the
+      // in-memory store does not, so set it as production rows carry it.
+      metadata: { createdAtIso: "2026-10-12T03:00:00.000Z" },
+    });
+
+    // 08:00 UTC is 04:00 in New York: not the owner's 8am.
+    const utcEight = await runStandaloneSchedulingTick(runtime, {
+      now: new Date("2026-10-12T08:00:30.000Z"),
+    });
+    expect(utcEight.fires).toEqual([]);
+
+    // 12:00 UTC is 08:00 EDT.
+    const ownerEight = await runStandaloneSchedulingTick(runtime, {
+      now: new Date("2026-10-12T12:00:30.000Z"),
+    });
+    expect(ownerEight.errors).toEqual([]);
+    expect(ownerEight.fires).toEqual([
+      { taskId: task.taskId, outcome: "fired" },
+    ]);
+  });
+
+  for (const [label, trigger] of [
+    [
+      "interval",
+      {
+        kind: "interval",
+        everyMinutes: 1440,
+        from: "2026-10-09T09:00:00.000Z",
+      },
+    ],
+    ["cron", { kind: "cron", expression: "0 9 * * *", tz: "UTC" }],
+  ] as const) {
+    it(`uses up a gate-denied ${label} occurrence at its own time, even on a late tick`, async () => {
+      const runtime = makeFakeRuntime();
+      const service = await startServiceOn(runtime);
+      const runner = (iso: string) =>
+        service.getRunner({
+          agentId: runtime.agentId,
+          now: () => new Date(iso),
+        });
+      // 2026-10-09 is a Friday: Saturday and Sunday are denied by weekend_skip.
+      const task = await runner("2026-10-09T08:00:00.000Z").schedule({
+        kind: "reminder",
+        promptInstructions: "daily standup",
+        trigger,
+        shouldFire: { gates: [{ kind: "weekend_skip" }] },
+        pipeline: {
+          onSkip: [
+            {
+              taskId: "st_on_skip_template",
+              kind: "reminder",
+              promptInstructions: "standup skipped",
+              trigger: { kind: "manual" },
+              priority: "low",
+              respectsGlobalPause: false,
+              source: "user_chat",
+              createdBy: runtime.agentId,
+              ownerVisible: true,
+              state: { status: "scheduled", followupCount: 0 },
+            },
+          ],
+        },
+        priority: "low",
+        respectsGlobalPause: false,
+        source: "user_chat",
+        createdBy: runtime.agentId,
+        ownerVisible: true,
+        metadata: { createdAtIso: "2026-10-09T08:00:00.000Z" },
+      });
+      const fired: string[] = [];
+      let skipped = 0;
+      const start = Date.parse("2026-10-09T09:00:00.000Z");
+      const end = Date.parse("2026-10-12T10:00:00.000Z");
+      for (let ms = start; ms <= end; ms += 3_600_000) {
+        // Saturday's ticks run five minutes late.
+        const late = new Date(ms).getUTCDay() === 6 ? 5 * 60_000 : 0;
+        const iso = new Date(ms + late).toISOString();
+        const tick = await runStandaloneSchedulingTick(runtime, {
+          now: new Date(iso),
+        });
+        expect(tick.errors).toEqual([]);
+        for (const fire of tick.fires) {
+          if (fire.taskId !== task.taskId) continue;
+          if (fire.outcome === "skipped") skipped += 1;
+          if (fire.outcome === "fired") {
+            fired.push(iso);
+            await runner(iso).apply(task.taskId, "complete", {
+              reason: "done",
+            });
+          }
+        }
+      }
+      expect(fired).toEqual([
+        "2026-10-09T09:00:00.000Z",
+        "2026-10-12T09:00:00.000Z",
+      ]);
+      expect(skipped).toBe(2);
+      const skipChildren = (
+        await runner("2026-10-12T10:00:00.000Z").list()
+      ).filter((row) => row.state.pipelineParentId === task.taskId);
+      expect(skipChildren).toHaveLength(2);
+    });
+  }
+
   it("uses one durable core TaskService worker row and removes it on unload", async () => {
     const workerByName = new Map<string, TaskWorker>();
     const taskById = new Map<UUID, Task>();

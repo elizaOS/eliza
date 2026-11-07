@@ -228,6 +228,30 @@ describe("EDIT", () => {
     expect(result.text).toContain("aws_access_key");
   });
 
+  it("refuses a file that is not valid UTF-8 and leaves its bytes unchanged", async () => {
+    const file = path.join(env.tmpDir, "legacy.txt");
+    // Line 2 is "café" in Latin-1. A READ of line 1 alone succeeds, so the
+    // file counts as read even though the rest is not UTF-8.
+    const original = Buffer.concat([
+      Buffer.from("version = 1\n"),
+      Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]),
+    ]);
+    await fs.writeFile(file, original);
+    await env.fileState.recordRead("test-room", file);
+
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        old_string: "version = 1",
+        new_string: "version = 2",
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("file is not valid UTF-8 text");
+    expect((await fs.readFile(file)).equals(original)).toBe(true);
+  });
+
   it("requires a prior READ (must_read_first)", async () => {
     const file = path.join(env.tmpDir, "no-read.txt");
     await fs.writeFile(file, "content here", "utf8");

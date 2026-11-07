@@ -1,13 +1,13 @@
 // Handles v1 cloud API v1 documents pre upload route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { deletePendingDocumentBlob } from "../_pending-blob-cleanup";
 import {
   publicBlobUrl,
@@ -44,7 +44,7 @@ app.post("/", async (c) => {
     const files = form
       .getAll("files")
       .filter((value): value is File => value instanceof File);
-    const invalid = validateDocumentFiles(files);
+    const invalid = await validateDocumentFiles(files);
     if (invalid) return invalid;
 
     const uploaded = [];
@@ -53,7 +53,9 @@ app.post("/", async (c) => {
       const key = `documents-pre-upload/${user.id}/${Date.now()}-${crypto.randomUUID()}-${filename}`;
       await c.env.BLOB.put(key, await file.arrayBuffer(), {
         httpMetadata: { contentType: file.type || "application/octet-stream" },
+        // Account deletion finds an organization's objects by this field.
         customMetadata: {
+          organizationId: user.organization_id,
           userId: user.id,
           filename,
           size: String(file.size),

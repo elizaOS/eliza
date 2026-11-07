@@ -80,6 +80,7 @@ import {
   shouldRunIosXcuitestCoverageGuard,
   sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.ts";
+import { listNestedDylibs } from "./lib/ios-built-app.ts";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -374,25 +375,6 @@ function isCodeSigned(appPath) {
     );
   }
   return verdict.valid;
-}
-
-/** Loose dylibs under `root`, excluding anything inside a .framework (those are signed as units). */
-function listNestedDylibs(root) {
-  const dylibs = [];
-  const stack = [root];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name.endsWith(".framework")) continue;
-        stack.push(full);
-      } else if (entry.name.endsWith(".dylib")) {
-        dylibs.push(full);
-      }
-    }
-  }
-  return dylibs.sort();
 }
 
 /**

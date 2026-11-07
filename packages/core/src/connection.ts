@@ -15,7 +15,7 @@ import type { IDatabaseAdapter } from "./types/database";
 import type { Entity, Room, World } from "./types/environment.js";
 import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
-import { stringToUuid } from "./utils";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 
 /** Re-read + re-merge attempts for a world upsert that hits a stale revision. */
 const WORLD_UPSERT_STALE_ATTEMPTS = 3;
@@ -61,13 +61,7 @@ export interface EnsureConnectionsResult {
 	createdRoomParticipants: number;
 }
 
-/**
- * One-level-deep merge for entity metadata keyed by connection source. A
- * top-level replace is how an owner-aliased author's fields used to overwrite
- * the canonical owner entity's identity record: each per-source object must
- * merge field-by-field, not swap wholesale, so a connection that omits a field
- * preserves what a previous connection wrote.
- */
+/** Merges entity metadata one level per connection source. Omitted fields preserve the canonical entity identity. */
 function mergeEntitySourceMetadata(
 	existing: Metadata,
 	incoming: Record<string, unknown>,
@@ -201,6 +195,12 @@ function withRecordLocks<T>(
 	return acquire(0);
 }
 
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(Object.values(ChannelType));
+
+function isChannelType(value: unknown): value is ChannelType {
+	return typeof value === "string" && CHANNEL_TYPES.has(value);
+}
+
 /** WHY: World is required for room hierarchy; derive a stable worldId from messageServerId when not provided. */
 function resolveWorldId(
 	worldId: UUID | undefined,
@@ -225,7 +225,7 @@ export async function ensureConnections(
 	if (!connections.length) return { createdRoomParticipants: 0 };
 
 	const entityMap = new Map<
-		string,
+		UUID,
 		{
 			entityId: UUID;
 			names: string[];
@@ -233,28 +233,25 @@ export async function ensureConnections(
 			agentId: UUID;
 		}
 	>();
-	const worldMap = new Map<string, World>();
-	const roomMap = new Map<string, Room>();
-	const roomParticipants = new Map<string, Set<UUID>>();
+	const worldMap = new Map<UUID, World>();
+	const worldFallbackNames = new Map<UUID, string>();
+	const roomMap = new Map<UUID, Room>();
+	const roomExplicitTypes = new Map<UUID, ChannelType>();
+	const roomFallbackNames = new Map<UUID, string>();
+	const roomParticipants = new Map<UUID, Set<UUID>>();
 
 	for (const c of connections) {
 		const worldId = resolveWorldId(c.worldId, c.messageServerId, agentId);
 		const names = [c.name, c.userName].filter(Boolean) as string[];
 		const source = c.source || "default";
-		const entityKey = c.entityId;
-		if (!entityMap.has(entityKey)) {
-			entityMap.set(entityKey, {
-				entityId: c.entityId,
-				names: [],
-				metadata: {},
-				agentId,
-			});
-		}
-		const ent = entityMap.get(entityKey);
+		let ent = entityMap.get(c.entityId);
 		if (!ent) {
-			continue;
+			ent = { entityId: c.entityId, names: [], metadata: {}, agentId };
+			entityMap.set(c.entityId, ent);
 		}
-		ent.names = [...new Set([...ent.names, ...names])].filter(Boolean);
+		for (const name of names) {
+			if (!ent.names.includes(name)) ent.names.push(name);
+		}
 		// A connection contributes identity fields; it does not own the entity's
 		// per-source identity record. Connectors that alias several platform
 		// identities onto one canonical entity (e.g. Discord owner aliases)
@@ -271,45 +268,58 @@ export async function ensureConnections(
 			};
 		}
 
+		// `name` stays unset when the connection omits `worldName`; it is
+		// filled from the stored world (or the generated fallback) before the
+		// write, so a nameless connection cannot replace a real world name
+		// with the fallback. A name an earlier connection in this batch gave
+		// the same world is kept the same way.
+		const batchedWorld = worldMap.get(worldId);
 		const world: World = {
 			id: worldId,
-			name: c.worldName
-				? c.worldName
-				: c.messageServerId
-					? `World for server ${c.messageServerId}`
-					: `World for room ${c.roomId}`,
+			name: c.worldName || batchedWorld?.name || undefined,
 			agentId,
 			messageServerId: c.messageServerId,
 			metadata: {
-				...(worldMap.get(worldId)?.metadata ?? {}),
-				...(c.metadata ?? {}),
+				...batchedWorld?.metadata,
+				...c.metadata,
 			},
 		};
 		worldMap.set(worldId, world);
+		if (!worldFallbackNames.has(worldId)) {
+			worldFallbackNames.set(
+				worldId,
+				c.messageServerId
+					? `World for server ${c.messageServerId}`
+					: `World for room ${c.roomId}`,
+			);
+		}
 
-		const roomType =
-			typeof c.type === "string" &&
-			(Object.values(ChannelType) as string[]).includes(c.type)
-				? (c.type as keyof typeof ChannelType)
-				: ChannelType.DM;
+		const roomType = isChannelType(c.type) ? c.type : ChannelType.DM;
+		// `type` is optional: remember only a type the connection actually
+		// gave, so a type-less connection can keep the stored room's type
+		// at write time instead of demoting it to the DM default.
+		if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
+			roomExplicitTypes.set(c.roomId, roomType);
+		}
+		// `name` and `channelId` stay unset here when the connection omits them;
+		// they are filled from the stored room (or a default) before the write.
 		const room: Room = {
 			id: c.roomId,
-			name: c.roomName || c.name || "default",
+			name: c.roomName || undefined,
 			source,
 			type: roomType,
-			channelId: c.channelId ?? c.roomId,
+			channelId: c.channelId,
 			serverId: c.serverId,
 			messageServerId: c.messageServerId,
 			worldId,
 		};
 		roomMap.set(c.roomId, room);
+		if (c.name) roomFallbackNames.set(c.roomId, c.name);
 
-		if (!roomParticipants.has(c.roomId)) {
-			roomParticipants.set(c.roomId, new Set());
-		}
-		const participants = roomParticipants.get(c.roomId);
+		let participants = roomParticipants.get(c.roomId);
 		if (!participants) {
-			continue;
+			participants = new Set();
+			roomParticipants.set(c.roomId, participants);
 		}
 		participants.add(c.entityId);
 		participants.add(agentId);
@@ -324,9 +334,7 @@ export async function ensureConnections(
 		entityIds.map((id) => `entity:${id}`),
 		async () => {
 			const existingEntities =
-				entityIds.length > 0
-					? await adapter.getEntitiesByIds(entityIds as UUID[])
-					: [];
+				entityIds.length > 0 ? await adapter.getEntitiesByIds(entityIds) : [];
 			const existingByKey = new Map(existingEntities.map((e) => [e.id, e]));
 			const entities: Entity[] = [];
 			for (const [, v] of entityMap) {
@@ -353,7 +361,7 @@ export async function ensureConnections(
 		},
 	);
 
-	const worldIds = [...worldMap.keys()] as UUID[];
+	const worldIds = [...worldMap.keys()];
 	await withRecordLocks(
 		adapter,
 		worldIds.map((id) => `world:${id}`),
@@ -378,6 +386,12 @@ export async function ensureConnections(
 							merged: {
 								...existing,
 								...world,
+								name:
+									world.name ||
+									existing?.name ||
+									worldFallbackNames.get(world.id),
+								messageServerId:
+									world.messageServerId ?? existing?.messageServerId,
 								agentId,
 								metadata: {
 									...(existing?.metadata ?? {}),
@@ -414,21 +428,42 @@ export async function ensureConnections(
 		},
 	);
 
-	const rooms = [...roomMap.values()].map((r) => ({
-		...r,
-		agentId,
-	}));
+	// A connection that omits the room's channel, name, or type keeps what the
+	// room already records, such as the platform conversation id a connector
+	// stored through ensureRoomExists; replies to the room are addressed by it.
+	// The server binding is the same: a caller that resolves the room through
+	// `worldId` omits `serverId`/`messageServerId`, and the write replaces the
+	// whole row, so an omitted binding must fall back to the stored one.
+	const storedRooms =
+		roomMap.size > 0 ? await adapter.getRoomsByIds([...roomMap.keys()]) : [];
+	const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]));
+	const rooms = [...roomMap.values()].map((r) => {
+		const stored = storedRoomById.get(r.id);
+		return {
+			...r,
+			name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
+			channelId: r.channelId ?? stored?.channelId ?? r.id,
+			// A connection that omits `type` keeps the stored room's type;
+			// the DM default applies only when no type is recorded at all.
+			type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+			serverId: r.serverId ?? stored?.serverId,
+			messageServerId: r.messageServerId ?? stored?.messageServerId,
+			agentId,
+		};
+	});
 	if (rooms.length) await adapter.upsertRooms(rooms);
 
+	// One batched read: the adapter returns one entry per requested room, in order.
+	const currentParticipants = await adapter.getParticipantsForRooms([
+		...roomParticipants.keys(),
+	]);
 	let createdRoomParticipants = 0;
+	let index = 0;
 	for (const [roomId, entityIdsSet] of roomParticipants) {
-		const currentResult = await adapter.getParticipantsForRooms([
-			roomId as UUID,
-		]);
-		const current = currentResult[0]?.entityIds ?? [];
+		const current = currentParticipants[index++]?.entityIds ?? [];
 		const missing = [...entityIdsSet].filter((id) => !current.includes(id));
 		if (missing.length) {
-			await adapter.createRoomParticipants(missing, roomId as UUID);
+			await adapter.createRoomParticipants(missing, roomId);
 			createdRoomParticipants += missing.length;
 		}
 	}

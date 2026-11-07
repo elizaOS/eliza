@@ -13,15 +13,13 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import { scenario } from "@elizaos/testing";
 import {
   type DeterministicModelFixture,
-  scenario,
-  strictActionRouteFixtures,
-} from "@elizaos/testing";
-import {
   matchesTypedTurnInput,
+  strictActionRouteFixtures,
   typedTurnEvaluationFixtures,
-} from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
+} from "@elizaos/testing/models";
 import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
 import { evaluatorSourceRevision } from "../../../../../plugin-assistant/src/services/evaluator-progress.ts";

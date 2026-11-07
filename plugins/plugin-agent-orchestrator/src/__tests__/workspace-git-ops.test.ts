@@ -78,11 +78,17 @@ describe("getStatus (real git)", () => {
     writeFileSync(join(work, "staged.txt"), "staged\n");
     git(work, "add", "staged.txt");
 
+    git(work, "add", "README.md");
+    writeFileSync(join(work, "README.md"), "# unstaged follow-up\n");
+    writeFileSync(join(work, "staged.txt"), "unstaged after addition\n");
+
     const status = await getStatus(work);
     expect(status.clean).toBe(false);
     expect(status.untracked).toContain("new.txt");
     expect(status.modified).toContain("README.md");
     expect(status.staged).toContain("staged.txt");
+    expect(status.staged).toContain("README.md");
+    expect(status.modified).toContain("staged.txt");
   });
 });
 

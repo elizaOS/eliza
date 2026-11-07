@@ -4,10 +4,13 @@
  * distinct from empty/loading state, and can detach into the desktop host's
  * native always-on-top app window.
  */
+import {
+  Button,
+  client,
+  isElectrobunRuntime,
+  openDesktopAppWindow,
+} from "@elizaos/ui";
 
-import { Button } from "@elizaos/ui";
-import { client } from "@elizaos/ui/api";
-import { isElectrobunRuntime, openDesktopAppWindow } from "@elizaos/ui/bridge";
 import {
   type ReactElement,
   useCallback,

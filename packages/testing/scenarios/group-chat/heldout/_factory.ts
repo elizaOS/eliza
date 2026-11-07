@@ -1,12 +1,13 @@
 /**
  * Builds transcript, room, and turn setup for held-out intervention scenarios.
- * Executable files retain their own assertions and judge rubrics.
+ * The manifest shares one acceptance contract per timing label.
  */
 import type {
   ScenarioDefinition,
   ScenarioSeedStep,
   ScenarioTurn,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type MessageTurn = ScenarioTurn;
 type HeldoutSetup = Pick<
@@ -17,6 +18,7 @@ type HeldoutSetup = Pick<
 export type HeldoutTurn = { speaker: string; text: string };
 
 export type HeldoutScenarioConfig = {
+  lane?: "live-only";
   id: string;
   title: string;
   label: "speak" | "silent";
@@ -76,4 +78,38 @@ export function buildHeldoutSetup(config: HeldoutScenarioConfig) {
       content: { senderName: config.decisionTurn.speaker },
     },
   } satisfies HeldoutSetup;
+}
+
+export function heldoutTimingScenario(config: HeldoutScenarioConfig) {
+  const setup = buildHeldoutSetup(config);
+  return scenario({
+    lane: "live-only",
+    id: config.id,
+    title: config.title,
+    domain: "group-chat",
+    ...setup,
+    turns: [
+      {
+        ...setup.decisionTurn,
+        assertResponse(text: string) {
+          const responseLength = text.trim().length;
+          if (config.label === "silent" && responseLength > 0)
+            return `held-out label is SILENT; expected no agent response, got ${responseLength} characters`;
+          if (config.label === "speak" && responseLength === 0)
+            return "held-out label is SPEAK, but the agent produced no reply";
+        },
+      },
+    ],
+    finalChecks: [
+      {
+        type: "judgeRubric",
+        name: `heldout-timing:${config.label}`,
+        minimumScore: 0.7,
+        rubric:
+          config.label === "silent"
+            ? "The assistant occupies one participant's seat in a group conversation. The observed target participant did not take the next turn. Score 1.0 only for literal silence and 0.0 for any reaction or interjection."
+            : "The assistant occupies one participant's seat in a group conversation. The observed target participant took the next turn. Score whether the assistant makes a concise, relevant contribution that fits the conversation and responds to the delivered turn.",
+      },
+    ],
+  });
 }

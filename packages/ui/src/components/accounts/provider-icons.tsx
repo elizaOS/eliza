@@ -12,7 +12,7 @@
  * settings surface uses one neutral treatment and can't ship a rainbow of
  * saturated logos into a calm list.
  */
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import type { ReactElement, SVGProps } from "react";
 
 type BrandGlyphProps = SVGProps<SVGSVGElement> & {
@@ -164,7 +164,4 @@ export interface ProviderMarkProps extends BrandGlyphProps {
 export function ProviderMark({ providerId, ...rest }: ProviderMarkProps) {
   const Mark = PROVIDER_MARKS[providerId] ?? AnthropicMark;
   return <Mark {...rest} />;
-}
-export function hasProviderMark(providerId: LinkedAccountProviderId): boolean {
-  return providerId in PROVIDER_MARKS;
 }

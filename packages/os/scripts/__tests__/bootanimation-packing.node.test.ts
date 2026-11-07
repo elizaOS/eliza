@@ -13,19 +13,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { parseArgs as parseBranded } from "../android/build-eliza-bootanimation.ts";
-import { parseArgs as parseGeneric } from "../distro-android/build-bootanimation.ts";
+import { parseArgs } from "../android/build-bootanimation.ts";
 
 const script = fileURLToPath(
-  new URL("../distro-android/build-bootanimation.ts", import.meta.url),
-);
-const branded = fileURLToPath(
-  new URL("../android/build-eliza-bootanimation.ts", import.meta.url),
+  new URL("../android/build-bootanimation.ts", import.meta.url),
 );
 
-test("shared argument parsing preserves brand defaults and explicit overrides", () => {
-  assert.throws(() => parseGeneric([]), /--frames is required/);
-  const defaults = parseBranded([]);
+test("argument parsing preserves default frames and explicit overrides", () => {
+  const defaults = parseArgs([]);
   assert.equal(
     defaults.framesDir,
     fileURLToPath(
@@ -37,11 +32,13 @@ test("shared argument parsing preserves brand defaults and explicit overrides", 
     path.join(defaults.framesDir, "bootanimation.zip"),
   );
   const argv = ["--frames", "custom frames", "--out", "custom.zip", "--check"];
-  assert.deepEqual(parseBranded(argv), parseGeneric(argv));
-  for (const parse of [parseGeneric, parseBranded]) {
-    assert.throws(() => parse(["--frames"]), /requires a value/);
-    assert.throws(() => parse(["--unknown"]), /Unknown argument/);
-  }
+  assert.deepEqual(parseArgs(argv), {
+    framesDir: path.resolve("custom frames"),
+    outPath: path.resolve("custom.zip"),
+    check: true,
+  });
+  assert.throws(() => parseArgs(["--frames"]), /requires a value/);
+  assert.throws(() => parseArgs(["--unknown"]), /Unknown argument/);
 });
 
 async function fixture(t) {
@@ -152,32 +149,30 @@ test("output cannot overwrite the descriptor or pollute a frame directory", asyn
   assert.deepEqual(await readdir(path.join(frames, "part0")), ["000.png"]);
 });
 
-test("generic and branded packers retain check mode and create store-only archives", async (t) => {
+test("packer retains check mode and creates store-only archives", async (t) => {
   const { root, frames, out } = await fixture(t);
-  for (const entrypoint of [script, branded]) {
-    const check = run(entrypoint, frames, out, { args: ["--check"] });
-    assert.equal(check.status, 0, check.stderr);
-    const packed = run(entrypoint, frames, out);
-    assert.equal(packed.status, 0, packed.stderr);
-    assert.notDeepEqual(await readFile(out), Buffer.from("previous archive"));
-    const inspect = spawnSync(
-      "python3",
-      [
-        "-c",
-        "import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(json.dumps({x.filename:x.compress_type for x in z.infolist()})); assert z.read('part0/000.png') == b'fixture frame'",
-        out,
-      ],
-      { encoding: "utf8" },
-    );
-    assert.equal(inspect.status, 0, inspect.stderr);
-    assert.deepEqual(JSON.parse(inspect.stdout), {
-      "desc.txt": 0,
-      "part0/000.png": 0,
-    });
-    const unchanged = await readFile(out);
-    assert.equal(run(entrypoint, frames, out, { args: ["--check"] }).status, 0);
-    assert.deepEqual(await readFile(out), unchanged);
-  }
+  const check = run(script, frames, out, { args: ["--check"] });
+  assert.equal(check.status, 0, check.stderr);
+  const packed = run(script, frames, out);
+  assert.equal(packed.status, 0, packed.stderr);
+  assert.notDeepEqual(await readFile(out), Buffer.from("previous archive"));
+  const inspect = spawnSync(
+    "python3",
+    [
+      "-c",
+      "import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(json.dumps({x.filename:x.compress_type for x in z.infolist()})); assert z.read('part0/000.png') == b'fixture frame'",
+      out,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(inspect.status, 0, inspect.stderr);
+  assert.deepEqual(JSON.parse(inspect.stdout), {
+    "desc.txt": 0,
+    "part0/000.png": 0,
+  });
+  const unchanged = await readFile(out);
+  assert.equal(run(script, frames, out, { args: ["--check"] }).status, 0);
+  assert.deepEqual(await readFile(out), unchanged);
   assert.deepEqual((await readdir(root)).sort(), [
     "bootanimation.zip",
     "frames",

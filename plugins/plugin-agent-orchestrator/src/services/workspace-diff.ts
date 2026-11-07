@@ -344,6 +344,12 @@ async function fileDiff(
     (existsSync(absolute) && statSync(absolute).isDirectory())
   )
     return "";
+  // An empty diff for a path Git tracks means its content matches the base (an
+  // edit that was reverted, an identical rewrite); only an untracked file is new.
+  const indexed = parseNullRecords(
+    await git(workdir, ["ls-files", "-z", "--", `:(literal)${file}`]),
+  );
+  if (indexed.includes(file)) return "";
   const args = ["diff", "--no-index", "--", "/dev/null", file];
   const created = await gitResult(workdir, args);
   if (created.status === 1) return created.stdout;
@@ -399,11 +405,21 @@ export async function captureChangeSet(
       .map((file) => toWorkdirRelative(workdir, file))
       .filter((file) => file.length > 0),
   );
+  // A workdir below the repository root (a package in a monorepo) reads Git
+  // paths relative to itself, like the tool paths. The spawn baseline keeps
+  // root-relative paths, the form the residuals gate compares with porcelain.
+  const prefix = (await git(workdir, ["rev-parse", "--show-prefix"])).replace(
+    /\n$/,
+    "",
+  );
   const dirtyAtSpawn = new Set(
-    baselineDirty.filter((file) => !agentWrittenSet.has(file)),
+    baselineDirty
+      .filter((file) => file.startsWith(prefix))
+      .map((file) => file.slice(prefix.length))
+      .filter((file) => !agentWrittenSet.has(file)),
   );
   const allTracked = parseNameStatus(
-    await git(workdir, ["diff", "--name-status", "-z", base]),
+    await git(workdir, ["diff", "--name-status", "-z", "--relative", base]),
   );
   const tracked = allTracked.filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
@@ -535,7 +551,17 @@ export async function capturePrGateChangeSet(
     names = await gitResult(workdir, args);
   }
   const changedFiles = parseNameStatus(requireGitSuccess(names, workdir, args));
-  const diffRaw = await git(workdir, ["diff", ...refs]);
+  // The secret scan reads `+` lines, so the user's Git config (an external
+  // diff tool, color.ui=always, textconv) and `-diff`/`binary` attributes
+  // must not change the patch format or hide a file's added lines.
+  const diffRaw = await git(workdir, [
+    "diff",
+    "--no-ext-diff",
+    "--no-color",
+    "--no-textconv",
+    "--text",
+    ...refs,
+  ]);
   return {
     changedFiles,
     diff: diffRaw,
@@ -751,4 +777,22 @@ export function subtractChangeSetBaseline(
     diffStat: summarizeChangeSetFiles(changedFiles),
     fileDiffs,
   };
+}
+
+/**
+ * Spawn-time baseline paths the session did not write with a tool call.
+ * {@link captureChangeSet} keeps a baseline file the agent wrote, so evidence
+ * that subtracts the baseline again must leave that file in place.
+ */
+export function baselinePathsNotWritten(
+  workdir: string,
+  baselinePaths: readonly string[],
+  toolPaths: readonly string[],
+): string[] {
+  const written = new Set(
+    toolPaths
+      .map((file) => toWorkdirRelative(workdir, file))
+      .filter((file) => file.length > 0),
+  );
+  return baselinePaths.filter((file) => !written.has(file));
 }

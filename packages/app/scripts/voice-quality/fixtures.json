@@ -1,0 +1,854 @@
+{
+  "schema": "eliza-voice-quality-fixtures-v1",
+  "thresholds": {
+    "ttsRoundTripWer": 0.08,
+    "asrWer": 0.06,
+    "silenceTranscript": ""
+  },
+  "tts": {
+    "paradeeSamples": {
+      "description": "Paradee model card sample sentences (numbered, one per line).",
+      "url": "https://huggingface.co/sahilmahendrakar/Paradee-8M-v1.0/resolve/c7f83f86c04e84d0ae94cbe1aad7618e0544f80a/samples/sentences.txt",
+      "sha256": "2d411facb6b0429ad05f6ea3abf9c6a79ba6613990cadf54e2213e11a8c9fd1b",
+      "license": "Apache-2.0",
+      "format": "numbered-lines"
+    },
+    "qualifySentences": {
+      "description": "The 25 on-device qualify sentences.",
+      "path": "packages/app/scripts/paradee-voice/qualify/app/src/androidTest/assets/sentences.txt",
+      "sha256": "51387dfe3e38a4371821f31943bb91043a9a571f6424b82591613259ae03529d",
+      "license": "MIT",
+      "format": "lines"
+    },
+    "paradeeHeldOut": {
+      "description": "First 200 WikiText-103 sentences of the Paradee training set, held out from training (training/README.md).",
+      "url": "https://raw.githubusercontent.com/sahilmahendrakar/paradee/9c8b4d7504cbee7e64de2d0341bb690f0b0ab708/training/data/wikitext_sents.json",
+      "sha256": "95d7edd69cfbacb67ef7c4df120d31c1dab2a3c91a12fd287abe506760c6ac15",
+      "license": "CC-BY-SA-3.0 (WikiText-103)",
+      "format": "json-array",
+      "take": 200
+    }
+  },
+  "asr": {
+    "librispeech": {
+      "description": "100 LibriSpeech test-clean utterances, every 26.2th of the 2620 sorted by id.",
+      "archiveUrl": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+      "archiveSha256": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23",
+      "license": "CC-BY-4.0",
+      "utterances": [
+        {
+          "id": "1089-134686-0000",
+          "path": "test-clean/1089/134686/1089-134686-0000.flac",
+          "sha256": "30885601173f96b0d8ddd020dc959b055c6c1582b85a33e3fcab8c4b08ed94c2",
+          "bytes": 183318,
+          "seconds": 10.435,
+          "text": "HE HOPED THERE WOULD BE STEW FOR DINNER TURNIPS AND CARROTS AND BRUISED POTATOES AND FAT MUTTON PIECES TO BE LADLED OUT IN THICK PEPPERED FLOUR FATTENED SAUCE"
+        },
+        {
+          "id": "1089-134686-0026",
+          "path": "test-clean/1089/134686/1089-134686-0026.flac",
+          "sha256": "b227236c3de109d57e2a9cfd3e383d1c928479334c26517e44d560e959e7e3ad",
+          "bytes": 71544,
+          "seconds": 4.01,
+          "text": "THE RECTOR DID NOT ASK FOR A CATECHISM TO HEAR THE LESSON FROM"
+        },
+        {
+          "id": "1089-134691-0014",
+          "path": "test-clean/1089/134691/1089-134691-0014.flac",
+          "sha256": "5af0c598b32b6a7a21e0715ed463c2f6650477f006dbe9af7395f3d31624ee98",
+          "bytes": 87482,
+          "seconds": 4.755,
+          "text": "THE PHRASE AND THE DAY AND THE SCENE HARMONIZED IN A CHORD"
+        },
+        {
+          "id": "1188-133604-0014",
+          "path": "test-clean/1188/133604/1188-133604-0014.flac",
+          "sha256": "23d118b9f76dcac8c2d5889e9a977a0560f21872337bd81fdbf9c0fa1544446a",
+          "bytes": 71734,
+          "seconds": 4.39,
+          "text": "DO NOT THEREFORE THINK THAT THE GOTHIC SCHOOL IS AN EASY ONE"
+        },
+        {
+          "id": "1188-133604-0040",
+          "path": "test-clean/1188/133604/1188-133604-0040.flac",
+          "sha256": "2cb2f23791de43ca8bcda90158c67b84df3948562af4b41ccb99d95aa6dc490e",
+          "bytes": 58132,
+          "seconds": 3.23,
+          "text": "THE CRAMPNESS AND THE POVERTY ARE ALL INTENDED"
+        },
+        {
+          "id": "121-123859-0002",
+          "path": "test-clean/121/123859/121-123859-0002.flac",
+          "sha256": "5c0fb9e868752b38e70916282d69e6d6519a3282162886018482827434021bce",
+          "bytes": 522108,
+          "seconds": 30.04,
+          "text": "BUT RECKONING TIME WHOSE MILLION'D ACCIDENTS CREEP IN TWIXT VOWS AND CHANGE DECREES OF KINGS TAN SACRED BEAUTY BLUNT THE SHARP'ST INTENTS DIVERT STRONG MINDS TO THE COURSE OF ALTERING THINGS ALAS WHY FEARING OF TIME'S TYRANNY MIGHT I NOT THEN SAY NOW I LOVE YOU BEST WHEN I WAS CERTAIN O'ER INCERTAINTY CROWNING THE PRESENT DOUBTING OF THE REST"
+        },
+        {
+          "id": "121-127105-0023",
+          "path": "test-clean/121/127105/121-127105-0023.flac",
+          "sha256": "4b3979253bd95e23eca3dff699c225d223be8895b3db1d3579ac100191aafb5a",
+          "bytes": 214812,
+          "seconds": 10.91,
+          "text": "LET ME SAY HERE DISTINCTLY TO HAVE DONE WITH IT THAT THIS NARRATIVE FROM AN EXACT TRANSCRIPT OF MY OWN MADE MUCH LATER IS WHAT I SHALL PRESENTLY GIVE"
+        },
+        {
+          "id": "1221-135766-0012",
+          "path": "test-clean/1221/135766/1221-135766-0012.flac",
+          "sha256": "56ad486883dbcedd2c46751126acefdb4161ee70eede11432560f7b9dca71d1b",
+          "bytes": 328694,
+          "seconds": 16.22,
+          "text": "BROODING OVER ALL THESE MATTERS THE MOTHER FELT LIKE ONE WHO HAS EVOKED A SPIRIT BUT BY SOME IRREGULARITY IN THE PROCESS OF CONJURATION HAS FAILED TO WIN THE MASTER WORD THAT SHOULD CONTROL THIS NEW AND INCOMPREHENSIBLE INTELLIGENCE"
+        },
+        {
+          "id": "1221-135767-0022",
+          "path": "test-clean/1221/135767/1221-135767-0022.flac",
+          "sha256": "605e4a0996766b31d74e9d07af1c4d5105c5ec715e1784dc1c159c7ac05cd494",
+          "bytes": 295876,
+          "seconds": 14.395,
+          "text": "BUT THE PROPRIETOR APPEARED ALREADY TO HAVE RELINQUISHED AS HOPELESS THE EFFORT TO PERPETUATE ON THIS SIDE OF THE ATLANTIC IN A HARD SOIL AND AMID THE CLOSE STRUGGLE FOR SUBSISTENCE THE NATIVE ENGLISH TASTE FOR ORNAMENTAL GARDENING"
+        },
+        {
+          "id": "1284-1180-0023",
+          "path": "test-clean/1284/1180/1284-1180-0023.flac",
+          "sha256": "ba4ad10b9a461cba18198769e00ec92622a53906d153cd3bd513226e1398aeef",
+          "bytes": 118879,
+          "seconds": 5.61,
+          "text": "YOU SEE I'VE LIVED ALL MY LIFE WITH UNC NUNKIE THE SILENT ONE AND THERE WAS NO ONE TO TELL ME ANYTHING"
+        },
+        {
+          "id": "1284-1181-0017",
+          "path": "test-clean/1284/1181/1284-1181-0017.flac",
+          "sha256": "fe3ca1e1ebd628db6648e22c0221b1c0210d1ae912ae1910c3d95fba255dae8c",
+          "bytes": 239315,
+          "seconds": 11.775,
+          "text": "THE WIZARD OF OZ WHO USED TO BE A HUMBUG AND KNEW NO MAGIC AT ALL HAS BEEN TAKING LESSONS OF GLINDA AND I'M TOLD HE IS GETTING TO BE A PRETTY GOOD WIZARD BUT HE IS MERELY THE ASSISTANT OF THE GREAT SORCERESS"
+        },
+        {
+          "id": "1320-122612-0013",
+          "path": "test-clean/1320/122612/1320-122612-0013.flac",
+          "sha256": "c097dfbb4fc05af694fa3809e1bd0cb4789d2269643f64bc8f125039cac16f82",
+          "bytes": 127930,
+          "seconds": 6.55,
+          "text": "A CIRCLE OF A FEW HUNDRED FEET IN CIRCUMFERENCE WAS DRAWN AND EACH OF THE PARTY TOOK A SEGMENT FOR HIS PORTION"
+        },
+        {
+          "id": "1320-122617-0022",
+          "path": "test-clean/1320/122617/1320-122617-0022.flac",
+          "sha256": "9c4d285c536c8562a3b9add558d159b84c5b3d8c27922669906ae8da831fc25c",
+          "bytes": 74492,
+          "seconds": 3.855,
+          "text": "THE DELAWARES ARE CHILDREN OF THE TORTOISE AND THEY OUTSTRIP THE DEER"
+        },
+        {
+          "id": "1580-141083-0006",
+          "path": "test-clean/1580/141083/1580-141083-0006.flac",
+          "sha256": "ff2026014f1a8388d90c757b4b1ac0db84fa634dd92c94ab9139581527ea5e45",
+          "bytes": 219354,
+          "seconds": 10.85,
+          "text": "THE ONLY DUPLICATE WHICH EXISTED SO FAR AS I KNEW WAS THAT WHICH BELONGED TO MY SERVANT BANNISTER A MAN WHO HAS LOOKED AFTER MY ROOM FOR TEN YEARS AND WHOSE HONESTY IS ABSOLUTELY ABOVE SUSPICION"
+        },
+        {
+          "id": "1580-141083-0032",
+          "path": "test-clean/1580/141083/1580-141083-0032.flac",
+          "sha256": "430ce59bdb19775c393743374d2db4c371c84f8e445df1fac50c0d387ed9f331",
+          "bytes": 94869,
+          "seconds": 4.135,
+          "text": "WATSON I HAVE ALWAYS DONE YOU AN INJUSTICE THERE ARE OTHERS"
+        },
+        {
+          "id": "1580-141084-0005",
+          "path": "test-clean/1580/141084/1580-141084-0005.flac",
+          "sha256": "a99d1d34f39b3bd7a7d274a932a8010d58c41749ab6c9c4b097f5892a60d3888",
+          "bytes": 53209,
+          "seconds": 2.515,
+          "text": "THAT IS VERY IMPORTANT SAID HOLMES"
+        },
+        {
+          "id": "1580-141084-0031",
+          "path": "test-clean/1580/141084/1580-141084-0031.flac",
+          "sha256": "dbb3a748a7f0440e969f42d3f4796f889960a88d6a4027fbdead4276ae5b1dcf",
+          "bytes": 140120,
+          "seconds": 6.47,
+          "text": "WE WANT TO KNOW MISTER GILCHRIST HOW YOU AN HONOURABLE MAN EVER CAME TO COMMIT SUCH AN ACTION AS THAT OF YESTERDAY"
+        },
+        {
+          "id": "1995-1826-0006",
+          "path": "test-clean/1995/1826/1995-1826-0006.flac",
+          "sha256": "3a670c460ca8607a5f67fed57c329dc6f7df7479cec7484b2786a326c5305fd2",
+          "bytes": 48337,
+          "seconds": 2.455,
+          "text": "BEEN LOOKING UP TOOMS COUNTY"
+        },
+        {
+          "id": "1995-1836-0005",
+          "path": "test-clean/1995/1836/1995-1836-0005.flac",
+          "sha256": "c313336adfb9a4d953ce34de9cc59e0871719418b22a37afca11b4e3f0e9d6dd",
+          "bytes": 204545,
+          "seconds": 10.9,
+          "text": "MISSUS GREY HAD MET SOUTHERNERS BEFORE BUT NOT INTIMATELY AND SHE ALWAYS HAD IN MIND VIVIDLY THEIR CRUELTY TO POOR NEGROES A SUBJECT SHE MADE A POINT OF INTRODUCING FORTHWITH"
+        },
+        {
+          "id": "1995-1837-0016",
+          "path": "test-clean/1995/1837/1995-1837-0016.flac",
+          "sha256": "b9eb0a8395b65ed53073dbf7cb02bdcdcdb8e44473c469337e78e12963173290",
+          "bytes": 137278,
+          "seconds": 7.19,
+          "text": "FOR ONE LONG MOMENT HE PAUSED STUPID AGAPE WITH UTTER AMAZEMENT THEN LEANED DIZZILY AGAINST A TREE"
+        },
+        {
+          "id": "2094-142345-0013",
+          "path": "test-clean/2094/142345/2094-142345-0013.flac",
+          "sha256": "9a74e6d07ee1eea8c593813b25f46d206bcde351a41bcbbfbf2794535a2766b8",
+          "bytes": 279871,
+          "seconds": 14.25,
+          "text": "HER TONGUE WAS NOT LESS KEEN THAN HER EYE AND WHENEVER A DAMSEL CAME WITHIN EARSHOT SEEMED TO TAKE UP AN UNFINISHED LECTURE AS A BARREL ORGAN TAKES UP A TUNE PRECISELY AT THE POINT WHERE IT HAD LEFT OFF"
+        },
+        {
+          "id": "2094-142345-0039",
+          "path": "test-clean/2094/142345/2094-142345-0039.flac",
+          "sha256": "21d7d00350a4ca2b0109da67cfad724f36979e7c1b2e098f9327bc8c4f433435",
+          "bytes": 132257,
+          "seconds": 6.28,
+          "text": "I'VE STRONG ASSURANCE THAT NO EVIL WILL HAPPEN TO YOU AND MY UNCLE AND THE CHILDREN FROM ANYTHING I'VE DONE"
+        },
+        {
+          "id": "2300-131720-0004",
+          "path": "test-clean/2300/131720/2300-131720-0004.flac",
+          "sha256": "a187f1721930db5bff0bcea7e64c54646a336ed38bab30f7a1a8e36f0210ad6e",
+          "bytes": 352716,
+          "seconds": 19.91,
+          "text": "OWING TO HIS INSISTENCE ON LOW PRESSURE DIRECT CURRENT FOR USE IN DENSELY POPULATED DISTRICTS AS THE ONLY SAFE AND TRULY UNIVERSAL PROFITABLE WAY OF DELIVERING ELECTRICAL ENERGY TO THE CONSUMERS EDISON HAS BEEN FREQUENTLY SPOKEN OF AS AN OPPONENT OF THE ALTERNATING CURRENT"
+        },
+        {
+          "id": "2300-131720-0030",
+          "path": "test-clean/2300/131720/2300-131720-0030.flac",
+          "sha256": "51b2c9b1eb35a387f7054890a93bfb015896a60d66f1b8d1b2546e7f2d097c51",
+          "bytes": 187279,
+          "seconds": 9.98,
+          "text": "THE PRINCIPLE EMPLOYED IN THE EDISON ELECTROLYTIC METER IS THAT WHICH EXEMPLIFIES THE POWER OF ELECTRICITY TO DECOMPOSE A CHEMICAL SUBSTANCE"
+        },
+        {
+          "id": "237-126133-0014",
+          "path": "test-clean/237/126133/237-126133-0014.flac",
+          "sha256": "64ed6333f32587ec45cf090f621f82779994e8e197abe91e64a6448aa491d0ec",
+          "bytes": 124355,
+          "seconds": 6.79,
+          "text": "ASKED PHRONSIE IN INTENSE INTEREST SLIPPING DOWN OUT OF POLLY'S ARMS AND CROWDING UP CLOSE TO JASPER'S SIDE"
+        },
+        {
+          "id": "237-134493-0015",
+          "path": "test-clean/237/134493/237-134493-0015.flac",
+          "sha256": "c03f76f5a6042b17abff06937238ea38cad9b79adc7b5f88a401d632b95d00f6",
+          "bytes": 140608,
+          "seconds": 6.55,
+          "text": "THERE WAS SOMETHING INDIVIDUAL ABOUT THE GREAT FARM A MOST UNUSUAL TRIMNESS AND CARE FOR DETAIL"
+        },
+        {
+          "id": "237-134500-0022",
+          "path": "test-clean/237/134500/237-134500-0022.flac",
+          "sha256": "0104f3a20147963dccdd724080c0c3b014b9c202303512e3c1b4bf284586438c",
+          "bytes": 105370,
+          "seconds": 5.165,
+          "text": "WHEN SHE USED TO TELL ME ABOUT HIM I ALWAYS WONDERED WHETHER SHE WASN'T A LITTLE IN LOVE WITH HIM"
+        },
+        {
+          "id": "260-123286-0005",
+          "path": "test-clean/260/123286/260-123286-0005.flac",
+          "sha256": "4a8782c6fc11289057c003ad243f3127183d25ff6e8fb014c224e89613f639b1",
+          "bytes": 88780,
+          "seconds": 4.81,
+          "text": "I AM NOT COMPLAINING THAT THE RATE IS SLOW BUT THAT THE SEA IS SO WIDE"
+        },
+        {
+          "id": "260-123286-0031",
+          "path": "test-clean/260/123286/260-123286-0031.flac",
+          "sha256": "269d142f97190494ae29fae077c9c0c8b1f8752a0065a4140e31526d5b54aee5",
+          "bytes": 85660,
+          "seconds": 5.06,
+          "text": "AS FOR THE ICHTHYOSAURUS HAS HE RETURNED TO HIS SUBMARINE CAVERN"
+        },
+        {
+          "id": "260-123288-0025",
+          "path": "test-clean/260/123288/260-123288-0025.flac",
+          "sha256": "eda05844719967171cd88ed30d74e4a31dfb75ef489c2fa1c7911a447abeb6fd",
+          "bytes": 238964,
+          "seconds": 13.445,
+          "text": "HERE IT COMES THERE IT GLIDES NOW IT IS UP THE RAGGED STUMP OF THE MAST THENCE IT LIGHTLY LEAPS ON THE PROVISION BAG DESCENDS WITH A LIGHT BOUND AND JUST SKIMS THE POWDER MAGAZINE HORRIBLE"
+        },
+        {
+          "id": "2830-3979-0002",
+          "path": "test-clean/2830/3979/2830-3979-0002.flac",
+          "sha256": "e9dfc31973729f94002247903620760456a6e183b10233dde71f28e4435ea27b",
+          "bytes": 79600,
+          "seconds": 4.315,
+          "text": "LET US BEGIN WITH THAT HIS COMMENTARY ON GALATIANS"
+        },
+        {
+          "id": "2830-3980-0015",
+          "path": "test-clean/2830/3980/2830-3980-0015.flac",
+          "sha256": "73de98453e587471472eda9f928fa28ff9316224418f1533a0734a6e0a528cc2",
+          "bytes": 58311,
+          "seconds": 2.685,
+          "text": "FOR A PERSON TO POSSESS KNOWLEDGE IS NOT ENOUGH"
+        },
+        {
+          "id": "2830-3980-0041",
+          "path": "test-clean/2830/3980/2830-3980-0041.flac",
+          "sha256": "45b0067f8425a453861fce416acbdf96d3c92be70e8868b77209228ce14d3ce3",
+          "bytes": 104027,
+          "seconds": 4.89,
+          "text": "GRACE INVOLVES THE REMISSION OF SINS PEACE AND A HAPPY CONSCIENCE"
+        },
+        {
+          "id": "2830-3980-0067",
+          "path": "test-clean/2830/3980/2830-3980-0067.flac",
+          "sha256": "7a5e5fe4ee8b37f3b1d15379dde632e10fa7349152fc41c927c9b165bd557772",
+          "bytes": 166151,
+          "seconds": 8.13,
+          "text": "THIS SENTENCE ALSO DEFINES OUR SINS AS GREAT SO GREAT IN FACT THAT THE WHOLE WORLD COULD NOT MAKE AMENDS FOR A SINGLE SIN"
+        },
+        {
+          "id": "2961-960-0016",
+          "path": "test-clean/2961/960/2961-960-0016.flac",
+          "sha256": "3cbc9d5a919c05be30d65cca738fc22fb5c1bb1958de78e447cc1353003cba58",
+          "bytes": 154708,
+          "seconds": 7.76,
+          "text": "BUT PLATO HAS NOT THE SAME MASTERY OVER HIS INSTRUMENT WHICH HE EXHIBITS IN THE PHAEDRUS OR SYMPOSIUM"
+        },
+        {
+          "id": "2961-961-0020",
+          "path": "test-clean/2961/961/2961-961-0020.flac",
+          "sha256": "e49ef8dab9f60e1c7f99b6ab05fb426c88bed6b795e2e48e4adce2969ef89ff5",
+          "bytes": 117581,
+          "seconds": 6.125,
+          "text": "THIS IS THE EXPLANATION OF THE SHALLOWS WHICH ARE FOUND IN THAT PART OF THE ATLANTIC OCEAN"
+        },
+        {
+          "id": "3570-5695-0000",
+          "path": "test-clean/3570/5695/3570-5695-0000.flac",
+          "sha256": "8b00bf22d789281108750d635bd45ce9540c0dbced46af5862740f0845031be1",
+          "bytes": 92223,
+          "seconds": 4.83,
+          "text": "IN A GENERAL WAY THOUGH NOT WHOLLY NOR CONSISTENTLY THESE TWO GROUPS COINCIDE"
+        },
+        {
+          "id": "3570-5696-0010",
+          "path": "test-clean/3570/5696/3570-5696-0010.flac",
+          "sha256": "426a986fec027f14754878775f6b605d58d61a0fd0d77bf122657dc1cef2ce9d",
+          "bytes": 149067,
+          "seconds": 7.57,
+          "text": "AN ARTICLE MAY BE USEFUL AND WASTEFUL BOTH AND ITS UTILITY TO THE CONSUMER MAY BE MADE UP OF USE AND WASTE IN THE MOST VARYING PROPORTIONS"
+        },
+        {
+          "id": "3575-170457-0025",
+          "path": "test-clean/3575/170457/3575-170457-0025.flac",
+          "sha256": "6febbd60b33d8dac809cce01d2931348bf6884c7f56e87ad5ab61aecaaf21a8f",
+          "bytes": 172709,
+          "seconds": 9.205,
+          "text": "AGAIN I THANK YOU THIS INCIDENT I SUPPOSE WILL BE RENEWED NO MORE IF I LIVE TO BE AN OLD WOMAN I SHALL REMEMBER IT THIRTY YEARS HENCE AS A BRIGHT DREAM"
+        },
+        {
+          "id": "3575-170457-0051",
+          "path": "test-clean/3575/170457/3575-170457-0051.flac",
+          "sha256": "d3c356176722ca068d7bf932fc054316fae97499cc7656cadd84cabdd4e767b5",
+          "bytes": 102179,
+          "seconds": 4.915,
+          "text": "AT TEA TIME THEY WERE SAD AND SILENT AND THE MEAL WENT AWAY UNTOUCHED BY ANY OF THE THREE"
+        },
+        {
+          "id": "3729-6852-0021",
+          "path": "test-clean/3729/6852/3729-6852-0021.flac",
+          "sha256": "26983d7c3a4c94116e493fedce070195cc00434e6c9db2ec3fab43dd4dcfbfe1",
+          "bytes": 54703,
+          "seconds": 2.96,
+          "text": "I THANK HIM AND TAKE MY LEAVE"
+        },
+        {
+          "id": "4077-13751-0000",
+          "path": "test-clean/4077/13751/4077-13751-0000.flac",
+          "sha256": "d76a732a69cca08d2f249fae5e63b28e417e5569e3233915f22f28c08a67c21a",
+          "bytes": 199188,
+          "seconds": 9.56,
+          "text": "ON THE SIXTH OF APRIL EIGHTEEN THIRTY THE CHURCH OF JESUS CHRIST OF LATTER DAY SAINTS WAS FORMALLY ORGANIZED AND THUS TOOK ON A LEGAL EXISTENCE"
+        },
+        {
+          "id": "4077-13754-0004",
+          "path": "test-clean/4077/13754/4077-13754-0004.flac",
+          "sha256": "ed453fc3dc0b7188a1eac2c97ac977180685baf2766626bc4d381545c29ca99d",
+          "bytes": 99531,
+          "seconds": 4.985,
+          "text": "ALREADY A NORTH AND A SOUTH WERE TALKED OF WHY NOT SET UP ALSO A WEST"
+        },
+        {
+          "id": "4446-2271-0013",
+          "path": "test-clean/4446/2271/4446-2271-0013.flac",
+          "sha256": "175d6d6c50af4a6fc82fe95781dc6de0cfaed69053edac7a8fa985432ea87a08",
+          "bytes": 75999,
+          "seconds": 4.4,
+          "text": "DO YOU KNOW I THOUGHT THE DANCE A BIT CONSCIOUS TO NIGHT FOR THE FIRST TIME"
+        },
+        {
+          "id": "4446-2273-0014",
+          "path": "test-clean/4446/2273/4446-2273-0014.flac",
+          "sha256": "82537eebe62dc354110bc61dbe993299b5faec82db079931a4067740be54d232",
+          "bytes": 52569,
+          "seconds": 2.39,
+          "text": "THERE ARE FEW CHANGES IN THE OLD QUARTER"
+        },
+        {
+          "id": "4446-2275-0004",
+          "path": "test-clean/4446/2275/4446-2275-0004.flac",
+          "sha256": "8bd8723aa9924132de983e37c6376395af0e0b7e1a964a55df7b5fe387bad7fd",
+          "bytes": 45484,
+          "seconds": 2.11,
+          "text": "ALEXANDER DID NOT SIT DOWN"
+        },
+        {
+          "id": "4446-2275-0030",
+          "path": "test-clean/4446/2275/4446-2275-0030.flac",
+          "sha256": "999a14a74f38405b77c3927fb313a979902d62029e019432dfe12a9750af363b",
+          "bytes": 56836,
+          "seconds": 2.665,
+          "text": "YES HILDA I KNOW THAT HE SAID SIMPLY"
+        },
+        {
+          "id": "4507-16021-0010",
+          "path": "test-clean/4507/16021/4507-16021-0010.flac",
+          "sha256": "93e5eed3d3287bae2493f71b7c891cd4b3c2e40b35e48bd564aa855e4e572a04",
+          "bytes": 279372,
+          "seconds": 15.165,
+          "text": "WE HAVE ALWAYS THOUGHT THAT IT WAS SOMETIMES A COURAGEOUS ACT AND AT LEAST A SIMPLE AND USEFUL DEED WORTHY OF THE SYMPATHETIC ATTENTION WHICH DUTY ACCEPTED AND FULFILLED MERITS"
+        },
+        {
+          "id": "4507-16021-0036",
+          "path": "test-clean/4507/16021/4507-16021-0036.flac",
+          "sha256": "156f4e84e7688c4d529feee6666dea4ed165b603cd3058f50647f6ae12a48d44",
+          "bytes": 99816,
+          "seconds": 5.435,
+          "text": "FACTS FORM ONE OF THESE AND IDEAS THE OTHER"
+        },
+        {
+          "id": "4970-29093-0002",
+          "path": "test-clean/4970/29093/4970-29093-0002.flac",
+          "sha256": "2a0734635c00bf4bdc1b6d415f9149732593c863508db4c3eb7bda4062c8fb0c",
+          "bytes": 192483,
+          "seconds": 10.73,
+          "text": "HE HAS NO TRADITIONS TO BIND HIM OR GUIDE HIM AND HIS IMPULSE IS TO BREAK AWAY FROM THE OCCUPATION HIS FATHER HAS FOLLOWED AND MAKE A NEW WAY FOR HIMSELF"
+        },
+        {
+          "id": "4970-29095-0005",
+          "path": "test-clean/4970/29095/4970-29095-0005.flac",
+          "sha256": "57fca4e6855df26e3622369cc9a0464f1ec3e48bb5ca8e03b83378fbd29fde17",
+          "bytes": 87768,
+          "seconds": 4.65,
+          "text": "THY WAYS GREATLY TRY ME RUTH AND ALL THY RELATIONS"
+        },
+        {
+          "id": "4970-29095-0031",
+          "path": "test-clean/4970/29095/4970-29095-0031.flac",
+          "sha256": "626557aace22e19e5b091f69b70647e01fe94a39f1ac1836156ebd654ca84e45",
+          "bytes": 272920,
+          "seconds": 15.05,
+          "text": "HE DOESN'T SAY EXACTLY WHAT IT IS SAID RUTH A LITTLE DUBIOUSLY BUT IT'S SOMETHING ABOUT LAND AND RAILROADS AND THEE KNOWS FATHER THAT FORTUNES ARE MADE NOBODY KNOWS EXACTLY HOW IN A NEW COUNTRY"
+        },
+        {
+          "id": "4992-23283-0018",
+          "path": "test-clean/4992/23283/4992-23283-0018.flac",
+          "sha256": "3ec2e0d04beb60b28ba02f68a52e0ab0b8c27a99894b000621deb00b1336f8f2",
+          "bytes": 110198,
+          "seconds": 6.575,
+          "text": "TO RELIEVE HER FROM BOTH HE LAID HIS HAND WITH FORCE UPON HIS HEART AND SAID DO YOU BELIEVE ME"
+        },
+        {
+          "id": "4992-41806-0000",
+          "path": "test-clean/4992/41806/4992-41806-0000.flac",
+          "sha256": "ce4dd04d130b3b575f1826c6505b5519c09a7301eee9b76e58eeb1f591131035",
+          "bytes": 254433,
+          "seconds": 14.36,
+          "text": "NATTY HARMON TRIED THE KITCHEN PUMP SECRETLY SEVERAL TIMES DURING THE EVENING FOR THE WATER HAD TO RUN UP HILL ALL THE WAY FROM THE WELL TO THE KITCHEN SINK AND HE BELIEVED THIS TO BE A CONTINUAL MIRACLE THAT MIGHT GIVE OUT AT ANY MOMENT"
+        },
+        {
+          "id": "5105-28233-0008",
+          "path": "test-clean/5105/28233/5105-28233-0008.flac",
+          "sha256": "c0b7ea4504221aea4b1ee1e64cc1e8e01ab22152a630779104431b2045713e6c",
+          "bytes": 204096,
+          "seconds": 10.73,
+          "text": "WHEN A PRIVATE IN THE EIGHTH CAVALRY HE HAD BEEN ON THE POINT OF QUITTING THE ARMY AT TWENTY EIGHT YEARS OF AGE BUT UNEXPECTEDLY HE HAD BEEN APPOINTED ORDERLY TO CAPTAIN SERVADAC"
+        },
+        {
+          "id": "5105-28240-0024",
+          "path": "test-clean/5105/28240/5105-28240-0024.flac",
+          "sha256": "d18c4c96b8173b63b25350e8ba9a4bbb55914875dcb43174600140732dd74366",
+          "bytes": 165322,
+          "seconds": 8.2,
+          "text": "DOUBTS NOW AROSE AND SOME DISCUSSION FOLLOWED WHETHER OR NOT IT WAS DESIRABLE FOR BEN ZOOF TO ACCOMPANY HIS MASTER"
+        },
+        {
+          "id": "5142-33396-0005",
+          "path": "test-clean/5142/33396/5142-33396-0005.flac",
+          "sha256": "98feef26fcc761515ffeed15ebfaecd3cd481232082d8a158d131aa0cef7c9c8",
+          "bytes": 45852,
+          "seconds": 2.225,
+          "text": "BUT I STAYED THAT SPRING AND BUILT ME A BOAT"
+        },
+        {
+          "id": "5142-33396-0031",
+          "path": "test-clean/5142/33396/5142-33396-0031.flac",
+          "sha256": "3a6f96a6e7ceff38f57b61afa664818e4ad47cd7668c0a21e2fcd5f015ecddb3",
+          "bytes": 139792,
+          "seconds": 7.845,
+          "text": "THEY SET UP A CRANE OVER THE FIRE AND HUNG THE POT UPON IT AND WE SAT AND WATCHED IT BOIL WHILE WE JOKED AT LAST THE SUPPER BEGAN"
+        },
+        {
+          "id": "5142-33396-0057",
+          "path": "test-clean/5142/33396/5142-33396-0057.flac",
+          "sha256": "72c44000410160f9cebccd714cff97ece0fffaff2529fec99f48cce4de4e9402",
+          "bytes": 61653,
+          "seconds": 3.075,
+          "text": "WE SUNK HIS SHIP AND MEN BUT HIM WE BROUGHT TO YOU"
+        },
+        {
+          "id": "5142-36377-0014",
+          "path": "test-clean/5142/36377/5142-36377-0014.flac",
+          "sha256": "13930fd437234fb39cbb2bc1b6eba473b28a6f7ef0367f4da99b239172acb5af",
+          "bytes": 469683,
+          "seconds": 25.415,
+          "text": "A PRETTY GIRL AND SO FAR AS I COULD JUDGE BY APPEARANCES A GOOD GIRL TOO DESCRIBING HER GENERALLY I MAY SAY THAT SHE HAD A SMALL HEAD WELL CARRIED AND WELL SET ON HER SHOULDERS BRIGHT GRAY EYES THAT LOOKED AT YOU HONESTLY AND MEANT WHAT THEY LOOKED A TRIM SLIGHT LITTLE FIGURE TOO SLIGHT FOR OUR ENGLISH NOTIONS OF BEAUTY A STRONG AMERICAN ACCENT AND A RARE THING IN AMERICA A PLEASANTLY TONED VOICE WHICH MADE THE ACCENT AGREEABLE TO ENGLISH EARS"
+        },
+        {
+          "id": "5639-40744-0008",
+          "path": "test-clean/5639/40744/5639-40744-0008.flac",
+          "sha256": "ad34d071015bb44b3aa347805e273ce1b0e31f2e709fa32243f8c9e2a47d99d9",
+          "bytes": 40750,
+          "seconds": 2.215,
+          "text": "WHO TOUCHES ME AM I IN BED"
+        },
+        {
+          "id": "5639-40744-0034",
+          "path": "test-clean/5639/40744/5639-40744-0034.flac",
+          "sha256": "3807b44593d4e297abb657bce4852c6104be919a19d2d49e4a1d8244a36178ea",
+          "bytes": 201158,
+          "seconds": 13.055,
+          "text": "ALL ROSE TO DO HER REVERENCE AS IF SOMETHING FROM HEAVEN HAD MIRACULOUSLY APPEARED BEFORE THEM BUT GAZING ON HER ENTRANCED WITH ADMIRATION NOT ONE OF THEM WAS ABLE TO ADDRESS A SINGLE WORD TO HER"
+        },
+        {
+          "id": "5683-32866-0000",
+          "path": "test-clean/5683/32866/5683-32866-0000.flac",
+          "sha256": "c3009a18bf01ce4b4bd687c595763f3d339f776ac9ac2049ba5b7130d4fe5dd8",
+          "bytes": 53789,
+          "seconds": 2.645,
+          "text": "MISS LAKE DECLINED THE CARRIAGE TO NIGHT"
+        },
+        {
+          "id": "5683-32866-0026",
+          "path": "test-clean/5683/32866/5683-32866-0026.flac",
+          "sha256": "9e350204982856dfad59614501919fb01da748cd725ca8bd38bbb7eaf3d975f1",
+          "bytes": 50339,
+          "seconds": 2.34,
+          "text": "I BOLDLY LIGHTED MY CHEROOT"
+        },
+        {
+          "id": "5683-32879-0021",
+          "path": "test-clean/5683/32879/5683-32879-0021.flac",
+          "sha256": "3608c40e62edebf147dce38e9666b10eccfdb804535f74d6659ba94b17441730",
+          "bytes": 71733,
+          "seconds": 4.09,
+          "text": "DORCAS IN HER STRANGE WAY WAS MOVED"
+        },
+        {
+          "id": "61-70968-0022",
+          "path": "test-clean/61/70968/61-70968-0022.flac",
+          "sha256": "dea1dd525d16410bac43b958586f7389545ce042f6fee01e298a80ac44bd46ff",
+          "bytes": 95086,
+          "seconds": 4.67,
+          "text": "TIS FINE FOR YOU TO TALK OLD MAN ANSWERED THE LEAN SULLEN APPRENTICE"
+        },
+        {
+          "id": "61-70968-0048",
+          "path": "test-clean/61/70968/61-70968-0048.flac",
+          "sha256": "d0f7a51ca419d54c5ec4512e9923ddf71cc35e5192570ce8fd38db3a7cd5a0a8",
+          "bytes": 59056,
+          "seconds": 3.02,
+          "text": "AND HENRY MIGHT RETURN TO ENGLAND AT ANY MOMENT"
+        },
+        {
+          "id": "61-70970-0011",
+          "path": "test-clean/61/70970/61-70970-0011.flac",
+          "sha256": "7652d587f197b01c378691360aaa3762852843a6de96dd7b02c04a0c10e28e7b",
+          "bytes": 123576,
+          "seconds": 6.075,
+          "text": "AS ANY IN ENGLAND I WOULD SAY SAID GAMEWELL PROUDLY THAT IS IN HIS DAY"
+        },
+        {
+          "id": "61-70970-0037",
+          "path": "test-clean/61/70970/61-70970-0037.flac",
+          "sha256": "05b3bdb054477606dd6e4c68399dea5643dd009e8405df5c56e4ca5363f411a2",
+          "bytes": 121898,
+          "seconds": 5.98,
+          "text": "HIS TONES RANG PLEASANTLY ON WARRENTON'S EARS AND FORTHWITH A GOOD FELLOWSHIP WAS HERALDED BETWEEN THEM"
+        },
+        {
+          "id": "672-122797-0022",
+          "path": "test-clean/672/122797/672-122797-0022.flac",
+          "sha256": "0b7c7e6949d6b6306730878f3b523967f7bb994348c550ce50ed88f5de92c7f8",
+          "bytes": 343157,
+          "seconds": 19.005,
+          "text": "THE AXE STRUCK DEEP INTO THE VERY PITH THE TREE FELL TO THE EARTH WITH A SIGH HE FELT A PANG IT WAS LIKE A SWOON HE COULD NOT THINK OF HAPPINESS FOR HE WAS SORROWFUL AT BEING SEPARATED FROM HIS HOME FROM THE PLACE WHERE HE HAD SPRUNG UP"
+        },
+        {
+          "id": "672-122797-0049",
+          "path": "test-clean/672/122797/672-122797-0049.flac",
+          "sha256": "c1924a717f579fb625c52d679fce6746eddda4b747e9d7b0afbefa2f027e141d",
+          "bytes": 43343,
+          "seconds": 2.02,
+          "text": "SQUEAK SQUEAK"
+        },
+        {
+          "id": "6829-68769-0000",
+          "path": "test-clean/6829/68769/6829-68769-0000.flac",
+          "sha256": "2f5d7ee4899ac1ba7bd170757a30b3679aad182830b0900d27967761e6f60826",
+          "bytes": 232671,
+          "seconds": 11.695,
+          "text": "KENNETH AND BETH REFRAINED FROM TELLING THE OTHER GIRLS OR UNCLE JOHN OF OLD WILL ROGERS'S VISIT BUT THEY GOT MISTER WATSON IN THE LIBRARY AND QUESTIONED HIM CLOSELY ABOUT THE PENALTY FOR FORGING A CHECK"
+        },
+        {
+          "id": "6829-68769-0026",
+          "path": "test-clean/6829/68769/6829-68769-0026.flac",
+          "sha256": "145e81795f914dbeb27203c9a5b096ec3696183f0ca531952ced490aa6b35363",
+          "bytes": 97038,
+          "seconds": 4.64,
+          "text": "HE SPOKE SIMPLY BUT PACED UP AND DOWN THE NARROW CELL IN FRONT OF THEM"
+        },
+        {
+          "id": "6829-68769-0052",
+          "path": "test-clean/6829/68769/6829-68769-0052.flac",
+          "sha256": "b55f618bdbbdf24e53b3812740252b2ed6f4872d7c61d6b9222e41d513369c44",
+          "bytes": 98242,
+          "seconds": 4.6,
+          "text": "HE MIGHT HAVE HAD THAT FORGED CHECK FOR THE FACE OF IT IF HE'D BEEN SHARP"
+        },
+        {
+          "id": "6829-68771-0024",
+          "path": "test-clean/6829/68771/6829-68771-0024.flac",
+          "sha256": "2a165350e23e7dadff60d421f1528d63359c13bd8aec874f90b6d92449ccd1a4",
+          "bytes": 124704,
+          "seconds": 6.245,
+          "text": "FOR THE FIRST TIME THE MAID SEEMED A LITTLE CONFUSED AND HER GAZE WANDERED FROM THE FACE OF HER VISITOR"
+        },
+        {
+          "id": "6930-75918-0014",
+          "path": "test-clean/6930/75918/6930-75918-0014.flac",
+          "sha256": "a0c581aa99f18fb4f427d40c9096f750ce6d6ef5d4721347d2bf5a36d2b5302d",
+          "bytes": 322607,
+          "seconds": 16.84,
+          "text": "BUT CONTINUED RAOUL NOT INTERRUPTED BY THIS MOVEMENT OF HIS FRIEND HEAVEN BE PRAISED THE FRENCH WHO ARE PRONOUNCED TO BE THOUGHTLESS AND INDISCREET RECKLESS EVEN ARE CAPABLE OF BRINGING A CALM AND SOUND JUDGMENT TO BEAR ON MATTERS OF SUCH HIGH IMPORTANCE"
+        },
+        {
+          "id": "6930-76324-0019",
+          "path": "test-clean/6930/76324/6930-76324-0019.flac",
+          "sha256": "1b27de4ded885cb9ca4ff68a3645c9c1e26a2c0d7399a0130caf3783a6fe37a4",
+          "bytes": 57638,
+          "seconds": 2.575,
+          "text": "NOW LET'S DUST THE FURNITURE AND PICTURES"
+        },
+        {
+          "id": "6930-81414-0016",
+          "path": "test-clean/6930/81414/6930-81414-0016.flac",
+          "sha256": "2f024afbbc40031f3f7755bf7d27be3d074efd45481a65a41bfbf787cc9f62a1",
+          "bytes": 52768,
+          "seconds": 2.16,
+          "text": "BUT THAT IS KAFFAR'S KNIFE"
+        },
+        {
+          "id": "7021-79740-0004",
+          "path": "test-clean/7021/79740/7021-79740-0004.flac",
+          "sha256": "7f83b380ae6731aac968045227a931098cd48e261b214f859efd77c1ca5fa1ab",
+          "bytes": 111652,
+          "seconds": 6.465,
+          "text": "YOU HAVE COME ANDELLA ANDELLA WAS THE NAME OF JANE'S DOLL TO MAKE ROSALIE A VISIT"
+        },
+        {
+          "id": "7021-85628-0009",
+          "path": "test-clean/7021/85628/7021-85628-0009.flac",
+          "sha256": "f3d21a5488681a2e16804b3ed2afa28dd6898743dd89c8448e2f63d76232b150",
+          "bytes": 151030,
+          "seconds": 8.54,
+          "text": "AT THE FARTHER END OF THE LARGEST HALL A TABLE WAS SET WITH GOLDEN CUPS AND GOLDEN PLATES IN LONG ROWS"
+        },
+        {
+          "id": "7127-75946-0008",
+          "path": "test-clean/7127/75946/7127-75946-0008.flac",
+          "sha256": "e448077d24548bd020f6cfb19bea0bda7c575d8e1bc43157b208ca7af48c0d7a",
+          "bytes": 91962,
+          "seconds": 4.46,
+          "text": "DOES YOUR MAJESTY THEN NO LONGER BELIEVE THE DISLOYAL ATTEMPT"
+        },
+        {
+          "id": "7127-75947-0004",
+          "path": "test-clean/7127/75947/7127-75947-0004.flac",
+          "sha256": "4c31e7243eb083ca91a6a491288533bef6cf23ee2c0b8ad7b0e0a8b0436e0979",
+          "bytes": 37632,
+          "seconds": 1.905,
+          "text": "EXPLAIN YOURSELF"
+        },
+        {
+          "id": "7127-75947-0030",
+          "path": "test-clean/7127/75947/7127-75947-0030.flac",
+          "sha256": "5d8cac2bca523c2aa17effa520e0c3ded10ae8c100089d115042cc8a69582628",
+          "bytes": 58390,
+          "seconds": 2.76,
+          "text": "SHE WAS HERE JUST NOW SAID THE COUNT"
+        },
+        {
+          "id": "7176-88083-0015",
+          "path": "test-clean/7176/88083/7176-88083-0015.flac",
+          "sha256": "26811227b803fd74bfc07c31ab6b7e2d7c1b1c2036d027d8eecd25f6b891d25e",
+          "bytes": 51976,
+          "seconds": 2.335,
+          "text": "ALMOST INSTANTLY HE WAS FORCED TO THE TOP"
+        },
+        {
+          "id": "7176-92135-0013",
+          "path": "test-clean/7176/92135/7176-92135-0013.flac",
+          "sha256": "edd1c606017f0d1a66a2f23a28c4a8794a7e0edcca42e215b875d227f784e3d7",
+          "bytes": 68918,
+          "seconds": 3.15,
+          "text": "WE MODERNS HOWEVER SEE THE ABSURDITY OF IT"
+        },
+        {
+          "id": "7176-92135-0040",
+          "path": "test-clean/7176/92135/7176-92135-0040.flac",
+          "sha256": "8f40c6a4628bc99963eeb6a955a16aa919f915d7ea22536b554aff4a67b6a559",
+          "bytes": 194818,
+          "seconds": 10.345,
+          "text": "HOSTESS REPLACES LUMP AND INCLINES EMPTY TEAPOT OVER TRAY FOR A MOMENT THEN HANDS HIM A CUP PAINTED BROWN INSIDE THUS DECEIVING THE GENTLEMAN WITH THE TELESCOPE IN THE UPPER CIRCLE"
+        },
+        {
+          "id": "7729-102255-0020",
+          "path": "test-clean/7729/102255/7729-102255-0020.flac",
+          "sha256": "ffddd15523fb77ed324e215daea035a5f038c804e5c511c7bd9cce31eca8303d",
+          "bytes": 196242,
+          "seconds": 10.975,
+          "text": "THE INCIDENT WAS NOT VIOLENT NOR EVEN DRAMATIC NO POSSE WAS SUMMONED NO FURTHER EFFORT MADE AND REEDER FEARING PERSONAL VIOLENCE SOON FLED IN DISGUISE"
+        },
+        {
+          "id": "7729-102255-0046",
+          "path": "test-clean/7729/102255/7729-102255-0046.flac",
+          "sha256": "19fbb6d0a0522e8009bcf83f7e394024d661a78fc034003b24f5727b3859bf41",
+          "bytes": 343380,
+          "seconds": 19.945,
+          "text": "IN THE EARLY MORNING OF THE NEXT DAY MAY TWENTY NINTH A COMPANY OF DRAGOONS WITH ONE EMPTY SADDLE CAME DOWN FROM THE FORT AND WHILE THE PRO SLAVERY MEN STILL SLEPT THE PRISONER AND HIS ESCORT WERE ON THEIR WAY ACROSS THE PRAIRIES TO LECOMPTON IN THE CHARGE OF OFFICERS OF THE UNITED STATES ARMY"
+        },
+        {
+          "id": "8224-274384-0007",
+          "path": "test-clean/8224/274384/8224-274384-0007.flac",
+          "sha256": "1017a853428ffa1fb25e08e3d09405e15ea08ac75363e108aa097ffb81791e7d",
+          "bytes": 101686,
+          "seconds": 6.23,
+          "text": "HAVE MERCY LORD ON ME I PRAY FOR MEN WOULD ME DEVOUR"
+        },
+        {
+          "id": "8230-279154-0019",
+          "path": "test-clean/8230/279154/8230-279154-0019.flac",
+          "sha256": "87abf49b5ab0ba4e00e2e096a0b548e86dc41e4d6a0a1f1822b553e27181fd7b",
+          "bytes": 306177,
+          "seconds": 18.145,
+          "text": "IT WOULD SEEM THAT ONLY RATHER RECENT EVENTS CAN BE PLACED AT ALL ACCURATELY BY MEANS OF FEELINGS GIVING THEIR TEMPORAL RELATION TO THE PRESENT BUT IT IS CLEAR THAT SUCH FEELINGS MUST PLAY AN ESSENTIAL PART IN THE PROCESS OF DATING REMEMBERED EVENTS"
+        },
+        {
+          "id": "8455-210777-0002",
+          "path": "test-clean/8455/210777/8455-210777-0002.flac",
+          "sha256": "1b8ffa4c6162063fcd2f3598dd2937d38f8a1475ea8181d068eca8997da984a1",
+          "bytes": 122244,
+          "seconds": 6.24,
+          "text": "ON ARRIVING AT HOME AT MY OWN RESIDENCE I FOUND THAT OUR SALON WAS FILLED WITH A BRILLIANT COMPANY"
+        },
+        {
+          "id": "8455-210777-0028",
+          "path": "test-clean/8455/210777/8455-210777-0028.flac",
+          "sha256": "61e1697bdc0de5142e0cd76c4a14ed38086b66b9a0ab7722bd1c02aa3cebd261",
+          "bytes": 142649,
+          "seconds": 7.735,
+          "text": "JACK WOULD BECOME EVA'S HAPPY HUSBAND AND WOULD REMAIN AMIDST THE HURRIED DUTIES OF THE EAGER WORLD"
+        },
+        {
+          "id": "8455-210777-0054",
+          "path": "test-clean/8455/210777/8455-210777-0054.flac",
+          "sha256": "2ad6a374c5811a59f11a8f79328f73014bc2bc849d6959cbff5a6b33a88de9db",
+          "bytes": 49875,
+          "seconds": 2.52,
+          "text": "THE LETTER RAN AS FOLLOWS"
+        },
+        {
+          "id": "8463-287645-0009",
+          "path": "test-clean/8463/287645/8463-287645-0009.flac",
+          "sha256": "dc65ed586e629896ef49df04c930b988c221e56da4a4c64792aa0e757bfd9086",
+          "bytes": 76576,
+          "seconds": 3.71,
+          "text": "I NEVER KNEW OF BUT ONE MAN WHO COULD EVER PLEASE HIM"
+        },
+        {
+          "id": "8463-294828-0000",
+          "path": "test-clean/8463/294828/8463-294828-0000.flac",
+          "sha256": "8498a46293b2554652dde64040380bce971033015877e8d99e4845aa48a6d0fc",
+          "bytes": 72602,
+          "seconds": 3.615,
+          "text": "CHAPTER THREE AS MASTER WISHES"
+        },
+        {
+          "id": "8463-294828-0027",
+          "path": "test-clean/8463/294828/8463-294828-0027.flac",
+          "sha256": "6e46ebfe23c1193fb40ec8b6b860c1a3d4934bb1307207a6b702e33827a82b90",
+          "bytes": 128105,
+          "seconds": 5.98,
+          "text": "I LEFT INSTRUCTIONS FOR SHIPPING MY CONTAINERS OF STUFFED ANIMALS AND DRIED PLANTS TO PARIS FRANCE"
+        },
+        {
+          "id": "8555-284447-0014",
+          "path": "test-clean/8555/284447/8555-284447-0014.flac",
+          "sha256": "7c3da00437162cf18618ad50066c8e901a79bd4b06c80bb454417e43bc470080",
+          "bytes": 146340,
+          "seconds": 8.47,
+          "text": "THE IDEA OF PATCHING CAP'N BILL TO A GOAT WAS VASTLY AMUSING TO HIM AND THE MORE HE THOUGHT OF IT THE MORE HE ROARED WITH LAUGHTER"
+        },
+        {
+          "id": "8555-284449-0015",
+          "path": "test-clean/8555/284449/8555-284449-0015.flac",
+          "sha256": "8384a10d974c662f01e4d1665f7f3536a6b209d74ae4e0aee41c9e5ece34dd75",
+          "bytes": 101358,
+          "seconds": 5.12,
+          "text": "I'LL NOT BE WICKED ANY MORE SIGHED THE OLD BOOLOOROO I'LL REFORM"
+        },
+        {
+          "id": "908-157963-0004",
+          "path": "test-clean/908/157963/908-157963-0004.flac",
+          "sha256": "ec9c6f95f6ee1d332fc1fc45df710bf086714fddc25d3bfa687b5a88aef47520",
+          "bytes": 268684,
+          "seconds": 13.99,
+          "text": "THEL IS LIKE A WATRY BOW AND LIKE A PARTING CLOUD LIKE A REFLECTION IN A GLASS LIKE SHADOWS IN THE WATER LIKE DREAMS OF INFANTS LIKE A SMILE UPON AN INFANTS FACE"
+        },
+        {
+          "id": "908-157963-0030",
+          "path": "test-clean/908/157963/908-157963-0030.flac",
+          "sha256": "6d9295232a8d5664366409f4f4c0eb50e9c4eae00d21a7f9118e82abc10f846b",
+          "bytes": 90328,
+          "seconds": 4.52,
+          "text": "WHY AN EAR A WHIRLPOOL FIERCE TO DRAW CREATIONS IN"
+        }
+      ]
+    },
+    "speechFixture": {
+      "description": "The Android androidTest speech-fixture/0.wav. Its PCM is byte-identical to LibriSpeech test-clean 1089-134686-0002 (16 kHz mono PCM16, 6.625 s), so the gate builds it from that FLAC when no path is given.",
+      "librispeechId": "1089-134686-0002",
+      "path": "test-clean/1089/134686/1089-134686-0002.flac",
+      "flacSha256": "66277a3fa3df407261dc2a3ce685a7ceef19999ab0c10531bee5257cb64cb59d",
+      "wavSha256": "6bc58a4efdf20daac252b6b1502632601a71efe0308f6757dc1eda34891a7e4f",
+      "text": "AFTER EARLY NIGHTFALL THE YELLOW LAMPS WOULD LIGHT UP HERE AND THERE THE SQUALID QUARTER OF THE BROTHELS"
+    },
+    "silence": {
+      "description": "3 s of digital silence at 16 kHz.",
+      "seconds": 3
+    }
+  }
+}

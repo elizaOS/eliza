@@ -6,8 +6,8 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   type AnchorRegistry,
   createAnchorRegistry,

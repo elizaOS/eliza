@@ -21,6 +21,7 @@ import {
   BILLING_AUDIT_RESOURCE_EXPECTATIONS,
   CLOUD_AUDIT_DEDICATED_AGENT_ID,
   installCloudApiStubs,
+  PUBLIC_SERVICE_DOCUMENT_FIXTURE,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
 import {
@@ -313,6 +314,12 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   },
   { slug: "login", path: "/login", route: "login", auth: PUBLIC },
   {
+    slug: "network-sign-in",
+    path: "/network/sign-in",
+    route: "network/sign-in",
+    auth: PUBLIC,
+  },
+  {
     slug: "auth-success",
     // Public route without a backend-confirmed connection — captures the
     // explicit unverified recovery state (#18054).
@@ -432,18 +439,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "cloud/apps/:id",
     auth: AUTH,
   },
-  {
-    slug: "cloud-applications-legacy",
-    path: "/cloud/applications",
-    route: "cloud/applications",
-    auth: AUTH,
-  },
-  {
-    slug: "cloud-applications-detail-legacy",
-    path: "/cloud/applications/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
-    route: "cloud/applications/:id",
-    auth: AUTH,
-  },
   // approvals/
   {
     slug: "cloud-approvals",
@@ -521,7 +516,11 @@ async function collectCloudRenderStateIssues(page: Page): Promise<string[]> {
     name: "Something went wrong",
     exact: true,
   });
-  return (await errorHeading.isVisible())
+  const failedAlert = page.getByRole("alert").filter({
+    hasText: /could not load|failed to (?:load|fetch)|unable to load/i,
+  });
+  return (await errorHeading.isVisible()) ||
+    (await failedAlert.first().isVisible())
     ? ["Dashboard rendered its error state"]
     : [];
 }
@@ -658,6 +657,47 @@ async function captureTransitionState(options: {
 }
 
 test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`configured startup ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      // Hold the emitted page before React starts, so the real static shell remains visible.
+      await page.route(/\.js(?:\?|$)/, (route) => route.abort());
+      await page.goto("/login", { waitUntil: "domcontentloaded" });
+      const appName = process.env.ELIZA_AUDIT_STARTUP_APP_NAME || "Eliza";
+      const logo =
+        process.env.ELIZA_AUDIT_STARTUP_LOGO ??
+        "/brand/logos/logo_white_nobg.svg";
+      const shell = page.getByRole("status", {
+        name: `Loading ${appName}`,
+        exact: true,
+      });
+      await expect(shell).toBeVisible();
+      await expect(shell.locator(".eliza-preboot-shell__name")).toHaveText(
+        appName,
+      );
+      const mark = shell.locator("img");
+      if (logo) {
+        await expect(mark).toHaveAttribute("src", logo);
+        await expect
+          .poll(() =>
+            mark.evaluate((image: HTMLImageElement) => image.naturalWidth),
+          )
+          .toBeGreaterThan(0);
+      } else {
+        await expect(mark).toHaveCount(0);
+      }
+      const dir = path.join(outputDir, "configured-startup");
+      await mkdir(dir, { recursive: true });
+      await page.screenshot({
+        path: path.join(dir, `${viewport.name}.png`),
+        animations: "disabled",
+      });
+    });
+  }
+
   // Hard gate (#13624): under strict/CI the running renderer bundle MUST contain
   // the test-auth shell. A stale turbo-cached `build:web` (built without
   // VITE_PLAYWRIGHT_TEST_AUTH) leaves the runtime env set but the shell absent —
@@ -696,6 +736,217 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       "audit:cloud requires VITE_PLAYWRIGHT_TEST_AUTH=true baked into the renderer build so StewardProvider renders the local test-auth shell",
     ).toBe(true);
   });
+
+  for (const viewport of VIEWPORTS) {
+    test(`configured account support ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await installCloudApiStubs(page);
+      const deletionWrites: string[] = [];
+      page.on("request", (request) => {
+        if (
+          request.url().includes("/account-deletion") &&
+          request.method() !== "GET"
+        ) {
+          deletionWrites.push(request.method());
+        }
+      });
+      await page.goto("/account-deletion?requested=untrusted-audit-receipt");
+      const appName = process.env.ELIZA_AUDIT_SUPPORT_APP_NAME || "Eliza";
+      const cloudName =
+        process.env.ELIZA_AUDIT_SUPPORT_CLOUD_NAME || `${appName} Cloud`;
+      const email =
+        process.env.ELIZA_AUDIT_SUPPORT_EMAIL ?? "support@eliza.cloud";
+      await expect(page).toHaveTitle(
+        `Delete your ${appName} account | ${cloudName}`,
+      );
+      await expect(
+        page.getByText(`${cloudName} account deletion`, { exact: true }),
+      ).toBeVisible();
+      if (email) {
+        await expect(
+          page.getByRole("link", { name: email, exact: true }),
+        ).toHaveAttribute(
+          "href",
+          `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`${appName} account deletion request`)}`,
+        );
+      } else {
+        await expect(
+          page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          }),
+        ).toBeVisible();
+        await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
+      }
+      if (appName !== "Eliza")
+        await expect(page.locator("main")).not.toContainText("Eliza");
+      await expect(
+        page.getByRole("heading", {
+          name: "Account deletion completed",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      expect(deletionWrites).toEqual([]);
+      const evidenceDir = path.join(outputDir, "configured-support");
+      await mkdir(evidenceDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+      const supportContact = email
+        ? page.getByRole("link", { name: email, exact: true })
+        : page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          });
+      await supportContact.scrollIntoViewIfNeeded();
+      await expect(supportContact).toBeInViewport();
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}-support.png`),
+        animations: "disabled",
+      });
+    });
+  }
+
+  for (const viewport of VIEWPORTS) {
+    test(`personal Google consent recovery and disconnect ${viewport.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedStewardSession(page, {
+        jwt: true,
+        subject: "cloud-audit-smoke-user",
+        email: "cloud-audit-smoke@agent.local",
+      });
+      await installCloudApiStubs(page);
+      const purpose = "personal_google_context_v1";
+      let connected = false;
+      const mutations: { path: string; body: unknown }[] = [];
+      await page.route("**/api/v1/eliza/google/**", async (route) => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.endsWith("/status")) {
+          await route.fulfill({
+            json: {
+              purpose,
+              selectedConnectionId: connected ? "selected-owned" : null,
+              status: connected
+                ? {
+                    connected: true,
+                    configured: true,
+                    reason: "connected",
+                    connectionId: "selected-owned",
+                    identity: { email: "personal@example.test" },
+                    grantedScopes: [
+                      "https://www.googleapis.com/auth/gmail.readonly",
+                      "https://www.googleapis.com/auth/calendar.readonly",
+                    ],
+                  }
+                : null,
+            },
+          });
+          return;
+        }
+        mutations.push({ path: pathname, body: request.postDataJSON() });
+        if (pathname.endsWith("/connect/initiate")) {
+          await route.fulfill({
+            status: 503,
+            json: { error: "Synthetic OAuth unavailable" },
+          });
+          return;
+        }
+        expect(pathname).toBe("/api/v1/eliza/google/disconnect");
+        connected = false;
+        await route.fulfill({ json: { success: true } });
+      });
+      await page.goto("/cloud/connectors", { waitUntil: "domcontentloaded" });
+      await page
+        .getByRole("button", {
+          name: "Set up Google for personal chat",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText(
+          /Requested content is processed by Eliza’s configured AI providers/,
+        ),
+      ).toBeVisible();
+      const captureDir = path.join(outputDir, viewport.name);
+      await mkdir(captureDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-disclosure.png"),
+        fullPage: true,
+      });
+      await page
+        .getByRole("button", { name: "Connect personal context", exact: true })
+        .click();
+      await expect(
+        page.getByText(
+          "Couldn’t start the Google connection. Please try again.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      expect(mutations).toEqual([
+        {
+          path: "/api/v1/eliza/google/connect/initiate",
+          body: { side: "owner", purpose },
+        },
+      ]);
+      await expect(page).toHaveURL(/\/cloud\/connectors$/);
+      // Synthetic OAuth callback outcome: live Google consent is separately qualified.
+      connected = true;
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page
+        .getByRole("button", {
+          name: "Manage Google for personal chat",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByText("personal@example.test", { exact: true }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-connected.png"),
+        fullPage: true,
+      });
+      await page
+        .getByRole("button", {
+          name: "Disconnect personal context",
+          exact: true,
+        })
+        .click();
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toBeVisible();
+      await page.screenshot({
+        path: path.join(captureDir, "google-personal-disconnect.png"),
+        fullPage: true,
+      });
+      await dialog
+        .getByRole("button", {
+          name: "Disconnect personal context",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: "Set up Google for personal chat",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(mutations.at(-1)).toEqual({
+        path: "/api/v1/eliza/google/disconnect",
+        body: { side: "owner", connectionId: "selected-owned" },
+      });
+      expect(mutations).toHaveLength(2);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+    });
+  }
 
   // Coverage guard: every registered cloud route must appear in the audit
   // table, so a newly-registered surface fails the audit until it is walked.
@@ -737,14 +988,16 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           registeredPaths = await readRegistryPaths();
           // Private domains register in two asynchronous waves. One eager
           // route does not prove that the complete route table is ready.
-          return [...audited].every((route) => registeredPaths.includes(route));
+          return [...audited].filter(
+            (route) => !registeredPaths.includes(route),
+          );
         },
         {
           message: "all audited routes registered by the running shell",
           timeout: 30_000,
         },
       )
-      .toBe(true);
+      .toEqual([]);
     const registered = new Set(registeredPaths);
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(
@@ -758,39 +1011,128 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     ).toEqual([]);
   });
 
-  test("rendered API failure is a broken audit finding", async ({ page }) => {
-    await seedStewardToken(page);
-    await installCloudApiStubs(page);
-    await page.route("**/api/v1/api-keys", (route) =>
-      route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Controlled API key failure" }),
-      }),
-    );
-    await page.goto("/cloud/api-keys", { waitUntil: "domcontentloaded" });
-    await expect(
-      page.getByRole("heading", { name: "Something went wrong", exact: true }),
-    ).toBeVisible();
-    const readableChars = await page.locator("body").innerText();
-    expect(readableChars.length).toBeGreaterThan(10);
-    expect(
-      computeCloudVerdict({
-        slug: "controlled-api-failure",
-        viewport: "desktop",
-        path: "/cloud/api-keys",
-        route: "cloud/api-keys",
-        consoleErrors: [],
-        renderStateIssues: await collectCloudRenderStateIssues(page),
-        blueColors: [],
-        hoverViolations: [],
-        hoverFailures: [],
-        readableChars: readableChars.length,
-        quality: null,
-        qualityIssues: [],
-      }),
-    ).toBe("broken");
-  });
+  for (const failure of [
+    {
+      name: "API keys",
+      api: "/api/v1/api-keys",
+      page: "/cloud/api-keys",
+      message: "Something went wrong",
+    },
+    {
+      name: "earnings",
+      api: "/api/v1/earnings/statement",
+      page: "/cloud/monetization",
+      message: "Could not load your earnings statement. Try again.",
+    },
+  ]) {
+    test(`${failure.name} rendered API failure is a broken audit finding`, async ({
+      page,
+    }) => {
+      await seedStewardToken(page);
+      await installCloudApiStubs(page);
+      await page.route(`**${failure.api}`, (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Controlled API key failure" }),
+        }),
+      );
+      await page.goto(failure.page, { waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByText(failure.message, { exact: true }),
+      ).toBeVisible();
+      if (failure.name === "earnings") {
+        const errorDir = path.join(outputDir, "errors");
+        await mkdir(errorDir, { recursive: true });
+        for (const viewport of VIEWPORTS) {
+          await page.setViewportSize({
+            width: viewport.width,
+            height: viewport.height,
+          });
+          await page.screenshot({
+            path: path.join(errorDir, `earnings-${viewport.name}.png`),
+            fullPage: true,
+          });
+        }
+      }
+      const readableChars = await page.locator("body").innerText();
+      expect(readableChars.length).toBeGreaterThan(10);
+      expect(
+        computeCloudVerdict({
+          slug: "controlled-api-failure",
+          viewport: "desktop",
+          path: failure.page,
+          route: failure.page,
+          consoleErrors: [],
+          renderStateIssues: await collectCloudRenderStateIssues(page),
+          blueColors: [],
+          hoverViolations: [],
+          hoverFailures: [],
+          readableChars: readableChars.length,
+          quality: null,
+          qualityIssues: [],
+        }),
+      ).toBe("broken");
+    });
+  }
+
+  for (const vp of VIEWPORTS) {
+    test(`configured legal documents and retry ${vp.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await installCloudApiStubs(page);
+      let attempts = 0;
+      await page.route("**/api/public/service", async (route) => {
+        expect(route.request().headers().authorization).toBeUndefined();
+        attempts++;
+        await route.fulfill({
+          status: attempts === 1 ? 503 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            attempts === 1
+              ? { success: false }
+              : PUBLIC_SERVICE_DOCUMENT_FIXTURE,
+          ),
+        });
+      });
+      await page.goto("/terms-of-service", { waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("alert")).toContainText(
+        "could not provide this document",
+      );
+      await expect(
+        page.getByText("Service terms", { exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Try again", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Nebula Terms", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Terms revision 2026-10-25", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("<strong>Legal text stays plain text.</strong>", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.locator("main strong")).toHaveCount(0);
+      await page
+        .getByRole("link", { name: "Privacy Policy", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Nebula Privacy", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Privacy revision 2026-10-25", { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("link", { name: "Back to login", exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/login(?:[?#]|$)/);
+    });
+  }
 
   for (const auditCase of CLOUD_AUDIT_CASES) {
     for (const vp of VIEWPORTS) {
@@ -882,6 +1224,17 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Reuse the shared bounded startup contract so a cold "Booting up..."
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
+        if (auditCase.slug === "cloud-monetization") {
+          await expect(
+            page.getByTestId("creator-earnings-statement"),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Frozen balance", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("$12.50", { exact: true }).first(),
+          ).toBeVisible();
+        }
         if (
           auditCase.slug === "cloud-app-subscription" ||
           auditCase.slug === "cloud-product-subscription"
@@ -1102,6 +1455,23 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // Let late skeleton → content transitions settle before sampling.
         await page.waitForTimeout(750);
         readableChars = await readPaintAfterNavigation(10);
+
+        if (auditCase.slug === "cloud-analytics") {
+          // Real wheel input must reach analytics content below the fold.
+          // scrollIntoView would also move an overflow-hidden element.
+          const scrollRegion = page.locator(
+            '[data-shell-scroll-region="true"]',
+          );
+          await expect(scrollRegion).toHaveCount(1);
+          await page.mouse.move(vp.width / 2, vp.height / 2);
+          await page.mouse.wheel(0, 1200);
+          await expect
+            .poll(() => scrollRegion.evaluate((el) => el.scrollTop))
+            .toBeGreaterThan(0);
+          await scrollRegion.evaluate((el) => {
+            el.scrollTop = 0;
+          });
+        }
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
         const fullPage = auditCase.fullPageEvidence ?? false;

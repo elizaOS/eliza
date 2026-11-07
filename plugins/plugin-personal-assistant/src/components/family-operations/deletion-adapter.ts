@@ -1,5 +1,5 @@
 /** Validates owner deletion API replies before exposing review or retry state to the UI. */
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import { z } from "zod";
 import {
   type FamilyBackupCleanupReview,

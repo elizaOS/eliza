@@ -21,6 +21,7 @@ import { syncAndroidAppActionsResources } from "./app-actions.ts";
 import {
   appendMissingGradleDependency,
   applyAndroidGeneratedBuildTargetProperties,
+  applyConsumerIdentityExt,
   ensureGradleProperty,
   injectAndroidBackgroundRunnerAarFlatDir,
   injectAndroidSmsGatewayBuildConfigFields,
@@ -214,12 +215,15 @@ export function patchAndroidGradle({ cloudBuild = false } = {}) {
   const varsPath = path.join(androidDir, "variables.gradle");
   if (fs.existsSync(varsPath)) {
     const vars = fs.readFileSync(varsPath, "utf8");
-    const patched = vars
-      .replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26")
-      .replace(/compileSdkVersion\s*=\s*\d+/, "compileSdkVersion = 36");
+    const patched = applyConsumerIdentityExt(
+      vars
+        .replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26")
+        .replace(/compileSdkVersion\s*=\s*\d+/, "compileSdkVersion = 36"),
+      { appId: APP.appId, namespace: APP.appId },
+    );
     if (patched !== vars) {
       fs.writeFileSync(varsPath, patched, "utf8");
-      console.log("[mobile-build] Patched Android SDK versions.");
+      console.log("[mobile-build] Patched Android SDK versions and identity.");
     }
   }
 

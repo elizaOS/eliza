@@ -1,201 +1,75 @@
 /** Consumes native requests once; cancellation bypasses the command queue. */
 import { executeCommand, prepareCommand } from "./commands.mjs";
+import { applyEffectWatch, WATCHED_EFFECTS } from "./effect-watch.mjs";
 import {
   createManualActivity,
   installManualActivity,
 } from "./manual-activity.mjs";
 import { BridgeError, parseCommand } from "./protocol.mjs";
+import { createTaskBindings } from "./task-bindings.mjs";
 import { createTaskGuidance } from "./task-guidance.mjs";
 
-export function createCommandHandler(api) {
+/**
+ * `effects` is the network watch (createEffectWatch). Without one, task
+ * snapshots report only what the page itself saw.
+ */
+export function createCommandHandler(api, { effects } = {}) {
+  let protectionAdvisory = null;
+  let protectionRevision = 0;
   const cancelled = new Set();
   const bindings = new Map();
-  const activity = createManualActivity(api, (tabId) => bindings.get(tabId));
+  const activity = createManualActivity(
+    api,
+    (tabId) => liveBinding(tabId),
+    (tabId) => settled(tabId),
+  );
   let bindingQueue = Promise.resolve();
-  const guidance = createTaskGuidance(api, scope);
-  const contextKeys = ["actorId", "accountId", "agentId", "taskId", "epoch"];
-  const validId = (value) =>
-    typeof value === "string" && /^[A-Za-z0-9_.:@-]{1,256}$/.test(value);
-  const blocked = () =>
-    new BridgeError(
-      "POLICY_BLOCKED",
-      "The command does not match this tab's active task binding.",
-    );
-  const bindingKey = (id) => `task-binding:${id}`;
-  async function bind(message, sender, current) {
-    const { id, binding } = message;
-    if (
-      !validId(id) ||
-      !binding ||
-      typeof binding !== "object" ||
-      Object.keys(message).some(
-        (key) => !["type", "id", "binding"].includes(key),
-      ) ||
-      Object.keys(binding).some(
-        (key) =>
-          ![
-            "tabId",
-            "bindingRevision",
-            ...contextKeys,
-            "origin",
-            "expiresAt",
-            "targets",
-            "revoked",
-          ].includes(key),
-      ) ||
-      typeof binding.tabId !== "string" ||
-      !/^\d+$/.test(binding.tabId) ||
-      !Number.isSafeInteger(Number(binding.tabId)) ||
-      contextKeys
-        .filter((key) => key !== "epoch")
-        .some((key) => !validId(binding[key])) ||
-      !Number.isSafeInteger(binding.bindingRevision) ||
-      binding.bindingRevision < 1 ||
-      !Number.isSafeInteger(binding.epoch) ||
-      binding.epoch < 0 ||
-      !Number.isSafeInteger(binding.expiresAt) ||
-      binding.expiresAt <= Date.now() ||
-      typeof binding.revoked !== "boolean" ||
-      !Array.isArray(binding.targets) ||
-      binding.targets.length > 64 ||
-      binding.targets.some(
-        (target) =>
-          !target ||
-          Object.keys(target).some(
-            (key) => !["selector", "action"].includes(key),
-          ) ||
-          typeof target.selector !== "string" ||
-          !target.selector ||
-          target.selector.length > 256 ||
-          !["click", "fill", "fill-code", "scroll"].includes(target.action),
-      )
-    )
-      throw blocked();
-    let origin;
-    try {
-      origin = new URL(binding.origin);
-    } catch {
-      throw blocked();
-    }
-    if (origin.protocol !== "https:" || origin.origin !== binding.origin)
-      throw blocked();
-    if (!current()) throw blocked();
-    const key = bindingKey(binding.tabId);
-    const previous =
-      bindings.get(binding.tabId) || (await api.storage.local.get(key))[key];
-    if (
-      !current() ||
-      (previous &&
-        (binding.bindingRevision <= previous.bindingRevision ||
-          (previous.taskId === binding.taskId &&
-            binding.epoch <= previous.epoch)))
-    )
-      throw blocked();
-    const next = structuredClone(binding);
-    // Fence old work before awaiting storage. Failed persistence leaves the tab
-    // blocked; it never restores an older live binding.
-    bindings.set(binding.tabId, { ...next, revoked: true });
-    await guidance.clearTab(binding.tabId);
-    await api.storage.local.set({ [key]: next });
-    if (!current()) throw blocked();
-    bindings.set(binding.tabId, next);
-    await sender.send({
-      type: "result",
-      id,
-      ok: true,
-      result: {
-        bound: !next.revoked,
-        bindingRevision: next.bindingRevision,
-        tabId: next.tabId,
-        taskId: next.taskId,
-        epoch: next.epoch,
-      },
+  const guidance = createTaskGuidance(api, (...args) => scope(...args));
+  const { bind, scope, blocked, validId, liveBinding, settled } =
+    createTaskBindings({
+      bindings,
+      read: async (key) => (await api.storage.local.get(key))[key],
+      write: (key, value) => api.storage.local.set({ [key]: value }),
+      clearGuidance: (tabId) => guidance.clearTab(tabId),
+      getUrl: async (tabId) => (await api.tabs.get(Number(tabId))).url,
+      validTabId: (value) =>
+        typeof value === "string" &&
+        /^\d+$/.test(value) &&
+        Number.isSafeInteger(Number(value)),
     });
-  }
-  async function scope(command, cleanup = false) {
-    const copy = { ...command };
-    if (
-      command.protectedValueKind !== undefined &&
-      (command.protectedValueKind !== "verification-code" ||
-        command.subaction !== "fill" ||
-        !command.taskContext)
-    )
-      throw blocked();
-    delete copy.taskPolicy;
-    if (!command.id) {
-      if (command.taskContext) throw blocked();
-      return { command: copy, current: () => true };
-    }
-    const stored =
-      bindings.get(command.id) ||
-      (await api.storage.local.get(bindingKey(command.id)))[
-        bindingKey(command.id)
-      ];
-    if (!stored) {
-      if (command.taskContext) throw blocked();
-      return { command: copy, current: () => true };
-    }
-    const binding = bindings.get(command.id);
-    if (
-      command.taskExpiresAt !== undefined &&
-      (!Number.isSafeInteger(command.taskExpiresAt) ||
-        command.taskExpiresAt <= Date.now())
-    )
-      throw blocked();
-    const expiresAt =
-      command.taskExpiresAt === undefined
-        ? binding?.expiresAt
-        : Math.min(binding?.expiresAt, command.taskExpiresAt);
-    const current = () =>
-      binding &&
-      bindings.get(command.id) === binding &&
-      (cleanup || (!binding.revoked && expiresAt > Date.now()));
-    if (
-      !current() ||
-      !command.taskContext ||
-      Object.keys(command.taskContext).length !== contextKeys.length ||
-      contextKeys.some((key) => command.taskContext[key] !== binding[key])
-    )
-      throw blocked();
-    if (
-      !["snapshot", "click", "fill", "scroll", "navigate"].includes(
-        command.subaction,
-      )
-    )
-      throw blocked();
-    // Removal has no page-read/action authority. It still belongs to exactly
-    // this in-memory binding, but may clean up after expiry or navigation.
-    if (!cleanup) {
-      const tab = await api.tabs.get(Number(command.id));
-      if (!current() || new URL(tab.url).origin !== binding.origin)
-        throw blocked();
-    }
-    if (
-      command.subaction === "navigate" &&
-      new URL(command.url).origin !== binding.origin
-    )
-      throw blocked();
-    if (command.selector && !/^[0-9a-f-]{36}:0:\d+$/.test(command.selector))
-      throw blocked();
-    copy.taskPolicy = {
-      origin: binding.origin,
-      targets: binding.targets,
-      expiresAt,
-      guidanceScope: String(binding.bindingRevision),
-      protectedValueKind: command.protectedValueKind,
-    };
-    return { command: copy, current };
-  }
   let processing = Promise.resolve();
+  // Requests still waiting for their turn in the queue, by ID, and the
+  // cancelled ones among them that were already answered.
+  const queued = new Map();
+  const answered = new Set();
+  const cancelledReply = (id) => ({
+    type: "result",
+    id,
+    ok: false,
+    error: {
+      kind: "STALE_REF",
+      message: "The request was cancelled before it took effect.",
+      reason: "request-cancelled",
+    },
+  });
 
   async function handle(message, sender, connectionCurrent) {
     let isCurrent = connectionCurrent;
     let request;
+    // A cancelled request is answered once it has stopped, so the host knows
+    // that nothing of it is still on its way to the page ("cancel-reply").
+    const stopped = () =>
+      request &&
+      cancelled.has(request.id) &&
+      !answered.has(request.id) &&
+      connectionCurrent()
+        ? sender.send(cancelledReply(request.id))
+        : undefined;
     try {
       if (!isCurrent()) return;
       request = parseCommand(message);
       isCurrent = () => connectionCurrent() && !cancelled.has(request.id);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       const key = `request:${request.id}`;
       const previous = (await api.storage.local.get(key))[key];
       if (previous)
@@ -208,13 +82,15 @@ export function createCommandHandler(api) {
       isCurrent = () => transportCurrent() && scoped.current();
       request.command = scoped.command;
       const prepared = await prepareCommand(api, request.command);
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       await api.storage.local.set({ [key]: "admitted" });
-      if (!isCurrent()) return;
+      if (!isCurrent()) return stopped();
       let feedback;
       if (
         request.command.taskPolicy &&
-        ["click", "fill", "scroll"].includes(request.command.subaction)
+        ["click", "fill", "select", "scroll", "follow"].includes(
+          request.command.subaction,
+        )
       ) {
         feedback = await guidance.prepareAction(
           request.command,
@@ -225,14 +101,45 @@ export function createCommandHandler(api) {
         const priorCurrent = isCurrent;
         isCurrent = () => priorCurrent() && feedback.current();
       }
+      const command = request.command;
+      const tabId = Number(command.id);
+      let cancelWatch;
+      if (effects && command.taskPolicy) {
+        if (WATCHED_EFFECTS.includes(command.subaction))
+          cancelWatch = effects.arm(
+            tabId,
+            command.taskPolicy,
+            command.subaction,
+          );
+        // The host's own navigation is not something the page did.
+        else if (command.subaction !== "snapshot")
+          cancelWatch = effects.close(tabId, Date.now(), { host: true });
+      } else if (
+        effects &&
+        ["navigate", "back", "forward", "reload", "close"].includes(
+          command.subaction,
+        )
+      )
+        cancelWatch = effects.close(tabId, Date.now(), { host: true });
       let result;
       try {
-        result = await executeCommand(
-          api,
-          request.command,
-          prepared,
-          isCurrent,
-        );
+        try {
+          result = await executeCommand(
+            api,
+            request.command,
+            prepared,
+            isCurrent,
+          );
+        } catch (error) {
+          // Refused before the page acted (a stale ref, or a navigation the
+          // policy blocked): the earlier watch still holds.
+          if (
+            error instanceof BridgeError &&
+            error.kind !== "UNCERTAIN_OUTCOME"
+          )
+            cancelWatch?.();
+          throw error;
+        }
         if (
           request.command.taskPolicy &&
           request.command.subaction === "snapshot"
@@ -247,13 +154,32 @@ export function createCommandHandler(api) {
           });
           if (!isCurrent()) throw blocked();
           const manualActivity = await activity.read(binding);
-          manualActivity.captureGap = installed.some(
-            (frame) => frame.result?.captureGap === true,
+          // A submit whose reply was lost is a gap only when the journal
+          // does not hold its event. Each gap names its submit's event ID, so
+          // the host tells a new failure from one it already checked.
+          const recorded = new Set(
+            manualActivity.events.map((event) => event.eventId),
           );
+          const gapEvents = new Set();
+          for (const frame of installed) {
+            const ids = (list) =>
+              (Array.isArray(list) ? list : []).filter(
+                (id) => typeof id === "string" && /^[a-f0-9-]{36}$/.test(id),
+              );
+            for (const id of ids(frame.result?.refused)) gapEvents.add(id);
+            for (const id of ids(frame.result?.unconfirmed))
+              if (!recorded.has(id)) gapEvents.add(id);
+          }
+          // The newest gaps are kept when a document has more than 256.
+          manualActivity.captureGapEvents = [...gapEvents].slice(-256);
+          manualActivity.captureGap =
+            gapEvents.size > 0 ||
+            installed.some((frame) => frame.result?.captureGap === true);
           if (!isCurrent()) throw blocked();
           for (const frame of result.frames || [])
             if (frame.frameId === 0) frame.manualActivity = manualActivity;
         }
+        applyEffectWatch(effects, command, result);
         if (feedback) await new Promise((resolve) => setTimeout(resolve, 150));
       } finally {
         if (feedback) await guidance.cancel(request.id);
@@ -274,6 +200,9 @@ export function createCommandHandler(api) {
         error: {
           kind: error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
           message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof BridgeError && error.reason
+            ? { reason: error.reason }
+            : {}),
         },
       };
       await sender.send(reply);
@@ -281,6 +210,55 @@ export function createCommandHandler(api) {
   }
 
   const dispatch = (message, sender, isCurrent) => {
+    if (message?.type === "protection-owner") {
+      if (
+        !validId(message.id) ||
+        (message.owner !== null && !validId(message.owner)) ||
+        Object.keys(message).some(
+          (key) => !["type", "id", "owner"].includes(key),
+        )
+      )
+        return Promise.reject(
+          new BridgeError(
+            "INVALID_REQUEST",
+            "Invalid protection account context.",
+          ),
+        );
+      if (!isCurrent()) return Promise.resolve();
+      const revision = ++protectionRevision;
+      // SetOwner fences the previous account synchronously, before any page update.
+      const changed = protectionAdvisory
+        ? protectionAdvisory.setOwner(message.owner)
+        : Promise.reject(
+            new BridgeError("UNSUPPORTED", "Website advice is not enabled."),
+          );
+      return changed
+        .then((result) => {
+          if (!isCurrent() || revision !== protectionRevision)
+            throw new BridgeError(
+              "STALE_REF",
+              "Protection account context changed.",
+            );
+          return sender.send({
+            type: "result",
+            id: message.id,
+            ok: true,
+            result,
+          });
+        })
+        .catch((error) =>
+          sender.send({
+            type: "result",
+            id: message.id,
+            ok: false,
+            error: {
+              kind:
+                error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
+              message: "Website advice account context was not confirmed.",
+            },
+          }),
+        );
+    }
     if (message?.type === "task-guide") {
       return guidance
         .handle(message, () => isCurrent() && !cancelled.has(message.id))
@@ -303,7 +281,10 @@ export function createCommandHandler(api) {
         );
     }
     if (message?.type === "task-bind") {
-      const bound = bindingQueue.then(() => bind(message, sender, isCurrent));
+      const bound = bindingQueue.then(async () => {
+        const result = await bind(message, isCurrent);
+        await sender.send({ type: "result", id: message.id, ok: true, result });
+      });
       bindingQueue = bound.catch(() => {});
       return bound.catch((error) =>
         sender.send({
@@ -330,22 +311,52 @@ export function createCommandHandler(api) {
       if (!isCurrent()) return Promise.resolve();
       // In-memory fencing occurs synchronously, even while persistence is pending.
       cancelled.add(message.id);
+      // A request still waiting for its turn has not started, so nothing of
+      // it can reach the page: answer now, not after the requests ahead of it.
+      const waiting = queued.get(message.id);
+      let early;
+      if (waiting?.isCurrent() && !answered.has(message.id)) {
+        answered.add(message.id);
+        early = waiting.sender.send(cancelledReply(message.id));
+      }
       return Promise.all([
+        early,
         guidance.cancel(message.id),
         api.storage.local.set({ [`request:${message.id}`]: "cancelled" }),
       ]);
     }
-    processing = processing.then(() => handle(message, sender, isCurrent));
+    const id = typeof message?.id === "string" ? message.id : null;
+    const entry = { sender, isCurrent };
+    if (id !== null) queued.set(id, entry);
+    processing = processing
+      .then(() => {
+        if (queued.get(id) === entry) queued.delete(id);
+        return handle(message, sender, isCurrent);
+      })
+      .finally(() => {
+        if (!queued.has(id)) answered.delete(id);
+      });
     const admitted = processing;
     processing = processing.catch(() => {});
     return admitted;
   };
+  // Called only by the generated worker composition, never by a website message.
+  dispatch.attachProtectionAdvisory = (advisory) => {
+    if (protectionAdvisory) throw Error("Website advice is already attached");
+    protectionAdvisory = advisory;
+  };
+  dispatch.hasProtectionAdvisory = () => protectionAdvisory !== null;
   dispatch.recordManualActivity = (message, sender) =>
     activity.record(message, sender);
+  dispatch.answerGuide = (message, sender) => guidance.answer(message, sender);
+  dispatch.dismissGuide = (message, sender) =>
+    guidance.dismiss(message, sender);
   dispatch.disconnect = () => {
+    protectionRevision++;
+    const retired = protectionAdvisory?.setOwner(null);
     for (const [tabId, binding] of bindings)
       bindings.set(tabId, { ...binding, revoked: true });
-    return guidance.clearAll();
+    return Promise.all([retired, guidance.clearAll()]);
   };
   dispatch.recover = async () => {
     await dispatch.disconnect();

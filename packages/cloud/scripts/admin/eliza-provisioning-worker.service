@@ -27,7 +27,7 @@ ExecStartPre=/usr/bin/env bun --conditions=eliza-source /opt/eliza/packages/clou
 # wait behind live table locks while an agent_delete is already leased, preventing
 # teardown metadata resolution before the job budget expires.
 Environment=SKIP_AGENT_SANDBOX_ENSURE=1
-ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/provisioning-worker.ts
+ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/services/provisioning-worker/src/index.ts
 
 Restart=always
 RestartSec=5

@@ -12,6 +12,12 @@ isolation.
 
 Native mode requires macOS Messages, Full Disk Access for history, and Automation permission for sending. Blooio mode uses its configured channel and API credentials and can run on Linux.
 
+The connector stores inbound messages but does not reply, and does not send DM pairing
+codes, unless `IMESSAGE_AUTO_REPLY=true` is set. This applies to both transports.
+Replies also stay off while passive-connectors mode is on
+(`ELIZA_LIFEOPS_PASSIVE_CONNECTORS`, on by default when the personal-assistant plugin
+is loaded). The service logs a warning at startup when replies are off.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

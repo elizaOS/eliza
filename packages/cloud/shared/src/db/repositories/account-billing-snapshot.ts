@@ -9,6 +9,10 @@
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  QUOTA_RESERVED_STATUSES,
+  QUOTA_USED_STATUSES,
+} from "../../lib/constants/agent-sandbox-quota";
+import {
   type ActiveBillableResource,
   activeBillingService,
 } from "../../lib/services/active-billing";
@@ -43,6 +47,10 @@ import {
   observeSubscriptionAllowanceEligibility,
   type SubscriptionAllowanceEligibility,
 } from "./subscription-allowance-eligibility";
+import {
+  readSubscriptionGrantObservation,
+  type SubscriptionGrantObservation,
+} from "./subscription-grants";
 
 export interface PrimaryStatusCounts {
   used: string;
@@ -62,6 +70,7 @@ export interface PrimaryAccountBillingReadModel {
   observedAt: string;
   subscription: PrimaryOrganizationSubscription;
   allowanceFunding: SubscriptionAllowanceEligibility;
+  grant: SubscriptionGrantObservation | null;
   policyObservedAt: string;
   policyLimits: OrganizationQuotaPolicy["limits"] | { status: "unavailable"; code: string };
   organization: {
@@ -209,8 +218,8 @@ export async function readPrimaryAccountBillingSnapshot(
           ),
         tx
           .select({
-            used: sql<string>`COALESCE(count(*) FILTER (WHERE ${agentSandboxes.status} IN ('running','stopped','sleeping')), 0)::text`,
-            reserved: sql<string>`COALESCE(count(*) FILTER (WHERE ${agentSandboxes.status} IN ('pending','provisioning')), 0)::text`,
+            used: sql<string>`COALESCE(count(*) FILTER (WHERE ${inArray(agentSandboxes.status, QUOTA_USED_STATUSES)}), 0)::text`,
+            reserved: sql<string>`COALESCE(count(*) FILTER (WHERE ${inArray(agentSandboxes.status, QUOTA_RESERVED_STATUSES)}), 0)::text`,
             deleting: sql<string>`COALESCE(count(*) FILTER (WHERE ${agentSandboxes.status} IN ('deletion_pending','deletion_failed')), 0)::text`,
           })
           .from(agentSandboxes)
@@ -396,11 +405,17 @@ export async function readPrimaryAccountBillingSnapshot(
         organizationId,
         new Date(observedAt),
       );
+      const grant = await readSubscriptionGrantObservation(
+        tx,
+        organizationId,
+        new Date(observedAt),
+      );
 
       return {
         observedAt,
         subscription,
         allowanceFunding,
+        grant,
         policyLimits,
         policyObservedAt,
         organization: {

@@ -2,13 +2,14 @@
  * Exposes the authenticated Eliza App Dedicated lifecycle observation endpoint.
  * GET and the legacy POST alias are read-only and never create or enqueue compute.
  */
+
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { selectElizaAppProvisioningTarget } from "@elizaos/cloud-shared/lib/services/eliza-app/provisioning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { selectElizaAppProvisioningTarget } from "@/lib/services/eliza-app/provisioning";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 export interface ProvisioningAgentObservationDependencies {
   sandboxes: Pick<typeof agentSandboxesRepository, "listByOrganization">;

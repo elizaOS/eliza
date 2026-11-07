@@ -244,6 +244,30 @@ describe("Instacart products-link HTTP boundary", () => {
     await closeServer(server);
   });
 
+  it("keeps the caller's deadline armed while the response body is still arriving", async () => {
+    const { server, baseUrl } = await startServer(async (request, response) => {
+      await readRequest(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      // Headers plus one partial JSON chunk arrive; the rest never does.
+      response.write('{"products_link_url":');
+    });
+    const client = new InstacartProductsLinkClient({
+      apiKey: "stalled-body-key",
+      testBaseUrl: baseUrl,
+      timeoutMs: 300,
+    });
+
+    const started = Date.now();
+    await expect(
+      client.createProductsLink(shoppingContent()),
+    ).rejects.toMatchObject({
+      code: "FOOD_PROVIDER_UNAVAILABLE",
+      context: { timedOut: true, httpStatus: 200 },
+    });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    await closeServer(server);
+  });
+
   it("fails closed on oversized, malformed, or off-domain success responses", async () => {
     const responses = [
       {

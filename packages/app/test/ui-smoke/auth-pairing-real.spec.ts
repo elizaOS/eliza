@@ -7,12 +7,18 @@
  * through the rendered pairing UI, and verifies the minted machine-session
  * bearer survives a reload.
  */
+
+import {
+  getAgentHostBridge,
+  setAgentHostBridge,
+} from "@elizaos/agent/runtime/host-bridge";
 import { expect, type Page, test } from "@playwright/test";
 import {
   _resetAuthPairingStateForTests,
   ensureAuthPairingCodeForRemoteAccess,
 } from "../../src/api/auth-pairing-routes.ts";
 import { startApiServer } from "../../src/api/server.ts";
+import { installAgentHostBridge } from "../../src/runtime/install-agent-host-bridge.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import { saveEnv } from "../helpers/test-utils.ts";
@@ -46,6 +52,7 @@ async function postFirstRunComplete(baseUrl: string): Promise<void> {
 }
 
 async function startPairingEnabledApi(): Promise<StartedPairingApi> {
+  const previousBridge = getAgentHostBridge();
   const env = saveEnv(
     "ELIZA_API_TOKEN",
     "ELIZA_PAIRING_DISABLED",
@@ -66,6 +73,8 @@ async function startPairingEnabledApi(): Promise<StartedPairingApi> {
   let server: Awaited<ReturnType<typeof startApiServer>> | null = null;
 
   try {
+    // Match app startup so the portable agent can authorize minted sessions.
+    installAgentHostBridge();
     _resetAuthPairingStateForTests();
     runtimeResult = await createRealTestRuntime({
       characterName: "PairingUiSmoke",
@@ -85,6 +94,7 @@ async function startPairingEnabledApi(): Promise<StartedPairingApi> {
         await runtimeResult?.cleanup();
         await configEnv.restore();
         _resetAuthPairingStateForTests();
+        setAgentHostBridge(previousBridge);
         env.restore();
       },
     };
@@ -93,6 +103,7 @@ async function startPairingEnabledApi(): Promise<StartedPairingApi> {
     await runtimeResult?.cleanup().catch(() => undefined);
     await configEnv.restore().catch(() => undefined);
     _resetAuthPairingStateForTests();
+    setAgentHostBridge(previousBridge);
     env.restore();
     throw error;
   }

@@ -12,7 +12,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-contacts build  # build
-bun run --cwd plugins/plugin-native-contacts test   # tests
 ```
 
 Native view and app-shell declarations share an ADMIN-gated capability catalog. Agents use named complete-or-error reads; mutations and generic renderer/DOM operations require human interaction. A bridge result at its non-paginated boundary is an explicit incomplete-read error. Device-status failures remain errors rather than fabricated empty state.
@@ -39,3 +38,28 @@ from the subsequent granted-access suite.
 Permission preflight artifacts include Android grant flags before and after the
 request. Missing-dialog failures preserve the actual WebView reply and window
 hierarchy; tests remain failures and are not retried automatically.
+
+## Bounded catalog for AOSP image hosts
+
+`ai.eliza.plugins.contacts.ContactsCatalog` reads same-profile contacts in
+bounded pages (at most 200 contacts and 1 MiB, 32 numbers or emails per
+contact, 1024 characters per field) and refuses a larger record instead of
+truncating it. A page with more contacts after it returns `more: true` and an
+opaque `next` cursor; pass it back as `cursor` with the same query for the next
+page. A cursor whose page boundary has changed is refused (`StaleCursor`), so a
+host never skips or repeats a contact. Reads take a CancellationSignal and time
+out after five seconds.
+`reviewed(id, lookup, revision)` rechecks a selected contact before the host
+hands an edit to the system Contacts editor. Hosts gate it behind their own
+image admission and foreground checks.
+
+`ai.eliza.plugins.contacts.AddressBookPlugin` is the address book of the AOSP
+telephony profile built on the catalog. A host subclasses it under its own
+plugin name (declaring the `contacts` permission alias) and answers
+`admitted()` from its native image admission. It offers `status`,
+`requestPermissions`, `list({ query, limit, cursor })`, `create()` and
+`edit({ id, lookup, revision })`. Reads run only while the phone is unlocked
+with the host in front and are cancelled on pause, resume, screen-off and
+permission change. Creation and edits open a system app's exported Contacts
+editor, which owns the account choice and the save; nothing is written from the
+plugin and `edit` rechecks the contact's lookup key and revision first.

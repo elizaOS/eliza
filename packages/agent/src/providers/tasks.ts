@@ -13,10 +13,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import {
-  isWorkbenchTodoTask,
-  readTaskCompleted,
-} from "../api/workbench-helpers.ts";
+import { readTaskCompleted, toWorkbenchTask } from "@elizaos/host/protocol";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
 function formatTaskForContext(task: Task): string {
@@ -62,7 +59,7 @@ export function createOngoingTasksProvider(): Provider {
 
     async get(
       runtime: IAgentRuntime,
-      _message: Memory,
+      message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
       const sections: string[] = [];
@@ -73,13 +70,12 @@ export function createOngoingTasksProvider(): Provider {
           agentIds: [runtime.agentId],
         });
 
-        // Separate workbench tasks from triggers and todos
-        const workbenchTasks: Task[] = [];
-        for (const task of allTasks) {
-          if (readTriggerConfig(task)) continue; // skip triggers
-          if (isWorkbenchTodoTask(task)) continue; // skip todos
-          workbenchTasks.push(task);
-        }
+        // Match the automation feed's owner-work contract. Internal queue and
+        // maintenance records are not workbench tasks merely because they lack
+        // trigger or todo metadata. Their execution and stored rows are unchanged.
+        const workbenchTasks = allTasks.filter(
+          (task) => toWorkbenchTask(task) !== null,
+        );
 
         // Active (non-completed) tasks first
         const activeTasks = workbenchTasks.filter((t) => !readTaskCompleted(t));
@@ -117,11 +113,16 @@ export function createOngoingTasksProvider(): Provider {
           }
         }
       } catch (err) {
-        runtime.logger.debug(
-          { src: "tasks-provider", error: String(err) },
-          "Failed to load tasks for context",
-        );
-        return { text: "" };
+        // error-policy:J4 a failed task read must not read as "no tasks":
+        // surface it and tell the model the context is missing.
+        runtime.reportError("OngoingTasksProvider.get", err, {
+          roomId: message.roomId,
+        });
+        return {
+          text: "Task and automation context is unavailable because the task store read failed. Do not infer that there are no tasks or automations; state the gap.",
+          values: { tasksUnavailable: true },
+          data: { tasksUnavailable: true },
+        };
       }
 
       if (sections.length === 0) {

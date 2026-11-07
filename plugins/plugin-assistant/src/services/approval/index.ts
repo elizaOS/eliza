@@ -4,6 +4,7 @@
  * schema), surfaced through the registered {@link ApprovalService}.
  */
 
+export { buildApprovalChoiceText } from "./choice.ts";
 export {
   type ApprovalDispatchControl,
   type ApprovalDispatchControlMutation,
@@ -20,6 +21,7 @@ export {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
   type ApprovalAction,
+  type ApprovalCalendarAttendeeInput,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
   type ApprovalEnqueueResult,

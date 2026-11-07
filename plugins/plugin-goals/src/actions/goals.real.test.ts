@@ -2,16 +2,14 @@
  * Keyless OWNER_GOALS e2e (#8801, gap 5 — per-plugin harness adoption).
  *
  * Drives the goals plugin's primary action (`OWNER_GOALS`) end-to-end through
- * the deterministic deterministic model provider with `createTestRuntimeWithModelProvider()` and NO API keys. The
+ * the deterministic model provider with `createTestRuntimeWithModelProvider()` and NO API keys. The
  * action resolves its subaction + params via `resolveActionArgs`, which makes a
  * single `TEXT_LARGE` extraction call answered here by a declared fixture (the
  * JSON envelope `{action, params, missing, confidence}`). The handler's
  * `callback` captures the agent's reply, asserting the natural-language →
  * deterministic-model-provider-extraction → action-dispatch loop closed with zero external cost.
  *
- * Two complementary paths, both terminating inside the action's own handler
- * (before the goals back-end touches PA's cross-plugin `app_lifeops` audit
- * table, which is out of this plugin's keyless surface):
+ * Two complementary paths, both terminating inside the action's own handler:
  *   1. A missing required field → the handler's clarification branch, reply
  *      naming the field the LLM could not extract.
  *   2. A low-confidence extraction → the same structured clarification, proving
@@ -26,43 +24,12 @@ import {
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
-import { executeRawSql } from "../db/sql.ts";
+import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { goalsPlugin } from "../plugin.ts";
 import { GOAL_CHECKIN_PROGRESS_STATES } from "../services/checkin.ts";
 import { ownerGoalsAction } from "./goals.ts";
-
-/**
- * Provision the one peer-owned table the OWNER_GOALS create/update/delete path
- * appends an audit row into. In production `@elizaos/plugin-personal-assistant`
- * owns `app_lifeops.life_audit_events`; in this PA-free keyless e2e we create
- * just that table (matching the columns the goals repository's INSERT writes) so
- * the full create→reply loop runs without pulling all of PA into the runtime.
- */
-async function provisionAuditTable(
-  harness: ModelProviderTestRuntime,
-): Promise<void> {
-  await executeRawSql(
-    harness.runtime,
-    "CREATE SCHEMA IF NOT EXISTS app_lifeops",
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_audit_events (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       event_type text NOT NULL,
-       owner_type text NOT NULL,
-       owner_id text NOT NULL,
-       reason text,
-       inputs_json text,
-       decision_json text,
-       actor text NOT NULL,
-       created_at text NOT NULL
-     )`,
-  );
-}
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -81,6 +48,7 @@ function track(harness: ModelProviderTestRuntime): ModelProviderTestRuntime {
 async function runOwnerGoals(
   harness: ModelProviderTestRuntime,
   text: string,
+  parameters?: Record<string, unknown>,
 ): Promise<{
   result: { success: boolean; data?: { action?: string; missing?: string[] } };
   reply: string;
@@ -95,7 +63,7 @@ async function runOwnerGoals(
     harness.runtime,
     message,
     undefined,
-    undefined,
+    parameters ? { parameters } : undefined,
     callback,
   )) as { success: boolean; data?: { action?: string; missing?: string[] } };
   return { result, reply };
@@ -121,7 +89,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const { result, reply } = await runOwnerGoals(
       harness,
@@ -165,6 +132,128 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
     expect(result.data?.missing).toContain("id");
     // The action's clarification names the field, delivered via the callback.
     expect(reply.toLowerCase()).toContain("id");
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("keeps the planner's update when the extractor proposes create, asking for the id instead of duplicating the goal", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-create-original",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "create",
+              params: { title: "Run a marathon" },
+              missing: [],
+              confidence: 0.95,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const created = await runOwnerGoals(
+      harness,
+      "Add a goal to run a marathon.",
+    );
+    expect(created.result.success, created.reply).toBe(true);
+
+    harness.fixtures.register({
+      name: "goal-extraction-override-to-create",
+      match: { modelType: ModelType.TEXT_LARGE },
+      response: JSON.stringify({
+        action: "create",
+        params: { title: "Run a marathon in 2027" },
+        missing: [],
+        confidence: 0.9,
+      }),
+      times: 1,
+    });
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Change my marathon goal to 2027.",
+      { action: "update", title: "Run a marathon in 2027" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["id"]);
+    expect(reply).toBe("To OWNER_GOALS (update) I still need: id.");
+    const goals = await createOwnerGoalsService(harness.runtime).listGoals();
+    expect(goals.map((record) => record.goal.title)).toEqual([
+      "Run a marathon",
+    ]);
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("asks for the planner's delete id instead of borrowing the id the extractor pulled for review", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-review-for-planner-delete",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "review",
+              params: { id: "goal-1" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "How is goal-1 going? Also drop that old goal.",
+      { action: "delete" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["id"]);
+    expect(reply).toBe("To OWNER_GOALS (delete) I still need: id.");
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("asks for the planner's create title instead of borrowing the title the extractor pulled for update", async () => {
+    const harness = track(
+      await createTestRuntimeWithModelProvider({
+        plugins: [goalsPlugin],
+        fixtures: [
+          {
+            name: "goal-extraction-update-for-planner-create",
+            match: { modelType: ModelType.TEXT_LARGE },
+            response: JSON.stringify({
+              action: "update",
+              params: { id: "goal-1", title: "Later" },
+              missing: [],
+              confidence: 0.9,
+            }),
+            times: 1,
+          },
+        ],
+      }),
+    );
+
+    const { result, reply } = await runOwnerGoals(
+      harness,
+      "Rename goal-1 to Later and add a new goal.",
+      { action: "create" },
+    );
+
+    expect(result.success, reply).toBe(false);
+    expect(result.data?.action).toBe("clarify");
+    expect(result.data?.missing).toEqual(["title"]);
+    expect(reply).toBe("To OWNER_GOALS (create) I still need: title.");
+    const goals = await createOwnerGoalsService(harness.runtime).listGoals();
+    expect(goals).toEqual([]);
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
@@ -264,7 +353,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const created = await runOwnerGoals(
       harness,

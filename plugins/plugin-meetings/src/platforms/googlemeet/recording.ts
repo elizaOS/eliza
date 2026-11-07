@@ -12,7 +12,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import { type MeetingEndReason } from "@elizaos/core/meetings";
+import type { MeetingEndReason } from "@elizaos/core/protocol";
 import type { Page } from "playwright-core";
 import { startSpeakerAudioCapture } from "../../browser/audio-capture.js";
 import type { MeetingBotSession } from "../../types.js";

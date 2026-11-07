@@ -46,7 +46,7 @@ export function setKmsClient(client: KmsClient): void {
  *    which is precisely the misconfig class this guards against.
  *
  * Exported for tests. Keep in sync with `assertKmsBackendDurable` in
- * `packages/cloud/scripts/admin/daemons/provisioning-worker.ts`, which applies
+ * `packages/cloud/services/provisioning-worker/src/index.ts`, which applies
  * the same policy at daemon preflight (before any job is claimed).
  */
 export function isEphemeralKmsAllowed(env: NodeJS.ProcessEnv): boolean {

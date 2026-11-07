@@ -9,12 +9,10 @@ import {
   type CreateLifeOpsCalendarEventRequest,
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
   type LifeOpsCalendarEvent,
-  type LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
-import {
   type LifeOpsConnectorGrant,
   type LifeOpsGmailMessageSummary,
-} from "@elizaos/core/contracts/personal-assistant";
+  type LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
   GOOGLE_GMAIL_READ_SCOPE,
@@ -358,6 +356,9 @@ export function resolveCalendarPresetStart(
   });
 }
 
+/** Existing timed-create fallback when both end and duration are omitted. */
+export const DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES = 60;
+
 export function resolveCalendarEventRange(
   request: CreateLifeOpsCalendarEventRequest,
   now: Date,
@@ -403,7 +404,8 @@ export function resolveCalendarEventRange(
     };
   }
   const durationMinutes =
-    normalizeOptionalMinutes(request.durationMinutes, "durationMinutes") ?? 60;
+    normalizeOptionalMinutes(request.durationMinutes, "durationMinutes") ??
+    DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES;
   if (durationMinutes <= 0) {
     fail(400, "durationMinutes must be greater than 0");
   }

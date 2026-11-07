@@ -6,22 +6,18 @@
  */
 
 import { logger } from "../logger.js";
+import type { FetchLike } from "../media/fetch.js";
 import {
 	isBlockedHostname,
 	isPrivateIpAddress,
 	type LookupFn,
+	normalizeHostLike,
 	type PinnedHostname,
 	type PinnedLookup,
-	resolvePinnedHostname,
 	resolvePinnedHostnameWithPolicy,
 	SsrfBlockedError,
 	type SsrfPolicy,
 } from "./ssrf.js";
-
-type FetchLike = (
-	input: RequestInfo | URL,
-	init?: RequestInit,
-) => Promise<Response>;
 
 export type GuardedFetchOptions = {
 	url: string;
@@ -258,8 +254,8 @@ function buildAbortSignal(params: {
  * - Validates URL protocol (http/https only)
  * - With a `lookupFn`: resolves and pins DNS to also defend against rebinding
  * - Without a `lookupFn`: synchronous literal-host checks (blocks private/
- *   loopback/link-local IPs and internal hostnames) — usable from
- *   environment-agnostic core, but no rebinding protection
+ * loopback/link-local IPs and internal hostnames) — usable from
+ * environment-agnostic core, but no rebinding protection
  * - Follows redirects manually, re-validating every hop
  * - Supports timeout and abort signals
  */
@@ -278,7 +274,7 @@ export async function fetchWithSsrfGuard(
 	const pinnedFetchImpl =
 		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
-	// Fail CLOSED on the footgun that re-creates #11147: a `lookupFn` computes a
+	// Fail CLOSED on the footgun that re-creates: a `lookupFn` computes a
 	// DNS pin, but without a `pinnedFetchImpl` to connect to that pinned IP the
 	// request falls through to the unpinned `fetcher` — the pin is computed and
 	// then silently discarded, re-opening the DNS-rebinding race the lookup was
@@ -314,6 +310,10 @@ export async function fetchWithSsrfGuard(
 		cleanup();
 	};
 
+	const allowPrivateNetwork = Boolean(params.policy?.allowPrivateNetwork);
+	const allowedHostnames = new Set(
+		(params.policy?.allowedHostnames ?? []).map(normalizeHostLike),
+	);
 	const visited = new Set<string>();
 	let currentUrl = params.url;
 	let redirectCount = 0;
@@ -334,7 +334,7 @@ export async function fetchWithSsrfGuard(
 			await release();
 			throw new Error("Invalid URL: must be http or https", { cause: error });
 		}
-		if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+		if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
 			await release();
 			throw new Error("Invalid URL: must be http or https");
 		}
@@ -343,23 +343,20 @@ export async function fetchWithSsrfGuard(
 			if (lookupFn) {
 				// A DNS lookup is available → pin the resolved address(es). This is
 				// the strongest mode: it also defends against DNS rebinding.
-				const usePolicy = Boolean(
-					params.policy?.allowPrivateNetwork ||
-						params.policy?.allowedHostnames?.length,
-				);
-				pinned = usePolicy
-					? await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-							lookupFn,
-							policy: params.policy,
-						})
-					: await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
-			} else {
+				pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+					lookupFn,
+					policy: params.policy,
+				});
+			} else if (
+				!allowPrivateNetwork &&
+				!allowedHostnames.has(normalizeHostLike(parsedUrl.hostname))
+			) {
 				// EDGE-SSRF: no socket pinning on workerd — egress network policy
 				// required. This branch runs where there is no node:dns to pin with
 				// (Cloudflare Workers / environment-agnostic core). It blocks literal
 				// internal targets but CANNOT defend against DNS rebinding (a public
 				// name that flips to a private address between check and connect,
-				// #12229 M5); on the edge that residual must be closed by a Cloudflare
+				// M5); on the edge that residual must be closed by a Cloudflare
 				// egress policy denying RFC1918/link-local, or by routing outbound
 				// through a resolve-and-connect-by-IP proxy. Operator follow-up.
 				//
@@ -369,29 +366,16 @@ export async function fetchWithSsrfGuard(
 				// internal hostnames. The redirect loop below re-runs this check for
 				// every hop, so redirect-to-internal is caught too. Pass a lookupFn
 				// where rebinding protection matters.
-				const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
-				const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
-				const allowed = new Set(
-					(params.policy?.allowedHostnames ?? []).map((value) =>
-						value.trim().toLowerCase().replace(/\.$/, ""),
-					),
-				);
-				if (!allowPrivate && !allowed.has(host)) {
-					if (isBlockedHostname(parsedUrl.hostname)) {
-						await release();
-						throw new SsrfBlockedError(
-							`Blocked hostname: ${parsedUrl.hostname}`,
-						);
-					}
-					if (isPrivateIpAddress(parsedUrl.hostname)) {
-						await release();
-						throw new SsrfBlockedError("Blocked: private/internal IP address");
-					}
+				if (isBlockedHostname(parsedUrl.hostname)) {
+					throw new SsrfBlockedError(`Blocked hostname: ${parsedUrl.hostname}`);
+				}
+				if (isPrivateIpAddress(parsedUrl.hostname)) {
+					throw new SsrfBlockedError("Blocked: private/internal IP address");
 				}
 			}
 
 			const init: RequestInit = {
-				...(params.init ? { ...params.init } : {}),
+				...params.init,
 				...(hopHeaders ? { headers: hopHeaders } : {}),
 				...(hopMethod !== undefined ? { method: hopMethod } : {}),
 				...(hopBodyDropped ? { body: undefined } : {}),
@@ -402,7 +386,6 @@ export async function fetchWithSsrfGuard(
 			// A signal that is already aborted (caller cancellation or an elapsed
 			// deadline during DNS pinning) must not dispatch a request at all.
 			if (signal?.aborted) {
-				await release();
 				throw signal.reason;
 			}
 
@@ -420,7 +403,6 @@ export async function fetchWithSsrfGuard(
 				const location = response.headers.get("location");
 				if (!location) {
 					cancelResponseBody(response);
-					await release();
 					throw new Error(
 						`Redirect missing location header (${response.status})`,
 					);
@@ -428,7 +410,6 @@ export async function fetchWithSsrfGuard(
 				redirectCount += 1;
 				if (redirectCount > maxRedirects) {
 					cancelResponseBody(response);
-					await release();
 					// Redirect budget and loop violations are policy blocks, not
 					// transient transport failures: retrying cannot succeed.
 					throw new SsrfBlockedError(
@@ -442,7 +423,6 @@ export async function fetchWithSsrfGuard(
 				const nextParsedUrl = new URL(location, parsedUrl);
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
-					await release();
 					throw new SsrfBlockedError("Redirect loop detected");
 				}
 				visited.add(nextUrl);

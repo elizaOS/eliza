@@ -2,8 +2,8 @@
  * Types, constants, and config interfaces for the voice chat system.
  */
 
-import type { VoiceConfig, VoiceMode } from "../api/client";
-import { resolveApiUrl } from "../utils";
+import type { VoiceConfig, VoiceMode } from "../api/client-types-config";
+import { resolveApiUrl } from "../utils/asset-url";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
 import type { VoicePlaybackObserver } from "./voice-playback-evidence";
@@ -38,14 +38,6 @@ export interface SpeechRecognitionResultList {
 
 export type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
 
-export type WindowWithSpeechRecognition = Omit<
-  Window,
-  "SpeechRecognition" | "webkitSpeechRecognition"
-> & {
-  SpeechRecognition?: SpeechRecognitionCtor;
-  webkitSpeechRecognition?: SpeechRecognitionCtor;
-};
-
 function isSpeechRecognitionCtor(
   value: unknown,
 ): value is SpeechRecognitionCtor {
@@ -70,7 +62,9 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
 
 // ── Public types ──────────────────────────────────────────────────────
 
-export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
+import type { SpeechSegmentKind } from "./voice-chat-playback";
+
+export type { SpeechSegmentKind } from "./voice-chat-playback";
 export type SpeechProviderKind =
   | "eliza-cloud"
   | "elevenlabs"
@@ -106,13 +100,7 @@ export const DEFAULT_VOICE_CONTINUOUS_MODE: VoiceContinuousMode = "off";
 /**
  * Status surfaced in the chat status bar while continuous chat is active.
  */
-export type VoiceContinuousStatus =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "interrupting"
-  | "transcribing";
+export type { VoiceContinuousStatus } from "./voice-session-status";
 
 export interface VoiceSpeakerMetadata {
   /** Stable app/runtime entity id for the speaker when a connector can provide one. */
@@ -250,7 +238,7 @@ export interface QueueAssistantSpeechOptions {
 /**
  * A TTS engine failure that must be shown to the user rather than silently
  * papered over with a different voice (#12253). The configured voice engine
- * (cloud Kokoro, local-inference Kokoro, ElevenLabs, or native talkmode)
+ * (cloud Kokoro, local-inference Paradee, ElevenLabs, or native talkmode)
  * failed and the queue was stopped — no fallback voice was substituted.
  */
 export interface VoiceTtsError {
@@ -404,7 +392,7 @@ export const ASSISTANT_TTS_DEBOUNCE_MS = 170;
 export const ASSISTANT_TTS_FINAL_ONLY = false;
 export const TALKMODE_STOP_SETTLE_MS = 120;
 export const REDACTED_SECRET = "[REDACTED]";
-export const MOUTH_OPEN_STEP = 0.02;
+export { MOUTH_OPEN_STEP } from "./voice-chat-playback";
 
 export const globalAudioCache = new Map<string, Uint8Array>();
 

@@ -59,6 +59,13 @@ const EMPTY: ProviderResult = {
 /**
  * Check when the owner last sent a message across their rooms.
  * Returns 0 if no messages found.
+ *
+ * Asks for exactly what it needs: the newest owner message per
+ * room. Fetching every room's whole history to compute one
+ * timestamp grows without bound, and a plain scan cap would be
+ * wrong here — if the owner's last message fell beyond the
+ * newest N messages, the cap would report no owner message at
+ * all and suppress the true inactivity trigger.
  */
 async function findLastOwnerMessageTimestamp(
   runtime: IAgentRuntime,
@@ -67,19 +74,22 @@ async function findLastOwnerMessageTimestamp(
   const roomIds = await runtime.getRoomsForParticipant(ownerEntityId as UUID);
   if (roomIds.length === 0) return 0;
 
-  const memories = await runtime.getMemoriesByRoomIds({
-    tableName: "messages",
-    roomIds: roomIds as UUID[],
-  });
+  const perRoom = await Promise.all(
+    roomIds.map((roomId) =>
+      runtime.getMemories({
+        tableName: "messages",
+        roomId: roomId as UUID,
+        authorEntityIds: [ownerEntityId as UUID],
+        orderDirection: "desc",
+        limit: 1,
+      }),
+    ),
+  );
 
   let latest = 0;
-  for (const m of memories) {
-    if (
-      m.entityId === ownerEntityId &&
-      m.createdAt != null &&
-      m.createdAt > latest
-    ) {
-      latest = m.createdAt;
+  for (const [newest] of perRoom) {
+    if (newest?.createdAt != null && newest.createdAt > latest) {
+      latest = newest.createdAt;
     }
   }
   return latest;

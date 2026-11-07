@@ -5,10 +5,7 @@
     "types": ["node", "vite/client"],
     "declaration": false,
     "declarationMap": false,
-    "sourceMap": false,
-    "paths": {
-      "@elizaos/ui/*": ["../../packages/ui/src/*"]
-    }
+    "sourceMap": false
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [

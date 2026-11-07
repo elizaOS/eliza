@@ -176,6 +176,41 @@ export class DuplicateContainerNameError extends Error {
  * Read operations → dbRead (read-intent connection)
  * Write operations → dbWrite (primary)
  */
+/**
+ * Locks the earnings that may fund an organization's compute debt (the owner
+ * first) when the organization pays as it goes from earnings.
+ */
+async function lockEarningsFundingInTx(
+  tx: DbTransaction,
+  organizationId: string,
+  payAsYouGoFromEarnings: boolean,
+): Promise<{ earningsAvailable: Decimal; earningsSourceUserId: string | null }> {
+  let earningsAvailable = new Decimal(0);
+  let earningsSourceUserId: string | null = null;
+  if (payAsYouGoFromEarnings) {
+    const [sourceUser] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.organization_id, organizationId))
+      .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
+      .limit(1);
+    if (sourceUser) {
+      earningsSourceUserId = sourceUser.id;
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
+      );
+      const [earnings] = await tx
+        .select({ available_balance: redeemableEarnings.available_balance })
+        .from(redeemableEarnings)
+        .where(eq(redeemableEarnings.user_id, sourceUser.id))
+        .for("update")
+        .limit(1);
+      if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
+    }
+  }
+  return { earningsAvailable, earningsSourceUserId };
+}
+
 export class ContainersRepository {
   // ============================================================================
   // READ OPERATIONS (use read-intent connection)
@@ -505,29 +540,11 @@ export class ContainersRepository {
       if (!creditAvailable.isFinite()) {
         throw new Error("Container restart credit funding is not a finite numeric value");
       }
-      let earningsAvailable = new Decimal(0);
-      let earningsSourceUserId: string | null = null;
-      if (organization.pay_as_you_go_from_earnings) {
-        const [sourceUser] = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.organization_id, organizationId))
-          .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
-          .limit(1);
-        if (sourceUser) {
-          earningsSourceUserId = sourceUser.id;
-          await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
-          );
-          const [earnings] = await tx
-            .select({ available_balance: redeemableEarnings.available_balance })
-            .from(redeemableEarnings)
-            .where(eq(redeemableEarnings.user_id, sourceUser.id))
-            .for("update")
-            .limit(1);
-          if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
-        }
-      }
+      const { earningsAvailable, earningsSourceUserId } = await lockEarningsFundingInTx(
+        tx,
+        organizationId,
+        organization.pay_as_you_go_from_earnings,
+      );
       if (!earningsAvailable.isFinite()) {
         throw new Error("Container restart earnings funding is not a finite numeric value");
       }
@@ -668,14 +685,78 @@ export class ContainersRepository {
    * job via the enqueued CONTAINER_DELETE.
    */
   async markStoppedForBilling(id: string, organizationId: string): Promise<void> {
-    await dbWrite
-      .update(containers)
-      .set({
-        status: "stopped",
-        billing_status: "suspended",
-        updated_at: new Date(),
+    const now = new Date();
+    await dbWrite.transaction(async (tx) => {
+      await this.settleAccruedComputeInTx(tx, id, organizationId, now);
+      await tx
+        .update(containers)
+        .set({
+          status: "stopped",
+          billing_status: "suspended",
+          updated_at: now,
+        })
+        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)));
+    });
+  }
+
+  /**
+   * Charges the compute a container ran since its last daily bill before the
+   * row leaves billing (delete, app teardown). The daily cron bills after use
+   * and only sees billable rows, so without this the time since the last run
+   * was never charged. Debt the organization cannot pay is recorded as
+   * uncollected instead of blocking the delete.
+   */
+  async settleAccruedCompute(id: string, organizationId: string, now: Date): Promise<void> {
+    await dbWrite.transaction((tx) => this.settleAccruedComputeInTx(tx, id, organizationId, now));
+  }
+
+  async settleAccruedComputeInTx(
+    tx: DbTransaction,
+    id: string,
+    organizationId: string,
+    now: Date,
+  ): Promise<void> {
+    const [container] = await tx
+      .select({
+        user_id: containers.user_id,
+        name: containers.name,
+        billing_status: containers.billing_status,
       })
-      .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)));
+      .from(containers)
+      .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+      .for("update")
+      .limit(1);
+    // A suspended row already left billing through a settled boundary (app
+    // teardown, the billing stop job): settling again would charge time after
+    // metering stopped, up to the daemon's delayed delete.
+    if (!container || container.billing_status === "suspended") return;
+    const [organization] = await tx
+      .select({ pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .for("update")
+      .limit(1);
+    if (!organization) return;
+    const { earningsSourceUserId } = await lockEarningsFundingInTx(
+      tx,
+      organizationId,
+      organization.pay_as_you_go_from_earnings,
+    );
+    await containerBillingRepository.recordSuccessfulDailyBillingInTransaction(
+      tx,
+      {
+        containerId: id,
+        organizationId,
+        userId: container.user_id,
+        containerName: container.name,
+        dailyRate: 0,
+        earningsSourceUserId,
+        payAsYouGoFromEarnings: organization.pay_as_you_go_from_earnings,
+        newBalance: 0,
+        now,
+      },
+      { forceLifecycleSettlement: true, terminalInsufficientDisposition: "uncollected" },
+    );
   }
 
   /**

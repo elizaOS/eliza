@@ -3,13 +3,9 @@
  * initialization contract separate from the HTTP listener makes first-run,
  * runtime-backed, and stopped-server states deterministic and testable.
  */
-import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
-import type {
-  AgentAutomationMode,
-  PluginEntry,
-  ServerState,
-} from "./server-types.ts";
+import type { AgentAutomationMode, AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+import type { PluginEntry, ServerState } from "./server-types.ts";
 
 export type InitialAgentState = Extract<
   ServerState["agentState"],
@@ -64,11 +60,16 @@ export function createServerState(
     skills: [],
     logBuffer: [],
     eventBuffer: [],
-    nextEventId: 1,
+    // A dashboard retains its replay cursor across server restarts. Seed the
+    // sequence from startup time to avoid resetting to evt-1 and dropping new
+    // events as duplicates. This assumes the wall clock has not moved backward
+    // and the previous process emitted fewer than 1000 events per millisecond.
+    nextEventId: Date.now() * 1000,
     chatRoomId: null,
     chatUserId: null,
     chatConnectionReady: null,
     chatConnectionPromise: null,
+    runtimeStopPromise: null,
     adminEntityId: null,
     conversations: new Map(),
     activeChatTurnCount: 0,

@@ -5,9 +5,8 @@
  * Steward, Hyperliquid, Polymarket, or network access.
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import { actionToJsonSchema } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-
-import { actionToJsonSchema } from "../../../../packages/core/src/actions/action-schema.js";
 import {
   requireTradeOrderConfirmation,
   TRADE_CONFIRM_ACTION,
@@ -74,9 +73,12 @@ function createRuntime(fetchMock: typeof fetch): {
   return { runtime, service, cache };
 }
 
+let messageCount = 0;
+/** Each turn is a new user message, as the confirmation gate requires. */
 function message(text: string): Memory {
+  messageCount++;
   return {
-    id: "00000000-0000-0000-0000-000000000001",
+    id: `00000000-0000-0000-0001-${String(messageCount).padStart(12, "0")}`,
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -155,6 +157,10 @@ describe("tradeRouterAction", () => {
       status: "active",
       accountId: "wallet_fixture",
     });
+    // The id submit_order and inspect_session require is agent configuration;
+    // this result is the only place the planner can read it.
+    expect(result?.data?.sessionId).toBe("sess_hl_fixture");
+    expect(result?.text).toContain("sess_hl_fixture");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "https://steward.local/v1/trade/token-status?agentId=agent-fixture",
       "https://steward.local/v1/trade/sessions/sess_hl_fixture",
@@ -241,8 +247,12 @@ describe("tradeRouterAction", () => {
 
     const pending = await run(runtime, "buy btc", hyperliquidOrder);
     expect(pending?.data?.requiresConfirmation).toBe(true);
+    // The prompt states every order term the pending key binds.
+    expect(pending?.userFacingText).toBe(
+      "Submit Hyperliquid buy 0.01 BTC at 61000 with 2x leverage time-in-force Ioc under governed session sess_hl_fixture? Reply yes to submit or no to cancel.",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const cacheKey = `confirmation:00000000-0000-0000-0000-000000000002:${TRADE_CONFIRM_ACTION}:${tradeOrderPendingKey(hyperliquidOrder)}`;
+    const cacheKey = `confirmation:00000000-0000-0000-0000-000000000004:00000000-0000-0000-0000-000000000002:${TRADE_CONFIRM_ACTION}:${tradeOrderPendingKey(hyperliquidOrder)}`;
     const pendingRecord = cache.get(cacheKey) as
       | { metadata?: { idempotencyKey?: string } }
       | undefined;

@@ -4,7 +4,13 @@
  * shutdown drains any sweep already in progress before releasing the service.
  */
 
-import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  Service,
+  type UUID,
+} from "@elizaos/core";
 import { DURABLE_AUDIT_LOG_TYPES } from "../security/audit-log.ts";
 import {
   planRetention,
@@ -21,20 +27,6 @@ export const LOGS_RETENTION_PREFIX = "ELIZA_LOGS_RETENTION";
 
 /** Stable bucket key for logs that carry no roomId (count bound still applies). */
 const NULL_ROOM_KEY = "__no_room__";
-
-/** Legacy public adapter shape retained for existing type consumers; the service uses the canonical runtime contract. */
-export interface LogsRetentionAdapter {
-  getLogs(params: {
-    entityId?: string;
-    roomId?: string;
-    type?: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<
-    Array<{ id?: string; roomId?: string; createdAt?: number | Date }>
-  >;
-  deleteLogs(logIds: string[]): Promise<void>;
-}
 
 export interface LogsSweepResult {
   scanned: number;
@@ -89,16 +81,17 @@ export class LogsRetentionService extends Service {
     try {
       const adapter = this.runtime.adapter;
 
-      // One query avoids unstable offset pages while log writers remain active.
-      // This exceeds JavaScript's maximum array length, so every representable
-      // inventory fits without imposing a retention scan ceiling.
-      const rows = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+      // One query avoids unstable offset pages while log writers remain
+      // active. It reads only ids, rooms and times, never prompts or replies.
+      // Durable audit evidence has its own retention authority; lifecycle log
+      // retention never selects it.
+      const rows = await adapter.getLogInventory({
+        excludeTypes: [...DURABLE_AUDIT_LOG_TYPES],
+      });
 
       const retainable: RetainableRow[] = [];
       for (const r of rows) {
-        // Durable audit evidence has its own retention authority; lifecycle
-        // log retention never selects it.
-        if (!r.id || DURABLE_AUDIT_LOG_TYPES.has(r.type)) continue;
+        if (!r.id) continue;
         retainable.push({
           id: r.id,
           // Bucket per room; null-room logs share one stable bucket so the
@@ -120,12 +113,8 @@ export class LogsRetentionService extends Service {
 
       let deleted = 0;
       if (plan.deleteIds.length > 0) {
-        const selected = new Set(plan.deleteIds);
-        const ids = rows.flatMap((row) =>
-          row.id && selected.has(row.id) ? [row.id] : [],
-        );
-        await adapter.deleteLogs(ids);
-        deleted = ids.length;
+        await adapter.deleteLogs(plan.deleteIds as UUID[]);
+        deleted = plan.deleteIds.length;
       }
 
       const result: LogsSweepResult = {

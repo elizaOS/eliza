@@ -5,7 +5,7 @@
  * at module scope — that pattern previously forced the cloud plugin to load
  * during container boot.
  */
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { resolveDevCloudAuthorityEnvValue } from "./dev-cloud-env-authority.js";
 import { resolveDevCloudEnvAuthority } from "./dev-cloud-env-authority.js";
 import { type DevCloudEnvAuthority } from "./dev-cloud-env-authority.js";

@@ -49,6 +49,20 @@ it("tells the operator to write the proof while the command waits, not to re-run
   expect(result.message).toMatch(/NEW token/);
 });
 
+it("returns a structured proof failure when the proof file cannot be read", async () => {
+  const result = await runElizaAuthReset({
+    env: { ELIZA_API_BIND: "127.0.0.1" },
+    log: () => {},
+    challenge: CHALLENGE,
+    proofReader: async () => {
+      throw new Error("permission denied");
+    },
+    proofPollIntervalMs: 1,
+    proofTimeoutMs: 3,
+  });
+  expect(result).toMatchObject({ ok: false, reason: "proof_failed" });
+});
+
 it("closes the store it was handed even when session revocation fails", async () => {
   const cleanup = vi.fn(async () => {});
   const store = {

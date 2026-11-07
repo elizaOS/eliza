@@ -7,7 +7,7 @@
  * of the caller's instructions. Adapted from the pattern documented at
  * https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction.
  */
-import { elizaLogger } from "@elizaos/core";
+import { ElizaError, elizaLogger } from "@elizaos/core";
 import {
   ComputeBudgetProgram,
   type Connection,
@@ -33,12 +33,48 @@ export function calculatePrioritizationFee(
   return sorted[Math.max(0, index)] ?? 0;
 }
 
+const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+
+/**
+ * Meteora SDK methods already prepend `SetComputeUnitLimit`. A second limit
+ * in the same message is rejected as `DuplicateInstruction`. Replace only
+ * limit/price for submission; retain heap/data requests. Simulation uses the
+ * original SDK instructions and budgets.
+ */
+export function withoutComputeUnitLimitAndPrice(
+  instructions: readonly TransactionInstruction[]
+): TransactionInstruction[] {
+  return instructions.filter(
+    (instruction) =>
+      !instruction.programId.equals(COMPUTE_BUDGET_PROGRAM_ID) ||
+      (instruction.data[0] !== 2 && instruction.data[0] !== 3)
+  );
+}
+
+/** Fee payer first, then any other required signers, without duplicates. */
+export function collectSigners(
+  feePayer: Keypair,
+  extraSigners: readonly Keypair[] = []
+): Keypair[] {
+  const signers = [feePayer];
+  const seen = new Set([feePayer.publicKey.toBase58()]);
+  for (const signer of extraSigners) {
+    const key = signer.publicKey.toBase58();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    signers.push(signer);
+  }
+  return signers;
+}
+
 export async function sendTransaction(
   connection: Connection,
   instructions: TransactionInstruction[],
-  wallet: Keypair
+  wallet: Keypair,
+  extraSigners: readonly Keypair[] = []
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();
+  const workInstructions = withoutComputeUnitLimitAndPrice(instructions);
 
   const messageV0 = new TransactionMessage({
     payerKey: wallet.publicKey,
@@ -46,9 +82,17 @@ export async function sendTransaction(
     instructions,
   }).compileToV0Message();
 
+  const signers = collectSigners(wallet, extraSigners);
   const simulatedTx = new VersionedTransaction(messageV0);
-  simulatedTx.sign([wallet]);
+  simulatedTx.sign(signers);
   const simulation = await connection.simulateTransaction(simulatedTx);
+  if (simulation.value.err) {
+    throw new ElizaError("Meteora transaction simulation failed", {
+      code: "METEORA_SIMULATION_FAILED",
+      context: { simulationError: simulation.value.err },
+      severity: "ephemeral",
+    });
+  }
   const computeUnits = simulation.value.unitsConsumed || 200_000;
   const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
 
@@ -65,11 +109,11 @@ export async function sendTransaction(
   const finalMessage = new TransactionMessage({
     payerKey: wallet.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
-    instructions: [...computeBudgetInstructions, ...instructions],
+    instructions: [...computeBudgetInstructions, ...workInstructions],
   }).compileToV0Message();
 
   const transaction = new VersionedTransaction(finalMessage);
-  transaction.sign([wallet]);
+  transaction.sign(signers);
 
   const timeoutMs = 90000;
   const startTime = Date.now();

@@ -7,8 +7,8 @@
  * vehicle, or restraint, mutates a calendar, or sends a message.
  */
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   resolveKnowledgeGraphService,

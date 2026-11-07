@@ -8,13 +8,12 @@ from dataclasses import replace
 
 from eliza_lifeops_bench.__main__ import _build_world_factory
 from eliza_lifeops_bench.agents import PerfectAgent, WrongAgent
-from eliza_lifeops_bench.runner import (
-    LifeOpsBenchRunner,
+from eliza_lifeops_bench.lifeworld.executor import (
     _execute_action,
     build_tool_manifest,
-    state_hash,
     supported_actions,
 )
+from eliza_lifeops_bench.runner import LifeOpsBenchRunner, state_hash
 from eliza_lifeops_bench.scenarios._personas import ALL_PERSONAS
 from eliza_lifeops_bench.scenarios.parent_persona_variants import (
     DEFAULT_PARENT_POLICY_CRITERIA,

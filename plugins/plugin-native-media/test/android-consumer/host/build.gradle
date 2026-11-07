@@ -1,0 +1,18 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'example.ownedmedia'
+ compileSdk 36
+ defaultConfig {
+  applicationId 'example.ownedmedia.host'
+  minSdk 29
+  targetSdk 35
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+ }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+ implementation project(':media')
+ implementation project(':capacitor-android')
+ androidTestImplementation 'androidx.test:runner:1.5.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+}

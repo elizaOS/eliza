@@ -33,9 +33,9 @@ const result = await build({
   platform: "browser",
   alias: {
     // Resolve the tool row through the canonical browser-safe public entry.
-    "@elizaos/core/client-public": join(
+    "@elizaos/core/protocol": join(
       here,
-      "../../../../../core/src/client-public.ts",
+      "../../../../../core/src/protocol.ts",
     ),
   },
   jsx: "automatic",

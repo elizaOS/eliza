@@ -9,5 +9,4 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-settings build  # build
-bun run --cwd plugins/plugin-native-settings test   # tests
 ```

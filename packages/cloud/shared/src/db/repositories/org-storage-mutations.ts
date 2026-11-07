@@ -917,7 +917,15 @@ export class OrgStorageMutationsRepository {
                 AND state IN ('prepared','reserved','provider_started','reconciling')
             )
             UPDATE ${orgStorageQuota}
-            SET bytes_used = (catalog.bytes + reservations.bytes)::bigint,
+            -- The counter is shared with cloud files, generated media and
+            -- avatars, which keep no rows in the native catalog. The catalog
+            -- is a floor for the counter, never its value: a counter below the
+            -- native bytes is raised, a counter above them keeps the bytes the
+            -- other writers charged.
+            SET bytes_used = GREATEST(
+                  ${orgStorageQuota.bytes_used},
+                  (catalog.bytes + reservations.bytes)::bigint
+                ),
                 native_catalog_reconciled_at = NOW(),
                 updated_at = NOW()
             FROM catalog, reservations

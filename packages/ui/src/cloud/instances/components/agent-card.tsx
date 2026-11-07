@@ -4,30 +4,7 @@
  * Grid/list card for a cloud agent instance (avatar, status, quick actions) on
  * the My Agents surface.
  */
-import {
-  ensureAvatarUrl,
-  isBuiltInAvatar,
-} from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Image,
-  Skeleton,
-  StatusBadge,
-  Switch,
-} from "@elizaos/ui/cloud-ui";
-import { cn } from "@elizaos/ui/lib/utils";
+import { ensureAvatarUrl } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   Copy,
   Globe,
@@ -42,8 +19,30 @@ import type * as React from "react";
 import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
+import { default as Image } from "../../../cloud-ui/runtime/image";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
-import { useT } from "../lib/i18n";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../../components/ui/dropdown-menu";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { StatusBadge } from "../../../components/ui/status-badge";
+import { Switch } from "../../../components/ui/switch";
+import { cn } from "../../../utils/cn";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 export interface AgentCardData {
   id: string;
@@ -387,9 +386,6 @@ function AgentCardInner({
                 alt={agent.name}
                 fill
                 className="object-cover"
-                unoptimized={
-                  !isBuiltInAvatar(ensureAvatarUrl(avatarUrl, agent.name))
-                }
               />
             </div>
 
@@ -639,7 +635,6 @@ function AgentCardInner({
             !showDeleteConfirm && "group-hover:scale-105",
           )}
           priority
-          unoptimized={!isBuiltInAvatar(ensureAvatarUrl(avatarUrl, agent.name))}
         />
 
         {/* Gradient overlay */}

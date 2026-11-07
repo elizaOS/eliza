@@ -3,7 +3,7 @@
  *
  * One shape shared across every layer: the meeting bot that JOINS a call
  * (plugin-meetings platform adapters), the pipeline that TRANSCRIBES it into
- * `Transcript` records (see ./transcripts.ts), the API routes + client that
+ * `Transcript` records (see./transcripts.ts), the API routes + client that
  * TRANSPORT session state, and the UI that renders live + archived meeting
  * transcripts. Pure, browser- + node-safe: types, constants, and URL parsing
  * only — no runtime imports.
@@ -149,7 +149,7 @@ export interface MeetingSession {
 	transcriptId?: string;
 	/**
 	 * Present (true) on a served session DTO when the viewer's transcript
-	 * disclosure resolved to the redacted variant (#14781): `transcriptId` stays
+	 * disclosure resolved to the redacted variant: `transcriptId` stays
 	 * usable (the transcripts API serves that viewer the variant under the same
 	 * id) and the client renders a redacted badge. Never stored.
 	 */
@@ -217,8 +217,9 @@ function safeDecodeUriComponent(value: string): string | null {
 	}
 }
 
+// A pasted Meet link often ends in "/". That slash is not part of the code.
 const MEET_URL_RE =
-	/^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\?.*)?$/i;
+	/^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\/)?(?:\?.*)?$/i;
 const TEAMS_URL_RE =
 	/^https?:\/\/(?:[\w-]+\.)?teams\.(?:microsoft|live)\.com\/(?:v2\/)?(?:l\/)?meetup-join\/([^?\s]+)/i;
 const TEAMS_SHORT_RE =

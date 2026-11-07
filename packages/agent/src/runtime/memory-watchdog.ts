@@ -10,8 +10,7 @@
  * `run-node.ts` supervisor relaunches. It never calls `process.exit` itself and
  * never introduces a second restart mechanism.
  *
- * Opt-in and thresholds are env-configured (documented in
- * `packages/agent/CLAUDE.md`):
+ * Opt-in and thresholds are env-configured:
  *
  * | Env var                              | Default | Meaning                                   |
  * | ------------------------------------ | ------- | ----------------------------------------- |
@@ -28,7 +27,8 @@
  */
 import process from "node:process";
 
-import { logger, requestRestart } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { requestRestart } from "@elizaos/host/protocol";
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -76,7 +76,12 @@ function parsePositiveInt(
   min: number,
 ): number {
   if (raw == null) return fallback;
-  const parsed = Number.parseInt(raw.trim(), 10);
+  // Number.parseInt stops at the first non-digit, so "100junk" parsed to a
+  // finite 100 and was accepted as a deliberate setting instead of falling
+  // back to the default. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, parsed);
 }

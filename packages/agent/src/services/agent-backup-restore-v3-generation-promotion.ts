@@ -7,7 +7,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   inspectCandidateFsFileTree,
   inspectPendingPromotedFileTree,

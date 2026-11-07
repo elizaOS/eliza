@@ -1,13 +1,18 @@
 /** Semantic checking only: this does not execute drafts or authorize their effects. */
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 import { WorkflowApiError } from '../types/index';
 
-const require = createRequire(import.meta.url);
+import {
+  workflowCompilerDependencyRoot,
+  workflowCompilerModule,
+  workflowProcessCommand,
+} from './workflow-process-host';
+
 const MAX_SOURCE_BYTES = 65536;
 const MAX_OUTPUT_BYTES = 16384;
-const DEADLINE_MS = 15000;
+// A cold compiler loads the complete Smithers/Zod declaration graph. Keep a
+// bounded budget that also admits cold mobile storage and loaded CI hosts.
+const DEADLINE_MS = 60000;
 
 // The child runs only this trusted compiler program. Draft text is input data.
 const COMPILER_PROGRAM = String.raw`
@@ -60,14 +65,16 @@ export async function checkWorkflowSource(source: string): Promise<string[]> {
     return ['Workflow source exceeds 65536 bytes'];
   let compiler: string;
   try {
-    compiler = require.resolve('typescript');
+    compiler = workflowCompilerModule();
   } catch {
     throw new WorkflowApiError('Workflow compiler unavailable', 503);
   }
-  const anchor = fileURLToPath(new URL('../../', import.meta.url));
+  const anchor = workflowCompilerDependencyRoot();
   return new Promise((resolve, reject) => {
-    const child = spawn('node', ['--max-old-space-size=512', '-e', COMPILER_PROGRAM, compiler], {
-      env: { PATH: process.env.PATH ?? '', NODE_NO_WARNINGS: '1' },
+    const command = workflowProcessCommand('compiler', COMPILER_PROGRAM, [compiler]);
+    const child = spawn(command.executable, command.args, {
+      cwd: command.cwd,
+      env: { ...command.env, PATH: process.env.PATH ?? '', NODE_NO_WARNINGS: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let output = '';

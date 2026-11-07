@@ -17,7 +17,7 @@
  * `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
  */
 import { Copy, Plus, X } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { Button } from "../ui/button";
 import {
   Dialog,

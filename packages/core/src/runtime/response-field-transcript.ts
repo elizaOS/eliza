@@ -1,44 +1,12 @@
 /**
- * response-field-transcript — tolerant parser + detector for the plain-text
- * "keyed field transcript" shape that models occasionally emit instead of the
- * canonical JSON HANDLE_RESPONSE envelope.
- *
- * The response-handler prompts the model with a set of named fields
- * (`shouldRespond`, `replyText`, `contexts`, `topics`, `emotion`, ...). The
- * canonical path is a JSON object (native tool call or JSON-as-text). But some
- * providers — notably cli-inference / claude-sdk warm sessions in *text mode* —
- * echo the field set back as a colon-delimited transcript:
- *
- *   shouldRespond: RESPOND
- *
- *   replyText: it's live https://example/
- *
- *   built it out at /workspace, go click around.
- *
- *   contexts: simple
- *
- *   topics: website build, aurora
- *
- *   emotion: none
- *
- * Two properties make this hard and were the root cause of issue #11712:
- *   1. A field VALUE can span multiple lines and can contain embedded blank
- *      lines (see `replyText` above — a URL line, a blank line, then more
- *      prose). Naive "split on blank line" segmentation drops the tail of the
- *      value or, worse, fails to recognise the shape at all so the WHOLE raw
- *      transcript falls through as the reply and is sent verbatim to the user.
- *   2. Because the JSON parser rejects it, the tolerant plain-text fallback
- *      treated the transcript as a "simple reply" and shipped the raw
- *      `shouldRespond: RESPOND\n\nreplyText: ...` block to the channel.
- *
- * The grammar here segments on the rule: **a field's value terminates only at
- * the next line that starts with `^<knownField>:`, never at a blank line.**
- * That preserves multi-line values with embedded blank lines.
+ * Parses colon-delimited response fields without losing multiline values. Only a known field
+ * at the beginning of a line ends the preceding value; blank lines remain content. Detection
+ * prevents raw control fields from reaching delivered prose.
  */
 
 /**
  * Canonical field names the response-handler emits. Kept in sync with the
- * builtin field evaluators (see ./builtin-field-evaluators.ts). Used to anchor
+ * response-handler field evaluators. Used to anchor
  * segmentation: only these names delimit a new field, so a `value:` that
  * happens to appear inside prose (e.g. "the ratio is 3:1") does not split a
  * field.
@@ -60,8 +28,6 @@ export const RESPONSE_HANDLER_FIELD_NAMES = [
 export type ResponseHandlerFieldName =
 	(typeof RESPONSE_HANDLER_FIELD_NAMES)[number];
 
-const FIELD_NAME_SET = new Set<string>(RESPONSE_HANDLER_FIELD_NAMES);
-
 /**
  * Anchored regex that matches a line which STARTS a known field:
  * `^<knownField>:`. Case-sensitive on the field name (the model emits the
@@ -73,12 +39,21 @@ const FIELD_LINE = new RegExp(
 	`^\\s{0,3}(${RESPONSE_HANDLER_FIELD_NAMES.join("|")})\\s*:\\s?(.*)$`,
 );
 
+const LINE_BREAK = /\r?\n/;
+
 /**
  * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
  * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
  * transcript the user pasted — never envelope structure.
  */
 const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
+
+/**
+ * A fence opener written inline after a field name (`replyText: ```bash`).
+ * A backtick run whose info string holds another backtick is an inline code
+ * span (`replyText: ```npm i``` first`), not a fence.
+ */
+const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
 
 /**
  * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true
@@ -99,7 +74,7 @@ export function looksLikeRawFieldTranscript(text: unknown): boolean {
 	if (typeof text !== "string" || text.length === 0) return false;
 	let inFence = false;
 	let leadsWithFieldLine = false;
-	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+	for (const line of text.split(LINE_BREAK)) {
 		if (FENCE_LINE.test(line)) {
 			inFence = !inFence;
 			continue;
@@ -148,8 +123,7 @@ export function parseFieldTranscript(
 	raw: string | null | undefined,
 ): ParsedFieldTranscript | null {
 	if (typeof raw !== "string") return null;
-	const text = raw.replace(/\r\n/g, "\n");
-	const lines = text.split("\n");
+	const lines = raw.split(LINE_BREAK);
 
 	const fields: Partial<Record<ResponseHandlerFieldName, string>> = {};
 	let currentField: ResponseHandlerFieldName | null = null;
@@ -162,10 +136,7 @@ export function parseFieldTranscript(
 			// registry de-dup contract). Trim edge whitespace / blank lines but
 			// keep embedded blanks.
 			if (fields[currentField] === undefined) {
-				fields[currentField] = buffer
-					.join("\n")
-					.replace(/^\n+|\n+$/g, "")
-					.trim();
+				fields[currentField] = buffer.join("\n").trim();
 			}
 		}
 		buffer = [];
@@ -180,13 +151,16 @@ export function parseFieldTranscript(
 			continue;
 		}
 		const match = inFence ? null : FIELD_LINE.exec(line);
-		if (match && FIELD_NAME_SET.has(match[1])) {
+		if (match) {
 			// New field boundary — close the previous field first.
 			flush();
 			currentField = match[1] as ResponseHandlerFieldName;
 			foundAny = true;
 			const inline = match[2];
-			buffer = inline && inline.length > 0 ? [inline] : [];
+			buffer = inline ? [inline] : [];
+			// The value opened a fence on the field line itself, so the next
+			// fence line closes it rather than opening quoted mode.
+			if (INLINE_FENCE_OPEN.test(inline)) inFence = true;
 		} else if (currentField !== null) {
 			// Continuation line of the current field value (including blank lines
 			// and any fenced quoted content).
@@ -210,12 +184,8 @@ export function parseFieldTranscript(
 export function extractReplyTextFromTranscript(
 	raw: string | null | undefined,
 ): string | null {
-	const parsed = parseFieldTranscript(raw);
-	if (!parsed) return null;
-	const reply = parsed.fields.replyText;
-	if (typeof reply !== "string") return null;
-	const trimmed = reply.trim();
-	return trimmed.length > 0 ? trimmed : null;
+	// Field values are already edge-trimmed.
+	return parseFieldTranscript(raw)?.fields.replyText || null;
 }
 
 /**

@@ -1,14 +1,14 @@
 /** Adapts OpenAI Responses requests to the canonical chat auth and admission pipeline. */
-import { type Context, Hono } from "hono";
 
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { createPreflightResponse } from "@/lib/middleware/cors-apps";
-import { copyHttpTelemetryHeaders } from "@/lib/observability/http-telemetry";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
+import { copyHttpTelemetryHeaders } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
   nativeApplicationInferenceErrorResponse,
   prepareNativeApplicationInference,
-} from "@/lib/services/native-application-inference";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
 import { handleChatCompletionsPOST } from "../chat/completions/route";
 
 type ResponseInputRole = "system" | "user" | "assistant" | "tool";

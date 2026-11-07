@@ -236,11 +236,21 @@ export class DeviceFilesystemBridge extends Service {
 				out.push({ name: entry.name, type: "file" });
 			} else {
 				const child = path.join(absolute, entry.name);
-				const info = await stat(child);
-				out.push({
-					name: entry.name,
-					type: info.isDirectory() ? "directory" : "file",
-				});
+				// A dangling symlink makes stat (which follows links) throw
+				// ENOENT. The entry exists and is not a directory, so classify
+				// it as a file — as the Capacitor backend's readdir mapping
+				// does — instead of failing the whole listing over one stale
+				// link. Other stat errors still propagate.
+				let type: DirectoryEntry["type"] = "file";
+				try {
+					const info = await stat(child);
+					type = info.isDirectory() ? "directory" : "file";
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+						throw error;
+					}
+				}
+				out.push({ name: entry.name, type });
 			}
 		}
 		return out;

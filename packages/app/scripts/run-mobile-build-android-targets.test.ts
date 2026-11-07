@@ -1,4 +1,3 @@
-/** Exercises run mobile build android targets behavior with deterministic app test fixtures. */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

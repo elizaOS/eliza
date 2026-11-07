@@ -4,7 +4,7 @@
  * cutover receipt exists; target creation or readiness alone is not authority.
  */
 
-import { readPersonalElizaCutover } from "@/lib/services/eliza-agent-config";
+import { readPersonalElizaCutover } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
 
 type ProductAgentRow = {
   id: string;

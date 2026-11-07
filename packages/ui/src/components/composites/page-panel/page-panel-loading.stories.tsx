@@ -3,7 +3,7 @@
  * compose dense dashboard pages.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { PageLoadingState } from "./page-panel-loading";
+import { PageLoadingState } from "./content-state";
 
 const meta = {
   title: "Composites/PagePanel/PagePanelLoading",

@@ -26,13 +26,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
 	resolveApiToken,
 	resolveDesktopApiPort,
 	resolveDisableAutoApiToken,
 	setApiToken,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import {
 	applyDevCloudAuthoritySnapshotToEnv,
 	captureDevCloudEnvAuthoritySnapshot,
@@ -129,7 +129,12 @@ export function getHealthPollTimeoutMs(
 ): number {
 	const raw = env.ELIZA_AGENT_HEALTH_TIMEOUT_MS?.trim();
 	if (raw) {
-		const parsed = Number.parseInt(raw, 10);
+		// Number.parseInt stops at the first non-digit, so "60000junk" parsed
+		// to a finite 60000 and was accepted as a deliberate timeout instead
+		// of falling back to the platform default. Require the whole trimmed
+		// value to be decimal, mirroring resolveGenerationTimeoutMs in the
+		// discord plugin.
+		const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
 		if (Number.isFinite(parsed) && parsed > 0) {
 			return parsed;
 		}
@@ -955,11 +960,6 @@ export function resolveRuntimeDistPath(opts?: {
 		if (fs.existsSync(runtimeDist)) {
 			return runtimeDist;
 		}
-		// Legacy eliza-dist sibling (existing packaged builds)
-		const legacyDist = joinPortable(dir, "eliza-dist");
-		if (fs.existsSync(legacyDist)) {
-			return legacyDist;
-		}
 		// Dev monorepo: dist/ sibling containing the canonical CLI entrypoint
 		const devDist = joinPortable(dir, "dist");
 		if (fs.existsSync(joinPortable(devDist, "entry.js"))) {
@@ -1714,6 +1714,12 @@ export class AgentManager {
 				healthPollTimeoutMs,
 				proc,
 			);
+			if (this.childProcess !== proc) {
+				diagnosticLog(
+					`[Agent] Startup of pid ${proc.pid} was superseded by stop/restart; leaving current runtime state untouched`,
+				);
+				return this.status;
+			}
 			if (!healthy) {
 				// Check if process already exited
 				if (proc.exitCode !== null) {

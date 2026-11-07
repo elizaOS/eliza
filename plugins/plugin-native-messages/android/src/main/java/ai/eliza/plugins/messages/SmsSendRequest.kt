@@ -20,6 +20,8 @@ internal class SmsSendRequest(
     private val context: Context,
     private val partCount: Int,
     private val timeoutMs: Long = 60_000,
+    /** Each part's first receipt, in arrival order: its index and whether the radio reported RESULT_OK. */
+    private val onPart: (Int, Boolean) -> Unit = { _, _ -> },
     private val onFinished: (Outcome) -> Unit,
 ) {
     sealed class Outcome {
@@ -46,6 +48,7 @@ internal class SmsSendRequest(
             if (part !in 0 until partCount || !received.add(part)) return
             intent.getStringExtra("uri")?.let { sentMessageUri = it }
             if (resultCode != Activity.RESULT_OK && failureCode == null) failureCode = resultCode
+            onPart(part, resultCode == Activity.RESULT_OK)
             if (received.size == partCount) {
                 finish(failureCode?.let { Outcome.Failed(it) } ?: Outcome.Sent)
             }

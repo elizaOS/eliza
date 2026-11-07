@@ -24,7 +24,7 @@ import { loadElizaConfig } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, ModelType, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { learnScheduleStyleFacts } from "../lifeops/owner/schedule-style-writer.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import {
@@ -108,7 +108,7 @@ export async function executeProactiveTask(
   options: Record<string, unknown> = {},
 ): Promise<{ nextInterval: number }> {
   const now = resolveExecutionNow(options);
-  const timezone = resolveDefaultTimeZone();
+  const timezone = await resolveOwnerTimeZone(runtime, now);
 
   const ownerEntityId = await resolveOwnerEntityId(runtime);
   if (!ownerEntityId) {
@@ -127,7 +127,7 @@ export async function executeProactiveTask(
   const metadata = isRecord(task.metadata) ? task.metadata : {};
   const currentProfile = readProfileFromMetadata(metadata);
   let profile: ActivityProfile | null;
-  if (profileNeedsRebuild(currentProfile, now)) {
+  if (profileNeedsRebuild(currentProfile, now, timezone)) {
     logger.info("[proactive] Building full activity profile");
     profile = await buildActivityProfile(runtime, ownerEntityId, timezone, now);
   } else if (currentProfile) {

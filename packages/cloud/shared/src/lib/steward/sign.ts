@@ -4,17 +4,12 @@
  * directly: the OAuth nonce-exchange route, the steward-refresh bypass, and
  * the provisioning daemon's agent registration / cleanup calls.
  *
- * Steward's `authorization-signature` middleware
- * (Steward-Fi/steward: packages/api/src/middleware/authorization-signature.ts)
- * is the AUTHORITATIVE definition of the canonical request. cloud-api's
- * `embedded.ts` mirrors it for the proxy path; this module mirrors it for
- * every direct-path caller. All copies MUST stay byte-for-byte in lockstep —
- * if upstream adds, removes, or reorders a header the canonical hashes,
- * update every copy together or signed requests start returning 401. Keep
- * this list identical to `buildStewardCanonicalRequest` in `embedded.ts`.
+ * This is the shared canonical implementation for direct callers and the API
+ * proxy. Keep its ordered fields aligned with Steward's authoritative
+ * authorization-signature middleware when the upstream protocol changes.
  */
 
-// Matches embedded.ts: a short freshness window for the X-Steward-Request-*
+// A short freshness window for the X-Steward-Request-*
 // header, well inside Steward's ±5min skew/TTL tolerance.
 const REQUEST_TTL_SECONDS = 60;
 
@@ -31,7 +26,7 @@ async function sha256Hex(input: BufferSource): Promise<string> {
   return bytesToHex(new Uint8Array(digest));
 }
 
-async function sha256TextHex(value: string): Promise<string> {
+export async function sha256TextHex(value: string): Promise<string> {
   return sha256Hex(new TextEncoder().encode(value));
 }
 
@@ -49,7 +44,7 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
 
 /**
  * Build the exact ordered canonical string Steward HMACs. Keep in lockstep
- * with `buildStewardCanonicalRequest` in `embedded.ts` and `canonicalRequest`
+ * with `canonicalRequest`
  * in Steward's authorization-signature middleware.
  */
 export async function buildStewardCanonicalRequest(
@@ -113,4 +108,35 @@ export async function signStewardMutatingRequest(
   const canonical = await buildStewardCanonicalRequest(method, pathAndSearch, headers, body);
   const signature = await hmacSha256Hex(secret, canonical);
   headers.set("x-steward-signature", `v1=${signature}`);
+}
+
+/** Bind the edge-observed client address to this upstream request across zones. */
+export async function signStewardClientIp(
+  secret: string | null,
+  method: string,
+  pathAndSearch: string,
+  headers: Headers,
+  edgeClientIp: string | undefined,
+): Promise<void> {
+  // Never relay a caller's assertion, including when this host has no signer.
+  for (const name of [
+    "x-steward-client-ip",
+    "x-steward-client-ip-expires",
+    "x-steward-client-ip-signature",
+  ])
+    headers.delete(name);
+  if (!secret || !edgeClientIp) return;
+  const expiry = String(Date.now() + REQUEST_TTL_SECONDS * 1000);
+  // Keep the domain-separated payload aligned with login's verifiedProxyClientIp.
+  const payload = JSON.stringify([
+    "steward-client-ip-v1",
+    method.toUpperCase(),
+    pathAndSearch,
+    expiry,
+    edgeClientIp,
+  ]);
+  const signature = await hmacSha256Hex(secret, payload);
+  headers.set("x-steward-client-ip", edgeClientIp);
+  headers.set("x-steward-client-ip-expires", expiry);
+  headers.set("x-steward-client-ip-signature", signature);
 }

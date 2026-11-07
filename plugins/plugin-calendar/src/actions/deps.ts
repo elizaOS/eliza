@@ -4,20 +4,22 @@
  * travel-buffer computation, so the calendar handler receives those capabilities
  * through this typed dependency object instead of importing LifeOps internals.
  */
+
 import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarAllDayRange,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarRecurrenceScope,
+} from "@elizaos/contracts";
+import type {
+  ActionResult,
   GenerateTextParams,
   GroundedActionReply,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type LifeOpsCalendarAllDayRange,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarRecurrenceScope,
-} from "@elizaos/core/contracts/calendar";
 
 /**
  * Arguments for a single LLM call routed through the host's model runner.
@@ -34,6 +36,8 @@ export interface CalendarModelCallArgs {
   purpose?: string;
   temperature?: number;
   responseSchema?: GenerateTextParams["responseSchema"];
+  /** Forwarded as `providerOptions.eliza.thinking` for latency-sensitive extractors. */
+  thinking?: "off";
 }
 
 export interface CalendarJsonModelResult<
@@ -210,6 +214,27 @@ export interface CalendarMutationGatewayDep {
  * trusts it has been called for an authorized owner.
  */
 export interface CalendarActionDeps {
+  /** Current selected-device time edit: approved read then ordinary pending update review. */
+  requestLocalCreate?(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+  }): Promise<ActionResult | undefined>;
+  requestLocalUpdate?(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    name?: string;
+  }): Promise<ActionResult | undefined>;
+  /** Optional current-request port; absent hosts retain their existing backend path. */
+  requestLocalAgenda?(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    window: {
+      start: string;
+      end: string;
+      timeZone: string;
+      maximumEvents: number;
+    };
+  }): Promise<ActionResult | undefined>;
   /** Run a text-model call; returns the raw string or `null` on failure. */
   runTextModel(args: CalendarModelCallArgs): Promise<string | null>;
   /** Run a model call and parse the response as a JSON record. */

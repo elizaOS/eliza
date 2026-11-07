@@ -3,10 +3,14 @@
  * persisted shown-state for the onboarding soft-ask flow.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
+import {
+  type WalkthroughMemoryStore,
+  walkthroughMemory,
+} from "./permission-walkthrough";
 /**
  * Permission-priming logic for the post-login onboarding modal.
  *
@@ -82,6 +86,22 @@ export const PRIMING_COPY: Partial<
     rationale:
       "Enable the camera so you can capture photos and video for me to look at.",
   },
+  calendar: {
+    icon: "calendar",
+    titleKey: "permissionpriming.calendar.title",
+    title: "Plan your day",
+    rationaleKey: "permissionpriming.calendar.rationale",
+    rationale:
+      "Allow calendar access to view and save events. You can change access in Settings.",
+  },
+  photos: {
+    icon: "images",
+    titleKey: "permissionpriming.photos.title",
+    title: "Choose your photos",
+    rationaleKey: "permissionpriming.photos.rationale",
+    rationale:
+      "Choose which photos and videos the assistant can use. Selected access does not share your whole library.",
+  },
 };
 /**
  * Explicit per-platform, ordered priming sets. Highest-value first (voice).
@@ -98,7 +118,14 @@ export const PRIMING_COPY: Partial<
  */
 const PRIMING_SETS: Record<PrimingPlatform, readonly PermissionId[]> = {
   ios: ["microphone", "speech-recognition", "notifications", "location"],
-  android: ["microphone", "notifications", "location"],
+  android: [
+    "notifications",
+    "microphone",
+    "camera",
+    "location",
+    "calendar",
+    "photos",
+  ],
   desktop: ["microphone", "notifications", "location"],
   web: [],
 };
@@ -110,6 +137,8 @@ export interface ResolvePrimingOptions {
    * filtered so only ids with priming copy survive.
    */
   only?: readonly PermissionId[];
+  /** Actual installed host capabilities, not package dependencies. */
+  supported?: readonly PermissionId[];
 }
 /**
  * The ordered list of permissions to prime for the current platform. Only ids
@@ -122,7 +151,9 @@ export function resolvePrimingSet(
   const platform = opts.platform ?? getFrontendPlatform();
   const base = opts.only ?? PRIMING_SETS[platform] ?? [];
   const supported = base.filter(
-    (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
+    (id): id is PermissionId =>
+      PRIMING_COPY[id] !== undefined &&
+      (!opts.supported || opts.supported.includes(id)),
   );
   // The Cloud APK proves notification and foreground-location bridges. Voice
   // deliberately keeps its narrower RECORD_AUDIO request at the moment the
@@ -160,11 +191,33 @@ export function markPermissionsPrimed(): void {
     // benign degradation, not a failure worth surfacing.
   }
 }
-/** Clear the flag so the priming modal can be re-triggered (Settings entry). */
-export function resetPermissionPriming(): void {
-  try {
-    shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
-  } catch {
-    // Same benign degradation as markPermissionsPrimed.
-  }
+
+/** localStorage key for the walkthrough memory (which OS prompts were already shown, "Not now"). */
+export const PERMISSION_WALKTHROUGH_MEMORY_KEY = "eliza:permission-walkthrough";
+/** Window event that reopens the onboarding walkthrough (fired by `memory.reopen()`). */
+export const PERMISSION_WALKTHROUGH_REOPEN_EVENT =
+  "eliza:permission-walkthrough-reopen";
+
+/**
+ * The onboarding walkthrough's memory. A permission whose OS prompt was already shown is never
+ * prompted again by the walkthrough, including after a restart: its card routes to system settings.
+ */
+export function primingWalkthroughMemory(): WalkthroughMemoryStore {
+  return walkthroughMemory(
+    PERMISSION_WALKTHROUGH_MEMORY_KEY,
+    PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+    () => {
+      try {
+        const local = globalThis.localStorage;
+        if (!local) return null;
+        return {
+          getItem: (key: string) => local.getItem(key),
+          setItem: (key: string, value: string) =>
+            shellLocalStorage.setItem(key, value),
+        };
+      } catch {
+        return null;
+      }
+    },
+  );
 }

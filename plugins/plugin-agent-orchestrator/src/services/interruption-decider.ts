@@ -20,6 +20,7 @@
 import {
   type IAgentRuntime,
   ModelType,
+  textIncludesKeywordTerm,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
@@ -86,10 +87,16 @@ const ADDITIVE_PATTERN =
 const REDIRECT_PATTERN =
   /\b(no,? (?:stop|don'?t|do not|not that)|that'?s wrong|that is wrong|wrong (?:approach|direction|file|way|thing)|scrap (?:that|this|it)|start over|undo (?:that|this|it)|revert (?:that|this|it)|instead of|change of plan|actually,? (?:stop|cancel|no|don'?t|do not|wait|hold|revert))\b/i;
 
+// ASCII labels keep word boundaries ("Ada" is not addressed by "Adam"). JS
+// `\b` never fires beside letters outside ASCII, so labels in other scripts or
+// with accents ("민수", "Zoë") use the shared keyword match instead.
 function isAddressed(text: string, agentLabel?: string): boolean {
   if (text.includes("@")) return true;
   if (!agentLabel) return false;
-  return new RegExp(`\\b${escapeRegExp(agentLabel)}\\b`, "i").test(text);
+  if (/^[\x20-\x7e]+$/.test(agentLabel)) {
+    return new RegExp(`\\b${escapeRegExp(agentLabel)}\\b`, "i").test(text);
+  }
+  return textIncludesKeywordTerm(text, agentLabel);
 }
 
 function escapeRegExp(value: string): string {

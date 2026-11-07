@@ -41,7 +41,7 @@ import * as discordCoordinationSchema from "../coordination-schema.ts";
 import {
 	createTestRuntime,
 	type TestRuntimeResult,
-} from "./helpers/pglite-runtime.ts";
+} from "@elizaos/testing/runtime";
 
 const HOLDER_A = stringToUuid("pglite-holder-agent-a") as UUID;
 const HOLDER_B = stringToUuid("pglite-holder-agent-b") as UUID;

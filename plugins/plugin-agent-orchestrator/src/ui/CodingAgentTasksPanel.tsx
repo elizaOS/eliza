@@ -2,15 +2,17 @@
  * Displays project-scoped coding tasks and their live session details. Polling
  * retains the last received list and exposes failures until the backend recovers.
  */
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ApiError, client } from "@elizaos/ui/api";
-import type {
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-} from "@elizaos/ui/api/client-types-cloud";
-import { PageLoadingState } from "@elizaos/ui/components/composites/page-panel";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
+import {
+  ApiError,
+  Button,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
+  client,
+  PageLoadingState,
+  useAgentElement,
+  useAppSelectorShallow,
+} from "@elizaos/ui";
+
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
   type ReactNode,

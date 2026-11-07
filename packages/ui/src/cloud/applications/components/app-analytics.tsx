@@ -36,10 +36,8 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "../../../bridge/toast";
-import {
-  DashboardStatCard,
-  MiniStatCard,
-} from "../../../cloud-ui/components/brand";
+import { DashboardStatCard } from "../../../cloud-ui/components/brand/dashboard-stat-card";
+import { MiniStatCard } from "../../../cloud-ui/components/brand/mini-stat-card";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import {
@@ -400,9 +398,15 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           <div className="flex items-center gap-2">
             <Select
               value={period}
-              onValueChange={(v: "hourly" | "daily" | "monthly") =>
-                setPeriod(v)
-              }
+              onValueChange={(value) => {
+                if (
+                  value === "hourly" ||
+                  value === "daily" ||
+                  value === "monthly"
+                ) {
+                  setPeriod(value);
+                }
+              }}
             >
               <SelectTrigger className="w-[130px] h-9 bg-card border-border rounded-sm">
                 <SelectValue />

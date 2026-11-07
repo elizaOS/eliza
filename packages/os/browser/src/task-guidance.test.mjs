@@ -366,3 +366,210 @@ test("an old owner cannot remove a newly bound owner's guide", async () => {
   assert.equal(f.effects.length, effects);
   assert.deepEqual(f.records["task-guidance-tabs-v1"], ["1"]);
 });
+
+const offer = (changes = {}) => ({
+  tone: "offer",
+  answers: [
+    { id: "card-0", kind: "card", text: "first@example.test", tag: "Home" },
+    { id: "card-1", kind: "card", text: "second@example.test", tag: "Work" },
+    { id: "type", kind: "secondary", text: "I'll type it" },
+  ],
+  ...changes,
+});
+function answering() {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  const execute = f.api.scripting.executeScript;
+  f.api.scripting.executeScript = async (request) =>
+    (await execute(request)).map((result) => ({
+      ...result,
+      documentId: "document-1",
+    }));
+  const sender = {
+    id: "extension",
+    tab: { id: 1 },
+    frameId: 0,
+    documentId: "document-1",
+    url: "https://example.test/page",
+  };
+  const tap = (answerId = "card-1") => ({
+    type: "task-guide-answer",
+    guideId: "1:step",
+    answerKey: f.effects.findLast((e) => e.answerKey)?.answerKey,
+    answerId,
+  });
+  return { ...f, sender, tap };
+}
+
+test("labels carry detail, tone and validated offer answers to the page", async () => {
+  const f = fixture();
+  await f.bind({ assistantName: "Grace" });
+  let revision = 0;
+  for (const invalid of [
+    { tone: "offer" },
+    { tone: "loud" },
+    { detail: "" },
+    { detail: "x".repeat(301) },
+    { answers: offer().answers },
+    offer({ tone: "instruction" }),
+    offer({ answers: [offer().answers[0], offer().answers[2]] }),
+    offer({
+      answers: [0, 1, 2, 3].map((i) => ({
+        id: `c${i}`,
+        kind: "card",
+        text: `v${i}`,
+      })),
+    }),
+    offer({
+      answers: [
+        ...offer().answers.slice(0, 2),
+        { id: "yes", kind: "primary", text: "Yes" },
+      ],
+    }),
+    offer({ answers: [{ id: "a", kind: "primary", text: "Yes", tag: "x" }] }),
+    offer({ answers: [{ id: "a", kind: "primary", text: "Yes", value: "x" }] }),
+    offer({
+      answers: [
+        { id: "a", kind: "primary", text: "Yes" },
+        { id: "a", kind: "secondary", text: "No" },
+      ],
+    }),
+    offer({ answers: [{ id: "bad id", kind: "primary", text: "Yes" }] }),
+  ]) {
+    const reply = await f.send(f.guide(++revision, "show", invalid));
+    assert.equal(reply.error?.kind, "INVALID_REQUEST", JSON.stringify(invalid));
+  }
+  assert.equal(f.effects.length, 0);
+  assert.equal(
+    (await f.send(f.guide(++revision, "pause", { text: "x" }))).ok,
+    false,
+  );
+  const shown = await f.send(
+    f.guide(++revision, "show", offer({ detail: "Tap one to fill it in." })),
+  );
+  assert.equal(shown.ok, true);
+  const request = f.effects.at(-1);
+  assert.equal(request.detail, "Tap one to fill it in.");
+  assert.equal(request.tone, "offer");
+  assert.deepEqual(request.answers, offer().answers);
+  assert.match(request.answerKey, /^[0-9a-f-]{36}$/);
+  assert.equal(request.assistantName, "Grace");
+  assert.deepEqual(
+    request.fonts.map((font) => font.weight),
+    [500, 700],
+  );
+  assert.equal(
+    (
+      await f.send(
+        f.guide(++revision, "show", {
+          tone: "offer",
+          answers: [
+            { id: "yes", kind: "primary", text: "Yes" },
+            { id: "type", kind: "secondary", text: "I'll type it" },
+          ],
+        }),
+      )
+    ).ok,
+    true,
+  );
+  assert.equal(
+    (await f.send(f.guide(++revision, "show", { tone: "success" }))).ok,
+    true,
+  );
+  assert.equal(f.effects.at(-1).answerKey, undefined);
+});
+
+test("the assistant name is optional binding configuration with a bounded display value", async () => {
+  for (const assistantName of ["", " ", "x".repeat(33), "Gr\u0000ace", 7]) {
+    const f = fixture();
+    assert.equal((await f.bind({ assistantName })).ok, false);
+  }
+  const f = fixture();
+  await f.bind();
+  await f.send(f.guide(1));
+  assert.equal(f.effects.at(-1).assistantName, undefined);
+});
+
+test("pause is owner-bound like removal and remains available after expiry", async (t) => {
+  const f = fixture();
+  await f.bind();
+  await f.send(f.guide(1));
+  t.mock.method(Date, "now", () => binding.expiresAt + 1000);
+  const execute = f.api.scripting.executeScript;
+  f.api.scripting.executeScript = async (request) => {
+    if (request.args[0].kind !== "pause") return execute(request);
+    f.effects.push(request.args[0]);
+    return [{ result: { visible: false, paused: true } }];
+  };
+  const paused = await f.send(f.guide(2, "pause"));
+  assert.equal(paused.ok, true);
+  assert.deepEqual(f.effects.at(-1), { kind: "pause" });
+  assert.deepEqual(f.records["task-guidance-tabs-v1"], ["1"]);
+  assert.equal(
+    (
+      await f.send(
+        f.guide(3, "pause", {
+          taskContext: { ...context, accountId: "other" },
+        }),
+      )
+    ).ok,
+    false,
+  );
+  assert.equal((await f.send(f.guide(4))).ok, false);
+});
+
+test("an offer answer is consumed once and only for its current show", async () => {
+  const f = answering();
+  await f.bind();
+  await f.send(f.guide(1, "show", offer()));
+  const event = f.handler.answerGuide(f.tap(), f.sender);
+  assert.deepEqual(event, {
+    type: "task-guide-answer",
+    id: "guide-1",
+    tabId: "1",
+    stepId: "step",
+    revision: 1,
+    answerId: "card-1",
+  });
+  assert.ok(!JSON.stringify(event).includes("example.test"));
+  assert.throws(() => f.handler.answerGuide(f.tap(), f.sender), /observe/);
+  await f.send(f.guide(2, "show", offer()));
+  for (const [message, sender] of [
+    [{ ...f.tap(), answerKey: "guess" }, f.sender],
+    [{ ...f.tap(), guideId: "2:other" }, f.sender],
+    [f.tap("missing"), f.sender],
+    [{ ...f.tap(), text: "second@example.test" }, f.sender],
+    [f.tap(), { ...f.sender, documentId: "document-2" }],
+    [f.tap(), { ...f.sender, frameId: 1 }],
+    [f.tap(), { ...f.sender, id: "other-extension" }],
+    [f.tap(), { ...f.sender, url: "https://other.example/page" }],
+    [f.tap(), { ...f.sender, tab: { id: 2 } }],
+  ])
+    assert.throws(() => f.handler.answerGuide(message, sender), /observe/);
+  const key = f.tap();
+  await f.send(f.guide(3, "show"));
+  assert.throws(() => f.handler.answerGuide(key, f.sender), /observe/);
+  await f.send(f.guide(4, "show", offer()));
+  const pending = f.tap();
+  await f.handler(
+    { type: "cancel", id: "guide-4" },
+    { send: async () => {} },
+    () => true,
+  );
+  assert.throws(() => f.handler.answerGuide(pending, f.sender), /observe/);
+  await f.send(f.guide(5, "show", offer()));
+  const revoked = f.tap();
+  await f.handler.disconnect();
+  assert.throws(() => f.handler.answerGuide(revoked, f.sender), /observe/);
+});
+
+test("an offer whose page document is unknown accepts no answer", async () => {
+  const f = answering();
+  f.api.scripting.executeScript = async (request) => {
+    f.effects.push(request.args[0]);
+    return [{ result: { accepted: true, visible: false } }];
+  };
+  await f.bind();
+  await f.send(f.guide(1, "show", offer()));
+  assert.throws(() => f.handler.answerGuide(f.tap(), f.sender), /observe/);
+});

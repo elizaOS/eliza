@@ -645,6 +645,7 @@ function parseRendererManifest(value, expectedCommit) {
       "playwrightTestAuth",
       "runtimeMode",
       "schema",
+      "startedAt",
       "variant",
     ],
     "renderer manifest",
@@ -660,6 +661,7 @@ function parseRendererManifest(value, expectedCommit) {
     fail("renderer assetCount must be a positive safe integer");
   }
   requireIsoTimestamp(manifest.builtAt, "renderer builtAt");
+  requireIsoTimestamp(manifest.startedAt, "renderer startedAt");
   requireNullableString(manifest.variant, "renderer variant");
   requireNullableString(manifest.capacitorTarget, "renderer capacitorTarget");
   requireNullableString(manifest.runtimeMode, "renderer runtimeMode");

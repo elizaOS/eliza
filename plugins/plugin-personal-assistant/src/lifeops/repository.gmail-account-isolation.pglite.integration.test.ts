@@ -13,6 +13,7 @@ import {
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "./repository.js";
+import { LifeOpsService } from "./service.js";
 
 const SYNCED_AT = "2026-08-22T18:00:00.000Z";
 
@@ -221,6 +222,58 @@ describe("LifeOpsRepository Gmail account isolation", () => {
     expect(messages.map((message) => message.sourceRef.externalId)).toEqual([
       "same-provider-message-id",
       "same-provider-message-id",
+    ]);
+  });
+
+  it("removing one account's imported Gmail data also removes its inbox copies", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const inboxMessage = (accountId: string) => ({
+      id: `gmail:message-of-${accountId}`,
+      channel: "gmail" as const,
+      sender: {
+        id: `message-of-${accountId}`,
+        displayName: "Fixture sender",
+        email: "sender@example.test",
+        avatarUrl: null,
+      },
+      subject: `Private subject for ${accountId}`,
+      snippet: "Private preview",
+      receivedAt: SYNCED_AT,
+      unread: true,
+      deepLink: null,
+      sourceRef: {
+        channel: "gmail" as const,
+        externalId: `message-of-${accountId}`,
+      },
+      threadId: `thread-of-${accountId}`,
+      chatType: "dm" as const,
+      gmailAccountId: `connector-account:${accountId}`,
+      gmailAccountEmail: `${accountId}@example.test`,
+      connectorAccountId: accountId,
+    });
+    await repository.upsertCachedInboxMessages(runtime.agentId, [
+      inboxMessage("account-1"),
+      inboxMessage("account-2"),
+    ]);
+
+    await new LifeOpsService(runtime).purgeGmailImportedData(
+      new URL("http://localhost/api/lifeops/gmail/purge"),
+      {
+        confirmAction: true,
+        grantId: "connector-account:account-1",
+        connectorAccountId: "account-1",
+      },
+    );
+
+    const remaining = await repository.listCachedInboxMessages(
+      runtime.agentId,
+      { channels: ["gmail"] },
+    );
+    expect(remaining.map((message) => message.subject)).toEqual([
+      "Private subject for account-2",
     ]);
   });
 

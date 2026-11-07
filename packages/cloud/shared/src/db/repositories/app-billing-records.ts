@@ -183,7 +183,7 @@ export class AppBillingRecordsRepository {
 
   async usage(
     input: AppBillingReadIdentity,
-    after: { reservationId: string; source: "trial_claim" | "paid_invoice" } | null,
+    after: { reservationId: string; source: "trial_claim" | "paid_invoice" | "pilot" } | null,
     pageSize: number,
   ) {
     return writeTransaction(async (tx) => {

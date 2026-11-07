@@ -687,9 +687,7 @@ export class RuntimeDbSessionStore implements SessionStore {
   constructor(
     private readonly adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
     private readonly logger?: Logger,
-  ) {
-    void this.logger;
-  }
+  ) {}
 
   async create(session: SessionInfo): Promise<void> {
     await this.writes.enqueue(async () => {
@@ -817,11 +815,27 @@ export class RuntimeDbSessionStore implements SessionStore {
   }
 
   private async ensureInitialized(): Promise<void> {
-    this.initPromise ??= (async () => {
-      this.executor = await resolveSqlExecutor(this.adapter);
-      await this.executor.run(SESSION_TABLE_SQL);
-      for (const sql of SESSION_INDEX_SQL) await this.executor.run(sql);
-    })();
+    if (!this.initPromise) {
+      const attempt = (async () => {
+        this.executor = await resolveSqlExecutor(this.adapter);
+        await this.executor.run(SESSION_TABLE_SQL);
+        for (const sql of SESSION_INDEX_SQL) await this.executor.run(sql);
+      })().catch((error: unknown) => {
+        // A rejected init must not stay memoized: every later session read or
+        // write would replay it until restart. Same contract as
+        // RuntimeDbTaskStore (#15199) — reset so the next access retries.
+        if (this.initPromise === attempt) {
+          this.initPromise = undefined;
+        }
+        this.logger?.warn?.(
+          `[RuntimeDbSessionStore] schema init failed (will retry on next access): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        throw error;
+      });
+      this.initPromise = attempt;
+    }
     await this.initPromise;
   }
 

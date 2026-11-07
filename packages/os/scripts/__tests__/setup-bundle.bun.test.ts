@@ -56,9 +56,9 @@ test("packaged signed installer loads its executor and repository policy in isol
     const manifest = join(stage, "invalid-contract.json");
     await writeFile(manifest, '{"schemaVersion":2}');
     const rejected = spawnSync(
-      "bash",
+      process.execPath,
       [
-        join(stage, "android/installer/install-elizaos-android.sh"),
+        join(stage, "scripts/android/install-release.ts"),
         "--manifest",
         manifest,
         "--artifact-dir",

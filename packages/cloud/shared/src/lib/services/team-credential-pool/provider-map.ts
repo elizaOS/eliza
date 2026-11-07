@@ -6,7 +6,7 @@
  * licenses and are rejected here — Phase 2 gates them behind an explicit
  * flag + org allowlist, never the public API.
  */
-import { type LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import { type LinkedAccountProviderId } from "@elizaos/host/protocol";
 import { type SecretProvider } from "../../../db/schemas/secrets";
 export const POOLED_DIRECT_PROVIDERS = [
   "anthropic-api",

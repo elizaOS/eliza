@@ -1,6 +1,11 @@
 /** Resolves the completed planner turn into a deliverable reply or an explicit silent terminal. Preserves tool receipts, prior delivery deduplication, and the addressed-turn delivery guarantee. */
 
-import type { Action, MessageHandlerResult, State } from "@elizaos/core";
+import type {
+  Action,
+  AgentContext,
+  MessageHandlerResult,
+  State,
+} from "@elizaos/core";
 import { getUserMessageText, logger } from "@elizaos/core";
 import {
   FAILED_TOOL_FALLBACK_MESSAGE,
@@ -43,6 +48,7 @@ export async function finalizePlannerReply(
     ambientTurn,
     earlyReplySent,
     messageHandler,
+    selectedContexts,
     prePatchStageOneReplyIsUngroundedAppliedClaim,
     prePatchStageOneReply,
     earlyReplyText,
@@ -57,6 +63,8 @@ export async function finalizePlannerReply(
     ambientTurn: boolean;
     earlyReplySent: boolean;
     messageHandler: MessageHandlerResult;
+    /** Stage 1's contexts merged with a resumed planner's contexts. */
+    selectedContexts: AgentContext[];
     prePatchStageOneReplyIsUngroundedAppliedClaim: boolean;
     prePatchStageOneReply: string | undefined;
     earlyReplyText: string;
@@ -239,8 +247,14 @@ export async function finalizePlannerReply(
     args.codingMode === true || recoveredReply?.text === effectiveReplyText
       ? ({ verdict: "allow" } as const)
       : evaluatePlannedReplyEgress({
+          currentScope: {
+            agentId: args.runtime.agentId,
+            entityId: args.message.entityId,
+            id: args.message.id,
+          },
           providers: finalPlannerState.data.providers,
           request: getUserMessageText(args.message),
+          contexts: selectedContexts,
           reply: effectiveReplyText,
           actionResults,
           actions: args.runtime.actions,
@@ -249,6 +263,7 @@ export async function finalizePlannerReply(
   if (finalReplyEgressDecision.verdict === "reject") {
     recoveredReply = await resolvePlannedReplyEgress({
       providers: finalPlannerState.data.providers,
+      contexts: selectedContexts,
       runtime: args.runtime,
       message: args.message,
       reply: effectiveReplyText,
@@ -440,6 +455,7 @@ export async function finalizePlannerReply(
     );
     recoveredReply = await resolvePlannedReplyEgress({
       providers: finalPlannerState.data.providers,
+      contexts: selectedContexts,
       runtime: args.runtime,
       message: args.message,
       reply: zeroDeliveryRecovery.text,
@@ -493,7 +509,9 @@ export async function finalizePlannerReply(
   // request, while leaving successful handoffs unassessed until completion.
   const terminalToolResult = plannerResult.trajectory.steps.at(-1)?.result;
   const requestFulfilled =
-    plannerResult.evaluator?.success ??
+    (plannerResult.evaluator?.requestFullyCovered === false
+      ? false
+      : plannerResult.evaluator?.success) ??
     (terminalToolResult?.continueChain === false &&
     terminalToolResult.success === false
       ? false

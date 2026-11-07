@@ -11,7 +11,7 @@
  * message), matching the existing message-action callback wiring.
  */
 
-import { type FormEvent, memo, useCallback, useMemo, useState } from "react";
+import { type FormEvent, memo, useCallback, useState } from "react";
 import { ConfigFieldErrors } from "../../config-ui/config-control-primitives";
 import { getConfigInputClassName } from "../../config-ui/config-control-primitives.helpers";
 import { runValidation } from "../../config-ui/ui-renderer.helpers";
@@ -91,6 +91,20 @@ function toSubmitPayload(values: FormValueRecord): FormValueRecord {
   return copyFormRecord(values);
 }
 
+function missingRequiredValue(
+  field: FormFieldSpec,
+  value: FormResultValue | undefined,
+): string[] {
+  if (!field.required) return [];
+  const message = `${field.label ?? field.name} is required`;
+  // The shared required check treats false as present, so an unchecked
+  // consent box would submit. A required checkbox is checked only when true.
+  if (field.type === "checkbox") {
+    return value === true ? [] : [message];
+  }
+  return runValidation([{ fn: "required", message }], value);
+}
+
 // Memoized on the form spec by value (see `formRequestPropsEqual`). This widget
 // holds user-entered field state internally, so it MUST survive the per-token
 // re-parse of the surrounding message: a referential-only memo would see a
@@ -112,11 +126,6 @@ export const FormRequest = memo(function FormRequest({
   );
   const [submitted, setSubmitted] = useState(false);
 
-  const requiredFields = useMemo(
-    () => form.fields.filter((f) => f.required && f.type !== "checkbox"),
-    [form.fields],
-  );
-
   const setValue = useCallback((name: string, value: FormResultValue) => {
     setValues((prev) => {
       const next = copyFormRecord(prev);
@@ -127,16 +136,7 @@ export const FormRequest = memo(function FormRequest({
 
   const validateField = useCallback(
     (field: FormFieldSpec, value: FormResultValue | undefined) => {
-      if (!field.required || field.type === "checkbox") return;
-      const fieldErrors = runValidation(
-        [
-          {
-            fn: "required",
-            message: `${field.label ?? field.name} is required`,
-          },
-        ],
-        value,
-      );
+      const fieldErrors = missingRequiredValue(field, value);
       setErrors((prev) => {
         const next = copyFormRecord(prev);
         next[field.name] = fieldErrors;
@@ -152,14 +152,9 @@ export const FormRequest = memo(function FormRequest({
       if (submitted) return;
 
       const nextErrors = createFormRecord<string[]>();
-      for (const field of requiredFields) {
-        const fieldErrors = runValidation(
-          [
-            {
-              fn: "required",
-              message: `${field.label ?? field.name} is required`,
-            },
-          ],
+      for (const field of form.fields) {
+        const fieldErrors = missingRequiredValue(
+          field,
           getOwnRecordValue(values, field.name),
         );
         if (fieldErrors.length > 0) nextErrors[field.name] = fieldErrors;
@@ -170,7 +165,7 @@ export const FormRequest = memo(function FormRequest({
       setSubmitted(true);
       onSubmit(form.id, toSubmitPayload(values));
     },
-    [form.id, onSubmit, requiredFields, submitted, values],
+    [form.fields, form.id, onSubmit, submitted, values],
   );
 
   return (
@@ -202,19 +197,25 @@ export const FormRequest = memo(function FormRequest({
           if (field.type === "checkbox") {
             const checkboxId = `${form.id}-${field.name}`;
             return (
-              <label
-                key={field.name}
-                htmlFor={checkboxId}
-                className="flex items-center gap-2 text-xs cursor-pointer"
-              >
-                <Checkbox
-                  id={checkboxId}
-                  checked={Boolean(value)}
-                  disabled={submitted}
-                  onCheckedChange={(checked) => setValue(field.name, !!checked)}
-                />
-                <span className="font-semibold">{label}</span>
-              </label>
+              <div key={field.name} className="flex flex-col gap-1">
+                <label
+                  htmlFor={checkboxId}
+                  className="flex items-center gap-2 text-xs cursor-pointer"
+                >
+                  <Checkbox
+                    id={checkboxId}
+                    checked={Boolean(value)}
+                    disabled={submitted}
+                    onCheckedChange={(checked) => {
+                      const next = !!checked;
+                      setValue(field.name, next);
+                      validateField(field, next);
+                    }}
+                  />
+                  <span className="font-semibold">{label}</span>
+                </label>
+                <ConfigFieldErrors errors={fieldErrors} />
+              </div>
             );
           }
           if (field.type === "select") {

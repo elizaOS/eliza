@@ -2,6 +2,7 @@
 import type http from "node:http";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
+import { getAuthenticatedInProcessAuthorization } from "./in-process-request.ts";
 import { resolveBoundaryRole } from "./server-helpers-auth.ts";
 
 export function resolveInboxRequestAuthorization(
@@ -10,6 +11,10 @@ export function resolveInboxRequestAuthorization(
   pathname: string,
   hostAuthorization: AgentHttpRequestAuthorization,
 ): AgentHttpRequestAuthorization {
+  // A scoped self-dispatch retains its verified caller; a root helper header
+  // cannot replace that identity or promote a narrower role.
+  const inherited = getAuthenticatedInProcessAuthorization(req);
+  if (inherited) return inherited;
   if (resolveBoundaryRole(req) === "OWNER") {
     return { ok: true, role: "OWNER" };
   }

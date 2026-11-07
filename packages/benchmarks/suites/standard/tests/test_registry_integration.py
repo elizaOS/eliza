@@ -33,7 +33,7 @@ def test_mmlu_command_routes_through_standard_module(tmp_path: Path) -> None:
         {"model_endpoint": "http://localhost:8000/v1"},
     )
     assert "-m" in cmd
-    assert "benchmarks.standard.mmlu" in cmd
+    assert "benchmarks.suites.standard.mmlu" in cmd
     assert "--output" in cmd
     assert str(tmp_path) in cmd
     assert "--model-endpoint" in cmd

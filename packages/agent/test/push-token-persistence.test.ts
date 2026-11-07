@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime, type UUID } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { PushTokenRegistry } from "../src/services/push/push-token-registry";
 
@@ -64,6 +64,35 @@ it("persists concurrent registry updates without resurrecting revoked tokens", a
           .sort(),
       ).toEqual(["three", "two"]);
     } finally {
+      const restoredRegistry = new PushTokenRegistry(restarted);
+      await restoredRegistry.register("android", "two", true);
+      expect(
+        (await new PushTokenRegistry(restarted).list()).find(
+          (r) => r.token === "two",
+        )?.reminderDataNotifications,
+      ).toBe(true);
+      await expect(
+        restoredRegistry.register("android", "bad-capability", "true" as never),
+      ).rejects.toMatchObject({ code: "PUSH_TOKEN_INVALID" });
+      await expect(
+        restoredRegistry.register("ios", "bad-platform-capability", true),
+      ).rejects.toMatchObject({ code: "PUSH_TOKEN_INVALID" });
+      const persisted = await restoredRegistry.list();
+      await restarted.setCache(
+        `push-tokens:${agentId}`,
+        persisted.map((r) => ({ ...r, reminderDataNotifications: "true" })),
+      );
+      expect(await restoredRegistry.list()).toEqual(
+        persisted.map(
+          ({ reminderDataNotifications: _cap, ...legacy }) => legacy,
+        ),
+      );
+      await restoredRegistry.register("android", "two", true);
+      await restoredRegistry.register("android", "two");
+      expect(
+        (await restoredRegistry.list()).find((r) => r.token === "two")
+          ?.reminderDataNotifications,
+      ).toBeUndefined();
       await restarted.close();
     }
   } finally {

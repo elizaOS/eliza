@@ -5,18 +5,18 @@
  * `@elizaos/plugin-health`; this domain assembles the assistant projection.
  */
 import crypto from "node:crypto";
-import {
-  type LifeOpsScreenTimeDaily,
-  type LifeOpsScreenTimeHistoryPoint,
-  type LifeOpsScreenTimeHistoryResponse,
-  type LifeOpsScreenTimeRangeKey,
-  type LifeOpsScreenTimeSession,
-  type LifeOpsScreenTimeSource,
-  type LifeOpsScreenTimeSummary,
-  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  type LifeOpsScreenTimeBucket as ScreenTimeBucket,
-  type LifeOpsSocialHabitSummary as SocialHabitSummary,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryPoint,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsScreenTimeBucket as ScreenTimeBucket,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
+} from "@elizaos/contracts";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
@@ -45,7 +45,9 @@ import {
 } from "@elizaos/plugin-health";
 import { getActivityReportBetween } from "../../activity-profile/activity-tracker-reporting.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { fail } from "../service-normalize.js";
+import { addDaysToLocalDate, buildUtcDateFromLocalParts } from "../time.js";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -111,6 +113,35 @@ function resolveUtcDateWindow(date: string): {
     fail(400, "date must be a valid YYYY-MM-DD string");
   }
   return { startIso, endIso, startMs, endMs };
+}
+
+/**
+ * The window of one civil date. With a time zone it is that zone's local day
+ * (DST-length days included); without one it is the UTC day.
+ */
+function resolveDateWindow(
+  date: string,
+  timeZone: string | undefined,
+): { startIso: string; endIso: string } {
+  const utcWindow = resolveUtcDateWindow(date);
+  if (!timeZone) return utcWindow;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) fail(400, "date must be a valid YYYY-MM-DD string");
+  const day = {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+  const midnight = { hour: 0, minute: 0, second: 0 };
+  const start = buildUtcDateFromLocalParts(timeZone, { ...day, ...midnight });
+  const next = buildUtcDateFromLocalParts(timeZone, {
+    ...addDaysToLocalDate(day, 1),
+    ...midnight,
+  });
+  return {
+    startIso: start.toISOString(),
+    endIso: new Date(next.getTime() - 1).toISOString(),
+  };
 }
 
 function buildWindowBounds(
@@ -334,6 +365,11 @@ export class ScreenTimeDomain {
     );
   }
 
+  /**
+   * `source` restricts the read to one surface. Omitted, it reads both apps
+   * and websites: the summary, breakdown and history callers pass no source
+   * and mean "all screen time".
+   */
   async collectScreenTimeRows(opts: {
     since: string;
     until: string;
@@ -343,7 +379,7 @@ export class ScreenTimeDomain {
     const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
     const rows: ScreenTimeAggregateRow[] = [];
 
-    if (opts.source === "app") {
+    if (opts.source !== "website") {
       const appReport = await getActivityReportBetween(
         this.ctx.runtime,
         this.ctx.agentId(),
@@ -408,7 +444,7 @@ export class ScreenTimeDomain {
       );
     }
 
-    if (opts.source === "website") {
+    if (opts.source !== "app") {
       const websiteSessions =
         await this.ctx.repository.listScreenTimeSessionsOverlapping(
           this.ctx.agentId(),
@@ -424,11 +460,13 @@ export class ScreenTimeDomain {
 
   async getScreenTimeDaily(opts: {
     date: string;
+    /** The owner's zone; `date` is then that zone's civil day, not the UTC day. */
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
   }): Promise<LifeOpsScreenTimeDaily[]> {
-    const { startIso, endIso } = resolveUtcDateWindow(opts.date);
+    const { startIso, endIso } = resolveDateWindow(opts.date, opts.timeZone);
     const rows = await this.collectScreenTimeRows({
       since: startIso,
       until: endIso,
@@ -593,7 +631,11 @@ export class ScreenTimeDomain {
     topN?: number;
     socialTopN?: number;
   }): Promise<LifeOpsScreenTimeHistoryResponse> {
-    const window = computeScreenTimeRange(opts.range);
+    // Day buckets are the owner's days; the host clock (UTC on a cloud host)
+    // would shift "today", the week start and every daily bucket.
+    const now = new Date();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
+    const window = computeScreenTimeRange(opts.range, now, timeZone);
     const priorWindow = computePriorScreenTimeRange(opts.range, window);
     const [breakdown, social, priorBreakdown, priorSocial] = await Promise.all([
       this.getScreenTimeBreakdown({
@@ -625,16 +667,18 @@ export class ScreenTimeDomain {
       opts.range === "today"
         ? []
         : await Promise.all(
-            enumerateScreenTimeHistoryDays(window).map(async (day) => {
-              const summary = await this.getScreenTimeSummary({
-                since: day.since,
-                until: day.until,
-              });
-              return {
-                ...day,
-                totalSeconds: summary.totalSeconds,
-              };
-            }),
+            enumerateScreenTimeHistoryDays(window, timeZone).map(
+              async (day) => {
+                const summary = await this.getScreenTimeSummary({
+                  since: day.since,
+                  until: day.until,
+                });
+                return {
+                  ...day,
+                  totalSeconds: summary.totalSeconds,
+                };
+              },
+            ),
           );
 
     return {

@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 
 import { StatusDot } from "../../ui/status-badge";
-import { SidebarContent } from "../sidebar";
+import { SidebarContent } from "../sidebar/sidebar-content";
 
 function InlineMeta({
   color,

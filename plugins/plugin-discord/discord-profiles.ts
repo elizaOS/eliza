@@ -84,6 +84,15 @@ function setCachedValue<T>(
 	}
 }
 
+function hasDiscordApiErrorCode(error: unknown, code: number): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		(error as { code?: unknown }).code === code
+	);
+}
+
 /** Test-only reset seam so suites never share module-scoped cache state. */
 export function __resetProfileCachesForTests(): void {
 	discordUserProfileCache.clear();
@@ -300,29 +309,40 @@ export async function resolveDiscordMessageAuthorProfile(
 	if (cached !== undefined) return cached;
 
 	const client = getDiscordClient(runtime);
-	const cachedChannel = client?.channels?.cache?.get?.(channelId);
-	const fetchChannel = client?.channels?.fetch;
-	const channel =
-		cachedChannel ??
-		(typeof fetchChannel === "function"
-			? await fetchChannel(channelId).catch(() => null)
-			: null);
+	const channels = client?.channels;
+	const cachedChannel = channels?.cache?.get?.(channelId);
+	let channel = cachedChannel;
+	if (!channel && typeof channels?.fetch === "function") {
+		try {
+			// Discord.js managers use `this` for their cache, client, and REST
+			// state. Keep the ChannelManager receiver attached to the call.
+			channel = await channels.fetch(channelId);
+		} catch (error) {
+			// Only Discord's explicit Unknown Channel result is a negative lookup.
+			// Transport and service failures must remain retryable.
+			if (hasDiscordApiErrorCode(error, 10_003)) {
+				setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+			}
+			return null;
+		}
+	}
 
-	const fetchMessage =
+	const messages =
 		channel &&
 		typeof channel === "object" &&
 		typeof (channel as { messages?: { fetch?: unknown } }).messages?.fetch ===
 			"function"
 			? (channel as { messages: { fetch: (id: string) => Promise<unknown> } })
-					.messages.fetch
+					.messages
 			: null;
-	if (!fetchMessage) {
+	if (!messages) {
 		setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
 		return null;
 	}
 
 	try {
-		const message = await fetchMessage(messageId);
+		// Keep the MessageManager receiver for its cache, channel, and REST state.
+		const message = await messages.fetch(messageId);
 		const author =
 			message && typeof message === "object"
 				? ((message as { author?: unknown }).author ?? null)
@@ -350,8 +370,12 @@ export async function resolveDiscordMessageAuthorProfile(
 		};
 		setCachedValue(discordMessageAuthorProfileCache, cacheKey, profile);
 		return profile;
-	} catch {
-		setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+	} catch (error) {
+		// Cache only Discord's explicit Unknown Message result. Other failures are
+		// not negative profile results and must remain retryable.
+		if (hasDiscordApiErrorCode(error, 10_008)) {
+			setCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+		}
 		return null;
 	}
 }
@@ -363,12 +387,12 @@ export async function resolveDiscordUserProfile(
 	const cached = readCachedValue(discordUserProfileCache, userId);
 	if (cached !== undefined) return cached;
 
-	const client = getDiscordClient(runtime);
-	const fetchUser = client?.users?.fetch;
-	if (typeof fetchUser !== "function") return null;
+	const users = getDiscordClient(runtime)?.users;
+	if (typeof users?.fetch !== "function") return null;
 
 	try {
-		const user = await fetchUser(userId);
+		// Keep the UserManager receiver for its cache, client, and REST state.
+		const user = await users.fetch(userId);
 		const profile: DiscordUserProfile = {
 			displayName: readDiscordDisplayName(user),
 			username:
@@ -381,8 +405,12 @@ export async function resolveDiscordUserProfile(
 		};
 		setCachedValue(discordUserProfileCache, userId, profile);
 		return profile;
-	} catch {
-		setCachedValue(discordUserProfileCache, userId, null);
+	} catch (error) {
+		// Cache only Discord's explicit Unknown User result. Other failures must
+		// remain retryable instead of becoming a five-minute false miss.
+		if (hasDiscordApiErrorCode(error, 10_013)) {
+			setCachedValue(discordUserProfileCache, userId, null);
+		}
 		return null;
 	}
 }
@@ -401,13 +429,12 @@ export async function resolveDiscordRoomProfile(
 				})();
 	if (!channelId) return null;
 
-	const client = getDiscordClient(runtime);
-	const cachedChannel = client?.channels?.cache?.get?.(channelId);
-	const fetchChannel = client?.channels?.fetch;
+	const channels = getDiscordClient(runtime)?.channels;
+	const cachedChannel = channels?.cache?.get?.(channelId);
 	const channel =
 		cachedChannel ??
-		(typeof fetchChannel === "function"
-			? await fetchChannel(channelId).catch(() => null)
+		(typeof channels?.fetch === "function"
+			? await channels.fetch(channelId).catch(() => null)
 			: null);
 
 	let title: string | null = null;

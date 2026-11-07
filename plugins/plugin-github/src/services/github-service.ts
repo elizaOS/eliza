@@ -52,6 +52,9 @@ export class GitHubService extends Service implements IGitHubService {
     "GitHub REST API integration for PRs, issues, and notifications";
 
   private clients = new Map<string, GitHubClientRecord>();
+  private readonly testClients = new Map<string, GitHubClientRecord>();
+  private accountGeneration = 0;
+  private pendingReload: Promise<void> | null = null;
 
   constructor(
     runtime?: IAgentRuntime,
@@ -71,15 +74,43 @@ export class GitHubService extends Service implements IGitHubService {
     return service;
   }
 
+  /**
+   * Re-read the configured accounts. The Settings token routes call this after
+   * they save or clear GITHUB_TOKEN, so a connected token is used, and a
+   * disconnected one stops working, without an agent restart.
+   */
+  async reloadAccounts(): Promise<void> {
+    const reload = this.initialize();
+    this.pendingReload = reload;
+    try {
+      await reload;
+    } finally {
+      if (this.pendingReload === reload) this.pendingReload = null;
+    }
+  }
+
+  /**
+   * Re-read accounts and wait for every reload started meanwhile. Connector
+   * OAuth accounts are added and removed outside this service, so actions
+   * read the current list instead of the one cached at start.
+   */
+  async refreshAccounts(): Promise<void> {
+    await this.reloadAccounts();
+    while (this.pendingReload) await this.pendingReload;
+  }
+
   private async initialize(): Promise<void> {
+    const generation = ++this.accountGeneration;
+    this.clients = new Map(this.testClients);
     if (!this.runtime) {
       return;
     }
     const accounts = await readGitHubAccountsWithConnectorCredentials(
       this.runtime,
     );
-    this.clients.clear();
+    if (generation !== this.accountGeneration) return;
     for (const account of accounts) {
+      if (this.testClients.has(account.accountId)) continue;
       this.clients.set(account.accountId, {
         account,
         client: this.createClient(account.token),
@@ -123,16 +154,18 @@ export class GitHubService extends Service implements IGitHubService {
     accountId = defaultGitHubAccountIdForRole(as),
   ): void {
     if (!client) {
+      this.testClients.delete(accountId);
       this.clients.delete(accountId);
       return;
     }
-    this.clients.set(accountId, {
-      account: { accountId, role: as, token: "test" },
-      client,
-    });
+    const record = { account: { accountId, role: as, token: "test" }, client };
+    this.testClients.set(accountId, record);
+    this.clients.set(accountId, record);
   }
 
   async stop(): Promise<void> {
+    ++this.accountGeneration;
+    this.testClients.clear();
     this.clients.clear();
   }
 }

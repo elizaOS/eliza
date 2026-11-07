@@ -6,6 +6,8 @@
  * import them without dragging the app/shared layer into their dep graph —
  * external plugins published to npm only need @elizaos/core.
  */
+
+import { asNonEmptyString, isObjectRecord } from "../utils/type-guards.ts";
 /** Builds the secret-setting key for one account-scoped connector credential. */
 export function connectorAccountCredentialSettingKey(
 	provider: string,
@@ -44,9 +46,9 @@ function encodeConnectorKeySegment(value: string): string {
  * connector-specific (e.g. bluebubbles needs both serverUrl and password,
  * imessage just needs cliPath OR dbPath OR enabled:true) but the broad
  * pattern is:
- *   - block exists, is an object, and isn't `enabled: false`
- *   - has at least one of { botToken, token, apiKey } — the universal case
- *   - OR matches the connector-specific shape (per-case branches below)
+ * - block exists, is an object, and isn't `enabled: false`
+ * - has at least one of { botToken, token, apiKey } — the universal case
+ * - OR matches the connector-specific shape (per-case branches below)
  *
  * Used by per-plugin `auto-enable.ts` predicates that just want to delegate
  * "is this connector wired?" to a single source of truth, and by app-side
@@ -76,9 +78,7 @@ export function isConnectorConfigured(
 				config.enabled === true || config.cliPath || config.dbPath,
 			);
 		case "whatsapp":
-			// authState/sessionPath: legacy field names
-			// authDir: Baileys multi-file auth state directory (WhatsAppAccountSchema)
-			// accounts: at least one account with authDir set and not explicitly disabled
+			// Accept authState, sessionPath, authDir, or an enabled account with authDir.
 			return Boolean(
 				config.authState ||
 					config.sessionPath ||
@@ -107,31 +107,19 @@ export function isConnectorConfigured(
 	}
 }
 /**
- * WeChat connector detection. Top-level `apiKey` is caught by the universal
- * check in `isConnectorConfigured`; this helper handles the multi-account
- * variant where each account in `config.accounts.*.apiKey` is checked.
- */
-function isNonEmptyString(value: unknown): boolean {
-	return typeof value === "string" && value.trim().length > 0;
-}
-/** Object (record) form of a service-account credential — never an array. */
-function isRecordObject(value: unknown): boolean {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-/**
  * True when a Google Chat account row (top-level block or `accounts.*` record
  * entry) carries usable service-account credential material. Mirrors
  * GoogleChatAccountSchema: `serviceAccount` is a string OR a parsed key
  * object, `serviceAccountFile` is a path string. `serviceAccountKey` is not a
  * schema field but is accepted because the GOOGLE_CHAT_SERVICE_ACCOUNT_KEY
- * env alias historically mapped there.
+ * environment alias supplies that field.
  */
 function hasGoogleChatCredential(row: Record<string, unknown>): boolean {
 	return (
-		isNonEmptyString(row.serviceAccount) ||
-		isRecordObject(row.serviceAccount) ||
-		isNonEmptyString(row.serviceAccountFile) ||
-		isNonEmptyString(row.serviceAccountKey)
+		asNonEmptyString(row.serviceAccount) !== undefined ||
+		isObjectRecord(row.serviceAccount) ||
+		asNonEmptyString(row.serviceAccountFile) !== undefined ||
+		asNonEmptyString(row.serviceAccountKey) !== undefined
 	);
 }
 /**
@@ -141,33 +129,27 @@ function hasGoogleChatCredential(row: Record<string, unknown>): boolean {
  * `accounts` record (GoogleChatConfigSchema keys accounts by id, not array).
  */
 export function isGoogleChatConfigured(value: unknown): boolean {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
+	if (!isObjectRecord(value) || value.enabled === false) {
 		return false;
 	}
-	const config = value as Record<string, unknown>;
-	if (config.enabled === false) {
-		return false;
-	}
-	if (hasGoogleChatCredential(config)) {
+	if (hasGoogleChatCredential(value)) {
 		return true;
 	}
-	const accounts = config.accounts;
-	if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
-		return Object.values(accounts as Record<string, unknown>).some(
-			(account) => {
-				if (!account || typeof account !== "object" || Array.isArray(account)) {
-					return false;
-				}
-				const row = account as Record<string, unknown>;
-				if (row.enabled === false) {
-					return false;
-				}
-				return hasGoogleChatCredential(row);
-			},
-		);
+	if (!isObjectRecord(value.accounts)) {
+		return false;
 	}
-	return false;
+	return Object.values(value.accounts).some(
+		(account) =>
+			isObjectRecord(account) &&
+			account.enabled !== false &&
+			hasGoogleChatCredential(account),
+	);
 }
+/**
+ * WeChat connector detection. Top-level `apiKey` is caught by the universal
+ * check in `isConnectorConfigured`; this helper handles the multi-account
+ * variant where each account in `config.accounts.*.apiKey` is checked.
+ */
 export function isWechatConfigured(
 	config: Record<string, unknown> | null | undefined,
 ): boolean {

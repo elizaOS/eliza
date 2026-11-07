@@ -36,7 +36,7 @@ describe("base-trusted workflow contract", () => {
     // suite green (#19372 review), so the pin needs its own assertion here.
     assert.match(
       workflow,
-      /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
+      /uses: actions\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1/,
     );
     assert.match(workflow, /node-version: "24\.15\.0"/);
   });
@@ -261,7 +261,7 @@ describe("delayed fork-workflow approval", () => {
           return [];
         },
         loadActionRequiredPaths: async () => [
-          ".github/workflows/pr-static-smoke.yml",
+          ".github/workflows/pr-validation.yml",
         ],
         timeoutMs: 1_200_000,
         completionGraceMs: 240_000,
@@ -271,7 +271,7 @@ describe("delayed fork-workflow approval", () => {
           sleeps += 1;
         },
       }),
-      /required workflows awaiting maintainer approval: \.github\/workflows\/pr-static-smoke\.yml; approve the listed workflows, then rerun this gate/,
+      /required workflows awaiting maintainer approval: \.github\/workflows\/pr-validation\.yml; approve the listed workflows, then rerun this gate/,
     );
 
     assert.equal(checkLoads, 0);

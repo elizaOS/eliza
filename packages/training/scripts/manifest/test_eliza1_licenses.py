@@ -4,26 +4,23 @@ from __future__ import annotations
 
 import json
 import hashlib
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.eliza1_licenses import (  # noqa: E402
+from eliza_training.manifest.eliza1_licenses import (  # noqa: E402
     ATTESTATIONS,
     attestations_for_components,
     license_text,
     verify_bundle_licenses,
     write_bundle_licenses,
 )
-from scripts.manifest.eliza1_manifest import (  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_MTP_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
 )
-from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
+from eliza_training.manifest.eliza1_platform_plan import (  # noqa: E402
     REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
 )
 
@@ -103,7 +100,7 @@ def test_qwen3_asr_and_embedding_are_retired_sources() -> None:
 
 # --- evidence finalizer -----------------------------------------------------
 
-from scripts.manifest.finalize_eliza1_evidence import (  # noqa: E402
+from eliza_training.manifest.finalize_eliza1_evidence import (  # noqa: E402
     ELIZA_1_HF_REPO,
     finalize,
 )

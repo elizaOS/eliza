@@ -67,14 +67,14 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts",
     optIn: "ELIZA_LIVE_TEST",
     anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
-    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/testing/src/live-agent.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/integration/progressive-content-postgres-targets.real.test.ts",
     requires: ["POSTGRES_URL"],
   },
   {
-    file: "packages/core/src/__tests__/message-addressing-gate.live.test.ts",
+    file: "packages/core/test/message-addressing-gate.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
   },
@@ -91,7 +91,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-personal-assistant/test/scheduled-task-voicing.live.test.ts",
     requires: ["CEREBRAS_API_KEY"],
-    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/testing/src/live-agent.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-concurrency.postgres.real.test.ts",
@@ -112,7 +112,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
   },
   {
-    file: "packages/app/src/services/coding-account-bridge.live.test.ts",
+    file: "packages/auth/src/accounts/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     notes: "operator-run multi-account integration; not part of routine CI",
   },
@@ -282,6 +282,15 @@ export const GUARDED_REAL_LIVE_SUITES = [
     blocked:
       "plugin-local-inference excludes *.real.test.ts from its default config; run with the fused Kokoro-capable native library",
     probe: "fused inference library with Kokoro support",
+  },
+  {
+    file: "plugins/plugin-local-inference/src/services/voice/paradee/__tests__/paradee-engine-bridge.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun, the fused native library and its reviewed digest, and the staged Paradee v1.1 model",
+    probe:
+      "Bun, fused inference library with Paradee support and a reviewed digest, staged Paradee-8M v1.1 model",
+    notes:
+      "voice-live-e2e.yml voice-acoustic-matrix runs it under bun test against the staged bundle",
   },
   {
     file: "plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts",

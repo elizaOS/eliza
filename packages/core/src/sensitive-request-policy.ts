@@ -102,7 +102,7 @@ export interface SensitiveRequestSecretTarget {
 	 * How the value should be collected. Defaults to `secret` (masked text).
 	 * `image`/`file` let a secret be captured as an upload — e.g. photograph a
 	 * 2FA seed or scan a recovery QR — delivered as a base64 data URL through the
-	 * same submit path. Additive; omit for a normal typed secret. (#8910)
+	 * same submit path. Additive; omit for a normal typed secret.
 	 */
 	input?: "secret" | "text" | "image" | "file";
 	/** For `input: "image" | "file"` — accepted MIME types (maps to the file input `accept`). */
@@ -137,14 +137,7 @@ export interface SensitiveRequestOauthTarget {
 	[key: string]: unknown;
 }
 
-/**
- * Tightened OAuth target shape used by the owner-app OAuth inline adapter
- * and the chat OAuthRequestPanel widget. Carries the canonical fields the
- * widget needs to render the "Connect <provider>" button and open the
- * consent URL in a popup. The legacy {@link SensitiveRequestOauthTarget}
- * (lowercase `a`) stays around as a permissive umbrella for callers that
- * pre-date this shape; new code should prefer this interface.
- */
+/** OAuth target fields required by owner-app adapters and consent widgets. */
 export interface SensitiveRequestOAuthTarget {
 	kind: "oauth";
 	/** Canonical provider id, e.g. "github", "google". */

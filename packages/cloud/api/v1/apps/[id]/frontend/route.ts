@@ -11,16 +11,16 @@
  * `packages/cloud/shared/src/lib/services/app-frontend-hosting.ts`.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { appFrontendDeploymentsRepository } from "@elizaos/cloud-shared/db/repositories/app-frontend-deployments";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appFrontendHostingService } from "@elizaos/cloud-shared/lib/services/app-frontend-hosting";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { appFrontendDeploymentsRepository } from "@/db/repositories/app-frontend-deployments";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appFrontendHostingService } from "@/lib/services/app-frontend-hosting";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const FileSchema = z.object({
   path: z.string().min(1).max(1024),

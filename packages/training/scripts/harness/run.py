@@ -22,10 +22,8 @@ from typing import Any
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from scripts.lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 try:  # noqa: SIM105
     from . import emit, validate as v  # type: ignore[import-not-found]  # noqa: E402
@@ -38,9 +36,9 @@ try:  # noqa: SIM105
         visible_actions_for,
     )
 except ImportError:  # direct script invocation: python scripts/harness/run.py
-    from scripts.harness import emit, validate as v  # type: ignore[no-redef]  # noqa: E402
-    from scripts.harness.personas import Persona, PERSONAS  # type: ignore[no-redef]  # noqa: E402
-    from scripts.harness.prompt import (  # type: ignore[no-redef]  # noqa: E402
+    from eliza_training.harness import emit, validate as v  # type: ignore[no-redef]  # noqa: E402
+    from eliza_training.harness.personas import Persona, PERSONAS  # type: ignore[no-redef]  # noqa: E402
+    from eliza_training.harness.prompt import (  # type: ignore[no-redef]  # noqa: E402
         build_canonical_record,
         build_tool_specs,
         build_user_messages,

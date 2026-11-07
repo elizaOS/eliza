@@ -10,7 +10,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-import { Z_SHELL_OVERLAY } from "../lib/floating-layers";
+import { Z_SHELL_OVERLAY } from "../utils/floating-layers";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 
 const noopSubscribe = () => () => {};

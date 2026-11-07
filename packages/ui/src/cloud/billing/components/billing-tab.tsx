@@ -12,7 +12,6 @@ import {
   ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
   ORGANIZATION_CREDIT_TOP_UP_PRESETS_USD,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { CornerBrackets, Input, Label } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CheckCircle,
@@ -34,8 +33,11 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { ApiError, api } from "../../lib/api-client";
-import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
   type BillingSnapshotV2View,

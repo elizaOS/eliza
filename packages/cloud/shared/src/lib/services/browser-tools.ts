@@ -211,7 +211,14 @@ async function firecrawlRequest<T>(
   );
 
   const text = await response.text();
-  const payload = text.trim().length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+  let payload: Record<string, unknown> = {};
+  if (text.trim().length > 0) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new Error(`Firecrawl returned a non-JSON response (HTTP ${response.status})`);
+    }
+  }
 
   if (!response.ok) {
     const message =

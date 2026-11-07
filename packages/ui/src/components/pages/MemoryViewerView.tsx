@@ -18,7 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type {
   MemoryBrowseItem,
@@ -41,16 +41,16 @@ import {
   FramedPageBody,
   FramedPageHeader,
 } from "../../layouts/framed-page";
-import { WorkspaceLayout } from "../../layouts/workspace-layout";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { cn } from "../../utils/cn";
 import { formatDateTime } from "../../utils/format";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
@@ -1440,7 +1440,6 @@ function MemoryViewerViewForAuthority({
     <ShellViewAgentSurface viewId="memories">
       <FramedPage gutterOwner="framed-page">
         <FramedPageHeader
-          title={t("memoryviewer.title", { defaultValue: "Memories" })}
           actions={
             memoryRuntimeUnavailable ? undefined : (
               <ViewHeaderSidebarTrigger

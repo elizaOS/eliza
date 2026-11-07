@@ -24,13 +24,13 @@
  */
 
 import crypto from "node:crypto";
-import { fetchWithSsrfGuard, type IAgentRuntime, logger } from "@elizaos/core";
-import type { LifeOpsGmailMessageSummary } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsGmailMessageSummary } from "@elizaos/contracts";
 import {
   fail,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "@elizaos/core/lifeops-normalize/service-normalize";
+} from "@elizaos/contracts";
+import { fetchWithSsrfGuard, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   EmailSubscriptionScanResult,
   EmailSubscriptionSender,
@@ -175,9 +175,18 @@ function parseMailtoUnsubscribe(value: string): {
   if (!recipient) {
     return null;
   }
-  const params = new URLSearchParams(queryPart);
-  const subject = params.get("subject");
-  const body = params.get("body");
+  // RFC 6068: "+" in a mailto URI is the character "+", and a header field
+  // name is case-insensitive. URLSearchParams reads "+" as a space, which
+  // damages an unsubscribe token, so each "+" is protected first.
+  const params = new URLSearchParams(queryPart.replaceAll("+", "%2B"));
+  const headerField = (name: string): string | null => {
+    for (const [fieldName, fieldValue] of params) {
+      if (fieldName.toLowerCase() === name) return fieldValue;
+    }
+    return null;
+  };
+  const subject = headerField("subject");
+  const body = headerField("body");
   return {
     recipient,
     subject: subject?.trim() ? subject : null,
@@ -321,7 +330,9 @@ export class InboxUnsubscribeService {
       if (!message.fromEmail && !listUnsubscribe) {
         continue;
       }
-      const senderEmail = message.fromEmail ?? message.from;
+      // Gmail's from: search ignores case, so one sender can arrive as
+      // "News@Shop.example" and "news@shop.example"; group them together.
+      const senderEmail = (message.fromEmail ?? message.from).toLowerCase();
       const existing = senders.get(senderEmail);
       const options = listUnsubscribeOptions(listUnsubscribe);
       const method = unsubscribeMethod({
@@ -352,6 +363,22 @@ export class InboxUnsubscribeService {
       existing.messageCount += 1;
       existing.allMessageIds.push(message.id);
       existing.allThreadIds.push(message.threadId);
+      // A sender does not publish List-Unsubscribe on every message (a
+      // one-off "your order shipped" can be newer than the newsletter that
+      // carries it), so keep the first mechanism the batch publishes instead
+      // of only the one on the first message. The method and its headers are
+      // taken from the same message so the reported method never disagrees
+      // with the stored target.
+      if (
+        !existing.unsubscribeHttpUrl &&
+        !existing.unsubscribeMailto &&
+        (options.httpUrl || options.mailto)
+      ) {
+        existing.unsubscribeMethod = method;
+        existing.unsubscribeHttpUrl = options.httpUrl;
+        existing.unsubscribeMailto = options.mailto;
+        existing.listUnsubscribePost = listUnsubscribePost;
+      }
       // Gmail lists newest-first, so derive the extremes by timestamp rather
       // than iteration order. Unparseable timestamps never become an extreme.
       const receivedAtMs = Date.parse(message.receivedAt);
@@ -464,6 +491,20 @@ export class InboxUnsubscribeService {
     let errorMessage: string | null = null;
 
     try {
+      // Validate every requested Gmail mutation before the unsubscribe effect.
+      // Otherwise an HTTP or mailto unsubscribe can succeed, then a missing
+      // manage grant turns the combined request into a recorded failure. A
+      // caller may retry that false failure and repeat the irreversible effect.
+      if (
+        (request.blockAfter || request.trashExisting) &&
+        !grant.capabilities.includes("google.gmail.manage")
+      ) {
+        fail(
+          403,
+          "Blocking or trashing subscription email requires Gmail manage access.",
+        );
+      }
+
       if (sender.unsubscribeHttpUrl) {
         const http = await performHttpUnsubscribe({
           url: sender.unsubscribeHttpUrl,
@@ -487,15 +528,6 @@ export class InboxUnsubscribeService {
         status = "succeeded";
       }
 
-      if (request.blockAfter || request.trashExisting) {
-        if (!grant.capabilities.includes("google.gmail.manage")) {
-          fail(
-            403,
-            "Blocking or trashing subscription email requires Gmail manage access.",
-          );
-        }
-      }
-
       if (request.blockAfter) {
         const filter = await this.gmail.createGmailFilterForSender(
           accountId,
@@ -503,7 +535,8 @@ export class InboxUnsubscribeService {
         );
         filterCreated = true;
         filterId = filter.filterId;
-        status = "succeeded";
+        // A filter hides later mail; it does not undo a failed unsubscribe.
+        if (status !== "failed") status = "succeeded";
       }
 
       if (request.trashExisting) {
@@ -512,7 +545,7 @@ export class InboxUnsubscribeService {
           await this.gmail.trashGmailThread(accountId, threadId);
           threadsTrashed += 1;
         }
-        if (threadIds.length > 0) {
+        if (threadIds.length > 0 && status !== "failed") {
           status = "succeeded";
         }
       }

@@ -3,8 +3,8 @@
  * knowledge graph and fail closed before exposing provider coordinates.
  */
 
-import { type AgentRuntime } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
 import { CALENDAR_GUEST_AVAILABILITY_PURPOSE } from "@elizaos/plugin-calendar";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

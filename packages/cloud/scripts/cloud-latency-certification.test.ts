@@ -1,9 +1,10 @@
 /**
  * Deterministic contract tests for exact-SHA latency evidence validation and
- * private raw Worker Tail lifecycle; no network or provider calls are made.
+ * private raw Worker Tail lifecycle; HTTP tests use only a local loopback server.
  */
 
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
   mkdir,
@@ -14,16 +15,19 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
   extractBoundedChildFailure,
+  InferenceAuthPhaseFailure,
   parseCertificationArgs,
   requireAuthSecrets,
   requirePairedSecrets,
   requireTraceSecrets,
+  retainAuthFailure,
   runTraces,
   validateAuthEvidence,
   validatePairedEvidence,
@@ -32,7 +36,171 @@ import {
   withPrivateTraceDirectory,
 } from "./cloud-latency-certification.ts";
 
+import {
+  AuthProbeHttpStatusError,
+  probeAuthSample,
+} from "./inference-auth-latency.ts";
+
 const SHA = "a".repeat(40);
+
+test("actual HTTP auth denial retains only a closed phase and status receipt", async () => {
+  const privateKey = "fixture-key-must-not-be-retained";
+  const privateToken = "fixture-token-must-not-be-retained";
+  const privateBody = "private upstream response must not be retained";
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/api/v1/chat/completions");
+    assert.equal(request.headers["x-api-key"], privateKey);
+    response.writeHead(403, { "x-private-header": privateToken });
+    response.end(privateBody);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const directory = await mkdtemp(join(tmpdir(), "auth-phase-receipt-"));
+  try {
+    let actualFailure: unknown;
+    try {
+      await probeAuthSample({
+        baseUrl: `http://127.0.0.1:${server.address().port}`,
+        apiKey: privateKey,
+        probeToken: privateToken,
+        deploySha: SHA,
+        phase: "prime",
+        sequence: 0,
+        timeoutMs: 5_000,
+      });
+    } catch (cause) {
+      actualFailure = cause;
+    }
+    assert.ok(actualFailure instanceof AuthProbeHttpStatusError);
+    const failure = new InferenceAuthPhaseFailure(
+      "tail_readiness",
+      actualFailure,
+    );
+    await retainAuthFailure(directory, failure);
+    const receipt = await readFile(
+      join(directory, "auth-failure.json"),
+      "utf8",
+    );
+    assert.deepEqual(JSON.parse(receipt), {
+      kind: "inference_auth_phase_failure",
+      phase: "tail_readiness",
+      category: "unexpected_http_status",
+      httpStatus: 403,
+    });
+    assert.equal(failure.cause, actualFailure);
+    for (const privateValue of [
+      privateKey,
+      privateToken,
+      privateBody,
+      actualFailure.message,
+    ]) {
+      assert.ok(!receipt.includes(privateValue));
+    }
+    assert.equal(
+      (await stat(join(directory, "auth-failure.json"))).mode & 0o777,
+      0o600,
+    );
+    await assert.rejects(() => retainAuthFailure(directory, failure), {
+      code: "EEXIST",
+    });
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("unknown and teardown failures retain causes privately without publishing them", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "auth-phase-receipt-"));
+  const original = new Error("private original request credentials");
+  const teardown = new Error("private Tail bytes");
+  const aggregate = new AggregateError([original, teardown]);
+  const failure = new InferenceAuthPhaseFailure("tail_teardown", aggregate);
+  try {
+    await retainAuthFailure(directory, failure);
+    const receipt = await readFile(
+      join(directory, "auth-failure.json"),
+      "utf8",
+    );
+    assert.deepEqual(JSON.parse(receipt), {
+      kind: "inference_auth_phase_failure",
+      phase: "tail_teardown",
+      category: "phase_failed",
+      httpStatus: null,
+    });
+    assert.deepEqual(failure.cause.errors, [original, teardown]);
+    assert.ok(!receipt.includes(original.message));
+    assert.ok(!receipt.includes(teardown.message));
+    await rm(join(directory, "auth-failure.json"));
+    await retainAuthFailure(directory, original);
+    assert.equal(
+      JSON.parse(await readFile(join(directory, "auth-failure.json"), "utf8"))
+        .phase,
+      "unknown",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("intentional targeted placement admits remote headers without relaxing proof or identity checks", () => {
+  const policy = { mode: "targeted", region: "gcp:us-west2", deploySha: SHA };
+  const records = Array.from({ length: 44 }, (_, index) =>
+    pairedRecord(index, { headers: { "cf-placement": "remote-LAX" } }),
+  );
+  assert.equal(
+    validatePairedEvidence(jsonl(records), SHA, SHA, policy).counts.gateway,
+    22,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA),
+    /remote Worker placement/,
+  );
+  assert.throws(
+    () =>
+      validatePairedEvidence(jsonl(records), SHA, SHA, {
+        ...policy,
+        deploySha: "b".repeat(40),
+      }),
+    /placement policy/,
+  );
+  assert.throws(
+    () => validatePairedEvidence(jsonl(records), SHA, SHA, { mode: "smart" }),
+    /placement policy/,
+  );
+  for (const change of [
+    { temperature: 1 },
+    { temperature: undefined },
+    { proofMatched: false },
+    { transportOk: false },
+    { ci: { sha: "b".repeat(40), gatewayDeploySha: SHA } },
+    { headers: { "cf-placement": "banana" } },
+    { headers: { "cf-placement": "remote-XX" } },
+  ]) {
+    const invalid = records.map((record, index) =>
+      index === 1 ? { ...record, ...change } : record,
+    );
+    assert.throws(() =>
+      validatePairedEvidence(jsonl(invalid), SHA, SHA, policy),
+    );
+  }
+  const missingLocation = records.map((record) => ({
+    ...record,
+    headers: { "cf-placement": "remote-" },
+  }));
+  const result = validatePairedEvidence(
+    jsonl(missingLocation),
+    SHA,
+    SHA,
+    policy,
+  );
+  assert.deepEqual(result.placementLocations, { reported: 0, unavailable: 22 });
+  assert.equal(result.records[1].headers["cf-placement"], "remote-");
+  assert.throws(
+    () => validatePairedEvidence(jsonl(missingLocation), SHA),
+    /invalid Worker placement/,
+  );
+});
 
 function pairedRecord(index, overrides = {}) {
   return {
@@ -41,6 +209,7 @@ function pairedRecord(index, overrides = {}) {
     ok: true,
     transportOk: true,
     proofMatched: true,
+    temperature: 0,
     ci: { sha: SHA, gatewayDeploySha: SHA },
     headers: index % 2 === 0 ? {} : { "cf-placement": "local-ORD" },
     ...overrides,
@@ -134,6 +303,8 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
     ]),
     {
       deploySha: SHA,
+      environment: "staging",
+      probeCase: "qwen-3.8-27b@high@max",
       outputDir: join(process.cwd(), "artifacts/cert"),
       acknowledgedContractDigest: "",
       runAuth: true,
@@ -482,6 +653,7 @@ test("trace API denial survives private cleanup without retaining upstream secre
   const secret = "upstream-private-value";
   const options = {
     deploySha: SHA,
+    worker: "eliza-cloud-api-staging",
     outputDir,
     env: {
       RUNNER_TEMP: privateRoot,
@@ -554,4 +726,139 @@ test("trace API denial survives private cleanup without retaining upstream secre
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("explicit probe controls retain the selected reasoning policy and token budget", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  const defaults = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+  ]);
+  const body = buildOpenAiRequestBody(
+    parseProbeCase(defaults.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(body, "reasoning_effort"), "high");
+  assert.equal(Object.hasOwn(body, "max_tokens"), false);
+  assert.equal(Object.hasOwn(body, "max_completion_tokens"), false);
+  const selected = parseCertificationArgs([
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--probe-case",
+    "qwen-3.8-27b@high@4096",
+  ]);
+  const selectedBody = buildOpenAiRequestBody(
+    parseProbeCase(selected.probeCase),
+    "synthetic proof",
+    "synthetic-cache-key",
+  );
+  assert.equal(Reflect.get(selectedBody, "reasoning_effort"), "high");
+  assert.equal(selectedBody.max_tokens, 4096);
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        "--deploy-sha",
+        SHA,
+        "--output-dir",
+        "artifacts/cert",
+        "--probe-case",
+        "qwen-3.8-27b@none@invalid",
+      ]),
+    /max_tokens/,
+  );
+});
+
+test("probe budgets preserve provider maximum and explicit caller limits", async () => {
+  const { buildOpenAiRequestBody, parseProbeCase } = await import(
+    "./chat-latency.ts"
+  );
+  for (const value of ["qwen-3.8-27b@high", "qwen-3.8-27b@high@max"]) {
+    const probe = parseProbeCase(value);
+    assert.equal(probe.maxTokens, null);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(Object.hasOwn(body, "max_tokens"), false);
+    assert.equal(
+      JSON.parse(JSON.stringify({ maxTokens: probe.maxTokens })).maxTokens,
+      null,
+    );
+  }
+  for (const cap of [512, 32768, 65536]) {
+    const probe = parseProbeCase(`qwen-3.8-27b@none@${cap}`);
+    const body = buildOpenAiRequestBody(probe, "proof", undefined);
+    assert.equal(body.max_tokens, cap);
+    assert.equal(Reflect.get(body, "reasoning_effort"), "none");
+  }
+  for (const cap of [
+    "0",
+    "-1",
+    "512garbage",
+    "1.5",
+    "Infinity",
+    "9007199254740992",
+  ]) {
+    assert.throws(
+      () => parseProbeCase(`qwen-3.8-27b@high@${cap}`),
+      /max_tokens/,
+    );
+  }
+});
+
+test("production certification uses only its fixed endpoint and rejects staging identity", async () => {
+  const args = [
+    "--deploy-sha",
+    SHA,
+    "--output-dir",
+    "artifacts/cert",
+    "--environment",
+    "production",
+  ];
+  assert.equal(parseCertificationArgs(args).environment, "production");
+  assert.throws(
+    () => parseCertificationArgs([...args, "--auth"]),
+    /only in staging/,
+  );
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        ...args.slice(0, -1),
+        "https://untrusted.invalid",
+      ]),
+    /Unsupported/,
+  );
+  let calls = 0;
+  const result = await verifyExactDeployment(
+    SHA,
+    async (url) => {
+      calls++;
+      assert.equal(url, "https://api.eliza.app/api/health");
+      return Response.json({ commit: SHA, environment: "production" });
+    },
+    "production",
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.environment, "production");
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () => Response.json({ commit: SHA, environment: "staging" }),
+      "production",
+    ),
+    /wrong environment/,
+  );
+  await assert.rejects(
+    verifyExactDeployment(
+      SHA,
+      async () =>
+        Response.json({ commit: "b".repeat(40), environment: "production" }),
+      "production",
+    ),
+    /expected commit/,
+  );
 });

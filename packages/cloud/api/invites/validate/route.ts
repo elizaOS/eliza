@@ -3,14 +3,15 @@
  * Public endpoint — validates an invitation token and returns details.
  */
 
-import { Hono } from "hono";
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { invitesService } from "@/lib/services/invites";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { invitesService } from "@elizaos/cloud-shared/lib/services/invites";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -40,6 +41,7 @@ app.get("/", async (c) => {
         role: validation.invite?.invited_role,
         invited_email: validation.invite?.invited_email,
         expires_at: validation.invite?.expires_at,
+        inviter_name: validation.invite?.inviter?.name ?? null,
       },
     });
   } catch (error) {
@@ -48,10 +50,7 @@ app.get("/", async (c) => {
       {
         success: false,
         valid: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to validate invitation",
+        error: safeUnknownErrorMessage(error),
       },
       500,
     );

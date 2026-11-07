@@ -1,12 +1,16 @@
 /** Handles app analytics summaries with shared date-range validation. */
-import { Hono } from "hono";
 
-import { parseDateRangeParams } from "@/lib/api/date-range-params";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/apps/[id]/analytics
@@ -88,15 +92,15 @@ app.get("/", async (c) => {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary — every catch in v1/apps/* translates a thrown error into a structured HTTP failure (500 with an error body), never a fabricated 200 with empty analytics.
     logger.error("Failed to get app analytics:", error);
     return c.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get app analytics",
+        error: safeUnknownErrorMessage(error),
       },
       500,
     );

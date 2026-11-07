@@ -20,6 +20,7 @@ import {
 import type { Task } from "../types/a2a";
 import { logger } from "../utils/logger";
 import { assertPersistentCloudStateConfigured } from "../utils/persistence-guard";
+import { getCloudflareA2ATaskStore } from "./cloudflare-a2a-task-store";
 
 // ============================================================================
 // Types
@@ -102,6 +103,8 @@ class A2ATaskStoreService {
    * Get a task by ID
    */
   async get(taskId: string, organizationId: string): Promise<TaskStoreEntry | null> {
+    const cloud = getCloudflareA2ATaskStore();
+    if (cloud) return cloud.get(taskId, organizationId);
     const client = getRedisClient();
     const key = `${TASK_KEY_PREFIX}${taskId}`;
     const value = await client.get<string>(key);
@@ -126,6 +129,8 @@ class A2ATaskStoreService {
    * Store a task
    */
   async set(taskId: string, entry: TaskStoreEntry): Promise<void> {
+    const cloud = getCloudflareA2ATaskStore();
+    if (cloud) return cloud.set(taskId, entry);
     const client = getRedisClient();
     const key = `${TASK_KEY_PREFIX}${taskId}`;
     const orgIndexKey = `${TASK_ORG_INDEX_PREFIX}${entry.organizationId}`;
@@ -206,6 +211,8 @@ class A2ATaskStoreService {
     organizationId: string,
     updater: (entry: TaskStoreEntry) => TaskStoreEntry,
   ): Promise<TaskStoreEntry | null> {
+    const cloud = getCloudflareA2ATaskStore();
+    if (cloud) return cloud.update(taskId, organizationId, updater);
     const lockToken = await this.acquireUpdateLock(taskId);
     try {
       const existing = await this.get(taskId, organizationId);
@@ -227,6 +234,8 @@ class A2ATaskStoreService {
    * Delete a task
    */
   async delete(taskId: string, organizationId: string): Promise<boolean> {
+    const cloud = getCloudflareA2ATaskStore();
+    if (cloud) return cloud.delete(taskId, organizationId);
     const client = getRedisClient();
     const key = `${TASK_KEY_PREFIX}${taskId}`;
 
@@ -249,6 +258,8 @@ class A2ATaskStoreService {
    * List tasks for an organization
    */
   async listByOrganization(organizationId: string, limit = 50): Promise<TaskStoreEntry[]> {
+    const cloud = getCloudflareA2ATaskStore();
+    if (cloud) return cloud.listByOrganization(organizationId, limit);
     const client = getRedisClient();
     const orgIndexKey = `${TASK_ORG_INDEX_PREFIX}${organizationId}`;
 
@@ -339,6 +350,7 @@ class A2ATaskStoreService {
    */
   isRedisAvailable(): boolean {
     try {
+      if (getCloudflareA2ATaskStore()) return true;
       getRedisClient();
       return true;
     } catch {

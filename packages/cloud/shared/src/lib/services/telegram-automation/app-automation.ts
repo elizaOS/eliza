@@ -456,7 +456,10 @@ Maximum 300 characters.`;
     }
 
     if (lastMessageId) {
-      const currentConfig = app.telegram_automation || {
+      // Re-read: the owner may have changed or turned off automation while
+      // the text was generated and sent; keep their config, add only stats.
+      const currentConfig = (await this.getAppForOrg(organizationId, appId))
+        .telegram_automation || {
         enabled: false,
         autoReply: true,
         autoAnnounce: false,
@@ -520,6 +523,12 @@ Maximum 300 characters.`;
       operationContext,
     );
 
+    // Generation can take long; do not reply once the owner turned it off.
+    const latestConfig = (await this.getAppForOrg(organizationId, appId)).telegram_automation;
+    if (!latestConfig?.enabled || !latestConfig?.autoReply) {
+      return { success: false, error: "Auto-reply not enabled" };
+    }
+
     const bot = new Telegraf(botToken);
 
     try {
@@ -541,7 +550,10 @@ Maximum 300 characters.`;
         throw new Error("Telegram reply was empty");
       }
 
-      const currentConfig = app.telegram_automation || {
+      // Re-read: the owner may have changed or turned off automation while
+      // the text was generated and sent; keep their config, add only stats.
+      const currentConfig = (await this.getAppForOrg(organizationId, appId))
+        .telegram_automation || {
         enabled: false,
         autoReply: true,
         autoAnnounce: false,

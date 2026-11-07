@@ -7,6 +7,7 @@ import type {
 	TargetInfo,
 	UUID,
 } from "@elizaos/core";
+import { DiscordSnowflake } from "@sapphire/snowflake";
 import { describe, expect, it } from "vitest";
 import { DiscordTriageAdapter, mapDiscordMemoryToRef } from "../triage-adapter";
 
@@ -66,6 +67,7 @@ interface FakeServiceOptions {
 	messagesByChannel?: Record<string, Memory[]>;
 	failChannels?: Set<string>;
 	sentMemory?: Memory;
+	ready?: boolean;
 }
 
 function createFakeDiscordService(opts: FakeServiceOptions = {}) {
@@ -96,6 +98,9 @@ function createFakeDiscordService(opts: FakeServiceOptions = {}) {
 		): Promise<Memory | undefined> {
 			sends.push({ target, content });
 			return opts.sentMemory;
+		},
+		getClient() {
+			return { isReady: () => opts.ready ?? true };
 		},
 	};
 	return service;
@@ -149,6 +154,81 @@ describe("mapDiscordMemoryToRef", () => {
 });
 
 describe("DiscordTriageAdapter", () => {
+	it("stops paging a channel whose reads ignore the before cursor", async () => {
+		const page = Array.from({ length: 100 }, (_, index) =>
+			discordMemory({
+				messageId: String(1_000 - index),
+				channelId: "555",
+				entityId: AGENT_ID,
+			}),
+		);
+		let calls = 0;
+		const service = {
+			...createFakeDiscordService(),
+			async fetchConnectorMessages(): Promise<Memory[]> {
+				calls += 1;
+				return page;
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{ channelIds: ["555"], limit: 3 },
+		);
+
+		expect(refs).toEqual([]);
+		expect(calls).toBe(2);
+	});
+
+	it("pages past the agent's own replies in full history pages", async () => {
+		// Newest first, as Discord returns them: ids 250..1, where the agent
+		// wrote everything newer than id 20.
+		const history = Array.from({ length: 250 }, (_, index) => {
+			const id = 250 - index;
+			return discordMemory({
+				messageId: String(id),
+				channelId: "555",
+				serverId: "777",
+				entityId: id > 20 ? AGENT_ID : USER_ID,
+				createdAt: 1_000 + id,
+			});
+		});
+		const fetches: Array<{ limit?: number; before?: string }> = [];
+		const service = {
+			...createFakeDiscordService({
+				channels: [{ channelId: "555", serverId: "777" }],
+			}),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: { channelId?: string; limit?: number; before?: string },
+			): Promise<Memory[]> {
+				fetches.push({ limit: params.limit, before: params.before });
+				const older = params.before
+					? history.filter(
+							(memory) =>
+								BigInt(String(memory.metadata?.discordMessageId)) <
+								BigInt(params.before as string),
+						)
+					: history;
+				return params.limit === undefined
+					? older
+					: older.slice(0, params.limit);
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{ channelIds: ["555"], limit: 3 },
+		);
+
+		expect(refs.map((ref) => ref.externalId)).toEqual(["20", "19", "18"]);
+		expect(fetches).toEqual([
+			{ limit: 100, before: undefined },
+			{ limit: 100, before: "151" },
+			{ limit: 100, before: "51" },
+		]);
+	});
+
 	it("is unavailable when the discord service is missing or malformed", () => {
 		const adapter = new DiscordTriageAdapter();
 		expect(adapter.isAvailable(createRuntime(null))).toBe(false);
@@ -303,6 +383,23 @@ describe("DiscordTriageAdapter", () => {
 		expect(refs.map((r) => r.externalId)).toEqual(["42"]);
 	});
 
+	it("fails the source instead of returning [] when Discord is not connected", async () => {
+		const service = createFakeDiscordService({ ready: false });
+		await expect(
+			new DiscordTriageAdapter().listMessages(createRuntime(service), {}),
+		).rejects.toThrow("Discord is not connected");
+	});
+
+	it("fails the source when every channel read fails", async () => {
+		const service = createFakeDiscordService({
+			channels: [{ channelId: "locked" }, { channelId: "gone" }],
+			failChannels: new Set(["locked", "gone"]),
+		});
+		await expect(
+			new DiscordTriageAdapter().listMessages(createRuntime(service), {}),
+		).rejects.toThrow("Missing Access on channel locked");
+	});
+
 	it("uses explicit channelIds without discovering rooms", async () => {
 		const service = createFakeDiscordService({
 			channels: [{ channelId: "should-not-be-used" }],
@@ -359,6 +456,7 @@ describe("DiscordTriageAdapter", () => {
 		expect(service.sends).toHaveLength(1);
 		expect(service.sends[0].target.channelId).toBe("c1");
 		expect(service.sends[0].content.text).toBe("on it — will take a look");
+		expect(service.sends[0].content.replyToExternalMessageId).toBe("88");
 	});
 
 	it("rejects drafts that resolve no channel", async () => {
@@ -404,5 +502,104 @@ describe("DiscordTriageAdapter", () => {
 		expect(preview.isWellFormed()).toBe(true);
 		expect(preview).toBe(longBody);
 		expect(preview.endsWith("tail")).toBe(true);
+	});
+
+	it("passes the period start as the after boundary on an unlimited sweep", async () => {
+		const sinceMs = Date.UTC(2026, 0, 1);
+		// The first and the last id one millisecond can hold.
+		const firstIdAt = (timestamp: number) =>
+			DiscordSnowflake.generate({
+				timestamp,
+				increment: 0n,
+				workerId: 0n,
+				processId: 0n,
+			});
+		const lastIdAt = (timestamp: number) =>
+			DiscordSnowflake.generate({
+				timestamp,
+				increment: 0xfffn,
+				workerId: 0b11111n,
+				processId: 0b11111n,
+			});
+		const fetches: Array<{
+			channelId?: string;
+			limit?: number;
+			before?: string;
+			after?: string;
+		}> = [];
+		const service = {
+			...createFakeDiscordService({
+				channels: [{ channelId: "c1" }, { channelId: "c2" }],
+			}),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: (typeof fetches)[number],
+			): Promise<Memory[]> {
+				fetches.push({ ...params });
+				return [];
+			},
+		};
+
+		await new DiscordTriageAdapter().listMessages(createRuntime(service), {
+			sinceMs,
+		});
+
+		expect(fetches.map((fetch) => fetch.channelId)).toEqual(["c1", "c2"]);
+		for (const fetch of fetches) {
+			expect(fetch.limit).toBeUndefined();
+			expect(fetch.before).toBeUndefined();
+			const boundary = BigInt(fetch.after as string);
+			// The first id of the period is kept; the last id before it is not.
+			expect(firstIdAt(sinceMs) > boundary).toBe(true);
+			expect(lastIdAt(sinceMs - 1) <= boundary).toBe(true);
+		}
+	});
+
+	// The service refuses `before` together with `after`, so a limited read
+	// must page by its own cursor alone.
+	it("pages a limited sinceMs read with its before cursor only", async () => {
+		const sinceMs = Date.UTC(2026, 0, 1);
+		// Newest first, one message a second: the period starts at the 50th,
+		// the user wrote up to the 60th and the agent everything newer.
+		const history = Array.from({ length: 200 }, (_, index) => {
+			const createdAt = sinceMs + (150 - index) * 1_000;
+			return discordMemory({
+				messageId: DiscordSnowflake.generate({
+					timestamp: createdAt,
+				}).toString(),
+				channelId: "555",
+				entityId: index < 140 ? AGENT_ID : USER_ID,
+				createdAt,
+			});
+		});
+		const idOf = (memory: Memory) =>
+			BigInt(String(memory.metadata?.discordMessageId));
+		const service = {
+			...createFakeDiscordService(),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: { limit?: number; before?: string; after?: string },
+			): Promise<Memory[]> {
+				const { limit, before, after } = params;
+				if (before && after) {
+					throw new RangeError(
+						"Discord message reads cannot combine before/cursor with after",
+					);
+				}
+				return history
+					.filter((memory) => !before || idOf(memory) < BigInt(before))
+					.filter((memory) => !after || idOf(memory) > BigInt(after))
+					.slice(0, limit);
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{ channelIds: ["555"], limit: 5, sinceMs },
+		);
+
+		expect(refs.map((ref) => ref.externalId)).toEqual(
+			history.slice(140, 145).map((memory) => String(idOf(memory))),
+		);
 	});
 });

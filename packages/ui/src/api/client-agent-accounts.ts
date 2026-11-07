@@ -8,7 +8,7 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
   ServiceRouteAccountStrategy,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
 export type AccountStrategy = ServiceRouteAccountStrategy;
@@ -19,7 +19,7 @@ export type {
   LinkedAccountHealthDetail,
   LinkedAccountProviderId,
   LinkedAccountUsage,
-} from "@elizaos/core/contracts/service-routing";
+} from "@elizaos/host/protocol";
 export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;
 }
@@ -51,7 +51,7 @@ export interface AccountOAuthStartResult {
   needsCodeSubmission: boolean;
   userCode?: string;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listAccounts(init?: RequestInit): Promise<AccountsListResponse>;
     createApiKeyAccount(

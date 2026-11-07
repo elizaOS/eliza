@@ -17,8 +17,50 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
-import type { RouteHelpers, RouteRequestContext } from '@elizaos/core/api/route-helpers';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/host/protocol';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
+
+const PAST_ONCE_SCHEDULE_ERROR = 'Once trigger requires a future scheduledAtIso';
+
+/**
+ * A past one-time schedule clamps to an update interval of 0, which the task
+ * service treats as an invalid repeat task: it never fires and never expires.
+ * The chat action already rejects it; the HTTP routes must not report success.
+ */
+function isPastOnceSchedule(
+  draft: {
+    triggerType?: string;
+    scheduledAtIso?: string;
+    enabled?: boolean;
+  },
+  nowMs: number
+): boolean {
+  if (draft.triggerType !== 'once' || draft.enabled === false) return false;
+  const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
+  return Number.isFinite(scheduledAt) && scheduledAt <= nowMs;
+}
+
+/**
+ * Canonicalize an IANA timezone identifier for schedule-equivalence
+ * comparison. The cron runtime resolves the raw stored string through
+ * `Intl.DateTimeFormat` (see buildTzFormatter in @elizaos/core), which
+ * accepts and normalizes equivalent spellings: `utc` and `Etc/UTC` both
+ * resolve to `UTC`, and `US/Eastern` resolves to `America/New_York`. A raw
+ * string comparison would therefore miss duplicate schedules whose
+ * timezones are spelled differently, so compare the resolved canonical
+ * names instead.
+ */
+function canonicalizeTimezoneForComparison(timezone?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone ?? 'UTC' }).resolvedOptions()
+      .timeZone;
+  } catch {
+    // Draft validation already rejects invalid identifiers. On any
+    // construction failure fall back to the raw string (fail closed:
+    // a missed duplicate is safer than blocking a legitimate trigger).
+    return timezone ?? 'UTC';
+  }
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -142,6 +184,8 @@ export interface TriggerRouteContext extends RouteRequestContext {
   ownerEntityId?: string;
   /** Canonical local owner for ownerless legacy trigger compatibility. */
   localOwnerEntityId?: string;
+  /** Host-owned app conversation; never accept a delivery room from request data. */
+  resolvePromptDeliveryRoom: (runtime: IAgentRuntime) => Promise<UUID>;
   executeTriggerTask: (
     runtime: IAgentRuntime,
     task: Task,
@@ -282,6 +326,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     (await listTriggerTasks(currentRuntime)).filter((task) =>
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
     );
+  const countActiveTriggers = (tasks: Task[]): number =>
+    tasks.filter(
+      (task) => readTriggerConfig(task)?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId)
+    ).length;
   if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
@@ -298,6 +346,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
   if (method === 'POST' && pathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     const creator = typeof body.createdBy === 'string' ? trim(body.createdBy) || 'api' : 'api';
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
@@ -327,7 +379,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerType:
         typeof body.triggerType === 'string' ? (body.triggerType as TriggerType) : undefined,
       wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
-      enabled: !!(body.enabled ?? true),
+      enabled: body.enabled ?? true,
       createdBy: creator,
       notifyOnOutcome: true,
       timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
@@ -363,10 +415,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const existingTasks = await listOwnedTriggerTasks(runtime);
-    const activeCount = existingTasks.filter((task) => {
-      const trigger = readTriggerConfig(task);
-      return trigger?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId);
-    }).length;
+    const activeCount = countActiveTriggers(existingTasks);
     const limit = getTriggerLimit(runtime);
     if (activeCount >= limit) {
       error(res, `Active trigger limit reached (${limit})`, 429);
@@ -374,13 +423,22 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const triggerId = stringToUuid(crypto.randomUUID());
     const trigger = buildTriggerConfig({ draft: normalized.draft, triggerId });
+    // An omitted cron timezone is documented to mean UTC
+    // (packages/agent/src/triggers/scheduling.ts), and the route stores it as
+    // undefined, so canonicalize before comparing to avoid treating legacy
+    // timezone-less triggers as different from explicit-UTC ones, and to
+    // avoid missing duplicates whose timezones are spelled differently
+    // (e.g. `utc` vs `UTC`, `US/Eastern` vs `America/New_York`).
     const duplicate = existingTasks.find((task) => {
       if (isAgentOwnedHeartbeat(task, runtime.agentId)) return false;
       const existingTrigger = readTriggerConfig(task);
       return (
         existingTrigger?.enabled &&
         existingTrigger.dedupeKey &&
-        existingTrigger.dedupeKey === trigger.dedupeKey
+        existingTrigger.dedupeKey === trigger.dedupeKey &&
+        (trigger.triggerType !== 'cron' ||
+          canonicalizeTimezoneForComparison(existingTrigger.timezone) ===
+            canonicalizeTimezoneForComparison(trigger.timezone))
       );
     });
     if (duplicate?.id) {
@@ -388,6 +446,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const nowMs = Date.now();
+    if (isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const metadata = trigger.enabled
       ? buildTriggerMetadata({ trigger, nowMs })
       : ({
@@ -402,11 +464,21 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, 'Unable to compute trigger schedule', 400);
       return true;
     }
-    const roomId = (
-      runtime.getService('AUTONOMY') as {
-        getAutonomousRoomId?(): UUID;
-      } | null
-    )?.getAutonomousRoomId?.();
+    const roomId =
+      trigger.kind === 'prompt'
+        ? await ctx.resolvePromptDeliveryRoom(runtime)
+        : (
+            runtime.getService('AUTONOMY') as {
+              getAutonomousRoomId?(): UUID;
+            } | null
+          )?.getAutonomousRoomId?.();
+    if (
+      trigger.kind === 'prompt' &&
+      (!roomId || !(await runtime.getRoom(roomId))?.source?.trim())
+    ) {
+      error(res, 'Prompt automation delivery conversation is unavailable', 503);
+      return true;
+    }
     const taskId = await runtime.createTask({
       name: TRIGGER_TASK_NAME,
       description: trigger.displayName,
@@ -569,6 +641,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      error(res, 'enabled must be a boolean', 400);
+      return true;
+    }
     if (body.eventFilter != null && !isRecord(body.eventFilter)) {
       error(res, 'eventFilter must be a JSON object', 400);
       return true;
@@ -627,7 +703,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
           ? body.eventFilter
           : undefined
         : current.eventFilter,
-      maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : current.maxRuns,
+      // null removes the limit; an absent field keeps it.
+      maxRuns:
+        body.maxRuns === null
+          ? undefined
+          : typeof body.maxRuns === 'number'
+            ? body.maxRuns
+            : current.maxRuns,
       kind: nextKind,
       workflowId: nextWorkflowId,
       workflowName: nextWorkflowName,
@@ -648,22 +730,50 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid update', 400);
       return true;
     }
+    const nowMs = Date.now();
+    const changesSchedule =
+      typeof body.scheduledAtIso === 'string' ||
+      normalized.draft.triggerType !== current.triggerType ||
+      (!current.enabled && normalized.draft.enabled);
+    if (changesSchedule && isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const nextTrigger = buildTriggerConfig({
       draft: normalized.draft,
       triggerId: current.triggerId,
       previous: current,
     });
+    // Enabling a saved trigger is bound by the same active-trigger limit as POST.
+    if (!current.enabled && nextTrigger.enabled) {
+      const activeCount = countActiveTriggers(await listOwnedTriggerTasks(runtime));
+      const limit = getTriggerLimit(runtime);
+      if (activeCount >= limit) {
+        error(res, `Active trigger limit reached (${limit})`, 429);
+        return true;
+      }
+    }
+    // A trigger switched to prompt delivers to the owner conversation, as a
+    // prompt trigger created over POST does, not to the workflow trigger's room.
+    let promptRoomId: UUID | undefined;
+    if (nextKind === 'prompt' && current.kind !== 'prompt') {
+      promptRoomId = await ctx.resolvePromptDeliveryRoom(runtime);
+      if (!(await runtime.getRoom(promptRoomId))?.source?.trim()) {
+        error(res, 'Prompt automation delivery conversation is unavailable', 503);
+        return true;
+      }
+    }
     const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
     let nextMeta: TriggerTaskMetadata;
     if (!nextTrigger.enabled) {
       nextMeta = {
         ...existingMeta,
-        updatedAt: Date.now(),
+        updatedAt: nowMs,
         updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
         trigger: {
           ...nextTrigger,
-          nextRunAtMs: Date.now() + DISABLED_TRIGGER_INTERVAL_MS,
+          nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
         },
         triggerRuns: existingRuns,
       };
@@ -671,17 +781,35 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       const built = buildTriggerMetadata({
         existingMetadata: existingMeta,
         trigger: nextTrigger,
-        nowMs: Date.now(),
+        nowMs,
       });
       if (!built) {
         error(res, 'Unable to compute trigger schedule', 400);
         return true;
       }
-      nextMeta = built;
+      // An interval counts from its anchor. An edit that keeps an enabled
+      // interval (a rename, new instructions) keeps the anchor and the next
+      // run; rebuilding would restart the countdown from now.
+      const keepsInterval =
+        current.enabled &&
+        current.triggerType === 'interval' &&
+        nextTrigger.triggerType === 'interval' &&
+        nextTrigger.intervalMs === current.intervalMs &&
+        typeof current.nextRunAtMs === 'number';
+      nextMeta =
+        keepsInterval && built.trigger
+          ? {
+              ...built,
+              updatedAt: existingMeta.updatedAt,
+              updateInterval: existingMeta.updateInterval,
+              trigger: { ...built.trigger, nextRunAtMs: current.nextRunAtMs },
+            }
+          : built;
     }
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],
+      ...(promptRoomId ? { roomId: promptRoomId } : {}),
     });
     const refreshed = await runtime.getTask(task.id);
     if (!refreshed) {

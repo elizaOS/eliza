@@ -142,6 +142,26 @@ describe("pending Cloud embedding ownership", () => {
     expect(usageEvents).toBe(2);
   });
 
+  it("returns the provider result when a usage listener rejects", async () => {
+    const owner = runtime();
+    owner.registerEvent(EventType.MODEL_USED, async () => {
+      throw new Error("cloud usage listener failed");
+    });
+
+    const pending = handleTextEmbedding(owner, "listener failure query");
+    (await nextRequest()).respond();
+
+    expect((await pending)[0]).toBe(0.25);
+    await vi.waitFor(() => {
+      expect(owner.getRecentReportedErrors()).toContainEqual(
+        expect.objectContaining({
+          scope: "ElizaCloudModelUsage.emitEvent",
+          message: "cloud usage listener failed",
+        })
+      );
+    });
+  });
+
   it("keeps indexing alive when its foreground owner aborts", async () => {
     const owner = runtime();
     const controller = new AbortController();

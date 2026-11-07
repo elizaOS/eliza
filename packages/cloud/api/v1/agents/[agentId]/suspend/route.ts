@@ -12,14 +12,19 @@
  * daemon (the only context with SSH keys).
  */
 
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { registerNudge } from "../_register-nudge";
 
 const app = new Hono<AppEnv>();
 
@@ -34,11 +39,22 @@ app.post("/", async (c) => {
     const agent = await elizaSandboxService.getAgentById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
 
-    const raw = await c.req.json().catch(() => ({}));
-    const parsed = suspendSchema.safeParse(raw);
-    const reason = parsed.success
-      ? parsed.data.reason
-      : "owner requested suspension";
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = suspendSchema.safeParse(decodedBody.value);
+    if (!parsed.success) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid request data",
+          details: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    const { reason } = parsed.data;
 
     logger.info("[service-api] Suspend requested", { agentId, reason });
 
@@ -68,9 +84,12 @@ app.post("/", async (c) => {
       authorization: "user_request",
     });
 
-    void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
-    });
+    registerNudge(
+      c,
+      provisioningJobService.triggerImmediate(c.env).catch(() => {
+        // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
+      }),
+    );
 
     return c.json(
       {

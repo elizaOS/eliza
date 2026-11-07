@@ -4,24 +4,19 @@
  * preserves a paired credential only when it belongs to the exact configured
  * origin; stale Cloud, local, or other-remote records are replaced fail-fast.
  */
-
-import { setStorageValue } from "@elizaos/ui/bridge/storage-bridge";
-import {
-  MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  persistMobileRuntimeModeForServerTarget,
-} from "@elizaos/ui/first-run/mobile-runtime-mode";
 import {
   type AgentProfileRegistry,
+  installBuildConfiguredRemoteApiBaseUrl,
   loadAgentProfileRegistry,
-  saveAgentProfileRegistry,
-  upsertAndActivateAgentProfile,
-} from "@elizaos/ui/state/agent-profiles";
-import {
   loadPersistedActiveServer,
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  persistMobileRuntimeModeForServerTarget,
+  saveAgentProfileRegistry,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-} from "@elizaos/ui/state/persistence";
-import { installBuildConfiguredRemoteApiBaseUrl } from "@elizaos/ui/state/runtime-url-trust";
+  setStorageValue,
+  upsertAndActivateAgentProfile,
+} from "@elizaos/ui";
 
 const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
 const REMOTE_FALLBACK_SERVER_ID = "remote:lp3-vps";

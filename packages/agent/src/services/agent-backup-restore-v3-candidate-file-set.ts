@@ -11,8 +11,8 @@ import {
   type AgentBackupRestoreV3StagingSession,
   type AgentBackupRestoreV3StreamComponentName,
   compareAgentBackupCaptureV2FilePaths,
-  ElizaError,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS,
   type AgentBackupRestoreV3CandidateFileTreeFileProof,

@@ -3,6 +3,13 @@
  * computation, and history-day enumeration for a given range key.
  */
 import type { LifeOpsScreenTimeRangeKey } from "../contracts/lifeops.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+} from "../util/time.js";
 
 export interface ScreenTimeWindow {
   since: string;
@@ -38,6 +45,60 @@ function localDateKey(date: Date): string {
     .padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
 }
 
+/**
+ * Day arithmetic in one zone. With `timeZone` the days are that zone's civil
+ * days (a server reporting for its owner); without one they are the host's,
+ * which is the user's own zone when this runs in their app.
+ */
+interface DayCalendar {
+  startOfDay(date: Date): Date;
+  addDays(date: Date, days: number): Date;
+  weekday(date: Date): number;
+  dateKey(date: Date): string;
+  label(date: Date): string;
+}
+
+const hostCalendar: DayCalendar = {
+  startOfDay: startOfLocalDay,
+  addDays,
+  weekday: (date) => date.getDay(),
+  dateKey: localDateKey,
+  label: (date) =>
+    new Intl.DateTimeFormat(undefined, {
+      month: "numeric",
+      day: "numeric",
+    }).format(date),
+};
+
+function zonedCalendar(timeZone: string): DayCalendar {
+  const midnight = { hour: 0, minute: 0, second: 0 };
+  const day = (date: Date) => {
+    const { year, month, day } = getZonedDateParts(date, timeZone);
+    return { year, month, day };
+  };
+  return {
+    startOfDay: (date) =>
+      buildUtcDateFromLocalParts(timeZone, { ...day(date), ...midnight }),
+    addDays: (date, days) =>
+      buildUtcDateFromLocalParts(timeZone, {
+        ...addDaysToLocalDate(day(date), days),
+        ...midnight,
+      }),
+    weekday: (date) => getWeekdayForLocalDate(day(date)),
+    dateKey: (date) => getLocalDateKey(day(date)),
+    label: (date) =>
+      new Intl.DateTimeFormat(undefined, {
+        month: "numeric",
+        day: "numeric",
+        timeZone,
+      }).format(date),
+  };
+}
+
+function calendarFor(timeZone: string | undefined): DayCalendar {
+  return timeZone ? zonedCalendar(timeZone) : hostCalendar;
+}
+
 export function screenTimeRangeLabel(range: LifeOpsScreenTimeRangeKey): string {
   switch (range) {
     case "today":
@@ -54,20 +115,25 @@ export function screenTimeRangeLabel(range: LifeOpsScreenTimeRangeKey): string {
 export function computeScreenTimeRange(
   range: LifeOpsScreenTimeRangeKey,
   now = new Date(),
+  timeZone?: string,
 ): ScreenTimeWindow {
+  const calendar = calendarFor(timeZone);
   const until = now.toISOString();
+  const startToday = calendar.startOfDay(now);
   if (range === "today") {
-    return { since: startOfLocalDay(now).toISOString(), until };
+    return { since: startToday.toISOString(), until };
   }
   if (range === "this-week") {
-    const startToday = startOfLocalDay(now);
-    const dayOfWeek = startToday.getDay();
-    return { since: addDays(startToday, -dayOfWeek).toISOString(), until };
+    const dayOfWeek = calendar.weekday(startToday);
+    return {
+      since: calendar.addDays(startToday, -dayOfWeek).toISOString(),
+      until,
+    };
   }
   if (range === "7d") {
-    return { since: addDays(startOfLocalDay(now), -6).toISOString(), until };
+    return { since: calendar.addDays(startToday, -6).toISOString(), until };
   }
-  return { since: addDays(startOfLocalDay(now), -29).toISOString(), until };
+  return { since: calendar.addDays(startToday, -29).toISOString(), until };
 }
 
 export function computePriorScreenTimeRange(
@@ -88,21 +154,20 @@ export function computePriorScreenTimeRange(
 
 export function enumerateScreenTimeHistoryDays(
   period: ScreenTimeWindow,
+  timeZone?: string,
 ): ScreenTimeHistoryDay[] {
+  const calendar = calendarFor(timeZone);
   const days: ScreenTimeHistoryDay[] = [];
   const endMs = Date.parse(period.until);
-  let cursor = startOfLocalDay(new Date(Date.parse(period.since)));
+  let cursor = calendar.startOfDay(new Date(Date.parse(period.since)));
   while (cursor.getTime() <= endMs) {
     const dayStart = cursor;
-    const dayEnd = addDays(dayStart, 1);
+    const dayEnd = calendar.addDays(dayStart, 1);
     days.push({
-      date: localDateKey(dayStart),
+      date: calendar.dateKey(dayStart),
       since: dayStart.toISOString(),
       until: new Date(Math.min(dayEnd.getTime(), endMs)).toISOString(),
-      label: new Intl.DateTimeFormat(undefined, {
-        month: "numeric",
-        day: "numeric",
-      }).format(dayStart),
+      label: calendar.label(dayStart),
     });
     cursor = dayEnd;
   }

@@ -5,13 +5,13 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
 import {
   type DevCloudEnvAuthority,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { type PtySpawnSpec } from "../services/pty-types";
+import type { PtySpawnSpec } from "../services/pty-types";
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.eliza.app/v1";
 export const ELIZA_CLOUD_FAST_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const ELIZA_CLOUD_SMART_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
@@ -71,7 +71,13 @@ export function resolveElizaCodeCloudTuple(input?: {
     authority: null,
     enabled: true,
     apiKey: trimmed(input?.apiKey),
-    baseUrl: trimmed(input?.baseUrl) ?? ELIZA_CLOUD_DEFAULT_BASE_URL,
+    // The tuple contract is the inference base on every branch: convert
+    // the canonical control-plane base here too, as the authority branch
+    // above does. Returning the operator input verbatim pointed the
+    // child's inference calls at the control-plane path.
+    baseUrl:
+      toElizaCodeInferenceBaseUrl(input?.baseUrl) ??
+      ELIZA_CLOUD_DEFAULT_BASE_URL,
   };
 }
 function isAuthorityControlledChildEnvKey(key: string): boolean {

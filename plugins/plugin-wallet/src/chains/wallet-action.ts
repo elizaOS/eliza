@@ -204,7 +204,7 @@ function normalizeRawParams(
   const op = normalizedGovOp(raw.op ?? raw.govOp);
   return {
     subaction,
-    chain: raw.chain ?? raw.fromChain ?? raw.network,
+    chain: raw.target ?? raw.chain ?? raw.fromChain ?? raw.network,
     toChain:
       raw.toChain ?? raw.toNetwork ?? raw.destinationChain ?? raw.targetChain,
     fromToken:
@@ -371,6 +371,25 @@ function resultText(result: WalletRouterResult): string {
     return `${dryRunText} ${execution.subaction} on ${result.handler.chain}.`;
   }
   const id = execution.transactionHash ?? execution.signature;
+  const metadata = execution.metadata as
+    | { confirmationStatus?: unknown; sendUncertain?: unknown }
+    | undefined;
+  if (metadata?.confirmationStatus === "unconfirmed") {
+    // The transaction was broadcast but on-chain confirmation is uncertain
+    // (e.g. RPC timeout), or the send itself may not have completed.
+    // Do NOT report it as complete and do NOT suggest a retry: the transaction
+    // may have landed, and a new transfer would duplicate the spend.
+    // Preserve the signature for manual verification.
+    const sendNote = metadata.sendUncertain
+      ? `The send request itself did not complete — the transaction may or may not have been broadcast. `
+      : ``;
+    return (
+      `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."} ` +
+      `Confirmation uncertain. ${sendNote}` +
+      `Check the signature on an explorer before acting. ` +
+      `Do not retry the transfer automatically.`
+    );
+  }
   return `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."}`;
 }
 
@@ -467,7 +486,14 @@ async function runWalletRouter(
     };
   }
 
-  const preflightFailure = service.preflightWalletAction(params);
+  // The confirmed request always runs in execute mode. Preflight sees that
+  // mode so a request the router will refuse fails before the spend prompt.
+  const executionParams: WalletRouterParams = {
+    ...params,
+    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
+  };
+
+  const preflightFailure = service.preflightWalletAction(executionParams);
   if (preflightFailure) {
     const text = formatFailure(preflightFailure);
     const data = toProviderRecord({
@@ -492,11 +518,6 @@ async function runWalletRouter(
   if (!confirmationGate.proceed) {
     return walletFinancialGateActionResult(confirmationGate);
   }
-
-  const executionParams: WalletRouterParams = {
-    ...params,
-    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
-  };
 
   const routed = await service.routeWalletAction(executionParams);
   const text = resultText(routed);
@@ -526,7 +547,13 @@ async function runWalletRouter(
     text,
     values: routed.ok
       ? {
-          walletActionSucceeded: routed.result.status === "submitted",
+          walletActionSucceeded:
+            routed.result.status === "submitted" &&
+            (
+              routed.result.metadata as
+                | { confirmationStatus?: unknown }
+                | undefined
+            )?.confirmationStatus !== "unconfirmed",
           walletActionPrepared: routed.result.status === "prepared",
           walletActionSimulated: routed.result.status === "simulated",
           walletChain: routed.handler.chain,
@@ -543,7 +570,7 @@ async function runWalletRouter(
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov|pump_fun_buy for on-chain ops (params: target, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun; pump_fun_buy takes toToken and amount and no target); action=token_info for token/market data (params: operation, target, query, address, chain, limit); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
     "WALLET transfer|swap|bridge|gov|pump_fun_buy|token_info|search_address; chain ops + market/portfolio",
   contexts: ["finance", "crypto", "wallet"],
@@ -587,32 +614,34 @@ export const walletRouterAction: Action = {
     {
       name: "target",
       description:
-        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action.",
+        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action. Omit for pump_fun_buy: the pump.fun handler is not the solana chain handler, and target solana is refused.",
       required: false,
       schema: { type: "string" },
       examples: ["base", "solana", "8453", "dexscreener", "birdeye"],
     },
     {
       name: "toChain",
-      description: "Destination chain for bridge.",
+      description:
+        "Destination chain for bridge. Must be one of the wallet's configured EVM chains, named like target.",
       required: false,
       schema: { type: "string" },
-      examples: ["arbitrum", "optimism", "base"],
+      examples: ["ethereum", "base", "bsc"],
     },
     {
       name: "fromToken",
-      description: "Source token symbol, native token alias, or token address.",
+      description:
+        "Source token: the chain's native token (ETH, SOL, native) or a token contract/mint address. Only bridge also accepts a non-native token symbol.",
       required: false,
       schema: { type: "string" },
-      examples: ["ETH", "SOL", "USDC"],
+      examples: ["ETH", "SOL", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
     },
     {
       name: "toToken",
       description:
-        "Destination token symbol, native token alias, or token address. For pump_fun_buy, use the pump.fun token mint address.",
+        "Destination token: the chain's native token (ETH, SOL, native) or a token contract/mint address. Only bridge also accepts a non-native token symbol. For pump_fun_buy, use the pump.fun token mint address.",
       required: false,
       schema: { type: "string" },
-      examples: ["USDC", "SOL"],
+      examples: ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "SOL"],
     },
     {
       name: "amount",
@@ -692,7 +721,7 @@ export const walletRouterAction: Action = {
     {
       name: "values",
       description:
-        "Native token values as strings for governance propose, queue, or execute.",
+        'Native token value sent with each target call, in wei, as base-10 integer strings (1 ETH is "1000000000000000000"). One per target, for governance propose, queue, or execute.',
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
@@ -713,7 +742,7 @@ export const walletRouterAction: Action = {
     {
       name: "query",
       description:
-        "Search query, coin id, or token symbol for token_info searches.",
+        "token_info only: token symbol, name, or search text. With target coingecko a token lookup reads this as the CoinGecko coin id (lowercase slug such as bitcoin or ethereum), not a symbol; send operation search to find the id from a symbol or name.",
       required: false,
       schema: { type: "string" },
     },
@@ -723,6 +752,43 @@ export const walletRouterAction: Action = {
         "Wallet address for search_address; token contract address for token_info token lookups.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "chain",
+      description:
+        "token_info only: chain name for top pairs on a chain, a new-pairs chain filter, or a CoinGecko contract-address lookup. Write ops name their chain in target.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["base", "ethereum", "solana"],
+    },
+    {
+      name: "operation",
+      description:
+        "token_info only: which lookup to run. token looks up one token by address or query; search matches query text; trending, boosted, and profiles list tokens; new_pairs lists new pairs (optional chain); chain_pairs lists the top pairs on chain. When omitted, a call with address or query runs token. On target coingecko, token takes query as the coin id, or address with chain.",
+      required: false,
+      subactions: ["token_info"],
+      schema: {
+        type: "string",
+        enum: [
+          "token",
+          "search",
+          "trending",
+          "new_pairs",
+          "chain_pairs",
+          "boosted",
+          "profiles",
+        ],
+      },
+      examples: ["trending", "chain_pairs"],
+    },
+    {
+      name: "limit",
+      description:
+        "token_info only: how many results a list lookup returns. Default 10.",
+      required: false,
+      subactions: ["token_info"],
+      schema: { type: "number" },
+      examples: [5],
     },
   ],
   validate: async (_runtime, message, state, options) => {
@@ -786,7 +852,7 @@ export const walletRouterAction: Action = {
       {
         name: "{{user1}}",
         content: {
-          text: "Swap 1 SOL to USDC on Solana with a dry run first",
+          text: "Swap 1 SOL to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v on Solana with a dry run first",
         },
       },
       {

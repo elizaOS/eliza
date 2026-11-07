@@ -266,6 +266,28 @@ describe("WRITE", () => {
     expect(result.text).toContain("path_blocked");
   });
 
+  it.skipIf(process.platform === "win32")(
+    "rejects a dangling workspace symlink into the blocklist without creating its target",
+    async () => {
+      const target = path.join(env.blockedPath, "authorized_keys");
+      await fs.symlink(target, path.join(env.tmpDir, "README.md"));
+      const result = await writeFileHandler(
+        env.runtime,
+        env.message,
+        undefined,
+        {
+          parameters: {
+            file_path: path.join(env.tmpDir, "README.md"),
+            content: "ssh-ed25519 AAAA\n",
+          },
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("path_blocked");
+      await expect(fs.lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("fails when content param is missing", async () => {
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: path.join(env.tmpDir, "x.txt") },

@@ -15,7 +15,6 @@ import {
   type RecordedTrajectoryMetrics,
   type RecorderLogger,
   readEnv,
-  resolveAliasedEnvValue,
   resolveStateDir,
   resolveTraceCorrelationFromEnv,
   type StartTrajectoryInput,
@@ -25,6 +24,7 @@ import {
   type TrajectoryRecorder,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import { computeCallCostUsd, PRICE_TABLE_ID } from "./model-pricing";
 
 function envFlagEnabled(key: string, defaultValue = false): boolean {

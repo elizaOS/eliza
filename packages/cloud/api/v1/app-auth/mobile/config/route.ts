@@ -2,12 +2,13 @@
  * Public metadata for the server-registered first-party native OAuth client.
  * The internal app UUID never crosses into the shipped mobile configuration.
  */
-import { Hono } from "hono";
+
 import {
   MobileAppAuthProtocolError,
   validateMobileAppAuthClientBinding,
-} from "@/lib/services/mobile-app-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import {
   MOBILE_APP_AUTH_CONFIG_RATE_LIMIT,
   mobileAppAuthRateLimitMiddleware,
@@ -31,8 +32,10 @@ app.get("/", async (c) => {
         "Invalid mobile authorization metadata request",
       );
     }
-    const { app: appRecord, registration } =
-      await requireRegisteredMobileApp(c);
+    const { app: appRecord, registration } = await requireRegisteredMobileApp(
+      c,
+      parsed.data.clientId,
+    );
     validateMobileAppAuthClientBinding(registration, parsed.data);
     return c.json({
       success: true,

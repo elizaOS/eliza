@@ -11,17 +11,15 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveAppBranding } from "@elizaos/core/config/app-config";
 import {
+  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+  resolveAppBranding,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/core/runtime-env";
-import {
-  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   syncElizaEnvAliases,
-} from "@elizaos/core/utils/env";
+} from "@elizaos/host/protocol";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -46,21 +44,18 @@ import {
 } from "./scripts/lib/android-cloud-routing-markers.ts";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
-import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
-import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "./src/dev-settings-table.ts";
+  prependDevSubsystemFigletHeading,
+} from "./src/dev-tools.ts";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
 import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
-import {
-  generateNodeBuiltinStub,
-  nativeModuleStubPlugin,
-} from "./vite/native-module-stub-plugin.ts";
 import { rendererBuildManifestPlugin } from "./vite/renderer-build-manifest-plugin.ts";
+import { rendererPlatformAdaptersPlugin } from "./vite/renderer-platform-adapters.ts";
 import { swBuildRevPlugin } from "./vite/sw-build-rev-plugin.ts";
 import { VENDOR_OPTIMIZED_WALLET_TEST } from "./vite/wallet-chunk-matcher.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
@@ -68,23 +63,42 @@ import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+/** Inline the host's local logo; a missing or remote logo keeps the app-name fallback. */
 export function resolveAndroidCloudPrebootLockupDataUri(): string {
-  const androidCloudPrebootLockupSvg = fs
-    .readFileSync(
-      path.join(here, "public", "brand", "logos", "eliza_logotext.svg"),
-      "utf8",
-    )
-    .replace(
-      /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
-      "\n",
-    );
-  if (androidCloudPrebootLockupSvg.includes("#FF5800")) {
-    throw new Error(
-      "Android Cloud preboot lockup still contains its orange backing rect",
-    );
+  const logoPath = resolveAppBranding(appConfig).logoUrl?.trim();
+  if (!logoPath?.startsWith("/") || logoPath.startsWith("//")) return "";
+  const publicRoot = path.join(here, "public");
+  const file = path.resolve(publicRoot, logoPath.slice(1));
+  if (!file.startsWith(`${publicRoot}${path.sep}`)) {
+    throw new Error("Startup logo must be inside the host public assets");
   }
-  return `data:image/svg+xml;base64,${Buffer.from(androidCloudPrebootLockupSvg).toString("base64")}`;
+  const mime = new Map([
+    [".svg", "image/svg+xml"],
+    [".png", "image/png"],
+    [".jpg", "image/jpeg"],
+    [".jpeg", "image/jpeg"],
+    [".webp", "image/webp"],
+  ]).get(path.extname(file).toLowerCase());
+  if (!mime) throw new Error("Startup logo must be SVG, PNG, JPEG or WebP");
+  let bytes = fs.readFileSync(file);
+  // Preserve the canonical host's reviewed transparent Android launch lockup.
+  if (logoPath === "/brand/logos/eliza_logotext.svg") {
+    const svg = bytes
+      .toString("utf8")
+      .replace(
+        /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
+        "\n",
+      );
+    if (svg.includes("#FF5800")) {
+      throw new Error(
+        "Android Cloud preboot lockup still contains its orange backing rect",
+      );
+    }
+    bytes = Buffer.from(svg);
+  }
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
+
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
 const bunLinkedPackageCacheRoot = path.join(
   os.homedir(),
@@ -228,9 +242,8 @@ const capacitorCoreEntry = path.join(
 );
 const patheEntry = _require.resolve("pathe");
 // The feross `buffer` package exposes a callable Buffer function required by
-// the crypto/wallet graph at module initialization. The native-module stub's
-// empty Buffer class is not callable, and `buffer` is not a direct app
-// dependency, so the alias targets the highest version available in Bun's store.
+// the crypto/wallet graph at module initialization. Resolve the installed
+// browser implementation from Bun's store.
 const bufferEntry: string | undefined = (() => {
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
@@ -534,17 +547,8 @@ const otelApiEntry = (() => {
   } catch {
     /* not resolvable from this scope */
   }
-  // 3. core's nested node_modules.
-  try {
-    candidateRoots.push(
-      path.join(
-        path.dirname(_require.resolve("@elizaos/core/package.json")),
-        "node_modules",
-      ),
-    );
-  } catch {
-    /* core not resolvable */
-  }
+  // 3. The workspace core's nested node_modules. Its manifest is private.
+  candidateRoots.push(path.join(elizaRoot, "packages/core/node_modules"));
   // 4. bun content-addressable store — ai package's nested node_modules.
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
@@ -711,7 +715,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   }
   return (
     text.includes("../app/src/browser.ts") ||
-    text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
     text.includes(
       "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
@@ -925,6 +928,7 @@ function resolveAppShellMetadata() {
   const appUrl = ensureTrailingSlash(branding.appUrl.trim());
   return {
     appName: appConfig.appName.trim(),
+    startupLogoPath: appConfig.web?.startupLogoPath?.trim() || "",
     shortName: appConfig.web?.shortName?.trim() || appConfig.appName.trim(),
     description: appConfig.description.trim(),
     appUrl,
@@ -1127,7 +1131,9 @@ export function stripAndroidCloudPublicAssetReferences(
     )
     .replace(
       /<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*<span\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__name\b[^"']*["'][^>]*>[^<]*<\/span>/gi,
-      `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`,
+      prebootLockupDataUri
+        ? `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`
+        : `<span class="eliza-preboot-shell__name">${APP_SHELL_METADATA.appName}</span>`,
     )
     .replace(
       /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
@@ -1217,6 +1223,7 @@ export function appShellMetadataPlugin(
   )}\n`;
   const replacements = new Map<string, string>([
     ["__APP_NAME__", APP_SHELL_METADATA.appName],
+    ["__APP_STARTUP_LOGO__", APP_SHELL_METADATA.startupLogoPath],
     ["__APP_DESCRIPTION__", APP_SHELL_METADATA.description],
     ["__APP_URL__", APP_SHELL_METADATA.appUrl],
     ["__APP_SHARE_IMAGE__", APP_SHELL_METADATA.shareImageUrl],
@@ -1230,8 +1237,21 @@ export function appShellMetadataPlugin(
   ]);
   return {
     name: "app-shell-metadata",
+    configResolved(config) {
+      const logo = APP_SHELL_METADATA.startupLogoPath;
+      replacements.set(
+        "__APP_STARTUP_LOGO__",
+        logo ? `${config.base}${logo.replace(/^\/+/, "")}` : "",
+      );
+    },
     transformIndexHtml(html) {
       let next = html;
+      if (!APP_SHELL_METADATA.startupLogoPath && !isAndroidCloudBuild) {
+        next = next.replace(
+          /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
+          "\n",
+        );
+      }
       for (const [token, value] of replacements) {
         next = next.replaceAll(token, value);
       }
@@ -1498,8 +1518,8 @@ function resolveManualChunk(id: string): string | undefined {
   // Vite extracts CSS independently; these groups only own executable modules.
   if (/\.css(?:\?|$)/.test(normalizedId)) return undefined;
   // Build-generated leaf shims shared by the eager entry graph AND the pinned
-  // vendor-crypto graph: Vite's dynamic-import preload helper, the node-builtin
-  // browser stubs, and the buffer ESM shim. All are self-contained (no
+  // vendor-crypto graph: Vite's dynamic-import preload helper, platform
+  // adapters, and the buffer ESM shim. All are self-contained (no
   // imports), so they can never form a cross-chunk cycle. Without an explicit
   // assignment, Rollup FOLDS them into `vendor-crypto` (a pinned module's
   // unassigned dependencies join the manual chunk), and any eager module that
@@ -1509,9 +1529,9 @@ function resolveManualChunk(id: string): string | undefined {
   // guard in scripts/verify-chunk-safety.ts fails the build on that regression.
   if (
     normalizedId.includes("vite/preload-helper") ||
-    normalizedId.includes("native-stub:") ||
+    normalizedId.includes("renderer-platform:") ||
     normalizedId.includes(BUFFER_ESM_SHIM_ID) ||
-    normalizedId.includes("/src/shims/use-sync-external-store")
+    normalizedId.includes("/node_modules/use-sync-external-store/")
   ) {
     return "runtime-shims";
   }
@@ -1711,10 +1731,7 @@ function buildViteDevSettingsRows(
       effective:
         mode === "dev-server" ? "vite dev (HMR)" : "vite build --watch",
       source: "derived",
-      change:
-        mode === "dev-server"
-          ? `bun run dev (default); ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1 for Rollup watch`
-          : `${APP_ENV_PREFIX}_DESKTOP_VITE_WATCH=1 + ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1`,
+      change: mode === "dev-server" ? "bun run dev" : "bunx vite build --watch",
     },
   ];
 }
@@ -1779,36 +1796,6 @@ function desktopCorsPlugin(): Plugin {
         }
         next();
       });
-    },
-  };
-}
-/**
- * Patch the final bundle output to fix AsyncLocalStorage stubs.
- *
- * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
- * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
- * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
- * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
- *
- * This plugin replaces the empty-object stub with a proper class in the
- * final rendered chunks.
- */
-function asyncLocalStoragePatchPlugin(): Plugin {
-  return {
-    name: "async-local-storage-patch",
-    enforce: "post",
-    renderChunk(code) {
-      // Match: var{AsyncLocalStorage:<id>}=(()=>({}))
-      const re =
-        /var\s*\{\s*AsyncLocalStorage\s*:\s*(\w+)\s*\}\s*=\s*\(\s*\(\s*\)\s*=>\s*\(\s*\{\s*\}\s*\)\s*\)/g;
-      if (!re.test(code)) return null;
-      re.lastIndex = 0;
-      const patched = code.replace(re, (_match, id) => {
-        // Use block-body arrow + named class — concise arrow with inline
-        // anonymous class fails in older WebViews (Chrome 124 and below).
-        return `var{AsyncLocalStorage:${id}}=(()=>{function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()`;
-      });
-      return { code: patched, map: null };
     },
   };
 }
@@ -1981,7 +1968,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
       const pkgDir = path.dirname(_require.resolve(`${pkg}/package.json`));
       resolved[nodeId] = path.join(pkgDir, entry);
     } catch {
-      // Missing optional polyfills fall through to a generated node stub.
+      // Missing polyfills reach the renderer boundary and fail explicitly.
     }
   }
   return resolved;
@@ -2074,13 +2061,8 @@ export default defineConfig(({ command, mode }) => ({
     // by scanning plugins/ for elizaos.appRegister markers. This plugin is the
     // only provider for that virtual module in production web/mobile builds.
     appSideEffectModulesPlugin([nativePluginsRoot]),
-    // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
-    // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
-    // cloud entry points are already aliased to passthrough stubs, but the main
-    // `@elizaos/ui` barrel ALSO re-exports the cloud namespace (`export * as
-    // cloud from "./cloud"`), which would otherwise drag the subtree (and its
-    // wallet/web3 deps) into every consumer of the barrel. Emptying the subtree
-    // cuts it at the source — the agent app never uses the cloud namespace.
+    // Disabled Cloud builds replace only documented entrypoint contracts.
+    // Unknown imports still fail; ordinary domain modules are never emptied.
     ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
       ? [
           {
@@ -2088,22 +2070,29 @@ export default defineConfig(({ command, mode }) => ({
             enforce: "pre" as const,
             load(id: string) {
               const p = id.split("?")[0]?.split(path.sep).join("/") ?? "";
-              // The agent app's SettingsView pulls `listExtraSettingsGroups` from
-              // the cloud settings barrel, which in turn imports the broken cloud
-              // feature subtrees. Provide it directly (no cloud groups when the
-              // cloud surface is excluded) so the whole subtree drops out.
-              if (
-                /\/packages\/ui\/src\/cloud\/settings\/index\.tsx?$/.test(p)
-              ) {
-                return "export function listExtraSettingsGroups() { return []; }";
+              const uiCloudRoot = path
+                .join(uiPkgRoot, "src/cloud")
+                .split(path.sep)
+                .join("/");
+              if (p === `${uiCloudRoot}/shell/CloudRouterShell.tsx`) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-shell-stub.tsx"),
+                  "utf8",
+                );
               }
-              // Empty the broken cloud feature subtrees (their `./data/*` hooks
-              // were never migrated) plus the cloud barrel that re-exports them.
-              const broken =
-                /\/packages\/ui\/src\/cloud\/(account-security|admin|billing|instances|organization)\//.test(
-                  p,
-                ) || /\/packages\/ui\/src\/cloud\/index\.tsx?$/.test(p);
-              return broken ? "export {};" : null;
+              if (
+                p ===
+                path
+                  .join(here, "src/renderer/cloud-registration.ts")
+                  .split(path.sep)
+                  .join("/")
+              ) {
+                return fs.readFileSync(
+                  path.join(here, "src/shims/cloud-registration-stub.ts"),
+                  "utf8",
+                );
+              }
+              return null;
             },
           },
         ]
@@ -2219,11 +2208,11 @@ export default defineConfig(({ command, mode }) => ({
     swBuildRevPlugin(),
     appDevWsBasePlugin(),
     rejectRuntimeInRendererPlugin(),
-    nativeModuleStubPlugin({
+    rendererPlatformAdaptersPlugin({
       isCapacitorMobileBuild: IS_CAPACITOR_MOBILE_BUILD,
-      requireModule: _require,
+      testAuth:
+        loadEnv(mode, here, "VITE_").VITE_PLAYWRIGHT_TEST_AUTH === "true",
     }),
-    asyncLocalStoragePatchPlugin(),
     // @opentelemetry/api is imported by `ai@6+` but is not hoisted to the
     // workspace root under Bun canary's content-addressable store layout.
     // resolve.alias covers it when otelApiEntry is found at config time, but
@@ -2352,16 +2341,8 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: SOLANA_WALLET_CSS_RESOLVED,
       },
       {
-        find: /^picocolors$/,
-        replacement: path.resolve(here, "src/shims/picocolors.ts"),
-      },
-      {
         find: /^extend$/,
         replacement: path.resolve(here, "src/shims/extend.ts"),
-      },
-      {
-        find: /^mammoth$/,
-        replacement: path.resolve(here, "src/shims/mammoth.ts"),
       },
       {
         // Node-only eSpeak-NG build; crashes at module-eval in WKWebView. The
@@ -2371,22 +2352,17 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/phonemizer.ts"),
       },
       {
-        find: /^unpdf$/,
-        replacement: path.resolve(here, "src/shims/unpdf.ts"),
-      },
-      {
         find: /^@vercel\/oidc$/,
         replacement: path.resolve(here, "src/shims/vercel-oidc.ts"),
       },
       {
         find: /^use-sync-external-store\/shim$/,
-        replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
+        replacement: _require.resolve("use-sync-external-store/shim"),
       },
       {
         find: /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
-        replacement: path.resolve(
-          here,
-          "src/shims/use-sync-external-store-with-selector.ts",
+        replacement: _require.resolve(
+          "use-sync-external-store/shim/with-selector",
         ),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
@@ -2580,56 +2556,15 @@ export const INVALID_TRACER_PROVIDER = {};
       })),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
-      // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
-      // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
-      // broad @elizaos/ui/* alias below (first match wins) so Rollup never
-      // resolves the cloud subtree, which would otherwise drag in its
-      // wallet/web3 deps.
-      ...(process.env.ELIZA_DISABLE_WEB_SHELL === "1"
-        ? [
-            {
-              find: /^@elizaos\/ui\/cloud\/shell\/CloudRouterShell$/,
-              replacement: path.join(here, "src/shims/cloud-shell-stub.tsx"),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-all$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-            {
-              find: /^@elizaos\/ui\/cloud\/register-public$/,
-              replacement: path.join(
-                here,
-                "src/shims/cloud-register-all-stub.ts",
-              ),
-            },
-          ]
-        : []),
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app sources directly.
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.join(uiPkgRoot, "src/browser.ts"),
+        replacement: path.join(uiPkgRoot, "src/index.ts"),
       },
       {
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
-      },
-      ...[
-        ["button", "button.tsx"],
-        ["input", "input.tsx"],
-        ["textarea", "textarea.tsx"],
-        ["native-select", "native-select.tsx"],
-        ["native-dialog", "native-dialog.tsx"],
-      ].map(([subpath, source]) => ({
-        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
-        replacement: path.join(uiPkgRoot, "src/components/ui", source),
-      })),
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: path.join(uiPkgRoot, "src/$1"),
       },
       // plugin-personal-assistant no longer ships a renderer view (the
       // legacy /lifeops dashboard was killed in the lifeops decomposition);
@@ -2639,7 +2574,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // without dragging discord/health/phone/native deps into the
       // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
-        find: /^@elizaos\/plugin-personal-assistant$/,
+        find: /^@elizaos\/plugin-personal-assistant\/ui$/,
         replacement: path.resolve(
           elizaRoot,
           "plugins/plugin-personal-assistant/src/ui.ts",
@@ -2680,6 +2615,9 @@ export const INVALID_TRACER_PROVIDER = {};
         path.resolve(elizaRoot, "packages/cloud/shared"),
       ]),
       ...createWorkspacePackageExportAliases([
+        // The root UI alias already uses source. Public leaves must share its
+        // context, transport and storage modules in production builds too.
+        path.resolve(elizaRoot, "packages/ui"),
         path.resolve(elizaRoot, "plugins/plugin-relationships"),
         path.resolve(elizaRoot, "plugins/plugin-calendar"),
         path.resolve(elizaRoot, "plugins/plugin-notes"),
@@ -2728,25 +2666,12 @@ export const INVALID_TRACER_PROVIDER = {};
           "packages/app/package.json",
         );
         const appCorePkgDir = path.dirname(appCorePkgPath);
-        const appCoreBrowserEntry = path.resolve(
-          appCorePkgDir,
-          "src/browser.ts",
-        );
         const appCorePkg = JSON.parse(fs.readFileSync(appCorePkgPath, "utf8"));
         const generatedAliases = [];
         for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
           const exportTarget = resolvePackageExportTarget(value);
           if (!exportTarget) continue;
-          if (key === ".") {
-            // Keep the renderer on a browser-safe entry. The package root
-            // barrel re-exports server modules that pull Node-only code like
-            // sharp into the Vite client graph.
-            generatedAliases.push({
-              find: new RegExp(`^${escapeRegExp("@elizaos/app")}$`),
-              replacement: appCoreBrowserEntry,
-            });
-            continue;
-          }
+          if (key === ".") continue;
           if (!key.startsWith("./")) continue;
           const sourceTarget = resolveLocalPackageSourceExportTarget(
             appCorePkgDir,
@@ -2760,17 +2685,8 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: sourceTarget,
           });
         }
-        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
         return [
           ...generatedAliases,
-          {
-            find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "browser.ts"),
-          },
-          {
-            find: /^@elizaos\/ui\/(.+)$/,
-            replacement: path.join(uiSource, "$1"),
-          },
           {
             find: /^@elizaos\/app\/api\/ios-local-agent-transport$/,
             replacement: path.join(
@@ -2778,12 +2694,7 @@ export const INVALID_TRACER_PROVIDER = {};
               "api/ios-local-agent-transport.ts",
             ),
           },
-          // #18056: thin desktop shell — avoids app/browser.ts star-export
-          // of @elizaos/ui/browser on the packages/app main entry.
-          {
-            find: /^@elizaos\/app\/desktop-shell$/,
-            replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
-          },
+          // Desktop shell resolves through its own renderer entry.
         ];
       })(),
     ],
@@ -2802,6 +2713,13 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router",
       "react-router/dom",
       "react-router-dom",
+      // Zustand's selector entry (used by React Flow) imports these CJS shims.
+      // Explicit aliases alone do not convert them when discovery is disabled.
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector",
+      "use-sync-external-store/shim/with-selector.js",
+      "use-sync-external-store/with-selector",
+      "use-sync-external-store/with-selector.js",
       // Three.js core + all subpath imports must be pre-bundled together so
       // the optimizer shares a single module identity.
       "three",
@@ -2889,15 +2807,12 @@ export const INVALID_TRACER_PROVIDER = {};
           resolveId(source) {
             const polyfill = optimizerNodePolyfills[source];
             if (polyfill) return polyfill;
-            if (source.startsWith("node:")) return `\0node-stub:${source}`;
+            if (source.startsWith("node:")) {
+              this.error(
+                `Unsupported Node import in renderer dependency: ${source}`,
+              );
+            }
             return null;
-          },
-          load(id) {
-            if (!id.startsWith("\0node-stub:")) return null;
-            return generateNodeBuiltinStub(
-              id.slice("\0node-stub:".length),
-              _require,
-            );
           },
         },
         // es-toolkit@1.47 `./compat/*` is CJS-only, and its CJS implementation
@@ -2915,18 +2830,11 @@ export const INVALID_TRACER_PROVIDER = {};
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
-      // chalk + drizzle-orm: Node-only deps that never run in the
-      // renderer. Excluded from dep-optimisation so the
-      // nativeModuleStubPlugin can replace them at resolve-time with
-      // browser-safe Proxy stubs (otherwise rolldown emits a bare
-      // `import "chalk"` that the browser can't resolve).
-      "chalk",
+      // Host dependencies must not enter browser dependency optimization.
       "drizzle-orm",
       "drizzle-orm/pg-core",
       "drizzle-orm/pglite",
       "drizzle-orm/neon-http",
-      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
-      // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Browser automation is server-only and pulls in proxy-agent/httpUtil.
       "puppeteer-core",
@@ -2958,6 +2866,9 @@ export const INVALID_TRACER_PROVIDER = {};
     // CloudRouterShell + login chunk tree).
     modulePreload: false,
     rolldownOptions: {
+      // Vite 8 prefers this block over rollupOptions; both bundlers need the
+      // same startup-safe vendor boundaries.
+      output: { manualChunks: resolveManualChunk },
       plugins: [
         // Rolldown build-phase resolver for @opentelemetry/api.
         // The `ai` package imports @opentelemetry/api but it is not hoisted to
@@ -3025,40 +2936,13 @@ export const INVALID_TRACER_PROVIDER = {};
         }
         warn(warning);
       },
-      // Native-only deps that must not be resolved during the browser build.
-      // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
-      // they are intercepted by nativeModuleStubPlugin which replaces them
-      // with browser fallback Proxy modules. Externalizing them causes Rollup to emit
-      // bare `import "node:fs"` in output chunks, which the browser rejects
-      // with a CSP violation.
-      external: (id) => {
-        if (
-          [
-            "pty-state-capture",
-            "pty-console",
-            "electron",
-            "node-llama-cpp",
-            "pty-manager",
-            // chalk + drizzle-orm intentionally NOT externalised here:
-            // marking them external leaves a bare ESM specifier in the
-            // output bundle (e.g. `import "chalk"`), which the browser
-            // can't resolve. They are stubbed at resolve-time by
-            // nativeModuleStubPlugin instead.
-          ].includes(id)
-        )
-          return true;
-        if (/^@node-llama-cpp\//.test(id)) return true;
-        if (/^@napi-rs\/keyring/.test(id)) return true;
-        return false;
-      },
+      // The renderer boundary owns host-dependency rejection for both bundlers.
       input: {
         main: path.resolve(here, "index.html"),
       },
     },
-    // rollupOptions is the only bundle-options key Vite reads. The sibling
-    // `rolldownOptions` block above configures Rolldown-specific checks only;
-    // chunk-splitting and the otel fallback must live under rollupOptions so
-    // classic Rollup builds receive them too.
+    // Vite 7 uses Rollup while Vite 8 uses Rolldown. Keep the chunk rules
+    // and telemetry resolver in both blocks so both production paths agree.
     rollupOptions: {
       output: {
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic

@@ -105,6 +105,10 @@ async function runWorkerCommand(argv: string[], io: CliIo): Promise<number> {
       io.out(
         `[gpu-queue] ${event.action} ${event.id}${event.reason ? ` — ${event.reason}` : ""}`,
       );
+    } else if (event.type === "recovery") {
+      io.out(
+        `[gpu-queue] recovered ${event.requeued} pending and ${event.completed} completed jobs; ${event.unverifiable} claims need owner verification`,
+      );
     } else if (event.type === "draining") {
       io.err(
         `[gpu-queue] service unreachable since ${new Date(event.sinceMs).toISOString()} — draining pending jobs to skip`,

@@ -19,22 +19,22 @@ import {
   isProtectedProfileSelected,
   protectedTeeEnvironment,
 } from "@elizaos/agent/security/protected-profile-state";
-import { ElizaError, logger } from "@elizaos/core";
-import {
-  isLoopbackBindHost,
-  type RuntimeEnvRecord,
-  resolveApiBindHost,
-} from "@elizaos/core/runtime-env";
 import {
   CSRF_COOKIE_NAME,
   LAST_ACTIVITY_HEADER_NAME,
   SESSION_COOKIE_NAME,
-} from "@elizaos/ui/api/auth/sessions";
+} from "@elizaos/auth";
+import { logger } from "@elizaos/core";
+import { ElizaError, isLoopbackBindHost } from "@elizaos/core/protocol";
+import {
+  type RuntimeEnvRecord,
+  resolveApiBindHost,
+} from "@elizaos/host/protocol";
 import type {
   AppendAuditEventInput,
   AuthRepository,
   AuthSessionRow,
-} from "../../services/auth-store";
+} from "../../services/auth-repository";
 import { appendAuditEvent } from "./audit.js";
 import {
   closeIdentitySockets,
@@ -180,7 +180,7 @@ export {
   CSRF_HEADER_NAME,
   LAST_ACTIVITY_HEADER_NAME,
   SESSION_COOKIE_NAME,
-} from "@elizaos/ui/api/auth/sessions";
+} from "@elizaos/auth";
 // ── Types ────────────────────────────────────────────────────────────────────
 export interface CreateBrowserSessionOptions {
   identityId: string;

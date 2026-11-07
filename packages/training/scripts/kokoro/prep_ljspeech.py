@@ -25,7 +25,7 @@ What this does:
    16-bit PCM mono into wavs_norm/. Loudness-normalizes to -23 LUFS.
 4. Phonemizes the normalized text via misaki[en] (Kokoro's first-party
    phonemizer). Falls back to a raw-text passthrough only with --no-phonemize
-   for smoke tests; that mode is rejected by finetune_kokoro.py.
+   for smoke tests; that mode is rejected by finetune_kokoro_full.py.
 5. Splits 95/5 train/val (configurable; seeded by config.seed).
 6. Emits prep_manifest.json with: clip count, total duration, sha256 of
    metadata.csv, phonemizer version, tool versions.
@@ -42,7 +42,7 @@ Usage:
     python3 scripts/kokoro/prep_ljspeech.py \\
         --data-dir /path/to/LJSpeech-1.1 \\
         --run-dir /tmp/kokoro-run \\
-        --config configs/kokoro_lora_ljspeech.yaml
+        --config configs/kokoro_full_ljspeech.yaml
 
 """
 
@@ -50,11 +50,9 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import logging
 import random
-import sys
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -62,8 +60,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-from _config import load_config  # noqa: E402
+from eliza_training.kokoro._config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kokoro.prep")
@@ -77,12 +74,7 @@ class ClipRecord:
     norm_text: str
 
 
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
 
 
 def _read_metadata(metadata_path: Path) -> list[ClipRecord]:
@@ -342,13 +334,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--config",
         type=str,
-        default="kokoro_lora_ljspeech.yaml",
+        default="kokoro_full_ljspeech.yaml",
         help="YAML config (path or bare name resolved in configs/).",
     )
     p.add_argument(
         "--no-phonemize",
         action="store_true",
-        help="Skip phonemization (smoke only; finetune_kokoro.py will reject this).",
+        help="Skip phonemization (smoke only; finetune_kokoro_full.py will reject this).",
     )
     p.add_argument(
         "--no-audio-libs",

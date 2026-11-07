@@ -21,7 +21,7 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-import { type Address, type Chain, parseAbi, parseUnits } from "viem";
+import { type Address, type Chain, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import {
   BRIDGE_POLL_INTERVAL_MS,
@@ -42,6 +42,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../../types/wallet-router.js";
+import { parseEvmBaseUnits } from "./exact-units";
 
 type LiFiGetWalletClient = NonNullable<
   Parameters<typeof EVM>[0]
@@ -378,7 +379,10 @@ export class BridgeAction {
       resolvedFromToken,
       params.fromChain,
     );
-    const fromAmountParsed = parseUnits(params.amount, fromTokenDecimals);
+    const fromAmountParsed = parseEvmBaseUnits(
+      params.amount,
+      fromTokenDecimals,
+    );
 
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
     const [fromAddress] = await walletClient.getAddresses();
@@ -429,10 +433,7 @@ export class BridgeAction {
       );
     }
 
-    if (
-      params.toAddress &&
-      (!params.toAddress.startsWith("0x") || params.toAddress.length !== 42)
-    ) {
+    if (params.toAddress && !isEvmAddress(params.toAddress)) {
       throw new EVMError(
         EVMErrorCode.INVALID_PARAMS,
         `Invalid recipient address: ${params.toAddress}`,
@@ -471,8 +472,14 @@ export class BridgeAction {
         );
       }
 
-      const mainTxHash = sourceSteps[0]?.execution?.process?.find(
-        (p) => p.txHash,
+      // The first process with a hash can be the ERC-20 approval
+      // (TOKEN_ALLOWANCE): Li.Fi's status API does not know that transaction,
+      // so polling it would time out after a bridge that completed.
+      const sourceProcesses = sourceSteps[0]?.execution?.process ?? [];
+      const mainTxHash = (
+        sourceProcesses.find((p) => p.type === "CROSS_CHAIN" && p.txHash) ??
+        sourceProcesses.find((p) => p.type === "SWAP" && p.txHash) ??
+        sourceProcesses.find((p) => p.txHash)
       )?.txHash;
 
       if (!mainTxHash) {
@@ -549,6 +556,17 @@ function viemChainByName(name: string): Chain | null {
   return chain?.id ? chain : null;
 }
 
+/**
+ * Bridge is EVM-only: the recipient becomes the Li.Fi `toAddress`. The
+ * preflight and the executor share this rule so a recipient the user confirms
+ * is one the bridge accepts. `WalletBackendService` resolves the destination
+ * to a registered handler chain key, and refuses a destination equal to the
+ * source, before these params reach `routeEvmBridge`.
+ */
+function isEvmAddress(value: string): value is Address {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
 export function validateWalletBridgeParams(
   params: WalletRouterParams,
 ): string | null {
@@ -564,8 +582,8 @@ export function validateWalletBridgeParams(
   if (!params.toChain) {
     return "toChain (destination) is required for bridge.";
   }
-  if (params.chain === params.toChain) {
-    return "Source and destination chains must be different for bridge.";
+  if (params.recipient && !isEvmAddress(params.recipient)) {
+    return "recipient must be a valid EVM address.";
   }
   return null;
 }

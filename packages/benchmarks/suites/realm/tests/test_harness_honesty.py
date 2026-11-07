@@ -7,8 +7,8 @@ from types import SimpleNamespace as NS
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "harnesses" / "eliza"))
-from benchmarks.realm.evaluator import MetricsCalculator
-from benchmarks.realm.types import (
+from benchmarks.suites.realm.evaluator import MetricsCalculator
+from benchmarks.suites.realm.types import (
     PlanningTrajectory,
     RealmProblem,
     REALMResult,

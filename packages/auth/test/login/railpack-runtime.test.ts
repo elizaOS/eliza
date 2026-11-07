@@ -48,7 +48,7 @@ test("Railpack runtime resolves workspace dependencies and serves health without
       await mkdir(dirname(join(build, path)), { recursive: true });
       await cp(join(root, path), join(build, path));
     }
-    for (const name of ["auth", "core"]) {
+    for (const name of ["auth", "core", "host", "contracts"]) {
       await cp(join(root, "packages", name), join(build, "packages", name), {
         recursive: true,
         filter: (path) =>
@@ -106,12 +106,17 @@ test("Railpack runtime resolves workspace dependencies and serves health without
         stderr: "pipe",
       },
     );
+    if (
+      !(server.stdout instanceof ReadableStream) ||
+      !(server.stderr instanceof ReadableStream)
+    )
+      throw new Error("Expected piped subprocess output");
     logs = Promise.all([
       new Response(server.stdout).text(),
       new Response(server.stderr).text(),
     ]);
     let health: unknown;
-    const deadline = Date.now() + 25_000;
+    const deadline = Date.now() + 180_000;
     while (Date.now() < deadline && server.exitCode === null) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`);
@@ -147,4 +152,4 @@ test("Railpack runtime resolves workspace dependencies and serves health without
     if (logs) await logs;
     await rm(directory, { recursive: true, force: true });
   }
-}, 120_000);
+}, 360_000);

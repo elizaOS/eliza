@@ -128,22 +128,27 @@ function classifyProviderError(
       context: { status: response.status },
     });
   }
+  // A short machine code lets domain adapters tell refusals apart.
+  const codeContext = /^[a-z][a-z_]{0,63}$/.test(providerCode)
+    ? { providerCode }
+    : {};
   if (response.status === 429) {
     return new ManagedProviderError("The provider is rate limited.", {
       code: "RATE_LIMITED",
       retryAfterMs: retryAfterMs(response),
-      context: { status: response.status },
+      context: { status: response.status, ...codeContext },
     });
   }
   if (response.status >= 500) {
     return new ManagedProviderError("The provider failed.", {
       code: "PROVIDER_FAILURE",
-      context: { status: response.status },
+      retryAfterMs: retryAfterMs(response),
+      context: { status: response.status, ...codeContext },
     });
   }
   return new ManagedProviderError("The provider rejected the request.", {
     code: "PROVIDER_REJECTED",
-    context: { status: response.status },
+    context: { status: response.status, ...codeContext },
   });
 }
 
@@ -473,18 +478,15 @@ export class ManagedProviderHttpClient {
     deadline: RequestDeadline,
   ): Promise<T> {
     if (!response.ok) {
+      // Only the bounded body's machine `code` is used, to tell refusals apart.
       let errorBody: unknown;
-      if (response.status === 401 || response.status === 403) {
-        try {
-          const text = await this.readBoundedBody(response, deadline);
-          if (text) errorBody = JSON.parse(text);
-        } catch {
-          // error-policy:J3 Diagnostic bytes are optional; once headers carry
-          // an error status, timeout/size/parse failures cannot replace it.
-          errorBody = undefined;
-        }
-      } else {
-        cancelBody(response, "provider returned an error status");
+      try {
+        const text = await this.readBoundedBody(response, deadline);
+        if (text) errorBody = JSON.parse(text);
+      } catch {
+        // error-policy:J3 Diagnostic bytes are optional; once headers carry
+        // an error status, timeout/size/parse failures cannot replace it.
+        errorBody = undefined;
       }
       throw classifyProviderError(response, errorBody);
     }

@@ -19,10 +19,7 @@ export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
  * Resolution order:
  * 1. Electrobun desktop shell — via `isElectrobunRuntime()` (the renderer's
  *    `__electrobunWindowId`/`__electrobunWebviewId` + RPC bridge, the same
- *    signal platform/init.ts uses). The legacy `window.__ELECTROBUN__` flag
- *    this used to read is set NOWHERE in the shell, so desktop was silently
- *    mis-reported as "web" (wrong frontendPlatform to the server + wrong
- *    provider / runtime-class / available-views gating on desktop).
+ *    signal platform/init.ts uses).
  * 2. Capacitor.getPlatform() — set by the Capacitor runtime on iOS/Android.
  * 3. Default: "web".
  */

@@ -81,7 +81,3 @@ export function getShortcutLabel(): string {
     /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
   return isMac ? "⌘⌥⌃V" : "Ctrl+Alt+Shift+V";
 }
-
-/** Electron-style accelerator string for the menu item. */
-export const SECRETS_MANAGER_MAC_ACCELERATOR = "Command+Option+Control+V";
-export const SECRETS_MANAGER_OTHER_ACCELERATOR = "Ctrl+Alt+Shift+V";

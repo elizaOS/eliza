@@ -34,7 +34,6 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
-sys.path.insert(0, str(SCRIPTS))
 
 
 # ---------- train_local.py argparse -----------------------------------------

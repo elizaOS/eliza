@@ -5,7 +5,6 @@
  * relative-time scheduling and check-ins consume.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
 import {
   LIFEOPS_CIRCADIAN_STATES,
   type LifeOpsActivitySignal,
@@ -16,8 +15,9 @@ import {
   type LifeOpsScheduleMealLabel,
   type LifeOpsSleepCycle,
   type LifeOpsUnclearReason,
-} from "@elizaos/core/contracts/personal-assistant";
-import { roundConfidence } from "@elizaos/core/lifeops-normalize/time-util";
+  roundConfidence,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   type CircadianScorerResult,
   computeAwakeProbability,
@@ -40,10 +40,10 @@ import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
-import {
-  type LifeOpsCircadianStateRow,
-  type LifeOpsRepository,
-  type LifeOpsScheduleInsightRecord,
+import type {
+  LifeOpsCircadianStateRow,
+  LifeOpsRepository,
+  LifeOpsScheduleInsightRecord,
 } from "./repository.js";
 import { getZonedDateParts } from "./time.js";
 

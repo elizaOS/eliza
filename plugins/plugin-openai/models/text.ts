@@ -25,7 +25,9 @@ import {
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   getInferenceTimer,
+  getModelAttemptLease,
   getTrajectoryContext,
+  isModelOutputLimitFinishReason,
   isPermanentQuotaError,
   logActiveTrajectoryLlmCall,
   logger,
@@ -45,6 +47,7 @@ import {
   jsonSchema,
   type LanguageModelUsage,
   type ModelMessage,
+  NoObjectGeneratedError,
   Output,
   RetryError,
   type StreamTextTransform,
@@ -53,6 +56,7 @@ import {
   type ToolSet,
   type UserContent,
 } from "ai";
+import { z } from "zod";
 import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
@@ -91,7 +95,6 @@ import {
   normalizeSchemaForCerebras,
   sanitizeFunctionNameForCerebras,
 } from "../utils/schema-compat";
-import { countTokensForModel } from "../utils/tokenization";
 import { StructuredOutputProgressGuard } from "./structured-output-progress";
 
 // ============================================================================
@@ -366,16 +369,11 @@ function resolvePromptCacheOptions(
  * Forward `OPENAI_REASONING_EFFORT` (runtime setting / process.env) as
  * `reasoning_effort` on the outbound chat completions request. This is
  * the OpenAI-spec knob for reasoning-capable models (`o1-*`, `o3-*`,
- * `gpt-oss-*`, `deepseek-r1`, and similar families) — including
- * Cerebras and OpenRouter, which honor the same field. `"low"` keeps
- * reasoning short enough that visible content always fits inside
- * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
- * left unset.
+ * `gpt-oss-*`, `deepseek-r1`, and similar families), including compatible
+ * providers that honor the same field.
  *
- * In Cerebras mode the field defaults to `"low"` when unset only for the exact
- * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Qwen 3.8 defaults to `"none"` for
- * interactive latency; explicit reasoning settings remain authoritative.
+ * Cerebras defaults to its highest supported effort, `"high"`, for
+ * `gpt-oss-120b`, `zai-glm-4.7`, and `qwen-3.8-27b`.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -459,10 +457,9 @@ function resolveCerebrasDefaultReasoningEffort(
 ): ReasoningEffort | "none" | undefined {
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
-  if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
-  // Cerebras defaults Qwen to high reasoning. Keep ordinary interactive
-  // calls non-reasoning unless the caller explicitly requests otherwise.
-  if (id === "qwen-3.8-27b") return "none";
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "qwen-3.8-27b") {
+    return "high";
+  }
   return undefined;
 }
 
@@ -470,7 +467,7 @@ function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
 ): ReasoningEffort | "none" | undefined {
-  const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const raw = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized === "none") {
     if (
@@ -519,7 +516,7 @@ function resolveProviderOptions(
     | { thinking?: unknown; preferToolReasoning?: unknown }
     | undefined;
   const elizaThinking = eliza?.thinking;
-  const configuredEffort = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const configuredEffort = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const preferToolReasoning =
     eliza?.preferToolReasoning === true &&
     !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
@@ -610,12 +607,16 @@ function buildStructuredOutput(
 
   const schemaOptions =
     responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
-      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      ? (responseSchema as {
+          schema: unknown;
+          name?: string;
+          description?: string;
+        })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
-  const cerebrasSchema = cerebrasMode
-    ? factorResponseSchema(preparedSchema.schema as JSONSchema7)
-    : undefined;
+  const rootUnion = cerebrasMode ? wrapCerebrasRootUnion(preparedSchema.schema) : undefined;
+  const wireInput = rootUnion?.schema ?? preparedSchema.schema;
+  const cerebrasSchema = cerebrasMode ? factorResponseSchema(wireInput as JSONSchema7) : undefined;
 
   const wireSchema = sanitizeJsonSchema(
     cerebrasSchema ?? preparedSchema.schema,
@@ -641,7 +642,105 @@ function buildStructuredOutput(
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     },
-    ...(preparedSchema.transform ? { transform: preparedSchema.transform } : {}),
+    ...(rootUnion
+      ? {
+          transform: {
+            restoreText(text: string) {
+              const restored = rootUnion.restoreText(text);
+              return preparedSchema.transform?.restoreText(restored) ?? restored;
+            },
+          },
+        }
+      : preparedSchema.transform
+        ? { transform: preparedSchema.transform }
+        : {}),
+  };
+}
+
+/** Reversible provider envelope for root unions rejected by Cerebras. */
+function wrapCerebrasRootUnion(
+  schema: unknown
+): { schema: JSONSchema7; restoreText(text: string): string } | undefined {
+  const root = asOptionalRecord(schema);
+  if (!root || !Array.isArray(root.anyOf) || root.anyOf.length === 0) return;
+  if (root.$schema !== undefined && root.$schema !== "https://json-schema.org/draft/2020-12/schema")
+    return;
+  // Validate only a known round-trippable vocabulary. References/resource
+  // IDs and other keywords keep their original provider-visible behavior.
+  const allowed = new Set([
+    "$schema",
+    "type",
+    "title",
+    "description",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "anyOf",
+    "enum",
+    "const",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minItems",
+    "maxItems",
+  ]);
+  const queue: unknown[] = [root];
+  while (queue.length) {
+    const node = queue.pop();
+    if (typeof node === "boolean") continue;
+    if (!node || typeof node !== "object" || Array.isArray(node)) return;
+    const record = node as Record<string, unknown>;
+    if (record !== root && Object.hasOwn(record, "$schema")) return;
+    if (Object.keys(record).some((key) => !allowed.has(key))) return;
+    if (record.properties && typeof record.properties === "object")
+      queue.push(...Object.values(record.properties));
+    for (const key of ["items", "additionalProperties"])
+      if (record[key] !== undefined) queue.push(record[key]);
+    if (Array.isArray(record.anyOf)) queue.push(...record.anyOf);
+  }
+  let validator: z.ZodType;
+  try {
+    validator = z.fromJSONSchema(root as Parameters<typeof z.fromJSONSchema>[0]);
+  } catch {
+    // An unsupported conversion is not permission to weaken the schema.
+    return;
+  }
+  const key = "__eliza_response";
+  const { $schema, ...valueSchema } = root;
+  return {
+    schema: {
+      type: "object",
+      properties: { [key]: valueSchema as JSONSchema7 },
+      required: [key],
+      additionalProperties: false,
+      ...(typeof $schema === "string" ? { $schema } : {}),
+    },
+    restoreText(text) {
+      const value: unknown = JSON.parse(text);
+      if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        Object.keys(value).length !== 1 ||
+        !Object.hasOwn(value, key)
+      )
+        throw new ElizaError("Structured response envelope is invalid", {
+          code: "OPENAI_RESPONSE_ENVELOPE_INVALID",
+          severity: "ephemeral",
+        });
+      const restored = (value as Record<string, unknown>)[key];
+      if (!validator.safeParse(restored).success)
+        throw new ElizaError("Structured response failed its original union schema", {
+          code: "OPENAI_RESPONSE_UNION_INVALID",
+          severity: "ephemeral",
+        });
+      return JSON.stringify(restored);
+    },
   };
 }
 
@@ -821,7 +920,10 @@ function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T)
   if (description === descriptor.value) return tool;
   const sanitized = Object.create(Object.getPrototypeOf(tool)) as T;
   Object.defineProperties(sanitized, Object.getOwnPropertyDescriptors(tool));
-  Object.defineProperty(sanitized, "description", { ...descriptor, value: description });
+  Object.defineProperty(sanitized, "description", {
+    ...descriptor,
+    value: description,
+  });
   return sanitized;
 }
 
@@ -1432,16 +1534,23 @@ function restoreRecordArgInput(input: unknown, transforms: RecordArgTransform[])
 
 function restoreRecordArgToolCalls(
   toolCalls: unknown,
-  transformsByTool: Record<string, RecordArgTransform[]>
+  transformsByTool: Record<string, RecordArgTransform[]>,
+  finishReason: unknown
 ): ToolCall[] | undefined {
-  if (toolCalls === undefined) return undefined;
+  // Output cut off at its token cap can end inside a tool call's JSON. Do not
+  // parse it: the completeness check then reports MODEL_OUTPUT_INCOMPLETE with
+  // its billed usage, which the planner retries, instead of "invalid tool
+  // arguments" (live 2026-10-30: a capped calendar create failed the turn).
+  if (toolCalls === undefined || isModelOutputLimitFinishReason(finishReason)) return undefined;
   if (!Array.isArray(toolCalls)) throw new TypeError("Invalid provider tool-call list");
 
   return toolCalls.map((toolCall) => {
     const call = asOptionalRecord(toolCall);
     if (!call) throw new TypeError("Invalid provider tool call");
     if (call.invalid) {
-      throw new TypeError("Provider returned invalid tool arguments", { cause: call.error });
+      throw new TypeError("Provider returned invalid tool arguments", {
+        cause: call.error,
+      });
     }
     const rawFunction = asRecord(call.function);
     const id = firstString(call.toolCallId, call.id);
@@ -2269,6 +2378,7 @@ function runtimePreparedBudget(providerOptions: Record<string, unknown> | undefi
 
 function createOpenAIPreparedRequestGuard(args: {
   modelName: string;
+  route: string;
   generateParams: NativeTextParams;
   responseDescriptor: unknown;
   providerOptions: Record<string, unknown> | undefined;
@@ -2308,10 +2418,11 @@ function createOpenAIPreparedRequestGuard(args: {
   return createPreparedModelRequestGuard({
     provider: "openai-compatible",
     model: args.modelName,
+    route: args.route,
+    attemptLease: null,
     projectRequest,
     ...runtimePreparedBudget(args.providerOptions),
     ...(typeof maxOutputTokens === "number" ? { outputReserveTokens: maxOutputTokens } : {}),
-    countInputTokens: (body) => countTokensForModel(args.modelName, body),
   });
 }
 
@@ -2555,6 +2666,24 @@ function selectRequestModelName(
   return fallbackModelName;
 }
 
+/** Marks a streamed call's trajectory record as failed, keeping the provider's own finish reason. */
+function stampStreamError(
+  runtime: IAgentRuntime,
+  details: RecordLlmCallDetails,
+  error: unknown
+): void {
+  details.providerMetadata = {
+    ...(details.providerMetadata && typeof details.providerMetadata === "object"
+      ? details.providerMetadata
+      : {}),
+    providerFinishReason: details.finishReason,
+    error: composeToolDiagnosticRedactor(runtime)(
+      error instanceof Error ? error.message : String(error)
+    ),
+  };
+  details.finishReason = "error";
+}
+
 function noteRateLimitCooldown(
   models: Map<string, number>,
   modelName: string,
@@ -2572,7 +2701,11 @@ function noteRateLimitCooldown(
   const existing = models.get(modelName) ?? 0;
   if (untilMs > existing) models.set(modelName, untilMs);
   logger.warn(
-    { src: "plugin:openai", model: modelName, retryAfterSeconds: retryAfterMs / 1000 },
+    {
+      src: "plugin:openai",
+      model: modelName,
+      retryAfterSeconds: retryAfterMs / 1000,
+    },
     "[OpenAI] provider rate limit reached; holding this model until the window resets"
   );
 }
@@ -2938,7 +3071,13 @@ function createStreamTiming(
         ? rawPurpose
         : "other";
     beginAttempt = (streamAttempt) => {
-      const meta = { streamCallId, streamAttempt, modelType: slot, mode, purpose };
+      const meta = {
+        streamCallId,
+        streamAttempt,
+        modelType: slot,
+        mode,
+        purpose,
+      };
       const record = (name: string) =>
         observeStreamTiming(runtime, () => timer.recordSpan(name, 0, meta));
       record("openai.stream.mode");
@@ -2960,7 +3099,10 @@ function createStreamTiming(
               const durations = providerTimingDurations(chunk.rawValue);
               if (Object.keys(durations).length > 0) {
                 providerTimingObserved = true;
-                timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
+                timer.recordSpan("openai.stream.provider-timing", 0, {
+                  ...meta,
+                  ...durations,
+                });
               }
               return;
             }
@@ -3151,7 +3293,12 @@ async function generateTextByModelType(
       (failure as { status?: number } | undefined)?.status;
     if (status !== 429) throw error;
     logger.info(
-      { src: "plugin:openai", modelType, model: modelName, provider: "openrouter" },
+      {
+        src: "plugin:openai",
+        modelType,
+        model: modelName,
+        provider: "openrouter",
+      },
       "[OpenAI] Cerebras rate limited; retrying this model call through the configured OpenRouter fallback"
     );
     return generateTextAtEndpoint(runtime, params, modelType, getModelFn, {
@@ -3168,9 +3315,32 @@ async function generateTextAtEndpoint(
   params: GenerateTextParams,
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter,
-  endpoint?: { baseURL: string; apiKey: string; modelName: string; provider: "openrouter" },
+  endpoint?: {
+    baseURL: string;
+    apiKey: string;
+    modelName: string;
+    provider: "openrouter";
+  },
   yieldRateLimit?: (error: unknown) => boolean
 ): Promise<string | TextStreamResult> {
+  const boundedLease = getModelAttemptLease();
+  const boundedRoute = boundedLease ? (endpoint?.baseURL ?? getBaseURL(runtime)) : undefined;
+  let assertWireDispatch:
+    | ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => void)
+    | undefined;
+  const dispatchGuard =
+    boundedLease && boundedRoute
+      ? {
+          baseURL: boundedRoute,
+          beforeDispatch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) {
+            if (!assertWireDispatch)
+              throw new ElizaError("Bounded provider request is not prepared", {
+                code: "MODEL_ATTEMPT_POLICY_INVALID",
+              });
+            assertWireDispatch(input, init);
+          },
+        }
+      : undefined;
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   // Keep retries and their failures bound to this call's endpoint/credential,
   // even if runtime settings change while the HTTP request is in flight.
@@ -3186,7 +3356,12 @@ async function generateTextAtEndpoint(
 
   if (modelName !== primaryModelName) {
     logger.info(
-      { src: "plugin:openai", modelType, primaryModel: primaryModelName, fallbackModel: modelName },
+      {
+        src: "plugin:openai",
+        modelType,
+        primaryModel: primaryModelName,
+        fallbackModel: modelName,
+      },
       "[OpenAI] primary model is rate limited; serving this request with the configured fallback model"
     );
   }
@@ -3213,7 +3388,7 @@ async function generateTextAtEndpoint(
 
   // Chat Completions is the default: broadest compatibility, and it works
   // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
-  // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
+  // The SDK omits unsupported reasoning-model temperature and penalty settings.
   //
   // The explicitly configured equivalent model accepts the same strict schema
   // semantics. OpenRouter require_parameters prevents silent capability loss.
@@ -3268,7 +3443,7 @@ async function generateTextAtEndpoint(
   const replay = reasoningModel
     ? cerebrasReasoningReplay(effectiveMessages, reasoningModel)
     : undefined;
-  const openai = createOpenAIClient(runtime, endpoint, replay);
+  const openai = createOpenAIClient(runtime, endpoint, replay, dispatchGuard);
   const model = openai.chat(modelName);
   const promptText =
     typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : "";
@@ -3314,7 +3489,10 @@ async function generateTextAtEndpoint(
 
   // Shared across whichever retry lane serves this call; exactly one lane runs
   // per call, so the totals are per-request, never cross-request.
-  const retryState: ModelRetryTelemetry = { retryCount: 0, lastRetryReason: undefined };
+  const retryState: ModelRetryTelemetry = {
+    retryCount: 0,
+    lastRetryReason: undefined,
+  };
   const retryMetadata = () => ({
     retryCount: retryState.retryCount,
     ...(retryState.lastRetryReason !== undefined
@@ -3410,29 +3588,130 @@ async function generateTextAtEndpoint(
     maxRetries: 0,
     ...(progressTransform ? { experimental_transform: progressTransform } : {}),
     ...(requestSignal ? { abortSignal: requestSignal } : {}),
-    // An omitted caller cap delegates the output boundary to the provider/model.
+    // Callers own the output cap. Stage 1 and reply text omit it, which
+    // delegates the boundary to the provider/model; the non-coding planner
+    // sends 8192 by default so a runaway tool call (live: 40,960 tokens in
+    // 29s) stops early.
     ...(params.omitMaxTokens || params.maxTokens === undefined
       ? {}
       : { maxOutputTokens: params.maxTokens }),
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     ...(params.topP !== undefined ? { topP: params.topP } : {}),
+    ...(params.stopSequences?.length
+      ? { stopSequences: deepToWellFormedUnicode(params.stopSequences) }
+      : {}),
+    ...(params.frequencyPenalty !== undefined ? { frequencyPenalty: params.frequencyPenalty } : {}),
+    ...(params.presencePenalty !== undefined ? { presencePenalty: params.presencePenalty } : {}),
+    ...(params.seed !== undefined ? { seed: params.seed } : {}),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
     ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
     ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
-  };
+  }; // Output cap and usage go with MODEL_OUTPUT_INCOMPLETE so a truncated call
+  // keeps its billed tokens in core's failure evidence.
+  const outputCap =
+    params.omitMaxTokens || typeof params.maxTokens !== "number" ? null : params.maxTokens;
+
+  if (getModelAttemptLease()) {
+    // Token-byte reservation covers text, including tool schemas/results; media
+    // has provider-specific billing dimensions and needs a separately reviewed quote.
+    const messages = (generateParams as { messages?: unknown }).messages;
+    const prompt = (generateParams as { prompt?: unknown }).prompt;
+    if (
+      (messages === undefined && typeof prompt !== "string") ||
+      (messages !== undefined &&
+        (!Array.isArray(messages) ||
+          messages.some((message) => {
+            const content = (message as { content?: unknown })?.content;
+            return (
+              typeof content !== "string" &&
+              (!Array.isArray(content) ||
+                content.some((part) => {
+                  if (!part || typeof part !== "object") return true;
+                  const value = part as {
+                    type?: string;
+                    text?: unknown;
+                    output?: { type?: string; value?: unknown };
+                  };
+                  if (value.type === "text" || value.type === "reasoning")
+                    return typeof value.text !== "string";
+                  if (value.type === "tool-call") return false;
+                  if (value.type !== "tool-result" || !value.output) return true;
+                  if (
+                    ["text", "json", "error-text", "error-json"].includes(value.output.type ?? "")
+                  )
+                    return false;
+                  return (
+                    value.output.type !== "content" ||
+                    !Array.isArray(value.output.value) ||
+                    value.output.value.some(
+                      (item) =>
+                        !item ||
+                        typeof item !== "object" ||
+                        (item as { type?: string }).type !== "text" ||
+                        typeof (item as { text?: unknown }).text !== "string"
+                    )
+                  );
+                }))
+            );
+          })))
+    )
+      throw new ElizaError("Bounded voice requires text-only model input", {
+        code: "MODEL_ATTEMPT_POLICY_ROUTE",
+      });
+  }
   const preparedRequestGuard = createOpenAIPreparedRequestGuard({
     modelName,
+    route: boundedRoute ?? endpoint?.baseURL ?? getBaseURL(runtime),
     generateParams,
     responseDescriptor:
       preparedOutput?.requestDescriptor ??
       (responseFormatType === "json_object" ? { type: "json_object" } : undefined),
     providerOptions,
   });
+  if (boundedLease && boundedRoute) {
+    let currentWireBody = "";
+    let wireGuard: ReturnType<typeof createPreparedModelRequestGuard> | undefined;
+    assertWireDispatch = (input, init) => {
+      const actualUrl = input instanceof Request ? input.url : String(input);
+      const expectedUrl = `${boundedRoute.replace(/\/$/, "")}/chat/completions`;
+      if (actualUrl !== expectedUrl || typeof init?.body !== "string") {
+        throw new ElizaError("Unqualified bounded model transport", {
+          code: "MODEL_ATTEMPT_POLICY_ROUTE",
+        });
+      }
+      // Recheck the complete canonical input after the SDK's final await, too.
+      preparedRequestGuard.assertUnchanged();
+      currentWireBody = init.body;
+      const body = JSON.parse(currentWireBody) as Record<string, unknown>;
+      const wireOutputCap = body.max_completion_tokens ?? body.max_tokens;
+      if (
+        body.model !== modelName ||
+        typeof wireOutputCap !== "number" ||
+        (body.max_completion_tokens !== undefined &&
+          body.max_tokens !== undefined &&
+          body.max_completion_tokens !== body.max_tokens)
+      ) {
+        throw new ElizaError("Bounded model output or identity changed", {
+          code: "MODEL_ATTEMPT_POLICY_ROUTE",
+        });
+      }
+      wireGuard ??= createPreparedModelRequestGuard({
+        provider: "openai-compatible",
+        model: modelName,
+        route: boundedRoute,
+        serializeRequest: () => currentWireBody,
+        outputReserveTokens: wireOutputCap,
+        attemptLease: boundedLease,
+      });
+      wireGuard.assertBeforeAttempt();
+    };
+  }
   const assertPreparedAttempt = (details: RecordLlmCallDetails): void => {
     attestLlmInputSubstring(details);
-    preparedRequestGuard.assertBeforeAttempt();
+    if (boundedLease) preparedRequestGuard.assertUnchanged();
+    else preparedRequestGuard.assertBeforeAttempt();
   };
 
   // Handle streaming mode
@@ -3496,13 +3775,7 @@ async function generateTextAtEndpoint(
         ).catch((error: unknown) => {
           if (stalledOutput) {
             details.response = stalledOutput.text;
-            details.finishReason = "error";
-            details.providerMetadata = {
-              ...(details.providerMetadata && typeof details.providerMetadata === "object"
-                ? details.providerMetadata
-                : {}),
-              error: "Structured output stopped making JSON progress.",
-            };
+            stampStreamError(runtime, details, stalledOutput.error);
           }
           noteRateLimitCooldown(modelCooldowns, modelName, error);
           throw stalledOutput?.error ?? error;
@@ -3510,18 +3783,14 @@ async function generateTextAtEndpoint(
         const text = restoreResponseText(result.text);
         const toolCalls = restoreRecordArgToolCalls(
           toolArgumentEnvelope.decodeCalls(result.toolCalls),
-          normalizedToolResult.recordArgTransformsByTool
+          normalizedToolResult.recordArgTransformsByTool,
+          result.finishReason
         );
         details.response = text;
         details.toolCalls = toolCalls;
         details.finishReason = result.finishReason;
         if (result.usage) applyUsageToDetails(details, result.usage);
         return { ...result, text, toolCalls };
-      });
-      assertModelOutputComplete({
-        finishReason: buffered.finishReason,
-        provider: usageProvider,
-        model: modelName,
       });
       if (buffered.usage) {
         emitModelUsageEvent(
@@ -3534,6 +3803,13 @@ async function generateTextAtEndpoint(
           usageProvider
         );
       }
+      assertModelOutputComplete({
+        finishReason: buffered.finishReason,
+        provider: usageProvider,
+        model: modelName,
+        maxTokens: outputCap,
+        usage: convertUsage(buffered.usage),
+      });
       const canonicalBufferedText = shouldBufferArgumentEnvelope
         ? buffered.toolCalls?.length === 1
           ? JSON.stringify(buffered.toolCalls[0].arguments)
@@ -3553,7 +3829,11 @@ async function generateTextAtEndpoint(
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
-        providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
+        providerMetadata: {
+          modelName,
+          provider: usageProvider,
+          ...retryMetadata(),
+        },
       };
     }
     const details = createLlmCallDetails(
@@ -3723,6 +4003,7 @@ async function generateTextAtEndpoint(
         (failure as { statusCode?: number; status?: number }).statusCode ??
         (failure as { status?: number }).status;
       if (status === 429) {
+        stampStreamError(runtime, details, capturedStreamError);
         logActiveTrajectoryLlmCall(runtime, {
           ...details,
           response: "",
@@ -3756,22 +4037,33 @@ async function generateTextAtEndpoint(
     const rawUsagePromise = streamCompanions.usage;
     const rawFinishReasonPromise = streamCompanions.finishReason;
     const rawToolCallsPromise = streamCompanions.toolCalls;
-    const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
-      restoreRecordArgToolCalls(
-        toolArgumentEnvelope.decodeCalls(toolCalls),
-        normalizedToolResult.recordArgTransformsByTool
-      )
+    const restoredToolCallsPromise = handledMappedPromise(
+      Promise.all([rawToolCallsPromise, rawFinishReasonPromise]),
+      ([toolCalls, finishReason]) =>
+        restoreRecordArgToolCalls(
+          toolArgumentEnvelope.decodeCalls(toolCalls),
+          normalizedToolResult.recordArgTransformsByTool,
+          finishReason
+        )
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
-      const finishReason = r as string | undefined;
-      assertModelOutputComplete({
-        finishReason,
-        provider: usageProvider,
-        model: modelName,
-      });
-      return finishReason;
-    });
+    const finishReasonPromise = handledMappedPromise(
+      Promise.all([
+        rawFinishReasonPromise,
+        Promise.resolve(rawUsagePromise).then(convertUsage, () => undefined),
+      ]),
+      ([r, usage]) => {
+        const finishReason = r as string | undefined;
+        assertModelOutputComplete({
+          finishReason,
+          provider: usageProvider,
+          model: modelName,
+          maxTokens: outputCap,
+          usage,
+        });
+        return finishReason;
+      }
+    );
     const textPromise = handledMappedPromise(
       Promise.all([rawTextPromise, finishReasonPromise]),
       ([text]) => text
@@ -3809,6 +4101,8 @@ async function generateTextAtEndpoint(
             finishReason: finishReasonResult.value,
             provider: usageProvider,
             model: modelName,
+            maxTokens: outputCap,
+            usage: usageResult.status === "fulfilled" ? convertUsage(usageResult.value) : undefined,
           });
         } catch (error) {
           companionStreamError ??= error;
@@ -3827,18 +4121,7 @@ async function generateTextAtEndpoint(
         streamIterationErrorForTelemetry ??
         capturedStreamError ??
         companionStreamError;
-      if (streamError !== undefined) {
-        details.providerMetadata = {
-          ...(details.providerMetadata && typeof details.providerMetadata === "object"
-            ? details.providerMetadata
-            : {}),
-          providerFinishReason: details.finishReason,
-          error: composeToolDiagnosticRedactor(runtime)(
-            streamError instanceof Error ? streamError.message : String(streamError)
-          ),
-        };
-        details.finishReason = "error";
-      }
+      if (streamError !== undefined) stampStreamError(runtime, details, streamError);
       const elapsed =
         (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
@@ -3921,7 +4204,11 @@ async function generateTextAtEndpoint(
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
       usage: usagePromise,
       finishReason: finishReasonPromise,
-      providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
+      providerMetadata: {
+        modelName,
+        provider: usageProvider,
+        ...retryMetadata(),
+      },
     };
   }
 
@@ -3948,6 +4235,30 @@ async function generateTextAtEndpoint(
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
+      if (NoObjectGeneratedError.isInstance(error)) {
+        // generateText parses `output` itself and throws before this lane sees
+        // the result. The provider billed the answer anyway: report its usage,
+        // and reject a cut-off answer like the plain-text lane below does.
+        applyUsageToDetails(details, error.usage);
+        if (error.usage) {
+          emitModelUsageEvent(
+            runtime,
+            modelType,
+            params.prompt ?? "",
+            error.usage,
+            modelName,
+            retryState,
+            usageProvider
+          );
+        }
+        assertModelOutputComplete({
+          finishReason: error.finishReason,
+          provider: usageProvider,
+          model: modelName,
+          maxTokens: outputCap,
+          usage: convertUsage(error.usage),
+        });
+      }
       throw error;
     });
     observeStreamTiming(runtime, () => {
@@ -3967,7 +4278,8 @@ async function generateTextAtEndpoint(
       : [];
     const restoredToolCalls = restoreRecordArgToolCalls(
       toolArgumentEnvelope.decodeCalls(result.toolCalls),
-      normalizedToolResult.recordArgTransformsByTool
+      normalizedToolResult.recordArgTransformsByTool,
+      result.finishReason
     );
     details.response = restoredText;
     if (reasoningContent.length)
@@ -3979,19 +4291,15 @@ async function generateTextAtEndpoint(
     return {
       text: restoredText,
       ...(reasoningContent.length
-        ? { content: [...reasoningContent, { type: "text", text: restoredText }] }
+        ? {
+            content: [...reasoningContent, { type: "text", text: restoredText }],
+          }
         : {}),
       toolCalls: restoredToolCalls,
       finishReason: result.finishReason,
       usage: result.usage,
       providerMetadata: result.providerMetadata,
     };
-  });
-
-  assertModelOutputComplete({
-    finishReason: result.finishReason,
-    provider: usageProvider,
-    model: modelName,
   });
 
   if (result.usage) {
@@ -4005,6 +4313,14 @@ async function generateTextAtEndpoint(
       usageProvider
     );
   }
+
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: usageProvider,
+    model: modelName,
+    maxTokens: outputCap,
+    usage: convertUsage(result.usage),
+  });
 
   if (shouldReturnNativeResult) {
     return buildNativeTextResult(

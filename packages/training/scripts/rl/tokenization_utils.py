@@ -23,7 +23,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from lib.generation_integrity import PromptExceedsContextError
+from eliza_training.lib.generation_integrity import PromptExceedsContextError
 
 logger = logging.getLogger(__name__)
 

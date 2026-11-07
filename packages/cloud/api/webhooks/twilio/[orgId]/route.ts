@@ -7,26 +7,31 @@
 
 import {
   calculateTwilioSmsBilling,
+  classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
 } from "@elizaos/cloud-shared/billing";
-import { Hono } from "hono";
-import { ZodError } from "zod";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
-import { twilioAutomationService } from "@/lib/services/twilio-automation";
-import { usageService } from "@/lib/services/usage";
-import { processOnce } from "@/lib/utils/idempotency";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
+import { twilioAutomationService } from "@elizaos/cloud-shared/lib/services/twilio-automation";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
+  extractMedia,
   extractMediaUrls,
   parseTwilioWebhookEvent,
   type TwilioWebhookEvent,
   verifyTwilioSignature,
-} from "@/lib/utils/twilio-api";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/utils/twilio-api";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { ZodError } from "zod";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -63,14 +68,11 @@ function resolveTwilioVerificationUrl(c: AppContext): string {
 
 function resolveSmsCostPerSegment(env: AppContext["env"]): number {
   const raw = env.TWILIO_SMS_COST_PER_SEGMENT_USD;
-  if (raw) {
-    const parsed = Number.parseFloat(raw);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      logger.warn(
-        "[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default",
-        { configured: true },
-      );
-    }
+  if (classifyTwilioSmsCostConfig(raw).status === "invalid") {
+    logger.warn(
+      "[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default",
+      { configured: true },
+    );
   }
   return resolveTwilioSmsCostPerSegment(raw);
 }
@@ -194,14 +196,15 @@ async function handleIncomingMessage(
 ): Promise<void> {
   const [{ messageRouterService }, { agentGatewayRouterService }] =
     await Promise.all([
-      import("@/lib/services/message-router"),
-      import("@/lib/services/agent-gateway-router"),
+      import("@elizaos/cloud-shared/lib/services/message-router"),
+      import("@elizaos/cloud-shared/lib/services/agent-gateway-router"),
     ]);
 
   const from = event.From;
   const to = event.To;
   const body = event.Body?.trim();
-  const mediaUrls = extractMediaUrls(event);
+  const media = extractMedia(event);
+  const mediaUrls = media.map((item) => item.url);
 
   if (!body && mediaUrls.length === 0) {
     logger.info("[TwilioWebhook] Skipping empty message", { orgId });
@@ -241,6 +244,10 @@ async function handleIncomingMessage(
     body: body || "",
     providerMessageId: event.MessageSid,
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+    mediaTypes:
+      mediaUrls.length > 0
+        ? media.map((item) => item.contentType ?? "")
+        : undefined,
     metadata: messageContext.metadata,
   });
 
@@ -284,7 +291,7 @@ async function handleIncomingMessage(
           provider: "twilio",
           input_tokens: 0,
           output_tokens: 0,
-          input_cost: String(billing.rawCost),
+          input_cost: String(billing.billedCost),
           output_cost: String(0),
           markup: String(billing.markup),
           request_id: event.MessageSid,

@@ -10,9 +10,9 @@
  * the A2A protocol which only provides user/org context, not agent personality.
  */
 
+import { SAVE_MEMORY_PRICE_USD } from "@elizaos/cloud-sdk/browser-contracts";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
-import { SAVE_MEMORY_PRICE_USD } from "../../../billing/organization-credits";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {
@@ -38,7 +38,7 @@ import {
   listHostedBrowserSessions,
   navigateHostedBrowserSession,
 } from "../../services/browser-tools";
-import { charactersService } from "../../services/characters/characters";
+import { charactersService } from "../../services/characters";
 import { containersService } from "../../services/containers";
 import { conversationsService } from "../../services/conversations";
 import { type CreditReservation, InsufficientCreditsError } from "../../services/credits";
@@ -127,6 +127,7 @@ export async function executeSkillChatCompletion(
     throw error;
   }
 
+  let settled = false;
   try {
     const result = await streamText({
       model: getLanguageModel(model),
@@ -140,11 +141,7 @@ export async function executeSkillChatCompletion(
 
     let fullText = "";
     for await (const delta of result.textStream) fullText += delta;
-    assertModelOutputComplete({
-      finishReason: await result.finishReason,
-      provider,
-      model,
-    });
+    const finishReason = await result.finishReason;
     const usage = await result.usage;
 
     const { inputCost, outputCost, totalCost } = await calculateCost(
@@ -154,8 +151,21 @@ export async function executeSkillChatCompletion(
       usage?.outputTokens || 0,
     );
 
-    // Reconcile with actual cost
+    // Reconcile with actual cost. The provider bills a truncated output too,
+    // so charge it before rejecting it; refunding it to 0 served it unbilled.
     await reservation.reconcile(totalCost);
+    settled = true;
+    assertModelOutputComplete({
+      finishReason,
+      provider,
+      model,
+      maxTokens: effectiveMaxTokens ?? null,
+      usage: {
+        promptTokens: usage?.inputTokens || 0,
+        completionTokens: usage?.outputTokens || 0,
+        totalTokens: usage?.totalTokens || 0,
+      },
+    });
 
     await usageService.create({
       organization_id: ctx.user.organization_id,
@@ -182,8 +192,8 @@ export async function executeSkillChatCompletion(
       cost: totalCost,
     };
   } catch (error) {
-    // Refund on failure
-    await reservation.reconcile(0);
+    // Refund on failure, unless the provider call was already charged.
+    if (!settled) await reservation.reconcile(0);
     throw error;
   }
 }
@@ -695,10 +705,11 @@ export async function executeSkillDeleteMemory(
   const memoryId = dataContent.memoryId as string;
   if (!memoryId) throw new Error("memoryId required");
 
-  await memoryService.deleteMemory({
+  const { deletedCount } = await memoryService.deleteMemory({
     organizationId: ctx.user.organization_id,
     memoryId,
   });
+  if (deletedCount === 0) throw new Error("Memory not found");
   return { success: true, memoryId };
 }
 

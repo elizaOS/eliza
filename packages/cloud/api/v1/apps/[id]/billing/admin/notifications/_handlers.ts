@@ -1,12 +1,16 @@
 /** Translates app-owner notification configuration requests without exposing persisted signing secrets. */
+
+import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { appBillingNotifications } from "@elizaos/cloud-shared/lib/services/app-billing-notifications";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
 import type { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
-import { appBillingNotifications } from "@/lib/services/app-billing-notifications";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const identity = z.object({
   clientRegistrationId: z.string().uuid(),

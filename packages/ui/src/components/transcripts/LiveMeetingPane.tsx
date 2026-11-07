@@ -7,11 +7,11 @@
  * delivering. Auto-scroll stays pinned to the bottom until the user scrolls up.
  */
 
-import type { Transcript, TranscriptSegment } from "@elizaos/core/transcripts";
+import type { Transcript, TranscriptSegment } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingTranscriptEvent } from "../../api/client-meetings";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import {
   applyMeetingTranscriptEvent,
   applyPolledTranscript,

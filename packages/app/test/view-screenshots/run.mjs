@@ -23,6 +23,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "../..");
@@ -37,7 +38,7 @@ const sharp = (await import(reqFromApp.resolve("sharp"))).default;
 
 const { VIEW_SPECS } = await import("./fixtures.ts");
 
-const OUTPUT_DIR = path.join(here, "output");
+const OUTPUT_DIR = testOutputPath("view-screenshots");
 const rmRecursiveScript = path.resolve(
   appRoot,
   "../scripts/rm-path-recursive.ts",

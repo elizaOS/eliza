@@ -1,23 +1,27 @@
 /** Handles app request analytics views with shared date-range validation. */
 
 import {
-  parseClampedLimit,
-  parseClampedOffset,
-} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { parseDateRangeParams } from "@/lib/api/date-range-params";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
+  ApiError,
+  failureResponse,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
+import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { appAnalyticsService } from "@/lib/services/app-analytics";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { appAnalyticsService } from "@elizaos/cloud-shared/lib/services/app-analytics";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import {
+  parseClampedLimit,
+  parseClampedOffset,
+} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/apps/[id]/analytics/requests
@@ -192,15 +196,15 @@ async function handleGET(
       }
     }
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 This route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app request analytics:", error);
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get request analytics",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

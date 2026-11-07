@@ -6,8 +6,12 @@ Tests for AST, Execution, and Relevance evaluators.
 
 import pytest
 
-from suites.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
-from suites.bfcl.types import FunctionCall, FunctionDefinition, FunctionParameter
+from benchmarks.suites.bfcl.evaluators import (
+    ASTEvaluator,
+    ExecutionEvaluator,
+    RelevanceEvaluator,
+)
+from benchmarks.suites.bfcl.types import FunctionCall, FunctionDefinition, FunctionParameter
 
 
 class TestASTEvaluator:
@@ -19,20 +23,34 @@ class TestASTEvaluator:
 
     def test_exact_match(self, evaluator: ASTEvaluator) -> None:
         """Test exact match evaluation."""
-        predicted = [FunctionCall(name="get_weather", arguments={"location": "San Francisco"})]
-        expected = [FunctionCall(name="get_weather", arguments={"location": "San Francisco"})]
+        predicted = [
+            FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+        ]
+        expected = [
+            FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+        ]
         assert evaluator.evaluate(predicted, expected) is True
 
     def test_name_mismatch(self, evaluator: ASTEvaluator) -> None:
         """Test function name mismatch."""
-        predicted = [FunctionCall(name="get_weather", arguments={"location": "San Francisco"})]
-        expected = [FunctionCall(name="get_temperature", arguments={"location": "San Francisco"})]
+        predicted = [
+            FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+        ]
+        expected = [
+            FunctionCall(
+                name="get_temperature", arguments={"location": "San Francisco"}
+            )
+        ]
         assert evaluator.evaluate(predicted, expected) is False
 
     def test_argument_mismatch(self, evaluator: ASTEvaluator) -> None:
         """Test argument value mismatch."""
-        predicted = [FunctionCall(name="get_weather", arguments={"location": "New York"})]
-        expected = [FunctionCall(name="get_weather", arguments={"location": "San Francisco"})]
+        predicted = [
+            FunctionCall(name="get_weather", arguments={"location": "New York"})
+        ]
+        expected = [
+            FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+        ]
         assert evaluator.evaluate(predicted, expected) is False
 
     def test_type_coercion_int_string(self, evaluator: ASTEvaluator) -> None:
@@ -160,7 +178,9 @@ class TestASTEvaluator:
         ]
 
         assert evaluator.evaluate(predicted, expected, function_defs=[function]) is True
-        details = evaluator.get_match_details(predicted, expected, function_defs=[function])
+        details = evaluator.get_match_details(
+            predicted, expected, function_defs=[function]
+        )
         assert details["overall_match"] is True
         assert details["mismatches"] == []
 
@@ -187,7 +207,9 @@ class TestASTEvaluator:
             FunctionCall(name="search", arguments={"columns": ["title", "body"]}),
         ]
 
-        assert evaluator.evaluate(predicted, expected, function_defs=[function]) is False
+        assert (
+            evaluator.evaluate(predicted, expected, function_defs=[function]) is False
+        )
 
 
 class TestExecutionEvaluator:
@@ -214,7 +236,9 @@ class TestExecutionEvaluator:
         assert error is None
 
     @pytest.mark.asyncio
-    async def test_execute_missing_function(self, evaluator: ExecutionEvaluator) -> None:
+    async def test_execute_missing_function(
+        self, evaluator: ExecutionEvaluator
+    ) -> None:
         """Test executing a missing function."""
         call = FunctionCall(name="nonexistent", arguments={})
         success, result, error = await evaluator.execute(call)
@@ -248,10 +272,13 @@ class TestExecutionEvaluator:
         removed. setup_standard_mocks is now a no-op; unregistered functions
         must NOT be silently accepted."""
         evaluator.setup_standard_mocks()  # intentional no-op
-        from suites.bfcl.types import FunctionDefinition
-        evaluator.register_mocks_from_definitions([
-            FunctionDefinition(name="get_weather", description="", parameters={}),
-        ])  # intentional no-op
+        from benchmarks.suites.bfcl.types import FunctionDefinition
+
+        evaluator.register_mocks_from_definitions(
+            [
+                FunctionDefinition(name="get_weather", description="", parameters={}),
+            ]
+        )  # intentional no-op
 
         call = FunctionCall(
             name="get_weather",

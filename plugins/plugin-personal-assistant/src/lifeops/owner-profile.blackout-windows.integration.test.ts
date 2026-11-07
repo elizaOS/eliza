@@ -110,6 +110,41 @@ describe("blackout preference mutation — real PGlite", () => {
     },
   );
 
+  it.each([
+    {
+      label: "an invalid start clock and duration beside valid fields",
+      parameters: {
+        preferredStartLocal: "9am",
+        preferredEndLocal: "17:00",
+        travelBufferMinutes: 15,
+        defaultDurationMinutes: 600,
+      },
+      error: "INVALID_FIELDS",
+    },
+    {
+      label: "an unknown time zone name",
+      parameters: { timeZone: "Tokyo", preferredEndLocal: "17:00" },
+      error: "INVALID_TIME_ZONE",
+    },
+  ])(
+    "refuses $label through CALENDAR before any task write",
+    async ({ parameters, error }) => {
+      const before = await readLifeOpsMeetingPreferences(runtime);
+      const updateTask = vi.spyOn(runtime, "updateTask");
+
+      const result = await calendarAction.handler(
+        runtime,
+        message(),
+        undefined,
+        { parameters: { action: "update_preferences", ...parameters } },
+      );
+
+      expect(result).toMatchObject({ success: false, data: { error } });
+      expect(updateTask).not.toHaveBeenCalled();
+      expect(await readLifeOpsMeetingPreferences(runtime)).toEqual(before);
+    },
+  );
+
   it("rejects a direct store update before partial preferences can be persisted", async () => {
     const before = await readLifeOpsMeetingPreferences(runtime);
     const updateTask = vi.spyOn(runtime, "updateTask");

@@ -61,9 +61,7 @@ export const client = {
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),
   getWalletMarketOverview: async () => walletMarketOverviewResponse(),
-  // Today (todo) home card: attention mode seeds one open todo so the merged
-  // card renders with a todo row alongside its flagged at-risk goal row
-  // (spec §E item 5). Quiet mode returns zero work so the card self-hides.
+  // Retain workbench fixture data; Home no longer projects it as Today cards.
   listWorkbenchTodos: async () => homeWidgetTodosResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
@@ -87,9 +85,8 @@ export const client = {
   // this esbuild bundle, so stub them here explicitly.
   listAutomations: async () => ({ automations: [] }),
   listScheduledTasks: async () => ({ tasks: [] }),
-  // CalendarUpcomingWidget probes Google connectivity through the typed client
-  // before showing events; report a connected account so it renders the seeded
-  // feed instead of the "Connect calendar" affordance.
+  // Retained for connector surfaces. Home Calendar reads the seeded source/feed
+  // through fetch and does not infer calendar availability from a Google login.
   listConnectorAccounts: async () => ({
     accounts: [{ id: "google-owner", provider: "google", status: "connected" }],
   }),

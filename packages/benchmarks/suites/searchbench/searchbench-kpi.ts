@@ -17,14 +17,11 @@
  */
 import fs from "node:fs";
 import os from "node:os";
-// Import the plugin-sql adapter + FTS migration objects from the repo's own
-// source tree (this file benchmarks the current checkout). A relative path
-// pins the measured code to this tree; the bare `@elizaos/plugin-sql` specifier
-// can resolve to an installed copy in a shared-node_modules worktree.
-import path, { join } from "node:path";
+import path from "node:path";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
+import { importMeasuredPackage } from "../../lib/target-package.ts";
 import {
   loadBudgets,
   quantile,
@@ -40,7 +37,10 @@ const {
   DatabaseMigrationService,
   memoryTable,
   plugin: sqlPlugin,
-} = await import(join(REPO_ROOT, "plugins/plugin-sql/src/index.node.ts"));
+} = await importMeasuredPackage<typeof import("@elizaos/plugin-sql")>(
+  REPO_ROOT,
+  "@elizaos/plugin-sql",
+);
 
 import { ndcgAtK } from "./metric-schema.mjs";
 

@@ -8,9 +8,11 @@
  * owned by their existing services.
  */
 
+import {
+  type KnowledgeGraphRelationship as Relationship,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
-import { type Relationship } from "@elizaos/core/knowledge-graph/relationship-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,

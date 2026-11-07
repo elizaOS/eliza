@@ -4,9 +4,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { collectWorkspaceMaps } from "../../scripts/lib/workspaces.ts";
 import { collectDockerWorkspaceDirs } from "./collect-docker-runtime-deps.ts";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.ts";
-import { collectWorkspaceMaps } from "./lib/workspace-discovery.ts";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const recursiveCleanupScript = path.join(

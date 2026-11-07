@@ -40,8 +40,7 @@ import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
-// Register the todo widget's component so it can be declared on the curated
-// home slot. Idempotent with the plugin's own runtime registration.
+// Keep the checklist component available for sidebar and inline declarations.
 registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
 registerWidgetComponent(
   "music-library",
@@ -71,9 +70,8 @@ registerWidgetComponent(
 // of its plugin's own state on the home grid, self-hides when empty, and
 // self-publishes a home-attention signal so it floats up on its own data
 // urgency. They resolve only when the plugin is enabled+active in the runtime
-// snapshot. Goals + health left this set (spec §E items 4-5): the at-risk goal
-// is absorbed into the Today (todo) card and sleep moved to its routed dashboard,
-// so neither registers a home component here anymore.
+// snapshot. Goals, todos, and health remain in their routed surfaces; they
+// do not register separate Home cards.
 registerWidgetComponent(
   CALENDAR_HOME_WIDGET.pluginId,
   CALENDAR_HOME_WIDGET.id,
@@ -121,22 +119,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // The standalone Recent-conversations tile was removed (#10697) - it
   // duplicated the always-present chat overlay. Follow-up-worthy messages now
   // surface as `category: "message"` notifications in the notification rail.
-  // Todos - the todo plugin's curated LifeOps frontpage widget.
-  {
-    id: "todo.items",
-    pluginId: "todo",
-    slot: "home",
-    label: "Todos",
-    icon: "ListTodo",
-    order: 80,
-    defaultEnabled: true,
-    // Renders from the workbench store, so it shows even before the runtime
-    // plugin snapshot lists the plugin. Declaration-driven `fallback`
-    // replaces the hardcoded `"todo"` allow-set entry that used to drift out of
-    // sync with the `todos` app-manifest plugin id (#12090 item 9).
-    visibility: "fallback",
-    signalKinds: ["reminder", "check-in", "nudge"],
-  },
   // -- Sparse home widgets ---------------------------------------------------
   // Home keeps only essential, low-noise cards. Rich domain surfaces like inbox,
   // finances, relationships, workflow activity, feed activity, and orchestrator
@@ -157,7 +139,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: { cols: 4, rows: 1 },
   },
   // -- Curated home-grid widgets (4-col grid `size`) -------------------------
-  // Setup progress and wallet remain on home. Other app/domain views are
+  // Setup progress remains on home. Other app/domain views are
   // launcher destinations so an idle home does not poll those feature APIs.
   // Local model download (LOCAL mode): surfaces the recommended on-device text
   // model downloading - queued / %-progress / loading / failed-with-retry - so a
@@ -196,9 +178,8 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   //    urgency; the threshold-crossed alert already travels as a `health`
   //    notification category. The sleep component + routed dashboard stay; only
   //    the home declaration is removed.
-  //  - goals: merged into the Today (todo.items) card. An at-risk goal renders
-  //    as one flagged row inside Today and the card self-publishes the goals
-  //    escalation weight. The goals component stays for routed use.
+  //  - goals/todos: the separate Today projection is retired. Their routed
+  //    and inline views remain; actionable notifications use the existing rail.
   {
     id: "music-library.playlists",
     pluginId: "music-library",
@@ -232,7 +213,10 @@ const RETIRED_WIDGET_KEYS = new Set([
 ]);
 
 function isRetiredWidget(declaration: PluginWidgetDeclaration): boolean {
-  return RETIRED_WIDGET_KEYS.has(`${declaration.pluginId}/${declaration.id}`);
+  return (
+    RETIRED_WIDGET_KEYS.has(`${declaration.pluginId}/${declaration.id}`) ||
+    (declaration.slot === "home" && declaration.id === "todo.items")
+  );
 }
 
 /**

@@ -208,7 +208,14 @@ export async function listHostedGoogleSources(runtime: IAgentRuntime, owner: str
     try {
       cloudAccounts = (await cloud.list(owner)).accounts;
       cloudState = 'explicit_delegation_available';
-    } catch {}
+    } catch (error) {
+      // error-policy:J1 A registered cloud source is part of the complete
+      // authorized source list. Do not turn its outage into a local-only list.
+      runtime.reportError('WorkflowHostedGoogle.listCloudAccounts', error, {
+        provider: 'google',
+      });
+      throw new WorkflowApiError('Hosted Google account discovery failed', 503);
+    }
   const service = runtime.getService('google');
   if (!service)
     return {

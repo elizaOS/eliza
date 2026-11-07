@@ -11,8 +11,6 @@ import {
     webSearchSourceUrls,
 } from "./edge";
 
-import { webSearchPlugin } from "./index";
-
 const ORIGINAL_FETCH = globalThis.fetch;
 
 afterEach(() => {
@@ -25,60 +23,53 @@ describe("webSearchEdgePlugin", () => {
         expect(webSearchEdgeAction.roleGate).toEqual({ minRole: "GUEST" });
     });
 
-    it.each([webSearchEdgePlugin, webSearchPlugin])(
-        "returns complete keyless results through $name",
-        async (plugin) => {
-            globalThis.fetch = vi.fn(async () =>
-                Response.json({
-                    jsonrpc: "2.0",
-                    id: 1,
-                    result: {
-                        content: [
-                            {
-                                type: "text",
-                                text: JSON.stringify({
-                                    results: [
-                                        {
-                                            url: "https://example.com/current",
-                                            title: "Current public result",
-                                        },
-                                    ],
-                                }),
-                            },
-                        ],
-                    },
-                })
-            ) as typeof fetch;
-
-            const action = plugin.actions?.[0];
-            if (!action) throw new Error("Web search action is missing");
-            const result = await action.handler(
-                { getSetting: () => undefined } as unknown as IAgentRuntime,
-                {} as Memory,
-                undefined,
-                {
-                    parameters: { query: "current public result" },
-                }
-            );
-
-            expect(result).toMatchObject({
-                success: true,
-                data: {
-                    actionName: "WEB_SEARCH",
-                    provider: "parallel",
-                    query: "current public result",
-                    observedAt: expect.any(Number),
-                    sourceUrls: ["https://example.com/current"],
-                    sources: [
+    it("returns bounded keyless results through the genuine action", async () => {
+        globalThis.fetch = vi.fn(async () =>
+            Response.json({
+                jsonrpc: "2.0",
+                id: 1,
+                result: {
+                    content: [
                         {
-                            url: "https://example.com/current",
-                            text: expect.stringContaining("Current public result"),
+                            type: "text",
+                            text: JSON.stringify({
+                                results: [
+                                    {
+                                        url: "https://example.com/current",
+                                        title: "Current public result",
+                                    },
+                                ],
+                            }),
                         },
                     ],
                 },
-            });
-        }
-    );
+            })
+        ) as typeof fetch;
+
+        const result = await webSearchEdgeAction.handler(
+            {} as IAgentRuntime,
+            {} as Memory,
+            undefined,
+            { parameters: { query: "current public result", numResults: 4 } }
+        );
+
+        expect(result).toMatchObject({
+            success: true,
+            data: {
+                actionName: "WEB_SEARCH",
+                provider: "parallel",
+                query: "current public result",
+                observedAt: expect.any(Number),
+                sourceUrls: ["https://example.com/current"],
+                sources: [
+                    {
+                        url: "https://example.com/current",
+                        text: expect.stringContaining("Current public result"),
+                    },
+                ],
+            },
+        });
+    });
 
     it("extracts structured and prose source URLs without accepting credentials", () => {
         expect(
@@ -87,6 +78,47 @@ describe("webSearchEdgePlugin", () => {
                     "Source: https://news.example.org/story). Ignore https://u:p@example.net/private"
             )
         ).toEqual(["https://example.com/a", "https://news.example.org/story"]);
+    });
+
+    it("keeps complete structured URLs and balanced prose citation paths", () => {
+        const exact = "https://example.com/path).";
+        const structured = webSearchSourceEvidence(
+            JSON.stringify({
+                results: [{ url: exact, text: "Exact published path" }],
+            })
+        );
+        expect(structured.sourceUrls).toEqual([exact]);
+        expect(structured.sources[0]?.url).toBe(exact);
+        expect(
+            webSearchSourceUrls(
+                "Source: (https://en.wikipedia.org/wiki/Function_(mathematics)). " +
+                    "Nested: https://example.com/a_(b_(c)));"
+            )
+        ).toEqual([
+            "https://en.wikipedia.org/wiki/Function_(mathematics)",
+            "https://example.com/a_(b_(c))",
+        ]);
+        expect(webSearchSourceUrls(`https://example.com/path${")".repeat(50000)}`)).toEqual([
+            "https://example.com/path",
+        ]);
+    });
+
+    it("reads URLs in JSON excerpts from the decoded text, not the escapes", () => {
+        const text = JSON.stringify({
+            results: [
+                {
+                    url: "https://example.com/article",
+                    excerpts: [
+                        'Intro\nSee https://docs.example.org/guide\nNext says "https://example.net/x" too',
+                    ],
+                },
+            ],
+        });
+        expect(webSearchSourceUrls(text)).toEqual([
+            "https://example.com/article",
+            "https://docs.example.org/guide",
+            "https://example.net/x",
+        ]);
     });
 
     it("rejects loopback and private-network citation URLs", () => {
@@ -291,7 +323,10 @@ describe("webSearchEdgePlugin", () => {
                 query: "Tessera architecture",
             },
         });
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
+        });
     });
 
     it("rejects oversized queries before the public network boundary", async () => {
@@ -305,7 +340,7 @@ describe("webSearchEdgePlugin", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("reports runner failures through the channel callback", async () => {
+    it("keeps runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         globalThis.fetch = vi.fn(
             async () => new Response("unavailable", { status: 503 })
@@ -318,31 +353,148 @@ describe("webSearchEdgePlugin", () => {
             callback
         );
         expect(callback).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledWith({ text: "Web search is temporarily unavailable." });
+        expect(callback).toHaveBeenCalledWith({
+            text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
+        });
     });
 
-    it("reports injected runner failures through the channel callback", async () => {
+    it("keeps injected runner failures internal to the conversation", async () => {
         const callback = vi.fn();
+        const controller = new AbortController();
         const [action] =
-            createWebSearchEdgePlugin(async (query) => ({
-                success: false,
-                text: "The authorized public read is unavailable.",
-                error: "The authorized public read is unavailable.",
-                data: { actionName: "WEB_SEARCH", query },
-            })).actions ?? [];
+            createWebSearchEdgePlugin(async (query, options) => {
+                expect(options?.signal).toBe(controller.signal);
+                return {
+                    success: false,
+                    text: "The authorized public read is unavailable.",
+                    error: "The authorized public read is unavailable.",
+                    data: { actionName: "WEB_SEARCH", query },
+                };
+            }).actions ?? [];
         if (!action) throw new Error("Expected the injected WEB_SEARCH action");
 
         await action.handler(
             {} as IAgentRuntime,
             {} as Memory,
             undefined,
-            { parameters: { query: "current public result" } },
+            {
+                parameters: { query: "current public result" },
+                abortSignal: controller.signal,
+            },
             callback
         );
 
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "The authorized public read is unavailable.",
+            transcriptVisibility: "internal",
         });
     });
+
+    it("keeps validation failures internal to the conversation", async () => {
+        const cases: Array<{ parameters: Record<string, unknown>; text: string }> = [
+            { parameters: {}, text: "A web search query is required." },
+            {
+                parameters: { query: "current public result", provider: "bogus" },
+                text: "The requested search provider is not supported.",
+            },
+            {
+                parameters: { query: "current public result", provider: "fallback" },
+                text: "The alternate search provider is not available for this turn.",
+            },
+        ];
+        for (const { parameters, text } of cases) {
+            const callback = vi.fn();
+            const result = await webSearchEdgeAction.handler(
+                {} as IAgentRuntime,
+                {} as Memory,
+                undefined,
+                { parameters },
+                callback
+            );
+            expect(result.success).toBe(false);
+            expect(callback).toHaveBeenCalledOnce();
+            expect(callback).toHaveBeenCalledWith({
+                text,
+                transcriptVisibility: "internal",
+            });
+        }
+    });
+});
+
+it("direct edge runner distinguishes typed outage from successful zero hits and preserves caller abort", async () => {
+    globalThis.fetch = vi.fn(
+        async () => new Response("not logged", { status: 429 })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("public query")).resolves.toMatchObject({
+        success: false,
+        data: {
+            actionName: "WEB_SEARCH",
+            unavailable: true,
+            provider: "parallel",
+            reason: "rate_limited",
+            status: 429,
+        },
+    });
+    globalThis.fetch = vi.fn(async () =>
+        Response.json({
+            jsonrpc: "2.0",
+            id: 1,
+            result: { content: [{ type: "text", text: "" }] },
+        })
+    ) as typeof fetch;
+    await expect(runWebSearchEdge("empty query")).resolves.toMatchObject({
+        success: false,
+        text: "Web search returned no results.",
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn();
+    globalThis.fetch = fetchImpl as typeof fetch;
+    await expect(
+        runWebSearchEdge("aborted query", { signal: controller.signal })
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("only an opted-in host runner accepts explicit fallback selection", async () => {
+    const network = vi.fn(async () => {
+        throw new Error("Unexpected public I/O");
+    });
+    globalThis.fetch = network as typeof fetch;
+    const host = vi.fn(async () => ({ success: true, text: "host evidence" }));
+    const unavailable = createWebSearchEdgePlugin(host).actions?.[0];
+    const available = createWebSearchEdgePlugin(host, { fallbackEnabled: true }).actions?.[0];
+    if (!unavailable || !available) throw new Error("Expected canonical search actions");
+    expect(unavailable.parameters?.some((parameter) => parameter.name === "provider")).toBe(false);
+    expect(
+        available.parameters?.find((parameter) => parameter.name === "provider")?.schema
+    ).toEqual({ type: "string", enum: ["default", "fallback"] });
+    for (const provider of ["fallback", "unknown"]) {
+        const denied = await unavailable.handler({} as IAgentRuntime, {} as Memory, undefined, {
+            parameters: { query: "Tokyo news", provider },
+        });
+        expect(denied).toMatchObject({ success: false });
+    }
+    expect(await runWebSearchEdge("Tokyo news", { provider: "fallback" })).toMatchObject({
+        success: false,
+    });
+    expect(host).not.toHaveBeenCalled();
+    const result = await available.handler({} as IAgentRuntime, {} as Memory, undefined, {
+        parameters: { query: "Tokyo news", provider: "fallback" },
+    });
+    expect(result).toMatchObject({ success: true, text: "host evidence" });
+    expect(host).toHaveBeenCalledExactlyOnceWith("Tokyo news", {
+        signal: undefined,
+        provider: "fallback",
+    });
+    expect(network).not.toHaveBeenCalled();
+});
+
+it("refuses fallback opt-in without a host-authorized runner", () => {
+    expect(() => createWebSearchEdgePlugin(undefined, { fallbackEnabled: true })).toThrow(
+        "host-authorized runner"
+    );
+    expect(() => createWebSearchEdgePlugin(runWebSearchEdge, { fallbackEnabled: true })).toThrow();
 });

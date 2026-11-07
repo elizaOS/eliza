@@ -8,7 +8,7 @@ version = "2.0.0"
 description = "Agent trust & security benchmark for ElizaOS - adversarial testing of threat detection across prompt injection, social engineering, impersonation, credential theft, privilege escalation, data exfiltration, and more"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "elizaOS Contributors" }
 ]
@@ -27,7 +27,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",

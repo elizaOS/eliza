@@ -1,0 +1,65 @@
+package ai.eliza.plugins.calendar.read;
+import org.json.*;
+import java.time.*;
+import java.util.*;
+public final class SelectedCalendarReaderTest {
+ static void require(boolean value){if(!value)throw new AssertionError();}
+ interface Work {void run()throws Exception;}
+ static void rejects(Work work)throws Exception{try{work.run();}catch(Exception expected){return;}throw new AssertionError("Expected rejection");}
+ static long epoch(String value){return Instant.parse(value).toEpochMilli();}
+ static class Rows implements android.database.Cursor {final List<Object[]> rows;int at=-1;Rows(List<Object[]> rows){this.rows=rows;}public boolean moveToFirst(){at=0;return !rows.isEmpty();}public boolean isNull(int column){return rows.get(at)[column]==null;}public int getType(int column){return rows.get(at)[column] instanceof Number?1:3;}public boolean moveToNext(){return ++at<rows.size();}public long getLong(int column){return ((Number)rows.get(at)[column]).longValue();}public String getString(int column){return (String)rows.get(at)[column];}public int getInt(int column){return ((Number)rows.get(at)[column]).intValue();}public void close(){}}
+ static class Provider extends android.content.ContentResolver {
+  List<Object[]> events=new ArrayList<>();String uri,selection,account="selected-account";boolean ownerDay,changeDuringRead;int eventReads;
+  public android.database.Cursor query(android.net.Uri uri,String[] projection,String selection,String[] args,String sort){
+   if(uri.value.equals("calendars/1"))return new Rows(Collections.singletonList(new Object[]{1L,account,"com.google","selected-name",500L,"selected-owner"}));
+   require(Arrays.equals(args,new String[]{"1"}));require(selection.contains(" IN (?)"));
+   if(uri.value.equals("calendars"))return new Rows(Collections.singletonList(new Object[]{1L}));
+   this.uri=uri.value;this.selection=selection;require(Arrays.equals(projection,new String[]{"event_id","calendar_id","title","begin","end","all_day"}));
+   if(ownerDay)require(selection.contains("all_day=0")&&selection.contains("all_day=1"));
+   // Query fixture supplies the complete selected calendar envelope. Actual reader must
+   // enforce each row's civil or instant membership; no UI filtering participates.
+   eventReads++;if(changeDuringRead)account="new-account";return new Rows(events);
+  }
+ }
+ static Object[] event(long id,String title,String start,String end,boolean allDay){return new Object[]{id,1L,title,epoch(start),epoch(end),allDay?1:0};}
+ static JSONArray sources(Provider provider)throws Exception{return new JSONArray().put(new JSONObject().put("id","1").put("revision",CalendarSourceIdentity.read(provider,1).getString("sourceRevision")));}
+ static Set<String> titles(JSONArray rows)throws Exception{Set<String> result=new HashSet<>();for(int i=0;i<rows.length();i++)result.add(rows.getJSONObject(i).getString("title"));return result;}
+ public static void main(String[] args)throws Exception {
+  if(args.length==1&&"midnight-gap-receipts".equals(args[0])){
+   JSONArray receipts=new JSONArray();
+   for(String[] sample:new String[][]{{"Africa/Cairo","2026-04-24"},{"America/Santiago","2026-09-06"}}){
+    ZoneId zone=ZoneId.of(sample[0]);LocalDate gap=LocalDate.parse(sample[1]);require(gap.atStartOfDay(zone).getHour()==1);
+    Provider empty=new Provider();empty.ownerDay=true;JSONObject ending=SelectedCalendarReader.next(empty,sources(empty),gap.minusDays(30).atStartOfDay(zone).toInstant().toEpochMilli(),zone);require(Instant.parse(ending.getJSONObject("window").getString("end")).atZone(zone).getHour()==1);receipts.put(new JSONObject().put("case",sample[0]+" end at first valid instant").put("receipt",ending));
+    Provider first=new Provider();first.ownerDay=true;first.events.add(event(1,"all-day starts with civil day",gap+"T00:00:00Z",gap.plusDays(1)+"T00:00:00Z",true));JSONObject starting=SelectedCalendarReader.next(first,sources(first),gap.atStartOfDay(zone).toInstant().toEpochMilli(),zone);require("upcoming".equals(starting.getJSONObject("event").getString("timing")));receipts.put(new JSONObject().put("case",sample[0]+" start at first valid instant").put("receipt",starting));
+   }
+   ZoneId rollbackZone=ZoneId.of("America/St_Johns");Instant rollback=rollbackZone.getRules().nextTransition(Instant.parse("2008-11-01T00:00:00Z")).getInstant();LocalDate rollbackDay=rollback.atZone(rollbackZone).toLocalDate();require(rollback.minusMillis(1).atZone(rollbackZone).toLocalDate().isAfter(rollbackDay));require(rollbackZone.getRules().previousTransition(rollback.plusMillis(1)).getDuration().equals(Duration.ofHours(-1)));
+   Provider ongoing=new Provider();ongoing.ownerDay=true;ongoing.events.add(event(1,"all-day continues through date rollback",rollbackDay+"T00:00:00Z",rollbackDay.plusDays(1)+"T00:00:00Z",true));JSONObject continued=SelectedCalendarReader.next(ongoing,sources(ongoing),rollback.toEpochMilli(),rollbackZone);require("ongoing".equals(continued.getJSONObject("event").getString("timing")));receipts.put(new JSONObject().put("case","America/St_Johns native ongoing all-day at backward date transition").put("receipt",continued));
+   Provider emptyRollback=new Provider();emptyRollback.ownerDay=true;JSONObject realEnd=SelectedCalendarReader.next(emptyRollback,sources(emptyRollback),rollbackDay.minusDays(30).atTime(12,0).atZone(rollbackZone).toInstant().toEpochMilli(),rollbackZone);require(Instant.parse(realEnd.getJSONObject("window").getString("end")).equals(rollbackDay.atStartOfDay(rollbackZone).toInstant()));receipts.put(new JSONObject().put("case","America/St_Johns native first day instant end").put("receipt",realEnd));JSONObject falseEnd=new JSONObject(realEnd.toString());falseEnd.getJSONObject("window").put("end",new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter().format(rollback));receipts.put(new JSONObject().put("case","America/St_Johns backward civil transition is not first day instant").put("valid",false).put("receipt",falseEnd));
+   System.out.println(receipts);return;
+  }
+  for(String zone:new String[]{"America/Los_Angeles","Asia/Tokyo"}){
+   Provider provider=new Provider();provider.ownerDay=true;LocalDate day=LocalDate.parse("2026-10-08");String start=day.atStartOfDay(ZoneId.of(zone)).toInstant().toString().replace("Z",".000Z"),end=day.plusDays(1).atStartOfDay(ZoneId.of(zone)).toInstant().toString().replace("Z",".000Z");
+   provider.events.add(event(1,"yesterday","2026-10-07T00:00:00Z","2026-10-08T00:00:00Z",true));provider.events.add(event(2,"today","2026-10-08T00:00:00Z","2026-10-09T00:00:00Z",true));provider.events.add(event(3,"tomorrow","2026-10-09T00:00:00Z","2026-10-10T00:00:00Z",true));provider.events.add(event(4,"multiday","2026-10-07T00:00:00Z","2026-10-09T00:00:00Z",true));provider.events.add(event(5,"timed",start,end,false));
+   JSONArray rows=SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,20,"2026-10-08","2026-10-09");require(titles(rows).equals(Set.of("today","multiday","timed")));
+   String[] parts=provider.uri.split("/");require(Long.parseLong(parts[1])==Math.min(epoch(start),epoch("2026-10-08T00:00:00Z")));require(Long.parseLong(parts[2])==Math.max(epoch(end),epoch("2026-10-09T00:00:00Z")));
+   rejects(()->SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,1,"2026-10-08","2026-10-09"));
+   provider.ownerDay=false;Set<String> legacy=titles(SelectedCalendarReader.read(provider,new JSONArray().put("1"),start,end,20));require(legacy.contains(zone.equals("Asia/Tokyo")?"yesterday":"tomorrow"));
+  }
+  for(String date:new String[]{"2026-03-08","2026-11-01"}){LocalDate day=LocalDate.parse(date);ZoneId zone=ZoneId.of("America/Los_Angeles");String start=day.atStartOfDay(zone).toInstant().toString().replace("Z",".000Z"),end=day.plusDays(1).atStartOfDay(zone).toInstant().toString().replace("Z",".000Z");Provider provider=new Provider();provider.ownerDay=true;provider.events.add(event(1,"today",date+"T00:00:00Z",day.plusDays(1)+"T00:00:00Z",true));provider.events.add(event(2,"tomorrow",day.plusDays(1)+"T00:00:00Z",day.plusDays(2)+"T00:00:00Z",true));require(titles(SelectedCalendarReader.readOwnerDay(provider,sources(provider),start,end,20,date,day.plusDays(1).toString())).equals(Set.of("today")));require(Duration.between(Instant.parse(start),Instant.parse(end)).toHours()==(date.contains("03-08")?23:25));}
+  Provider changed=new Provider();changed.ownerDay=true;changed.events.add(event(1,"original","2026-10-08T15:00:00Z","2026-10-08T16:00:00Z",false));JSONArray approved=sources(changed);changed.account="different-account";rejects(()->SelectedCalendarReader.readOwnerDay(changed,approved,"2026-10-08T07:00:00.000Z","2026-10-09T07:00:00.000Z",20,"2026-10-08","2026-10-09"));require(changed.eventReads==0);
+  changed.account="selected-account";changed.events.set(0,event(1,"legitimate daily content edit","2026-10-08T15:00:00Z","2026-10-08T16:00:00Z",false));require(titles(SelectedCalendarReader.readOwnerDay(changed,approved,"2026-10-08T07:00:00.000Z","2026-10-09T07:00:00.000Z",20,"2026-10-08","2026-10-09")).contains("legitimate daily content edit"));
+  changed.changeDuringRead=true;rejects(()->SelectedCalendarReader.readOwnerDay(changed,approved,"2026-10-08T07:00:00.000Z","2026-10-09T07:00:00.000Z",20,"2026-10-08","2026-10-09"));require(changed.eventReads==2);
+  for(String zoneName:new String[]{"America/Los_Angeles","Asia/Tokyo"}){
+   ZoneId zone=ZoneId.of(zoneName);LocalDate day=LocalDate.parse("2026-10-08");long now=day.atStartOfDay(zone).toInstant().toEpochMilli();Provider next=new Provider();next.ownerDay=true;
+   next.events.add(event(99,"timed instance",day.atStartOfDay(zone).plusHours(1).toInstant().toString(),day.atStartOfDay(zone).plusHours(2).toInstant().toString(),false));
+   next.events.add(event(7,"civil all-day first","2026-10-08T00:00:00Z","2026-10-09T00:00:00Z",true));
+   JSONObject result=SelectedCalendarReader.next(next,sources(next),now,zone);require(result.getJSONObject("event").getString("title").equals("civil all-day first"));require(result.getJSONObject("window").getString("end").equals(day.plusDays(30).atStartOfDay(zone).toInstant().toString().replace("Z",".000Z")));
+   next.events.add(event(3,"past timed but still running",day.atStartOfDay(zone).minusHours(1).toInstant().toString(),day.atStartOfDay(zone).plusHours(3).toInstant().toString(),false));require(SelectedCalendarReader.next(next,sources(next),now+1800000,zone).getJSONObject("event").getString("timing").equals("ongoing"));
+   next.events.clear();next.events.add(event(99,"recurring later instance",day.plusDays(2).atTime(8,0).atZone(zone).toInstant().toString(),day.plusDays(2).atTime(9,0).atZone(zone).toInstant().toString(),false));next.events.add(event(99,"recurring next instance",day.plusDays(1).atTime(8,0).atZone(zone).toInstant().toString(),day.plusDays(1).atTime(9,0).atZone(zone).toInstant().toString(),false));require(SelectedCalendarReader.next(next,sources(next),now,zone).getJSONObject("event").getString("title").equals("recurring next instance"));
+   next.events.clear();next.events.add(event(1,"outside fixed window",day.plusDays(30).atStartOfDay(zone).toInstant().toString(),day.plusDays(30).atTime(1,0).atZone(zone).toInstant().toString(),false));require(SelectedCalendarReader.next(next,sources(next),now,zone).isNull("event"));
+   JSONArray identity=sources(next);next.account="foreign-calendar-owner";rejects(()->SelectedCalendarReader.next(next,identity,now,zone));next.account="selected-account";next.changeDuringRead=true;rejects(()->SelectedCalendarReader.next(next,sources(next),now,zone));
+  }
+  for(String date:new String[]{"2026-03-01","2026-10-15"}){ZoneId zone=ZoneId.of("America/Los_Angeles");LocalDate day=LocalDate.parse(date);long now=day.atStartOfDay(zone).toInstant().toEpochMilli();Provider empty=new Provider();empty.ownerDay=true;JSONObject result=SelectedCalendarReader.next(empty,sources(empty),now,zone);require(result.isNull("event"));require(result.getJSONObject("window").getString("end").equals(day.plusDays(30).atStartOfDay(zone).toInstant().toString().replace("Z",".000Z")));}
+  System.out.println("PASS selected Calendar reader: LA/Tokyo civil dates, multi-day events, DST, provider query coverage/projection, overflow, source/account revision mismatch/race, daily content edits and unchanged foreground instant contract");
+ }
+}

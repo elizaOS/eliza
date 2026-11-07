@@ -67,6 +67,14 @@ export function parseWorkflowTestArgs(argv) {
 
 const vitestConfigs = new Map([
   [
+    "__tests__/integration/hosted-native-evening-http.test.ts",
+    "vitest.hosted-digests.config.ts",
+  ],
+  [
+    "__tests__/integration/hosted-native-source-http.test.ts",
+    "vitest.hosted-digests.config.ts",
+  ],
+  [
     "__tests__/integration/hosted-digests-http.test.ts",
     "vitest.hosted-digests.config.ts",
   ],

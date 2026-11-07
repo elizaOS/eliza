@@ -5,9 +5,10 @@
  * signals, invokes the analyzer, and exposes the fired-log accessor over the
  * PROACTIVE_AGENT task metadata where the profile is persisted.
  */
+
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   LifeOpsScreenContextSampler,
@@ -408,7 +409,12 @@ export function readFiredLogFromMetadata(
 export function profileNeedsRebuild(
   profile: ActivityProfile | null,
   now: Date,
+  timezone: string,
 ): boolean {
   if (!profile) return true;
+  // A refresh keeps the stored profile's zone for its day key, so a profile
+  // built in another zone (owner zone changed, travel started or ended) must
+  // be rebuilt rather than refreshed.
+  if (profile.timezone !== timezone) return true;
   return now.getTime() - profile.analyzedAt > PROFILE_MAX_AGE_MS;
 }

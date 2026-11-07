@@ -5,9 +5,8 @@
  * Android; other platforms intentionally leave registration unchanged so the app does
  * not appear in the catalog where it cannot function.
  */
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 
-import { type OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
-import { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
 export const wifiApp: OverlayApp = {
   name: WIFI_APP_NAME,

@@ -31,10 +31,15 @@ const apkArg = readFlag("--apk");
 const shouldBuild = args.has("--build");
 const launcherMode = args.has("--launcher");
 const shouldLaunch = !args.has("--no-launch") && !launcherMode;
-const homeTimeoutMs = Number.parseInt(
-  readFlag("--home-timeout-ms") ?? "120000",
-  10,
-);
+const homeTimeoutMs =
+  // Number.parseInt stops at the first non-digit, so "5000junk" parsed to
+  // 5000 and was silently accepted instead of being treated as malformed.
+  // Require the whole trimmed value to be decimal, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  (() => {
+    const raw = (readFlag("--home-timeout-ms") ?? "120000").trim();
+    return /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  })();
 
 if (
   launcherMode &&

@@ -4,21 +4,25 @@
  * Uploads a user profile image to R2 and updates `users.avatar`.
  */
 
-import { and, eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
-import { dbWrite } from "@/db/helpers";
-import { orgStorageQuotaRepository } from "@/db/repositories/org-storage-quota";
-import { users } from "@/db/schemas/users";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { orgStorageQuotaRepository } from "@elizaos/cloud-shared/db/repositories/org-storage-quota";
+import { type User, users } from "@elizaos/cloud-shared/db/schemas/users";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { putPublicObject } from "@/lib/storage/r2-public-object";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { putPublicObject } from "@elizaos/cloud-shared/lib/storage/r2-public-object";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { and, eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 // The multipart envelope — boundaries, part headers, any additional fields —
@@ -231,6 +235,7 @@ app.post("/", async (c) => {
     };
 
     let updateRowCount: number | undefined;
+    let persistedRow: User | undefined;
     try {
       const updated = await dbWrite
         .update(users)
@@ -241,15 +246,15 @@ app.post("/", async (c) => {
             eq(users.organization_id, authed.organization_id),
           ),
         )
-        .returning({ id: users.id });
+        .returning();
       updateRowCount = updated.length;
+      persistedRow = updated[0];
     } catch (updateError) {
       // error-policy:J1 an UPDATE rejection has an ambiguous acknowledgement;
       // primary readback decides whether the HTTP boundary can report success.
-      let persistedUser: { avatar: string | null } | undefined;
+      let persistedUser: User | undefined;
       try {
         persistedUser = await dbWrite.query.users.findFirst({
-          columns: { avatar: true },
           where: and(
             eq(users.id, authed.id),
             eq(users.organization_id, authed.organization_id),
@@ -284,12 +289,16 @@ app.post("/", async (c) => {
         );
         throw updateError;
       }
+      persistedRow = persistedUser;
     }
 
     if (updateRowCount !== undefined && updateRowCount !== 1) {
       await cleanupDefinitivePersistenceMiss();
       throw NotFoundError("User not found");
     }
+
+    // Cached user readers (GET /api/v1/user, app-auth session) still hold the old avatar.
+    if (persistedRow) await usersService.invalidateCache(persistedRow);
 
     return c.json({
       success: true,

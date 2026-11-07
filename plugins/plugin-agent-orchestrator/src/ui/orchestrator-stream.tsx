@@ -2,9 +2,8 @@
  * Renders normalized task conversation blocks, including agent-addressable
  * tool and reasoning disclosures shared by Orchestrator and Cockpit views.
  */
+import { Badge, Button, Card, Separator, useAgentElement } from "@elizaos/ui";
 
-import { Badge, Button, Card, Separator } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Check,
   ChevronRight,

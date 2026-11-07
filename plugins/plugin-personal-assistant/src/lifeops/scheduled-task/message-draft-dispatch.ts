@@ -9,7 +9,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  ElizaError,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import {
   type DeferredMessageScheduleResult,
   type DraftRecord,
@@ -186,12 +190,44 @@ async function schedulePersistedDraft(args: {
   }
 }
 
+/**
+ * A new Gmail compose without an account sends from "default", which the
+ * Google credential resolver turns into the sole connected account at send
+ * time. Bind that account now, so a later disconnect cannot move the send to
+ * another account.
+ */
+async function bindGmailComposeAccount(
+  runtime: IAgentRuntime,
+  draft: DraftRecord,
+): Promise<DraftRecord> {
+  if (draft.source !== "gmail" || draft.inReplyToId || draft.worldId) {
+    return draft;
+  }
+  const connected = (
+    await getConnectorAccountManager(runtime).listAccounts("google")
+  ).filter((account) => account.status === "connected");
+  if (connected.length !== 1) {
+    throw new ElizaError(
+      connected.length === 0
+        ? "No Google account is connected to send this email from."
+        : "Choose which Google account sends this email before scheduling it.",
+      {
+        code: "MESSAGE_DRAFT_GMAIL_ACCOUNT_UNRESOLVED",
+        context: { draftId: draft.draftId, connected: connected.length },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return { ...draft, worldId: connected[0].id };
+}
+
 async function schedulePersistedDraftOnce(args: {
   runtime: IAgentRuntime;
   draft: DraftRecord;
   sendAtMs: number;
   key: string;
 }): Promise<DeferredMessageScheduleResult> {
+  const draft = await bindGmailComposeAccount(args.runtime, args.draft);
   const runner = getScheduledTaskRunner(args.runtime, {
     agentId: String(args.runtime.agentId),
   });
@@ -221,7 +257,7 @@ async function schedulePersistedDraftOnce(args: {
       [MESSAGE_DRAFT_METADATA_KEY]: {
         version: MESSAGE_DRAFT_PAYLOAD_VERSION,
         scheduledAtIso,
-        draft: persistedDraftSnapshot(args.draft),
+        draft: persistedDraftSnapshot(draft),
       },
     },
   });

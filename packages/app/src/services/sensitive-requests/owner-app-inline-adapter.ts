@@ -1,3 +1,9 @@
+import {
+  isOwnerAppDeliveryRuntime,
+  isPolicySensitiveRequest,
+  looksLikeOwnerAppPrivate,
+  resolveOwnerAppTarget,
+} from "./owner-app-delivery.js";
 /**
  * SensitiveRequestDeliveryAdapter for `target === "owner_app_inline"`: delivers
  * `kind: "secret"` sensitive-requests inline into the owner-app private DM chat.
@@ -16,15 +22,11 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
-  type DispatchSensitiveRequest,
   logger,
   requireConfirmedSendHandlerDelivery,
-  type SendHandlerResult,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestSecretTarget,
-  type TargetInfo,
-  type UUID,
 } from "@elizaos/core";
 
 /**
@@ -32,63 +34,6 @@ import {
  * rather than depending on `IAgentRuntime` directly so the adapter can be
  * unit-tested with a minimal mock and so the registry can pass `unknown`.
  */
-interface OwnerAppInlineRuntime {
-  sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult;
-  getRoom?(roomId: string): Promise<{
-    channelId?: string;
-    serverId?: string;
-    type?: string;
-    source?: string;
-  } | null>;
-}
-
-function isOwnerAppInlineRuntime(
-  value: unknown,
-): value is OwnerAppInlineRuntime {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "sendMessageToTarget" in value &&
-    typeof (value as { sendMessageToTarget: unknown }).sendMessageToTarget ===
-      "function"
-  );
-}
-
-function isPolicySensitiveRequest(
-  value: DispatchSensitiveRequest,
-): value is DispatchSensitiveRequest & SensitiveRequest {
-  const record = value as Record<string, unknown>;
-  const target = record.target;
-  const delivery = record.delivery;
-  return (
-    typeof record.status === "string" &&
-    typeof record.agentId === "string" &&
-    target !== null &&
-    typeof target === "object" &&
-    typeof (target as { kind?: unknown }).kind === "string" &&
-    delivery !== null &&
-    typeof delivery === "object" &&
-    typeof (delivery as { mode?: unknown }).mode === "string"
-  );
-}
-
-/**
- * The owner-app private chat lives on the local Eliza app surface. The
- * canonical signal mirrors `request-secret.ts`'s `buildSecretRequestEnvironment`:
- * a DM-typed channel whose source identifies the owner app.
- */
-const OWNER_APP_SOURCES = new Set(["app", "in_app", "eliza_app", "owner_app"]);
-
-function looksLikeOwnerAppPrivate(input: {
-  channelType?: string;
-  source?: string;
-}): boolean {
-  if (input.channelType !== ChannelType.DM) return false;
-  const source =
-    typeof input.source === "string" ? input.source.trim().toLowerCase() : "";
-  return OWNER_APP_SOURCES.has(source);
-}
-
 interface SensitiveRequestFormField {
   name: string;
   label?: string;
@@ -216,18 +161,6 @@ function buildInlineContent(envelope: InlineSecretRequestEnvelope): Content {
   } as Content & { secretRequest: InlineSecretRequestEnvelope };
 }
 
-function resolveTarget(
-  request: SensitiveRequest,
-  channelId?: string,
-): TargetInfo {
-  return {
-    source: "owner_app",
-    channelId,
-    roomId: (request.sourceRoomId ?? undefined) as UUID | undefined,
-    entityId: (request.ownerEntityId ?? undefined) as UUID | undefined,
-  };
-}
-
 export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
   {
     target: "owner_app_inline",
@@ -237,7 +170,7 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
       // classified source — the registry passes `channelId` here only as a
       // hint. The real authority is the policy classifier already used by
       // `request-secret.ts` (`classifySensitiveRequestSource`).
-      return isOwnerAppInlineRuntime(runtime);
+      return isOwnerAppDeliveryRuntime(runtime);
     },
 
     async deliver({
@@ -253,7 +186,7 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
         };
       }
       const request = rawRequest;
-      if (!isOwnerAppInlineRuntime(runtime)) {
+      if (!isOwnerAppDeliveryRuntime(runtime)) {
         return {
           delivered: false,
           target: "owner_app_inline",
@@ -293,7 +226,7 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
 
       const envelope = buildInlineEnvelope(request);
       const content = buildInlineContent(envelope);
-      const target = resolveTarget(request, channelId);
+      const target = resolveOwnerAppTarget(request, channelId);
 
       try {
         requireConfirmedSendHandlerDelivery(

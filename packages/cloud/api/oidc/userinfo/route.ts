@@ -16,27 +16,33 @@
  * from `WWW-Authenticate` alone.
  */
 
-import { Hono } from "hono";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { buildOidcClaims } from "@/lib/oidc/claims";
-import { getOidcClient } from "@/lib/oidc/clients";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { buildOidcClaims } from "@elizaos/cloud-shared/lib/oidc/claims";
+import { getOidcClient } from "@elizaos/cloud-shared/lib/oidc/clients";
 import {
   describeOidcConfigFailure,
   isOidcEnabled,
   type OidcConfig,
   resolveOidcConfig,
-} from "@/lib/oidc/config";
-import { oidcErrorBody } from "@/lib/oidc/errors";
-import { isOidcSigningConfigured } from "@/lib/oidc/keys";
-import { assertOidcSubjectEligible, loadOidcSubject } from "@/lib/oidc/subject";
-import { verifyOidcAccessToken } from "@/lib/oidc/tokens";
-import { resolveOidcUsername } from "@/lib/oidc/username";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/oidc/config";
+import { oidcErrorBody } from "@elizaos/cloud-shared/lib/oidc/errors";
+import { isOidcSigningConfigured } from "@elizaos/cloud-shared/lib/oidc/keys";
+import {
+  assertOidcSubjectEligible,
+  loadOidcSubject,
+} from "@elizaos/cloud-shared/lib/oidc/subject";
+import { verifyOidcAccessToken } from "@elizaos/cloud-shared/lib/oidc/tokens";
+import { resolveOidcUsername } from "@elizaos/cloud-shared/lib/oidc/username";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

@@ -422,9 +422,25 @@ export class DesktopWeb extends WebPlugin {
   async writeToClipboard(options: {
     text?: string;
     html?: string;
+    image?: string;
+    rtf?: string;
   }): Promise<void> {
     if (options.text) {
       await navigator.clipboard.writeText(options.text);
+      return;
+    }
+    if (options.image) {
+      // The contract carries the image as base64 (the native host decodes
+      // it the same way). Without this branch an image-only write fell
+      // through and resolved having written nothing.
+      const bytes = Uint8Array.from(atob(options.image), (ch) =>
+        ch.charCodeAt(0),
+      );
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob([bytes], { type: "image/png" }),
+        }),
+      ]);
       return;
     }
     if (options.html) {
@@ -441,7 +457,17 @@ export class DesktopWeb extends WebPlugin {
     rtf?: string;
     hasImage: boolean;
   }> {
-    return { text: await navigator.clipboard.readText(), hasImage: false };
+    const items = await navigator.clipboard.read();
+    const textItem = items.find((item) => item.types.includes("text/plain"));
+    const text = textItem
+      ? await (await textItem.getType("text/plain")).text()
+      : undefined;
+    return {
+      text: text || undefined,
+      hasImage: items.some((item) =>
+        item.types.some((type) => type.startsWith("image/")),
+      ),
+    };
   }
   async clearClipboard(): Promise<void> {
     await navigator.clipboard.writeText("");

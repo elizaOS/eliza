@@ -348,7 +348,7 @@ describe("downloadVoiceModel atomic swap", () => {
 		}
 	}
 
-	it("refuses when networkPolicy.allow is false", async () => {
+	it("refuses an automatic download when networkPolicy.allow is false", async () => {
 		await withTmp(async (dir) => {
 			const version = makeVersion({
 				id: "vad",
@@ -367,6 +367,7 @@ describe("downloadVoiceModel atomic swap", () => {
 					bundleVoiceDir: path.join(dir, "voice"),
 					stagingDir: path.join(dir, "staging"),
 					assetIndex: 0,
+					trigger: "auto",
 					networkPolicy: {
 						class: "cellular",
 						allow: false,
@@ -417,6 +418,7 @@ describe("downloadVoiceModel atomic swap", () => {
 						bundleVoiceDir,
 						stagingDir,
 						assetIndex: 0,
+						trigger: "auto",
 						networkPolicy: {
 							class: "wifi-unmetered",
 							allow: true,
@@ -438,7 +440,7 @@ describe("downloadVoiceModel atomic swap", () => {
 		});
 	});
 
-	it("happy path renames into the final bundle voice dir", async () => {
+	it("an explicit request downloads under an ask decision and renames into the final bundle voice dir", async () => {
 		await withTmp(async (dir) => {
 			const bundleVoiceDir = path.join(dir, "voice");
 			const stagingDir = path.join(dir, "staging");
@@ -475,10 +477,11 @@ describe("downloadVoiceModel atomic swap", () => {
 					bundleVoiceDir,
 					stagingDir,
 					assetIndex: 0,
+					trigger: "explicit",
 					networkPolicy: {
-						class: "wifi-unmetered",
-						allow: true,
-						reason: "auto",
+						class: "unknown",
+						allow: false,
+						reason: "metered-ask",
 						estimatedBytes: fileBytes.byteLength,
 					},
 					signal: new AbortController().signal,

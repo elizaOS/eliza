@@ -12,7 +12,7 @@
 
 import type { IAgentRuntime, Memory, UUID, World } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { updateRoleHandler } from "./roles.ts";
 
@@ -65,6 +65,7 @@ function buildRuntime(
   return {
     agentId: AGENT_ID,
     adapter,
+    getService: () => null,
     getSetting: (key: string) =>
       key === "WORLD_ID" ? String(CONFIG_WORLD_ID) : null,
     getWorld: async (worldId: UUID) => {

@@ -7,25 +7,27 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { getHttpRuntime } from "@elizaos/host/protocol";
 import {
   type CapturedAction,
+  type ScenarioContext,
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/testing";
+import {
   type DeterministicModelFixture,
   finalMessageUserText,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-  type ScenarioContext,
-  type ScenarioTurnExecution,
-  scenario,
   strictActionRouteFixtures,
-} from "@elizaos/testing";
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 import { buildPreview } from "../../../../../plugins/plugin-github/src/actions/issue-op.ts";
 import { buildReviewPreview } from "../../../../../plugins/plugin-github/src/actions/pr-op.ts";
 import githubPlugin, {
   GitHubService,
 } from "../../../../../plugins/plugin-github/src/index.ts";
-import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -36,7 +38,7 @@ const COMMENT_URL = "https://github.test/octo/repo/issues/17#issuecomment-99";
 const PR_URL = "https://github.test/octo/repo/pull/17";
 const REVIEW_BODY = "Looks good";
 const ISSUE_CREATE_PREVIEW =
-  'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent. Re-invoke with confirmed: true to proceed.';
+  'About to create octo/repo issue: "Deterministic issue" body: "Created by scenario" [labels: scenario] [assignees: hubot] as agent.';
 type JsonRecord = Record<string, unknown>;
 type RuntimeWithGithubScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
@@ -265,7 +267,7 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     return err instanceof Error ? err.message : String(err);
   }
 }
-function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
+function githubIssueParameters(): Record<string, unknown> {
   return {
     action: "issue_create",
     repo: REPO,
@@ -274,7 +276,6 @@ function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
     labels: ["scenario"],
     assignees: ["hubot"],
     as: "agent",
-    confirmed,
   };
 }
 function githubActionParameters(
@@ -285,21 +286,20 @@ function githubActionParameters(
     action,
     repo: REPO,
     as: "agent",
-    confirmed: true,
     ...parameters,
   };
 }
 const strictGithubRoutes = [
   {
     actionName: "GITHUB_ISSUE_CREATE",
-    args: githubIssueParameters(false),
+    args: githubIssueParameters(),
     contextIds: ["code"],
     input: "create deterministic GitHub issue preview",
     messageToUser: "",
   },
   {
     actionName: "GITHUB_ISSUE_CREATE",
-    args: githubIssueParameters(true),
+    args: githubIssueParameters(),
     contextIds: ["code"],
     input: "yes, create deterministic GitHub issue after confirmation",
     messageToUser: `Created issue ${REPO}#17: ${ISSUE_URL}`,
@@ -443,7 +443,7 @@ const githubPreviewEvaluator: DeterministicModelFixture = {
       result.type !== "tool-result" ||
       toolCall.toolName !== "GITHUB_ISSUE_CREATE" ||
       stableStringify(toolCall.input) !==
-        stableStringify(githubIssueParameters(false)) ||
+        stableStringify(githubIssueParameters()) ||
       result.toolCallId !== toolCall.toolCallId ||
       result.toolName !== toolCall.toolName ||
       result.output.type !== "text"
@@ -864,6 +864,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
         repo: "repo",
         state: "open",
         per_page: 100,
+        page: 1,
+        sort: "created",
+        direction: "asc",
       },
     },
     {
@@ -873,6 +876,9 @@ async function finalGithubCheck(): Promise<string | undefined> {
         repo: "repo",
         state: "open",
         per_page: 100,
+        page: 1,
+        sort: "created",
+        direction: "asc",
       },
     },
     {

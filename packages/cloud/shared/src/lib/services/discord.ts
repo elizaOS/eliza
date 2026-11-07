@@ -1,16 +1,12 @@
 // Coordinates cloud service discord behavior behind route handlers.
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { DISCORD_API_BASE, discordBotHeaders, discordFetch } from "../utils/discord-api";
 import { logger } from "../utils/logger";
 
-const DISCORD_API = "https://discord.com/api/v10";
-
 async function discordPost(token: string, path: string, body: unknown): Promise<Response> {
-  return fetch(`${DISCORD_API}${path}`, {
+  return discordFetch(`${DISCORD_API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      Authorization: `Bot ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: discordBotHeaders(token),
     body: JSON.stringify(body),
   });
 }
@@ -165,7 +161,7 @@ class DiscordService {
     }
 
     const threadData: ThreadCreateData = {
-      name: data.name.slice(0, 100),
+      name: truncateWellFormed(data.name, 100),
       auto_archive_duration: data.autoArchiveDuration || 1440,
       type: 11, // PUBLIC_THREAD
     };
@@ -368,7 +364,8 @@ class DiscordService {
     const fields: DiscordEmbedField[] = [
       {
         name: "Prompt",
-        value: videoData.prompt.slice(0, 200) + (videoData.prompt.length > 200 ? "..." : ""),
+        value:
+          truncateWellFormed(videoData.prompt, 200) + (videoData.prompt.length > 200 ? "..." : ""),
         inline: false,
       },
       {
@@ -479,7 +476,8 @@ class DiscordService {
     const fields: DiscordEmbedField[] = [
       {
         name: "Prompt",
-        value: imageData.prompt.slice(0, 200) + (imageData.prompt.length > 200 ? "..." : ""),
+        value:
+          truncateWellFormed(imageData.prompt, 200) + (imageData.prompt.length > 200 ? "..." : ""),
         inline: false,
       },
       {
@@ -601,7 +599,9 @@ class DiscordService {
     if (appData.description) {
       fields.push({
         name: "Description",
-        value: appData.description.slice(0, 200) + (appData.description.length > 200 ? "..." : ""),
+        value:
+          truncateWellFormed(appData.description, 200) +
+          (appData.description.length > 200 ? "..." : ""),
         inline: false,
       });
     }
@@ -804,7 +804,7 @@ class DiscordService {
         : characterData.bio;
       fields.push({
         name: "Bio",
-        value: bioText.slice(0, 200) + (bioText.length > 200 ? "..." : ""),
+        value: truncateWellFormed(bioText, 200) + (bioText.length > 200 ? "..." : ""),
         inline: false,
       });
     }

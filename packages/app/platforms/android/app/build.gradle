@@ -9,6 +9,7 @@ apply plugin: 'com.android.application'
 // project lives outside the eliza tree and the relative walk overshoots.
 // Keep the variable name and single definition, or that pin silently misses.
 def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+apply from: new File(elizaRepoRoot, 'packages/app/platforms/android/runtime-abis.gradle')
 def elizaVoiceFfiIncludeDir = System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR')
     ? new File(System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR'))
     : new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include')
@@ -26,12 +27,18 @@ def resolveElizaVoiceArm64SourceDir = {
 }
 
 def resolveElizaVoiceProbePrebuilt = {
-    def sourceDir = resolveElizaVoiceArm64SourceDir()
-    if (sourceDir) {
-        def sourcePrebuilt = new File(sourceDir.toString(), 'libelizainference.so')
-        if (sourcePrebuilt.isFile()) return sourcePrebuilt
+    def abis = android.defaultConfig.ndk.abiFilters ?: ['arm64-v8a', 'x86_64']
+    for (def abi : abis) {
+        def sourceDir = abi == 'arm64-v8a' ? resolveElizaVoiceArm64SourceDir() :
+            (project.findProperty("eliza.mtp.android.libdir.${abi}") ?: System.getenv("ELIZA_MTP_ANDROID_LIBDIR_${abi.replace('-', '_').toUpperCase()}"))
+        if (sourceDir) {
+            def sourcePrebuilt = new File(sourceDir.toString(), 'libelizainference.so')
+            if (sourcePrebuilt.isFile()) return sourcePrebuilt
+        }
+        def stagedPrebuilt = file("src/main/jniLibs/${abi}/libelizainference.so")
+        if (stagedPrebuilt.isFile()) return stagedPrebuilt
     }
-    return file("src/main/jniLibs/arm64-v8a/libelizainference.so")
+    return file("src/main/jniLibs/${abis.first()}/libelizainference.so")
 }
 
 android {
@@ -51,6 +58,8 @@ android {
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL') ?: 'https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER') ?: '+14159611510').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL') ?: 'Eliza Cloud Gateway (+14159611510)').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
+        // Development builds may also admit the staging Cloud deployment for native sign-in.
+        buildConfigField "boolean", "ELIZA_CLOUD_SIGN_IN_STAGING", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_CLOUD_SIGN_IN_STAGING') ?: 'false').toLowerCase())}"
         def browserPackage = System.getenv('ELIZA_CHROMIUM_PACKAGE_NAME')
         if (browserPackage == null) browserPackage = 'org.chromium.chrome'
         if (!(browserPackage in ['org.chromium.chrome', 'ai.elizaos.chromium'])) {
@@ -71,6 +80,11 @@ android {
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
         versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // libelizainference ASR decode threads; ElizaVoiceNative exports them
+        // (and ELIZA_ASR_BACKEND=ggml, Phonon-2 being the only ASR) before
+        // loading the library. Empty means one per big core, measured on the device.
+        def asrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
+        buildConfigField "String", "ELIZA_ASR_THREADS", "\"${asrThreads ==~ /[0-9]{1,2}/ ? asrThreads : ''}\""
         // AOSP-only build gate. The ElizaOS AOSP product build sets
         // -PelizaAospBuild=true via scripts/elizaos/build-aosp.ts; the
         // Capacitor APK build path (`bun run build:android`) leaves it
@@ -209,12 +223,8 @@ android {
         }
     }
 
-    // Preserve .gguf / .so as-is in the packaged APK.
-    //
-    // .gguf is added so bundled chat + embedding models stay byte-identical
-    // for memory-mapped loading; .so already ships uncompressed but
-    // declaring it here matches AGP's recommended noCompress list and
-    // protects against future packaging-default changes.
+    // Native libraries retain their packaging policy. Model assets may be
+    // compressed: their installers verify extracted bytes before native mmap.
     //
     // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
     // `*.tar.gz` by stripping the `.gz` suffix at packaging time
@@ -225,7 +235,7 @@ android {
     // writing them to disk as `.tar.gz` so PGlite's runtime loader
     // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
     androidResources {
-        noCompress += ['gguf', 'so']
+        noCompress += ['so']
     }
 
     compileOptions {
@@ -238,7 +248,7 @@ android {
     sourceSets {
         test.resources.srcDir new File(
             elizaRepoRoot,
-            'packages/ui/src/native-transcript/fixtures'
+            'packages/core/src/contracts/native-transcript/fixtures'
         )
     }
 
@@ -258,11 +268,11 @@ android {
         }
     }
 
-    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.
+    // Preserve .tar.gz / .tar / .so as-is in the packaged APK.
     // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime
     // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.
     androidResources {
-        noCompress += ['gguf', 'tar.gz', 'so', 'tar']
+        noCompress += ['tar.gz', 'so', 'tar']
     }
 }
 // Bundle the NDK (bionic) fused inference stack into the APK's jniLibs.
@@ -356,10 +366,11 @@ task copyForkLlamaLib {
             return
         }
         def stagedAbis = [] as Set
-        def requiredAbis = project.ext.elizaRequiredJniAbis
+        def selectedAbis = android.defaultConfig.ndk.abiFilters
+        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }
         int totalCopied = 0
         boolean stagedKernels = false
-        project.ext.elizaForkLlamaAbis.each { abi ->
+        project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->
             def libDir = resolveForkLlamaLibDir(abi)
             if (!libDir) {
                 // No fresh source configured. If the fused lib set is already
@@ -581,6 +592,8 @@ repositories {
 }
 
 dependencies {
+    implementation project(':voice-assets')
+    implementation "com.squareup.okhttp3:okhttp:5.3.2"
     implementation "com.google.code.gson:gson:2.13.2"
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
@@ -595,6 +608,8 @@ dependencies {
         implementation "com.google.guava:guava:31.1-android"
     }
     implementation project(':capacitor-android')
+    // Native Eliza Cloud sign-in (email code, SMS code, native Google): ElizaCloudSignInPlugin.
+    implementation project(':eliza-auth-cloud')
     implementation "com.google.code.gson:gson:2.14.0"
     if (project.findProperty('elizaCloudBuild') != 'true') {
         implementation "com.google.firebase:firebase-common-ktx:21.0.0"
@@ -604,19 +619,18 @@ dependencies {
     // SafePushNotificationsPlugin compiles its no-config crash guard.
     compileOnly "com.google.firebase:firebase-messaging:25.0.1"
     testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.json:json:20250517"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test:runner:$androidxTestRunnerVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
 

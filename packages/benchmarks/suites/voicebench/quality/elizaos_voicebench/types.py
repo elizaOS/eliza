@@ -122,3 +122,4 @@ class VoiceBenchResult:
     stt_provider: str = ""
     mock: bool = False
     include_edge_scenarios: bool = False
+    scorer_revision: str = "voicebench-quality-v2"

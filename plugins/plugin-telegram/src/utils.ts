@@ -3,7 +3,7 @@
  * agent Markdown to Telegram MarkdownV2 (`convertMarkdownToTelegram`) and maps a
  * `Button[]` to Telegraf inline-keyboard markup (`convertToTelegramButtons`).
  */
-import { logger } from "@elizaos/core";
+import { logger, truncateWellFormed } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
 import { Markup } from "telegraf";
 import type { Button } from "./types";
@@ -24,17 +24,24 @@ function escapePlainText(text: string): string {
 
 /**
  * Escapes plain text line‐by–line while preserving any leading blockquote markers.
+ * When the text does not start a line (it follows code, a link or bold on the
+ * same line), its first line has no blockquote marker: a ">" there is
+ * mid-line and must be escaped, or Telegram rejects the message.
  */
-function escapePlainTextPreservingBlockquote(text: string): string {
+function escapePlainTextPreservingBlockquote(
+  text: string,
+  startsLine = true,
+): string {
   if (!text) {
     return "";
   }
   return text
     .split("\n")
-    .map((line) => {
+    .map((line, index) => {
       // If the line begins with one or more ">" (and optional space),
       // leave that part unescaped.
-      const match = line.match(/^(>+\s?)(.*)$/);
+      const match =
+        startsLine || index > 0 ? line.match(/^(>+\s?)(.*)$/) : null;
       if (match) {
         return match[1] + escapePlainText(match[2]);
       }
@@ -111,6 +118,21 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
+  // 1b. An unmatched opening fence: a truncated or streamed message can end
+  //     inside a code block, and the rest of the text is still code. Hold it
+  //     aside like a closed body; the style passes below cannot see fence
+  //     state, so a `#` comment line would become a heading and `**` would
+  //     become bold. Close the Telegram code entity at the message boundary
+  //     while preserving all code content from the input.
+  converted = converted.replace(
+    /```([^\s`]+)?\r?\n([\s\S]*)$/,
+    (_match, lang, code) => {
+      const escapedCode = escapeCode(code);
+      const formatted = `\`\`\`${lang || ""}\n${escapedCode}\`\`\``;
+      return storeReplacement(formatted);
+    },
+  );
+
   // 2. Inline code (`...`)
   converted = converted.replace(/`([^`]+)`/g, (_match, code) => {
     const escapedCode = escapeCode(code);
@@ -132,14 +154,33 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
+  // 3b. Bare URLs: hold them aside as plain text before the emphasis passes,
+  //     or a `_x_` or `*x*` inside a path becomes italic and Telegram links to
+  //     a different address. Balanced parentheses stay in the URL; trailing
+  //     punctuation and emphasis closers do not.
+  converted = converted.replace(
+    /https?:\/\/(?:[^\s<>()]|\([^\s()]*\))*(?:[^\s<>().,;:!?*_~'"]|\([^\s()]*\))/g,
+    (url) => storeReplacement(escapePlainText(url)),
+  );
+
+  // Protect escaped asterisks before interpreting emphasis. Consuming pairs
+  // of backslashes also preserves whether the next asterisk is escaped.
+  // Code and link destinations were already stored above and stay unchanged.
+  converted = converted.replace(/\\([\\*])/g, (_match, literal) =>
+    storeReplacement(escapePlainText(literal)),
+  );
+
   // 4. Bold text: standard markdown bold **text**
   //    Telegram bold is delimited by single asterisks: *text*
-  converted = converted.replace(/\*\*([^*]+)\*\*/g, (_match, content) => {
-    const formattedContent = escapePlainText(content);
-    const formatted = `*${formattedContent}*`;
-    boldInner.set(replacements.length, formattedContent);
-    return storeReplacement(formatted);
-  });
+  converted = converted.replace(
+    /\*\*(?!\s)([^*]+)(?<!\s)\*\*/g,
+    (_match, content) => {
+      const formattedContent = escapePlainText(content);
+      const formatted = `*${formattedContent}*`;
+      boldInner.set(replacements.length, formattedContent);
+      return storeReplacement(formatted);
+    },
+  );
 
   // 5. Strikethrough: standard markdown uses ~~text~~,
   //    while Telegram uses ~text~
@@ -153,9 +194,12 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    Standard markdown italic can be written as either *text* or _text_.
   //    In Telegram MarkdownV2 italic must be delimited by underscores.
   //    Process asterisk-based italic first.
-  //    (Using negative lookbehind/lookahead to avoid matching bold **)
+  //    Bold spans have already been stored; remaining single delimiters
+  //    can sit beside literal unmatched asterisks.
+  //    As in CommonMark, a `*` followed by whitespace cannot open italic and
+  //    one preceded by whitespace cannot close it, so `2 * 3 * 4` stays literal.
   converted = converted.replace(
-    /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+    /\*(?![\s*])([^*\n]+)(?<!\s)\*/g,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;
@@ -213,13 +257,15 @@ export function convertMarkdownToTelegram(markdown: string): string {
 
   const finalEscaped = converted
     .split(SENTINEL_PATTERN)
-    .map((segment) => {
+    .map((segment, index) => {
       // If the segment is a sentinel, leave it untouched.
       if (SENTINEL_TEST.test(segment)) {
         return segment;
       } else {
         // Otherwise, escape it while preserving any leading blockquote markers.
-        return escapePlainTextPreservingBlockquote(segment);
+        // Only the first segment starts the text; every later one follows a
+        // sentinel on the same line.
+        return escapePlainTextPreservingBlockquote(segment, index === 0);
       }
     })
     .join("");
@@ -309,4 +355,32 @@ export function cleanText(text: string | undefined | null): string {
   }
   // Avoid control char in regex literal; lint-friendly
   return text.split("\u0000").join("");
+}
+
+const telegramGraphemeSegmenter = new Intl.Segmenter("en", {
+  granularity: "grapheme",
+});
+
+/**
+ * `text.slice(0, maxLength)` that never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two Telegram message parts.
+ * Only when a single cluster alone is longer than `maxLength` does it fall
+ * back to the surrogate-safe cut, the one case with no clean boundary.
+ */
+export function truncateTelegramGraphemes(
+  text: string,
+  maxLength: number,
+): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  let end = 0;
+  for (const { segment } of telegramGraphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) {
+      break;
+    }
+    end += segment.length;
+  }
+  return end > 0 ? text.slice(0, end) : truncateWellFormed(text, maxLength);
 }

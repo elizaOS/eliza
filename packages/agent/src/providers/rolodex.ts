@@ -9,7 +9,6 @@
 import {
   getValidationKeywordTerms,
   type IAgentRuntime,
-  logger,
   type Memory,
   type Provider,
   type ProviderResult,
@@ -69,7 +68,7 @@ export const rolodexProvider: Provider = {
 
   async get(
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
     try {
@@ -119,11 +118,16 @@ export const rolodexProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        "[rolodex] Error:",
-        error instanceof Error ? error.message : String(error),
-      );
-      return { text: "", values: {}, data: {} };
+      // error-policy:J4 a failed graph read must not read as "no contacts":
+      // surface it and tell the model the rolodex is missing.
+      runtime.reportError("RolodexProvider.get", error, {
+        roomId: message.roomId,
+      });
+      return {
+        text: "Rolodex is unavailable because the relationships graph read failed. Do not infer that there are no contacts; state the gap.",
+        values: { rolodexUnavailable: true },
+        data: { rolodexUnavailable: true },
+      };
     }
   },
 };

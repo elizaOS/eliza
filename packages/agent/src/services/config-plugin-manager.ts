@@ -5,7 +5,7 @@
  * every mutating operation (install, uninstall, eject, sync, reinject) throws,
  * since those require a running agent runtime.
  */
-import type { ElizaConfig } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type {
   EjectResult,
   InstalledPluginInfo,

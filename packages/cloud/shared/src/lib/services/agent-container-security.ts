@@ -79,8 +79,13 @@ export function buildAgentContainerCpuFlags(cpus: number | undefined): string[] 
   return [`--cpus ${shellQuote(String(value))}`];
 }
 
-/** Converts the persisted ECS-style CPU unit contract to Docker vCPUs. */
+/**
+ * Converts the persisted ECS-style CPU unit contract (1024 = 1 vCPU) to
+ * Docker vCPUs. The result never drops below 0.1 vCPU, the same floor the
+ * Hetzner container client applies: a value that rounds to `--cpus 0` would
+ * disable the ceiling instead of setting the smallest one.
+ */
 export function agentCpuUnitsToDockerCpus(cpuUnits: number | undefined): number | undefined {
   if (!cpuUnits || !Number.isFinite(cpuUnits) || cpuUnits <= 0) return undefined;
-  return cpuUnits / 1024;
+  return Math.max(0.1, cpuUnits / 1024);
 }

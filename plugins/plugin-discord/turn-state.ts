@@ -84,7 +84,7 @@ export interface DiscordTurnRecord {
 /** Minimal runtime surface this module needs; keeps unit tests trivial. */
 export type DiscordTurnRuntime = Pick<
 	IAgentRuntime,
-	"agentId" | "createMemory" | "getMemoryById" | "getMemories"
+	"agentId" | "createMemory" | "updateMemory" | "getMemoryById" | "getMemories"
 >;
 
 /** Deterministic turn id from the Discord message id. */
@@ -166,19 +166,19 @@ export async function loadDiscordTurn(
 }
 
 /**
- * Persist (upsert) a turn record. `createMemory` on our store is an upsert by
- * id (unique row), so the same call both claims and advances the record.
+ * Advance a claimed turn record. SQL adapters ignore an insert whose id
+ * already exists, so a transition updates the row the claim inserted (the
+ * same rule `persistDiscordMessageMemoryOnce` handles for reply memories).
  */
 async function writeDiscordTurn(
 	runtime: DiscordTurnRuntime,
 	record: DiscordTurnRecord,
 ): Promise<DiscordTurnRecord> {
 	const stamped: DiscordTurnRecord = { ...record, updatedAt: Date.now() };
-	await runtime.createMemory(
-		encodeTurnRecord(runtime, stamped),
-		DISCORD_TURN_TABLE,
-		true,
-	);
+	await runtime.updateMemory({
+		id: stamped.id,
+		content: encodeTurnRecord(runtime, stamped).content,
+	});
 	return stamped;
 }
 
@@ -210,8 +210,12 @@ export async function claimDiscordTurn(
 		createdAt: now,
 		updatedAt: now,
 	};
-	const stored = await writeDiscordTurn(runtime, record);
-	return { record: stored, created: true };
+	await runtime.createMemory(
+		encodeTurnRecord(runtime, record),
+		DISCORD_TURN_TABLE,
+		true,
+	);
+	return { record, created: true };
 }
 
 /** Advance a claimed turn to DISPATCHED and increment the attempt counter. */

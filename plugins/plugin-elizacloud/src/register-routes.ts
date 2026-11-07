@@ -1,4 +1,4 @@
-import { registerAppRoutePluginLoader } from "@elizaos/core/api/app-route-plugin-registry";
+import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
 
 registerAppRoutePluginLoader("@elizaos/plugin-elizacloud:routes", async () => {
   const { elizaCloudRoutePlugin } = await import("./plugin");

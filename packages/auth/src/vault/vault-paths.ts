@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 export function resolveDefaultVaultRoot(workDir?: string): string {
   const namespace =
     resolveAliasedEnvValue("ELIZA_NAMESPACE")?.trim() || "eliza";

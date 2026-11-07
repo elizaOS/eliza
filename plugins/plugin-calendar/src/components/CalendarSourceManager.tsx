@@ -9,21 +9,22 @@
  * never gains a source the owner cannot also remove from the same surface.
  */
 
-import {
-  type LifeOpsCalendarSourceHealth,
-  type LifeOpsIcsCalendarSource,
-} from "@elizaos/core/contracts/calendar";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
+import type {
+  LifeOpsCalendarSourceHealth,
+  LifeOpsIcsCalendarSource,
+} from "@elizaos/contracts";
 import {
   Button,
   Card,
   ConfirmDialog,
+  client,
   Input,
   SemanticForm,
   Switch,
-} from "@elizaos/ui/components";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
+
 import { AlertTriangle, ChevronDown, RefreshCw, Settings2 } from "lucide-react";
 import {
   useCallback,

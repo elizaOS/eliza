@@ -1,5 +1,10 @@
 /**
- * Cloud protocol client used by the native Android authentication handoff.
+ * Mobile App Auth protocol client for Eliza Cloud.
+ *
+ * Android signs in natively through the shared CloudSignInPlugin host
+ * (`./native-cloud-sign-in`); here it uses only session restore, staged
+ * credential recovery and sign-out. iOS (ElizaCloudAuthSessionPlugin) still
+ * drives its hosted PKCE login through `beginLogin` / `completeLogin`.
  *
  * This module deliberately has no dependency on ElizaClient, AppContext, the
  * desktop/native-agent transports, or any plugin registry. Every request is
@@ -8,16 +13,16 @@
  */
 
 import {
-  clearStoredStewardToken,
-  readStoredStewardToken,
-  writeStoredStewardToken,
-} from "@elizaos/plugin-elizacloud/steward-session-client";
-import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
-} from "../api/direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
 
@@ -84,13 +89,6 @@ export class AndroidCloudAuthError extends Error {
     this.attemptId = options.attemptId ?? null;
     this.disposition = options.disposition;
   }
-}
-
-export function shouldAcknowledgeAndroidCloudCallback(error: unknown): boolean {
-  return (
-    error instanceof AndroidCloudAuthError &&
-    error.disposition === "acknowledge"
-  );
 }
 
 interface AndroidCloudPendingLogin {

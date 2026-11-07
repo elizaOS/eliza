@@ -1,7 +1,12 @@
 // Coordinates cloud service memory behavior behind route handlers.
 
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
-import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
+import {
+  assertModelOutputComplete,
+  ChannelType,
+  createUniqueUuid,
+  stringToUuid,
+} from "@elizaos/core";
 import { memoryTable, participantTable } from "@elizaos/plugin-sql";
 import { streamText } from "ai";
 import { createHash } from "crypto";
@@ -18,6 +23,7 @@ import { userContextService } from "../eliza/user-context";
 import { getLanguageModel } from "../providers/language-model";
 import { logger } from "../utils/logger";
 import { conversationsService } from "./conversations";
+import { memoryTimelineDate } from "./memory-timeline";
 
 /**
  * Memory service for managing Eliza agent memories and conversation summaries.
@@ -161,6 +167,9 @@ export class MemoryService {
     // Ensure the room exists in the database
     const roomId = input.roomId as UUID;
     const entityId = input.entityId as UUID;
+    // Agent-scoped: world ids are a global key and world reads are
+    // agent-scoped, so one shared id would collide across agents.
+    const worldId = createUniqueUuid(runtime, "eliza-world");
 
     // Ensure room exists
     await runtime.ensureRoomExists({
@@ -169,7 +178,7 @@ export class MemoryService {
       type: ChannelType.DM,
       channelId: input.roomId,
       serverId: stringToUuid("eliza-server") as UUID,
-      worldId: stringToUuid("eliza-world") as UUID,
+      worldId,
       agentId: runtime.agentId,
     });
     logger.debug(`[Memory Service] Ensured room exists: ${roomId}`);
@@ -179,7 +188,7 @@ export class MemoryService {
     await runtime.ensureConnection({
       entityId,
       roomId,
-      worldId: stringToUuid("eliza-world") as UUID,
+      worldId,
       source: "memory",
       type: ChannelType.DM,
       channelId: input.roomId,
@@ -387,9 +396,14 @@ export class MemoryService {
     let deletedCount = 0;
 
     if (input.memoryId) {
-      await runtime.deleteMemory(input.memoryId as UUID);
-      await memoryCache.invalidateMemory(input.memoryId);
-      deletedCount = 1;
+      // Delete only a memory in a room of the caller's organization, the
+      // same rooms retrieveMemories reads from.
+      const memory = await runtime.getMemoryById(input.memoryId as UUID);
+      if (memory && (await this.checkRoomOwnership(input.organizationId, memory.roomId))) {
+        await runtime.deleteMemory(input.memoryId as UUID);
+        await memoryCache.invalidateMemory(input.memoryId);
+        deletedCount = 1;
+      }
     }
 
     logger.info(
@@ -731,7 +745,7 @@ Summary:`;
 
       case "timeline": {
         const timelineData = memories.map((m) => ({
-          date: new Date(m.memory.createdAt || Date.now()),
+          date: memoryTimelineDate(m.memory.createdAt),
           type: m.memory.content.type || "unknown",
         }));
 

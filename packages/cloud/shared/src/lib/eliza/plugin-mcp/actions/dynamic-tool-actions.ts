@@ -142,11 +142,15 @@ export function createMcpToolAction(
       logger.info({ serverName, toolName: tool.name, params }, `[MCP] Executing ${actionName}`);
       const errors = validateParamsAgainstSchema(params, tool.inputSchema);
       const missing = errors.filter((e) => e.startsWith("Missing required"));
-      if (missing.length > 0) {
-        logger.error({ missing, params }, `[MCP] Missing required params for ${actionName}`);
+      const rejected = errors.filter(
+        (e) => !e.startsWith("Missing required") && e.includes("does not accept null"),
+      );
+      if (missing.length > 0 || rejected.length > 0) {
+        const blockingErrors = [...missing, ...rejected];
+        logger.error({ errors: blockingErrors, params }, `[MCP] Invalid params for ${actionName}`);
         return {
           success: false,
-          error: missing.join(", "),
+          error: blockingErrors.join(", "),
           data: { actionName, serverName, toolName: tool.name },
         };
       }

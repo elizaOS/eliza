@@ -358,7 +358,7 @@ export async function calculateTTSCost(
  */
 export async function calculateSTTCost(
   durationMinutes: number,
-  model: string = "elevenlabs/scribe_v1",
+  model: string = "elevenlabs/scribe_v2",
 ): Promise<number> {
   const cost = await calculateSTTCostFromCatalog({
     model,

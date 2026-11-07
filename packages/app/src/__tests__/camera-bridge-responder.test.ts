@@ -12,7 +12,7 @@ vi.mock("@capacitor/filesystem", () => ({
   Encoding: { UTF8: "utf8" },
   Filesystem: mocks,
 }));
-vi.mock("@elizaos/ui/logger", () => ({
+vi.mock("../../../ui/src/logger", () => ({
   logger: { warn: mocks.warn, info: vi.fn() },
 }));
 

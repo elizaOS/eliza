@@ -97,7 +97,7 @@ function buildFixtureRepo(): string {
   // Live test runs.
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
-  write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
+  write(repo, "test-results/scenario-runner/live/native.jsonl", "{}\n");
   // Stage-1 group-chat timing evaluation reports.
   write(repo, "reports/group-chat-timing/when2speak.json", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
@@ -184,6 +184,39 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("preserves legacy archive paths while retaining colliding current producer reports", async () => {
+    const repo = tmpDir();
+    write(
+      repo,
+      "reports/content-context/run/report.json",
+      '{"source":"legacy"}',
+    );
+    write(
+      repo,
+      "test-results/content-context/run/report.json",
+      '{"source":"current"}',
+    );
+    const { bundle, artifacts } = await build(repo);
+    expect(artifacts.map((entry) => entry.path).sort()).toEqual([
+      "lanes/content-context/current/run/report.json",
+      "lanes/content-context/run/report.json",
+    ]);
+    for (const [relative, source] of [
+      ["current/run/report.json", "current"],
+      ["run/report.json", "legacy"],
+    ]) {
+      expect(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(bundle.dir, "lanes/content-context", relative),
+            "utf8",
+          ),
+        ),
+      ).toEqual({ source });
+    }
+    expect((await verifyBundle(bundle.dir)).ok).toBe(true);
+  });
+
   it("includes a byte-identical file rewritten during the run", async () => {
     const repo = tmpDir();
     const file = path.join(repo, "test-results/app/reused.log");
@@ -299,11 +332,11 @@ describe("ingestAllSilos", () => {
   it("excludes unchanged stale files and includes only exact-run deltas", async () => {
     const repo = tmpDir();
     write(repo, "test-results/app/stale.log", "old");
-    write(repo, "reports/scenarios/stale.jsonl", "old\n");
+    write(repo, "test-results/scenario-runner/stale.jsonl", "old\n");
     const baseline = captureSiloSnapshot(repo);
 
     write(repo, "test-results/app/current.log", "new");
-    write(repo, "reports/scenarios/stale.jsonl", "changed\n");
+    write(repo, "test-results/scenario-runner/stale.jsonl", "changed\n");
     const bundle = fixtureBundle();
     const results = await ingestAllSilos(bundle, repo, baseline);
     const { manifest } = await bundle.finalize();

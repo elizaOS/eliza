@@ -13,6 +13,10 @@
  */
 import crypto from "node:crypto";
 import {
+  PatchMemoryRequestSchema,
+  PostMemoryRememberRequestSchema,
+} from "@elizaos/contracts";
+import {
   type AgentRuntime,
   BM25,
   ChannelType,
@@ -23,21 +27,20 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
-  PatchMemoryRequestSchema,
-  PostMemoryRememberRequestSchema,
   parseCanonicalInteger,
   parsePositiveInteger,
   projectCompleteToolValueForModel,
-  type RouteRequestContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
-  type DocumentsServiceResult,
+  type DocumentsServiceLike,
   getDocumentsService,
 } from "@elizaos/plugin-assistant";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { memoryContextQaTemplate } from "./memory-context-prompt.js";
 import { decodePathComponent } from "./server-helpers.ts";
 export const HASH_MEMORY_SOURCE = "hash_memory";
@@ -99,7 +102,9 @@ type DocumentSearchMatch = {
   metadata?: Record<string, unknown>;
 };
 function resolveAgentName(runtime: AgentRuntime, fallbackName: string): string {
-  return runtime.character.name?.trim() || fallbackName || "Eliza";
+  return (
+    agentIdentityName(runtime.character)?.trim() || fallbackName || "Eliza"
+  );
 }
 async function ensureMemoryConnection(
   runtime: AgentRuntime,
@@ -424,12 +429,26 @@ async function buildMemorySearchCorpus(
   // snapshot is marked obsolete and retried instead of being returned or
   // published for later reuse.
   const countBefore = await countRoomMessages(runtime, roomId);
+  // One row past the limit proves whether the scan covered the whole room.
   const memories = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    limit: MEMORY_SEARCH_SCAN_LIMIT,
+    limit: MEMORY_SEARCH_SCAN_LIMIT + 1,
     includeEmbedding: false, // only reads content.text
   });
+  if (memories.length > MEMORY_SEARCH_SCAN_LIMIT) {
+    throw new ElizaError(
+      "Memory search cannot cover every saved note: the notes room exceeds the scan limit",
+      {
+        code: "MEMORY_SEARCH_SCAN_LIMIT",
+        context: {
+          roomId,
+          rowCount: countBefore ?? memories.length,
+          limit: MEMORY_SEARCH_SCAN_LIMIT,
+        },
+      },
+    );
+  }
   const countAfter =
     countBefore === null ? null : await countRoomMessages(runtime, roomId);
   const candidates: MemorySearchCandidate[] = [];
@@ -677,12 +696,10 @@ async function searchMemoryNotes(
 }
 async function searchDocuments(
   runtime: AgentRuntime,
+  documentsService: DocumentsServiceLike,
   query: string,
   limit: number,
 ): Promise<DocumentSearchHit[]> {
-  const documents: DocumentsServiceResult = await getDocumentsService(runtime);
-  const documentsService = documents.service;
-  if (!documentsService || !runtime.agentId) return [];
   const agentId = runtime.agentId as UUID;
   const searchMessage: Memory = {
     id: crypto.randomUUID() as UUID,
@@ -1137,16 +1154,36 @@ export async function handleMemoryRoutes(
       Math.max(requestedLimit, 1),
       QUICK_CONTEXT_MAX_LIMIT,
     );
+    // The host always composes the documents plugin, so a missing service is
+    // a load failure. Answering with documents: [] would report "no knowledge
+    // matched" for a store that was never searched.
+    const { service: documentsService, reason } =
+      await getDocumentsService(runtime);
+    if (!documentsService) {
+      if (reason === "timeout") {
+        res.setHeader("Retry-After", "5");
+        error(
+          res,
+          "Documents service is still loading. Please retry shortly.",
+          503,
+        );
+      } else {
+        error(res, "Documents service is not available.", 503);
+      }
+      return true;
+    }
     const [memories, documents] = await Promise.all([
       searchMemoryNotes(runtime, roomId, query, limit),
-      searchDocuments(runtime, query, limit),
+      searchDocuments(runtime, documentsService, query, limit),
     ]);
     const prompt = buildQuickContextPrompt({ query, memories, documents });
-    let answer = "I couldn't generate a quick answer right now.";
     const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-    const text = typeof response === "string" ? response : String(response);
-    if (text.trim()) {
-      answer = text.trim();
+    const answer = (
+      typeof response === "string" ? response : String(response)
+    ).trim();
+    if (!answer) {
+      error(res, "Quick context model returned no text", 502);
+      return true;
     }
     json(res, {
       query,

@@ -41,13 +41,14 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { getEntityDetails } from "../entities.ts";
 import {
   buildFactKeywordsForStorage,
   factClaimsEquivalent,
   scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { tokenize } from "../features/documents/bm25.ts";
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
   "FACTS_AND_RELATIONSHIPS_VALIDATE";
 /**
@@ -1080,17 +1081,15 @@ function cleanText(value: string): string {
 }
 function cleanPredicate(value: string): string {
   return value
-    .replace(/[^a-zA-Z0-9_ -]/g, "")
+    .replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "")
     .replace(/[\s-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
 }
+// Unicode-aware: an ASCII-only class reduced Hangul, kana, Cyrillic and
+// Greek candidates to "" and dropped them as low signal.
 function normalizeForComparison(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return tokenize(value).join(" ");
 }
 function containsSecretSignal(value: string): boolean {
   return (
@@ -1102,10 +1101,15 @@ function containsSecretSignal(value: string): boolean {
     )
   );
 }
+// One Han, kana or Hangul character carries a syllable or word, so it counts
+// twice toward the floor: 지호 and 犬好き pass, a lone 犬 does not.
+const CJK_SCRIPT_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 function isLowSignalCandidate(value: string): boolean {
   const normalized = normalizeForComparison(value);
+  const cjkChars = normalized.match(CJK_SCRIPT_CHAR)?.length ?? 0;
   return (
-    normalized.length < 4 ||
+    normalized.length + cjkChars < 4 ||
     /^(?:by the way|remind me|can you|could you|please|thanks|thank you)\b/.test(
       normalized,
     ) ||

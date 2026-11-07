@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop index ts behavior for app shell integration. */
 import { DynamicViewRegistry } from "./registry";
 import { DynamicViewSessionManager } from "./session-manager";
 import type { DynamicViewManifest } from "./types";

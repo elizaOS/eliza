@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from benchmarks.realm.plugin.actions import _parse_plan_json
+from benchmarks.suites.realm.plugin.actions import _parse_plan_json
 
 
 def test_parse_plan_response_pure_json() -> None:

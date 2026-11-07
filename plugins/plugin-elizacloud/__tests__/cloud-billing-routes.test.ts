@@ -171,6 +171,75 @@ describe("handleCloudBillingRoute money proxies", () => {
     }
   });
 
+  it("requires a checkout key and forwards the same key across retries", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+
+    const upstreamKeys: string[] = [];
+    globalThis.fetch = (async (input, init = {}) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/credits/checkout")) {
+        upstreamKeys.push(new Headers(init.headers).get("Idempotency-Key") ?? "");
+        return new Response(
+          JSON.stringify({
+            url: "https://checkout.stripe.com/c/pay/cs_test_1",
+            sessionId: "cs_test_1",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    const proxy = http.createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      void handleCloudBillingRoute(req, res, url.pathname, (req.method ?? "GET").toUpperCase(), {
+        config: {
+          cloud: {
+            apiKey: "eliza_test_key",
+            baseUrl: "https://www.elizacloud.ai",
+          },
+        },
+        runtime: null,
+      });
+    });
+    const proxyBaseUrl = await listen(proxy);
+    const body = JSON.stringify({ amountUsd: 5 });
+
+    try {
+      const missingKey = await originalFetch(`${proxyBaseUrl}/api/cloud/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      expect(missingKey.status).toBe(400);
+      await expect(missingKey.json()).resolves.toMatchObject({
+        error: "Idempotency-Key header is required",
+      });
+
+      const headers = {
+        "Content-Type": "application/json",
+        "Idempotency-Key": "checkout-retry:abc1234",
+      };
+      const first = await originalFetch(`${proxyBaseUrl}/api/cloud/billing/checkout`, {
+        method: "POST",
+        headers,
+        body,
+      });
+      const retry = await originalFetch(`${proxyBaseUrl}/api/cloud/billing/checkout`, {
+        method: "POST",
+        headers,
+        body,
+      });
+
+      expect(first.status).toBe(200);
+      expect(retry.status).toBe(200);
+      expect(upstreamKeys).toEqual(["checkout-retry:abc1234", "checkout-retry:abc1234"]);
+    } finally {
+      await close(proxy);
+    }
+  });
+
   it("degrades a malformed crypto/status to crypto-disabled without poisoning the cache", async () => {
     process.env.NODE_ENV = "development";
     delete process.env.ELIZAOS_CLOUD_BASE_URL;

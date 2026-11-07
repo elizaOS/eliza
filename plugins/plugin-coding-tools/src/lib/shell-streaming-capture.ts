@@ -87,6 +87,7 @@ function updateMetrics(
   chunk: string,
   priorEndedWithNewline: boolean,
 ): boolean {
+  if (chunk.length === 0) return priorEndedWithNewline;
   metrics.characters += chunk.length;
   metrics.bytes += Buffer.byteLength(chunk, "utf8");
   const newlines = chunk.match(/\n/g)?.length ?? 0;
@@ -97,6 +98,12 @@ function updateMetrics(
     metrics.lines += newlines;
     if (priorEndedWithNewline && chunk.length > 0 && !chunk.endsWith("\n")) {
       metrics.lines += 1;
+    }
+    if (!priorEndedWithNewline && chunk.endsWith("\n")) {
+      // The first newline in this chunk terminates the partial line the
+      // previous chunk already counted. Counting it again would make the
+      // line total depend on where the pipe split the output.
+      metrics.lines -= 1;
     }
   }
   return chunk.endsWith("\n");

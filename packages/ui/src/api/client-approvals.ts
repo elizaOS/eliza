@@ -16,7 +16,7 @@ export interface PendingActionsResponse {
   pending: PendingUserAction[];
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listPendingActions(): Promise<PendingActionsResponse>;
   }

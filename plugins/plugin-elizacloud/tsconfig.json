@@ -18,14 +18,13 @@
     "outDir": "./dist",
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun-types", "vite/client"],
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

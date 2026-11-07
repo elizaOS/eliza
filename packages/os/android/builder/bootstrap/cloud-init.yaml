@@ -173,7 +173,7 @@ write_files:
     content: |
       #!/usr/bin/env bash
       # Mirror of the repository builder preflight (assertBuilderCapacity in
-      # packages/os/scripts/aosp/build-grizzly-bundle.ts of elizaOS/eliza):
+      # packages/os/scripts/android/build-grizzly-bundle.ts of elizaOS/eliza):
       # Linux x86_64, >= 32 physical cores, >= 128 GiB RAM, >= 1500 GB total
       # and >= 600 GiB free on the build filesystem.
       set -euo pipefail

@@ -6,6 +6,10 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 
 const postgresUrl = process.env.APP_DELIVERY_TEST_POSTGRES_URL;
 const schema = `app_delivery_${randomUUID().replaceAll("-", "_")}`;
@@ -89,6 +93,7 @@ beforeAll(async () => {
     "0508_app_notification_secret_envelope_v2",
     "0414_app_subscription_outbox_delivery",
     "0415_app_billing_webhook_recovery",
+    "0555_stripe_delivery_outbox",
     "0416_app_billing_checkout_expiry",
     "0417_app_billing_membership_authority",
     "0416_app_billing_checkout_expiry",
@@ -96,6 +101,12 @@ beforeAll(async () => {
     "0428_billing_identity_anchors",
     "0429_billing_identity_backfill",
     "0430_billing_identity_references",
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0542_subscription_grant_codes",
+    "0543_app_pilot_allowance",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -104,6 +115,8 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
+  await installSubscriptionGrantTestSchema((statement) => client.exec(statement));
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,'platform','acct_platform',false,true)`,
     [merchant, org],
@@ -432,7 +445,7 @@ async function current(scopeId: string) {
 }
 
 describe("generic subscription webhook and delivery", () => {
-  test("signed HTTP intake survives failed queue handoff and duplicate delivery, with cancellation winning stale event timestamps", async () => {
+  test("signed HTTP intake records its delivery durably once across duplicate delivery, with cancellation winning stale event timestamps", async () => {
     const f = await fixture(),
       wire = await providerFixture(f),
       t = await triggerFor(f);
@@ -441,14 +454,8 @@ describe("generic subscription webhook and delivery", () => {
     const Stripe = (await import("stripe")).default;
     const signing = new Stripe("sk_test_signature_fixture"),
       secret = "whsec_delivery_test";
-    let enqueues = 0;
     const app = new Hono<import("../../types/cloud-worker-env").AppEnv>();
-    app.post("/", (c) =>
-      handleStripeWebhook(c, async () => {
-        enqueues++;
-        throw new Error("Controlled Redis outage");
-      }),
-    );
+    app.post("/", (c) => handleStripeWebhook(c));
     app.onError((_error, c) => c.json({ error: "Unavailable" }, 503));
     const server = Bun.serve({
       port: 0,
@@ -466,10 +473,19 @@ describe("generic subscription webhook and delivery", () => {
         }),
       };
       const first = await fetch(server.url, { method: "POST", body: t.body, headers });
-      expect(first.status).toBe(503);
+      expect(first.status).toBe(200);
+      expect(await first.json()).toEqual({ received: true, queued: true });
       const duplicate = await fetch(server.url, { method: "POST", body: t.body, headers });
       expect(duplicate.status).toBe(200);
-      expect(enqueues).toBe(1);
+      expect(await duplicate.json()).toEqual({ received: true, duplicate: true });
+      expect(
+        (
+          await client.query(
+            "SELECT delivery_payload->'appBilling'->>'receiptKey' receipt,delivery_attempts attempts FROM webhook_events WHERE event_id=$1",
+            [t.receiptKey],
+          )
+        ).rows,
+      ).toEqual([{ receipt: t.receiptKey, attempts: 0 }]);
       const changedBody = JSON.stringify({ ...t.event, created: t.event.created - 1 });
       const changed = await fetch(server.url, {
         method: "POST",

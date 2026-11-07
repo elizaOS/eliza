@@ -1,28 +1,6 @@
-/**
- * GoalsView — the GUI data wrapper for the Goals surface.
- *
- * Data-fetching view over the single read-only goals endpoint served by the
- * personal-assistant routes (PA owns the persistence; this plugin only renders):
- *   GET {base}/api/lifeops/goals
- *
- * The wire payload is `{ goals: LifeOpsGoalRecord[] }`, where each record is
- * `{ goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] }`. We flatten each
- * record to a `GoalItem` at the fetch boundary so the rest of the view renders
- * display-only.
- *
- * It owns the fetch state machine (loading / error / ready), the status-filter
- * selection, and the quiet 20s background poll, then renders the one
- * presentational {@link GoalsSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` render the browser DOM
- * surface today while the retained modality contract stays available for future
- * adapters.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTOs below are declared locally to match the JSON shape PA emits
- * (LifeOpsGoalDefinition / LifeOpsGoalLink in @elizaos/core).
- */
+/** Goals view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui/api";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -77,28 +55,11 @@ export interface GoalsFetchers {
 }
 /** Goals JSON GET is a short UI read — same 15s family as InboxView / FocusView. */
 export const GOALS_VIEW_JSON_TIMEOUT_MS = 15000;
-export async function getGoalsJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = GOALS_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Goals request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
 async function getGoals(signal?: AbortSignal): Promise<GoalsWire> {
-  return getGoalsJsonWithFetch<GoalsWire>(
-    `${client.getBaseUrl()}/api/lifeops/goals`,
-    globalThis.fetch,
-    GOALS_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<GoalsWire>(
+    "/api/lifeops/goals",
+    { method: "GET", signal },
+    { timeoutMs: GOALS_VIEW_JSON_TIMEOUT_MS },
   );
 }
 const defaultFetchers: GoalsFetchers = {
@@ -181,7 +142,9 @@ type LoadState =
       goals: GoalItem[];
     };
 function requestNewGoal(): void {
-  client.sendChatMessage?.("Help me set a goal to head toward this quarter.");
+  dispatchChatPrefill({
+    text: "Help me set a goal to head toward this quarter.",
+  });
 }
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;

@@ -24,6 +24,11 @@ patches/CHECKSUMS.sha256 -text
 *.yml text eol=lf
 *.yaml text eol=lf
 
+# These native helper sources are embedded verbatim into a checked-in resource.
+# Keep their bytes stable when Windows checks out with core.autocrlf=true.
+plugins/plugin-workflow/scripts/windows-lease/*.cs text eol=lf
+plugins/plugin-workflow/scripts/windows-lease/*.ps1 text eol=lf
+
 # This adversarial fixture deliberately includes control-character source
 # literals. Force a textual diff so security-relevant assertion changes remain
 # reviewable instead of appearing as an opaque binary replacement.

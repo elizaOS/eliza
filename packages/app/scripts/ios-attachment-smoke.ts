@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 // iOS Simulator native attachment smoke for #10936. WKWebView is not
@@ -12,6 +11,7 @@ import { fileURLToPath } from "node:url";
 // Preferences.
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import { startDeviceE2eHostAgent } from "./lib/host-agent.ts";
+import { latestBuiltApp } from "./lib/ios-built-app.ts";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -147,36 +147,9 @@ function ensureSimulatorBooted() {
   return udid;
 }
 
-function latestBuiltApp() {
-  const derivedData = path.join(
-    os.homedir(),
-    "Library",
-    "Developer",
-    "Xcode",
-    "DerivedData",
-  );
-  if (!fs.existsSync(derivedData)) return null;
-  const output = tryRun("find", [
-    derivedData,
-    "-name",
-    "App.app",
-    "-path",
-    "*/Debug-iphonesimulator/*",
-    "-type",
-    "d",
-  ]);
-  const apps = (output ?? "")
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => ({ path: entry, mtimeMs: fs.statSync(entry).mtimeMs }))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return apps[0]?.path ?? null;
-}
-
 function installLatestApp(udid, appId) {
   if (has("--skip-install")) return;
-  const appPath = val("--app-path") ?? latestBuiltApp();
+  const appPath = val("--app-path") ?? latestBuiltApp(tryRun);
   if (!appPath) {
     throw new Error(
       "Could not find a Debug-iphonesimulator App.app. Build the iOS simulator app first or pass --app-path.",

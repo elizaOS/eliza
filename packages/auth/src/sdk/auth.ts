@@ -1,5 +1,9 @@
 /** Manages browser login challenges, linked identity sessions and token refresh against the configured service. */
 import bs58 from "bs58";
+import {
+  generateCodeChallenge,
+  generateCodeVerifier,
+} from "../contracts/index";
 import type {
   LoginAuthConfig,
   LoginAuthExchangeResponse,
@@ -46,7 +50,11 @@ import type {
   SessionStorage,
 } from "./auth-types.ts";
 import { assertSecureBaseUrl, stripTrailingSlashes } from "./base-url.ts";
-import { LoginApiError } from "./client.ts";
+import {
+  fetchLoginJson,
+  LoginApiError,
+  refuseLoginRedirect,
+} from "./transport.ts";
 
 // ─── Storage key ──────────────────────────────────────────────────────────────
 
@@ -84,7 +92,14 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
       base64.length + ((4 - (base64.length % 4)) % 4),
       "=",
     );
-    const json = atob(padded);
+    // `atob` yields one char per BYTE (latin1). JWT payloads are UTF-8 JSON
+    // (RFC 7519 §3), so parse the bytes through a UTF-8 decode — feeding the
+    // byte string straight to JSON.parse mojibakes any non-ASCII claim
+    // ("josé" → "josÃ©"). `fatal: true` makes non-UTF-8 bytes throw, which
+    // the catch maps to null for malformed tokens. Mirrors the canonical
+    // decoder in packages/ui/src/cloud/lib/jwt.ts.
+    const bytes = Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0));
+    const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
     return null;
@@ -320,35 +335,25 @@ async function authRequest<T>(
 
   // Merge caller headers without clobbering defaults
   if (init.headers) {
-    new Headers(init.headers).forEach((value, key) => headers.set(key, value));
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${stripTrailingSlashes(baseUrl)}${path}`, {
-      ...init,
-      headers,
-      redirect: "error",
+    new Headers(init.headers).forEach((value, key) => {
+      headers.set(key, value);
     });
-  } catch (err) {
-    throw new LoginApiError(
-      err instanceof Error ? err.message : "Network request failed",
-      0,
-    );
   }
 
-  const text = await response.text();
-  let payload: Record<string, unknown> = { ok: response.ok };
-
-  if (text) {
-    try {
-      payload = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      throw new LoginApiError(
-        "Received invalid JSON from login API",
-        response.status,
-      );
-    }
+  const { response, payload } = await fetchLoginJson<Record<string, unknown>>(
+    `${stripTrailingSlashes(baseUrl)}${path}`,
+    { ...init, headers },
+  );
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    ("ok" in payload && typeof payload.ok !== "boolean")
+  ) {
+    throw new LoginApiError(
+      "Received an invalid response envelope from login API",
+      response.status,
+    );
   }
 
   if (!response.ok || payload.ok === false) {
@@ -858,13 +863,15 @@ export class LoginAuth {
         device_code: input.deviceCode,
         ...(input.clientId ? { client_id: input.clientId } : {}),
       }),
-      redirect: "error",
-    }).catch((err) => {
-      throw new LoginApiError(
-        err instanceof Error ? err.message : "Network request failed",
-        0,
-      );
-    });
+      redirect: "manual",
+    })
+      .then(refuseLoginRedirect)
+      .catch((err) => {
+        throw new LoginApiError(
+          err instanceof Error ? err.message : "Network request failed",
+          0,
+        );
+      });
 
     const text = await response.text();
     const payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -2855,39 +2862,6 @@ export class LoginAuth {
       }
     }
   }
-}
-
-// ─── PKCE Helpers (module-private) ──────────────────────────────────────────
-
-/**
- * Generate a cryptographically random PKCE code_verifier.
- * Returns a 43-128 character base64url string (RFC 7636 Section 4.1).
- * Uses Web Crypto API for browser + Node 18+ compatibility.
- */
-async function generateCodeVerifier(): Promise<string> {
-  const bytes = new Uint8Array(32); // 32 bytes → 43 base64url chars
-  globalThis.crypto.getRandomValues(bytes);
-  return base64urlEncode(bytes);
-}
-
-/**
- * Generate a PKCE code_challenge from a code_verifier using SHA-256.
- * Uses Web Crypto API (globalThis.crypto.subtle) for cross-platform support.
- */
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
-  return base64urlEncode(new Uint8Array(digest));
-}
-
-/**
- * Encode a Uint8Array as a base64url string (no padding).
- */
-function base64urlEncode(bytes: Uint8Array): string {
-  // btoa is available in all browsers and Node 18+
-  const base64 = btoa(String.fromCharCode(...bytes));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 // Export PKCE helpers for testing

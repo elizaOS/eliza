@@ -18,7 +18,11 @@ function isAsciiLetter(character: string): boolean {
 }
 
 function isAsciiLocalCharacter(character: string): boolean {
-  return isAsciiLetterOrDigit(character) || "._%+-".includes(character);
+  // RFC 5322 atext and dot (without ` { | }): o'brien and ops&dev are whole
+  // local parts, not the suffix after the punctuation.
+  return (
+    isAsciiLetterOrDigit(character) || ".!#$%&'*+/=?^_~-".includes(character)
+  );
 }
 
 function isAsciiDomainCharacter(character: string): boolean {
@@ -33,10 +37,14 @@ function isAsciiDomainCharacter(character: string): boolean {
  * angle spans first keeps `displayed@wrong.example <real@sender.example>`
  * resolving to the real sender instead of the spoofed display token.
  */
-function extractFromAngleSpans(
+function extractAddress(
   value: string,
   extractToken: (span: string) => string | null,
 ): string | null {
+  if (!value.includes("<") && !value.includes(">")) {
+    return extractToken(value);
+  }
+  // Invalid angle syntax must not fall back to the display name.
   let searchFrom = 0;
   while (searchFrom < value.length) {
     const open = value.indexOf("<", searchFrom);
@@ -51,10 +59,7 @@ function extractFromAngleSpans(
 }
 
 export function extractAsciiEmailAddress(value: string): string | null {
-  return (
-    extractFromAngleSpans(value, extractAsciiEmailToken) ??
-    extractAsciiEmailToken(value)
-  );
+  return extractAddress(value, extractAsciiEmailToken);
 }
 
 function extractAsciiEmailToken(value: string): string | null {
@@ -65,6 +70,8 @@ function extractAsciiEmailToken(value: string): string | null {
     let start = at;
     while (start > 0 && isAsciiLocalCharacter(value[start - 1] ?? ""))
       start -= 1;
+    // A quote around a bare address is not part of it.
+    while (start < at && value[start] === "'") start += 1;
     let end = at + 1;
     while (end < value.length && isAsciiDomainCharacter(value[end] ?? ""))
       end += 1;
@@ -72,7 +79,10 @@ function extractAsciiEmailToken(value: string): string | null {
     const dot = domain.lastIndexOf(".");
     if (
       start < at &&
+      // A non-ASCII local part is not cut down to its ASCII suffix.
+      !(start > 0 && value.charCodeAt(start - 1) > 0x7f) &&
       dot > 0 &&
+      !domain.startsWith(".") &&
       domain.length - dot - 1 >= 2 &&
       [...domain.slice(dot + 1)].every(isAsciiLetter)
     ) {
@@ -92,10 +102,7 @@ function isLooseAddressCharacter(character: string): boolean {
 }
 
 export function extractLooseEmailAddress(value: string): string | null {
-  return (
-    extractFromAngleSpans(value, extractLooseEmailToken) ??
-    extractLooseEmailToken(value)
-  );
+  return extractAddress(value, extractLooseEmailToken);
 }
 
 function extractLooseEmailToken(value: string): string | null {

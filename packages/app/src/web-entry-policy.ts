@@ -3,7 +3,7 @@
  * native, desktop, chat-harness, or agent-application boot paths.
  *
  * Keep these exact pathname patterns aligned with the routes registered by
- * `@elizaos/ui/cloud/register-public`. Near misses deliberately fall through
+ * the app Cloud route registration. Near misses deliberately fall through
  * to the full application outside the managed Cloud namespace so an unknown URL cannot reload-loop at the public
  * shell catch-all.
  */
@@ -31,6 +31,7 @@ const EXACT_PUBLIC_PATHS = new Set([
   "/invite/accept",
   "/join",
   "/login",
+  "/network/sign-in",
   "/oidc/continue",
   "/pricing",
   "/privacy-policy",

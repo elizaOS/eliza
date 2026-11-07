@@ -7,7 +7,7 @@
  * the grant it describes.
  */
 import crypto from "node:crypto";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   ScheduledTask,
   ScheduledTaskRunnerHandle,

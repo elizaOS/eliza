@@ -26,6 +26,7 @@ import {
   selectSemanticallyBestOcrAttempt,
   validateImportedOcrRecords,
 } from "../../scripts/ocr-triage";
+import { resolveViewOcrPolicy } from "../ui-smoke/ocr-view-expectations";
 
 // Changed-file coverage invokes Vitest from the repository root while the
 // package script invokes it from `packages/app`. Vitest gives `import.meta.url`
@@ -83,6 +84,31 @@ const PHONE_OCR = "Phone call-blocked recent";
 const STALE_SLUG = "plugin-retired-gui";
 
 describe("semantic OCR attempt selection", () => {
+  it.each([
+    ["+ New\nAl (0)\nNothing scheduled yet", "verified"],
+    ["+ New\nActive\nWeekly review", "verified"],
+    ["All\nNew", "broken"],
+    ["Nothing scheduled yet", "broken"],
+  ])("checks meaningful Automations content in %j", (text, verdict) => {
+    const policy = resolveViewOcrPolicy("builtin-automations");
+    if (policy.kind !== "expectation") {
+      throw new Error("Automations must have a semantic OCR expectation");
+    }
+    const selection = selectSemanticallyBestOcrAttempt(
+      {
+        ok: true,
+        text,
+        lines: text.split("\n"),
+        words: text.split(/\s+/).length,
+        meanConfidence: 0.8,
+        pixelBlank: false,
+        pixelBlankReasons: [],
+      },
+      { expectation: policy.expectation },
+    );
+    expect(selection.finding.verdict).toBe(verdict);
+  });
+
   it("uses the sparse transcript when it proves a label omitted by auto OCR", () => {
     const selection = selectSemanticallyBestOcrAttempt(
       {
@@ -796,8 +822,12 @@ describe("measured-control OCR recovery through the real CLI", () => {
     const rescued = run(row);
     expect(rescued.status).toBe(0);
     expect(rescued.report.entries[0].ocrVerdict).toBe("verified");
-    expect(rescued.report.entries[0].positiveSegments).toContain(
-      "Connect in Settings",
+    // OCR segmentation and whitespace vary by platform. Require the complete
+    // label inside one pixel-derived segment; never join separate controls.
+    expect(rescued.report.entries[0].positiveSegments).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/\bConnect\s+in\s+Settings\b/i),
+      ]),
     );
   });
 

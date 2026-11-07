@@ -36,6 +36,7 @@ import {
 	type MessageRef,
 	type MessageSource,
 } from "@elizaos/plugin-assistant";
+import { DiscordSnowflake } from "@sapphire/snowflake";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
 /** Bounded MessageRef cache so long-running agents don't grow unbounded. */
@@ -45,6 +46,26 @@ interface DiscordConnectorFetchParams {
 	target?: TargetInfo;
 	channelId?: string;
 	limit?: number;
+	before?: string;
+	after?: string;
+}
+
+/**
+ * The largest snowflake id strictly older than `sinceMs`: every message
+ * created at or after `sinceMs` has a greater id. Undefined when `sinceMs`
+ * predates Discord, where no boundary can exclude anything.
+ */
+function snowflakeBefore(sinceMs: number): string | undefined {
+	const timestamp = Math.floor(sinceMs);
+	if (timestamp <= DiscordSnowflake.epochNumber) return undefined;
+	return (
+		DiscordSnowflake.generate({
+			timestamp,
+			increment: 0n,
+			workerId: 0n,
+			processId: 0n,
+		}) - 1n
+	).toString();
 }
 
 /**
@@ -65,12 +86,14 @@ interface DiscordTriageCapableService {
 		target: TargetInfo,
 		content: Content,
 	): Promise<Memory | SendHandlerOutcome | undefined>;
+	getClient(): { isReady(): boolean } | null;
 }
 
 const REQUIRED_SERVICE_METHODS = [
 	"fetchConnectorMessages",
 	"listConnectorRooms",
 	"handleSendMessage",
+	"getClient",
 ] as const;
 
 function isDiscordTriageService(
@@ -108,6 +131,8 @@ interface DiscordDraftContext {
 	readonly request: DraftRequest;
 	readonly channelId: string;
 	readonly accountId?: string;
+	/** Discord message id the draft answers; sent as the reply reference. */
+	readonly replyToExternalMessageId?: string;
 	readonly preview: string;
 }
 
@@ -152,6 +177,9 @@ export function mapDiscordMemoryToRef(memory: Memory): MessageRef | null {
 	};
 }
 
+/** Discord's maximum messages per channel history request. */
+const DISCORD_HISTORY_PAGE = 100;
+
 export class DiscordTriageAdapter extends BaseMessageAdapter {
 	readonly source: MessageSource = "discord";
 
@@ -188,43 +216,106 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				"Discord triage limit must be a positive safe integer",
 			);
 		}
+		// A client that is not logged in lists no rooms and reads no channel;
+		// report that as a failed source, not as an empty Discord inbox.
+		if (!service.getClient()?.isReady()) {
+			throw new Error("[DiscordTriageAdapter] Discord is not connected");
+		}
 		const channelIds = await this.resolveChannelIds(runtime, service, opts);
 		if (channelIds.length === 0) return [];
 
+		// Without a limit the service reads a channel's history until it runs
+		// out, so a sweep bounded only by `sinceMs` would walk every channel
+		// back to its first message and discard almost all of it. The boundary
+		// stops each walk at the first page that reaches the period start.
+		const after =
+			limit === undefined && opts.sinceMs !== undefined
+				? snowflakeBefore(opts.sinceMs)
+				: undefined;
 		const merged: MessageRef[] = [];
+		const failedReads: unknown[] = [];
 		for (const channelId of channelIds) {
-			let memories: Memory[];
-			try {
-				memories = await service.fetchConnectorMessages(
-					{ runtime },
-					{ channelId, ...(limit === undefined ? {} : { limit }) },
-				);
-			} catch (error) {
-				// error-policy:J4 one unreadable channel (permissions, deletion)
-				// degrades to a partial sweep instead of killing the rest of the server
-				logger.debug(
-					`[DiscordTriageAdapter] channel ${channelId} fetch failed: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-				continue;
-			}
-			for (const memory of memories) {
-				// The agent's own messages are not triage candidates.
-				if (memory.entityId === runtime.agentId) continue;
-				const ref = mapDiscordMemoryToRef(memory);
-				if (!ref) continue;
-				if (opts.sinceMs !== undefined && ref.receivedAtMs < opts.sinceMs) {
-					continue;
+			// The limit counts triage candidates, not raw messages: the agent's
+			// own replies are dropped below, so a window of `limit` raw messages
+			// could hold almost none. Page older until the channel yields `limit`
+			// candidates, runs out, or falls behind `sinceMs`.
+			let candidates = 0;
+			let before: string | undefined;
+			// Each read asks for a full Discord history page (100 per request)
+			// even for a small limit, so agent-heavy history costs one round
+			// trip per 100 messages rather than one per `limit`.
+			const pageSize =
+				limit === undefined ? undefined : Math.max(limit, DISCORD_HISTORY_PAGE);
+			while (true) {
+				let memories: Memory[];
+				try {
+					memories = await service.fetchConnectorMessages(
+						{ runtime },
+						{
+							channelId,
+							...(pageSize === undefined ? {} : { limit: pageSize }),
+							...(before ? { before } : {}),
+							...(after ? { after } : {}),
+						},
+					);
+				} catch (error) {
+					// error-policy:J4 one unreadable channel (permissions, deletion)
+					// degrades to a partial sweep instead of killing the rest of the server
+					failedReads.push(error);
+					logger.debug(
+						`[DiscordTriageAdapter] channel ${channelId} fetch failed: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					break;
+				}
+				let oldest: { id: bigint; createdAt: number } | undefined;
+				for (const memory of memories) {
+					const messageId = metaString(
+						(memory.metadata ?? {}) as Record<string, unknown>,
+						"discordMessageId",
+					);
+					if (messageId && /^\d+$/.test(messageId)) {
+						const id = BigInt(messageId);
+						// Only messages strictly older than the cursor belong to this page.
+						if (before !== undefined && id >= BigInt(before)) continue;
+						if (!oldest || id < oldest.id) {
+							oldest = { id, createdAt: Number(memory.createdAt ?? 0) };
+						}
+					}
+					// The agent's own messages are not triage candidates.
+					if (memory.entityId === runtime.agentId) continue;
+					const ref = mapDiscordMemoryToRef(memory);
+					if (!ref) continue;
+					if (opts.sinceMs !== undefined && ref.receivedAtMs < opts.sinceMs) {
+						continue;
+					}
+					if (
+						opts.worldIds &&
+						(!ref.worldId || !opts.worldIds.includes(ref.worldId))
+					) {
+						continue;
+					}
+					merged.push(ref);
+					candidates += 1;
 				}
 				if (
-					opts.worldIds &&
-					(!ref.worldId || !opts.worldIds.includes(ref.worldId))
+					limit === undefined ||
+					candidates >= limit ||
+					memories.length < (pageSize ?? limit) ||
+					!oldest ||
+					// A page that does not move strictly older would repeat forever.
+					(before !== undefined && oldest.id >= BigInt(before)) ||
+					(opts.sinceMs !== undefined && oldest.createdAt < opts.sinceMs)
 				) {
-					continue;
+					break;
 				}
-				merged.push(ref);
+				before = oldest.id.toString();
 			}
+		}
+		// Every channel read failed: the sweep checked nothing.
+		if (merged.length === 0 && failedReads.length === channelIds.length) {
+			throw failedReads[0];
 		}
 
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
@@ -269,6 +360,9 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			request: draft,
 			channelId,
 			accountId,
+			...(original?.externalId
+				? { replyToExternalMessageId: original.externalId }
+				: {}),
 			preview,
 		});
 		return { draftId, preview };
@@ -291,6 +385,9 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		const content: Content = {
 			text: draft.request.body,
 			source: "discord",
+			...(draft.replyToExternalMessageId
+				? { replyToExternalMessageId: draft.replyToExternalMessageId }
+				: {}),
 		};
 		const sent = await service.handleSendMessage(runtime, target, content);
 		const disposition = inspectSendHandlerResult(sent);

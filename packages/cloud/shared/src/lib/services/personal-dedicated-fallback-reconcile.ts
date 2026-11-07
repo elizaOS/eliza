@@ -12,7 +12,10 @@ import {
   completePersonalFallbackRecovery,
   type PersonalDedicatedFallback,
 } from "./personal-dedicated-fallback";
-import { coordinateSharedHistory } from "./shared-runtime/conversation-coordinator";
+import {
+  coordinateSharedCutoverCommit,
+  coordinateSharedCutoverSeal,
+} from "./shared-runtime/conversation-coordinator";
 
 export type PersonalFallbackReconcileResult =
   | { reconciled: true; fallback: PersonalDedicatedFallback }
@@ -23,9 +26,25 @@ export async function reconcilePersonalFallbackIntoDedicated(input: {
   namespace: RuntimeDurableObjectNamespace;
 }): Promise<PersonalFallbackReconcileResult> {
   const { fallback } = input;
-  const history = await coordinateSharedHistory(
+  // Retries share one seal. Never release it on an ambiguous import/commit
+  // outcome: expiry consults the exact database interval before reopening.
+  const token = `fallback-recovery:${fallback.id}:${fallback.revision}`;
+  const history = await coordinateSharedCutoverSeal(
     fallback.source_agent_id,
     fallback.journal_room_id,
+    {
+      token,
+      leaseMs: 60_000,
+      organizationId: fallback.organization_id,
+      userId: fallback.user_id,
+      dedicatedAgentId: fallback.dedicated_agent_id,
+      fallback: {
+        id: fallback.id,
+        generation: fallback.generation,
+        revision: fallback.revision,
+        roomId: fallback.journal_room_id,
+      },
+    },
     { namespace: input.namespace },
   );
   const conversation = history.filter(
@@ -76,6 +95,9 @@ export async function reconcilePersonalFallbackIntoDedicated(input: {
   const recovered = await completePersonalFallbackRecovery({
     fallback,
     receipt: { sourceMessageCount: messages.length, inserted },
+  });
+  await coordinateSharedCutoverCommit(fallback.source_agent_id, fallback.journal_room_id, token, {
+    namespace: input.namespace,
   });
   return { reconciled: true, fallback: recovered };
 }

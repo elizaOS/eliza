@@ -5,7 +5,7 @@
  * dispatched directly.
  */
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { Message as DiscordMessage } from "discord.js";
+import { Collection, type Message as DiscordMessage } from "discord.js";
 
 export interface DiscordMessageCoalesceConfig {
 	enabled: boolean;
@@ -112,6 +112,32 @@ export function formatCoalescedDiscordMessages(
 		.join("\n\n");
 }
 
+/**
+ * Own `attachments` and `embeds` for a message built from a batch. The combined
+ * message inherits the anchor, so without these only the anchor's media reach
+ * processMessage and the other messages' files are lost.
+ */
+export function batchMediaProperties(
+	messages: DiscordMessage[],
+): PropertyDescriptorMap {
+	return {
+		attachments: {
+			value: new Collection(
+				messages.flatMap((message) => [...message.attachments]),
+			),
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		},
+		embeds: {
+			value: messages.flatMap((message) => message.embeds ?? []),
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		},
+	};
+}
+
 export function makeCoalescedDiscordMessage(
 	messages: DiscordMessage[],
 	anchor?: DiscordMessage,
@@ -128,6 +154,7 @@ export function makeCoalescedDiscordMessage(
 	const base = anchor ?? messages[messages.length - 1] ?? messages[0];
 	const meta = messages.map(getDiscordMessageMeta);
 	return Object.create(base, {
+		...batchMediaProperties(messages),
 		content: {
 			value: formatCoalescedDiscordMessages(messages),
 			writable: true,

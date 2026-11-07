@@ -1,4 +1,4 @@
-/** Defines app app core bridge ts behavior for dashboard host and runtime integration. */
+/** Defines app core bridge ts behavior for dashboard host and runtime integration. */
 export interface ElectrobunRendererRpc {
   request?: Record<string, (params?: unknown) => Promise<unknown> | unknown>;
   onMessage: (event: string, listener: (payload: unknown) => void) => void;

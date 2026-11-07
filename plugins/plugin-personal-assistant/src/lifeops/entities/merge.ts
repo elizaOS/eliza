@@ -14,4 +14,4 @@ export {
   type IdentityObserveOutcome,
   mergeEntities,
   OVERRIDE_CONFIDENCE_DELTA,
-} from "@elizaos/core/knowledge-graph/merge";
+} from "@elizaos/plugin-relationships";

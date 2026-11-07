@@ -3,7 +3,7 @@
  * reminder steps, the Google scope string, timezone-abbreviation aliases, and
  * the default-timezone resolver.
  */
-import { type LifeOpsReminderStep } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsReminderStep } from "@elizaos/contracts";
 
 export const GOOGLE_PRIMARY_CALENDAR_ID = "primary";
 export const DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS = 30;
@@ -38,6 +38,9 @@ export const CALENDAR_TIME_ZONE_ALIASES: Record<string, string> = {
   eastern: "America/New_York",
   utc: "UTC",
   gmt: "UTC",
+  // A planner that reads "2026-08-19T14:00:00Z" stamps timeZone "Z". Intl
+  // rejects it, but it names UTC.
+  z: "UTC",
 };
 
 export function resolveDefaultTimeZone(): string {

@@ -15,7 +15,7 @@ import {
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3OperationControl,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFs,
   type AgentBackupRestoreV3CandidateFsLock,

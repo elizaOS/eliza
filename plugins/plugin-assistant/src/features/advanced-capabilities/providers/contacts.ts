@@ -14,7 +14,9 @@ export const advancedContactsProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // The whole contact book: the same ADMIN floor as the `contacts` context
+  // and the CONTACT action, so a USER in a shared room cannot read it.
+  roleGate: { minRole: "ADMIN" },
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -63,7 +65,8 @@ export const advancedContactsProvider: Provider = {
         };
       });
       // Group by category
-      const grouped: Record<string, typeof contactDetails> = {};
+      const grouped: Record<string, typeof contactDetails> =
+        Object.create(null);
       for (const contact of contactDetails) {
         for (const cat of contact.categories) {
           const bucket = grouped[cat];
@@ -76,7 +79,7 @@ export const advancedContactsProvider: Provider = {
       }
       const lines: string[] = [];
       lines.push(`You have ${contacts.length} contacts in your relationships:`);
-      const categoryCounts: Record<string, number> = {};
+      const categoryCounts: Record<string, number> = Object.create(null);
       for (const category in grouped) {
         const items = grouped[category];
         if (!items) continue;

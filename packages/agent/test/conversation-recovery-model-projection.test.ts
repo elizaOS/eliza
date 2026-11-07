@@ -9,7 +9,7 @@ import {
   createCharacter,
   ModelType,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -172,9 +172,15 @@ it.each([
           if (params.prompt.startsWith("Review recovered reply grounding."))
             return JSON.stringify({
               grounded: true,
-              completedChangeClaim: true,
-              reason:
-                "The saved file commit receipt supports this exact write.",
+              claims: [
+                {
+                  quote: "The test file was saved with its original contents.",
+                  actor: "assistant",
+                  change: true,
+                  supported: true,
+                  evidence: "saved-recovery-http",
+                },
+              ],
             });
           return JSON.stringify({
             response: "The test file was saved with its original contents.",

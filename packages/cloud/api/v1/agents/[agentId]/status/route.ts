@@ -5,12 +5,15 @@
  * Auth: X-Service-Key header.
  */
 
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { toCompatStatus } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { toCompatStatus } from "@/lib/api/compat-envelope";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

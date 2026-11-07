@@ -7,6 +7,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   ElizaError,
   fetchRemoteMedia,
@@ -21,7 +22,6 @@ import {
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar";
 import { ELIZA_CALENDAR_GRANT_ID } from "@elizaos/plugin-calendar";

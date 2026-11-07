@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { createLoginApp } from "../app";
-import type { createPGLiteDb } from "../db/src/pglite";
+import type { createPGLiteDb } from "../db/pglite";
 
 const origin = "https://eliza.app";
 const environment = {
@@ -30,8 +30,8 @@ beforeAll(async () => {
     previous.set(key, process.env[key]);
     process.env[key] = value;
   }
-  const { createPGLiteDb } = await import("../db/src/pglite");
-  const { setPGLiteOverride } = await import("../db/src/client");
+  const { createPGLiteDb } = await import("../db/pglite");
+  const { setPGLiteOverride } = await import("../db/client");
   database = await createPGLiteDb("memory://");
   setPGLiteOverride(database.db, () => database.client.close());
   const { createLoginApp } = await import("../app");
@@ -80,7 +80,7 @@ describe("first-party wallet identity", () => {
       status: 200,
       error: undefined,
     });
-    const { verifyToken } = await import("../auth/src/jwt");
+    const { verifyToken } = await import("../auth/jwt");
     const claims = await verifyToken(payload.token);
     expect(claims.address).toBe(account.address.toLowerCase());
     const rows = await database.client.query<{
@@ -89,6 +89,7 @@ describe("first-party wallet identity", () => {
     }>("SELECT id, wallet_address FROM users WHERE wallet_address = $1", [
       account.address.toLowerCase(),
     ]);
+    if (!claims.userId) throw new Error("Login token lacks user identity");
     expect(rows.rows).toEqual([
       { id: claims.userId, wallet_address: account.address.toLowerCase() },
     ]);

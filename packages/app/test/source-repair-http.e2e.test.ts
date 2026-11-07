@@ -1,9 +1,12 @@
 /** Real HTTP + AgentRuntime + PGlite; only inference is deterministic. */
 import { randomUUID } from "node:crypto";
 import { ModelType, type Plugin } from "@elizaos/core";
+import {
+  createConversation,
+  postConversationMessage,
+} from "@elizaos/testing/runtime";
 import { expect, test } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
-import { createConversation, postConversationMessage } from "./helpers/http.ts";
 import { createRealTestRuntime } from "./helpers/real-runtime.ts";
 
 const original = "SOURCE-REPAIR fixture: preserve  two spaces and punctuation.";

@@ -6,15 +6,21 @@
  * proposals only; it has no send, purchase, registration, calendar-mutation,
  * vendor-booking, or responsibility-reassignment verb.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,
   lifeOpsFailedEffect,
   lifeOpsNoopEffect,
 } from "../action-effect-result.js";
+import {
+  HOUSEHOLD_BRIEF_WINDOW_SCHEMA,
+  HOUSEHOLD_CALENDAR_CHECKS_SCHEMA,
+  HOUSEHOLD_OPERATION_INPUT_SCHEMA,
+} from "./action-schema.js";
 import {
   getHouseholdOperationsService,
   type HouseholdOperationsService,
@@ -99,6 +105,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOperationSubaction> = {
       "Create a scoped structural weekly brief from current revisions, source events, observations, calendar-check evidence, and non-use reviews.",
     descriptionCompressed: "generate structural weekly household brief",
     required: ["householdId", "window", "calendarChecks"],
+    allowEmptyArrays: ["calendarChecks"],
   },
   read_weekly_brief: {
     description:
@@ -179,7 +186,6 @@ export function createHouseholdOperationsAction(
     ],
     tags: [
       "domain:household",
-      "domain:tasks",
       "capability:read",
       "capability:write",
       "effect:receipt-required",
@@ -209,14 +215,14 @@ export function createHouseholdOperationsAction(
       {
         name: "input",
         description:
-          "Typed record, observation, service event, or responsibility signal.",
+          "Typed record (put_record), observation, service event, or responsibility signal; use the variant for the chosen verb.",
         subactions: [
           "put_record",
           "record_observation",
           "record_service_event",
           "record_responsibility_signal",
         ],
-        schema: { type: "object", additionalProperties: true },
+        schema: HOUSEHOLD_OPERATION_INPUT_SCHEMA,
       },
       {
         name: "expectedRevision",
@@ -244,19 +250,16 @@ export function createHouseholdOperationsAction(
       },
       {
         name: "window",
-        description: "Weekly brief ISO start/end window.",
+        description: "Weekly brief window as ISO startsAt/endsAt.",
         subactions: ["generate_weekly_brief"],
-        schema: { type: "object", additionalProperties: true },
+        schema: HOUSEHOLD_BRIEF_WINDOW_SCHEMA,
       },
       {
         name: "calendarChecks",
         description:
           "Provider-neutral availability results for exact maintenance windows; absent evidence blocks outreach drafting.",
         subactions: ["generate_weekly_brief"],
-        schema: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
+        schema: HOUSEHOLD_CALENDAR_CHECKS_SCHEMA,
       },
       {
         name: "briefId",

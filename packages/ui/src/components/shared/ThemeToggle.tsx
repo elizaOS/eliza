@@ -8,7 +8,7 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useCallback } from "react";
-import type { UiTheme } from "../../state/persistence";
+import type { UiTheme } from "../../state/ui-preferences";
 import { Button } from "../ui/button";
 
 /** Minimal translator function type. */

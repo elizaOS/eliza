@@ -19,7 +19,7 @@ import {
   successfulActionData,
 } from "@elizaos/testing";
 
-import { transientTurnEvaluationSeed } from "../../../../../../packages/testing/scenarios/_fixtures/simple-turn-memory.ts";
+import { transientTurnEvaluationSeed } from "@elizaos/testing/models";
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {

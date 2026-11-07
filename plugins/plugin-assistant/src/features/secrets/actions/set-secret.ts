@@ -40,6 +40,20 @@ interface ExtractedSecrets {
   level?: "global" | "world" | "user";
 }
 
+function normalizeSecretEntries(entries: unknown[]): ExtractedSecret[] {
+  return entries
+    .filter(
+      (s): s is Record<string, unknown> => s !== null && typeof s === "object",
+    )
+    .map((s) => ({
+      key: String(s.key || ""),
+      value: String(s.value || ""),
+      description: s.description ? String(s.description) : undefined,
+      type: s.type as ExtractedSecret["type"],
+    }))
+    .filter((s) => s.key && s.value);
+}
+
 export async function setSecretHandler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -80,108 +94,114 @@ export async function setSecretHandler(
     };
   }
 
-  // Build state for prompt
-  const currentState = state ?? (await runtime.composeState(message));
-
   const params =
     _options?.parameters && typeof _options.parameters === "object"
       ? (_options.parameters as Record<string, unknown>)
       : {};
 
-  // Extract secrets from structured parameters or user message using LLM
-  let extracted: ExtractedSecrets;
-  try {
-    const result = await runtime.dynamicPromptExecFromState({
-      state: currentState,
-      params: {
-        prompt: extractSecretsTemplate,
-      },
-      schema: [
-        {
-          field: "secrets",
-          description: "Secrets extracted from the user's message",
-          type: "array",
-          items: {
-            description: "One extracted secret",
-            type: "object",
-            properties: [
-              {
-                field: "key",
-                description: "Secret key, usually UPPERCASE_WITH_UNDERSCORES",
-                required: true,
-              },
-              {
-                field: "value",
-                description: "Secret value",
-                required: true,
-              },
-              {
-                field: "description",
-                description: "Optional short description",
-                required: false,
-              },
-              {
-                field: "type",
-                description:
-                  "Secret type: api_key, secret, credential, url, config",
-                required: false,
-              },
-            ],
+  // Planner-supplied arguments are authoritative: the declared `secrets`
+  // array and the declared top-level `key` + `value` pair. The model only
+  // extracts from the conversation when the planner supplied neither.
+  const structuredSecrets = normalizeSecretEntries([
+    ...(Array.isArray(params.secrets) ? params.secrets : []),
+    ...(typeof params.key === "string" && typeof params.value === "string"
+      ? [
+          {
+            key: params.key,
+            value: params.value,
+            description: params.description,
+            type: params.type,
           },
-          required: true,
-          validateField: false,
-          streamField: false,
-        },
-        {
-          field: "level",
-          description: "Storage level: global, world, or user",
-          required: false,
-          validateField: false,
-          streamField: false,
-        },
-      ],
-      options: {
-        modelType: ModelType.TEXT_SMALL,
-        contextCheckLevel: 0,
-        maxRetries: 1,
-      },
-    });
+        ]
+      : []),
+  ]);
 
-    // Validate and transform the result
-    const secretsArray = Array.isArray(params.secrets)
-      ? params.secrets
-      : Array.isArray(result?.secrets)
-        ? result.secrets
-        : [];
+  let extracted: ExtractedSecrets;
+  if (structuredSecrets.length > 0) {
     extracted = {
-      secrets: secretsArray
-        .filter(
-          (s): s is Record<string, unknown> =>
-            s !== null && typeof s === "object",
-        )
-        .map((s) => ({
-          key: String(s.key || ""),
-          value: String(s.value || ""),
-          description: s.description ? String(s.description) : undefined,
-          type: s.type as ExtractedSecret["type"],
-        }))
-        .filter((s) => s.key && s.value),
-      level:
-        (params.level as ExtractedSecrets["level"]) ||
-        (result?.level as ExtractedSecrets["level"]),
+      secrets: structuredSecrets,
+      level: params.level as ExtractedSecrets["level"],
     };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`[SECRETS:set] Failed to extract secrets: ${errorMessage}`);
-    // error-policy:J1 the action boundary translates extraction failure into
-    // an explicit unsuccessful result visible to the model.
-    // Planner-facing only: the canned clarification double-messaged next to
-    // the evaluator's in-voice reply. The evaluator owns asking the user.
-    return {
-      success: false,
-      text: 'Failed to extract secrets from the message; ask the user to restate it with a key and value, like "Set my OPENAI_API_KEY to sk-...".',
-      data: { actionName: "SECRETS", action: "set" },
-    };
+  } else {
+    try {
+      const result = await runtime.dynamicPromptExecFromState({
+        state: state ?? (await runtime.composeState(message)),
+        params: {
+          prompt: extractSecretsTemplate,
+        },
+        schema: [
+          {
+            field: "secrets",
+            description: "Secrets extracted from the user's message",
+            type: "array",
+            items: {
+              description: "One extracted secret",
+              type: "object",
+              properties: [
+                {
+                  field: "key",
+                  description: "Secret key, usually UPPERCASE_WITH_UNDERSCORES",
+                  required: true,
+                },
+                {
+                  field: "value",
+                  description: "Secret value",
+                  required: true,
+                },
+                {
+                  field: "description",
+                  description: "Optional short description",
+                  required: false,
+                },
+                {
+                  field: "type",
+                  description:
+                    "Secret type: api_key, secret, credential, url, config",
+                  required: false,
+                },
+              ],
+            },
+            required: true,
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: "level",
+            description: "Storage level: global, world, or user",
+            required: false,
+            validateField: false,
+            streamField: false,
+          },
+        ],
+        options: {
+          modelType: ModelType.TEXT_SMALL,
+          contextCheckLevel: 0,
+          maxRetries: 1,
+        },
+      });
+
+      extracted = {
+        secrets: normalizeSecretEntries(
+          Array.isArray(result?.secrets) ? result.secrets : [],
+        ),
+        level:
+          (params.level as ExtractedSecrets["level"]) ||
+          (result?.level as ExtractedSecrets["level"]),
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error(`[SECRETS:set] Failed to extract secrets: ${errorMessage}`);
+      // error-policy:J1 the action boundary translates extraction failure into
+      // an explicit unsuccessful result visible to the model.
+      // Planner-facing only: the canned clarification double-messaged next to
+      // the evaluator's in-voice reply. The evaluator owns asking the user.
+      return {
+        success: false,
+        text: 'Failed to extract secrets from the message; ask the user to restate it with a key and value, like "Set my OPENAI_API_KEY to sk-...".',
+        data: { actionName: "SECRETS", action: "set" },
+      };
+    }
   }
 
   if (extracted.secrets.length === 0) {

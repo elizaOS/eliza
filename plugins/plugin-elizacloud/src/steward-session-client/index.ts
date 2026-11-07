@@ -405,6 +405,7 @@ async function persistStoredStewardToken(
     // persisted token stays unreadable rather than inheriting false authority.
     if (
       requiredScope &&
+      window.localStorage.getItem(STEWARD_TOKEN_KEY) === token &&
       window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) !== requiredScope
     ) {
       window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, requiredScope);
@@ -441,17 +442,59 @@ export async function writeStoredStewardToken(token: string): Promise<void> {
  * so a refresh response that arrives after logout cannot resurrect the session.
  */
 export async function replaceStoredStewardTokenIfCurrent(
-  expectedToken: string,
+  expectedToken: string | null,
   token: string,
+  options?: { signal?: AbortSignal; beforePublish?: () => void },
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
   return serializeStewardTokenMutation(async () => {
     const current = readStoredStewardToken();
-    if (current !== expectedToken) return false;
-    await persistStoredStewardToken(token, configuredLoopbackStewardScope());
+    if (options?.signal?.aborted || current !== expectedToken) return false;
+    const previousToken = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    const previousScope = window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY);
+    const requiredScope = configuredLoopbackStewardScope();
+    await persistStoredStewardToken(token, requiredScope);
+    if (options?.signal?.aborted) {
+      // The registered durable write cannot be cancelled after it starts. Undo
+      // only our still-owned candidate before any authority marker or event.
+      // Keep the raw snapshot: a nullable scoped read can hide another scope.
+      if (
+        window.localStorage.getItem(STEWARD_TOKEN_KEY) === token &&
+        window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) ===
+          (requiredScope ?? previousScope)
+      ) {
+        if (previousToken === null) await removeStoredStewardToken();
+        else await persistStoredStewardToken(previousToken, previousScope);
+        if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === previousToken) {
+          if (previousScope === null)
+            window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
+          else
+            window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, previousScope);
+        }
+      }
+      return false;
+    }
+    if (
+      window.localStorage.getItem(STEWARD_TOKEN_KEY) !== token ||
+      window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) !==
+        (requiredScope ?? previousScope)
+    )
+      return false;
+    options?.beforePublish?.();
     if (current !== token) dispatchStewardSessionChange("present");
     return true;
   });
+}
+
+// Shared durable removal boundary; callers already own the mutation queue.
+async function removeStoredStewardToken(): Promise<void> {
+  try {
+    if (stewardTokenRemoval) await stewardTokenRemoval();
+    else window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+  } catch (error) {
+    // error-policy:J2 canonical removal failure must remain observable.
+    throw new StewardTokenRemovalError(error);
+  }
 }
 
 /**
@@ -462,17 +505,7 @@ export async function replaceStoredStewardTokenIfCurrent(
 export async function clearStoredStewardToken(): Promise<void> {
   if (typeof window === "undefined") return;
   await serializeStewardTokenMutation(async () => {
-    try {
-      if (stewardTokenRemoval) {
-        await stewardTokenRemoval();
-      } else {
-        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-      }
-    } catch (error) {
-      // error-policy:J2 callers must distinguish canonical removal failure from
-      // obsolete refresh-key cleanup so they never publish a false logout.
-      throw new StewardTokenRemovalError(error);
-    }
+    await removeStoredStewardToken();
     dispatchStewardSessionChange("cleared");
     window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
     window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);

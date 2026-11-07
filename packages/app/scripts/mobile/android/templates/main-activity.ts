@@ -10,7 +10,6 @@ export function cloudSafeMainActivityJava(
 ) {
   const launcherImports = launcherKiosk
     ? `import android.app.admin.DevicePolicyManager;
-import android.net.Uri;
 import android.util.Log;
 import android.view.KeyEvent;
 
@@ -25,14 +24,19 @@ import androidx.activity.OnBackPressedCallback;
     : "";
   const launcherSetup = launcherKiosk
     ? `
-        // The launcher owns the device surface. Keep Back from finishing the
-        // root activity, then enter Android lock-task mode. A managed device
-        // owner can allowlist this package for silent kiosk; an unmanaged
-        // Pixel receives Android's recoverable screen-pinning confirmation.
+        // The launcher owns the device surface. Lifecycle-bound Back callbacks
+        // are added on every start in registration order and the last one
+        // wins, so this one, registered after super.onCreate, runs instead of
+        // the Capacitor App plugin's. That plugin would minimize the launcher
+        // task or walk WebView history back. Give
+        // the page only its back intent, so an open sheet closes, and
+        // otherwise stay on the launcher root.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                // Intentionally stay on the launcher root.
+                getBridge().eval(
+                    "window.dispatchEvent(new CustomEvent('eliza:back-intent', { detail: { handled: false } }))",
+                    null);
             }
         });
 `
@@ -51,32 +55,12 @@ import androidx.activity.OnBackPressedCallback;
         }
     }
 
-    private boolean isCloudAuthCallback(Intent intent) {
-        Uri data = intent == null ? null : intent.getData();
-        return data != null
-            && "elizaos".equalsIgnoreCase(data.getScheme())
-            && "auth".equalsIgnoreCase(data.getHost())
-            && "/callback".equals(data.getPath());
-    }
-
-    private void restoreBundledRendererAfterAuthCallback(Intent intent) {
-        if (!isCloudAuthCallback(intent)
-                || getBridge() == null
-                || getBridge().getWebView() == null) {
-            return;
-        }
-        WebView webView = getBridge().getWebView();
-        String localUrl = getBridge().getLocalUrl();
-        webView.post(() -> webView.loadUrl(localUrl));
-    }
-
     @Override
     public void onResume() {
         super.onResume();
         keepScreenAwake();
-        // Only a managed-device owner may contain the launcher task. Android's
-        // unmanaged screen-pinning mode blocks the secure browser that Google
-        // OAuth requires, preventing the callback from ever reaching the app.
+        // Only a managed-device owner may contain the launcher task; Android's
+        // unmanaged screen-pinning mode stays off.
         enterManagedLockTaskIfPermitted();
     }
 
@@ -129,20 +113,14 @@ ${
 `;
   const safePushRegistration = safePushNotifications
     ? `
-        // Capacitor discovers the community push plugin before Firebase is
-        // available in builds without google-services.json. Replace it after
-        // bridge creation so registration reports unavailable instead of
-        // terminating the process when the renderer requests notifications.
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
+        // Appended after discovery, before the first bridge JS/header export.
+        initialPlugins.add(SafePushNotificationsPlugin.class);
 `
     : "";
   return `package ${androidPackage};
 
 import android.os.Bundle;
 import android.content.Intent;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.view.WindowManager;
 
@@ -151,13 +129,14 @@ import androidx.core.view.WindowCompat;
 ${navigationInsetsImport}import androidx.core.view.WindowInsetsControllerCompat;
 ${launcherImports}
 
-import com.getcapacitor.BridgeActivity;
+import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;
 
 import ${androidPackage}.BuildConfig;
 
-public class MainActivity extends BridgeActivity {
+// ElizaBridgeActivity owns the shared WebView lifecycle: no mixed content,
+// renderer-death recovery and the stopped-page pause.
+public class MainActivity extends ElizaBridgeActivity {
 ${launcherConstants}
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // The launch theme's postSplashScreenTheme is applied only when the
@@ -173,16 +152,19 @@ ${launcherConstants}
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
+        // Native Eliza Cloud sign-in (email code, SMS code, native Google).
+        registerPlugin(ElizaCloudSignInPlugin.class);
+        // Appended after generated plugin discovery, preserving the credential intent boundary.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(ElizaPlayExportPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
+${safePushRegistration}
         super.onCreate(savedInstanceState);
         keepScreenAwake();
-${safePushRegistration}
 
 ${launcherSetup}
-
         // Draw the canonical Cloud renderer behind transparent system bars. The
         // launcher variant hides only the navigation bar; a swipe can reveal
         // it transiently; ordinary Cloud builds keep both bars visible.
@@ -194,18 +176,12 @@ ${launcherSetup}
             systemBars.setAppearanceLightStatusBars(false);
 ${navigationBarPolicy}
         }
-
-        if (getBridge() != null && getBridge().getWebView() != null) {
-            WebSettings settings = getBridge().getWebView().getSettings();
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
-${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
 ${resumeHandler}

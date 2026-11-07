@@ -36,6 +36,12 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.12.0'}"
+    // TelephonyPlugin's role and permission dialogs return through Capacitor's activity launchers.
+    implementation "androidx.appcompat:appcompat:${rootProject.ext.has('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
+    implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'}"
+
+    // JVM tests of the reviewed-send journal, page cursor and provider mapping.
+    testImplementation "junit:junit:$junitVersion"
 
     // Instrumented test deps (issue #9967 — on-device SMS read).
     androidTestImplementation "androidx.test:core:1.5.0"

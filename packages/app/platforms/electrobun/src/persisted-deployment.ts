@@ -1,8 +1,7 @@
-/** Implements Electrobun desktop persisted deployment ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveUserPath } from "@elizaos/core";
-import { normalizeDeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
+import { normalizeDeploymentTargetConfig } from "@elizaos/host/protocol";
 import type { PersistedDeployment } from "./api-base";
 import { logger } from "./logger";
 import {

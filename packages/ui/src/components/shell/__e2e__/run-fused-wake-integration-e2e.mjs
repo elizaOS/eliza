@@ -14,28 +14,17 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  compileTailwindTheme,
-  createAssertGate,
-  createSnapper,
-  finishRun,
-  renameRecordedVideo,
-  stubElizaCore,
-  stubNodeBuiltins,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme, writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
+import { createAssertGate, createSnapper, finishRun, renameRecordedVideo } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../..");
 const repoRoot = resolve(uiRoot, "../..");
-const require = createRequire(import.meta.url);
-const localInferenceRoot = dirname(
-  require.resolve("@elizaos/plugin-local-inference/package.json"),
-);
+const localInferenceRoot = join(repoRoot, "plugins/plugin-local-inference");
 
 const CLIP = join(
   localInferenceRoot,
@@ -138,10 +127,12 @@ try {
     "RESTING: chromeless HomePill bar before wake",
   );
   assert((await p.getByTestId("shell-chat-surface").count()) === 0, "RESTING: no composer before wake");
-  assert(
-    await p.evaluate(() => window.__ELIZA_FUSED_WAKE__ === true),
-    "registerDesktopFusedWake set the capability flag",
-  );
+  // The flag is set only after the real FusedWakeManager.start() resolves
+  // (model load + mic spawn), so wait for it instead of sampling once.
+  await p.waitForFunction(() => window.__ELIZA_FUSED_WAKE__ === true, null, {
+    timeout: 10000,
+  });
+  assert(true, "fusedWakeStart reported started, so the capability flag is set");
   await snap(p, "resting-homepill");
 
   // The real native detector is now streaming the real clip; wait for the head

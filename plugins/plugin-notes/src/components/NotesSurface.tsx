@@ -1,18 +1,23 @@
-import { reconstructNoteContent } from "../types.js";
 /**
  * Renders the authoritative Notes snapshot as a calm read-only collection.
  * Kept transport-agnostic so production, focused tests, and QA fixtures all
  * exercise the same presentation contract.
  */
-
-import { CompactCardSkeleton } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { isApiError } from "@elizaos/ui/api";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
+import {
+  CompactCardSkeleton,
+  isApiError,
+  PagePanel,
+  useAgentElement,
+} from "@elizaos/ui/view-primitives";
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { type CSSProperties, useEffect } from "react";
-import type { NotesSnapshot, StickyNote as StickyNoteModel } from "../types.js";
+import { type CSSProperties, type ReactNode, useEffect } from "react";
+import { authoredNoteText } from "../note-authored.js";
+import {
+  type NotesSnapshot,
+  reconstructNoteContent,
+  type StickyNote as StickyNoteModel,
+} from "../types.js";
+
 import {
   AgentAction,
   COLOR_MATERIALS,
@@ -57,12 +62,17 @@ function NoteRow({
   note,
   selected,
   sequence,
+  editorOpen,
+  onSelect,
 }: {
   note: StickyNoteModel;
   selected: boolean;
   sequence: number;
+  editorOpen: boolean;
+  onSelect?: (id: string) => void;
 }) {
   const content = reconstructNoteContent(note);
+  const richContent = authoredNoteText(note.format);
   const card = useAgentElement<HTMLLIElement>({
     id: note.id,
     label: `Note ${note.title}`,
@@ -70,22 +80,46 @@ function NoteRow({
     group: "notes-list",
     description: content,
     status: note.color,
+    onActivate: onSelect ? () => onSelect(note.id) : undefined,
   });
   useEffect(() => {
-    if (!selected || sequence < 1) return;
-    card.ref.current?.scrollIntoView({ block: "center" });
-    card.ref.current?.focus({ preventScroll: true });
-  }, [selected, sequence, card.ref]);
+    const element = card.ref.current;
+    if (!selected || sequence < 1 || !element) return;
+    // On a narrow screen the open editor hides the list: focus follows the
+    // note into its editor instead of falling to the page.
+    if (editorOpen && element.getClientRects().length === 0) {
+      element
+        .closest(".notes-workspace-columns")
+        ?.querySelector<HTMLElement>(".notes-workspace-editor")
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    element.scrollIntoView({ block: "center" });
+    element.focus({ preventScroll: true });
+  }, [selected, sequence, editorOpen, card.ref]);
   const material = COLOR_MATERIALS[note.color];
 
   return (
     <li
       ref={card.ref}
       {...card.agentProps}
+      aria-label={`Note ${note.title}`}
       data-note-color={note.color}
-      tabIndex={selected ? -1 : undefined}
+      tabIndex={onSelect ? 0 : selected ? -1 : undefined}
       aria-current={selected ? "true" : undefined}
       data-source-note={selected ? "true" : undefined}
+      role={onSelect ? "button" : undefined}
+      onClick={onSelect ? () => onSelect(note.id) : undefined}
+      onKeyDown={
+        onSelect
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(note.id);
+              }
+            }
+          : undefined
+      }
       style={{
         ...PANEL_STYLE,
         ...NOTE_ROW_BASE_STYLE,
@@ -131,6 +165,11 @@ function NoteRow({
           fontVariantNumeric: "tabular-nums",
         }}
       >
+        {richContent ? (
+          <span style={{ display: "block", whiteSpace: "pre-wrap" }}>
+            {richContent}
+          </span>
+        ) : null}
         {formatUpdatedAt(note.updatedAt)}
       </p>
     </li>
@@ -404,7 +443,7 @@ function NotesCollectionHeader({
           textAlign: "right",
         }}
       >
-        {issue ? "Last available snapshot" : "Ask Eliza to create or edit"}
+        {issue ? "Last available snapshot" : "Notes saved with your agent"}
       </p>
     </div>
   );
@@ -442,8 +481,12 @@ export interface NotesSurfaceProps {
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  /** Render the shared route header. Every caller must declare its chrome context. */
-  standalone: boolean;
+  toolbar?: ReactNode;
+  editor?: ReactNode;
+  children?: ReactNode;
+  selectedNoteId?: string;
+  onSelect?: (id: string) => void;
+  emptyDescription?: string;
 }
 
 export function NotesSurface({
@@ -451,8 +494,13 @@ export function NotesSurface({
   loading,
   error,
   refresh,
-  standalone,
   sourceNoteTarget,
+  toolbar,
+  editor,
+  children,
+  selectedNoteId,
+  onSelect,
+  emptyDescription = "Ask your assistant to save something here.",
 }: NotesSurfaceProps) {
   const notes = snapshot?.notes ?? [];
   const issue = notesIssue(error);
@@ -468,10 +516,12 @@ export function NotesSurface({
         error,
       })}
       data-testid="simple-notes-view"
-      className="relative flex-col overflow-hidden text-txt"
+      className="notes-workspace-root relative flex-col overflow-hidden text-txt"
     >
-      {standalone ? <ViewHeader title="Notes" /> : null}
-      <PagePanel.ContentArea data-testid="simple-notes-scroll-region">
+      <PagePanel.ContentArea
+        className="notes-workspace-scroll"
+        data-testid="simple-notes-scroll-region"
+      >
         <PagePanel.ContentRail
           width="wide"
           className="px-0 sm:px-0"
@@ -480,68 +530,93 @@ export function NotesSurface({
             paddingBlockEnd: "var(--view-pad-bottom, 1rem)",
           }}
         >
-          {!snapshot ? (
-            loading ? (
-              <NotesLoadingSkeleton />
-            ) : (
-              <NotesRecoveryState
-                issue={issue}
-                onRetry={() => void refresh()}
-              />
-            )
-          ) : (
-            <section aria-label="Notes" style={COLLECTION_STYLE}>
-              {!loading &&
-              !error &&
-              sourceNoteTarget &&
-              !notes.some((note) => note.id === sourceNoteTarget.id) ? (
-                <p role="status" className="px-4 py-3 text-sm text-muted">
-                  The source note is no longer available. The calendar event is
-                  unchanged.
-                </p>
-              ) : null}
-              {issue && notes.length > 0 ? (
-                <>
-                  <NotesCollectionHeader count={notes.length} issue={issue} />
-                  <SyncWarning issue={issue} onRetry={() => void refresh()} />
-                </>
-              ) : null}
-              {issue && notes.length === 0 ? (
-                <NotesRecoveryState
-                  issue={issue}
-                  onRetry={() => void refresh()}
-                />
-              ) : notes.length === 0 ? (
-                <PagePanel.ContentState
-                  state="empty"
-                  placement="workspace"
-                  className="min-h-[58vh]"
-                  title="No notes yet"
-                  description="Ask Eliza to save something here."
-                />
+          {toolbar}
+          <div
+            className={
+              editor
+                ? "notes-workspace-columns has-editor"
+                : "notes-workspace-columns"
+            }
+          >
+            {children ??
+              (!snapshot ? (
+                loading ? (
+                  <NotesLoadingSkeleton />
+                ) : (
+                  <NotesRecoveryState
+                    issue={issue}
+                    onRetry={() => void refresh()}
+                  />
+                )
               ) : (
-                <>
-                  {issue ? null : (
-                    <NotesCollectionHeader count={notes.length} issue={null} />
-                  )}
-                  <ul
-                    data-testid="simple-notes-list"
-                    className="grid grid-cols-1 gap-3 lg:grid-cols-2"
-                    style={NOTE_LIST_STYLE}
-                  >
-                    {notes.map((note) => (
-                      <NoteRow
-                        key={note.id}
-                        note={note}
-                        selected={note.id === sourceNoteTarget?.id}
-                        sequence={sourceNoteTarget?.sequence ?? 0}
+                <section aria-label="Notes" style={COLLECTION_STYLE}>
+                  {!loading &&
+                  !error &&
+                  sourceNoteTarget &&
+                  !notes.some((note) => note.id === sourceNoteTarget.id) ? (
+                    <p role="status" className="px-4 py-3 text-sm text-muted">
+                      The source note is no longer available. The calendar event
+                      is unchanged.
+                    </p>
+                  ) : null}
+                  {issue && notes.length > 0 ? (
+                    <>
+                      <NotesCollectionHeader
+                        count={notes.length}
+                        issue={issue}
                       />
-                    ))}
-                  </ul>
-                </>
-              )}
-            </section>
-          )}
+                      <SyncWarning
+                        issue={issue}
+                        onRetry={() => void refresh()}
+                      />
+                    </>
+                  ) : null}
+                  {issue && notes.length === 0 ? (
+                    <NotesRecoveryState
+                      issue={issue}
+                      onRetry={() => void refresh()}
+                    />
+                  ) : notes.length === 0 ? (
+                    <PagePanel.ContentState
+                      state="empty"
+                      placement="workspace"
+                      className="min-h-[58vh]"
+                      title="No notes yet"
+                      description={emptyDescription}
+                    />
+                  ) : (
+                    <>
+                      {issue ? null : (
+                        <NotesCollectionHeader
+                          count={notes.length}
+                          issue={null}
+                        />
+                      )}
+                      <ul
+                        data-testid="simple-notes-list"
+                        className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+                        style={NOTE_LIST_STYLE}
+                      >
+                        {notes.map((note) => (
+                          <NoteRow
+                            key={note.id}
+                            note={note}
+                            selected={
+                              note.id ===
+                              (selectedNoteId ?? sourceNoteTarget?.id)
+                            }
+                            sequence={sourceNoteTarget?.sequence ?? 0}
+                            editorOpen={Boolean(editor)}
+                            onSelect={onSelect}
+                          />
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </section>
+              ))}
+            {editor}
+          </div>
         </PagePanel.ContentRail>
       </PagePanel.ContentArea>
     </PagePanel.Frame>

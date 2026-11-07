@@ -114,6 +114,26 @@ describe("GLOB", () => {
     expect(files.every((filePath) => filePath.endsWith(".ts"))).toBe(true);
   });
 
+  it.each([
+    ["./foo/*.ts", ["a.ts", "b.ts"]],
+    ["foo/./*.ts", ["a.ts", "b.ts"]],
+    ["./**/*.ts", ["a.ts", "b.ts", "c.ts"]],
+  ] as const)(
+    "ignores . segments in %s like fs.glob",
+    async (pattern, expected) => {
+      const { runtime, message } = env;
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(true);
+      const files = (result.data as { files: string[] }).files;
+      expect(files.map((filePath) => path.basename(filePath)).sort()).toEqual(
+        expected,
+      );
+    },
+  );
+
   it("rejects a path under the blocklist", async () => {
     const { runtime, message } = env;
     const result = await globHandler(runtime, message, state, {
@@ -198,21 +218,24 @@ describe("GLOB", () => {
     expect(result.text).toContain("outside the configured coding workspace");
   });
 
-  it("does not descend for a pattern that cannot match a path separator", async () => {
-    const visited: string[] = [];
+  it.each(["*.ts", "./*.ts"])(
+    "does not descend for a pattern that cannot match a path separator (%s)",
+    async (pattern) => {
+      const visited: string[] = [];
 
-    const files = await walkContainedGlob(
-      tmpRoot,
-      "*.ts",
-      async (directory) => {
-        visited.push(path.resolve(directory));
-        return fs.readdir(directory, { withFileTypes: true });
-      },
-    );
+      const files = await walkContainedGlob(
+        tmpRoot,
+        pattern,
+        async (directory) => {
+          visited.push(path.resolve(directory));
+          return fs.readdir(directory, { withFileTypes: true });
+        },
+      );
 
-    expect(files).toEqual([]);
-    expect(visited).toEqual([path.resolve(tmpRoot)]);
-  });
+      expect(files).toEqual([]);
+      expect(visited).toEqual([path.resolve(tmpRoot)]);
+    },
+  );
 
   it.each([".[.]/outside/*.txt", "{.[.],safe}/outside/*.txt"])(
     "never traverses outside the root for encoded pattern %s",
@@ -367,6 +390,10 @@ describe("matchesGlobPattern runtime contract", () => {
     [".hidden-dir/inside.ts", "**/*.ts", false],
     [".hidden-dir/inside.ts", ".hidden-dir/**/*.ts", true],
     ["foo/a.ts", "{foo,bar}/**/*.ts", true],
+    ["foo/a.ts", "./foo/*.ts", true],
+    ["foo/a.ts", "foo/./*.ts", true],
+    ["foo/sub/c.ts", "././foo/**/*.ts", true],
+    [".hidden", "./*", false],
     ["!foo/a.ts", "!foo/a.ts", true],
     ["foo/a.ts", "!foo/a.ts", false],
     ["#file", "#file", true],
@@ -428,4 +455,23 @@ describe("globHandler — result ordering", () => {
       files.map((filePath) => path.relative(canonicalOrderDir, filePath)),
     ).toEqual(["m-newest.ts", path.join("sub", "a-tied.ts"), "z-tied.ts"]);
   });
+});
+
+describe("globHandler — search root that cannot be listed", () => {
+  it.each([
+    { name: "a missing directory", searchPath: "fooo", code: "ENOENT" },
+    { name: "a regular file", searchPath: "foo/a.ts", code: "ENOTDIR" },
+  ])(
+    "reports $name as a failure, not 0 files",
+    async ({ searchPath, code }) => {
+      const { runtime, message } = env;
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern: "**/*.ts", path: searchPath },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("io_error: readdir failed:");
+      expect(result.text).toContain(code);
+    },
+  );
 });

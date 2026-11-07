@@ -4,9 +4,10 @@
  */
 "use client";
 
-import { Button, EmptyState } from "@elizaos/ui/cloud-ui";
 import { Bot, Plus } from "lucide-react";
-import { useT } from "../lib/i18n";
+import { Button } from "../../../components/ui/button";
+import { EmptyState } from "../../../components/ui/empty-state";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 interface EmptyStateProps {
   onCreateNew: () => void;

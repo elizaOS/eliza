@@ -2,13 +2,19 @@
  * Serves authenticated training-trajectory exports for one organization.
  * Query and JSON-body limits are validated before the export service can read rows.
  */
-import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   llmTrajectoryService,
   type TrajectoryExportOptions,
-} from "@/lib/services/llm-trajectory";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/llm-trajectory";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const MAX_EXPORT_LIMIT = 10_000;
 
@@ -104,13 +110,14 @@ async function __hono_GET(request: Request) {
     );
     return buildJsonlResponse(jsonl);
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -139,13 +146,14 @@ async function __hono_POST(request: Request) {
     );
     return buildJsonlResponse(jsonl);
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

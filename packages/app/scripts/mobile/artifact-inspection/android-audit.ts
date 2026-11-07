@@ -14,7 +14,6 @@ import {
 } from "../../lib/android-cloud-artifact-audit.ts";
 import {
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
-  ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
   ANDROID_LP3_COLOR_POLICY_COMPONENTS,
   ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
   ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
@@ -75,26 +74,37 @@ export function auditAndroidSideloadArtifact({ javaHome } = {}) {
     requireAgent: true,
     label: "android",
   });
-  const fusedEntry = entries.find((entry) =>
-    /(?:^|\/)lib\/arm64-v8a\/libelizainference\.so$/i.test(
+  auditAndroidBionicInferenceLibraries(artifact, entries, javaHome);
+  console.log(
+    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+/** Check every selected architecture, including emulator-only APKs. */
+export function auditAndroidBionicInferenceLibraries(
+  artifact,
+  entries,
+  javaHome,
+  readEntries = readAndroidArtifactEntryBuffers,
+) {
+  const fusedEntries = entries.filter((entry) =>
+    /(?:^|\/)lib\/[^/]+\/libelizainference\.so$/i.test(
       entry.replaceAll("\\", "/"),
     ),
   );
-  if (fusedEntry) {
-    const [fusedBytes] = readAndroidArtifactEntryBuffers(
-      artifact,
-      [fusedEntry],
-      javaHome,
-      {
-        label: "Android bionic fused inference audit",
-        maxEntryBytes: 128 * 1024 * 1024,
-        maxTotalBytes: 128 * 1024 * 1024,
-      },
-    );
+  if (!fusedEntries.length) return;
+  const buffers = readEntries(artifact, fusedEntries, javaHome, {
+    label: "Android bionic fused inference audit",
+    maxEntryBytes: 128 * 1024 * 1024,
+    maxTotalBytes: 128 * 1024 * 1024,
+  });
+  for (const [index, fusedEntry] of fusedEntries.entries()) {
+    const fusedBytes = buffers[index];
     const offenders = findAndroidBionicInferenceOffenders(fusedBytes);
     if (offenders.length > 0) {
       throw mobileBuildError(
-        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage it with \`node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu\` (or the Vulkan variant with its required host tooling).`,
+        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library at ${fusedEntry} that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage that architecture with \`node packages/app/scripts/stage-elizavoice-lib.ts --abi <abi> --variant cpu\` (or the Vulkan variant with its required host tooling).`,
         {
           code: "ANDROID_BIONIC_INFERENCE_INCOMPATIBLE",
           context: { artifact, fusedEntry, offenders },
@@ -102,10 +112,6 @@ export function auditAndroidSideloadArtifact({ javaHome } = {}) {
       );
     }
   }
-  console.log(
-    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
-  );
-  return artifact;
 }
 
 /**
@@ -634,12 +640,11 @@ export function auditAndroidLauncherArtifact({
       },
     );
   }
-  if (
-    JSON.stringify(runtimeConfig.server?.allowNavigation) !==
-    JSON.stringify(ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS)
-  ) {
+  // Sign-in is native, so the launcher WebView never navigates to a hosted
+  // page: any packaged navigation allowance is a regression.
+  if (runtimeConfig.server?.allowNavigation !== undefined) {
     throw mobileBuildError(
-      "[mobile-build] android-launcher must keep WebView navigation pinned to the canonical Eliza hosted-auth origins.",
+      "[mobile-build] android-launcher must not allow WebView navigation away from the bundled renderer; Cloud sign-in is native.",
       {
         code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
         context: {

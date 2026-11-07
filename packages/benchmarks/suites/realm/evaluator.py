@@ -7,7 +7,7 @@ and treated the agent-reported ``plan_quality_score`` as ground truth
 (circular).
 
 This module evaluates an agent against an **independent** oracle solver
-(see :mod:`benchmarks.realm.solvers`) and against the **actual problem
+(see :mod:`benchmarks.suites.realm.solvers`) and against the **actual problem
 constraints** taken from the upstream instance JSON (time windows,
 deadlines, makespan, etc.).
 
@@ -21,8 +21,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from benchmarks.realm import solvers
-from benchmarks.realm.types import (
+from benchmarks.suites.realm import solvers
+from benchmarks.suites.realm.types import (
     OracleFamily,
     PROBLEM_TO_FAMILY,
     PROBLEMS_WITH_DISRUPTIONS,

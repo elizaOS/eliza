@@ -86,16 +86,54 @@ const STOP_WORDS = new Set([
 ]);
 
 function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+  return (
+    value
+      .normalize("NFD")
+      .toLowerCase()
+      // Fold Latin accents only. Marks in other scripts can distinguish
+      // words (for example Japanese dakuten), so retain those distinctions.
+      .replace(/(\p{Script=Latin})\p{Mn}+/gu, "$1")
+      // Recompose so Hangul syllables and other canonical composites keep
+      // the exact token shape the decomposed pass would otherwise change.
+      .normalize("NFC")
+      .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
+      .trim()
+  );
+}
+
+const SPACELESS_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const CJK_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+// Scripts such as Japanese and Chinese do not separate words with spaces,
+// so one normalized "token" can be a whole clause. Segment those tokens into
+// words; space-delimited scripts keep the normalized token as is. The pinned
+// runtimes (Bun 1.4.2, Node 24.15.0) both provide Intl.Segmenter, so the
+// segmenter is created once at module scope with a fixed locale; a missing
+// or failing segmenter must surface as an error, not silently restore the
+// unsegmented matching this code fixes.
+const wordSegmenter = new Intl.Segmenter("en", { granularity: "word" });
+
+function segmentToken(token: string): string[] {
+  if (!SPACELESS_SCRIPT.test(token)) {
+    return [token];
+  }
+  return [...wordSegmenter.segment(token)]
+    .filter((part) => part.isWordLike)
+    .map((part) => part.segment);
 }
 
 function tokens(value: string): string[] {
   return normalize(value)
     .split(" ")
-    .filter((token) => token.length > 2 && !STOP_WORDS.has(token));
+    .flatMap(segmentToken)
+    .filter((token) => {
+      if (STOP_WORDS.has(token)) return false;
+      // CJK words are often two characters (for example a Chinese keyword
+      // or a Korean noun); keep those, and keep the longer floor elsewhere.
+      return CJK_SCRIPT.test(token) ? token.length >= 2 : token.length > 2;
+    });
 }
 
 function parseTime(value: string, label: string): number {

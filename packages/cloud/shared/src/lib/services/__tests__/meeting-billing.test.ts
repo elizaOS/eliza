@@ -144,6 +144,13 @@ beforeAll(async () => {
       organization_id uuid PRIMARY KEY, bytes_limit bigint NOT NULL,
       limit_override_authorized boolean NOT NULL DEFAULT false
     )`,
+    // No entitlement is granted to this purchased-credit-only organization.
+    // The funding-policy query still reads the optional projection relation.
+    `CREATE TABLE IF NOT EXISTS organization_entitlements (
+      organization_id uuid NOT NULL, billing_scope_id uuid,
+      source_grant_id uuid, projection_revision bigint,
+      effective_from timestamptz, effective_until timestamptz
+    )`,
     // Paid reservations fail closed on an active payment-reversal hold (#22930).
     `CREATE TABLE IF NOT EXISTS organization_payment_reversal_holds (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -113,7 +113,8 @@ export interface ElevationRequest {
   entityId: UUID;
   requestedPermission: Permission;
   justification: string;
-  duration?: number; // How long the elevation should last
+  /** Seconds. The request_elevation parameter is hours and is converted first. */
+  duration?: number;
   context: PermissionContext;
 }
 

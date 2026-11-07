@@ -105,6 +105,8 @@ export class VideoGenerationSubmissionUnknownError extends Error {
 
 /** Marks a generation row's metadata as awaiting upstream settlement. */
 export const VIDEO_PENDING_SETTLEMENT_MARKER = "video_pending_settlement_v1";
+/** Metadata key: when the reconcile sweep last looked at a row and left it pending (ISO time). */
+export const VIDEO_RECONCILE_ATTEMPTED_AT_KEY = "reconcile_attempted_at";
 
 /**
  * Settlement payload stored on `generations.metadata` when a video request

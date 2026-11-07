@@ -31,7 +31,7 @@ import type {
   ImageDescriptionResult,
   ModelTypeName,
 } from "@elizaos/core";
-import { elizaSourceUrl } from "./eliza-repo.ts";
+import { importElizaPackage } from "./eliza-repo.ts";
 
 interface VisionProviderInfo {
   readonly providerName: string;
@@ -114,13 +114,17 @@ async function tryBuildAnthropicAdapter(
     params: ImageDescriptionParams,
   ) => Promise<ImageDescriptionResult>;
   try {
-    // The bundled @elizaos/plugin-anthropic only ships `dist/index.js`. The
-    // image-description handler lives at `models/image.ts` in the elizaOS
-    // source checkout (ELIZA_REPO). We import it directly because the
-    // public bundle doesn't re-export it.
-    const mod: { handleImageDescription: typeof handleImageDescription } =
-      await import(elizaSourceUrl("plugins/plugin-anthropic/models/image.ts"));
-    handleImageDescription = mod.handleImageDescription;
+    const mod = await importElizaPackage<{
+      default: {
+        models?: { IMAGE_DESCRIPTION?: typeof handleImageDescription };
+      };
+    }>("@elizaos/plugin-anthropic");
+    const handler = mod.default.models?.IMAGE_DESCRIPTION;
+    if (!handler)
+      throw new Error(
+        "Selected Anthropic plugin has no IMAGE_DESCRIPTION handler",
+      );
+    handleImageDescription = handler;
   } catch (err) {
     const cause = err instanceof Error ? err.message : String(err);
     throw new Error(

@@ -1,4 +1,3 @@
-/** Exercises farcaster connector live e2e behavior with deterministic app test fixtures. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type Plugin } from "@elizaos/core";

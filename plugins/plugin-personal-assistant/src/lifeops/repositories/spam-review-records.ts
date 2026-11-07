@@ -2,7 +2,7 @@
 import type {
   LifeOpsGmailSpamReviewItem,
   LifeOpsGmailSpamReviewStatus,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import { parseJsonArray, toNumber, toText } from "../sql.js";
 
 export function parseGmailSpamReviewItem(

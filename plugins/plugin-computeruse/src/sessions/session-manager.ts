@@ -792,6 +792,9 @@ export class ComputerUseSessionManager {
         "No frame provider is configured",
       );
     }
+    // An observation is not a resume: a paused session returns to paused.
+    const settledStatus = session.status === "paused" ? "paused" : "idle";
+    const settledState = settledStatus === "paused" ? "paused" : "ready";
     session.status = "running";
     session.canonicalState = "running";
     session.updatedAt = timestamp(this.now());
@@ -815,8 +818,8 @@ export class ComputerUseSessionManager {
         source: session.target.kind,
       };
       const stopRequested = abortController.signal.aborted;
-      session.status = stopRequested ? "closed" : "idle";
-      session.canonicalState = stopRequested ? "stopped" : "ready";
+      session.status = stopRequested ? "closed" : settledStatus;
+      session.canonicalState = stopRequested ? "stopped" : settledState;
       if (stopRequested) this.releaseSessionOwnership(session);
       delete session.activeAbortController;
       session.updatedAt = observedAt;
@@ -841,8 +844,8 @@ export class ComputerUseSessionManager {
       // error-policy:J1 observation boundary records the failure without
       // retaining frame bytes and rethrows for route translation.
       const stopRequested = abortController.signal.aborted;
-      session.status = stopRequested ? "closed" : "idle";
-      session.canonicalState = stopRequested ? "stopped" : "ready";
+      session.status = stopRequested ? "closed" : settledStatus;
+      session.canonicalState = stopRequested ? "stopped" : settledState;
       if (stopRequested) this.releaseSessionOwnership(session);
       delete session.activeAbortController;
       session.lastError = FRAME_FAILURE_SUMMARY;

@@ -13,8 +13,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@elizaos/ui/cloud-ui";
-import { useT } from "../lib/i18n";
+} from "../../../components/ui/alert-dialog";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 export function DedicatedStartConfirmation({
   open,

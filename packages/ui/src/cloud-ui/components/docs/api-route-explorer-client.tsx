@@ -1,5 +1,6 @@
 "use client";
 
+import type { DiscoveredApiRouteDto, HttpMethod } from "@elizaos/cloud-sdk";
 /**
  * Interactive API-route explorer: filter/select a discovered route and view its details.
  */
@@ -16,8 +17,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
-import { cn } from "../../lib/utils";
-import type { DiscoveredApiRouteDto, HttpMethod } from "../../types/cloud-api";
+import { cn } from "../../../utils/cn";
 
 type RouteGroup = {
   group: string;
@@ -541,7 +541,7 @@ export function ApiRouteExplorerClient({
                   />
                   <span>Source:</span>
                   <code className="font-mono text-muted">
-                    {selected.filePath.replace(process.cwd?.() || "", "")}
+                    {selected.filePath}
                   </code>
                 </div>
               </div>

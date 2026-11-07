@@ -1,16 +1,23 @@
 /** Real host HTTP and on-disk config acceptance; no mocked route/persistence services. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Memory, promoteSubactionsToActions } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import {
+  type Memory,
+  promoteSubactionsToActions,
+  validateToolArgs,
+} from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   pluginAction,
   pluginOperationSchemaOverrides,
 } from "../src/actions/plugin.ts";
+import { runtimeAction } from "../src/actions/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { loadElizaConfig } from "../src/config/config.ts";
 
 let directory: string;
 let server: Awaited<ReturnType<typeof startApiServer>>;
@@ -247,6 +254,8 @@ it("normalizes npm-name configuration on enable and clears every persisted crede
     enabled: true,
     config: { OPENAI_API_KEY: secret },
   });
+  // Boot copies the saved key into process.env, where providers fall back.
+  process.env.OPENAI_API_KEY = secret;
   const cleared = await request("/api/secrets", "PUT", {
     secrets: { OPENAI_API_KEY: "" },
   });
@@ -261,12 +270,67 @@ it("normalizes npm-name configuration on enable and clears every persisted crede
   );
   expect(config.env.vars.OPENAI_API_KEY).toBeUndefined();
   expect(config.plugins.entries.openai.config.OPENAI_API_KEY).toBe("");
+  expect(process.env.OPENAI_API_KEY).toBeUndefined();
   const secrets = await (await request("/api/secrets")).json();
   expect(
     secrets.secrets.find(
       (entry: { key: string }) => entry.key === "OPENAI_API_KEY",
     ),
   ).toMatchObject({ isSet: false, maskedValue: null });
+}, 120_000);
+
+it("replaces a saved connector token so the next boot uses the new value", async () => {
+  const previous = `${secret}-connector`;
+  const replacement = `${secret}-rotated`;
+  for (const container of ["connectors", "channels"]) {
+    await server.close();
+    await writeFile(
+      path.join(directory, "eliza.json"),
+      JSON.stringify({ [container]: { discord: { token: previous } } }),
+    );
+    server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+    const response = await request("/api/plugins/discord", "PUT", {
+      config: { DISCORD_API_TOKEN: replacement },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const saved = JSON.parse(
+      await readFile(path.join(directory, "eliza.json"), "utf8"),
+    );
+    expect(saved[container].discord.token, container).toBe(replacement);
+    // Boot applies config.env first and connector fields last.
+    vi.stubEnv("DISCORD_API_TOKEN", undefined);
+    vi.stubEnv("DISCORD_BOT_TOKEN", undefined);
+    loadElizaConfig();
+    expect(process.env.DISCORD_API_TOKEN, container).toBe(replacement);
+  }
+}, 120_000);
+
+it("keeps the type of a list or true/false connector field it replaces", async () => {
+  await server.close();
+  await writeFile(
+    path.join(directory, "eliza.json"),
+    JSON.stringify({
+      connectors: {
+        discord: { allowFrom: ["1"] },
+        imessage: { enabled: true },
+      },
+    }),
+  );
+  server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+  for (const [plugin, config] of [
+    ["discord", { DISCORD_ALLOW_FROM: "1, 2" }],
+    ["imessage", { IMESSAGE_ENABLED: "false" }],
+  ] as const) {
+    const response = await request(`/api/plugins/${plugin}`, "PUT", {
+      config,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+  const saved = JSON.parse(
+    await readFile(path.join(directory, "eliza.json"), "utf8"),
+  );
+  expect(saved.connectors.discord.allowFrom).toEqual(["1", "2"]);
+  expect(saved.connectors.imessage.enabled).toBe(false);
 }, 120_000);
 
 it("applies saved secrets to a live plugin's cached configuration", async () => {
@@ -347,6 +411,36 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
     createdAt: Date.now(),
   };
   try {
+    const runtimeControls = promoteSubactionsToActions(runtimeAction);
+    const describe = runtimeControls.find(
+      (action) => action.name === "RUNTIME_DESCRIBE_ACTIONS",
+    );
+    if (!describe) throw new Error("Missing runtime describe action");
+    fixture.runtime.registerAction(runtimeAction);
+    const described = await describe.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      {},
+    );
+    expect(described).toMatchObject({
+      success: true,
+      values: { count: fixture.runtime.actions.length },
+    });
+    expect(described?.text).toContain(runtimeAction.description);
+    const retiredInputs: Record<string, string>[] = [
+      { action: "list_actions" },
+      { action: "restart_agent" },
+      { op: "status" },
+      { subaction: "status" },
+    ];
+    for (const parameters of retiredInputs) {
+      expect(
+        await runtimeAction.handler(fixture.runtime, message, undefined, {
+          parameters,
+        }),
+      ).toMatchObject({ success: false, values: { error: "RUNTIME_INVALID" } });
+    }
     const list = operation("PLUGIN_LIST");
     const listFields = list.parameters?.map((parameter) => parameter.name);
     expect(listFields).toEqual(
@@ -368,16 +462,25 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
     expect(
       configure.parameters?.some((parameter) => parameter.name === "enabled"),
     ).toBe(false);
+    const configureParameters = {
+      connectorId: "openai",
+      config: { OPENAI_API_KEY: secret },
+    };
+    // The planner path validates arguments before the handler runs, so the
+    // config map the handler requires must pass the declared schema.
+    for (const action of [configure, pluginAction]) {
+      expect(
+        validateToolArgs(action, {
+          ...(action === pluginAction ? { action: "configure" } : {}),
+          ...configureParameters,
+        }),
+      ).toMatchObject({ valid: true, errors: [] });
+    }
     const configured = await configure.handler(
       fixture.runtime,
       message,
       undefined,
-      {
-        parameters: {
-          connectorId: "openai",
-          config: { OPENAI_API_KEY: secret },
-        },
-      },
+      { parameters: configureParameters },
     );
     expect(configured).toMatchObject({ success: true });
     expect(JSON.stringify(configured)).not.toContain(secret);
@@ -425,7 +528,72 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
       JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
         .plugins.entries.openai.config.OPENAI_API_KEY,
     ).toBe(secret);
+
+    // The bot connector is stopped by disabling it, not by the
+    // personal-account cancel route.
+    expect(
+      await operation("PLUGIN_DISCONNECT").handler(
+        fixture.runtime,
+        message,
+        undefined,
+        { parameters: { connectorId: "telegram" } },
+      ),
+    ).toMatchObject({
+      success: true,
+      data: { connectorId: "telegram", fallback: "plugin-disable" },
+    });
+    expect(
+      JSON.parse(await readFile(path.join(directory, "eliza.json"), "utf8"))
+        .plugins.entries.telegram.enabled,
+    ).toBe(false);
   } finally {
     await fixture.cleanup();
   }
 }, 120_000);
+
+it("keeps a plugin save made while a settings save is still sending its body", async () => {
+  const configPath = path.join(directory, "eliza.json");
+  const pluginKey = "sk-synthetic-overlapping-plugin-save-not-real";
+  // A settings save whose body is still arriving when the plugin save runs.
+  const body = JSON.stringify({ ui: { theme: "dark" } });
+  const settings = new Promise<number>((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port: server.port,
+        path: "/api/config",
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+          "x-forwarded-for": "203.0.113.10",
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on("error", reject);
+    req.write(body.slice(0, 5));
+    setTimeout(async () => {
+      const plugin = await request("/api/plugins/openai", "PUT", {
+        config: { OPENAI_API_KEY: pluginKey },
+      });
+      expect(plugin.status, await plugin.clone().text()).toBe(200);
+      req.end(body.slice(5));
+    }, 200);
+  });
+  expect(await settings).toBe(200);
+
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  expect(saved.ui?.theme).toBe("dark");
+  expect(saved.plugins.entries.openai.config.OPENAI_API_KEY).toBe(pluginKey);
+  // The next save starts from the live config and must keep both changes.
+  const later = await request("/api/config", "PUT", { ui: { language: "en" } });
+  expect(later.status, await later.clone().text()).toBe(200);
+  const after = JSON.parse(await readFile(configPath, "utf8"));
+  expect(after.ui?.theme).toBe("dark");
+  expect(after.plugins.entries.openai.config.OPENAI_API_KEY).toBe(pluginKey);
+}, 60_000);

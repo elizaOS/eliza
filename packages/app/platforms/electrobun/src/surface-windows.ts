@@ -1,11 +1,10 @@
-/** Implements Electrobun desktop surface windows ts behavior for app shell integration. */
 import { getBrandConfig } from "./brand-config";
 
 export type DetachedSurface =
 	| "chat"
 	| "browser"
 	| "release"
-	| "triggers"
+	| "automations"
 	| "plugins"
 	| "connectors"
 	| "cloud";
@@ -79,7 +78,6 @@ interface SurfaceWindowManagerOptions {
 	createWindow: (options: CreateManagedWindowOptions) => ManagedWindowLike;
 	resolveRendererUrl: () => Promise<string>;
 	readPreload: () => string;
-	wireRpc: (window: ManagedWindowLike) => void;
 	injectApiBase: (window: ManagedWindowLike) => void;
 	onWindowFocused?: (window: ManagedWindowLike) => void;
 	onRegistryChanged?: () => void;
@@ -95,7 +93,7 @@ const SURFACE_LABELS: Record<ManagedSurface, string> = {
 	chat: "Chat",
 	browser: "Browser",
 	release: "Release Center",
-	triggers: "Heartbeats",
+	automations: "Automations",
 	plugins: "Plugins",
 	connectors: "Connectors",
 	cloud: "Cloud",
@@ -107,7 +105,7 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
 	chat: { x: 120, y: 110, width: 1180, height: 840 },
 	browser: { x: 140, y: 100, width: 1320, height: 900 },
 	release: { x: 160, y: 100, width: 1260, height: 920 },
-	triggers: { x: 160, y: 140, width: 1080, height: 780 },
+	automations: { x: 160, y: 140, width: 1080, height: 780 },
 	plugins: { x: 180, y: 160, width: 1180, height: 860 },
 	connectors: { x: 200, y: 180, width: 1180, height: 860 },
 	cloud: { x: 220, y: 140, width: 1280, height: 900 },
@@ -127,7 +125,7 @@ export function isDetachedSurface(value: string): value is DetachedSurface {
 		value === "chat" ||
 		value === "browser" ||
 		value === "release" ||
-		value === "triggers" ||
+		value === "automations" ||
 		value === "plugins" ||
 		value === "connectors" ||
 		value === "cloud"
@@ -198,7 +196,6 @@ export class SurfaceWindowManager {
 	private readonly createWindowFn: SurfaceWindowManagerOptions["createWindow"];
 	private readonly resolveRendererUrlFn: SurfaceWindowManagerOptions["resolveRendererUrl"];
 	private readonly readPreloadFn: SurfaceWindowManagerOptions["readPreload"];
-	private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
 	private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
 	private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
 	private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
@@ -215,7 +212,6 @@ export class SurfaceWindowManager {
 		this.createWindowFn = options.createWindow;
 		this.resolveRendererUrlFn = options.resolveRendererUrl;
 		this.readPreloadFn = options.readPreload;
-		this.wireRpcFn = options.wireRpc;
 		this.injectApiBaseFn = options.injectApiBase;
 		this.onWindowFocused = options.onWindowFocused;
 		this.onRegistryChanged = options.onRegistryChanged;
@@ -508,7 +504,6 @@ export class SurfaceWindowManager {
 		};
 
 		this.windows.set(id, record);
-		this.wireRpcFn(window);
 		this.onWindowFocused?.(window);
 		window.webview.on("dom-ready", () => {
 			this.injectApiBaseFn(window);

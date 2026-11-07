@@ -10,6 +10,45 @@
  * surcharge nor accrues earnings. Returns plain JSON, not SSE.
  */
 
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateRequestCost,
+  getProviderFromModel,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  type AnthropicCotEnv,
+  mergeAnthropicCotProviderOptions,
+  parseThinkingBudgetFromCharacterSettings,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -20,35 +59,6 @@ import {
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  calculateCost,
-  estimateRequestCost,
-  getProviderFromModel,
-} from "@/lib/pricing";
-import {
-  type AnthropicCotEnv,
-  mergeAnthropicCotProviderOptions,
-  parseThinkingBudgetFromCharacterSettings,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  getLanguageModel,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import { charactersService } from "@/lib/services/characters/characters";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS = 4096;
 
@@ -56,7 +66,7 @@ const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
-  id: z.union([z.string(), z.number()]),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
 });
 
 const ProviderUsageSchema = z.object({
@@ -76,6 +86,13 @@ const ChatArgumentsSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
+
+export function respondMcpResponse(
+  response: Response,
+  isNotification: boolean,
+) {
+  return isNotification ? new Response(null, { status: 202 }) : response;
+}
 
 function mcpAuthError(
   c: AppContext,
@@ -205,6 +222,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
+  let isNotification = false;
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
@@ -217,38 +235,7 @@ app.post("/", async (c) => {
     });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const characterResolution = executionCtx
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
-    if (characterResolution.kind !== "ready") {
-      // Confirm only the negative cold-cache case. Existing agents remain
-      // fail-closed until their cached character is ready for inference.
-      if (!(await charactersService.getById(id))) {
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Agent not found" },
-            id: null,
-          },
-          404,
-        );
-      }
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Agent cache is warming; retry shortly",
-          },
-          id: null,
-        },
-        503,
-      );
-    }
-    const character = characterResolution.character;
+    const character = (await charactersService.getById(id)) ?? null;
     if (!character) {
       return c.json(
         {
@@ -297,73 +284,84 @@ app.post("/", async (c) => {
     }
 
     const { method, params, id: rpcId } = validation.data;
+    isNotification = rpcId === undefined;
+    const respond = (response: Response) =>
+      respondMcpResponse(response, isNotification);
     switch (method) {
       case "initialize":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            protocolVersion: "2024-11-05",
-            serverInfo: { name: character.name, version: "1.0.0" },
-            capabilities: { tools: {} },
-          },
-          id: rpcId,
-        });
+        return respond(
+          c.json({
+            jsonrpc: "2.0",
+            result: {
+              protocolVersion: "2024-11-05",
+              serverInfo: { name: character.name, version: "1.0.0" },
+              capabilities: { tools: {} },
+            },
+            id: rpcId,
+          }),
+        );
 
       case "tools/list":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            tools: [
-              {
-                name: "chat",
-                description: `Send a message to ${character.name}`,
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    message: { type: "string" },
-                    model: { type: "string" },
+        return respond(
+          c.json({
+            jsonrpc: "2.0",
+            result: {
+              tools: [
+                {
+                  name: "chat",
+                  description: `Send a message to ${character.name}`,
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      message: { type: "string" },
+                      model: { type: "string" },
+                    },
+                    required: ["message"],
                   },
-                  required: ["message"],
                 },
-              },
-              {
-                name: "get_info",
-                description: `Get information about ${character.name}`,
-                inputSchema: { type: "object", properties: {} },
-              },
-            ],
-          },
-          id: rpcId,
-        });
+                {
+                  name: "get_info",
+                  description: `Get information about ${character.name}`,
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            },
+            id: rpcId,
+          }),
+        );
 
       case "tools/call":
         // The handler must settle its admission handoff before the using scope
         // checks a terminal exit, so this intentionally awaits before return.
-        return await handleToolCall(c, character, params ?? {}, rpcId, {
-          id: caller.user.id,
-          organization_id: caller.user.organization_id,
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credentialForAdmission: () =>
-            credentialGuard.credentialForAdmission(),
-          executionCtx,
-        });
+        return respond(
+          await handleToolCall(c, character, params ?? {}, rpcId ?? null, {
+            id: caller.user.id,
+            organization_id: caller.user.organization_id,
+            apiKeyId: caller.apiKeyId,
+            admissionSnapshot: caller.admissionSnapshot,
+            credentialForAdmission: () =>
+              credentialGuard.credentialForAdmission(),
+            executionCtx,
+          }),
+        );
 
       case "ping":
-        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
+        return respond(c.json({ jsonrpc: "2.0", result: {}, id: rpcId }));
 
       default:
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32601, message: "Method not found" },
-            id: rpcId,
-          },
-          400,
+        return respond(
+          c.json(
+            {
+              jsonrpc: "2.0",
+              error: { code: -32601, message: "Method not found" },
+              id: rpcId,
+            },
+            400,
+          ),
         );
     }
   } catch (error) {
-    return mcpAuthError(c, error, null);
+    return respondMcpResponse(mcpAuthError(c, error, null), isNotification);
   }
 });
 
@@ -381,7 +379,7 @@ export async function handleToolCall(
     settings: Record<string, unknown>;
   },
   params: Record<string, unknown>,
-  rpcId: string | number,
+  rpcId: string | number | null | undefined,
   authUser: {
     id: string;
     organization_id: string;
@@ -534,6 +532,9 @@ export async function handleToolCall(
     }
 
     let providerDispatchStarted = false;
+    // The provider error of a failed stream; the thrown error is a generic
+    // "No output generated" that does not carry the provider status.
+    let streamError: unknown;
     try {
       await admission.markProviderDispatched?.();
       providerDispatchStarted = true;
@@ -544,6 +545,9 @@ export async function handleToolCall(
       });
       const result = await streamText({
         model: getLanguageModel(model),
+        onError: ({ error }) => {
+          streamError = error;
+        },
         messages,
         ...mergeAnthropicCotProviderOptions(
           model,
@@ -623,9 +627,12 @@ export async function handleToolCall(
       // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
       // with unknown usage, while failures before provider dispatch are safe to
       // refund in full.
-      const terminal = providerDispatchStarted
-        ? admission.settleUnknown()
-        : admission.settle(0);
+      // A clear provider rejection means no inference was accepted.
+      const terminal =
+        providerDispatchStarted &&
+        !isKnownUnacceptedProviderError(streamError ?? error)
+          ? admission.settleUnknown()
+          : admission.settle(0);
       if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
       else await terminal;
       if (error instanceof InsufficientCreditsError) {
@@ -642,7 +649,7 @@ export async function handleToolCall(
         );
       }
       if (asGenerativeCacheApiError(error)) {
-        return mcpAuthError(c, error, rpcId);
+        return mcpAuthError(c, error, rpcId ?? null);
       }
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",
@@ -657,7 +664,7 @@ export async function handleToolCall(
         jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: error instanceof Error ? error.message : "Internal error",
+          message: safeUnknownErrorMessage(error),
         },
         id: rpcId,
       });

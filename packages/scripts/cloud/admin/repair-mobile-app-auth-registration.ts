@@ -7,10 +7,10 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import {
-  MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-  MOBILE_APP_AUTH_REDIRECT_URI,
+  type MobileAppAuthRegistrationTarget,
   mobileAppAuthDatabaseConnection,
-  requireMobileAppAuthAppId,
+  PRIMARY_MOBILE_APP_AUTH_TARGET,
+  resolveMobileAppAuthRegistrationSelection,
   verifyDatabaseMobileAppAuthRegistration,
 } from "./verify-mobile-app-auth-registration.ts";
 
@@ -106,9 +106,10 @@ export async function diagnose(
   databaseUrl: string,
   appId: string,
   verify: typeof verifyDatabaseMobileAppAuthRegistration = verifyDatabaseMobileAppAuthRegistration,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
 ): Promise<void> {
   try {
-    await verify(databaseUrl, appId);
+    await verify(databaseUrl, appId, target);
     console.log("[MobileAppAuthRegistration] valid");
   } catch (error) {
     const cause = error instanceof Error ? error.cause : undefined;
@@ -128,11 +129,52 @@ export interface RegistrationRepairClient {
   ): Promise<{ rows: T[] }>;
 }
 
+/** The organization owns an existing registration. Creation also names an
+ * active operator in that organization for its initial audit reference. */
+export async function validateRegistrationAuthority(
+  client: RegistrationRepairClient,
+  organizationId: string,
+  ownerUserId?: string,
+): Promise<void> {
+  const authority = await client.query<{
+    organization_active: boolean;
+    owner_active: boolean;
+    owner_matches_organization: boolean;
+    owner_role: string | null;
+  }>(
+    `SELECT COALESCE(org.is_active, FALSE) AS organization_active,
+              COALESCE(owner.is_active AND owner.deleted_at IS NULL, FALSE) AS owner_active,
+              COALESCE(owner.organization_id = org.id, FALSE) AS owner_matches_organization,
+              owner.role AS owner_role
+         FROM organizations AS org
+         LEFT JOIN users AS owner ON owner.id = $2::uuid
+        WHERE org.id = $1::uuid
+        LIMIT 1`,
+    [organizationId, ownerUserId ?? null],
+  );
+  const authorityRow = authority.rows[0];
+  if (!authorityRow?.organization_active) fail("authority.organization_active");
+  if (!ownerUserId) return;
+  if (!authorityRow.owner_active) fail("authority.owner_active");
+  if (!authorityRow.owner_matches_organization)
+    fail("authority.same_organization");
+  if (
+    authorityRow.owner_role !== "owner" &&
+    authorityRow.owner_role !== "admin"
+  ) {
+    fail("authority.owner_or_admin");
+  }
+}
+
 export async function repairRegistrationTransaction(
   client: RegistrationRepairClient,
   appId: string,
   protectedOrganizationId?: string,
   protectedOwnerUserId?: string,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  admit?: (
+    client: RegistrationRepairClient,
+  ) => Promise<undefined | "unchanged">,
 ): Promise<void> {
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
@@ -140,9 +182,16 @@ export async function repairRegistrationTransaction(
       "eliza-mobile-app-auth-registration",
     ]);
 
+    // Provisioning admits only the reviewed absent row under this same lock.
+    // An exact, fully validated retry must not revoke keys or rewrite metadata.
+    if ((await admit?.(client)) === "unchanged") {
+      await client.query("COMMIT");
+      return;
+    }
+
     const existing = await client.query<{
       organization_id: string;
-      created_by_user_id: string;
+      created_by_user_id: string | null;
       api_key_id: string | null;
     }>(
       `SELECT organization_id::text, created_by_user_id::text, api_key_id::text
@@ -152,46 +201,31 @@ export async function repairRegistrationTransaction(
     const current = existing.rows[0];
     if (
       current &&
-      ((protectedOrganizationId &&
-        current.organization_id !== protectedOrganizationId) ||
-        (protectedOwnerUserId &&
-          current.created_by_user_id !== protectedOwnerUserId))
+      protectedOrganizationId &&
+      current.organization_id !== protectedOrganizationId
     ) {
       fail("registration.explicit_ownership_match");
     }
     const organizationId = current?.organization_id ?? protectedOrganizationId;
-    const ownerUserId = current?.created_by_user_id ?? protectedOwnerUserId;
+    const ownerUserId = current
+      ? current.created_by_user_id
+      : protectedOwnerUserId;
     if (!organizationId) fail("input.organization_id_for_creation");
-    if (!ownerUserId) fail("input.owner_user_id_for_creation");
-
-    const authority = await client.query<{
-      organization_active: boolean;
-      owner_active: boolean;
-      owner_matches_organization: boolean;
-      owner_role: string | null;
-    }>(
-      `SELECT COALESCE(org.is_active, FALSE) AS organization_active,
-              COALESCE(owner.is_active AND owner.deleted_at IS NULL, FALSE) AS owner_active,
-              COALESCE(owner.organization_id = org.id, FALSE) AS owner_matches_organization,
-              owner.role AS owner_role
-         FROM organizations AS org
-         LEFT JOIN users AS owner ON owner.id = $2::uuid
-        WHERE org.id = $1::uuid
-        LIMIT 1`,
-      [organizationId, ownerUserId],
+    const publisher = await client.query<{ registered: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM native_app_publishers WHERE organization_id=$1::uuid) AS registered`,
+      [organizationId],
     );
-    const authorityRow = authority.rows[0];
-    if (!authorityRow?.organization_active)
-      fail("authority.organization_active");
-    if (!authorityRow.owner_active) fail("authority.owner_active");
-    if (!authorityRow.owner_matches_organization)
-      fail("authority.same_organization");
-    if (
-      authorityRow.owner_role !== "owner" &&
-      authorityRow.owner_role !== "admin"
-    ) {
-      fail("authority.owner_or_admin");
-    }
+    const isPublisher = publisher.rows[0]?.registered === true;
+    if (!current && !ownerUserId && !isPublisher)
+      fail("input.owner_user_id_for_creation");
+
+    // Do not require the historical creator to remain active or even exist.
+    // An explicitly supplied operator is still checked before any mutation.
+    await validateRegistrationAuthority(
+      client,
+      organizationId,
+      protectedOwnerUserId,
+    );
 
     const duplicate = await client.query<{ count: number }>(
       `SELECT count(*)::integer AS count
@@ -200,30 +234,31 @@ export async function repairRegistrationTransaction(
           AND is_active = TRUE
           AND is_approved = TRUE
           AND allowed_origins @> jsonb_build_array($2::text)`,
-      [appId, MOBILE_APP_AUTH_REDIRECT_URI],
+      [appId, target.redirectUri],
     );
     if (duplicate.rows[0]?.count !== 0)
       fail("registration.unique_callback_owner");
 
-    const apiKeyId = current?.api_key_id ?? randomUUID();
+    const apiKeyId = isPublisher ? null : (current?.api_key_id ?? randomUUID());
     if (current?.api_key_id) {
       const key = await client.query<{
         organization_id: string;
         user_id: string;
+        is_active: boolean;
+        deleted_at: unknown;
       }>(
-        `SELECT organization_id::text, user_id::text
+        `SELECT organization_id::text, user_id::text, is_active, deleted_at
            FROM api_keys WHERE id = $1::uuid FOR UPDATE`,
         [current.api_key_id],
       );
       const keyRow = key.rows[0];
-      if (
-        keyRow &&
-        (keyRow.organization_id !== organizationId ||
-          keyRow.user_id !== ownerUserId)
-      ) {
+      if (keyRow && keyRow.organization_id !== organizationId) {
         fail("registration.generated_key_ownership");
       }
-      if (keyRow) {
+      if (isPublisher && keyRow && (keyRow.is_active || !keyRow.deleted_at)) {
+        fail("registration.publisher_generated_key_active");
+      }
+      if (keyRow && !isPublisher) {
         await client.query(
           `UPDATE api_keys
               SET is_active = FALSE, deleted_at = COALESCE(deleted_at, NOW())
@@ -243,12 +278,7 @@ export async function repairRegistrationTransaction(
                 api_key_id = $4::uuid,
                 updated_at = NOW()
           WHERE id = $1::uuid`,
-        [
-          appId,
-          MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-          MOBILE_APP_AUTH_REDIRECT_URI,
-          apiKeyId,
-        ],
+        [appId, target.redirectOrigin, target.redirectUri, apiKeyId],
       );
     } else {
       await client.query(
@@ -256,17 +286,19 @@ export async function repairRegistrationTransaction(
            (id, name, description, slug, organization_id, created_by_user_id,
             app_url, allowed_origins, api_key_id, is_active, is_approved)
          VALUES
-           ($1::uuid, 'Eliza Mobile', 'First-party Eliza mobile authentication client',
+           ($1::uuid, $8, $9,
             $2, $3::uuid, $4::uuid, $5, jsonb_build_array($6::text),
             $7::uuid, TRUE, TRUE)`,
         [
           appId,
-          `eliza-mobile-auth-${appId.slice(0, 8)}`,
+          `${target.slugPrefix}-${appId}`,
           organizationId,
-          ownerUserId,
-          MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-          MOBILE_APP_AUTH_REDIRECT_URI,
+          ownerUserId ?? null,
+          target.redirectOrigin,
+          target.redirectUri,
           apiKeyId,
+          target.appName,
+          target.appDescription,
         ],
       );
     }
@@ -281,8 +313,9 @@ export async function repairRegistrationTransaction(
 async function repair(
   databaseUrl: string,
   appId: string,
-  organizationId?: string,
-  ownerUserId?: string,
+  organizationId: string | undefined,
+  ownerUserId: string | undefined,
+  target: MobileAppAuthRegistrationTarget,
 ): Promise<void> {
   const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
   const client = new Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
@@ -293,13 +326,39 @@ async function repair(
       appId,
       organizationId,
       ownerUserId,
+      target,
     );
   } finally {
     await client.end().catch(() => undefined);
   }
 
-  await diagnose(databaseUrl, appId);
+  await diagnose(databaseUrl, appId, undefined, target);
   console.log("[MobileAppAuthRegistration] repaired_and_verified");
+}
+
+/**
+ * Select the client to diagnose or repair and its app UUID. The primary
+ * client's UUID is its own protected secret; additional clients take theirs
+ * from the Worker registry so the repaired row is exactly the one the Worker
+ * will select. Validation messages name invariants, never values.
+ */
+export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
+  target: MobileAppAuthRegistrationTarget;
+  appId: string;
+} {
+  try {
+    return resolveMobileAppAuthRegistrationSelection(
+      env.ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID,
+      env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT,
+      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+      env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+    );
+  } catch (error) {
+    if (error instanceof RegistrationRepairError) throw error;
+    return fail(
+      `input.${error instanceof Error ? error.message : "target_registration"}`,
+    );
+  }
 }
 
 function parseOperation(value: string | undefined): Operation {
@@ -311,12 +370,11 @@ async function main(): Promise<void> {
   const operation = parseOperation(process.argv[2]);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) fail("input.database_url");
-  const appId = requireMobileAppAuthAppId(
-    process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-  );
+  const { target, appId } = resolveTargetRegistration(process.env);
+  console.log(`[MobileAppAuthRegistration] client=${target.clientId}`);
   if (operation === "diagnose") {
     await diagnoseRequiredRegistrationSchema(databaseUrl);
-    return await diagnose(databaseUrl, appId);
+    return await diagnose(databaseUrl, appId, undefined, target);
   }
   const organizationId = optionalUuid(
     process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,
@@ -326,7 +384,7 @@ async function main(): Promise<void> {
     process.env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID,
     "input.owner_user_id",
   );
-  await repair(databaseUrl, appId, organizationId, ownerUserId);
+  await repair(databaseUrl, appId, organizationId, ownerUserId, target);
 }
 
 if (import.meta.main) {

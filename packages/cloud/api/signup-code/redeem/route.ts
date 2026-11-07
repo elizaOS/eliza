@@ -4,16 +4,20 @@
  * Auth: session only (no API key) — see proxy session-only path list.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { ERRORS, redeemSignupCode } from "@/lib/services/signup-code";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  ERRORS,
+  redeemSignupCode,
+} from "@elizaos/cloud-shared/lib/services/signup-code";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -33,8 +37,17 @@ app.post("/", async (c) => {
     try {
       user = await requireUserWithOrg(c);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return c.json({ error: message }, 401, NO_CACHE_HEADERS);
+      // requireUserWithOrg rejects with typed ApiErrors: 401 only when no
+      // caller is authenticated, 403 for an inactive user, an inactive
+      // organization, or an account without an organization. Keep that
+      // status instead of reporting every rejection as 401, like the other
+      // requireUserWithOrg routes do through failureResponse. Anything that
+      // is not an ApiError (for example a database failure during auth) is
+      // not an auth rejection: rethrow it so the outer handler answers 500.
+      if (error instanceof ApiError) {
+        return c.json({ error: error.message }, error.status, NO_CACHE_HEADERS);
+      }
+      throw error;
     }
 
     let body: unknown;

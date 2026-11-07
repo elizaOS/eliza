@@ -7,6 +7,7 @@ import { logger } from "../utils/logger";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import type { InferenceCredentialCheck } from "./inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "./inference-provider-outcome";
 import { admitOrganizationInference } from "./organization-inference-admission";
 
 export interface GenerativeOperationContext {
@@ -140,7 +141,9 @@ export async function runFlatProviderOperation<T>(
     await retainGenerativeTask(context, operation, admission.settle(operation.cost));
     return value;
   } catch (error) {
-    if (marked) {
+    // A clear provider rejection means nothing was accepted, as chat routes
+    // already treat it; other post-dispatch failures stay conservative.
+    if (marked && !isKnownUnacceptedProviderError(error)) {
       await retainGenerativeTask(context, operation, admission.settleUnknown());
     } else {
       await retainGenerativeTask(context, operation, admission.settle(0));
@@ -173,7 +176,9 @@ export async function runMeteredProviderOperation<T>(
     await retainGenerativeTask(context, operation, admission.settle(result.actualCost));
     return result.value;
   } catch (error) {
-    if (marked) {
+    // A clear provider rejection means nothing was accepted, as chat routes
+    // already treat it; other post-dispatch failures stay conservative.
+    if (marked && !isKnownUnacceptedProviderError(error)) {
       await retainGenerativeTask(context, operation, admission.settleUnknown());
     } else {
       await retainGenerativeTask(context, operation, admission.settle(0));

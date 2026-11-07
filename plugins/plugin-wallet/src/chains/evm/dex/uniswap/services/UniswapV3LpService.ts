@@ -35,6 +35,7 @@ import {
   type UniswapV3FeeTier,
   type UniswapV3Position,
 } from "../types.ts";
+import { minAmountAfterSlippage } from "../../slippage";
 
 const SUPPORTED_CHAIN_IDS = [1, 8453, 42161, 137, 10]; // Ethereum, Base, Arbitrum, Polygon, Optimism
 
@@ -62,7 +63,7 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     "Provides Uniswap V3 liquidity pool management for EVM chains.";
 
   private publicClients: Map<number, EvmPublicClient> = new Map();
-  private walletClients: Map<number, EvmWalletClient> = new Map();
+  private walletClients: Map<string, EvmWalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -112,13 +113,17 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     chainId: number,
     privateKey: `0x${string}`,
   ): EvmWalletClient {
-    const cacheKey = chainId;
+    // Key by chain AND wallet: the cache is per-service (singleton), and
+    // addLiquidity/removeLiquidity take a per-call wallet, so keying by
+    // chainId alone would return a different wallet's signer (Aerodrome's
+    // getWalletClient keys by account.address for the same reason).
+    const account = privateKeyToAccount(privateKey);
+    const cacheKey = `${chainId}:${account.address}`;
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
 
     const rpcUrl = this.rpcUrls.get(chainId);
     const chain = getViemChain(chainId);
-    const account = privateKeyToAccount(privateKey);
 
     client = createWalletClient({
       chain,
@@ -434,20 +439,38 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
 
       let liquidityToRemove = position.liquidity;
       if (params.percentageToRemove && params.percentageToRemove < 100) {
-        liquidityToRemove = (position.liquidity * BigInt(params.percentageToRemove)) / 100n;
+        // Basis points, rounded down: BigInt() rejects non-integers, and a
+        // fractional percentage must never remove more than requested.
+        const percentageBps = BigInt(Math.floor(params.percentageToRemove * 100));
+        liquidityToRemove = (position.liquidity * percentageBps) / 10000n;
       }
 
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800);
-      const _slippageMultiplier = BigInt(10000 - params.slippageBps);
 
       // Removing liquidity is a two-step position-manager protocol: decrease
       // liquidity first, then collect the freed tokens as a separate call.
-      const decreaseParams = {
+      // Quote what the position returns now, then require at least that much
+      // minus the confirmed slippage. With zero minimums a sandwich around the
+      // close can take the position's value.
+      const quoteParams = {
         tokenId: params.tokenId,
         liquidity: liquidityToRemove,
-        amount0Min: 0n, // Will be calculated based on actual amounts
+        amount0Min: 0n,
         amount1Min: 0n,
         deadline,
+      };
+      const { result: quoted } = await publicClient.simulateContract({
+        address: addresses.nonfungiblePositionManager,
+        abi: UNISWAP_V3_POSITION_MANAGER_ABI,
+        functionName: "decreaseLiquidity",
+        args: [quoteParams],
+        account: walletClient.account,
+      });
+      const [quotedAmount0, quotedAmount1] = quoted as readonly [bigint, bigint];
+      const decreaseParams = {
+        ...quoteParams,
+        amount0Min: minAmountAfterSlippage(quotedAmount0, params.slippageBps),
+        amount1Min: minAmountAfterSlippage(quotedAmount1, params.slippageBps),
       };
 
       const { request: decreaseRequest } = await publicClient.simulateContract({
@@ -459,7 +482,23 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       });
 
       const decreaseHash = await walletClient.writeContract(decreaseRequest);
-      await publicClient.waitForTransactionReceipt({ hash: decreaseHash });
+      const decreaseReceipt = await publicClient.waitForTransactionReceipt({
+        hash: decreaseHash,
+      });
+      // A reverted decrease (for example the slippage minimums above) leaves
+      // the liquidity in the position. Report it instead of collecting fees
+      // and calling the close a success.
+      if (decreaseReceipt.status !== "success") {
+        return {
+          success: false,
+          error: "decreaseLiquidity reverted (slippage limit exceeded?)",
+          transactionId: decreaseHash,
+          hash: decreaseHash,
+          chainId: params.chainId,
+          blockNumber: decreaseReceipt.blockNumber,
+          gasUsed: decreaseReceipt.gasUsed,
+        };
+      }
 
       const collectParams = {
         tokenId: params.tokenId,

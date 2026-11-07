@@ -29,6 +29,7 @@ import {
   ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
   applyAndroidPlayManifestHardening,
+  isAndroidFirebaseIndependentRemoteBuild,
   isCloudBannedAsset,
   isCloudBannedNativeLibrary,
   resolveAndroidCloudCapacitorConfigPolicy,
@@ -112,6 +113,25 @@ export function rewriteCloudJavaSources(
       );
       touched += 1;
     }
+    fs.writeFileSync(
+      path.join(root, "ElizaCredentialRetirement.java"),
+      `package ${androidPackage};
+
+import android.content.Context;
+
+/** This packaging excludes the resident service and its assets. No process is stopped here. */
+final class ElizaCredentialRetirement {
+    static long reserve() { return 0; }
+    static void request(Context context, long request) { }
+    static boolean stopped(Context context) { return true; }
+    static boolean acknowledged(long request) { return request == 0; }
+    static void release(long request) { }
+    static void abandon(long request) { }
+}
+`,
+      "utf8",
+    );
+    touched += 1;
     fs.writeFileSync(
       path.join(root, "ElizaSecureCredentialsPlugin.java"),
       cloudSafeSecureCredentialsPluginJava(androidPackage),
@@ -314,11 +334,14 @@ export function stripAndroidNativePlugins(strippedPlugins, label) {
   }
 }
 
-export function stripAndroidCloudNativePlugins() {
-  stripAndroidNativePlugins(
-    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
-    "cloud-disallowed",
-  );
+export function stripAndroidCloudNativePlugins(env = process.env) {
+  const strippedPlugins = isAndroidFirebaseIndependentRemoteBuild(env)
+    ? [
+        ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+        ["@capacitor/push-notifications", "capacitor-push-notifications"],
+      ]
+    : ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS;
+  stripAndroidNativePlugins(strippedPlugins, "cloud-disallowed");
 }
 
 /**
@@ -561,7 +584,7 @@ export function stripAndroidForCloud({ env = process.env } = {}) {
   //    embed bun, musl, libstdc++, libgcc, llama-server, or the
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
-  stripAndroidCloudNativePlugins();
+  stripAndroidCloudNativePlugins(env);
   sanitizeAndroidCloudPackagedConfig(env);
 }
 

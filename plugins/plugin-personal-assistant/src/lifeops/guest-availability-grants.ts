@@ -6,13 +6,13 @@
  * into provider/account/calendar coordinates; action parameters never do.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
 import {
-  type Entity,
-  type EntityAttribute,
-  type EntityIdentity,
+  type KnowledgeGraphEntity as Entity,
+  type LifeOpsEntityAttribute as EntityAttribute,
+  type LifeOpsEntityIdentity as EntityIdentity,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   CALENDAR_GUEST_AVAILABILITY_PURPOSE,
   type CalendarGuestAvailabilityGrant,

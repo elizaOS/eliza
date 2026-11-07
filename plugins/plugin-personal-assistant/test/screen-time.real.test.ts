@@ -187,6 +187,46 @@ describe("screen-time handler — real PGLite", () => {
     );
   });
 
+  it("getScreenTimeSummary with no source reads apps and websites", async () => {
+    await service.recordScreenTimeEvent({
+      source: "app",
+      identifier: "com.summary.BothEditor",
+      displayName: "BothEditor",
+      startAt: "2025-01-17T01:00:00.000Z",
+      endAt: "2025-01-17T01:20:00.000Z",
+      durationSeconds: 20 * 60,
+      metadata: {},
+    });
+    await service.recordScreenTimeEvent({
+      source: "website",
+      identifier: "both.example.com",
+      displayName: "both.example.com",
+      startAt: "2025-01-17T02:00:00.000Z",
+      endAt: "2025-01-17T02:30:00.000Z",
+      durationSeconds: 30 * 60,
+      metadata: {},
+    });
+
+    const summary = await service.getScreenTimeSummary({
+      since: "2025-01-17T00:00:00.000Z",
+      until: "2025-01-17T03:00:00.000Z",
+    });
+
+    expect(summary.items).toEqual([
+      expect.objectContaining({
+        source: "website",
+        identifier: "both.example.com",
+        totalSeconds: 30 * 60,
+      }),
+      expect.objectContaining({
+        source: "app",
+        identifier: "com.summary.BothEditor",
+        totalSeconds: 20 * 60,
+      }),
+    ]);
+    expect(summary.totalSeconds).toBe(50 * 60);
+  });
+
   it("getScreenTimeWeeklyAverageByApp returns structured per-day averages", async () => {
     const weekStart = Date.parse("2025-02-03T00:00:00.000Z");
     const weekEnd = weekStart + 7 * DAY_MS;

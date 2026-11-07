@@ -64,7 +64,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from manifest.eliza1_manifest import ELIZA_1_TIERS
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS
 
 logging.basicConfig(
     level=logging.INFO,

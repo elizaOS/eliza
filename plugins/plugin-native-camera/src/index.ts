@@ -9,6 +9,9 @@ import { registerPlugin } from "@capacitor/core";
 import type { CameraPlugin } from "./definitions";
 
 export * from "./definitions";
+export * from "./host-ports";
+export * from "./scan-document";
+export * from "./session";
 
 const loadWeb = () => import("./web").then((m) => new m.CameraWeb());
 

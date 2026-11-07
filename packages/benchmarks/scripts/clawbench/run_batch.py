@@ -35,7 +35,6 @@ Results appear in:
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -47,6 +46,7 @@ import yaml
 
 # Add project root to path so we can import the scoring module
 sys.path.insert(0, str((Path(__file__).resolve().parents[2] / "suites" / "clawbench")))
+from clawbench import SandboxClient, setup_workspace
 from clawbench.scoring import score_episode, format_score_summary, format_score_markdown
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,8 @@ OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://localhost:18790")
 OPENCLAW_TOKEN = os.getenv("OPENCLAW_GATEWAY_TOKEN", "sandbox-token-12345")
 MOCK_TOOLS_URL = os.getenv("MOCK_TOOLS_URL", "http://localhost:3001")
 CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
+CLIENT = SandboxClient(agent_url=OPENCLAW_URL, token=OPENCLAW_TOKEN, tools_url=MOCK_TOOLS_URL, model=CLAWBENCH_MODEL)
+
 
 # All mock tools — must match the real OpenClaw tool surface (see mock_tools/server.py)
 ALL_MOCK_TOOLS = [
@@ -208,86 +210,6 @@ def load_all_scenarios() -> list[dict]:
     return scenarios
 
 
-def setup_workspace(scenario: dict, variant: str) -> bool:
-    """Copy AGENTS.md variant and workspace files for a scenario."""
-    name = scenario["name"]
-    fixture_dir = FIXTURES_DIR / name
-    variants = scenario.get("variants", {})
-
-    if variant not in variants:
-        print(f"  WARNING: variant '{variant}' not found in {name}")
-        return False
-
-    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Copy AGENTS.md variant
-    src = fixture_dir / variants[variant]
-    if src.exists():
-        shutil.copy2(src, WORKSPACE_DIR / "AGENTS.md")
-    else:
-        print(f"  WARNING: {src} not found")
-        return False
-
-    # Copy workspace files
-    for dest_name, src_name in scenario.get("workspace", {}).items():
-        src = fixture_dir / src_name
-        if src.exists():
-            shutil.copy2(src, WORKSPACE_DIR / dest_name)
-
-    return True
-
-
-def reset_mock_scenario(scenario_name: str) -> bool:
-    """Tell the mock server to switch fixture directory."""
-    try:
-        r = httpx.post(f"{MOCK_TOOLS_URL}/set_scenario/{scenario_name}", timeout=5)
-        return r.status_code == 200
-    except httpx.RequestError:
-        return False
-
-
-def send_message(message: str) -> dict:
-    """Send a message to OpenClaw and return the raw response."""
-    url = f"{OPENCLAW_URL}/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-    }
-    payload = {
-        "model": CLAWBENCH_MODEL,
-        "messages": [{"role": "user", "content": message}],
-        "stream": False,
-    }
-
-    try:
-        response = httpx.post(url, headers=headers, json=payload, timeout=180)
-        if response.status_code != 200:
-            return {"error": response.text, "status": response.status_code}
-        return response.json()
-    except httpx.RequestError as e:
-        return {"error": str(e)}
-
-
-def get_tool_calls() -> list:
-    try:
-        r = httpx.get(f"{MOCK_TOOLS_URL}/tool_calls", timeout=5)
-        if r.status_code == 200:
-            return r.json().get("calls", [])
-    except httpx.RequestError:
-        pass
-    return []
-
-
-def get_all_requests() -> dict:
-    try:
-        r = httpx.get(f"{MOCK_TOOLS_URL}/all_requests", timeout=5)
-        if r.status_code == 200:
-            return r.json()
-    except httpx.RequestError:
-        pass
-    return {"requests": [], "summary": {"total": 0, "success": 0, "failed": 0}}
-
-
 # ---------------------------------------------------------------------------
 # Dry-run: verify fixtures without API calls
 # ---------------------------------------------------------------------------
@@ -386,23 +308,20 @@ def run_single(scenario: dict, variant: str) -> dict:
     print(f"{'='*60}")
 
     # Setup
-    if not setup_workspace(scenario, variant):
-        return {"scenario": name, "variant": variant, "status": "error", "error": "workspace setup failed"}
-
-    if not reset_mock_scenario(name):
-        return {"scenario": name, "variant": variant, "status": "error", "error": "mock server reset failed"}
+    setup_workspace(scenario, variant, FIXTURES_DIR, WORKSPACE_DIR)
+    CLIENT.reset_scenario(name)
 
     # Small delay for workspace file to be visible
     time.sleep(1)
 
     # Send message
     t0 = time.time()
-    raw_response = send_message(prompt)
+    raw_response = CLIENT.send_message(prompt)
     elapsed = time.time() - t0
 
     # Collect tool data
-    tool_calls = get_tool_calls()
-    all_reqs = get_all_requests()
+    tool_calls = CLIENT.get_tool_calls()
+    all_reqs = CLIENT.get_all_requests()
 
     # Extract response
     assistant_message = ""
@@ -745,7 +664,7 @@ Examples:
             print(f"  ❌ Exception: {e}")
             results.append({
                 "scenario": s["name"], "variant": v,
-                "status": "exception", "error": str(e),
+                "status": "exception", "error": str(e), "evidence": getattr(e, "evidence", []),
             })
 
     # Save results
@@ -771,6 +690,8 @@ Examples:
         stop_services()
 
     print(f"\nDone. Review results in: results/{run_id}/")
+    if any(result.get("status") in {"error", "exception"} for result in results):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

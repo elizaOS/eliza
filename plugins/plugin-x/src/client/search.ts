@@ -7,7 +7,8 @@ import type { TweetV2, Tweetv2SearchParams, UserV2 } from "twitter-api-v2";
 import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
-import type { Tweet } from "./tweets";
+import { maxResultsFor, X_RECENT_SEARCH_MIN_RESULTS } from "./request-limits";
+import { fullTweetText, type Tweet } from "./tweets";
 
 /**
  * The categories that can be used in Twitter searches.
@@ -47,6 +48,7 @@ const SEARCH_TWEET_QUERY: Partial<Tweetv2SearchParams> = {
     "entities",
     "public_metrics",
     "attachments",
+    "note_tweet",
   ],
   "user.fields": ["id", "name", "username", "profile_image_url"],
   "media.fields": ["url", "preview_image_url", "type"],
@@ -89,7 +91,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
 
   return {
     id: tweet.id,
-    text: tweet.text || "",
+    text: fullTweetText(tweet),
     timestamp: tweet.created_at
       ? new Date(tweet.created_at).getTime()
       : Date.now(),
@@ -109,7 +111,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
     inReplyToStatus: inReplyToStatus
       ? {
           id: inReplyToStatus.id,
-          text: inReplyToStatus.text || "",
+          text: fullTweetText(inReplyToStatus),
           userId: inReplyToStatus.author_id || "",
           name: inReplyToAuthor?.name || "",
           username: inReplyToAuthor?.username || "",
@@ -133,11 +135,11 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
       tweet.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
     isPin: false,
     sensitiveContent: false,
-    likes: tweet.public_metrics?.like_count || undefined,
-    replies: tweet.public_metrics?.reply_count || undefined,
-    retweets: tweet.public_metrics?.retweet_count || undefined,
-    views: tweet.public_metrics?.impression_count || undefined,
-    quotes: tweet.public_metrics?.quote_count || undefined,
+    likes: tweet.public_metrics?.like_count,
+    replies: tweet.public_metrics?.reply_count,
+    retweets: tweet.public_metrics?.retweet_count,
+    views: tweet.public_metrics?.impression_count,
+    quotes: tweet.public_metrics?.quote_count,
   };
 }
 
@@ -158,7 +160,7 @@ export async function searchTweetsPage(
 
   try {
     const paginator = (await client.v2.search(finalQuery, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_RECENT_SEARCH_MIN_RESULTS),
       ...SEARCH_TWEET_QUERY,
       ...(paginationToken ? { next_token: paginationToken } : {}),
     })) as SearchPaginator;
@@ -201,7 +203,7 @@ export async function* searchTweets(
 
   try {
     const searchIterator = (await client.v2.search(finalQuery, {
-      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_RECENT_SEARCH_MIN_RESULTS),
       ...SEARCH_TWEET_QUERY,
     })) as SearchPaginator & AsyncIterable<TweetV2>;
 
@@ -238,13 +240,14 @@ export async function* searchProfiles(
   auth: TwitterAuth,
 ): AsyncGenerator<Profile, void> {
   const client = await auth.getV2Client();
-  const userIds = new Set<string>();
+  const seenProfileIds = new Set<string>();
   const profiles: Profile[] = [];
 
   try {
     // Search for tweets and extract unique user IDs
     const searchIterator = await client.v2.search(query, {
-      max_results: Math.min(maxProfiles * 2, 100), // Get more tweets to find more users
+      // Get more tweets to find more users.
+      max_results: maxResultsFor(maxProfiles * 2, X_RECENT_SEARCH_MIN_RESULTS),
       "tweet.fields": ["author_id"],
       "user.fields": [
         "id",
@@ -260,15 +263,18 @@ export async function* searchProfiles(
       expansions: ["author_id"],
     });
 
-    for await (const tweet of searchIterator) {
-      if (tweet.author_id) {
-        userIds.add(tweet.author_id);
-      }
-
-      // Also get users from includes
+    for await (const _tweet of searchIterator) {
+      // The iterator yields one tweet at a time but exposes the whole page's
+      // included users on every step, so without a seen set the same users
+      // would be pushed once per tweet and fill the cap with duplicates.
       if (searchIterator.includes?.users) {
         for (const user of searchIterator.includes.users) {
-          if (profiles.length < maxProfiles && user.id) {
+          if (
+            profiles.length < maxProfiles &&
+            user.id &&
+            !seenProfileIds.has(user.id)
+          ) {
+            seenProfileIds.add(user.id);
             const profile: Profile = {
               userId: user.id,
               username: user.username || "",

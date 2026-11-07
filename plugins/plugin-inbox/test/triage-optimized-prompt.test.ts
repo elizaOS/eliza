@@ -10,6 +10,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildTriagePrompt,
+  classifyMessages,
   INBOX_TRIAGE_INSTRUCTIONS,
 } from "../src/inbox/triage-classifier.js";
 import type { InboundMessage } from "../src/inbox/types.js";
@@ -85,5 +86,25 @@ describe("inbox triage — OptimizedPromptService routing", () => {
     // The dynamic message scaffold is preserved around the instructions.
     expect(prompt).toContain("Messages to classify:");
     expect(prompt).toContain("Sam Rivera");
+  });
+});
+
+describe("inbox triage — legacy JSON response", () => {
+  it("keeps valid classifications in json5-labelled array fences", async () => {
+    const result = {
+      classification: "needs_reply",
+      urgency: "medium",
+      confidence: 0.9,
+      reasoning: "The sender asks for confirmation.",
+      suggestedResponse: "Yes, 3pm works.",
+    };
+    for (const label of ["json5", "JSON5"]) {
+      const runtime = {
+        getService: () => null,
+        useModel: async () =>
+          ["```" + label, JSON.stringify([result]), "```"].join("\n"),
+      } as unknown as IAgentRuntime;
+      expect(await classifyMessages(runtime, MESSAGES, {})).toEqual([result]);
+    }
   });
 });

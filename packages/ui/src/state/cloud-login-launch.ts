@@ -23,10 +23,10 @@
  * cloud-resume marker (first-run-cloud-resume.ts) finish onboarding on return.
  */
 
-import { resolveDirectCloudWebBase } from "../api/client-cloud";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
+import { currentOwnedElizaPagesOrigin } from "../utils/cloud-agent-base";
 import { preOpenWindow } from "../utils/openExternalUrl";
 import {
   isPlainWebPlatform,
@@ -169,6 +169,7 @@ export function isTouchPrimaryWebBrowser(): boolean {
  */
 export function hasSameOriginStewardLogin(): boolean {
   if (typeof window === "undefined") return false;
+  if (currentOwnedElizaPagesOrigin()) return true;
   const host = window.location.hostname.toLowerCase();
   if (ELIZA_CLOUD_DIRECT_API_BY_HOST[host]) return true;
   return Boolean(configuredStewardApiUrlOverride());
@@ -257,6 +258,7 @@ export function shouldUseSameTabCloudLogin(
   options: { hasAgentProxy?: boolean } = {},
 ): boolean {
   if (!isPlainWebPlatform()) return false;
+  if (!options.hasAgentProxy && currentOwnedElizaPagesOrigin()) return true;
   if (!hasSameOriginStewardLogin()) return false;
   const loopbackTarget = loopbackStewardDevelopmentTarget();
   if (loopbackTarget !== null) return false;
@@ -304,26 +306,4 @@ export function navigateToSameTabCloudLogin(): void {
  */
 export function canNavigateSameTabForBlockedPopup(): boolean {
   return isPlainWebPlatform();
-}
-
-/**
- * Direct-navigation target for the onboarding "Connect Eliza Cloud" card. Must
- * be a browser-renderable login PAGE: pointing the card at the raw configured
- * cloud base navigated escaped popups into API-host/www-edge responses that
- * mobile browsers download as `document.txt` instead of rendering (#15143).
- * On a hosted-web https origin with a same-origin Steward login the URL stays
- * on THIS origin with a `returnTo`, so the sign-in round trip actually lands
- * the token where onboarding resumes; everywhere else it is the cloud web
- * base's login page.
- */
-export function resolveCloudSignInPageUrl(cloudApiBase: string): string {
-  if (
-    isPlainWebPlatform() &&
-    hasSameOriginStewardLogin() &&
-    typeof window !== "undefined" &&
-    window.location.protocol === "https:"
-  ) {
-    return `${window.location.origin}${buildSameTabCloudLoginPath()}`;
-  }
-  return `${resolveDirectCloudWebBase(cloudApiBase)}/login`;
 }

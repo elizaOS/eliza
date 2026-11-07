@@ -7,7 +7,7 @@
  * handler lives in `packages/app/src/api/runtime-mode-routes.ts`.
  */
 
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { fetchWithCsrf } from "./csrf-client";
 
 export type RuntimeMode = "local" | "local-only" | "cloud" | "remote";

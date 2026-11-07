@@ -9,6 +9,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   ModelType,
+  Service,
   ServiceType,
   TaskService,
 } from '@elizaos/core';
@@ -65,6 +66,20 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
           },
         },
       });
+    }
+  }
+  class FailingCloudGoogleDelegation extends Service {
+    static serviceType = 'cloud_google_delegation';
+    capabilityDescription = 'Failing hosted Google discovery fixture';
+
+    static async start(runtime: IAgentRuntime) {
+      return new FailingCloudGoogleDelegation(runtime);
+    }
+
+    async stop() {}
+
+    async list() {
+      throw new Error('Synthetic cloud delegation outage');
     }
   }
 
@@ -264,9 +279,11 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
     return { status: response.status, body: (await response.json()) as any };
   };
   try {
+    // 02:30 does not exist on the spring-forward day; core runs it one gap later (03:30 EDT)
+    // instead of skipping that day (trigger-scheduling cronMatches, #37576).
     expect(
       computeNextCronRunAtMs('30 2 * * *', Date.parse('2027-03-14T06:59:00Z'), 'America/New_York')
-    ).toBe(Date.parse('2027-03-15T06:30:00Z'));
+    ).toBe(Date.parse('2027-03-14T07:30:00Z'));
     expect(
       computeNextCronRunAtMs('30 1 * * *', Date.parse('2027-11-07T04:59:00Z'), 'America/New_York')
     ).toBe(Date.parse('2027-11-07T05:30:00Z'));
@@ -281,6 +298,11 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
       (await call('/hosted/live-accounts', undefined, 'fixture-other')).body.accounts
     ).toHaveLength(0);
     const descriptor = offered.body.accounts[0];
+    await state!.runtime.registerService(FailingCloudGoogleDelegation);
+    await state!.runtime.getServiceLoadPromise(FailingCloudGoogleDelegation.serviceType);
+    const failedCloudDiscovery = await call('/hosted/live-accounts');
+    expect(failedCloudDiscovery.status).toBe(503);
+    expect(failedCloudDiscovery.body.error).toBe('Hosted Google account discovery failed');
     const foreignCalendars = await call(
       '/hosted/live-calendars',
       {

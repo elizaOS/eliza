@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "types": ["node", "bun", "vitest/globals"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

@@ -18,14 +18,21 @@
  * times, and percentages are formatted to strings HERE (client displays, never
  * computes) and handed to the presentational view as a snapshot.
  *
- * The default fetchers build URLs from `client.getBaseUrl()`; tests inject the
+ * The default fetchers use the authenticated `client.fetch`; tests inject the
  * fetcher seams so they stay offline.
  */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsRegularityClass,
@@ -64,29 +71,11 @@ export interface SleepFetchers {
 /** Maximum time allowed for one sleep-data request. */
 export const HEALTH_VIEW_JSON_TIMEOUT_MS = 15_000;
 
-export async function getHealthJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = HEALTH_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Sleep request failed (${response.status}): ${url}`);
-  }
-  return (await response.json()) as T;
-}
-
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return getHealthJsonWithFetch<T>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    HEALTH_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<T>(
+    path,
+    { method: "GET", signal },
+    { timeoutMs: HEALTH_VIEW_JSON_TIMEOUT_MS },
   );
 }
 
@@ -132,8 +121,11 @@ function formatDateTime(value: string | null): string {
 
 function formatDuration(minutes: number | null): string {
   if (minutes === null) return "—";
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  // A median of an even count can end in .5 (472.5). Round the whole
+  // duration first, so the row prints "7h 53m", not "7h 52.5m".
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
   if (hours === 0) return `${mins}m`;
   return `${hours}h ${mins}m`;
 }
@@ -143,7 +135,10 @@ function formatLocalHour(hour: number | null): string {
   const normalized = ((hour % 24) + 24) % 24;
   const whole = Math.floor(normalized);
   const mins = Math.round((normalized - whole) * 60);
-  return `${String(whole).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+  // 22:59.5 rounds the minute to 60. The row must not print "22:60".
+  const hourOut = mins === 60 ? (whole + 1) % 24 : whole;
+  const minuteOut = mins === 60 ? 0 : mins;
+  return `${String(hourOut).padStart(2, "0")}:${String(minuteOut).padStart(2, "0")}`;
 }
 
 const REGULARITY_LABELS: Record<LifeOpsRegularityClass, string> = {

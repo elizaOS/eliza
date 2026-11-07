@@ -11,24 +11,34 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  activeCommittedEffectReceipts,
   canActionRun,
   type DirectActionRoutingRule,
   evaluateConnectorAccountPolicies,
   getCandidateActionBackstopRules,
   getDirectActionRoutingRules,
   getUserMessageText,
+  normalizeContextId,
 } from "@elizaos/core";
+import { preferredOperationNames } from "../../runtime/action-retrieval.ts";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import {
+  actionDiscoveryContexts,
   mergeAgentContexts,
   messageHandlerStageOneReplyContexts,
+  retrieveContextualPlannerActions,
 } from "./action-surface.js";
 import {
   getActionInferenceMessageText,
+  getStructuredRecentMessages,
   isSubAgentCompletionArtifact,
   resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import {
+  historicalActionResults,
+  historicalReceiptGroups,
+} from "./navigation-history.ts";
 import {
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
@@ -117,7 +127,7 @@ export async function resolveEligibleDirectActionRoutes(args: {
   const found: EligibleDirectActionRoute[] = [];
   const seen = new Set<string>();
   for (const rule of getDirectActionRoutingRules(args.runtime)) {
-    if (!rule.matches(messageText)) continue;
+    if (!rule.matches(messageText, args.message)) continue;
     const requiredTags = new Set(
       rule.requiredActionTags.map((tag) => tag.trim().toLowerCase()),
     );
@@ -171,6 +181,74 @@ export async function resolveEligibleDirectActionRoutes(args: {
     }
   }
   return found;
+}
+
+/**
+ * Actions behind the newest committed effect in this room, read from the same
+ * authorized request outcomes Stage 1 receives as runtime:historical_effects.
+ * A referential follow-up ("move it to 4pm") names its target only through
+ * that effect, so retrieval over its own words finds no owner.
+ */
+function latestCommittedEffectActions(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+): Action[] {
+  let latestAt = Number.NEGATIVE_INFINITY;
+  let actionNames = new Set<string>();
+  for (const request of getStructuredRecentMessages(state) ?? []) {
+    if (typeof request.createdAt !== "number" || request.createdAt < latestAt)
+      continue;
+    const { effects } = historicalReceiptGroups(
+      historicalActionResults(request, message, runtime.agentId),
+      runtime.actions ?? [],
+    );
+    let committed: ReadonlySet<string>;
+    try {
+      committed = new Set(
+        activeCommittedEffectReceipts(
+          effects.map(({ receipt }) => receipt),
+        ).map((receipt) => receipt.receiptId),
+      );
+    } catch {
+      // error-policy:J3 Conflicting stored receipt IDs cannot supply
+      // historical evidence; the reroute keeps its general fallback.
+      continue;
+    }
+    const names = effects.flatMap(({ actionName, receipt }) =>
+      actionName && committed.has(receipt.receiptId) ? [actionName] : [],
+    );
+    if (names.length === 0) continue;
+    if (request.createdAt > latestAt) {
+      latestAt = request.createdAt;
+      actionNames = new Set();
+    }
+    for (const name of names) actionNames.add(name);
+  }
+  return (runtime.actions ?? []).filter((action) =>
+    actionNames.has(action.name),
+  );
+}
+
+/**
+ * The discovery contexts an effect's action owns through its own domain or
+ * resource tags, else all of them. A calendar write also declares tasks and
+ * contacts; with LifeOps those pull every reminder, alarm and routine family
+ * into the first planner surface.
+ */
+function effectOwnerContexts(action: Action): AgentContext[] {
+  const contexts = actionDiscoveryContexts(action);
+  const owned = new Set(
+    (action.tags ?? []).flatMap((tag) =>
+      tag.startsWith("domain:") || tag.startsWith("resource:")
+        ? [normalizeContextId(tag.slice(tag.indexOf(":") + 1))]
+        : [],
+    ),
+  );
+  const primary = contexts.filter((context) =>
+    owned.has(normalizeContextId(context)),
+  );
+  return primary.length > 0 ? primary : contexts;
 }
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
@@ -262,18 +340,20 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
         const text = getActionInferenceMessageText(message);
         if (text.length === 0) return false;
         const matchingRules = getDirectActionRoutingRules(runtime).filter(
-          (rule) => rule.matches(text),
+          (rule) => rule.matches(text, message),
         );
         if (matchingRules.length === 0) return false;
-        // A plugin may reconcile an already-tool-bearing/non-simple plan only
-        // for the explicit fallback candidates it owns. All other plans keep
-        // their Stage-1 route, even when their text happens to match.
+        // Preserve an already-selected tool surface unless the plugin owns its
+        // fallback. A tool-required plan with no names is still unresolved;
+        // an eligible registered intent can seed it without removing other work.
         if (
-          messageHandler.plan.requiresTool === true ||
-          nonSimpleContexts.length > 0
+          messageHandler.plan.candidateActions?.length &&
+          (messageHandler.plan.requiresTool === true ||
+            nonSimpleContexts.length > 0)
         ) {
           return matchingRules.some(
             (rule) =>
+              rule.wholeRequest?.matches(text, message) ||
               rule.unavailable !== undefined ||
               routeReplacesStage1Candidate(
                 rule,
@@ -292,7 +372,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       }) => {
         const text = getActionInferenceMessageText(message);
         const matchingRules = getDirectActionRoutingRules(runtime).filter(
-          (rule) => rule.matches(text),
+          (rule) => rule.matches(text, message),
         );
         const declaredReplacementRules = new Set(
           matchingRules.filter((rule) =>
@@ -325,6 +405,37 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           state,
           userRoles,
         });
+        const wholeRequestRules = matchingRules.filter((rule) =>
+          rule.wholeRequest?.matches(text, message),
+        );
+        // Whole-request ownership comes from the original user text, never
+        // the model's invented decomposition. Ambiguity retains the old plan.
+        if (wholeRequestRules.length > 1) return undefined;
+        const wholeOwner = wholeRequestRules[0];
+        if (wholeOwner?.wholeRequest) {
+          const admittedOwners = routes.filter(
+            ({ rule }) => rule === wholeOwner,
+          );
+          if (admittedOwners.length === 0) return unavailablePatch(wholeOwner);
+          return {
+            requiresTool: true,
+            replaceIntentScope: {
+              intents: [text],
+              invalidateFields: wholeOwner.wholeRequest.invalidateFields,
+              owner: wholeOwner,
+            },
+            setContexts: mergeAgentContexts(wholeOwner.contexts),
+            clearCandidateActions: true,
+            addCandidateActions: uniqueActionNames(
+              admittedOwners.map(({ action }) => action.name),
+            ),
+            clearParentActionHints: true,
+            clearReply: true,
+            debug: [
+              `reconciled whole current request through admitted route: ${wholeOwner.id}`,
+            ],
+          };
+        }
         if (routes.length === 0) {
           const unavailableRule =
             [...authoritativeRules].find((rule) => rule.unavailable) ??
@@ -484,10 +595,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       // A simple-path turn runs NO tools, so a reply asserting a completed
       // scheduling/save side effect is fabricated by construction. Reroute the
       // turn to the planner so a real action performs the work and the
-      // confirmation the user reads is grounded in a tool result. Candidate
-      // hints come from the plugin-registered backstop rules (matched against
-      // the fabricated claim's own vocabulary), so core stays free of
-      // plugin-specific action names.
+      // confirmation the user reads is grounded in a tool result. Recover
+      // candidates from the original request through ordinary action retrieval.
+      // A backstop protection list or fabricated reply does not select work.
+      // With no candidates, plan in the domains of the newest committed effect
+      // (the request's referent) rather than the broad general surface. Its
+      // action is not a candidate: hinting a create for "move it" narrows the
+      // planner to that create.
       name: "core.simple_completed_side_effect_claim",
       description:
         "Blocks simple-path replies that claim an already-completed scheduling/save side effect no tool performed; reroutes the turn to the planner.",
@@ -516,21 +630,51 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           replyClaimsCompletedSideEffect(reply)
         );
       },
-      evaluate: ({ messageHandler, runtime }) => {
-        const reply =
-          typeof messageHandler.plan.reply === "string"
-            ? messageHandler.plan.reply
-            : "";
-        const candidateActions = [
-          ...new Set(
-            getCandidateActionBackstopRules(runtime)
-              .filter((rule) => rule.matches(reply))
-              .flatMap((rule) => [...rule.actionNames]),
-          ),
-        ];
+      evaluate: ({
+        message,
+        messageHandler,
+        runtime,
+        state,
+        availableContexts,
+      }) => {
+        const query =
+          resolveContinuationInferenceMessageText(runtime, message, state) ??
+          getActionInferenceMessageText(message);
+        const inferred = inferDirectCurrentRequestCandidateInference(
+          runtime.actions ?? [],
+          query,
+        );
+        const retrieved = query.trim()
+          ? retrieveContextualPlannerActions({
+              actions: runtime.actions ?? [],
+              query,
+              intents: messageHandler.plan.intents,
+            }).actions.map((action) => action.name)
+          : [];
+        // Loose description overlap is discovery evidence, not an exact hint.
+        // Keep unresolved requests on the planner's normal discovery path.
+        const candidateActions = uniqueActionNames([
+          ...inferred.names,
+          ...(preferredOperationNames(query, retrieved).size > 0
+            ? retrieved
+            : []),
+        ]);
+        const effectContexts =
+          candidateActions.length > 0
+            ? []
+            : filterSelectedContextsForRole(
+                mergeAgentContexts(
+                  ...latestCommittedEffectActions(runtime, message, state).map(
+                    effectOwnerContexts,
+                  ),
+                ),
+                availableContexts,
+              );
+        const contexts =
+          effectContexts.length > 0 ? effectContexts : ["general"];
         return {
           requiresTool: true,
-          addContexts: ["general"],
+          addContexts: contexts,
           ...(candidateActions.length > 0
             ? { addCandidateActions: candidateActions }
             : {}),
@@ -538,7 +682,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           // fabricated claim instead of synthesizing an ack in its place.
           clearReply: true,
           debug: [
-            `simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+            `simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"}; contexts: ${contexts.join(", ")})`,
           ],
         };
       },

@@ -1,10 +1,10 @@
 /** Adapts LifeOps reminders persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   sqlInteger,

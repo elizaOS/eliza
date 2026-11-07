@@ -6,18 +6,21 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import {
+  type TranslateFn as AppTranslateFn,
+  resolveDefaultTimeZone,
+} from "@elizaos/contracts";
+import type { TriggerType, TriggerWakeMode } from "@elizaos/core";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
-  TriggerType,
-  TriggerWakeMode,
   UpdateTriggerRequest,
-} from "../../api/client";
+} from "../../api/client-types-core";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+
 export type TriggerKind = "text" | "workflow";
 // ── Translation helper type ────────────────────────────────────────
 export type TranslateFn = AppTranslateFn;
@@ -81,6 +84,14 @@ export interface TriggerFormState {
   enabled: boolean;
   durationValue: string;
   durationUnit: DurationUnit;
+  /** Zone stored on the trigger being edited or duplicated. */
+  timezone?: string;
+  /**
+   * One-time instant stored on the trigger being edited. The input text alone
+   * cannot name the second of two repeated wall-clock times (daylight-saving
+   * fall-back), so an unchanged field sends this instant back.
+   */
+  storedScheduledAtIso?: string;
 }
 export const emptyForm: TriggerFormState = {
   displayName: "",
@@ -237,19 +248,44 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
-    kind: "workflow",
+    kind: trigger.kind === "prompt" ? "text" : "workflow",
     workflowId: trigger.workflowId ?? "",
     workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
     eventKind: trigger.eventKind ?? "message.received",
     wakeMode: trigger.wakeMode,
-    scheduledAtIso: trigger.scheduledAtIso ?? "",
+    scheduledAtIso: localDateTimeInput(trigger.scheduledAtIso ?? ""),
     cronExpression: trigger.cronExpression ?? "0 * * * *",
     maxRuns: trigger.maxRuns ? String(trigger.maxRuns) : "",
     enabled: trigger.enabled,
     durationValue: String(value),
     durationUnit: unit,
+    timezone: trigger.timezone,
+    storedScheduledAtIso: trigger.scheduledAtIso,
   };
+}
+/**
+ * The `YYYY-MM-DDTHH:mm` wall-clock value a `datetime-local` input shows for a
+ * stored instant, in the browser zone. The input has no zone, so the form
+ * sends the instant it previews (see `buildCreateRequest`), not the raw text:
+ * the agent host can run in another zone.
+ */
+function localDateTimeInput(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return iso;
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+/** The instant a one-time trigger runs at: the stored one while the field is unchanged. */
+export function onceInstant(form: TriggerFormState): string {
+  const text = form.scheduledAtIso.trim();
+  if (
+    form.storedScheduledAtIso &&
+    localDateTimeInput(form.storedScheduledAtIso) === text
+  )
+    return new Date(form.storedScheduledAtIso).toISOString();
+  return new Date(text).toISOString();
 }
 export function buildCreateRequest(
   form: TriggerFormState,
@@ -258,7 +294,9 @@ export function buildCreateRequest(
   return {
     displayName: form.displayName.trim(),
     instructions: form.instructions.trim() || undefined,
-    kind: form.kind === "workflow" ? "workflow" : undefined,
+    // The server reads a missing kind as "workflow"; a text automation is a
+    // prompt trigger.
+    kind: form.kind === "workflow" ? "workflow" : "prompt",
     workflowId: form.workflowId,
     workflowName: form.workflowName || undefined,
     triggerType: form.triggerType,
@@ -268,18 +306,30 @@ export function buildCreateRequest(
       form.triggerType === "interval"
         ? durationToMs(Number(form.durationValue) || 1, form.durationUnit)
         : undefined,
-    scheduledAtIso:
-      form.triggerType === "once" ? form.scheduledAtIso.trim() : undefined,
+    scheduledAtIso: form.triggerType === "once" ? onceInstant(form) : undefined,
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
     eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
+    timezone:
+      form.triggerType === "cron" ? cronTimeZone(form.timezone) : undefined,
     maxRuns,
   };
 }
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
-  return { ...buildCreateRequest(form) };
+  const request = buildCreateRequest(form);
+  // A cleared "Stop after" removes the limit. JSON drops an undefined field,
+  // which the server reads as "keep the current limit", so send null.
+  return { ...request, maxRuns: request.maxRuns ?? null };
+}
+/**
+ * The zone a cron schedule runs in: the zone stored on the trigger, or the
+ * browser's zone when it has none. The server reads a cron expression with no
+ * zone in UTC.
+ */
+export function cronTimeZone(stored: string | undefined): string {
+  return stored || resolveDefaultTimeZone();
 }
 // ── Cron validation ────────────────────────────────────────────────
 /**
@@ -328,19 +378,21 @@ export function nextRunsForInterval(
   return results;
 }
 /**
- * Compute the next N fire dates for a cron expression.
+ * Compute the next N fire dates for a cron expression read in `tz`.
  * Returns an empty array when parsing fails.
  */
 export function nextRunsForCron(
   expr: string,
   count: number,
-  from = new Date(),
+  from: Date,
+  tz: string,
 ): Date[] {
   const trimmed = expr.trim();
   if (!trimmed) return [];
   try {
     const schedule = CronExpressionParser.parse(trimmed, {
       currentDate: from,
+      tz,
     });
     const results: Date[] = [];
     for (let i = 0; i < count; i++) {
@@ -358,10 +410,12 @@ export function validateTriggerKind(
   form: TriggerFormState,
   t: TranslateFn,
 ): string | null {
-  if (!form.workflowId) {
-    return t("triggers.workflowPlaceholder");
+  if (form.kind === "workflow") {
+    return form.workflowId ? null : t("triggers.workflowPlaceholder");
   }
-  return null;
+  return form.instructions.trim()
+    ? null
+    : t("triggersview.validationInstructionsRequired");
 }
 export function validateForm(
   form: TriggerFormState,

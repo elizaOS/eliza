@@ -4,24 +4,36 @@
  * Scope authorization and conversation execution are cache-only through the
  * shared Durable Object; cold hydration returns retryable unavailability.
  */
-import { Hono } from "hono";
-import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
+
+import {
+  InsufficientCreditsError,
+  RateLimitError,
+} from "@elizaos/cloud-shared/lib/api/errors";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import { sharedTurnClientMessageId } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import {
+  normalizeSharedRuntimeRoom,
+  sharedTurnClientMessageId,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../../_local-dedicated-proxy";
 
 /**
@@ -84,7 +96,9 @@ app.get("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   // The personal identity follows its entitlement route (#25146): a withdrawn
   // Dedicated reads the scoped fallback journal, never the canonical room.
   const target = await resolveSharedSurfaceTarget({
@@ -178,7 +192,9 @@ app.post("/", async (c) => {
       origin,
     );
   }
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const conversationId = normalizeSharedRuntimeRoom(
+    c.req.param("conversationId") ?? r.agentId,
+  );
   const raw: unknown = await c.req.json().catch(() => ({}));
   const text =
     raw &&
@@ -196,6 +212,16 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  const requestedNetworkApp =
+    raw && typeof raw === "object" && "networkApp" in raw
+      ? raw.networkApp
+      : undefined;
+  let trustedNetworkContext = await prepareNetworkSharedTurn(
+    c,
+    r.agent,
+    requestedNetworkApp,
+    text,
+  );
   const target = await resolveSharedSurfaceTarget({
     agent: r.agent,
     personal: "agentKind" in r,
@@ -213,6 +239,11 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  trustedNetworkContext = networkContextForPersonalSurface(
+    trustedNetworkContext,
+    r.agent,
+    target.roomId,
+  );
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
@@ -228,6 +259,9 @@ app.post("/", async (c) => {
       text,
       undefined,
       target.accountState,
+      c.get("traceId"),
+      c.req.raw.signal,
+      trustedNetworkContext,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

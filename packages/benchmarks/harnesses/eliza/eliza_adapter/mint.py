@@ -1,6 +1,6 @@
 """MINT benchmark agent backed by the eliza benchmark server.
 
-Drop-in replacement for ``benchmarks.mint.agent.MINTAgent`` — same
+Drop-in replacement for ``benchmarks.suites.mint.agent.MINTAgent`` — same
 ``solve_task`` interface returning a ``MINTTrajectory``, but each LLM
 call is forwarded to the eliza benchmark HTTP server via
 ``ElizaClient.send_message`` instead of binding a model plugin into a
@@ -22,17 +22,17 @@ from typing import TYPE_CHECKING
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmarks.mint.executor import PythonExecutor
-    from benchmarks.mint.feedback import FeedbackGenerator
-    from benchmarks.mint.types import MINTTask, MINTTrajectory
+    from benchmarks.suites.mint.executor import PythonExecutor
+    from benchmarks.suites.mint.feedback import FeedbackGenerator
+    from benchmarks.suites.mint.types import MINTTask, MINTTrajectory
 
 
 def _mint_imports():
-    """Lazy imports of benchmarks.mint.* — avoids requiring the module on sys.path at import."""
-    from benchmarks.mint.agent import MINTAgent
-    from benchmarks.mint.executor import PythonExecutor
-    from benchmarks.mint.feedback import FeedbackGenerator
-    from benchmarks.mint.types import MINTTask, MINTTrajectory, Turn, TurnType
+    """Lazy imports of benchmarks.suites.mint.* — avoids requiring the module on sys.path at import."""
+    from benchmarks.suites.mint.agent import MINTAgent
+    from benchmarks.suites.mint.executor import PythonExecutor
+    from benchmarks.suites.mint.feedback import FeedbackGenerator
+    from benchmarks.suites.mint.types import MINTTask, MINTTrajectory, Turn, TurnType
 
     return MINTAgent, PythonExecutor, FeedbackGenerator, MINTTask, MINTTrajectory, Turn, TurnType
 
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 class ElizaMINTAgent:
     """MINT agent that delegates LLM calls to the eliza TS bridge.
 
-    Mirrors :class:`benchmarks.mint.agent.MINTAgent`'s public surface:
+    Mirrors :class:`benchmarks.suites.mint.agent.MINTAgent`'s public surface:
       - ``solve_task(task, enable_tools, enable_feedback) -> MINTTrajectory``
       - ``reset_session() -> None``
 

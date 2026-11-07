@@ -5,7 +5,6 @@
  * instead of this journal.
  */
 import path from "node:path";
-import { readJsonFile, writeJsonAtomic } from "@elizaos/core";
 import {
 	canonicalizeRemoteControlValue,
 	type EncryptedRemoteControlEnvelope,
@@ -19,7 +18,8 @@ import {
 	type RemoteControllerPublicIdentity,
 	type RemoteJsonValue,
 	type SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { readJsonFile, writeJsonAtomic } from "@elizaos/core";
 import { resolveStateDir } from "./native/auth-bridge";
 export type RemoteTargetCommandStatus =
 	| "reserved"
@@ -34,8 +34,7 @@ export interface RemoteTargetStoredSession {
 	lastSequence: number;
 	nonces: Record<string, number>;
 	stoppedAt: number | null;
-	/** Absent legacy rows are committed; new two-phase rows stage explicitly. */
-	activationState?: "staged" | "active";
+	activationState: "staged" | "active";
 }
 export interface RemoteTargetStoredCommand {
 	command: SignedRemoteCommand;
@@ -129,8 +128,7 @@ function assertState(
 			(session.stoppedAt !== null &&
 				(!Number.isSafeInteger(session.stoppedAt) ||
 					(session.stoppedAt as number) <= 0)) ||
-			(session.activationState !== undefined &&
-				session.activationState !== "staged" &&
+			(session.activationState !== "staged" &&
 				session.activationState !== "active")
 		) {
 			throw new Error("Remote target journal is corrupt.");

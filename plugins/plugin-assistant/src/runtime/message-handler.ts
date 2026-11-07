@@ -20,6 +20,7 @@ import {
   splitTranscriptList,
   stripJsonStructuralJunkReply,
 } from "@elizaos/core";
+import { looksLikeMediaGenerationRequest } from "../services/message/direct-action-heuristics";
 import { replyClaimsInProgressWork } from "../services/message/side-effect-claims";
 import {
   normalizeReplyEffectStatus,
@@ -242,14 +243,6 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
   return result;
 }
 
-/** Explicit media-generation request shape: a generation verb paired with a
- * media-artifact noun within one clause. Self-contained mirror of
- * GENERATE_MEDIA's own explicit-request detector — validate() and routing
- * deliberately own their layers separately (#20174), but they must agree on
- * what an explicit ask looks like. */
-const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
-  /\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/i;
-
 /** Capability-denial reply shape ("can't do that here — no video tools in
  * this setup", "I don't have an image generator", "that's a private
  * surface / private info / limited to the owner"). The privacy arm exists
@@ -260,7 +253,7 @@ const EXPLICIT_MEDIA_GENERATION_REQUEST_RE =
  * (services/message.ts) — every owner-private decline it can ship must match
  * one arm here. */
 const CAPABILITY_DENIAL_REPLY_RE =
-  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that/i;
+  /\b(?:can'?t|cannot|unable to|no|don'?t have|lack)\b[^.!?]{0,80}\b(?:tool|generat|capabilit|action|model|service|setup|environment)|private surface|owner'?s private info|(?:limited|only available) to (?:the owner|them)|don'?t have access to that|can'?t pull it up in a shared channel|can'?t share that private information/i;
 
 /** Reminder wording supports scheduling votes and denial recovery, not intent on its own. */
 const EXPLICIT_REMINDER_REQUEST_RE =
@@ -345,7 +338,7 @@ export function routeMessageHandlerOutput(
     options?.candidateActionsClearedByEvaluators !== true;
   const isExplicitMediaAsk =
     allowTextOnlyFallback &&
-    EXPLICIT_MEDIA_GENERATION_REQUEST_RE.test(messageTextForRouting);
+    looksLikeMediaGenerationRequest(messageTextForRouting);
   // Seeding is applied ONLY on routes that enter the planner: a simple-path
   // clarify ("a picture of what exactly?") must stay a final reply, so the
   // seed never by itself converts a simple turn into planning.
@@ -450,6 +443,12 @@ export function routeMessageHandlerOutput(
 
   if (nonSimpleContexts.length === 0) {
     const reply = getMessageHandlerReply(output);
+    // RESPOND promises an answer. An empty shortcut is an incomplete protocol
+    // result, not a final reply. Reuse ordinary general planning without seeding
+    // a tool or repeating Stage 1; upstream silence/safety/evaluator fences win.
+    if (!reply && allowTextOnlyFallback) {
+      return { type: "planning_needed", output, contexts: ["general"] };
+    }
     // A capability denial on the simple path for an explicit media ask is
     // the history-poisoning shape: stage-1 repeats a stale "no video/image
     // tools" precedent from room history without consulting the runtime

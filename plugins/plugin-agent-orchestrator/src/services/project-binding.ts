@@ -22,14 +22,13 @@
 
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { ElizaError, logger } from "@elizaos/core";
 import {
-  ElizaError,
   getProjectById,
-  logger,
   type ProjectRecord,
   readProjectRegistry,
   upsertProject,
-} from "@elizaos/core";
+} from "@elizaos/host";
 
 /** Reject an explicit project id before task creation or child spawn can fall
  * back to an unrelated route/default workdir. Omitted ids retain normal

@@ -69,7 +69,10 @@ def test_chat_channel_rejects_unknown_platform() -> None:
 
 
 def test_local_mode_reads_sample_directory() -> None:
-    sample_dir = Path(__file__).resolve().parents[3] / "corpus-tools/fixtures/synthetic"
+    sample_dir = (
+        Path(__file__).resolve().parents[1]
+        / "eliza_lifeops_bench/lifeworld/fixtures/synthetic"
+    )
     rows = load_corpus_rows(CorpusLoadOptions(mode="local", local_dir=sample_dir))
 
     assert len(rows) == 20

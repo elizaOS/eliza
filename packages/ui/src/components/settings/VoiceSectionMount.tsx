@@ -12,15 +12,14 @@
  *   settings sections use (see `IdentitySettingsSection` for `messages.tts`).
  */
 
-import {
-  VOICE_SETTINGS_APPLY_EVENT,
-  type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
+import type { VoiceSettingsApplyPayload } from "@elizaos/core/protocol";
+import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { useBranding } from "../../config/branding";
+import { getElectrobunRendererRpc } from "../../bridge/electrobun-rpc";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadContinuousChatMode,
@@ -28,6 +27,14 @@ import {
   loadWakeWordEnabled,
   saveWakeWordEnabled,
 } from "../../state/persistence";
+import {
+  getFusedWakeStatus,
+  subscribeFusedWakeStatus,
+} from "../../voice/fused-wake-bridge";
+import {
+  armDesktopFusedWake,
+  disarmDesktopFusedWake,
+} from "../../voice/fused-wake-desktop-bridge";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -112,6 +119,8 @@ export function VoiceSectionMount(): React.ReactElement {
   // counterparts; unrelated persisted preferences still hydrate normally.
   const pendingHydrationUpdates =
     React.useRef<Partial<VoiceSectionPrefs> | null>({});
+  const pendingPersistPrefs = React.useRef<VoiceSectionPrefs | null>(null);
+  const persistTask = React.useRef<Promise<void> | null>(null);
   const [persistError, setPersistError] = React.useState<string | null>(null);
   // Wake-word listening is a device-local pref (localStorage mirror the shell
   // reads synchronously — see useShellController's useWakeListenWindow), not part
@@ -119,6 +128,22 @@ export function VoiceSectionMount(): React.ReactElement {
   const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
     loadWakeWordEnabled(),
   );
+  // The only wake detector the app starts is the desktop one, armed over the
+  // electrobun RPC at boot (registerDesktopFusedWake). On iOS, Android and web
+  // nothing starts a detector, so the switch must not look like it works.
+  const wakeWordAvailable = getElectrobunRendererRpc() !== undefined;
+  // Desktop only: the native wake detector can fail to start (wake models not
+  // downloaded, microphone refused). Show the host's reason instead of leaving
+  // the switch on with nothing listening.
+  const fusedWake = React.useSyncExternalStore(
+    subscribeFusedWakeStatus,
+    getFusedWakeStatus,
+    getFusedWakeStatus,
+  );
+  const wakeWordInactiveReason =
+    wakeWordEnabled && fusedWake.bridged && !fusedWake.listening
+      ? fusedWake.reason
+      : undefined;
   const [tierError, setTierError] = React.useState(false);
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
@@ -198,24 +223,26 @@ export function VoiceSectionMount(): React.ReactElement {
     };
   }, []);
   // Persist the wake-word toggle and update local state so the control reflects
-  // it immediately; the shell picks the new value up on its next render.
+  // it immediately; the shell picks the new value up on its next render. On
+  // desktop the toggle also owns the native detector: on starts it (again, if
+  // an earlier start failed), off stops it and releases the microphone.
   const handleWakeWordToggle = React.useCallback((next: boolean) => {
     setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
+    if (!getFusedWakeStatus().bridged) return;
+    void (next ? armDesktopFusedWake() : disarmDesktopFusedWake());
   }, []);
-  const handlePrefsChange = React.useCallback(
-    async (next: VoiceSectionPrefs) => {
-      setPrefs(next);
-      setPersistError(null);
-      // Mirror to localStorage immediately so the capture path picks up the new
-      // VAD thresholds without waiting on the config round-trip.
-      voiceSettingsController.applyDeviceSettings(next);
+  const persistPendingPrefs = React.useCallback(async () => {
+    while (pendingPersistPrefs.current) {
+      const next = pendingPersistPrefs.current;
+      pendingPersistPrefs.current = null;
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;
         await client.updateConfig({
           messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
         });
+        setPersistError(null);
       } catch (error) {
         setPersistError(
           error instanceof Error
@@ -223,8 +250,25 @@ export function VoiceSectionMount(): React.ReactElement {
             : "Failed to save voice settings.",
         );
       }
+    }
+    persistTask.current = null;
+  }, []);
+  const handlePrefsChange = React.useCallback(
+    (next: VoiceSectionPrefs) => {
+      setPrefs(next);
+      setPersistError(null);
+      // Mirror to localStorage immediately so the capture path picks up the new
+      // VAD thresholds without waiting on the config round-trip.
+      voiceSettingsController.applyDeviceSettings(next);
+      // Keep at most one pending snapshot while a write is active. This keeps
+      // rapid slider and toggle changes in user order without replaying stale
+      // intermediate values after the newest choice has already saved.
+      pendingPersistPrefs.current = next;
+      if (!persistTask.current) {
+        persistTask.current = persistPendingPrefs();
+      }
     },
-    [],
+    [persistPendingPrefs],
   );
   return (
     <>
@@ -244,8 +288,9 @@ export function VoiceSectionMount(): React.ReactElement {
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
         showModelsPanel={cloudOnly !== true}
-        wakeWordEnabled={wakeWordEnabled}
-        onWakeWordToggle={handleWakeWordToggle}
+        wakeWordEnabled={wakeWordAvailable && wakeWordEnabled}
+        onWakeWordToggle={wakeWordAvailable ? handleWakeWordToggle : undefined}
+        wakeWordInactiveReason={wakeWordInactiveReason}
         leadingContent={
           <>
             <VoicePresetSettingsContent />

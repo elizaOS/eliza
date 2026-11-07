@@ -1,12 +1,10 @@
-# retinaface.cpp — Phase 3 planned port
+# retinaface.cpp — planned ggml port
 
 ggml port of RetinaFace (MobileNet 0.25× backbone) for face detection.
 
-**Status: planned.** See `plugins/plugin-vision/VISION_RUNTIME_MIGRATION.md`
-("Phase 3 plan" / "RetinaFace (face detection)") for the conversion strategy.
-
-Replaces:
-- `src/face-recognition.ts` SSD-MobileNet-v1 face detector (face-api.js).
-- `src/face-detector-mediapipe.ts` BlazeFace alt path (deprecated migration shim; was onnxruntime).
+**Status: planned.** The runtime face detector today is
+`src/face-detector-ggml.ts` (native BlazeFace from `native/face-cpp`).
+`src/face-detector-mediapipe.ts` is a compile-time compatibility stub. It
+reports unavailable and runs no detector.
 
 Reference checkpoint: `biubug6/Pytorch_Retinaface`, MIT-licensed.

@@ -38,6 +38,11 @@ export interface SearchMemoriesOptions {
   types?: string[];
   limit?: number;
   offset?: number;
+  /**
+   * Keyset cursor: only memories after this one in the result order. Stable
+   * when memories are added or removed between pages, unlike `offset`.
+   */
+  after?: { createdAt: number; id: string };
 }
 
 function isUnknownRecord(value: unknown): value is UnknownRecord {
@@ -288,7 +293,7 @@ export class MemoriesRepository {
    * Searches memories with filters (excluding messages).
    */
   async search(options: SearchMemoriesOptions): Promise<Memory[]> {
-    const { roomId, agentId, type, types, limit = 50, offset = 0 } = options;
+    const { roomId, agentId, type, types, limit = 50, offset = 0, after } = options;
 
     const conditions = [
       eq(memoryTable.agentId, agentId),
@@ -305,11 +310,20 @@ export class MemoriesRepository {
       conditions.push(inArray(memoryTable.type, types));
     }
 
+    // Rows read back carry millisecond timestamps, so order and page on the
+    // same millisecond value, with the id breaking ties.
+    const createdAtMs = sql`date_trunc('milliseconds', ${memoryTable.createdAt})`;
+    if (after) {
+      conditions.push(
+        sql`(${createdAtMs}, ${memoryTable.id}) < (${new Date(after.createdAt).toISOString()}::timestamp, ${after.id}::uuid)`,
+      );
+    }
+
     const results = await dbRead
       .select()
       .from(memoryTable)
       .where(and(...conditions))
-      .orderBy(desc(memoryTable.createdAt))
+      .orderBy(desc(createdAtMs), desc(memoryTable.id))
       .limit(limit)
       .offset(offset);
 

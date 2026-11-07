@@ -13,14 +13,15 @@
  * deferral funnels into a single-flight boot. Reporting "running" with a null
  * runtime would be fake-ready: a host that cannot boot answers 503, and a
  * failed boot answers 500 with the reported state flipped to "error".
+ * POST /api/agent/stop disposes the live runtime, so a stopped agent runs no
+ * connectors, autonomy or scheduled tasks. The host owns complete teardown,
+ * including its adapter and boot resources; a host without stop and restart
+ * handlers answers 501 because it cannot preserve the stop/start contract.
  */
 
-import {
-  type AgentRuntime,
-  PostAgentAutonomyRequestSchema,
-  type RouteHelpers,
-  type RouteRequestMeta,
-} from "@elizaos/core";
+import { PostAgentAutonomyRequestSchema } from "@elizaos/contracts";
+import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import { AUTONOMY_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { detectRuntimeModel } from "./agent-model.ts";
@@ -40,6 +41,9 @@ export interface AgentLifecycleRouteState {
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
+  chatConnectionReady: { userId: UUID; roomId: UUID; worldId: UUID } | null;
+  chatConnectionPromise: Promise<void> | null;
+  runtimeStopPromise: Promise<void> | null;
 }
 
 export interface AgentLifecycleRouteContext
@@ -52,6 +56,8 @@ export interface AgentLifecycleRouteContext
    * cannot boot, where a start request with no runtime must fail honestly.
    */
   onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
+  /** Fully disposes a runtime, including host-owned adapters and boot resources. */
+  onStop?: ((runtime: AgentRuntime) => Promise<void>) | undefined;
   /** Post-swap rewiring (streams, model broadcast) — mirrors the restart route. */
   onRuntimeSwapped?: (() => void) | undefined;
   onRuntimeActivated?:
@@ -89,6 +95,10 @@ export async function handleAgentLifecycleRoutes(
     | null;
 
   if (method === "POST" && pathname === "/api/agent/start") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is still in progress", 409);
+      return true;
+    }
     if (!state.runtime) {
       // A boot is already underway (parallel-bind warming window, an
       // in-flight restart, or the deferred fresh-install boot): starting is
@@ -148,8 +158,11 @@ export async function handleAgentLifecycleRoutes(
         return true;
       }
     } else {
+      // The runtime already exists: only record a fresh start time when this
+      // request actually transitions the agent into running (e.g. from paused).
+      // Re-starting an already-running agent must not reset the uptime clock.
+      if (state.agentState !== "running") state.startedAt = Date.now();
       state.agentState = "running";
-      state.startedAt = Date.now();
       state.model = detectRuntimeModel(state.runtime);
     }
 
@@ -159,7 +172,7 @@ export async function handleAgentLifecycleRoutes(
         state: state.agentState,
         agentName: state.agentName,
         model: state.model,
-        uptime: 0,
+        uptime: state.startedAt ? Date.now() - state.startedAt : 0,
         startedAt: state.startedAt,
       },
     });
@@ -167,6 +180,66 @@ export async function handleAgentLifecycleRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/stop") {
+    if (state.runtimeStopPromise) {
+      error(res, "Agent stop is already in progress", 409);
+      return true;
+    }
+    if (state.agentState === "starting" || state.agentState === "restarting") {
+      error(
+        res,
+        "Agent cannot stop while a start or restart is in progress",
+        409,
+      );
+      return true;
+    }
+    if (state.runtime) {
+      // Core stop does not close the database adapter or host boot resources.
+      // The host must release everything it owns before this route publishes
+      // the runtime-less stopped state.
+      const stopRuntime = ctx.onStop;
+      if (!stopRuntime || !ctx.onRestart) {
+        error(
+          res,
+          "Stop is not supported in this mode: this server cannot fully stop and start the agent",
+          501,
+        );
+        return true;
+      }
+      const stoppedRuntime = state.runtime;
+      const stopPromise = Promise.resolve().then(() =>
+        stopRuntime(stoppedRuntime),
+      );
+      state.runtimeStopPromise = stopPromise;
+      try {
+        await stopPromise;
+      } catch (err) {
+        if (state.runtime === stoppedRuntime) {
+          state.runtime = null;
+          state.chatConnectionReady = null;
+          state.chatConnectionPromise = null;
+        }
+        state.agentState = "error";
+        state.startedAt = undefined;
+        state.model = undefined;
+        error(
+          res,
+          `Agent stop failed: ${err instanceof Error ? err.message : String(err)}`,
+          500,
+        );
+        return true;
+      } finally {
+        if (state.runtimeStopPromise === stopPromise) {
+          state.runtimeStopPromise = null;
+        }
+      }
+      if (state.runtime !== stoppedRuntime) {
+        error(res, "Agent runtime changed while stop was in progress", 409);
+        return true;
+      }
+      state.runtime = null;
+      state.chatConnectionReady = null;
+      state.chatConnectionPromise = null;
+    }
     state.agentState = "stopped";
     state.startedAt = undefined;
     state.model = undefined;

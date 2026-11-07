@@ -1,47 +1,14 @@
-/**
- * Fail-closed deploy contract for the Worker's messaging webhook gateway
- * binding. cloud-cf-release publishes ELIZA_APP_WEBHOOK_GATEWAY_URL as a
- * routing toggle: absent means webhook routes 503 honestly
- * (WEBHOOK_GATEWAY_NOT_CONFIGURED, #18235), but a configured URL silently
- * accepts three miswires this check refuses before the atomic Worker secrets
- * version is written — pointing one environment's Worker at the other
- * environment's gateway, configuring the URL without the paired
- * ELIZA_APP_WEBHOOK_GATEWAY_SECRET binding name, and queuing a Worker secret
- * whose VALUE no longer matches the live gateway's (a stale or half-rotated
- * secret — the gateway's enforceForwarderSecret then 401s every forwarded
- * webhook, which is strictly worse than the honest 503).
- *
- * The canonical per-environment gateway origins are the same values
- * .github/workflows/deploy-gateway-webhook.yml pins as EXPECTED_GATEWAY_URL;
- * the deploy-contract test keeps the two in sync. The CLI mirrors the other
- * candidate verifiers in cloud-cf-release: a names-only `wrangler secret list`
- * inventory arrives on stdin, this deploy's queued binding names as argv, and
- * DEPLOY_ENVIRONMENT / ELIZA_APP_WEBHOOK_GATEWAY_URL from the environment.
- * Secret values are never read or printed by the names-only half of the check.
- *
- * The value half (`verifyWebhookGatewaySecretMatch`) closes the "same name,
- * different value" gap left by names-only verification. It mirrors the
- * salted-HMAC-digest pattern deploy-gateway-webhook.yml already uses to
- * cross-check the protected staging Blooio secrets between the Worker's
- * GitHub Environment and the live Railway variable: the calling workflow
- * fetches the live gateway secret from Railway (the same trusted source that
- * pattern already reads) and hands both candidate values to this process over
- * env vars exactly like every other secret already flowing through this
- * workflow. Neither raw value, nor any digest of it, is ever written to
- * stdout/stderr/the job log/an artifact — only a pass/fail verdict and the
- * binding *name* are. A fresh random salt is drawn per invocation so a
- * digest can never be replayed or compared outside this one process. Any
- * failure to obtain the live gateway value (unreachable Railway API, CLI
- * error, blank variable) is treated as a mismatch — fail closed, never a
- * silent pass — per the repo's error-policy doctrine (root CLAUDE.md
- * "Error-Handling Simplification"). Full live-gateway validation still
- * depends on network reachability to the deployed Railway service; that half
- * of the proof cannot run in an offline unit test, only the pure comparison
- * logic can (and does, below).
+/** Fail-closed gateway origin, paired binding, and live secret equality check.
+ * Railway remains accepted only during the staged host migration. Cloudflare
+ * deployments use an authenticated nonce proof; no secret values are returned.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import {
+  CLOUDFLARE_WEBHOOK_GATEWAY_URLS,
+  verifyCloudflareGatewayConfiguration,
+} from "./verify-cloudflare-gateway-configuration.ts";
 
 // Null-prototype so an environment name that collides with an Object.prototype
 // member (constructor, toString, valueOf) resolves to undefined and takes the
@@ -102,7 +69,10 @@ export function verifyWebhookGatewayBinding({
     errors.push(
       `DEPLOY_ENVIRONMENT "${deployEnvironment}" has no canonical webhook gateway; refusing to publish ELIZA_APP_WEBHOOK_GATEWAY_URL`,
     );
-  } else if (url !== canonical) {
+  } else if (
+    url !== canonical &&
+    url !== CLOUDFLARE_WEBHOOK_GATEWAY_URLS[deployEnvironment]
+  ) {
     errors.push(
       // The URL is a vars. value, never a secret, so echoing the rejected
       // string is safe and turns "does not match" into a one-glance diagnosis
@@ -189,7 +159,7 @@ export function verifyWebhookGatewaySecretMatch({
 
 async function main() {
   const deployEnvironment = process.env.DEPLOY_ENVIRONMENT ?? "";
-  const gatewayUrl = process.env.ELIZA_APP_WEBHOOK_GATEWAY_URL ?? "";
+  const gatewayUrl = (process.env.ELIZA_APP_WEBHOOK_GATEWAY_URL ?? "").trim();
 
   if (gatewayUrl.trim() === "") {
     console.log(
@@ -218,13 +188,21 @@ async function main() {
   });
   const errors = [...result.errors];
 
-  // The value-match half only runs once the names-only half already found a
-  // binding to check; it reads its inputs from env vars the calling workflow
-  // sets immediately before this invocation (the Worker candidate from the
-  // same GitHub Environment secret every other queue_secret call already
-  // uses, the gateway candidate from a Railway fetch it just performed) and
-  // never persists or forwards either value beyond this process.
-  if (availableSecretNames.has(PAIRED_SECRET_NAME)) {
+  // Cloudflare proves selected values in place. Railway uses the existing
+  // provider-side comparison until that environment completes its cutover.
+  if (
+    errors.length === 0 &&
+    gatewayUrl === CLOUDFLARE_WEBHOOK_GATEWAY_URLS[deployEnvironment]
+  ) {
+    const value = process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET;
+    if (!value?.trim()) throw new Error("Worker forwarder secret is missing");
+    await verifyCloudflareGatewayConfiguration({
+      environment: deployEnvironment,
+      origin: gatewayUrl,
+      bootstrapSecret: process.env.GATEWAY_WEBHOOK_BOOTSTRAP_SECRET ?? "",
+      settings: { [PAIRED_SECRET_NAME]: value },
+    });
+  } else if (availableSecretNames.has(PAIRED_SECRET_NAME)) {
     const matchResult = verifyWebhookGatewaySecretMatch({
       workerSecretValue: process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET,
       gatewaySecretValue: process.env.WEBHOOK_GATEWAY_RAILWAY_SECRET_VALUE,
@@ -241,7 +219,7 @@ async function main() {
     process.exit(1);
   }
   console.log(
-    `Verified the ${deployEnvironment} webhook gateway URL against the canonical origin, its paired forwarder secret binding name, and (by one-time salted digest) that the Worker and live gateway secret values match; no secret value or digest was read, logged, or written.`,
+    `Verified the ${deployEnvironment} gateway origin, paired binding, and live secret equality; no secret value or digest was logged.`,
   );
 }
 

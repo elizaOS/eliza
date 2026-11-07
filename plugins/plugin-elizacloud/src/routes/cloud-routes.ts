@@ -8,13 +8,13 @@ import { disconnectCloudConnection } from "../lib/cloud-connection";
 import { getCloudAuth } from "../lib/cloud-connection";
 import { handleCloudCodingContainerRoute } from "./cloud-coding-container-routes";
 import { handleCloudRoute as handleAutonomousCloudRoute } from "./cloud-routes-autonomous.js";
-import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
 import { isTimeoutError } from "../lib/config-like";
 import { logger } from "@elizaos/core";
-import { migrateLegacyRuntimeConfig } from "@elizaos/core/contracts/first-run-options";
+import { migrateLegacyRuntimeConfig } from "@elizaos/host/protocol";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
-import { scrubCloudSecretsFromEnv } from "../lib/cloud-secrets";
+import { getCloudSecret, scrubCloudSecretsFromEnv } from "../lib/cloud-secrets";
 import { sendJson } from "../lib/http";
 import { sendJsonError } from "../lib/http";
 import { type AgentRuntime } from "@elizaos/core";
@@ -187,7 +187,7 @@ export async function resolveAppliedCloudKeyFingerprint(state: {
     const runtime = state.runtime as RuntimeCloudLike | null;
     const resolved = typeof runtime?.getSetting === "function"
         ? runtime.getSetting("ELIZAOS_CLOUD_API_KEY")
-        : process.env.ELIZAOS_CLOUD_API_KEY;
+        : getCloudSecret("ELIZAOS_CLOUD_API_KEY");
     const key = typeof resolved === "string" ? resolved.trim() : "";
     if (!key) {
         throw new Error("Running runtime does not resolve a cloud credential");
@@ -327,7 +327,7 @@ async function persistCloudLoginStatus(args: {
         await relayService.startRelayLoopIfReady();
     }
     if (!runtime || typeof runtime.updateAgent !== "function") {
-        const resolvedKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+        const resolvedKey = getCloudSecret("ELIZAOS_CLOUD_API_KEY")?.trim();
         if (resolvedKey !== args.apiKey) {
             throw new Error("Cloud credential swap did not reach process state");
         }

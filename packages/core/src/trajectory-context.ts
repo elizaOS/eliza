@@ -23,7 +23,14 @@ export interface TrajectoryContext {
 		{ trajectoryId: string; trajectoryStepId: string } | undefined
 	>;
 	/**
-	 * Root-turn correlation id (#13775). Minted at the message.ts turn boundary
+	 * Single-flight start of this scope's deferred child step at its first
+	 * model capture (provider steps); a scope with no model call leaves none.
+	 */
+	activateChildStep?: () =>
+		| { trajectoryId: string; trajectoryStepId: string; parentStepId: string }
+		| undefined;
+	/**
+	 * Root-turn correlation id. Minted at the message.ts turn boundary
 	 * so DB persistence and sub-agent spawns downstream can read one shared
 	 * `traceId` and stitch the file, DB, and orchestrator trace stores together.
 	 */
@@ -58,7 +65,7 @@ export interface TrajectoryContext {
 	/** Minimal State used to re-locate provider spans for a consuming model call. */
 	providerAttributionState?: State;
 	/**
-	 * Turn-scoped secret-swap session (#10469). Minted on the first `useModel`
+	 * Turn-scoped secret-swap session. Minted on the first `useModel`
 	 * call of a turn when secret-swap is enabled, then reused by every subsequent
 	 * model call so all share one nonce, and read at the action-execution boundary
 	 * (`executePlannedToolCall`) to restore real secrets into handler args. Absent
@@ -66,7 +73,7 @@ export interface TrajectoryContext {
 	 */
 	secretSwapSession?: SecretSwapSession;
 	/**
-	 * Turn-scoped PII pseudonymization session (#10469 / #7007). Minted on the
+	 * Turn-scoped PII pseudonymization session. Minted on the
 	 * first `useModel` call of a turn when PII swap is enabled, then reused by
 	 * every subsequent model call so a real entity maps to the same surrogate all
 	 * turn, and read at the action-execution boundary (`executePlannedToolCall`)
@@ -99,18 +106,8 @@ const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.trajectoryContextManager",
 );
 
-function initContextManagerSync(): ITrajectoryContextManager {
+function createTrajectoryContextManager(): ITrajectoryContextManager {
 	return new AsyncContextManager<TrajectoryContext | undefined>();
-}
-
-function getOrCreateContextManager(): ITrajectoryContextManager {
-	// The shared global slot is the single source of truth (no module-local
-	// cache): under a duplicated core bundle every copy must observe the same
-	// manager, and `setTrajectoryContextManager` must be visible everywhere.
-	return getAmbientSingleton(
-		TRAJECTORY_CONTEXT_MANAGER_KEY,
-		initContextManagerSync,
-	);
 }
 
 export function setTrajectoryContextManager(
@@ -119,19 +116,27 @@ export function setTrajectoryContextManager(
 	setAmbientSingleton(TRAJECTORY_CONTEXT_MANAGER_KEY, manager);
 }
 
+/**
+ * The shared global slot is the single source of truth (no module-local
+ * cache): under a duplicated core bundle every copy must observe the same
+ * manager, and `setTrajectoryContextManager` must be visible everywhere.
+ */
 export function getTrajectoryContextManager(): ITrajectoryContextManager {
-	return getOrCreateContextManager();
+	return getAmbientSingleton(
+		TRAJECTORY_CONTEXT_MANAGER_KEY,
+		createTrajectoryContextManager,
+	);
 }
 
 export function runWithTrajectoryContext<T>(
 	context: TrajectoryContext | undefined,
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	return getOrCreateContextManager().run(context, fn);
+	return getTrajectoryContextManager().run(context, fn);
 }
 
 export function getTrajectoryContext(): TrajectoryContext | undefined {
-	return getOrCreateContextManager().active();
+	return getTrajectoryContextManager().active();
 }
 
 export function memoizeTurnWork<T>(
@@ -180,7 +185,7 @@ export function runWithTrajectoryPurpose<T>(
 	purpose: string,
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const manager = getOrCreateContextManager();
+	const manager = getTrajectoryContextManager();
 	return manager.run({ ...manager.active(), purpose }, fn);
 }
 
@@ -189,6 +194,6 @@ export function runWithTrajectoryPurpose<T>(
  * Mutates in place so nested useModel calls pick up the correct stage.
  */
 export function setTrajectoryPurpose(purpose: string): void {
-	const ctx = getOrCreateContextManager().active();
+	const ctx = getTrajectoryContextManager().active();
 	if (ctx) ctx.purpose = purpose;
 }

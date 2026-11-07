@@ -7,35 +7,39 @@
  * SQLite operations are atomic and refuse selection of another agent's graph.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
 import {
-  type Entity,
-  type EntityAttribute,
+  type KnowledgeGraphEntity as Entity,
+  type LifeOpsEntityAttribute as EntityAttribute,
   type EntityFilter,
-  type EntityIdentity,
-  type EntityIdentityAddedVia,
+  type LifeOpsEntityIdentity as EntityIdentity,
+  type LifeOpsEntityIdentityAddedVia as EntityIdentityAddedVia,
   type EntityResolveCandidate,
-  type EntityState,
-  type EntityVisibility,
+  type LifeOpsEntityState as EntityState,
+  type LifeOpsEntityVisibility as EntityVisibility,
   normalizeEntityConnectorAccountId,
+  normalizeEntityIdentityHandle,
+  normalizeEntityIdentityPlatform,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,
   decideIdentityOutcome,
   findIdentityMatches,
   foldIdentity,
   mergeEntities,
-} from "@elizaos/core/knowledge-graph/merge";
+} from "../identity-merge.js";
 import {
   type ConfirmEmailRecipientInput,
   type ConfirmedEmailRecipient,
   confirmEmailRecipient,
 } from "./confirmed-email-recipient.ts";
+import { laterIso } from "./recency.ts";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
 } from "./record-repository.ts";
+import { RelationshipStore } from "./relationship-store.ts";
 import {
   executeRawSql,
   parseJsonArray,
@@ -306,6 +310,25 @@ export class EntityStore {
   async get(entityId: string): Promise<Entity | null> {
     return this.operation(() => this.getOperation(entityId));
   }
+  /**
+   * Read, change and write one entity in a single store operation, so a
+   * concurrent identity or interaction write between the read and the write is
+   * not overwritten by a stale copy. Returns null when the entity is absent.
+   */
+  async patch(
+    entityId: string,
+    mutate: (existing: Entity) => Omit<
+      Entity,
+      "entityId" | "createdAt" | "updatedAt"
+    > & {
+      entityId?: string;
+    },
+  ): Promise<Entity | null> {
+    return this.operation(async () => {
+      const existing = await this.getOperation(entityId);
+      return existing ? this.upsertInternal(mutate(existing)) : null;
+    });
+  }
   private async getOperation(entityId: string): Promise<Entity | null> {
     if (this.records) return this.records.getEntity(entityId);
     const rows = await executeRawSql(
@@ -335,15 +358,19 @@ export class EntityStore {
       clauses.push(`e.type = ${sqlQuote(filter.type)}`);
     }
     if (filter?.tag) {
-      // tags_json is a JSON array — use LIKE on the serialized form for
-      // portability across PG / PGLite. The string form `"<tag>"` is
-      // safe because tags are validated as plain strings on write.
-      clauses.push(`e.tags_json LIKE ${sqlQuote(`%"${filter.tag}"%`)}`);
+      // Exact array element, as the durable-record backend's `tags.includes`.
+      clauses.push(`e.tags_json::jsonb @> ${sqlJson([filter.tag])}::jsonb`);
     }
     if (filter?.nameContains) {
-      const needle = sqlQuote(`%${filter.nameContains.toLowerCase()}%`);
+      // The contract is a literal substring match, and the durable-record
+      // backend uses `includes`. Escape the LIKE wildcards in the needle
+      // and set the escape character so `%`, `_`, and `\` stay plain text.
+      const escaped = filter.nameContains
+        .toLowerCase()
+        .replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const needle = sqlQuote(`%${escaped}%`);
       clauses.push(
-        `(LOWER(e.preferred_name) LIKE ${needle} OR LOWER(COALESCE(e.full_name, '')) LIKE ${needle})`,
+        `(LOWER(e.preferred_name) LIKE ${needle} ESCAPE '\\' OR LOWER(COALESCE(e.full_name, '')) LIKE ${needle} ESCAPE '\\')`,
       );
     }
     if (filter?.hasPlatform || filter?.hasConnectorAccountId) {
@@ -572,18 +599,27 @@ export class EntityStore {
     }
     let entities = await this.listOperation(filters);
     if (query.identity) {
-      const platformKey = query.identity.platform.toLowerCase();
-      const handleKey = query.identity.handle.toLowerCase();
+      const platformKey = normalizeEntityIdentityPlatform(
+        query.identity.platform,
+      );
+      const handleKey = normalizeEntityIdentityHandle(
+        query.identity.platform,
+        query.identity.handle,
+      );
       const accountKey = normalizeEntityConnectorAccountId(
         query.identity.connectorAccountId,
       );
       entities = entities.filter((entity) =>
         entity.identities.some(
           (identity) =>
-            identity.platform.toLowerCase() === platformKey &&
+            normalizeEntityIdentityPlatform(identity.platform) ===
+              platformKey &&
             normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
               accountKey &&
-            identity.handle.toLowerCase() === handleKey,
+            normalizeEntityIdentityHandle(
+              identity.platform,
+              identity.handle,
+            ) === handleKey,
         ),
       );
     }
@@ -593,16 +629,27 @@ export class EntityStore {
         let confidence = 0;
         let safeToSend = false;
         if (query.identity) {
+          const queryIdentity = query.identity;
+          const platformKey = normalizeEntityIdentityPlatform(
+            queryIdentity.platform,
+          );
+          const handleKey = normalizeEntityIdentityHandle(
+            queryIdentity.platform,
+            queryIdentity.handle,
+          );
+          const accountKey = normalizeEntityConnectorAccountId(
+            queryIdentity.connectorAccountId,
+          );
           const match = entity.identities.find(
             (identity) =>
-              identity.platform.toLowerCase() ===
-                query.identity?.platform.toLowerCase() &&
+              normalizeEntityIdentityPlatform(identity.platform) ===
+                platformKey &&
               normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
-                normalizeEntityConnectorAccountId(
-                  query.identity.connectorAccountId,
-                ) &&
-              identity.handle.toLowerCase() ===
-                query.identity.handle.toLowerCase(),
+                accountKey &&
+              normalizeEntityIdentityHandle(
+                identity.platform,
+                identity.handle,
+              ) === handleKey,
           );
           if (match) {
             confidence = match.confidence;
@@ -662,29 +709,56 @@ export class EntityStore {
       interaction.direction === "inbound"
         ? "state_last_inbound_at"
         : "state_last_outbound_at";
+    // A late older interaction (backfill, out-of-order connector event) must not
+    // move recency or the platform backwards.
     if (this.records) {
       const existing = await this.getOperation(entityId);
       if (!existing) return;
+      const lastObservedAt = laterIso(
+        existing.state.lastObservedAt,
+        interaction.occurredAt,
+      );
       await this.records.putEntity({
         ...existing,
         state: {
           ...existing.state,
           ...(interaction.direction === "inbound"
-            ? { lastInboundAt: interaction.occurredAt }
-            : { lastOutboundAt: interaction.occurredAt }),
-          lastObservedAt: interaction.occurredAt,
-          lastInteractionPlatform: interaction.platform,
+            ? {
+                lastInboundAt: laterIso(
+                  existing.state.lastInboundAt,
+                  interaction.occurredAt,
+                ),
+              }
+            : {
+                lastOutboundAt: laterIso(
+                  existing.state.lastOutboundAt,
+                  interaction.occurredAt,
+                ),
+              }),
+          lastObservedAt,
+          ...(lastObservedAt === interaction.occurredAt
+            ? { lastInteractionPlatform: interaction.platform }
+            : {}),
         },
         updatedAt: isoNow(),
       });
       return;
     }
+    // The SQL path has no transaction or lock around this operation, so the
+    // comparison is done inside the one UPDATE: overlapping interactions cannot
+    // read the same old row and let the older one write last.
+    const occurredAt = sqlQuote(interaction.occurredAt);
+    const storedIsLater = (column: string) =>
+      `${column} IS NOT NULL AND ${column}::timestamptz > ${occurredAt}::timestamptz`;
     await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_entities
-          SET ${directionColumn} = ${sqlQuote(interaction.occurredAt)},
-              state_last_observed_at = ${sqlQuote(interaction.occurredAt)},
-              state_last_interaction_platform = ${sqlQuote(interaction.platform)},
+          SET ${directionColumn} = CASE WHEN ${storedIsLater(directionColumn)}
+                THEN ${directionColumn} ELSE ${occurredAt} END,
+              state_last_observed_at = CASE WHEN ${storedIsLater("state_last_observed_at")}
+                THEN state_last_observed_at ELSE ${occurredAt} END,
+              state_last_interaction_platform = CASE WHEN ${storedIsLater("state_last_observed_at")}
+                THEN state_last_interaction_platform ELSE ${sqlQuote(interaction.platform)} END,
               updated_at = ${sqlQuote(isoNow())}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND entity_id = ${sqlQuote(entityId)}`,
@@ -725,6 +799,15 @@ export class EntityStore {
       if (source) sources.push(source);
     }
     const now = isoNow();
+    // The target's own edges win when a moved edge duplicates one of them:
+    // callers address the target's edges by id (for example its contact edge).
+    const relationships = new RelationshipStore(this.runtime, this.agentId);
+    const keepIds = new Set(
+      [
+        ...(await relationships.list({ fromEntityId: targetId })),
+        ...(await relationships.list({ toEntityId: targetId })),
+      ].map((edge) => edge.relationshipId),
+    );
     const merged = mergeEntities({ target, sources, now });
     const persisted = await this.upsertInternal({
       ...merged,
@@ -772,6 +855,7 @@ export class EntityStore {
             AND entity_id = ${sqlQuote(source.entityId)}`,
       );
     }
+    await relationships.foldMergedEdges(targetId, keepIds);
     return persisted;
   }
   /**

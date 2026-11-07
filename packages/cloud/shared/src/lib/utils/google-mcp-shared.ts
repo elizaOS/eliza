@@ -5,6 +5,7 @@
  * for mapper, validation, and fetch-wrapper logic.
  */
 
+import { extractGmailBodyText, type GmailPayloadPart } from "./gmail-mime-text";
 import { logger } from "./logger";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -13,29 +14,37 @@ export const GOOGLE_API_TIMEOUT_MS = 30_000;
 
 // ── Authenticated fetch with timeout + rich error extraction ─────────────────
 
+/** A non-OK Google API answer; `status` lets callers map preconditions (412). */
+export class GoogleApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GoogleApiError";
+  }
+}
+
 export async function googleFetchWithToken(
   token: string,
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), GOOGLE_API_TIMEOUT_MS);
+  const deadline = AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS);
 
   let response: Response;
   try {
     response = await fetch(url, {
       ...options,
       headers: { Authorization: `Bearer ${token}`, ...options.headers },
-      signal: controller.signal,
+      signal: deadline,
     });
   } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === "AbortError") {
+    if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) {
       throw new Error(`Google API request timed out after ${GOOGLE_API_TIMEOUT_MS / 1000}s`);
     }
     throw err;
   }
-  clearTimeout(timeoutId);
 
   if (!response.ok && response.status !== 204) {
     let errorDetail: string;
@@ -58,7 +67,7 @@ export async function googleFetchWithToken(
     } catch {
       errorDetail = `Google API error: ${response.status} ${response.statusText}`;
     }
-    throw new Error(errorDetail);
+    throw new GoogleApiError(response.status, errorDetail);
   }
   return response;
 }
@@ -75,37 +84,9 @@ export function sanitizeHeaderValue(value: string): string {
   return value.replace(/[\r\n]/g, "");
 }
 
-type EmailPart = {
-  body?: { data?: string };
-  mimeType?: string;
-  parts?: EmailPart[];
-};
-
+/** Charset-aware: each part is decoded with its declared Content-Type charset (UTF-8 fallback). */
 export function extractBody(payload: Record<string, unknown>): string {
-  const current = payload as EmailPart;
-  const bodyData = current.body?.data;
-  if (typeof bodyData === "string") {
-    return Buffer.from(bodyData, "base64").toString("utf-8");
-  }
-  if (Array.isArray(current.parts)) {
-    for (const mimeType of ["text/plain", "text/html"]) {
-      for (const part of current.parts) {
-        const partBodyData = part.body?.data;
-        if (part.mimeType === mimeType && typeof partBodyData === "string") {
-          return Buffer.from(partBodyData, "base64").toString("utf-8");
-        }
-        if (part.mimeType?.startsWith("multipart/")) {
-          const nested = extractBody(part as Record<string, unknown>);
-          if (nested) return nested;
-        }
-      }
-    }
-    for (const part of current.parts) {
-      const nested = extractBody(part as Record<string, unknown>);
-      if (nested) return nested;
-    }
-  }
-  return "";
+  return extractGmailBodyText(payload as GmailPayloadPart);
 }
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -175,7 +156,7 @@ function hasExplicitDateTimeOffset(dateTime: string): boolean {
   return /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(dateTime);
 }
 
-function getZonedDateParts(
+export function getZonedDateParts(
   date: Date,
   timeZone: string,
 ): {

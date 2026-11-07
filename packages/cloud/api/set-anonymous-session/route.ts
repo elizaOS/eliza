@@ -11,24 +11,24 @@
  * cannot plant an attacker-known cookie into a victim's browser.
  */
 
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
-import { dbWrite } from "@/db/client";
-import { anonymousSessions, users } from "@/db/schemas";
+import { dbWrite } from "@elizaos/cloud-shared/db/client";
+import { anonymousSessions, users } from "@elizaos/cloud-shared/db/schemas";
 import {
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
-} from "@/lib/auth/browser-origin-policy";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 

@@ -13,10 +13,12 @@ import { handleBatchTextEmbedding, handleTextEmbedding } from "../src/models/emb
 let server: Server;
 let baseURL: string;
 let responseStatus = 200;
+let primaryInvalidComponent = false;
 const requests: Array<{ path: string; authorization: string | undefined; body: string }> = [];
 beforeEach(async () => {
   requests.length = 0;
   responseStatus = 200;
+  primaryInvalidComponent = false;
   server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -29,7 +31,13 @@ beforeEach(async () => {
       JSON.stringify({
         data: Array.from({ length: count }, (_, index) => ({
           index,
-          embedding: Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)),
+          embedding: Array.from({ length: 384 }, (_, i) =>
+            i === 0 && primaryInvalidComponent && request.url === "/embeddings"
+              ? null
+              : i === 0
+                ? 1
+                : 0
+          ),
         })),
       })
     );
@@ -141,8 +149,26 @@ it("does not redispatch to fallback after an authorized send fails", async () =>
   expect(requests.map((request) => request.path)).toEqual(["/embeddings"]);
 });
 
+it("refuses a redirect from an admitted route without following it", async () => {
+  // Core asks for redirect "manual" (the Workers runtime rejects "error") and
+  // treats the 3xx as a failed transport, audited like the former rejection.
+  responseStatus = 302;
+  const { embed, records } = fixture({ fallback: true });
+  await expect(embed("synthetic private memory")).rejects.toThrow();
+  expect(requests.map((request) => request.path)).toEqual(["/embeddings"]);
+  expect(records.map((record) => record.phase)).toContain("transport_error");
+});
+
 it("preserves ordinary-mode dispatch", async () => {
   const { runtime } = fixture();
   expect(await handleTextEmbedding(runtime, "ordinary synthetic input")).toHaveLength(384);
   expect(requests).toHaveLength(1);
+});
+
+it("uses the ordinary-mode fallback when the primary returns a non-numeric vector", async () => {
+  primaryInvalidComponent = true;
+  const { runtime } = fixture({ fallback: true });
+  const vector = await handleTextEmbedding(runtime, "ordinary synthetic input");
+  expect(vector[0]).toBe(1);
+  expect(requests.map((request) => request.path)).toEqual(["/embeddings", "/fallback/embeddings"]);
 });

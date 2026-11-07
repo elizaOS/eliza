@@ -3,6 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createTestVault, type TestVault } from "../src/testing/index.js";
 import {
   deleteSavedLogin,
   getAutofillAllowed,
@@ -12,7 +13,6 @@ import {
   setAutofillAllowed,
   setSavedLogin,
 } from "../src/vault/credentials.js";
-import { createTestVault, type TestVault } from "../src/vault/testing.js";
 
 let test: TestVault;
 
@@ -55,10 +55,10 @@ describe("credentials — round-trip", () => {
     // The describe() result confirms it is stored as sensitive.
     const keys = await test.vault.list();
     const passwordKey = keys.find((k) => k.includes("github.com"));
-    if (passwordKey) {
-      const desc = await test.vault.describe(passwordKey);
-      expect(desc?.sensitive).toBe(true);
-    }
+    expect(passwordKey).toBeDefined();
+    if (!passwordKey) throw new Error("Saved password entry missing");
+    const desc = await test.vault.describe(passwordKey);
+    expect(desc?.sensitive).toBe(true);
   });
 
   it("normalises domain casing", async () => {
@@ -278,5 +278,42 @@ describe("credentials — autoallow", () => {
   it("scopes per domain", async () => {
     await setAutofillAllowed(test.vault, "github.com", true);
     expect(await getAutofillAllowed(test.vault, "gitlab.com")).toBe(false);
+  });
+});
+
+describe("credentials — domain scoping", () => {
+  it("lists only the requested domain when another domain extends it", async () => {
+    await setSavedLogin(test.vault, {
+      domain: "amazon.com",
+      username: "alice@example.com",
+      password: "us-password",
+    });
+    await setSavedLogin(test.vault, {
+      domain: "amazon.com.au",
+      username: "alice@example.com",
+      password: "au-password",
+    });
+    await setAutofillAllowed(test.vault, "amazon.com.au", true);
+
+    const scoped = await listSavedLogins(test.vault, "amazon.com");
+    expect(
+      scoped.map(({ domain, username }) => ({ domain, username })),
+    ).toEqual([{ domain: "amazon.com", username: "alice@example.com" }]);
+    for (const summary of scoped) {
+      const login = await getSavedLogin(
+        test.vault,
+        summary.domain,
+        summary.username,
+      );
+      expect(login?.password).toBe("us-password");
+    }
+
+    const all = await listSavedLogins(test.vault);
+    expect(
+      all.map(({ domain, username }) => `${domain}/${username}`).sort(),
+    ).toEqual([
+      "amazon.com.au/alice@example.com",
+      "amazon.com/alice@example.com",
+    ]);
   });
 });

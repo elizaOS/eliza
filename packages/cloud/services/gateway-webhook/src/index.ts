@@ -12,7 +12,10 @@ import {
   enforceForwarderSecret,
   validateInternalSecret,
 } from "./internal-auth";
-import { deliverInternalMessage } from "./internal-delivery";
+import {
+  deliverInternalMessage,
+  readInternalDeliveryReceipt,
+} from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
@@ -26,6 +29,7 @@ import {
 import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
+  WebhookConfigUnavailableError,
 } from "./webhook-config";
 import {
   handleWebhook,
@@ -67,7 +71,11 @@ const redis = createRedis();
 const app = new Hono();
 
 app.get("/health", (c) =>
-  c.json({ status: draining ? "draining" : "healthy", pod: POD_NAME }),
+  c.json({
+    status: draining ? "draining" : "healthy",
+    pod: POD_NAME,
+    buildId: process.env.ELIZA_GATEWAY_SOURCE_SHA ?? null,
+  }),
 );
 app.get("/ready", async (c) => {
   if (draining) return c.json({ status: "draining" }, 503);
@@ -110,6 +118,12 @@ app.post("/internal/event", async (c) => {
   return handleInternalEvent(c.req.raw, { redis });
 });
 
+app.post("/internal/deliver/receipt", async (c) => {
+  if (!validateInternalSecret(c.req.raw))
+    return c.json({ success: false, error: "unauthorized" }, 401);
+  return readInternalDeliveryReceipt(c.req.raw, { redis });
+});
+
 app.post("/internal/deliver", async (c) => {
   if (!validateInternalSecret(c.req.raw)) {
     return c.json({ success: false, error: "unauthorized" }, 401);
@@ -140,14 +154,26 @@ app.get("/webhook/:project/whatsapp/:agentId", async (c) => {
   const challenge = c.req.query("hub.challenge");
   const agentId = c.req.param("agentId");
 
-  const config = await resolveWebhookConfig(
-    redis,
-    ELIZA_CLOUD_URL,
-    getAuthHeader(),
-    "whatsapp",
-    c.req.param("project"),
-    agentId,
-  );
+  let config: Awaited<ReturnType<typeof resolveWebhookConfig>>;
+  try {
+    config = await resolveWebhookConfig(
+      redis,
+      ELIZA_CLOUD_URL,
+      getAuthHeader(),
+      "whatsapp",
+      c.req.param("project"),
+      agentId,
+    );
+  } catch (error) {
+    // Meta retries a 5xx handshake; a 403 would tell it the callback URL is
+    // permanently wrong because our own config read failed.
+    if (!(error instanceof WebhookConfigUnavailableError)) throw error;
+    logger.error("WhatsApp verify config unavailable", {
+      agentId,
+      error: error.message,
+    });
+    return c.text("Service Unavailable", 503);
+  }
 
   if (
     mode === "subscribe" &&
@@ -258,7 +284,8 @@ function startCutoverHoldDrain(): void {
     cutoverHoldDrain = drainCutoverHolds(redis, {
       redeliver: (held) =>
         redeliverHeldWebhook(held, adapters[held.platform], deliveryDeps),
-      release: (held) => releaseExpiredHeldWebhook(held, redis),
+      release: (held) =>
+        releaseExpiredHeldWebhook(held, adapters[held.platform], deliveryDeps),
     })
       .then((stats) => {
         if (

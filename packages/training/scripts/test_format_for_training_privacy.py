@@ -26,8 +26,8 @@ from typing import Any
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-from format_for_training import format_record
-from privacy_filter_trajectories import (
+from eliza_training.format_for_training import format_record
+from eliza_training.privacy_filter_trajectories import (
     PrivacyFilterError,
     _inline_patterns,
     default_patterns,
@@ -520,7 +520,7 @@ def test_property_plain_text_is_unchanged(plain: str) -> None:
 def test_format_record_uses_redact_value(monkeypatch: pytest.MonkeyPatch) -> None:
     """If the inline filter is sabotaged, `format_record` must surface it."""
 
-    import format_for_training as ftt
+    import eliza_training.format_for_training as ftt
 
     def _broken(value: Any) -> Any:  # noqa: ARG001
         raise PrivacyFilterError("synthetic-filter-failure")
@@ -534,7 +534,7 @@ def test_format_record_uses_redact_value(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_format_record_rejects_non_dict_filter_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import format_for_training as ftt
+    import eliza_training.format_for_training as ftt
 
     def _bad(value: Any) -> Any:  # noqa: ARG001
         return "not a dict"

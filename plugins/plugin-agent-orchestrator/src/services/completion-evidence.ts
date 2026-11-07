@@ -31,7 +31,7 @@
  * @module services/completion-evidence
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { isLoopbackHost, toWellFormedUnicode } from "@elizaos/core";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -167,10 +167,14 @@ export function appendCompletionEvidenceSection(
 const BUILD_TEST_LINE_RE =
   /\b(?:tests?|test\s+files?|suites?|specs?|passed|passing|failed|failing|✓|✗|✔|✖|pass|fail|error|errors?|warning|warnings?|tsc|typecheck|type-check|type\s+error|biome|eslint|lint|build\s+(?:succeeded|failed|complete)|compiled|compilation|exit\s+code|exited\s+with|coverage|\bpytest\b|\bcargo\b|\bvitest\b|\bjest\b)\b/i;
 
-function isLoopbackUrl(value: string): boolean {
+/**
+ * True when `value` parses as a URL whose host is loopback (core
+ * `isLoopbackHost`: localhost, 127.0.0.0/8, ::1 bracketed or not,
+ * IPv4-mapped loopback). Labeling only — never a fetch/allow gate.
+ */
+export function isLoopbackUrl(value: string): boolean {
   try {
-    const host = new URL(value).hostname.toLowerCase();
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    return isLoopbackHost(new URL(value).hostname);
   } catch {
     // error-policy:J3 unparseable URL string is an explicit not-loopback result
     return false;
@@ -181,9 +185,11 @@ export function normalizeEvidenceText(text: string): string {
   return toWellFormedUnicode(text.trim());
 }
 
-/** Markers that class a signal as TEST output (vitest/jest run, suite result). */
+/** Markers that class a signal as TEST output (vitest/jest run, suite result).
+ *  Case-sensitive, so runner summaries are listed as the runner prints them
+ *  (vitest "Test Files  1 passed", bun test "Ran 3 tests across 1 file"). */
 const TEST_MARKER_RE =
-  /\b(?:vitest|jest|pytest|test\s+files?|tests?\s+(?:passed|failed|run)|✓|✗|✔|✖|specs?|suites?|coverage|PASS|FAIL)\b/;
+  /\b(?:vitest|jest|pytest|test\s+files?|Test\s+Files|tests?\s+(?:passed|failed|run)|Ran\s+\d+\s+tests?\s+across|✓|✗|✔|✖|specs?|suites?|coverage|PASS|FAIL)\b/;
 /** Markers that class a signal as BUILD/TYPECHECK output (tsc/tsgo/compile). */
 const BUILD_MARKER_RE =
   /\b(?:tsc|tsgo|typecheck|type-check|type\s+error|compiled|compilation|build\s+(?:succeeded|failed|complete)|cargo\s+build|go\s+build)\b/;

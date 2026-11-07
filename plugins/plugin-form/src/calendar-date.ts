@@ -50,6 +50,35 @@ function calendarDay(
   return iso;
 }
 
+function englishOrdinalSuffix(day: number): string {
+  const teen = day % 100;
+  if (teen >= 11 && teen <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+/**
+ * "March 1st" is the same day as "March 1". A suffix that does not match the
+ * day stays in the text, so "March 1nd" remains invalid.
+ */
+function withoutMatchingOrdinal(text: string): string {
+  return text.replace(
+    /\b(\d{1,2})(st|nd|rd|th)\b/gi,
+    (full, dayText: string, suffix: string) =>
+      englishOrdinalSuffix(Number(dayText)) === suffix.toLowerCase()
+        ? dayText
+        : full,
+  );
+}
+
 /** Accept explicit ISO, US numeric, and English month-name dates with a year. */
 export function parseCalendarDate(value: string): string | undefined {
   const text = value.trim();
@@ -74,9 +103,10 @@ export function parseCalendarDate(value: string): string | undefined {
     );
   }
 
+  const english = withoutMatchingOrdinal(text);
   const named =
     /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.? (\d{1,2}),? (\d{4})$/i.exec(
-      text,
+      english,
     );
   if (named) {
     const month = MONTHS.get(named[1]?.toLowerCase() ?? "");
@@ -84,8 +114,8 @@ export function parseCalendarDate(value: string): string | undefined {
   }
 
   const dayFirst =
-    /^(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.? (\d{4})$/i.exec(
-      text,
+    /^(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?,? (\d{4})$/i.exec(
+      english,
     );
   if (dayFirst) {
     const month = MONTHS.get(dayFirst[2]?.toLowerCase() ?? "");

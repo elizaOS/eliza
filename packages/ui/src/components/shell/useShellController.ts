@@ -1,3 +1,4 @@
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 /**
  * The single stateful engine behind the shell's chat + voice surface, exposed as
  * the `ShellController` returned by `useShellController`. It drives the shell
@@ -14,16 +15,14 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
+import { buildVoiceTurnSignal } from "@elizaos/voice";
 import * as React from "react";
-import type {
-  ChatTurnStatus,
-  ImageAttachment,
-} from "../../api/client-types-chat";
+import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
@@ -42,16 +41,12 @@ import {
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import {
-  useChatComposer,
-  useChatTurnStatus,
-  useConversationMessages,
-} from "../../state";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -59,16 +54,16 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
-import { deriveAgentReady } from "../../state/types";
+import { type AppContextValue, deriveAgentReady } from "../../state/types";
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
-import { TurnAggregator } from "../../voice/end-of-turn";
+import { createVoiceTurnAggregator } from "../../voice/batch-conversation";
+import type { TurnAggregator } from "../../voice/end-of-turn";
 import {
   type MicrophonePermissionState,
   queryMicrophonePermission,
   requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
-import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
   isTranscriptionExitPhrase,
@@ -90,8 +85,8 @@ import {
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
+import type { HomeModelStatus } from "../local-inference/home-model-status";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import {
   buildConversationNav,
@@ -630,7 +625,8 @@ export function useShellController(): ShellController {
       // Never synthesize local bubbles: the normal conversation loader remains
       // the sole reader and deduper for saved history. Reconcile again when
       // playback starts for older gateways. That start can belong to an ACK;
-      // reply_complete is the authoritative final-history refresh. Usage stays
+      // reply_complete is the successful final-history refresh; turn_terminal
+      // refreshes a failed/silent outcome without creating a local saved bubble. Usage stays
       // a recovery refresh for gateways without that event.
       // Expiry/recovery may replace the socket before those terminal frames.
       // A newly authenticated ready boundary reloads saved history too; it must
@@ -640,6 +636,7 @@ export function useShellController(): ShellController {
         event.t !== "stt_final" &&
         event.t !== "speaking_start" &&
         event.t !== "reply_complete" &&
+        event.t !== "turn_terminal" &&
         event.t !== "usage"
       )
         return;
@@ -1343,38 +1340,22 @@ export function useShellController(): ShellController {
       const aggregator =
         intent === "dictate" || intent === "transcription" || intent === "ptt"
           ? null
-          : new TurnAggregator({
-              onCommit: (turn) => {
-                // Always-on shouldRespond: don't reply to the agent's own TTS
-                // echoed back through the mic, or to pure thinking-noise.
+          : createVoiceTurnAggregator({
+              responseContext: () => {
                 const reply = latestAgentReplyRef.current;
-                const replyAgeMs = reply.at
-                  ? Math.max(0, Date.now() - reply.at)
-                  : Number.POSITIVE_INFINITY;
-                const respondContext = {
+                return {
                   recentAgentReply: reply.text,
-                  replyAgeMs,
+                  replyAgeMs: reply.at
+                    ? Math.max(0, Date.now() - reply.at)
+                    : Number.POSITIVE_INFINITY,
                   agentSpeaking: speakingRef.current,
                 };
-                // Cheap client pre-filter: drop an obvious echo/disfluency turn
-                // before it costs a server round-trip.
-                if (!shouldRespondToVoiceTurn(turn, respondContext)) {
-                  return;
-                }
-                // Attach the ambient signal so the server gate
-                // (`core.voice_turn_signal`) is the single authority on whether
-                // to reply, and so diarization/wake-word enrichment composes in
-                // on platforms that have them. The transcript-only shell path
-                // contributes semantic end-of-turn + the echo/disfluency gate.
-                const voiceTurnSignal = buildVoiceTurnSignal(
-                  turn,
-                  respondContext,
-                );
+              },
+              onCommit: (turn, voiceTurnSignal) =>
                 send(turn, {
                   channelType: "VOICE_DM",
                   metadata: { voiceSource: lastBackend, voiceTurnSignal },
-                });
-              },
+                }),
             });
       turnAggregatorRef.current?.dispose();
       turnAggregatorRef.current = aggregator;
@@ -2161,6 +2142,15 @@ export function useShellController(): ShellController {
       return;
     }
     if (outcome.kind === "live") return;
+    if (outcome.kind === "refused") {
+      realtimeVoiceWantedRef.current = false;
+      realtimeVoiceWasActiveRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     const message = describeRealtimeVoiceFailure(
       outcome,
       realtimeVoiceRef.current.error?.message || null,
@@ -2264,6 +2254,15 @@ export function useShellController(): ShellController {
   }, [realtimeVoice.active]);
   React.useEffect(() => {
     if (!realtimeVoiceSelected) return;
+    if (realtimeVoice.refused) {
+      realtimeVoiceWasActiveRef.current = false;
+      realtimeVoiceWantedRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     if (!realtimeVoice.error) return;
     if (realtimeVoice.active || realtimeVoice.connecting) return;
     if (!realtimeVoiceWasActiveRef.current) return;
@@ -2277,6 +2276,7 @@ export function useShellController(): ShellController {
   }, [
     realtimeVoiceSelected,
     realtimeVoice.error,
+    realtimeVoice.refused,
     realtimeVoice.active,
     realtimeVoice.connecting,
     setActionNotice,

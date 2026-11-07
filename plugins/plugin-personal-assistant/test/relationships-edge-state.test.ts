@@ -126,4 +126,46 @@ describe("upsertRelationship — edge interaction state survives contact edits",
     const edge = await store.get(contactEdgeId(created.id));
     expect(edge?.state.lastInteractionAt).toBe(second);
   });
+
+  it("re-adding a known contact by handle keeps its other identities, notes, tags and edge", async () => {
+    const created = await service.upsertRelationship({
+      name: "Alice",
+      primaryChannel: "telegram",
+      primaryHandle: "@alice_readd",
+      email: "alice.readd@example.com",
+      phone: null,
+      notes: "met at the conference",
+      tags: ["family"],
+      relationshipType: "family",
+      lastContactedAt: null,
+      metadata: { birthday: "05-01" },
+    });
+
+    // The ENTITY action's create shape: no id, only name + channel + handle.
+    const readded = await service.upsertRelationship({
+      name: "Alice",
+      primaryChannel: "telegram",
+      primaryHandle: "@alice_readd",
+      email: null,
+      phone: null,
+      notes: "",
+      tags: [],
+      relationshipType: "contact",
+      lastContactedAt: null,
+      metadata: {},
+    });
+
+    expect(readded.id).toBe(created.id);
+    expect(readded.email).toBe("alice.readd@example.com");
+    expect(readded.notes).toBe("met at the conference");
+    expect(readded.tags).toEqual(["family"]);
+    expect(readded.relationshipType).toBe("family");
+    expect(readded.metadata).toEqual({ birthday: "05-01" });
+
+    const entityStore = await repo.entityStore(runtime.agentId);
+    const entity = await entityStore.get(created.id);
+    expect(
+      entity?.identities.map((identity) => identity.platform).sort(),
+    ).toEqual(["email", "telegram"]);
+  });
 });

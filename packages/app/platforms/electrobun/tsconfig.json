@@ -16,7 +16,7 @@
 		"declaration": false,
 		"outDir": "./dist",
 		"rootDir": "../../../..",
-		"types": ["bun-types"],
+		"types": ["bun-types", "vite/client"],
 		"paths": {
 			"@elizaos/plugin-assistant/*": [
 				"../../../../plugins/plugin-assistant/src/*"
@@ -58,7 +58,7 @@
 			"@elizaos/capacitor-*": [
 				"../../../../plugins/plugin-native-*/src/index.ts"
 			],
-			"@elizaos/core/*": ["../../../core/src/*"]
+			"@elizaos/core/protocol": ["../../../core/src/protocol"]
 		}
 	},
 	"include": ["src/**/*.ts", "../../scripts/electrobun/**/*.ts"],

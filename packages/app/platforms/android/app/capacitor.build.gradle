@@ -29,6 +29,7 @@ dependencies {
     implementation project(':elizaos-capacitor-browser-surface')
     implementation project(':elizaos-capacitor-bun-runtime')
     implementation project(':elizaos-capacitor-camera')
+    implementation project(':elizaos-capacitor-calendar')
     implementation project(':elizaos-capacitor-canvas')
     implementation project(':elizaos-capacitor-gateway')
     implementation project(':elizaos-capacitor-location')

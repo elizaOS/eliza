@@ -1,0 +1,87 @@
+name: Worker Binding Inventory
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected Cloud environment to inspect without changes
+        required: true
+        type: choice
+        options: [staging, production]
+      expected_source_commit:
+        description: Exact canonical workflow source commit
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  inspect:
+    name: Read binding names and types only
+    if: ${{ inputs.expected_source_commit == github.sha && ((inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main')) }}
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 3
+    steps:
+      - name: Read Worker binding inventory
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import collections
+          import json
+          import os
+          import re
+          import sys
+          import urllib.request
+
+          try:
+              environment = os.environ["TARGET_ENVIRONMENT"]
+              account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+              token = os.environ["CLOUDFLARE_API_TOKEN"]
+              if environment not in ("staging", "production") or not token:
+                  raise ValueError("missing authority")
+              if not re.fullmatch(r"[a-f0-9]{32}", account):
+                  raise ValueError("invalid account")
+              worker = "eliza-cloud-api-staging" if environment == "staging" else "eliza-cloud-api"
+              request = urllib.request.Request(
+                  "https://api.cloudflare.com/client/v4/accounts/" + account
+                  + "/workers/scripts/" + worker + "/settings",
+                  headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                  method="GET",
+              )
+              class NoRedirect(urllib.request.HTTPRedirectHandler):
+                  def redirect_request(self, req, fp, code, msg, headers, newurl):
+                      return None
+              with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise ValueError("request failed")
+                  payload = json.load(response)
+              if payload.get("success") is not True:
+                  raise ValueError("provider rejected inventory")
+              bindings = payload.get("result", {}).get("bindings")
+              if not isinstance(bindings, list):
+                  raise ValueError("missing inventory")
+              names = set()
+              inventory = []
+              for binding in bindings:
+                  name = binding.get("name")
+                  kind = binding.get("type")
+                  if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                      raise ValueError("invalid binding name")
+                  if not isinstance(kind, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", kind) or name in names:
+                      raise ValueError("invalid binding type or duplicate")
+                  names.add(name)
+                  inventory.append({"name": name, "type": kind})
+              # Never serialize provider values, account IDs, resource IDs or errors.
+              counts = dict(sorted(collections.Counter(item["type"] for item in inventory).items()))
+              print(json.dumps({"environment": environment, "sourceCommit": os.environ["GITHUB_SHA"],
+                                "counts": counts, "bindings": sorted(inventory, key=lambda item: item["name"])}, sort_keys=True))
+          except Exception:
+              print("phase=worker-binding-inventory status=failed code=INVENTORY_UNVERIFIED", file=sys.stderr)
+              sys.exit(1)
+          PY

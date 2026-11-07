@@ -9,14 +9,16 @@
 
 import type http from "node:http";
 import {
+  type IAgentRuntime,
   PENDING_USER_ACTION_WEIGHT,
   type PendingUserAction,
   type PendingUserActionOption,
-  type RouteHelpers,
+  resolveOwnerEntityIdOrDefault,
   ServiceType,
   type Task,
   type UUID,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 
 import {
   APPROVAL_EXECUTION_CAPABILITY,
@@ -33,6 +35,7 @@ import {
 
 interface ApprovalRouteRuntime {
   agentId?: string;
+  getSetting?: IAgentRuntime["getSetting"];
   getService: (type: string) => unknown;
 }
 
@@ -348,16 +351,19 @@ export async function handleApprovalRoute(
     helpers.error(res, parsedState.message, 400);
     return true;
   }
+  // Device payloads require the enrollment credential and are served only by
+  // /api/client-devices; this legacy aggregate has no device authority. They
+  // are excluded in the query so they cannot fill the limit and crowd out
+  // other pending approvals, and filtered again below as defence in depth.
   const filter: ApprovalListFilter = {
     subjectUserId: null,
     state: parsedState.state,
     action: null,
+    excludeAction: "device_action",
     limit,
   };
 
   const queue = getAgentApprovalQueue(state);
-  // Device payloads require the enrollment credential and are served only by
-  // /api/client-devices; this legacy aggregate has no device authority.
   const approvals = queue
     ? (await queue.list(filter)).filter(
         (approval) => approval.action !== "device_action",
@@ -377,7 +383,14 @@ export async function handleApprovalRoute(
     ...promptActions,
   ]);
 
+  const ownerEntityId =
+    state.runtime?.agentId && typeof state.runtime.getSetting === "function"
+      ? resolveOwnerEntityIdOrDefault(
+          state.runtime as Pick<IAgentRuntime, "agentId" | "getSetting">,
+        )
+      : null;
   helpers.json(res, {
+    ownerEntityId,
     approvals: approvals.map(approvalToDto),
     pending,
     pendingUserActions: pending,

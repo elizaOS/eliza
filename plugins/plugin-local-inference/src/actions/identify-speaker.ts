@@ -53,15 +53,19 @@ function extractMessageText(message: Memory | null | undefined): string {
  * the trigger phrases lifeops' `extractSelfNameClaim` understands so the
  * downstream entity gets the same `preferredName`. Returns the name or
  * `null`.
+ *
+ * Case-sensitive like `extractSelfNameClaim`: trigger phrases spell out their
+ * sentence-start casing, and only capitalized words form the name, so "that
+ * was Jill on the phone" yields "Jill" rather than "Jill on the".
  */
 const NAME = "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
 const SPEAKER_NAME_PATTERNS: RegExp[] = [
-	new RegExp(`\\bthat\\s+(?:was|is)\\s+(${NAME})\\b`, "i"),
-	new RegExp(`\\bthis\\s+is\\s+(?:my\\s+\\w+\\s+)?(${NAME})\\b`, "i"),
-	new RegExp(`\\bcall\\s+(?:him|her|them)\\s+(${NAME})\\b`, "i"),
-	new RegExp(`\\b(?:his|her|their)\\s+name\\s+is\\s+(${NAME})\\b`, "i"),
-	new RegExp(`\\bnamed?\\s+(${NAME})\\b`, "i"),
-	new RegExp(`\\bspeaker\\s+(?:was|is)\\s+(${NAME})\\b`, "i"),
+	new RegExp(`\\b[Tt]hat\\s+(?:was|is)\\s+(${NAME})\\b`),
+	new RegExp(`\\b[Tt]his\\s+is\\s+(?:[Mm]y\\s+\\w+\\s+)?(${NAME})\\b`),
+	new RegExp(`\\b[Cc]all\\s+(?:him|her|them)\\s+(${NAME})\\b`),
+	new RegExp(`\\b(?:[Hh]is|[Hh]er|[Tt]heir)\\s+name\\s+is\\s+(${NAME})\\b`),
+	new RegExp(`\\b[Nn]amed?\\s+(${NAME})\\b`),
+	new RegExp(`\\b[Ss]peaker\\s+(?:was|is)\\s+(${NAME})\\b`),
 ];
 
 export function extractSpeakerName(text: string): string | null {

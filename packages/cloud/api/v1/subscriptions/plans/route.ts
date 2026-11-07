@@ -3,20 +3,20 @@
  * objects pass the exact read-only provider preflight.
  */
 
-import { Hono } from "hono";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   adaptStripeSubscriptionCatalogProvider,
   getVerifiedSubscriptionPlans,
-} from "@/lib/services/subscription-catalog";
-import { requireStripe } from "@/lib/stripe";
-import type { SubscriptionPlansDto } from "@/lib/types/cloud-api";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/subscription-catalog";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { SubscriptionPlansDto } from "@elizaos/cloud-shared/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 // Provider/configuration verification is part of publication. A shared edge
 // cache would bypass that fail-closed boundary after a binding rotation or

@@ -5,14 +5,14 @@
  * the persisted receipt and never sends a second provider mutation.
  */
 import { createHash } from "node:crypto";
-import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventCancellationResult,
-} from "@elizaos/core/contracts/calendar";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import { type IAgentRuntime, Service, stableStringify } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,
@@ -54,7 +54,6 @@ export interface OwnerCalendarMutationGatewayDeps {
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
     | "executeLinkedCalendarDisconnect"
-    | "executeLinkedCalendarRebind"
     | "executeLinkedCalendarProviderChanges"
   >;
   readonly port?: CalendarMutationPort;
@@ -418,7 +417,6 @@ export class OwnerCalendarMutationGatewayService
     | "executeLinkedCalendarReconciliation"
     | "executeLinkedCalendarConflictResolution"
     | "executeLinkedCalendarDisconnect"
-    | "executeLinkedCalendarRebind"
     | "executeLinkedCalendarProviderChanges"
   > {
     if (this.deps.calendar) return this.deps.calendar;
@@ -734,21 +732,6 @@ export class OwnerCalendarMutationGatewayService
   ) {
     requireOperationKey(request.idempotencyKey);
     return this.calendar().executeLinkedCalendarConflictResolution(
-      requireOperationKey(linkId),
-      request,
-    );
-  }
-
-  async rebindLinkedCalendar(
-    requestUrl: URL,
-    linkId: string,
-    request: Parameters<
-      CalendarOwnerMutationGateway["rebindLinkedCalendar"]
-    >[2],
-  ) {
-    requireOperationKey(request.idempotencyKey);
-    return this.calendar().executeLinkedCalendarRebind(
-      requestUrl,
       requireOperationKey(linkId),
       request,
     );

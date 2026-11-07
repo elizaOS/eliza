@@ -12,6 +12,11 @@
  * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
+import {
+  LIFEOPS_MESSAGE_CHANNELS,
+  type LifeOpsMessageChannel,
+  type LifeOpsRelationship,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
@@ -27,10 +32,6 @@ import {
   ElizaError,
   ModelType,
 } from "@elizaos/core";
-import {
-  LIFEOPS_MESSAGE_CHANNELS,
-  type LifeOpsMessageChannel,
-} from "@elizaos/core/contracts/personal-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -112,34 +113,87 @@ function normalizeLookup(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-async function resolveRelationshipIdByName(
+/**
+ * Match `value` only as a whole part: no letter, mark, or digit on either
+ * side. Unlike `\b`, this also works next to non-ASCII letters ("José").
+ */
+function wholePartRegExp(value: string): RegExp {
+  return new RegExp(
+    `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{M}\\p{N}])`,
+    "u",
+  );
+}
+
+/** Outcome of matching one caller-supplied name against the contact directory. */
+type NamedContactResolution =
+  | { kind: "matched"; relationshipId: string }
+  | { kind: "ambiguous" }
+  | { kind: "unmatched" };
+
+async function resolveNamedContact(
   service: LifeOpsService,
   rawName: string,
-): Promise<string | null> {
+): Promise<NamedContactResolution> {
   const needle = normalizeLookup(rawName);
   if (!needle) {
-    return null;
+    return { kind: "unmatched" };
   }
 
   const relationships = await service.listRelationships();
-  const exactMatch =
-    relationships.find(
-      (relationship) => normalizeLookup(relationship.name) === needle,
-    ) ??
-    relationships.find(
-      (relationship) =>
-        normalizeLookup(relationship.primaryHandle).includes(needle) ||
-        normalizeLookup(relationship.email ?? "").includes(needle),
-    );
-  if (exactMatch) {
-    return exactMatch.id;
+
+  // A durable write needs one identified contact. Inside every tier a tie
+  // is ambiguous input: picking the list-order winner would log the
+  // interaction against a contact the caller did not name, so a tie fails
+  // closed instead (same contract as the free-text stages below).
+  const uniqueMatch = (
+    matches: typeof relationships,
+  ): NamedContactResolution => {
+    const [soleMatch] = matches;
+    if (matches.length === 1 && soleMatch) {
+      return { kind: "matched", relationshipId: soleMatch.id };
+    }
+    // Zero matches and a tie are different inputs: only a tie is ambiguous
+    // input. A zero-match tier must report `unmatched` so the caller keeps
+    // falling through to the next tier and, last, the free-text fallback.
+    return matches.length === 0 ? { kind: "unmatched" } : { kind: "ambiguous" };
+  };
+
+  const exactName = relationships.filter(
+    (relationship) => normalizeLookup(relationship.name) === needle,
+  );
+  if (exactName.length > 0) {
+    return uniqueMatch(exactName);
   }
 
-  return (
-    relationships.find((relationship) =>
-      normalizeLookup(relationship.name).includes(needle),
-    )?.id ?? null
+  // A whole name part is stronger evidence than a handle or email part.
+  // Preserve ambiguity within this tier.
+  const wholePartPattern = wholePartRegExp(needle);
+  const wholeName = relationships.filter((relationship) =>
+    wholePartPattern.test(normalizeLookup(relationship.name)),
   );
+  if (wholeName.length > 0) {
+    return uniqueMatch(wholeName);
+  }
+
+  // Address tiers use the same whole-part rule: a needle that appears only
+  // inside another segment of a handle or email (`anna` in
+  // `joanna.bowman@example.test`) is not the contact the caller named, and
+  // resolving it would point a durable write at a person who was never
+  // named. Full handles and emails, and handle/email segments delimited by
+  // the address separators (`.` `@` `_` `-`), still match.
+  const byAddress = relationships.filter(
+    (relationship) =>
+      wholePartPattern.test(normalizeLookup(relationship.primaryHandle)) ||
+      wholePartPattern.test(normalizeLookup(relationship.email ?? "")),
+  );
+  if (byAddress.length > 0) {
+    return uniqueMatch(byAddress);
+  }
+
+  // The name tiers above are exhaustive for boundary-respecting name
+  // matches: a needle that is not a whole name part in any contact's name
+  // is unmatched input, never a raw-substring guess.
+  return { kind: "unmatched" };
 }
 
 async function resolveRelationshipIdFromText(
@@ -152,11 +206,16 @@ async function resolveRelationshipIdFromText(
   }
 
   const relationships = await service.listRelationships();
-  const fullNameMatch = relationships.find((relationship) =>
-    haystack.includes(normalizeLookup(relationship.name)),
-  );
-  if (fullNameMatch) {
-    return fullNameMatch.id;
+  // A contact's full name must appear as whole words: "Ann" is not named by
+  // "Joanna". Two named contacts are a tie, not the first one listed.
+  const fullNameMatches = relationships.filter((relationship) => {
+    const name = normalizeLookup(relationship.name);
+    return name.length > 0 && wholePartRegExp(name).test(haystack);
+  });
+  if (fullNameMatches.length > 0) {
+    return fullNameMatches.length === 1
+      ? (fullNameMatches[0]?.id ?? null)
+      : null;
   }
 
   const candidateMatches = new Map<string, string>();
@@ -170,8 +229,7 @@ async function resolveRelationshipIdFromText(
     ].filter((token) => token.length >= 3);
 
     for (const token of [...nameTokens, ...handleTokens]) {
-      const tokenPattern = new RegExp(`\\b${escapeRegExp(token)}\\b`, "i");
-      if (tokenPattern.test(rawText)) {
+      if (wholePartRegExp(token).test(haystack)) {
         candidateMatches.set(relationship.id, relationship.id);
         break;
       }
@@ -203,12 +261,18 @@ async function resolveRelationshipId(
       return explicitRelationshipId;
     }
 
-    const resolvedFromRelationshipId = await resolveRelationshipIdByName(
+    const aliasContact = await resolveNamedContact(
       service,
       explicitRelationshipId,
     );
-    if (resolvedFromRelationshipId) {
-      return resolvedFromRelationshipId;
+    if (aliasContact.kind === "matched") {
+      return aliasContact.relationshipId;
+    }
+    // An ambiguous relationshipId alias is the same fail-closed case as an
+    // ambiguous name: the only stages left below are free-text ones, and a
+    // directory tie that survives there is a false sole candidate.
+    if (aliasContact.kind === "ambiguous") {
+      return null;
     }
   }
 
@@ -226,9 +290,15 @@ async function resolveRelationshipId(
     return null;
   }
 
-  const resolvedFromName = await resolveRelationshipIdByName(service, name);
-  if (resolvedFromName) {
-    return resolvedFromName;
+  const named = await resolveNamedContact(service, name);
+  if (named.kind === "matched") {
+    return named.relationshipId;
+  }
+  // An ambiguous name must not be laundered into a one-sided resolution by
+  // the free-text token stage: token shapes differ per contact, so a tie
+  // in the structured tiers can survive there as a false sole candidate.
+  if (named.kind === "ambiguous") {
+    return null;
   }
 
   return resolveRelationshipIdFromText(service, name);
@@ -385,7 +455,7 @@ async function resolveEntityPlanWithLlm(args: {
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For create, extract name plus channel and handle when present.",
-    "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
+    "For set_relationship, extract toEntityId, fromEntityId when stated, and relationshipType. toEntityId and fromEntityId are entity ids; a name is not resolved to an id, so leave toEntityId null when only a name is known.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${args.intent}`,
@@ -674,18 +744,39 @@ export const entityAction: Action & {
           data: { subaction, error: "INVALID_CHANNEL" },
         });
       }
-      const rel = await service.upsertRelationship({
-        name,
-        primaryChannel: channel,
-        primaryHandle: handle,
-        email: params.email ?? null,
-        phone: params.phone ?? null,
-        notes: params.notes ?? "",
-        tags: [],
-        relationshipType: "contact",
-        lastContactedAt: null,
-        metadata: {},
-      });
+      let rel: LifeOpsRelationship;
+      try {
+        rel = await service.upsertRelationship({
+          name,
+          primaryChannel: channel,
+          primaryHandle: handle,
+          email: params.email ?? null,
+          phone: params.phone ?? null,
+          notes: params.notes ?? "",
+          tags: [],
+          relationshipType: "contact",
+          lastContactedAt: null,
+          metadata: {},
+        });
+      } catch (error) {
+        if (
+          !(error instanceof ElizaError) ||
+          error.code !== "LIFEOPS_CONTACT_IDENTITY_CONFLICT"
+        ) {
+          throw error;
+        }
+        return respond({
+          success: false,
+          scenario: "relationship_add_identity_conflict",
+          fallback:
+            "I found more than one person with that contact handle. Tell me which existing contact you mean.",
+          context: { channel },
+          data: {
+            subaction,
+            error: "LIFEOPS_CONTACT_IDENTITY_CONFLICT",
+          },
+        });
+      }
       return respond({
         success: true,
         scenario: "relationship_add_contact",
@@ -769,12 +860,11 @@ export const entityAction: Action & {
       );
       const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
       const fromEntityId = normalizedNonEmpty(params.fromEntityId) ?? "self";
-      const edge = await relationshipStore.upsert({
+      // Restating an edge updates the active one instead of adding a duplicate.
+      const edge = await relationshipStore.assertEdge({
         fromEntityId,
         toEntityId,
         type: relationshipType,
-        metadata: {},
-        state: {},
         evidence: [evidence],
         confidence: 1,
         source: "user_chat",
@@ -873,12 +963,14 @@ export const entityAction: Action & {
     },
     {
       name: "toEntityId",
-      description: "Target Entity id for set_relationship.",
+      description:
+        "Target Entity id for set_relationship, as returned by KNOWLEDGE_GRAPH. Stored as given; a display name is not resolved to an id.",
       schema: { type: "string" as const },
     },
     {
       name: "fromEntityId",
-      description: "Source Entity id for set_relationship; default 'self'.",
+      description:
+        "Source Entity id for set_relationship, stored as given; default 'self'.",
       schema: { type: "string" as const },
     },
     {
@@ -943,12 +1035,12 @@ export const entityAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Pat is my manager." },
+        content: { text: "Record that I report to entity ent_pat." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Recorded self -[manages]-> Pat.",
+          text: "Recorded self -[managed_by]-> ent_pat.",
           action: "ENTITY",
         },
       },

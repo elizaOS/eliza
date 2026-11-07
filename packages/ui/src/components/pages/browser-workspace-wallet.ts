@@ -6,10 +6,7 @@
  * capability flags) that embedded iframes read to talk to the host wallet.
  */
 
-import type {
-  WalletAddresses,
-  WalletConfigStatus,
-} from "@elizaos/core/contracts/wallet-types";
+import type { WalletAddresses, WalletConfigStatus } from "@elizaos/contracts";
 import type { StewardStatusResponse } from "../../api/client-types-steward";
 
 export type {
@@ -85,10 +82,7 @@ export interface BrowserWorkspaceWalletResponse {
   result?: unknown;
   error?: string;
 }
-export interface BrowserWorkspaceWalletReadyPayload {
-  type: typeof BROWSER_WALLET_READY_TYPE;
-  state: BrowserWorkspaceWalletState;
-}
+
 export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
   {
     address: null,
@@ -286,16 +280,9 @@ export function isBrowserWorkspaceWalletRequest(
   );
 }
 export function parseBrowserWorkspaceEvmChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const parsed = typeof value === "string" ? Number(value.trim()) : value;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 export function formatBrowserWorkspaceEvmChainId(chainId: number): string {
   return `0x${chainId.toString(16)}`;

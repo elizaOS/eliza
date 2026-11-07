@@ -5,15 +5,15 @@
  * Handles CRUD, revenue distribution, and discovery.
  */
 
-import { ElizaError } from "@elizaos/core";
-import crypto from "crypto";
 import {
   formatOrganizationCreditUsd,
   legacyMcpPointsToOrganizationCredits,
   type McpUsageChargeReceipt,
   mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
-} from "../../billing/organization-credits";
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { ElizaError } from "@elizaos/core";
+import crypto from "crypto";
 import { mcpUsageRepository, type UserMcp, userMcpsRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -495,6 +495,13 @@ class UserMcpsService {
     return userMcpsRepository.listByOrganization(organizationId, options);
   }
 
+  async countByOrganization(
+    organizationId: string,
+    options?: { status?: UserMcp["status"] },
+  ): Promise<number> {
+    return userMcpsRepository.countByOrganization(organizationId, options);
+  }
+
   /**
    * List public MCPs (for registry)
    */
@@ -504,6 +511,7 @@ class UserMcpsService {
     limit?: number;
     offset?: number;
     orderBy?: "name";
+    excludeOrganizationId?: string;
   }): Promise<UserMcp[]> {
     return userMcpsRepository.listPublic({ ...options, status: "live" });
   }

@@ -60,6 +60,7 @@ import {
   selectProvisioningProfile,
   selectSigningIdentity,
 } from "./ios-device-lib.ts";
+import { listNestedDylibs } from "./lib/ios-built-app.ts";
 import {
   appendDeployRecord,
   buildDeployRecord,
@@ -255,24 +256,6 @@ function noProfileRemediation(bundleId, udid, rejected) {
 }
 
 // ── Signing ─────────────────────────────────────────────────────────────
-
-function listNestedDylibs(root) {
-  const dylibs = [];
-  const stack = [root];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name.endsWith(".framework")) continue; // signed as a unit
-        stack.push(full);
-      } else if (entry.name.endsWith(".dylib")) {
-        dylibs.push(full);
-      }
-    }
-  }
-  return dylibs.sort();
-}
 
 function signApp({
   stagedApp,

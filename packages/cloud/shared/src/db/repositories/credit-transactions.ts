@@ -136,11 +136,11 @@ export class CreditTransactionsRepository {
    *
    * WHY dbWrite (primary): the cron debits immediately after this check.
    */
-  async hasUnrefundedDomainRenewal(
+  async getDomainRenewalCharges(
     organizationId: string,
     domain: string,
     renewalPeriod: string,
-  ): Promise<boolean> {
+  ): Promise<{ debits: number; refunds: number }> {
     const [row] = await dbWrite
       .select({
         debits: sql<number>`count(*) filter (where ${creditTransactions.metadata}->>'type' = 'domain_renewal')`,
@@ -154,7 +154,7 @@ export class CreditTransactionsRepository {
           sql`${creditTransactions.metadata}->>'renewalPeriod' = ${renewalPeriod}`,
         ),
       );
-    return Number(row?.debits ?? 0) > Number(row?.refunds ?? 0);
+    return { debits: Number(row?.debits ?? 0), refunds: Number(row?.refunds ?? 0) };
   }
 
   // ============================================================================

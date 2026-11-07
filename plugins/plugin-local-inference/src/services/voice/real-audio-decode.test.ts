@@ -72,6 +72,24 @@ describe("decodeMonoPcm16Wav — committed fixture corpus (real WAV files)", () 
 			const { pcm, sampleRate } = decodeMonoPcm16Wav(bytes);
 
 			expect(sampleRate).toBe(f.sampleRateHz);
+			// RIFF allows padded metadata chunks before the format chunk. Keep
+			// every sample of the committed fixture unchanged while scanning them.
+			for (const payloadBytes of [0, 3, 4]) {
+				const extra = Buffer.alloc(8 + payloadBytes + (payloadBytes % 2));
+				extra.write("JUNK");
+				extra.writeUInt32LE(payloadBytes, 4);
+				const withMetadata = Buffer.concat([
+					bytes.subarray(0, 12),
+					extra,
+					bytes.subarray(12),
+				]);
+				withMetadata.writeUInt32LE(withMetadata.length - 8, 4);
+				const decoded = decodeMonoPcm16Wav(withMetadata);
+				expect(decoded.sampleRate).toBe(sampleRate);
+				expect(
+					Buffer.from(decoded.pcm.buffer).equals(Buffer.from(pcm.buffer)),
+				).toBe(true);
+			}
 			assertInRangePcm(pcm);
 
 			const durationMs = (1000 * pcm.length) / sampleRate;

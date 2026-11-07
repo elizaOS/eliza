@@ -14,7 +14,12 @@
  * Li.Fi/CCTP routing can surface a real quote). If backend resolution fails
  * at boot, the service still starts so metadata/dry-run stays available;
  * `getWalletBackend()` throws the captured error only when a caller actually
- * needs signing.
+ * needs signing. `execute` requests are refused when the wallet the user sees
+ * is not the one the chain handlers would sign with (`getExecutionRefusal`):
+ * Steward is selected but did not load, or the chain's primary wallet is the
+ * Eliza Cloud one. The handlers sign with the runtime's local keys, which
+ * belong to a different wallet. `preflightWalletAction` applies the same
+ * refusal so it lands before the spend confirmation, not after it.
  */
 import {
   type IAgentRuntime,
@@ -24,7 +29,13 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { validateWalletBridgeParams } from "../chains/evm/bridge-router.js";
-import { registerDefaultWalletChainHandlers } from "../chains/registry.js";
+import { validateWalletGovParams } from "../chains/evm/gov-router.js";
+import {
+  registerDefaultWalletChainHandlers,
+  validateWalletPumpFunBuyParams,
+  validateWalletTokenParams,
+  validateWalletTransferParams,
+} from "../chains/registry.js";
 import type {
   WalletChainHandler,
   WalletChainHandlerMetadata,
@@ -33,13 +44,21 @@ import type {
   WalletRouterParams,
   WalletRouterResult,
   WalletRouterSubaction,
+  WalletSignerMetadata,
 } from "../types/wallet-router.js";
 import { normalizeWalletChainKey } from "../types/wallet-router.js";
 import type { WalletBackend } from "../wallet/backend.js";
+import { StewardUnavailableError } from "../wallet/errors.js";
 import { resolveWalletBackend } from "../wallet/select-backend.js";
 import "../core-augmentation.js";
 
 export const WALLET_BACKEND_SERVICE_TYPE = "wallet-backend" as const;
+
+/** Settings that hold the primary wallet source (`local` / `cloud`) per chain family. */
+const PRIMARY_WALLET_SOURCE_SETTING = {
+  evm: { key: "WALLET_SOURCE_EVM", label: "EVM" },
+  solana: { key: "WALLET_SOURCE_SOLANA", label: "Solana" },
+} as const;
 
 /**
  * Runtime service exposing {@link WalletBackend}. Retrieve via
@@ -138,22 +157,56 @@ export class WalletBackendService extends Service {
     if (!handlerResult.ok) {
       return handlerResult;
     }
-    return this.validateRequiredParams(params);
+    const required = this.validateRequiredParams(params, handlerResult.handler);
+    if (required) {
+      return required;
+    }
+    if (params.dryRun || params.mode !== "execute") {
+      return null;
+    }
+    return this.refuseExecution(handlerResult.handler);
+  }
+
+  /**
+   * Why `execute` requests for a signer family are refused, or null when they
+   * may run. Chain handlers sign with the runtime's local keys, so execution
+   * is refused whenever the wallet the user sees and funds is another one.
+   */
+  getExecutionRefusal(kind: WalletSignerMetadata["kind"]): string | null {
+    if (this.backendLoadError instanceof StewardUnavailableError) {
+      return `Steward is the selected wallet backend but it did not load: ${this.backendLoadError.message}`;
+    }
+    if (kind === "off-chain" || this.backend?.kind === "steward") {
+      return null;
+    }
+    const { key, label } = PRIMARY_WALLET_SOURCE_SETTING[kind];
+    const source = this.runtime.getSetting(key) ?? process.env[key];
+    if (source === "cloud") {
+      return `The primary ${label} wallet is the Eliza Cloud wallet, and this agent has no signer for it. Make the local ${label} wallet primary to send from it.`;
+    }
+    return null;
   }
 
   async routeWalletAction(
-    params: WalletRouterParams,
+    requested: WalletRouterParams,
   ): Promise<WalletRouterResult> {
-    const handlerResult = this.resolveHandler(params);
+    const handlerResult = this.resolveHandler(requested);
     if (!handlerResult.ok) {
       return handlerResult;
     }
 
     const { handler } = handlerResult;
-    const required = this.validateRequiredParams(params);
+    const required = this.validateRequiredParams(requested, handler);
     if (required) {
       return required;
     }
+    // The executor takes the destination as a handler chain key, so an alias
+    // the preflight accepted ("ethereum", "8453") is passed on resolved.
+    const destination = this.resolveBridgeDestination(requested.toChain);
+    const params: WalletRouterParams =
+      requested.subaction === "bridge" && destination
+        ? { ...requested, toChain: destination.chain }
+        : requested;
 
     if (params.mode === "simulate") {
       const supported =
@@ -240,6 +293,11 @@ export class WalletBackendService extends Service {
       };
     }
 
+    const refusal = this.refuseExecution(handler);
+    if (refusal) {
+      return refusal;
+    }
+
     try {
       const result = await handler.execute(params, this.createContext());
       return {
@@ -258,6 +316,13 @@ export class WalletBackendService extends Service {
 
   override async stop(): Promise<void> {
     // No persistent connections for local / Steward HTTP clients today.
+  }
+
+  private refuseExecution(
+    handler: WalletChainHandler,
+  ): WalletRouterFailure | null {
+    const detail = this.getExecutionRefusal(handler.signer.kind);
+    return detail ? { ok: false, error: "EXECUTION_FAILED", detail } : null;
   }
 
   private resolveHandler(
@@ -310,11 +375,49 @@ export class WalletBackendService extends Service {
     return { ok: true, handler };
   }
 
+  /**
+   * The bridge destination resolves through the same alias map as the source
+   * chain. It must be a registered handler that supports bridge, because the
+   * bridge executor quotes against the wallet's configured chains only.
+   */
+  private resolveBridgeDestination(
+    toChain: string | undefined,
+  ): WalletChainHandler | null {
+    if (!toChain) return null;
+    const key = this.aliases.get(normalizeWalletChainKey(toChain));
+    const handler = key ? this.handlers.get(key) : undefined;
+    return handler?.supportedActions.includes("bridge") ? handler : null;
+  }
+
   private validateRequiredParams(
     params: WalletRouterParams,
+    handler: WalletChainHandler,
   ): WalletRouterFailure | null {
     if (params.subaction === "bridge") {
       const detail = validateWalletBridgeParams(params);
+      if (detail) {
+        return { ok: false, error: "INVALID_PARAMS", detail };
+      }
+      const destination = this.resolveBridgeDestination(params.toChain);
+      if (!destination) {
+        return {
+          ok: false,
+          error: "UNSUPPORTED_CHAIN",
+          detail: `Unsupported destination chain "${params.toChain}" for bridge.`,
+          candidates: this.listChainHandlersForSubaction("bridge"),
+        };
+      }
+      if (destination.chain === handler.chain) {
+        return {
+          ok: false,
+          error: "INVALID_PARAMS",
+          detail: "Source and destination chains must be different for bridge.",
+        };
+      }
+      return null;
+    }
+    if (params.subaction === "gov") {
+      const detail = validateWalletGovParams(params);
       return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (!params.amount) {
@@ -324,12 +427,15 @@ export class WalletBackendService extends Service {
         detail: "amount is required.",
       };
     }
-    if (params.subaction === "transfer" && !params.recipient) {
-      return {
-        ok: false,
-        error: "INVALID_PARAMS",
-        detail: "recipient is required for transfer.",
-      };
+    if (params.subaction === "transfer") {
+      const detail =
+        validateWalletTransferParams(params, handler.signer.kind) ??
+        validateWalletTokenParams(
+          params,
+          handler,
+          this.getTokenDataService() !== null,
+        );
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     if (params.subaction === "swap") {
       if (!params.fromToken) {
@@ -346,13 +452,16 @@ export class WalletBackendService extends Service {
           detail: "toToken is required for swap.",
         };
       }
+      const detail = validateWalletTokenParams(
+        params,
+        handler,
+        this.getTokenDataService() !== null,
+      );
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
-    if (params.subaction === "pump_fun_buy" && !params.toToken) {
-      return {
-        ok: false,
-        error: "INVALID_PARAMS",
-        detail: "toToken must be the pump.fun token mint address.",
-      };
+    if (params.subaction === "pump_fun_buy") {
+      const detail = validateWalletPumpFunBuyParams(params);
+      return detail ? { ok: false, error: "INVALID_PARAMS", detail } : null;
     }
     return null;
   }

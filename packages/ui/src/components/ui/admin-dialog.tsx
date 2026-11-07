@@ -8,7 +8,7 @@
 import type * as React from "react";
 import { forwardRef } from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Badge } from "./badge";
 import { DialogContent, DialogFooter, DialogHeader } from "./dialog";
 import { Input, type InputProps } from "./input";

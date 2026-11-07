@@ -30,8 +30,77 @@ import {
  *   await tx.insert(credits).values(creditData);
  * });
  */
+const commitCallbacks = new WeakMap<
+  DbTransaction,
+  {
+    before: Array<() => Promise<void>>;
+    after: Array<() => Promise<void>>;
+    rollback: Array<() => Promise<void>>;
+  }
+>();
+
+export function registerBeforeCommit(tx: DbTransaction, callback: () => Promise<void>): void {
+  const callbacks = commitCallbacks.get(tx)?.before;
+  if (!callbacks) throw new UnmanagedWriteTransactionError();
+  callbacks.push(callback);
+}
+
+/** Register effects on the exact managed transaction; never run them before COMMIT. */
+export function registerAfterCommit(tx: DbTransaction, callback: () => Promise<void>): void {
+  const callbacks = commitCallbacks.get(tx)?.after;
+  if (!callbacks) {
+    throw new UnmanagedWriteTransactionError();
+  }
+  callbacks.push(callback);
+}
+
+/** Register best-effort cleanup that runs only when the managed transaction rolls back. */
+export function registerAfterRollback(tx: DbTransaction, callback: () => Promise<void>): void {
+  const callbacks = commitCallbacks.get(tx)?.rollback;
+  if (!callbacks) throw new UnmanagedWriteTransactionError();
+  callbacks.push(callback);
+}
+
+export class UnmanagedWriteTransactionError extends Error {
+  constructor() {
+    super("Policy mutation requires a managed writeTransaction transaction");
+    this.name = "UnmanagedWriteTransactionError";
+  }
+}
+
 export async function writeTransaction<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
-  return observeDbOperation("transaction", "writeTransaction", () => dbWrite.transaction(fn));
+  const callbacks: Array<() => Promise<void>> = [];
+  const rollback: Array<() => Promise<void>> = [];
+  let result: T;
+  try {
+    result = await observeDbOperation("transaction", "writeTransaction", () =>
+      dbWrite.transaction(async (tx) => {
+        const beforeCommit: Array<() => Promise<void>> = [];
+        commitCallbacks.set(tx, {
+          before: beforeCommit,
+          after: callbacks,
+          rollback,
+        });
+        try {
+          const result = await fn(tx);
+          for (const callback of beforeCommit) await callback();
+          return result;
+        } finally {
+          commitCallbacks.delete(tx);
+        }
+      }),
+    );
+  } catch (error) {
+    // error-policy:J7 rollback cleanup is best effort; the original failure wins.
+    await Promise.allSettled(rollback.map((callback) => callback()));
+    throw error;
+  }
+  // COMMIT has succeeded. A publication failure must remain visible to the caller.
+  const effects = await Promise.allSettled(callbacks.map((callback) => callback()));
+  for (const effect of effects) {
+    if (effect.status === "rejected") throw effect.reason;
+  }
+  return result;
 }
 
 // ============================================================================

@@ -176,7 +176,7 @@ export function isMaintainedSource(file) {
   if (!maintained) return false;
   if (hasTypedSourceSibling(file)) return false;
   if (/\.[jt]sx$/.test(rel)) return true;
-  let source;
+  let source: string;
   try {
     source = fs.readFileSync(file, "utf8");
   } catch (error) {

@@ -4,6 +4,7 @@
  * Type definitions for the advertising service and ad platform integrations.
  */
 
+import Decimal from "decimal.js";
 import type { AdAccountStatus, AdPlatform } from "../../../db/schemas/ad-accounts";
 import type {
   BudgetType,
@@ -306,6 +307,12 @@ export interface CreateCreativeInput {
   instagramActorId?: string;
   tiktokIdentityId?: string;
   tiktokIdentityType?: string;
+  /**
+   * Delivery window of the stored campaign, set by the advertising service.
+   * TikTok keeps the schedule on the ad group, so the adapter needs it here.
+   */
+  campaignStartDate?: Date;
+  campaignEndDate?: Date;
 }
 
 export interface UpdateCreativeInput {
@@ -512,7 +519,15 @@ export const AD_CREDIT_RATES = {
   detailedAnalytics: 0.1,
 } as const;
 
+export const MIN_CAMPAIGN_BUDGET_AMOUNT = 0.01;
+
+/**
+ * Credits held for a campaign budget, in the two-decimal quantum the
+ * `ad_campaigns.credits_allocated` column stores. Charging the unrounded
+ * product left a gap between the ledger debit and the stored allocation that
+ * every later budget update and delete refunded or re-charged.
+ */
 export function calculateSpendCredits(platform: AdPlatform, amount: number): number {
   const markup = AD_CREDIT_RATES.spendMarkup[platform] || 1.1;
-  return amount * markup;
+  return new Decimal(amount).mul(markup).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
 }

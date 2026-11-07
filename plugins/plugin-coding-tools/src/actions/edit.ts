@@ -3,6 +3,7 @@
  * validating the path and confirming (via FileStateService) it was not modified
  * externally since the last read. Flags secrets in the new content before writing.
  */
+import { isUtf8 } from "node:buffer";
 import * as fs from "node:fs/promises";
 
 import {
@@ -152,7 +153,11 @@ export async function editFileHandler(
 
   let original: string;
   try {
-    original = await fs.readFile(resolved, "utf8");
+    const bytes = await fs.readFile(resolved);
+    // A lossy decode would turn every invalid byte in the file into U+FFFD
+    // when the edited text is written back. READ refuses the same bytes.
+    if (!isUtf8(bytes)) throw new Error("file is not valid UTF-8 text");
+    original = bytes.toString("utf8");
   } catch (err) {
     // error-policy:J1 action boundary; a read failure becomes a success:false
     // ActionResult carrying the real message, surfaced to the model.

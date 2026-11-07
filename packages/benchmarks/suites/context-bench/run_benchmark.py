@@ -300,7 +300,7 @@ async def run_benchmark(
 def main() -> int:
     """Run the selected context suite and write its results."""
     parser = argparse.ArgumentParser(
-        prog="benchmarks.context-bench.run_benchmark",
+        prog="benchmarks.suites.context-bench.run_benchmark",
         description="Run the Context Benchmark via the eliza TS bridge.",
     )
     parser.add_argument(

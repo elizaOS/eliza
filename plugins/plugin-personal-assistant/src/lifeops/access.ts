@@ -8,6 +8,7 @@
  * render the matching unavailable-message when access is missing.
  */
 
+import type { LifeOpsGoogleConnectorStatus } from "@elizaos/contracts";
 import {
   type Action,
   hasRoleAccess,
@@ -15,7 +16,6 @@ import {
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   type Provider,
 } from "@elizaos/core";
-import type { LifeOpsGoogleConnectorStatus } from "../contracts/index.js";
 import type { LifeOpsService } from "./service.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
@@ -61,7 +61,7 @@ export async function hasLifeOpsAccess(
 }
 
 export type GoogleCapabilityStatus = {
-  status: LifeOpsGoogleConnectorStatus | null;
+  status: LifeOpsGoogleConnectorStatus;
   connected: boolean;
   hasCalendarRead: boolean;
   hasCalendarWrite: boolean;
@@ -73,20 +73,7 @@ export type GoogleCapabilityStatus = {
 export async function getGoogleCapabilityStatus(
   service: LifeOpsService,
 ): Promise<GoogleCapabilityStatus> {
-  let status: LifeOpsGoogleConnectorStatus;
-  try {
-    status = await service.getGoogleConnectorStatus(INTERNAL_URL);
-  } catch {
-    return {
-      status: null,
-      connected: false,
-      hasCalendarRead: false,
-      hasCalendarWrite: false,
-      hasGmailTriage: false,
-      hasGmailSend: false,
-      hasGmailManage: false,
-    };
-  }
+  const status = await service.getGoogleConnectorStatus(INTERNAL_URL);
   const capabilities = new Set(status.grantedCapabilities);
   return {
     status,

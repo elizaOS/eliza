@@ -1,6 +1,6 @@
 /** Runs the actual vision setup script with a package-manager sentinel; default checks cannot install software. */
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,6 +33,34 @@ test("default startup never invokes a package manager", () => {
     });
     assert.equal(existsSync(marker), false);
     assert.equal(output.includes("Installing"), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("installed tools are silent and missing tools explain the next action", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "eliza-vision-output-"));
+  const script = fileURLToPath(
+    new URL("./ensure-vision-deps.ts", import.meta.url),
+  );
+  const run = () =>
+    spawnSync(process.execPath, [script], {
+      env: { ...process.env, PATH: dir, ELIZA_NO_VISION_DEPS: "0" },
+      encoding: "utf8",
+    });
+  try {
+    const missing = run();
+    assert.equal(missing.status, 0);
+    if (["darwin", "linux", "win32"].includes(process.platform)) {
+      assert.match(missing.stderr, /Optional vision tool .* is missing/);
+      assert.match(missing.stderr, /--install/);
+    }
+    for (const tool of ["imagesnap", "fswebcam", "ffmpeg", "ffmpeg.EXE"]) {
+      writeFileSync(path.join(dir, tool), "", { mode: 0o755 });
+    }
+    const installed = run();
+    assert.equal(installed.status, 0);
+    assert.equal(installed.stdout + installed.stderr, "");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -113,7 +113,43 @@ describe("SharedRuntimeHistoryRepository.merge", () => {
   });
 });
 
-describe("SharedRuntimeHistoryRepository.listRecentlyActiveRooms", () => {
+describe("SharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms", () => {
+  test("personal keepwarm eligibility precedes the room cap and is independent of the agent hot set", async () => {
+    const now = Date.now();
+    const personal = "personal:1b4e28ba-2fa1-51d2-883f-0016d3cca427";
+    await dbWrite.insert(sharedRuntimeHistory).values([
+      ...Array.from({ length: 50 }, (_, index) => ({
+        agent_id: `sandbox-${index}`,
+        channel_id: `sandbox-room-${index}`,
+        messages: [],
+        updated_at: new Date(now),
+      })),
+      {
+        agent_id: "personal:not-an-owner",
+        channel_id: "malformed",
+        messages: [],
+        updated_at: new Date(now),
+      },
+      ...Array.from({ length: 51 }, (_, index) => ({
+        agent_id: personal,
+        channel_id: `room-${String(index).padStart(2, "0")}`,
+        messages: [],
+        updated_at: new Date(now - 1000),
+      })),
+      { agent_id: personal, channel_id: "stale", messages: [], updated_at: new Date(now - 60000) },
+    ]);
+    const since = new Date(now - 10000);
+    expect(
+      await sharedRuntimeHistoryRepository.listRecentlyActiveAgentIds(since, 50),
+    ).not.toContain(personal);
+    expect(await sharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms(since, 50)).toEqual(
+      Array.from({ length: 50 }, (_, index) => ({
+        agentId: personal,
+        channelId: `room-${String(index).padStart(2, "0")}`,
+      })),
+    );
+  });
+
   test("returns recent (agent, channel) rooms newest first, capped, excluding stale rooms", async () => {
     const personal = "personal:1b4e28ba-2fa1-51d2-883f-0016d3cca427";
     await sharedRuntimeHistoryRepository.merge(personal, "room-a", [
@@ -136,11 +172,13 @@ describe("SharedRuntimeHistoryRepository.listRecentlyActiveRooms", () => {
     await age("channel-1", 60 * 60_000);
 
     const since = new Date(now - 10 * 60_000);
-    expect(await sharedRuntimeHistoryRepository.listRecentlyActiveRooms(since, 10)).toEqual([
-      { agentId: personal, channelId: "room-b" },
-      { agentId: personal, channelId: "room-a" },
-    ]);
-    expect(await sharedRuntimeHistoryRepository.listRecentlyActiveRooms(since, 1)).toEqual([
+    expect(await sharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms(since, 10)).toEqual(
+      [
+        { agentId: personal, channelId: "room-b" },
+        { agentId: personal, channelId: "room-a" },
+      ],
+    );
+    expect(await sharedRuntimeHistoryRepository.listRecentlyActivePersonalRooms(since, 1)).toEqual([
       { agentId: personal, channelId: "room-b" },
     ]);
   });

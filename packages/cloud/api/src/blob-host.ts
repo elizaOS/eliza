@@ -3,7 +3,7 @@
  * generations. Private URLs never contain logical or provider object keys;
  * the durable receipt is resolved before exact-generation native access.
  */
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   normalizeStorageReadCapabilityHost,
   STORAGE_READ_CAPABILITY_PATH_PREFIX,
@@ -169,9 +169,9 @@ async function authorizeCapability(
 ) {
   const [{ runWithCloudBindingsAsync }, { runWithDbCacheAsync }, authority] =
     await Promise.all([
-      import("@/lib/runtime/cloud-bindings"),
-      import("@/db/client"),
-      import("@/lib/services/storage/native-storage-read"),
+      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
+      import("@elizaos/cloud-shared/db/client"),
+      import("@elizaos/cloud-shared/lib/services/storage/native-storage-read"),
     ]);
   return await runWithCloudBindingsAsync(env, () =>
     runWithDbCacheAsync(() =>

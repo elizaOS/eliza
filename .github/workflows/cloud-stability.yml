@@ -93,7 +93,7 @@ jobs:
       # a child-owned ledger unreadable by the full artifact uploader.
       - name: Upload deterministic stability summary
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cloud-stability-keyless-summary-${{ github.run_attempt }}
           path: |
@@ -106,7 +106,7 @@ jobs:
           if-no-files-found: error
       - name: Upload deterministic trajectories and ledgers
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cloud-stability-keyless-${{ github.run_attempt }}
           path: |
@@ -186,7 +186,7 @@ jobs:
           "${args[@]}"
       - name: Upload real-model stability summary
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cloud-stability-real-summary-${{ github.run_attempt }}
           path: |
@@ -199,7 +199,7 @@ jobs:
           if-no-files-found: error
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: cloud-stability-real-${{ github.run_attempt }}
           path: |

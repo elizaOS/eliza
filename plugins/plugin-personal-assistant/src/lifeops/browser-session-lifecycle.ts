@@ -3,7 +3,7 @@
  * transitions a LifeOps browser companion session moves through as the assistant
  * drives a task in the owner's browser.
  */
-import { type LifeOpsBrowserSession } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsBrowserSession } from "@elizaos/contracts";
 
 export type BrowserTaskArtifact = {
   kind: string;

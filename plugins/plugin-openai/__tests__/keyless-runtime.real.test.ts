@@ -18,7 +18,7 @@ import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core"
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/testing";
+} from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openaiPlugin } from "../index.ts";
 

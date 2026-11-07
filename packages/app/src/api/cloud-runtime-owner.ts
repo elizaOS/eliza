@@ -1,6 +1,5 @@
 import type http from "node:http";
 import type { AgentHttpRequestAuthorization } from "@elizaos/agent/runtime/host-bridge";
-import { type IAgentRuntime, readRequestBodyBuffer } from "@elizaos/core";
 import {
   CLOUD_RUNTIME_CLIENT,
   CLOUD_RUNTIME_MAX_BODY,
@@ -9,7 +8,9 @@ import {
   cloudRuntimeMethod,
   cloudRuntimeTarget,
   setCloudRuntimeRequestIdentity,
-} from "@elizaos/core/contracts/cloud-runtime-request";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/host";
 import {
   createRemoteJWKSet,
   customFetch,

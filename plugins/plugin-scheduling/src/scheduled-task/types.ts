@@ -16,7 +16,7 @@
  *    propagates the outcome to children and flips the parent's state to
  *    `failed` so observers see one consistent terminal state per branch.
  */
-import type { TaskExecutionProfile } from "@elizaos/core/contracts/scheduled-task-execution";
+import type { TaskExecutionProfile } from "@elizaos/contracts";
 // ---------------------------------------------------------------------------
 // ScheduledTask schema (frozen)
 // ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ export {
   DEFAULT_TASK_EXECUTION_PROFILE,
   TASK_EXECUTION_PROFILES,
   type TaskExecutionProfile,
-} from "@elizaos/core/contracts/scheduled-task-execution";
+} from "@elizaos/contracts";
 export type ScheduledTaskPriority = "low" | "medium" | "high";
 export type ScheduledTaskSource =
   | "default_pack"

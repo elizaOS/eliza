@@ -13,3 +13,7 @@ Test from this directory:
 ```bash
 python -m pytest
 ```
+
+Live Surfpool deployment, funding, pool setup and transaction intent validation
+are unavailable and fail explicitly. Use explicit mock mode for deterministic
+simulation; simulation results cannot certify live transaction safety.

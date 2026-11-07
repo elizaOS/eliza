@@ -12,6 +12,7 @@ export type HttpResponse = {
 
 export type HttpRequestOptions = {
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 export function readConversationId(data: Record<string, unknown>): string {
@@ -39,6 +40,12 @@ export function req(
   headersOrContentType?: Record<string, string> | string,
   options?: HttpRequestOptions,
 ): Promise<HttpResponse> {
+  const timeoutMs = options?.timeoutMs ?? 30_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return Promise.reject(
+      new RangeError("HTTP fixture timeoutMs must be positive and finite"),
+    );
+  }
   return new Promise((resolve, reject) => {
     const contentType =
       typeof headersOrContentType === "string"
@@ -76,6 +83,9 @@ export function req(
         port,
         path,
         method,
+        signal: options?.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)])
+          : AbortSignal.timeout(timeoutMs),
         headers: {
           "Content-Type": contentType,
           ...(b ? { "Content-Length": Buffer.byteLength(b) } : {}),
@@ -84,6 +94,10 @@ export function req(
       },
       (res) => {
         const ch: Buffer[] = [];
+        res.on("error", fail);
+        res.on("aborted", () =>
+          fail(new Error(`Response aborted: ${method.toUpperCase()} ${path}`)),
+        );
         res.on("data", (c: Buffer) => ch.push(c));
         res.on("end", () => {
           const raw = Buffer.concat(ch).toString("utf-8");
@@ -98,15 +112,6 @@ export function req(
       },
     );
     r.on("error", fail);
-    if (typeof options?.timeoutMs === "number" && options.timeoutMs > 0) {
-      r.setTimeout(options.timeoutMs, () => {
-        r.destroy(
-          new Error(
-            `Request timed out after ${options.timeoutMs}ms: ${method.toUpperCase()} ${path}`,
-          ),
-        );
-      });
-    }
     if (b) r.write(b);
     r.end();
   });

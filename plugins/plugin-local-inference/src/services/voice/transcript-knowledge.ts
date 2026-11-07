@@ -19,7 +19,7 @@ import {
 	type TranscriptScope,
 	transcriptKnowledgeFragments,
 	transcriptPlainText,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The documents-store fields derived from a transcript (sans runtime UUIDs). */
 export interface TranscriptKnowledgePayload {
 	/** Plain, speaker-labeled transcript text — the searchable + chunked body. */

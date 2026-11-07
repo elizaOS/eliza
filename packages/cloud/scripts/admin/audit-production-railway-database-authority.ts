@@ -2,7 +2,7 @@
  * Read-only production database authority, schema, and migration-ledger audit.
  *
  * Raw Railway inventory and connection details stay in memory/private files.
- * The CLI boundary emits only fixed verdicts and allowlisted relation names.
+ * The CLI boundary emits only fixed verdicts, allowlisted relation names and canonical pending migration tags.
  */
 import { appendFile, readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -12,9 +12,15 @@ import {
   type AppliedMigration,
   loadCanonicalMigrations,
   type Migration,
+  type MigrationLedgerFailure,
+  MigrationLedgerValidationError,
   validateAppliedMigrationLedger,
 } from "./canonical-migration-ledger";
 import { readDatabaseIdentityReceipt } from "./database-identity-receipt";
+import {
+  type Funding0387Probe,
+  probeFunding0387,
+} from "./probe-agent-compute-funding-0387";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024;
@@ -45,12 +51,21 @@ type LedgerVerdict =
   | "pending"
   | "unavailable";
 
+interface LedgerDiagnostic {
+  reason: MigrationLedgerFailure | "unknown";
+  canonicalTag: string | null;
+}
+
 export interface ProductionDatabaseAuditReport {
   schemaVersion: 1;
   verdict: "fail" | "pass";
   checks: {
     railwayTarget: MatchVerdict;
     protectedDatabaseAuthority: MatchVerdict;
+  };
+  postgresMajor: {
+    canonical: "18" | "other" | "unavailable";
+    protected: "18" | "other" | "unavailable";
   };
   requiredTables: {
     canonical: Record<RequiredRelation, PresenceVerdict>;
@@ -59,6 +74,18 @@ export interface ProductionDatabaseAuditReport {
   migrationLedger: {
     canonical: LedgerVerdict;
     protected: LedgerVerdict;
+  };
+  migrationLedgerDiagnostics: {
+    canonical: LedgerDiagnostic | null;
+    protected: LedgerDiagnostic | null;
+  };
+  funding0387: {
+    canonical: Funding0387Probe | null;
+    protected: Funding0387Probe | null;
+  };
+  pendingMigrationTags: {
+    canonical: string[] | null;
+    protected: string[] | null;
   };
 }
 
@@ -129,6 +156,7 @@ export function unavailableAuditReport(
       railwayTarget,
       protectedDatabaseAuthority: "unavailable",
     },
+    postgresMajor: { canonical: "unavailable", protected: "unavailable" },
     requiredTables: {
       canonical: unavailablePresence(),
       protected: unavailablePresence(),
@@ -137,6 +165,9 @@ export function unavailableAuditReport(
       canonical: "unavailable",
       protected: "unavailable",
     },
+    migrationLedgerDiagnostics: { canonical: null, protected: null },
+    funding0387: { canonical: null, protected: null },
+    pendingMigrationTags: { canonical: null, protected: null },
   };
 }
 
@@ -267,8 +298,13 @@ async function migrationLedgerStatus(
   client: AuditQueryClient,
   canonicalMigrations: Migration[],
   ledgerPresent: boolean,
-): Promise<LedgerVerdict> {
-  if (!ledgerPresent) return "missing";
+): Promise<{
+  verdict: LedgerVerdict;
+  pendingTags: string[] | null;
+  diagnostic: LedgerDiagnostic | null;
+}> {
+  if (!ledgerPresent)
+    return { verdict: "missing", pendingTags: null, diagnostic: null };
   const result = await client.query<AppliedMigration>(`
     SELECT id, hash, created_at
       FROM drizzle.__drizzle_migrations
@@ -279,13 +315,30 @@ async function migrationLedgerStatus(
       result.rows,
       canonicalMigrations,
     );
-    if (validated.lastAppliedJournalIndex === canonicalMigrations.length - 1) {
-      return "current";
-    }
-    return "pending";
-  } catch {
-    // error-policy:J1 translate ledger validation failures to a fixed verdict.
-    return "diverged";
+    const pendingTags = canonicalMigrations
+      .slice(validated.lastAppliedJournalIndex + 1)
+      .map((migration) => migration.entry.tag);
+    return {
+      verdict: pendingTags.length === 0 ? "current" : "pending",
+      pendingTags,
+      diagnostic: null,
+    };
+  } catch (error) {
+    // error-policy:J1 expose structured reasons only, never private exception messages.
+    const known = error instanceof MigrationLedgerValidationError;
+    const tag = known ? error.canonicalTag : null;
+    return {
+      verdict: "diverged",
+      pendingTags: null,
+      diagnostic: {
+        reason: known ? error.reason : "unknown",
+        canonicalTag:
+          tag !== null &&
+          canonicalMigrations.filter((m) => m.entry.tag === tag).length === 1
+            ? tag
+            : null,
+      },
+    };
   }
 }
 
@@ -343,6 +396,25 @@ export async function auditProductionDatabaseAuthority(input: {
           protectedRequiredTables["drizzle.__drizzle_migrations"] === "present",
         ),
       ]);
+    const shouldProbe =
+      authorityMatches &&
+      [canonicalMigrationLedger, protectedMigrationLedger].some(
+        (ledger) =>
+          ledger.diagnostic?.reason === "hash_mismatch" &&
+          ledger.diagnostic.canonicalTag === "0387_agent_compute_funding",
+      );
+    const funding0387 = shouldProbe
+      ? {
+          canonical: await probeFunding0387(
+            input.canonicalClient,
+            input.canonicalMigrations,
+          ),
+          protected: await probeFunding0387(
+            input.protectedClient,
+            input.canonicalMigrations,
+          ),
+        }
+      : { canonical: null, protected: null };
     await finishReadOnly(input.protectedClient);
     await finishReadOnly(input.canonicalClient);
 
@@ -356,8 +428,8 @@ export async function auditProductionDatabaseAuthority(input: {
       authorityMatches &&
       canonicalTablesPresent &&
       protectedTablesPresent &&
-      canonicalMigrationLedger === "current" &&
-      protectedMigrationLedger === "current"
+      canonicalMigrationLedger.verdict === "current" &&
+      protectedMigrationLedger.verdict === "current"
         ? "pass"
         : "fail";
     return {
@@ -367,13 +439,36 @@ export async function auditProductionDatabaseAuthority(input: {
         railwayTarget: "match",
         protectedDatabaseAuthority: authorityMatches ? "match" : "mismatch",
       },
+      postgresMajor: {
+        canonical: canonicalIdentity.postgresMajor === 18 ? "18" : "other",
+        protected: protectedIdentity.postgresMajor === 18 ? "18" : "other",
+      },
       requiredTables: {
         canonical: canonicalRequiredTables,
         protected: protectedRequiredTables,
       },
       migrationLedger: {
-        canonical: canonicalMigrationLedger,
-        protected: protectedMigrationLedger,
+        canonical: canonicalMigrationLedger.verdict,
+        protected: protectedMigrationLedger.verdict,
+      },
+      migrationLedgerDiagnostics: {
+        canonical: authorityMatches
+          ? canonicalMigrationLedger.diagnostic
+          : null,
+        protected: authorityMatches
+          ? protectedMigrationLedger.diagnostic
+          : null,
+      },
+      funding0387,
+      // Never report a migration plan for a mismatched database authority.
+      // Tags come only from this checkout after canonical ledger/hash validation.
+      pendingMigrationTags: {
+        canonical: authorityMatches
+          ? canonicalMigrationLedger.pendingTags
+          : null,
+        protected: authorityMatches
+          ? protectedMigrationLedger.pendingTags
+          : null,
       },
     };
   } catch (error) {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
- * Transcribe the synthesized corpus with the real local ASR (Eliza-1
- * Qwen3-ASR GGUF through the fused libelizainference FFI — the exact
+ * Transcribe the synthesized corpus with the real local ASR (Phonon-2
+ * `asr/phonon-2-fv5.gguf` through the fused libelizainference FFI — the exact
  * TRANSCRIPTION path the agent uses). Writes asr-transcripts.json next to
  * this script: per-utterance hypothesis + WER + proper-name survival.
  *
@@ -25,8 +26,9 @@ import { fileURLToPath } from "node:url";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import { loadElizaInferenceFfi } from "@elizaos/plugin-local-inference/services/voice/ffi-bindings";
 import { decodeMonoPcm16Wav } from "@elizaos/plugin-local-inference/services/voice/wav-codec";
+import { wordErrorRate } from "@elizaos/voice";
 import { allUtterances, speakerByKey } from "./corpus.ts";
-import { nameHitRate, normalize, wordErrorRate } from "./metrics.ts";
+import { nameHitRate, normalize } from "./metrics.ts";
 
 const REQUIRE = ["1", "true", "yes"].includes(
   process.env.ENTITY_VOICE_REAL_REQUIRE?.trim().toLowerCase() ?? "",
@@ -51,7 +53,7 @@ if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const audioDir = process.argv.includes("--audio")
   ? path.resolve(process.argv[process.argv.indexOf("--audio") + 1] ?? "")
-  : path.join(__dirname, "results", "audio");
+  : testOutputPath("entity-voice-bench", "audio");
 const manifestPath = path.join(audioDir, "manifest.json");
 if (!existsSync(manifestPath)) {
   skip(`no corpus manifest at ${manifestPath} — run corpus:synth first`);

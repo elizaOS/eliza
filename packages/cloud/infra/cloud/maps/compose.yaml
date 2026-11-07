@@ -1,0 +1,70 @@
+# Self-hostable Eliza Cloud Maps backends: Nominatim (search, geocode,
+# reverse, details) and GraphHopper (drive, walk and bicycle routes) over one
+# OpenStreetMap extract, behind Caddy for TLS and an access key.
+#
+# This is the reference default for ELIZA_MAPS_PROVIDER=osm. Choosing the
+# production provider, region and licence is an operator decision; see
+# README.md for the steps, privacy settings and what stays manual.
+#
+#   cp maps.env.example .env   # then fill in every value
+#   docker compose up -d --build
+#
+# Nothing here downloads data until it is started. No request is logged by
+# Caddy or GraphHopper; verify Nominatim's own logging as the README describes.
+name: eliza-cloud-maps
+
+services:
+  nominatim:
+    image: mediagis/nominatim:4.4
+    restart: unless-stopped
+    shm_size: 1gb
+    environment:
+      PBF_URL: ${MAPS_PBF_URL:?Set MAPS_PBF_URL to the region extract, e.g. a Geofabrik .osm.pbf}
+      REPLICATION_URL: ${MAPS_REPLICATION_URL:-}
+      NOMINATIM_PASSWORD: ${NOMINATIM_DB_PASSWORD:?Set NOMINATIM_DB_PASSWORD}
+      # Keeps phone, website and opening_hours for place details.
+      IMPORT_STYLE: extratags
+      THREADS: ${MAPS_IMPORT_THREADS:-4}
+    volumes:
+      # Nominatim 4.4 images keep PostgreSQL 14 data here; change it with the tag.
+      - nominatim-data:/var/lib/postgresql/14/main
+    expose:
+      - "8080"
+
+  graphhopper:
+    build:
+      context: ./graphhopper
+      args:
+        GRAPHHOPPER_VERSION: "10.2"
+        GRAPHHOPPER_SHA256: ${GRAPHHOPPER_SHA256:?Set GRAPHHOPPER_SHA256 to the reviewed graphhopper-web jar digest}
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: ${GRAPHHOPPER_JAVA_OPTS:--Xmx2g}
+    volumes:
+      # Place the same extract as region.osm.pbf in ./data.
+      - ./data:/data:ro
+      - graphhopper-cache:/graph-cache
+    expose:
+      - "8989"
+
+  gateway:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on:
+      - nominatim
+      - graphhopper
+    environment:
+      MAPS_SEARCH_HOST: ${MAPS_SEARCH_HOST:?Set MAPS_SEARCH_HOST, e.g. maps-search.example.com}
+      MAPS_ROUTE_HOST: ${MAPS_ROUTE_HOST:?Set MAPS_ROUTE_HOST, e.g. maps-route.example.com}
+      MAPS_ACCESS_KEY: ${MAPS_ACCESS_KEY:?Set MAPS_ACCESS_KEY to a long random value}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    ports:
+      - "443:443"
+      - "80:80"
+
+volumes:
+  nominatim-data:
+  graphhopper-cache:
+  caddy-data:

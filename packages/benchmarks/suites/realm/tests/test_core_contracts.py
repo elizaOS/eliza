@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.realm.dataset import REALMDataset, parse_jssp_instance
-from benchmarks.realm.solvers import (
+from benchmarks.suites.realm.dataset import REALMDataset, parse_jssp_instance
+from benchmarks.suites.realm.solvers import (
     disaster_max_coverage_score,
     jssp_compute_makespan,
     jssp_oracle_makespan,
     tsp_tw_oracle,
 )
-from benchmarks.realm.types import RealmProblem
+from benchmarks.suites.realm.types import RealmProblem
 
 
 
@@ -59,7 +59,7 @@ def test_jssp_compute_makespan_sample() -> None:
 
 def test_jssp_oracle_returns_optimum() -> None:
     """When OR-Tools is available, the oracle returns true optimum (=5)."""
-    from benchmarks.realm import solvers
+    from benchmarks.suites.realm import solvers
 
     if not solvers.has_ortools():
         pytest.skip("OR-Tools not installed")

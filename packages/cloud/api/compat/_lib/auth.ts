@@ -7,11 +7,14 @@
  *   3. Standard Steward/API-key auth (dashboard users)
  */
 
-import type { Organization } from "@/db/repositories/organizations";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import type { ServiceKeyIdentity } from "@/lib/auth/service-key";
-import { requireServiceKey, ServiceKeyAuthError } from "@/lib/auth/service-key";
-import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
+import type { Organization } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import type { ServiceKeyIdentity } from "@elizaos/cloud-shared/lib/auth/service-key";
+import {
+  requireServiceKey,
+  ServiceKeyAuthError,
+} from "@elizaos/cloud-shared/lib/auth/service-key";
+import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
 
 export interface CompatAuthResult {
   user: {

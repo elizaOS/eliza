@@ -10,8 +10,9 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import {
+  AlarmClock,
   Clock3,
   LayoutGrid,
   type LucideIcon,
@@ -26,7 +27,6 @@ import {
   appShellPageMatchesPath,
   listAppShellPages,
 } from "../app-shell-registry";
-import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
 import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
 import { isDeveloperWorkspaceRoute } from "./developer-route";
 import { resolveDefaultLandingTab } from "./main-tab";
@@ -37,7 +37,6 @@ export {
   type BuiltinRouteConditionalSurface,
   type BuiltinRouteSurfaceDeclaration,
   type BuiltinTab,
-  type CanonicalBuiltinTab,
   type ResolvedBuiltinRouteDescriptor,
   resolveBuiltinRouteDescriptor,
 } from "./builtin-route-descriptors";
@@ -174,24 +173,12 @@ export function isAospShellEnabled(
  *    on every non-fork build.
  *  - `launcher-curation` appends {@link LAUNCHER_AOSP_ONLY_VIEW_IDS} to the
  *    launcher only on the fork.
- *  - `App.tsx` route gates (`renderPhoneSurface`) mount their pages only on the
- *    fork.
+ *  - `App.tsx` keeps native telephony routes behind their existing adapters.
  */
-export const NATIVE_OS_VIEW_IDS = [
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-] as const;
-/**
- * Native-OS launcher tiles: the routable native-OS surfaces plus Files — a
- * cross-platform view (`/apps/files`) that stays routable everywhere but is only
- * surfaced as a launcher tile on the fork.
- */
-export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
-  ...NATIVE_OS_VIEW_IDS,
-  "files",
-] as const;
+export const NATIVE_OS_VIEW_IDS = ["phone", "messages", "contacts"] as const;
+/** Native telephony requires an image adapter. Camera and Files have ordinary
+ * browser/stock-Android implementations and retain their provider checks. */
+export const LAUNCHER_AOSP_ONLY_VIEW_IDS = NATIVE_OS_VIEW_IDS;
 interface WindowNavigationLocation {
   protocol: string;
   hostname?: string;
@@ -291,8 +278,14 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
+    label: "Clock",
+    tabs: ["clock"],
+    icon: AlarmClock,
+    description: "Android alarm requests and local time",
+  },
+  {
     // One consolidated surface — workflows, triggers, and scheduled items share
-    // the Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
+    // the Automations feed.
     label: "Automations",
     tabs: ["automations"],
     icon: Clock3,
@@ -316,9 +309,7 @@ export {
 export const TAB_PATHS = mapBuiltinRoutes((descriptor) => descriptor.path);
 const PATH_TO_TAB = new Map(
   Object.values(
-    mapBuiltinRoutes(
-      (descriptor) => [descriptor.path, descriptor.canonicalId] as const,
-    ),
+    mapBuiltinRoutes((descriptor) => [descriptor.path, descriptor.id] as const),
   ),
 );
 function normalizePathForLookup(pathname: string, basePath = ""): string {
@@ -341,23 +332,6 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
 }
-export interface LegacyBuiltinRouteResolution {
-  tab: Tab;
-  canonicalPath: string;
-}
-/**
- * Resolve a retired builtin route through the builtin metadata registry. The
- * canonical destination is always derived from `TAB_PATHS`, so aliases cannot
- * drift into a second renderer or platform-specific routing table.
- */
-export function resolveLegacyBuiltinRoute(
-  pathname: string,
-  basePath = "",
-): LegacyBuiltinRouteResolution | null {
-  const normalized = normalizePathForLookup(pathname, basePath);
-  const tab = resolveBuiltinTabIdForPathAlias(normalized) as Tab | null;
-  return tab ? { tab, canonicalPath: pathForTab(tab, basePath) } : null;
-}
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
   return normalizePathForLookup(pathname, basePath) === "/";
 }
@@ -370,45 +344,6 @@ export function resolveInitialTabForPath(
     return fallbackTab;
   }
   return tabFromPath(pathname, basePath) ?? fallbackTab;
-}
-/**
- * Legacy host-owned prefix aliases: `/<prefix>/<sub>` paths whose target tab is
- * NOT derivable from `TAB_PATHS` because the tab's canonical path lives under a
- * different prefix. Everything else under `/apps/*` and `/character/*` resolves
- * from the `TAB_PATHS`-derived {@link PATH_TO_TAB} registry (see
- * {@link prefixSubTabFromPath}); only these two irreducible aliases remain, and
- * the `no-derivable-alias` drift guard in `index.test.ts` proves that any alias
- * whose full path IS already in `TAB_PATHS` was dropped from this table.
- *
- * - `/apps/inventory` → inventory: an internal-tool window target. The window
- *   path is `/apps/<slug>` so it stays consistent with other internal tools,
- *   but the renderer mounts the wallet tab the original `targetTab` pointed at
- *   (canonical `TAB_PATHS.inventory` = `/wallet`).
- * - `/character/relationships` → relationships: a character-hub deep-link alias.
- *   Relationships lives at canonical `TAB_PATHS.relationships` = `/apps/relationships`,
- *   but the promoted character sections keep a `/character/*` alias for old deep
- *   links.
- */
-export const LEGACY_PREFIX_TAB_ALIASES: Record<string, Tab> = {
-  "/apps/inventory": "inventory",
-  "/character/relationships": "relationships",
-};
-/**
- * Resolve a `/<prefix>/<sub>` path to its tab from the canonical `TAB_PATHS`
- * registry (via {@link PATH_TO_TAB}), falling back to the explicitly-marked
- * {@link LEGACY_PREFIX_TAB_ALIASES} for the handful of paths whose target tab
- * declares a different canonical path. Returns `null` when neither owns it, so
- * callers apply their own default (app slug for `/apps/*`, `character` for
- * `/character/*`). This replaces the hand-maintained sub-path record and the
- * inline `/character/<sub>` if-chain, both of which duplicated — and could drift
- * from — the paths already declared in `TAB_PATHS`.
- */
-function prefixSubTabFromPath(normalizedPath: string): Tab | null {
-  return (
-    PATH_TO_TAB.get(normalizedPath) ??
-    LEGACY_PREFIX_TAB_ALIASES[normalizedPath] ??
-    null
-  );
 }
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
@@ -427,14 +362,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   ) {
     return "chat";
   }
-  // Historical /tutorial links land in chat because the tutorial is a
-  // chat-native flow launched from the home card, not a routable page.
-  if (normalized === "/tutorial") {
-    return "chat";
-  }
-  const legacyBuiltinRoute = resolveLegacyBuiltinRoute(pathname, basePath);
-  if (legacyBuiltinRoute) return legacyBuiltinRoute.tab;
-  // /views — legacy launcher alias; renders the combined Home/Launcher.
+  // The launcher owns the /views subtree.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
   }
@@ -446,14 +374,8 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/apps" || normalized === "/apps/my-apps") {
     return "tasks";
   }
-  // /character/<sub> — resolve nested character paths. The character hub's
-  // sections are now top-level views, but their routes keep the /character/*
-  // prefix so existing deep links resolve to the promoted tab. Resolution reads
-  // the canonical TAB_PATHS registry (via prefixSubTabFromPath) instead of a
-  // hardcoded sub if-chain; anything the registry does not own defaults to the
-  // character hub.
   if (normalized.startsWith("/character/")) {
-    return prefixSubTabFromPath(normalized) ?? "character";
+    return PATH_TO_TAB.get(normalized) ?? "character";
   }
   const registeredAppShellPage = listAppShellPages().find((entry) =>
     appShellPageMatchesPath(entry, normalized),
@@ -461,13 +383,10 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (registeredAppShellPage) {
     return registeredAppShellPage.tabAffinity ?? registeredAppShellPage.id;
   }
-  // /apps/<sub> — known tool tabs resolve to their tab from the TAB_PATHS
-  // registry (via prefixSubTabFromPath); a nested sub-path is a plugin view,
-  // and everything else is an app slug.
   if (normalized.startsWith("/apps/")) {
     const sub = normalized.slice("/apps/".length);
     if (sub.includes("/")) return "views";
-    return prefixSubTabFromPath(normalized) ?? "apps";
+    return PATH_TO_TAB.get(normalized) ?? "apps";
   }
   // /settings/<sub> — resolve nested settings paths
   // /settings/<sub> (including /settings/voice) — the Settings view selects the
@@ -548,9 +467,9 @@ export function titleForTab(tab: Tab): string {
       return "Character";
     case "character-select":
       return "Character Select";
+    case "clock":
+      return "Clock";
     case "automations":
-      return "Automations";
-    case "triggers":
       return "Automations";
     case "inventory":
       return "Wallet";
@@ -574,8 +493,6 @@ export function titleForTab(tab: Tab): string {
       return "Memories";
     case "files":
       return "Files";
-    case "rolodex":
-      return "Rolodex";
     case "runtime":
       return "Runtime";
     case "database":

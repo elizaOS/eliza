@@ -126,6 +126,7 @@ def run_cli(
     client = make_client(
         endpoint=endpoint,
         api_key=api_key,
+        model=args.model,
         mock_responses=mock_responses if args.mock else None,
     )
     client = TrajectoryRecordingClient(
@@ -135,13 +136,16 @@ def run_cli(
         model=args.model,
     )
 
-    result: BenchmarkResult = runner.run(
-        client=client,
-        model=args.model,
-        endpoint=endpoint,
-        output_dir=output_dir,
-        limit=args.limit,
-    )
+    try:
+        result: BenchmarkResult = runner.run(
+            client=client,
+            model=args.model,
+            endpoint=endpoint,
+            output_dir=output_dir,
+            limit=args.limit,
+        )
+    finally:
+        client.close()
     out_path = result.write(output_dir / output_filename)
     print(json.dumps({"output": str(out_path), "metrics": result.metrics}, indent=2))
     return 0
@@ -154,7 +158,7 @@ class RunnerFactory:
     runner construction without depending on argparse internals.
     """
 
-    prog: str = "benchmarks.standard"
+    prog: str = "benchmarks.suites.standard"
     description: str = ""
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:

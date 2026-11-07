@@ -38,7 +38,7 @@ export {
 	TEXT_GENERATION_SLOTS,
 	type TextGenerationSlot,
 	type TokenizerFamily,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 export type {
 	GpuProfile,
 	GpuProfileId,

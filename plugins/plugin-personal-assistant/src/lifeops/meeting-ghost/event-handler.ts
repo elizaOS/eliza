@@ -7,10 +7,10 @@
  * join request supplied ghost-attendance context.
  */
 import type { EventPayload, IAgentRuntime } from "@elizaos/core";
-import {
-  type MeetingGhostAttendanceContext,
-  type MeetingTranscriptFinalizedPayload,
-} from "@elizaos/core/meetings";
+import type {
+  MeetingGhostAttendanceContext,
+  MeetingTranscriptFinalizedPayload,
+} from "@elizaos/core/protocol";
 import { projectFinalizedTranscriptCommitments } from "../commitments/transcript-hook.js";
 import {
   type RunMeetingGhostInput,

@@ -77,10 +77,9 @@ scoring:
     - id: package_json_valid
       type: file_valid_json
       path: package.json
-      schema:
-        required:
-          - name
-          - version
+      required_keys:
+        - name
+        - version
       points: 2
       category: correctness
       description: package.json is valid JSON with required fields

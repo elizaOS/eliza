@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 /**
  * Builds self-contained Android and iOS agent bundles with their PGlite assets.
  * Mobile plugin policy determines the inlined plugin set; models are not bundled.
@@ -27,6 +27,14 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
+import { createMobileBundleDependencies } from "./mobile-bundle-dependencies.ts";
+import {
+  addStubAliasResolver,
+  MOBILE_STUB_PLUGINS_ENV,
+  mergeMobileStubPlugins,
+  parseMobileStubPlugins,
+} from "./mobile-stub-plugins.ts";
+import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
@@ -38,11 +46,6 @@ import {
 // under-reported MOBILE_CORE_PLUGINS).
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
-// agentRoot = repoRoot/packages/agent → two parents up is the repo root.
-// (Earlier versions assumed eliza's outer-repo layout where agent
-// lived at eliza/packages/agent/, requiring three `..`s. That hop is
-// the source of every "could not locate @electric-sql/pglite/dist" or
-// "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
 const rmRecursiveScript = path.join(
   repoRoot,
@@ -263,7 +266,6 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
-  "@elizaos/app": path.join(stubsDir, "app-runtime.ts"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
   // arm64-Android does not provide that resolver, so an unstubbed reference
   // bombs the bundle resolve:
@@ -454,12 +456,13 @@ const optionalPluginStubs = {
   // being linked into packages/agent/node_modules.
   "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.ts"),
   "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.ts"),
-  // Workflow/automation routes are desktop/cloud surface area. Mobile's
-  // runtime plugin filter does not load workflow, and latest workflow source
-  // keeps large generated node catalogs in dist rather than src/data. Stub the
-  // package so a local-source mobile bundle does not depend on those desktop
-  // catalogs or pull the full workflow graph into the phone agent.
-  "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
+  // Android ships a separate verified Bun worker/compiler resource directory.
+  // iOS has not qualified that process contract and retains its exclusion.
+  ...(TARGET === "android"
+    ? {}
+    : {
+        "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.ts"),
+      }),
   // NOTE: @elizaos/plugin-native-filesystem is intentionally NOT stubbed. It
   // is a declared MOBILE_CORE_PLUGINS member — the mobile-safe FILE
   // target=device bridge (duck-typed window.Capacitor on iOS/Android,
@@ -502,36 +505,68 @@ const pluginBrowserRemoteControlSources = Object.fromEntries(
     ),
   ]),
 );
-const stubAliases = {
-  ...nativeStubs,
-  ...optionalPluginStubs,
-  ...pluginBrowserRemoteControlSources,
+// Packages the host never loads (ELIZA_MOBILE_STUB_PLUGINS). Longer aliases
+// above still win for their subpaths.
+const hostStubPlugins = parseMobileStubPlugins(
+  process.env[MOBILE_STUB_PLUGINS_ENV],
+);
+if (hostStubPlugins.length > 0)
+  console.log(`[build-mobile] host stubs: ${hostStubPlugins.join(", ")}`);
+const stubAliases = mergeMobileStubPlugins(
+  {
+    ...nativeStubs,
+    ...optionalPluginStubs,
+    ...pluginBrowserRemoteControlSources,
+    // Keep the view-only leaf; the parent alias disables desktop subprocesses.
+    "@elizaos/plugin-agent-orchestrator/ui": path.join(
+      repoRoot,
+      "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+    ),
+    // LifeOps registers the browser tables without loading a desktop browser.
+    "@elizaos/plugin-browser/schema": path.join(
+      repoRoot,
+      "plugins/plugin-browser/src/schema.ts",
+    ),
+    // A pure formatter the mobile workflow host imports; it stays real when a
+    // host stubs plugin-calendar.
+    "@elizaos/plugin-calendar/format": path.join(
+      repoRoot,
+      "plugins/plugin-calendar/src/internal/format.ts",
+    ),
+  },
+  hostStubPlugins,
+  path.join(stubsDir, "null-plugin.ts"),
+);
+// Runs first, so a host stub also wins over the dedupe and source resolvers.
+const hostStubResolverPlugin = {
+  name: "eliza-mobile-host-stubs",
+  setup(build) {
+    addStubAliasResolver(build, stubAliases, hostStubPlugins);
+  },
 };
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {
-    const aliasNames = Object.keys(stubAliases);
-    const filter = new RegExp(
-      "^(?:" +
-        aliasNames
-          .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("|") +
-        ")(?:/.*)?$",
-    );
-    build.onResolve({ filter }, (args) => {
-      // Match the longest alias that's a prefix of the importer.
-      let best = null;
-      for (const name of aliasNames) {
-        if (
-          (args.path === name || args.path.startsWith(`${name}/`)) &&
-          (best === null || name.length > best.length)
-        ) {
-          best = name;
-        }
+    // Desktop password-manager CLIs are not native password providers. Keep
+    // this lazy action unavailable on mobile without omitting desktop output.
+    build.onResolve({ filter: /^\.\/password-manager\.js$/ }, (args) => {
+      if (
+        args.importer ===
+        path.join(
+          repoRoot,
+          "plugins/plugin-personal-assistant/src/actions/credentials.ts",
+        )
+      ) {
+        return {
+          path: path.join(
+            repoRoot,
+            "plugins/plugin-personal-assistant/src/actions/password-manager.mobile.ts",
+          ),
+        };
       }
-      if (best === null) return undefined;
-      return { path: stubAliases[best], namespace: "file" };
+      return undefined;
     });
+    addStubAliasResolver(build, stubAliases, Object.keys(stubAliases));
   },
 };
 const exactMobileStubPlugin = {
@@ -609,8 +644,7 @@ const iosFsSandboxPlugin = {
 const corePackages = [
   "@elizaos/agent",
   "@elizaos/core",
-  "@elizaos/ui/brand",
-  "@elizaos/core/voice/aec",
+  "@elizaos/voice",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-wallet",
@@ -636,27 +670,12 @@ const dedupeTargets = {
     "src",
     "index.ts",
   ),
-  "@elizaos/ui/brand": path.resolve(
+  // Pin portable voice processing to one source identity in the mobile bundle.
+  "@elizaos/voice": path.resolve(
     repoRoot,
     "packages",
-    "ui",
-    "src",
-    "brand",
-    "index.ts",
-  ),
-  // Pin the AEC subpath to src as well (#11373). Without this the subpath
-  // resolves through the exports map to the compiled `dist/voice/aec/index.js`
-  // re-export barrel, which Bun.build's lazy CJS-interop lowering drops while
-  // keeping its consumers — on device the live-diarization status route then
-  // dies with `EchoReferenceBuffer is not defined` at session construction
-  // (invisible to the module-load smoke, which never constructs the session).
-  "@elizaos/core/voice/aec": path.resolve(
-    repoRoot,
-    "packages",
-    "core",
-    "src",
     "voice",
-    "aec",
+    "src",
     "index.ts",
   ),
   "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
@@ -1388,20 +1407,24 @@ const localInferenceDedupePlugin = {
   },
 };
 console.log("[build-mobile] starting Bun.build...");
+// Bun metadata paths are relative to the caller, including direct script runs.
+const buildWorkingDirectory = process.cwd();
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
   naming: "[dir]/[name].[ext]",
   target: bunBuildTarget,
+  // No bytecode: Bun 1.4.2 emits ESM bytecode only with `compile: true`, and a
+  // CJS bundle bakes the build host's path into `import.meta.url` (PGlite
+  // assets) and rejects `import.meta.resolve`.
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Keep Android debuggable, but compact the real iOS Bun payload. Static
-  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
-  // whitespace minification reduces launch cost without identifier mangling,
-  // preserving the post-build undeclared-identifier scan below.
+  metafile: TARGET === "android",
+  // Compact Android and iOS Bun payloads without changing identifier names.
+  // Android inventory comes from emitted-input metadata, not JS comments.
   minify:
-    TARGET === "ios"
+    TARGET === "ios" || TARGET === "android"
       ? {
           syntax: true,
           whitespace: true,
@@ -1433,11 +1456,14 @@ const buildResult = await Bun.build({
       : {}),
   },
   plugins: [
+    hostStubResolverPlugin,
     iosFsSandboxPlugin,
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
     stubCssPlugin,
+    // Before the generic resolvers: no wallet-connector closure reaches a mobile bundle.
+    mobileWalletConnectorStubPlugin(path.join(stubsDir, "null-plugin.ts")),
     dedupePlugin,
     nativeCapacitorPlugin,
     exactMobileStubPlugin,
@@ -1500,169 +1526,11 @@ if (!existsSync(bundlePath)) {
   );
   process.exit(1);
 }
-// Bun.build occasionally renames default-export bindings (e.g. `v4` from
-// uuid → `default10`) but loses the binding when the source module is
-// stubbed by `externalsAsStubs` or has a multi-entry-point exports map.
-// `apply*Override3` collisions come from the same path: a stubbed plugin
-// (e.g. `@elizaos/plugin-whatsapp`) leaves a numbered alias unbound.
-// Same root cause produces the `AutonomyService failed to start:
-// AutonomyService2 is not defined` warning at boot — the dedup'd alias
-// for the autonomy service class never gets bound when the consumer
-// `startAndRegisterAutonomyService2` runs before the second copy's init.
-//
-// The bundle still references these identifiers at runtime, so chat
-// completion crashes with "default10 is not defined". Prepend a polyfill
-// header that defines the few known offenders. Each one is either a uuid
-// generator (use the platform crypto), a no-op for stubbed plugins, or
-// (for AutonomyService2) an alias to the original class that DID get
-// bound by `init_service2`.
-//
-// The right long-term fix is to make Bun.build emit consistent bindings
-// for stubbed modules; until then, this prefix keeps the agent runnable.
-//
-// The polyfill is split into two phases:
-//   1. The header is prepended at the top of the bundle. These are
-//      `var X` declarations that get hoisted; consumers further down the
-//      bundle that read them before the underlying module's init runs
-//      see the polyfill value instead of `undefined`.
-//   2. The footer `if`-guard runs AFTER the bundle has finished loading
-//      (so the original module inits have run and `AutonomyService` etc.
-//      are populated). It reassigns the dedup'd alias to point at the
-//      now-bound original where one exists. No-op when the original
-//      isn't there either.
-let bundleSrc = await Bun.file(bundlePath).text();
-// Bun.build (1.4.2+) injects its `createRequire` ESM shim at the very top of
-// the output — ABOVE the entry's `#!/usr/bin/env node` — so the shebang lands
-// on ~line 4. A shebang anywhere but line 1 is a SyntaxError when Node loads
-// the file as an ES module (compileSourceTextModule), which crash-loops the
-// agent at boot. run-agent.sh always launches the bundle via an explicit
-// `node <bundle>` (never executed directly), so the shebang is dead weight —
-// strip the first shebang line outright. The downstream `startsWith("#!")`
-// branch then correctly takes the no-shebang path.
-const __shebangStripped = bundleSrc.replace(/^#![^\n]*\r?\n/m, "");
-if (__shebangStripped !== bundleSrc) {
-  console.log("[build-mobile] stripped embedded shebang (ESM-incompatible)");
-  bundleSrc = __shebangStripped;
-}
-function initSourceComment(src, initName, searchOffset) {
-  const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
-  if (initOffset === -1) return "(definition not found)";
-  const commentOffset = src.lastIndexOf("// ", initOffset);
-  if (commentOffset === -1) return "(source not found)";
-  const endOffset = src.indexOf("\n", commentOffset);
-  return src.slice(
-    commentOffset + 3,
-    endOffset === -1 ? initOffset : endOffset,
-  );
-}
-function reportInitElizaShape(src) {
-  const source = String(src);
-  const match =
-    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(source);
-  if (!match) {
-    console.warn("[build-mobile] init_eliza initializer not found");
-    return;
-  }
-  const asyncInit = Boolean(match[1]);
-  console.log(
-    `[build-mobile] init_eliza initializer: ${asyncInit ? "async" : "sync"}`,
-  );
-  if (!asyncInit) return;
-  const body = match[2];
-  const seen = new Set();
-  for (const call of body.matchAll(
-    /\b(await\s+)?(init_[A-Za-z0-9_$]+)\(\);/g,
-  )) {
-    const initName = call[2];
-    if (seen.has(initName)) continue;
-    seen.add(initName);
-    const definitionOffset = source.indexOf(`var ${initName} = __esm`);
-    const definition = source.slice(definitionOffset, definitionOffset + 80);
-    const kind = definition.includes("__esm(async") ? "async" : "sync";
-    console.error(
-      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(source, initName, definitionOffset)})`,
-    );
-  }
-}
-reportInitElizaShape(bundleSrc);
-// `AutonomyService2` is the dedup'd consumer-side alias for the
-// autonomy Service class. The class itself (`class AutonomyService
-// extends Service { static async start(runtime) {...} }`) lives in a
-// lazy `init_service2()` body that doesn't run until something pulls
-// the autonomy module — but `startAndRegisterAutonomyService2` reads
-// `AutonomyService2` BEFORE that init runs. The bundle ships the alias
-// without a binding, so the runtime sees `AutonomyService2 is not
-// defined` at boot.
-//
-// Polyfill it as a no-op service class so `startAndRegisterAutonomyService2`
-// just returns null. Autonomy is opt-in, so a no-op class is safe.
-//
-// Generic phase: scan the bundle for identifiers that match known
-// rename patterns (`defaultN`, `applyXxxNN`) and ensure every called-but-
-// undeclared one gets a polyfill. UUID-shaped renames (most `defaultN`)
-// fall back to crypto.randomUUID. apply* renames fall back to no-ops.
-// Real declarations in the bundle shadow these polyfills via `var`
-// hoisting + same-name redeclaration semantics.
-function scanUndeclaredRenames(src) {
-  const declRegex =
-    /(?:\bvar\s+|\blet\s+|\bconst\s+|\bfunction\s+|\bclass\s+)([A-Za-z_$][\w$]*)/g;
-  const declared = new Set();
-  for (const m of src.matchAll(declRegex)) declared.add(m[1]);
-  const candidateRegex =
-    /\b(default\d+|apply[A-Za-z]+Override\d+|[A-Za-z]+Service\d+)\b/g;
-  const seen = new Set();
-  const undeclaredDefaults = new Set();
-  const undeclaredApplies = new Set();
-  const undeclaredServices = new Set();
-  for (const m of src.matchAll(candidateRegex)) {
-    const name = m[1];
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (declared.has(name)) continue;
-    if (name.startsWith("default")) undeclaredDefaults.add(name);
-    else if (name.startsWith("apply")) undeclaredApplies.add(name);
-    else undeclaredServices.add(name);
-  }
-  return { undeclaredDefaults, undeclaredApplies, undeclaredServices };
-}
-const renames = scanUndeclaredRenames(bundleSrc);
-const polyfillLines = [
-  "// auto-injected polyfills for Bun.build identifier-resolution gaps",
-];
-// Always-on: the few hand-curated overrides that need specific shapes.
-polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
-polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
-polyfillLines.push(
-  "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
-    "  static serviceType = 'AUTONOMY';\n" +
-    "  static async start(_runtime) { return null; }\n" +
-    "  async stop() {}\n" +
-    "};",
+// Entrypoint shebangs can appear below Bun's ESM shim; bundles are loaded explicitly.
+const bundleSrc = (await Bun.file(bundlePath).text()).replace(
+  /^#![^\n]*\r?\n/m,
+  "",
 );
-const SKIP_DEFAULTS = new Set(["default10"]);
-const SKIP_APPLIES = new Set(["applyWhatsAppQrOverride3"]);
-const SKIP_SERVICES = new Set(["AutonomyService2"]);
-for (const name of renames.undeclaredDefaults) {
-  if (SKIP_DEFAULTS.has(name)) continue;
-  polyfillLines.push(`var ${name} = () => globalThis.crypto.randomUUID();`);
-}
-for (const name of renames.undeclaredApplies) {
-  if (SKIP_APPLIES.has(name)) continue;
-  polyfillLines.push(`var ${name} = () => {};`);
-}
-for (const name of renames.undeclaredServices) {
-  if (SKIP_SERVICES.has(name)) continue;
-  polyfillLines.push(
-    `var ${name} = class ${name}Polyfill { static async start(_runtime) { return null; } async stop() {} };`,
-  );
-}
-console.log(
-  `[build-mobile] polyfill: ${renames.undeclaredDefaults.size} default*, ` +
-    `${renames.undeclaredApplies.size} apply*, ` +
-    `${renames.undeclaredServices.size} *Service* identifiers covered`,
-);
-const polyfillHeader = `${polyfillLines.join("\n")}\n`;
-const polyfillFooter = "";
 // ios-jsc: prepend the JSContext polyfill from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js (built in parallel
 // by the polyfill agent). The prefix installs Bun + Node module shims
@@ -1729,25 +1597,7 @@ const iosJscBridgeCheck =
       "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__ELIZA_BRIDGE__.version);\n" +
       "}\n"
     : "";
-let prefixed;
-if (bundleSrc.startsWith("#!")) {
-  const nlIndex = bundleSrc.indexOf("\n");
-  prefixed =
-    bundleSrc.slice(0, nlIndex + 1) +
-    iosJscPolyfillSrc +
-    iosJscBridgeCheck +
-    polyfillHeader +
-    bundleSrc.slice(nlIndex + 1) +
-    polyfillFooter;
-} else {
-  prefixed =
-    iosJscPolyfillSrc +
-    iosJscBridgeCheck +
-    polyfillHeader +
-    bundleSrc +
-    polyfillFooter;
-}
-await Bun.write(bundlePath, prefixed);
+await Bun.write(bundlePath, iosJscPolyfillSrc + iosJscBridgeCheck + bundleSrc);
 const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
   file.endsWith(".node"),
 );
@@ -1763,7 +1613,7 @@ if (nativeNodeOutputs.length > 0) {
 }
 const bundleSize = (await stat(bundlePath)).size;
 console.log(
-  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
+  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB`,
 );
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
@@ -1791,6 +1641,36 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
     `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
   );
 }
+// An empty database made by this same PGlite, right after initdb. The bundled
+// plugin-sql loads it for in-memory databases (plugins/plugin-sql/src/pglite/
+// initdb-snapshot.ts), so the device never runs initdb: PGlite 0.4.x keeps the
+// temporary initdb instance's WebAssembly memory (about 184 MB) for the life
+// of the process. A child process makes it, because PGlite keeps the event
+// loop alive after the dump.
+{
+  const snapshotPath = path.join(outDir, "pglite-initdb.bin");
+  const script = [
+    `const { PGlite } = await import(${JSON.stringify(pathToFileURL(path.join(pgliteDist, "index.js")).href)});`,
+    "const db = await PGlite.create({ dataDir: 'memory://' });",
+    "const dump = await db.dumpDataDir('gzip');",
+    `await Bun.write(${JSON.stringify(snapshotPath)}, dump);`,
+    "process.exit(0);",
+  ].join("\n");
+  const made = spawnSync(process.execPath, ["--eval", script], {
+    stdio: "inherit",
+    timeout: 120_000,
+  });
+  if (made.status !== 0 || !existsSync(snapshotPath)) {
+    console.error(
+      "[build-mobile] FATAL: could not make the PGlite initdb snapshot",
+    );
+    process.exit(1);
+  }
+  const sz = (await stat(snapshotPath)).size;
+  console.log(
+    `[build-mobile] wrote pglite-initdb.bin (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
@@ -1809,18 +1689,42 @@ for (const asset of [
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 const generatedUtc = new Date().toISOString();
+let bundleDependencies:
+  | ReturnType<typeof createMobileBundleDependencies>
+  | undefined;
+if (TARGET === "android") {
+  const dependencyOutput = Object.values(
+    buildResult.metafile?.outputs ?? {},
+  ).find(
+    (output) =>
+      output.entryPoint &&
+      path.resolve(buildWorkingDirectory, output.entryPoint) === entry,
+  );
+  if (!dependencyOutput)
+    throw new Error(
+      "Mobile build did not return entrypoint dependency metadata.",
+    );
+  bundleDependencies = createMobileBundleDependencies({
+    inputs: dependencyOutput.inputs,
+    resolveDirectory: buildWorkingDirectory,
+    repositoryRoot: repoRoot,
+    bundleBytes: await Bun.file(bundlePath).bytes(),
+  });
+}
 const manifest = {
   generatedAt: generatedUtc,
   generated_utc: generatedUtc,
   claim_boundary:
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
+  ...(bundleDependencies ? { bundleDependencies } : {}),
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
     data: "pglite.data",
+    initdbSnapshot: "pglite-initdb.bin",
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
@@ -1837,9 +1741,13 @@ const manifest = {
       ...ELIZAOS_ANDROID_CORE_PLUGINS,
       ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
     ],
-    optional: [...MOBILE_MODEL_PROVIDER_PLUGINS],
+    optional: [
+      ...MOBILE_MODEL_PROVIDER_PLUGINS,
+      ...(TARGET === "android" ? ["@elizaos/plugin-workflow"] : []),
+    ],
   },
   externalsAsStubs: Object.keys(stubAliases),
+  hostStubs: hostStubPlugins,
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
     "@node-llama-cpp/linux-arm64",

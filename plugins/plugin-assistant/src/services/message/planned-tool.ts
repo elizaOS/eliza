@@ -1,8 +1,17 @@
+import {
+  bindRequestOperationProjection,
+  bindRequestOperationResult,
+  copyBoundOperationDenial,
+  copyRequestOperationResult,
+  getBoundOperationDenialAttempt,
+  getRequestOperationIssuer,
+} from "@elizaos/core";
 import { projectBackgroundHistory } from "./history-discovery.ts";
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
 import type {
   Action,
+  ActionFailureProvenance,
   ActionResult,
   AgentContext,
   ContextObject,
@@ -39,6 +48,7 @@ import {
   projectActionResultForClipboard,
   projectToolDiagnosticArgs,
   promotedSubactionParent,
+  readActionFailureProvenance,
   resolveUserFacingEffectReceipts,
   selectCompletionContext,
   shouldSuppressActionResultClipboard,
@@ -54,6 +64,7 @@ import type {
 } from "../../runtime/evaluator";
 import {
   actionResultToPlannerToolResult,
+  hasNonRetryableToolFailure,
   type PlannerLoopParams,
   type PlannerRuntime,
   type PlannerToolCall,
@@ -73,6 +84,7 @@ import {
 } from "./action-identifiers.js";
 import { actionNameTokenKey, mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { appliedEffectReceiptIdsForReply } from "./egress-policy.ts";
 import { uiViewActionPriority } from "./provider-state.ts";
 
 export interface ExecuteV5PlannedToolCallParams {
@@ -312,6 +324,8 @@ export async function executeV5PlannedToolCall(
       executorCtx.message,
       actionContext,
       projectedActionContext,
+      args.runtime,
+      getRequestOperationIssuer(args.runtime, executorCtx.message),
     );
   }
   if (
@@ -391,12 +405,25 @@ export async function executeV5PlannedToolCall(
     args.executorCtx.message,
     rawActionResult,
   );
+  const requestOperationIssuer = getRequestOperationIssuer(
+    args.runtime,
+    args.executorCtx.message,
+  );
   const actionResult = projectActionResultForClipboard(
     action,
     rawActionResult,
     dispatchCall.name,
   );
+  if (actionResult !== rawActionResult && requestOperationIssuer) {
+    bindRequestOperationProjection(
+      rawActionResult,
+      actionResult,
+      requestOperationIssuer,
+    );
+    copyRequestOperationResult(rawActionResult, actionResult);
+  }
   const plannerResult = actionResultToPlannerToolResult(actionResult, {
+    requestOperationIssuer,
     summary: summarizeActionResultForPlanner(
       action,
       actionResult,
@@ -414,11 +441,28 @@ export async function executeV5PlannedToolCall(
           executionActions.find((candidate) => candidate.name === name),
         )
       : undefined;
-  return inferred
+  const finalPlannerResult = inferred
     ? { ...plannerResult, inferredSubaction: inferred.record }
     : pinned
       ? { ...plannerResult, registeredSubaction: pinned }
       : plannerResult;
+  if (finalPlannerResult !== plannerResult && requestOperationIssuer) {
+    bindRequestOperationProjection(
+      plannerResult,
+      finalPlannerResult,
+      requestOperationIssuer,
+    );
+    copyRequestOperationResult(plannerResult, finalPlannerResult);
+  }
+  const projectionAttempt = getBoundOperationDenialAttempt(plannerResult);
+  if (projectionAttempt)
+    bindRequestOperationResult(finalPlannerResult, projectionAttempt);
+  copyBoundOperationDenial(
+    plannerResult,
+    finalPlannerResult,
+    projectionAttempt,
+  );
+  return finalPlannerResult;
 }
 
 /**
@@ -487,6 +531,7 @@ export interface SubPlannerSubStep {
   success: boolean;
   callDigest: string;
   retryable: boolean;
+  failureProvenance?: ActionFailureProvenance;
   summary?: string;
   internalTranscriptText?: string;
   error?: string;
@@ -503,6 +548,7 @@ export function collectSubPlannerSubSteps(
   for (const step of subResult.trajectory.steps) {
     if (!step.toolCall?.name || !step.result) continue;
     const result = step.result;
+    const failureProvenance = readActionFailureProvenance(result);
     const errorText =
       typeof result.error === "string"
         ? result.error
@@ -519,7 +565,8 @@ export function collectSubPlannerSubSteps(
       action: step.toolCall.name,
       success: result.success,
       callDigest: subPlannerCallDigest(step.toolCall),
-      retryable: result.data?.retryable !== false,
+      retryable: !hasNonRetryableToolFailure(result),
+      ...(failureProvenance ? { failureProvenance } : {}),
       ...(summarySource
         ? { summary: normalizeSubStepText(summarySource) }
         : {}),
@@ -565,7 +612,9 @@ export function subPlannerResultToPlannerToolResult(
     ...subResult.trajectory.steps,
   ];
   const lastStep = allSteps[allSteps.length - 1];
-  const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+  const success = subResult.terminalFailure
+    ? false
+    : (evaluator?.success ?? lastStep?.result?.success ?? true);
   const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
   const internalTerminalPayload =
     lastStep?.result?.transcriptVisibility === "internal" &&
@@ -602,6 +651,48 @@ export function subPlannerResultToPlannerToolResult(
     Array.isArray(terminalUserFacingEffectReceiptIds) &&
     terminalUserFacingEffectReceiptIds.length > 0 &&
     resolveUserFacingEffectReceipts(terminalResult, effectReceipts) !== null;
+  // The effective child evaluator may own the final wording even when the
+  // last action exposes only internal diagnostics. Reuse its exact-text proof
+  // against actual tool results; a raw success verdict or available receipt
+  // alone is not authority, and historical evaluator outputs are not used.
+  const evaluatorUserFacingEffectReceiptIds =
+    subResult.status === "finished" &&
+    success === true &&
+    !subResult.terminalFailure &&
+    !internalTerminalPayload &&
+    evaluator?.decision === "FINISH" &&
+    evaluator.success === true &&
+    evaluator.protocolFailure !== true &&
+    !evaluator.replyFailure &&
+    evaluator.requestFullyCovered !== false &&
+    evaluator.replyEffectStatus !== "non_applied" &&
+    typeof userFacingText === "string"
+      ? appliedEffectReceiptIdsForReply(
+          userFacingText,
+          allSteps.flatMap((step) =>
+            step.toolCall && step.result
+              ? [
+                  {
+                    success: step.result.success === true,
+                    userFacingText: step.result.userFacingText,
+                    verifiedUserFacing: step.result.verifiedUserFacing,
+                    userFacingEffectReceiptIds:
+                      step.result.userFacingEffectReceiptIds,
+                    effectReceipts: step.result.effectReceipts,
+                  },
+                ]
+              : [],
+          ),
+          evaluator,
+        )
+      : [];
+  const userFacingEffectReceiptIds =
+    evaluatorUserFacingEffectReceiptIds.length > 0
+      ? evaluatorUserFacingEffectReceiptIds
+      : terminalUserFacingEffectReceiptIds;
+  const verifiedUserFacing =
+    terminalVerifiedUserFacing ||
+    evaluatorUserFacingEffectReceiptIds.length > 0;
   const data =
     terminalData || subSteps.length > 0
       ? {
@@ -627,20 +718,15 @@ export function subPlannerResultToPlannerToolResult(
     ...(terminalResult?.replyFailure
       ? { replyFailure: terminalResult.replyFailure }
       : {}),
-    ...(terminalUserFacingEffectReceiptIds
-      ? {
-          userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
-        }
-      : {}),
-    ...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+    ...(userFacingEffectReceiptIds ? { userFacingEffectReceiptIds } : {}),
+    ...(verifiedUserFacing ? { verifiedUserFacing: true } : {}),
     ...(evaluator?.decision === "FINISH" && evaluator.protocolFailure !== true
       ? {
           subPlannerEvaluation: {
             decision: "FINISH" as const,
-            success: evaluator.success === true,
-            ...(typeof evaluator.messageToUser === "string" &&
-            evaluator.messageToUser.trim()
-              ? { messageToUser: evaluator.messageToUser }
+            success: success === true,
+            ...(typeof userFacingText === "string" && userFacingText.trim()
+              ? { messageToUser: userFacingText }
               : {}),
           },
         }
@@ -727,12 +813,10 @@ export function collectPlannerTools(
       );
     definitions.set(action.name, action);
   }
-  const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
     ? collectCanonicalPlannerActions(actions, options.directActionNames)
     : actions;
   const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
-    tierAParents,
     expandSubActions: options.canonicalFamilies
       ? false
       : options.expandSubActions,
@@ -1210,31 +1294,6 @@ export function collectBudgetedStageOneCandidateActions(args: {
 }
 
 /**
- * Read the historical tier-A metadata for telemetry compatibility. Tool
- * construction ignores it and expands every authorized parent and child.
- */
-export function readTierAParentsFromContext(
-  context: ContextObject,
-): Set<string> {
-  const surface = (context.metadata as { actionSurface?: unknown } | undefined)
-    ?.actionSurface;
-  if (!surface || typeof surface !== "object") {
-    return new Set<string>();
-  }
-  const tierAParents = (surface as { tierAParents?: unknown }).tierAParents;
-  if (!Array.isArray(tierAParents)) {
-    return new Set<string>();
-  }
-  const set = new Set<string>();
-  for (const value of tierAParents) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      set.add(value);
-    }
-  }
-  return set;
-}
-
-/**
  * Pull each action surfaced as a `tool` event in the context. Mirrors the
  * filtering used by the planner-loop's tools rendering — sub-planner scoping
  * and dedup by normalised name happen there, while here we just keep the
@@ -1349,6 +1408,9 @@ export function collectPreviousActionResults(
           ? step.result.error.message
           : undefined;
     results.push({
+      ...(step.result.emptyTrackedState !== undefined
+        ? { emptyTrackedState: step.result.emptyTrackedState }
+        : {}),
       success: step.result.success,
       ...(step.result.text !== undefined ? { text: step.result.text } : {}),
       ...(step.result.transcriptVisibility !== undefined

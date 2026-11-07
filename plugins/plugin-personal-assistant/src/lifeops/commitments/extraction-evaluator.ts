@@ -16,7 +16,12 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
+import {
+  describeNowForPrompt,
+  formatInstantAsRfc3339InTimeZone,
+} from "../time.js";
 import {
   classifyCommitmentKind,
   createLifeOpsCommitmentLedgerRecord,
@@ -160,13 +165,17 @@ function hasSqlAdapter(runtime: IAgentRuntime): boolean {
   return Boolean(adapter?.db);
 }
 
+function messageInstant(message: Memory): Date {
+  return new Date(message.createdAt ?? Date.now());
+}
+
 function messageSourceKey(message: Memory): string {
   return `message:${String(message.id ?? message.createdAt ?? "unknown")}`;
 }
 
 export const commitmentExtractionEvaluator: Evaluator<
   CommitmentExtractionOutput,
-  Record<string, never>
+  { timeZone: string }
 > = {
   name: "commitment_extraction",
   inputScope: "current_message",
@@ -186,11 +195,14 @@ export const commitmentExtractionEvaluator: Evaluator<
     return hasRoleAccess(runtime, message, "OWNER");
   },
 
-  async prepare() {
-    return {};
+  async prepare({ runtime, message }) {
+    return {
+      timeZone: await resolveOwnerTimeZone(runtime, messageInstant(message)),
+    };
   },
 
-  prompt({ message }) {
+  prompt({ message, prepared }) {
+    const instant = messageInstant(message);
     return `Extract the concrete commitments (promises to do something) the owner makes in their message below.
 
 Rules:
@@ -198,11 +210,12 @@ Rules:
 - "evidence" must be the exact verbatim sentence copied from the message.
 - "summary" is a short restatement of the promised work.
 - "counterparty" is the person the promise is made to, when the message names one.
-- "dueAtIso" is an ISO-8601 timestamp only when the promise names an explicit date; otherwise omit it.
+- "dueAtIso" is an ISO-8601 timestamp with the owner's UTC offset, only when the promise names an explicit date; otherwise omit it. Resolve named days ("Friday", "tomorrow") against the owner's local date below, not the UTC date.
 - "confidence" in [0,1]: how certain you are this is a firm commitment.
 - Return {"commitments": []} when the message contains no firm promise.
 
-Source message timestamp: ${new Date(message.createdAt ?? Date.now()).toISOString()}
+Source message timestamp: ${instant.toISOString()}
+Owner local time of the message: ${describeNowForPrompt(instant, prepared.timeZone)}, ISO ${formatInstantAsRfc3339InTimeZone(instant, prepared.timeZone)}
 
 Owner message:
 ${message.content.text ?? ""}`;

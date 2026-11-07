@@ -18,6 +18,9 @@
 
 import { AlertCircle, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { Alert } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -25,17 +28,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
-  Label,
+} from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../cloud-ui";
-import { Alert } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+} from "../../components/ui/select";
 import { SemanticForm } from "../../components/ui/semantic-form";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {

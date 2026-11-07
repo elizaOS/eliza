@@ -8,6 +8,7 @@
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
+import { formatCurrency } from "../utils/formatters";
 
 interface CoinGeckoDefiData {
   defi_market_cap: string;
@@ -389,8 +390,8 @@ async function getGlobalCryptoData(
 
     cryptoInfo += `🪙 Active Cryptocurrencies: ${cryptoData.active_cryptocurrencies.toLocaleString()}\n`;
     cryptoInfo += `💱 Active Markets: ${cryptoData.markets.toLocaleString()}\n`;
-    cryptoInfo += `💰 Total Market Cap: $${(cryptoData.total_market_cap.usd / 1e9).toFixed(2)}B\n`;
-    cryptoInfo += `📊 24h Volume: $${(cryptoData.total_volume.usd / 1e9).toFixed(2)}B\n`;
+    cryptoInfo += `💰 Total Market Cap: ${formatCurrency(cryptoData.total_market_cap.usd)}\n`;
+    cryptoInfo += `📊 24h Volume: ${formatCurrency(cryptoData.total_volume.usd)}\n`;
     cryptoInfo += `📈 24h Market Cap Change: ${cryptoData.market_cap_change_percentage_24h_usd.toFixed(2)}%\n`;
 
     if (cryptoData.market_cap_percentage) {
@@ -508,10 +509,10 @@ async function getTokenInfoByAddress(
         tokenInfo += `   Current Price: $${md.current_price.usd.toLocaleString()}\n`;
       }
       if (md.market_cap?.usd) {
-        tokenInfo += `   Market Cap: $${(md.market_cap.usd / 1e9).toFixed(2)}B\n`;
+        tokenInfo += `   Market Cap: ${formatCurrency(md.market_cap.usd)}\n`;
       }
       if (md.total_volume?.usd) {
-        tokenInfo += `   24h Volume: $${(md.total_volume.usd / 1e9).toFixed(2)}B\n`;
+        tokenInfo += `   24h Volume: ${formatCurrency(md.total_volume.usd)}\n`;
       }
       if (coinData.market_cap_rank) {
         tokenInfo += `   Market Cap Rank: #${coinData.market_cap_rank}\n`;
@@ -593,10 +594,10 @@ export async function getTokenInfo(
         tokenInfo += `   Current Price: $${md.current_price.usd.toLocaleString()}\n`;
       }
       if (md.market_cap?.usd) {
-        tokenInfo += `   Market Cap: $${(md.market_cap.usd / 1e9).toFixed(2)}B\n`;
+        tokenInfo += `   Market Cap: ${formatCurrency(md.market_cap.usd)}\n`;
       }
       if (md.total_volume?.usd) {
-        tokenInfo += `   24h Volume: $${(md.total_volume.usd / 1e9).toFixed(2)}B\n`;
+        tokenInfo += `   24h Volume: ${formatCurrency(md.total_volume.usd)}\n`;
       }
 
       tokenInfo += "\n📈 PRICE CHANGES:\n";

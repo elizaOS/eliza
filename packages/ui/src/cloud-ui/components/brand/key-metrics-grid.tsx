@@ -4,7 +4,7 @@
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 export interface KeyMetric {
   label: string;

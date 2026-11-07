@@ -1,4 +1,10 @@
-/** Resolves complete follow-up context with one batched contact-name lookup. */
+/**
+ * Resolves complete follow-up context with one batched contact-name lookup.
+ * Upcoming items are labelled by calendar day ("today", "tomorrow", "in N
+ * days") in the owner's zone from the shared fail-closed calendar resolver.
+ */
+
+import { calendarDateKey, resolveCalendarTimeZone } from "@elizaos/contracts";
 import type {
   IAgentRuntime,
   Memory,
@@ -15,7 +21,9 @@ export const followUpsProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // Every contact follow-up with its reason: the same ADMIN floor as the
+  // `contacts` context and the CONTACT action.
+  roleGate: { minRole: "ADMIN" },
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
@@ -36,9 +44,10 @@ export const followUpsProvider: Provider = {
         7,
         true,
       );
+      // Nothing scheduled is nothing to report; the count stays in values.
       if (upcomingFollowUps.length === 0) {
         return {
-          text: "No upcoming follow-ups scheduled.",
+          text: "",
           values: { followUpCount: 0 },
           data: {},
         };
@@ -94,6 +103,14 @@ export const followUpsProvider: Provider = {
         }
       }
       if (upcoming.length > 0) {
+        // Calendar days, not elapsed time: a follow-up at 15:00 seen at 10:00
+        // is today, and one at 08:00 seen at 22:00 the evening before is
+        // tomorrow.
+        const { timeZone } = await resolveCalendarTimeZone(
+          runtime,
+          new Date(now),
+        );
+        const todayKey = calendarDateKey(new Date(now), timeZone);
         textSummary += `\nUpcoming (${upcoming.length}):\n`;
         for (const f of upcoming) {
           const name =
@@ -103,8 +120,9 @@ export const followUpsProvider: Provider = {
             : 0;
           textSummary += `- ${name}`;
           if (scheduledAt > 0) {
-            const daysUntil = Math.ceil(
-              (scheduledAt - now) / (1000 * 60 * 60 * 24),
+            const daysUntil = calendarDaysBetween(
+              todayKey,
+              calendarDateKey(new Date(scheduledAt), timeZone),
             );
             if (daysUntil === 0) {
               textSummary += " (today)";
@@ -160,3 +178,11 @@ export const followUpsProvider: Provider = {
     }
   },
 };
+
+/** Whole calendar days from one `YYYY-MM-DD` key to another. */
+function calendarDaysBetween(fromKey: string, toKey: string): number {
+  return Math.round(
+    (Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) /
+      (1000 * 60 * 60 * 24),
+  );
+}

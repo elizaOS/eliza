@@ -77,6 +77,26 @@ describe("model/data gate", () => {
     expect(result.files[0]?.metadataFile).toBe(
       "plugins/app-training/datasets/valid.meta.json",
     );
+
+    await writeDataset(repoRoot, "valid", [
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "model", content: "hi" },
+        ],
+        metadata: [],
+      },
+    ]);
+    const malformed = checkModelData({ repoRoot });
+    expect(malformed.ok).toBe(false);
+    expect(malformed.errors).toContainEqual(
+      expect.objectContaining({
+        type: "invalid-row-schema",
+        message: expect.stringContaining(
+          "row.metadata must be an object when present",
+        ),
+      }),
+    );
   });
 
   it("fails invalid JSONL rows", async () => {

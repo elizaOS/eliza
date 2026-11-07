@@ -32,6 +32,7 @@ import {
   type AerodromePoolType,
   ERC20_ABI,
 } from "../types.ts";
+import { minAmountAfterSlippage } from "../../slippage";
 
 const SUPPORTED_CHAIN_IDS = [8453]; // Base only
 const AERODROME_CHAIN: Chain = base;
@@ -82,11 +83,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
   }
 
   private getWalletClient(privateKey: `0x${string}`): EvmWalletClient {
-    const cacheKey = privateKey.slice(0, 10);
+    const account = privateKeyToAccount(privateKey);
+    const cacheKey = account.address;
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
-
-    const account = privateKeyToAccount(privateKey);
 
     client = createWalletClient({
       chain: AERODROME_CHAIN,
@@ -383,7 +383,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         });
 
         if (params.percentageToRemove && params.percentageToRemove < 100) {
-          lpTokenAmount = ((balance as bigint) * BigInt(params.percentageToRemove)) / 100n;
+          // Basis points, rounded down: BigInt() rejects non-integers, and a
+          // fractional percentage must never remove more than requested.
+          const percentageBps = BigInt(Math.floor(params.percentageToRemove * 100));
+          lpTokenAmount = ((balance as bigint) * percentageBps) / 10000n;
         } else {
           lpTokenAmount = balance as bigint;
         }
@@ -401,23 +404,38 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         lpTokenAmount
       );
 
-      const _slippageMultiplier = BigInt(10000 - params.slippageBps);
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800);
-
-      const { request } = await publicClient.simulateContract({
-        address: addresses.router,
-        abi: AERODROME_ROUTER_ABI,
-        functionName: "removeLiquidity",
-        args: [
+      const removeArgs = (amountAMin: bigint, amountBMin: bigint) =>
+        [
           poolInfo.tokenA.address,
           poolInfo.tokenB.address,
           stable,
           lpTokenAmount,
-          0n, // amountAMin - will be calculated by slippage in real implementation
-          0n, // amountBMin
+          amountAMin,
+          amountBMin,
           params.wallet.address,
           deadline,
-        ],
+        ] as const;
+
+      // Quote what the pool returns now, then require at least that much minus
+      // the confirmed slippage. With zero minimums a sandwich around the close
+      // can take the position's value.
+      const { result: quoted } = await publicClient.simulateContract({
+        address: addresses.router,
+        abi: AERODROME_ROUTER_ABI,
+        functionName: "removeLiquidity",
+        args: removeArgs(0n, 0n),
+        account: walletClient.account,
+      });
+      const [quotedAmountA, quotedAmountB] = quoted as readonly [bigint, bigint];
+      const { request } = await publicClient.simulateContract({
+        address: addresses.router,
+        abi: AERODROME_ROUTER_ABI,
+        functionName: "removeLiquidity",
+        args: removeArgs(
+          minAmountAfterSlippage(quotedAmountA, params.slippageBps),
+          minAmountAfterSlippage(quotedAmountB, params.slippageBps)
+        ),
         account: walletClient.account,
       });
 

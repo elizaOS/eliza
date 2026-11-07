@@ -1,3 +1,5 @@
+import type { CloudflareClefBinding } from "../lib/providers/cloudflare-clef";
+import type { CloudflareSpeechBinding } from "../lib/providers/cloudflare-speech";
 /**
  * Hono + Cloudflare Workers context types for the Cloud API.
  *
@@ -24,8 +26,48 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
+  VOICE_SPEECH_RELAY_ENABLED?: string;
+  VOICE_SPEECH_RETIREMENT_PROOF_ENABLED?: string;
+  /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
+  VOICE_SPEECH_END_TIMEOUT_MS?: string;
+  /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
+  VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
+  SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
+  CLOUD_HF_EGRESS_BACKEND?: string;
+  HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_VOICE_USAGE_BACKEND?: string;
+  VOICE_USAGE_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_RATE_STATE_BACKEND?: string;
+  RATE_LIMIT_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_A2A_STATE_BACKEND?: string;
+  A2A_TASK_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_AUTH_STATE_BACKEND?: string;
+  AUTHENTICATION_STATE?: RuntimeDurableObjectNamespace;
+  /** Explicit per-turn Network context; absent disables the integration. */
+  NETWORK_SHARED_ENABLED?: string;
+  /** Private server-owned Network HTTP service binding; no public fetch fallback. */
+  NETWORK_MEMBERSHIP?: import("../lib/services/shared-runtime/network-membership-client").NetworkMembershipFetcher;
+  NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
+  /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
+  NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
+  /** Exact server-owned canonical Shared ingress scope; absent refuses supplied Network envelopes. */
+  NETWORK_OWNED_INGRESS_POLICY?: string;
+  /** Canonical service endpoint and shared server signing key; never client-visible. */
+  NETWORK_SERVICE_URL?: string;
+  SERVICE_TURN_SECRET?: string;
+  NETWORK_RELAY_ENABLED?: string;
+  NETWORK_AGENT_VOICE?: string;
+  /** Default off. Destination-bound phone handoff is admitted only in staging. */
+  NETWORK_SITE_AUTH_ENABLED?: string;
+  /** One exact loopback Network site origin for staging qualification. */
+  NETWORK_SITE_AUTH_ORIGIN?: string;
+  /** Confidential Network server authority. Worker secret; never a public/Vite variable. */
+  NETWORK_SITE_AUTH_SERVER_TOKEN?: string;
   /** Trusted execution environment for app inference; must match the registered app client mode. */
   APP_INFERENCE_EXECUTION_ENVIRONMENT?: "test" | "live";
+  /** Inactive by default: reviewed server-owned owner/room capture policy JSON. */
+  SHARED_OWNER_MODEL_CAPTURE_POLICY?: string;
   // ---- Deployment environment ----
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
@@ -57,11 +99,6 @@ export interface Bindings {
   /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
   /**
-   * Routes chat completions through the lazy chat-only Worker application.
-   * Default off provides an immediate rollback to the monolithic router.
-   */
-  THIN_INFERENCE_ENTRY_ENABLED?: string;
-  /**
    * Secondary kill switch for durable auto-top-up claims. Only the exact
    * string "true" permits new claims; recovery and signed reconciliation run
    * while it is absent or false, subject to the primary database control.
@@ -69,8 +106,22 @@ export interface Bindings {
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
   /** Registered active and approved `apps.id` for the native Cloud client. */
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Public deployment name and plain-text Terms/Privacy documents; never a secret. */
+  CLOUD_PUBLIC_SERVICE_JSON?: string;
+  /** Split deployment-owned public text; each binding fits the Worker limit. */
+  CLOUD_PUBLIC_SERVICE_NAME?: string;
+  CLOUD_PUBLIC_SERVICE_TERMS_JSON?: string;
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
+  /** Server-owned registrations for independently branded native clients. */
+  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
+  /**
+   * Digital Asset Links statements served at `/.well-known/assetlinks.json`:
+   * a JSON array of `{ package_name, sha256_cert_fingerprints[], relations? }`.
+   * Malformed config is served as `[]`.
+   */
+  ELIZA_ANDROID_ASSET_LINKS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -145,7 +196,11 @@ export interface Bindings {
 
   // ---- Cloudflare Registrar/DNS ----
   /** Native Workers AI binding for the canonical BGE CLS embedding representation. */
-  AI?: CloudflareEmbeddingBinding;
+  AI?: CloudflareEmbeddingBinding & CloudflareSpeechBinding & CloudflareClefBinding;
+  /** "true" turns on POST /api/v1/decisions (Clef through the AI binding). */
+  CLEF_DECISIONS_ENABLED?: string;
+  /** "clef-flash" (default) or "clef". */
+  CLEF_DECISION_MODEL?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** Workers AI credential for the canonical BGE embedding model. */
   CLOUDFLARE_EMBEDDING_API_TOKEN?: string;
@@ -439,6 +494,8 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Browser-safe key returned with in-app subscription checkout; pk_live_ only in production, else pk_test_. */
+  STRIPE_PUBLISHABLE_KEY?: string;
   /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
   SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
   /** Explicit default app billing mode; live is accepted only in production. */
@@ -602,38 +659,11 @@ export interface Bindings {
   DIRECT_REDIS_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
-  // Inference hot path (#9899). The auth+moderation single-read cache is the
-  // default now (no flag). INFERENCE_OPTIMISTIC_BILLING="true" enables Tier-2
-  // off-path billing (requires the durable backstop). SAFE_BALANCE_THRESHOLD
-  // (USD) gates the optimistic path; unset/invalid -> +Inf (every org takes the
-  // safe synchronous-reserve path).
-  INFERENCE_OPTIMISTIC_BILLING?: string;
-  SAFE_BALANCE_THRESHOLD?: string;
-  // Optimistic-billing durable backstop selector. "db" routes the pending-charge
-  // + settlement through the inference_pending_charges DB ledger (atomic
-  // overdraw bound + exactly-once settle + age-ordered sweep); anything else
-  // (default) keeps the KV backstop. Both still require INFERENCE_OPTIMISTIC_BILLING.
-  INFERENCE_BILLING_LEDGER?: string;
-  // Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
-  // (ledger insert / KV pending charge) off the pre-forward critical path via
-  // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
-  // + revision-aware Durable Object lease) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
-  INFERENCE_DEFERRED_ADMISSION?: string;
-  // Tier-3 in-isolate decision caches (#9899): "true" enables the org
-  // rate-limit lease (convergent — leased requests are carried back into the
-  // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
-  // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
-  INFERENCE_HOT_PATH_CACHES?: string;
-  INFERENCE_AUTH_CACHE_ENABLED?: string;
-  /** Strong Durable Object boundary required before positive auth caching can activate. */
-  INFERENCE_STRONG_REVOCATION_ENABLED?: string;
-  /**
-   * "true" serves warm Worker admission from the published admission snapshot:
-   * no policy or dispatch-policy transaction runs before provider dispatch. The
-   * organization Durable Object fences the snapshot's policy generation and
-   * balance revision. Requires INFERENCE_DEFERRED_ADMISSION.
-   */
-  INFERENCE_SNAPSHOT_ADMISSION_ENABLED?: string;
+  /** Delegated, primary-backed inference budgets; enroll organizations only after validation. */
+  INFERENCE_FUNDED_BUDGET_ADMISSION?: string;
+  /** Fenced rate-only admission; separate from funded escrow and default off. */
+  INFERENCE_RATE_POLICY_ADMISSION?: string;
+  INFERENCE_FUNDING_BUDGET_SEAL_SECRET?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead
@@ -688,6 +718,12 @@ export interface Variables {
   apiKeyId?: string;
   /** Registered app that issued a mobile lifecycle credential. */
   apiKeySourceAppId?: string;
+  /**
+   * The Steward session of this request made the Cloud user's organization: this
+   * request created it, or it was created after the session was issued. Set
+   * server-side only, so retries of one sign-in get the same answer.
+   */
+  stewardAccountCreated?: true;
 }
 
 export type AppEnv = {

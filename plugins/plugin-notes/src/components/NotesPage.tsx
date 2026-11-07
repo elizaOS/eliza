@@ -7,6 +7,10 @@
 import type { JSX } from "react";
 import { NotesView } from "./NotesView.js";
 
-export function NotesPage(): JSX.Element {
-  return <NotesView />;
+export function NotesPage({
+  active = true,
+}: {
+  active?: boolean;
+} = {}): JSX.Element {
+  return <NotesView active={active} />;
 }

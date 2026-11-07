@@ -38,9 +38,13 @@ import {
   Route,
   Routes,
   useLocation,
-  useParams,
 } from "react-router-dom";
 import { Button } from "../../components/ui/button";
+import {
+  type BrandingConfig,
+  DEFAULT_BRANDING,
+} from "../../config/branding-base";
+import { BrandingContext } from "../../config/branding-react.hooks";
 import { isAppModeHost } from "../app-mode/app-mode";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -65,74 +69,7 @@ import {
   subscribeCloudRoutes,
 } from "./cloud-route-registry";
 import { StewardAuthProvider } from "./StewardProvider";
-/**
- * Retired `/dashboard/*` redirect map. Cloud management now lives at
- * `/cloud/*` inside the normal Eliza app shell; these entries normalize older
- * route spellings while preserving parameters and query strings.
- */
-export const LEGACY_DASHBOARD_REDIRECTS: ReadonlyArray<{
-  from: string;
-  to: string;
-}> = [
-  { from: "dashboard", to: "/cloud" },
-  // Legacy build/* surface → agents.
-  { from: "dashboard/build/*", to: "/cloud/my-agents" },
-  // Media generators were folded into the API explorer.
-  { from: "dashboard/image", to: "/cloud/api-explorer" },
-  { from: "dashboard/video", to: "/cloud/api-explorer" },
-  { from: "dashboard/gallery", to: "/cloud/api-explorer" },
-  { from: "dashboard/voices", to: "/cloud/api-explorer" },
-  // Containers were unified under agents.
-  { from: "dashboard/containers", to: "/cloud/agents" },
-  { from: "dashboard/containers/:id", to: "/cloud/agents/:id" },
-  { from: "dashboard/containers/agents/:id", to: "/cloud/agents/:id" },
-  // Real chat lives in the app, not the dashboard; old chat deep links
-  // redirect back to the agent detail page.
-  { from: "dashboard/agents/:id/chat", to: "/cloud/agents/:id" },
-  // App-create modal is opened from the apps list, not its own route.
-  { from: "dashboard/apps/create", to: "/cloud/apps" },
-  // Earnings + Affiliates merged into the tabbed Monetization console page.
-  { from: "dashboard/earnings", to: "/cloud/monetization" },
-  { from: "dashboard/affiliates", to: "/cloud/monetization" },
-  // Knowledge/Documents now lives in the app; old deep links land on the agents list.
-  { from: "dashboard/documents", to: "/cloud/agents" },
-];
-/** Retired `/cloud/*` aliases emitted by older clients and saved bookmarks. */
-export const CLOUD_MANAGEMENT_COMPAT_REDIRECTS: ReadonlyArray<{
-  from: string;
-  to: string;
-}> = [
-  { from: "cloud/security", to: "/cloud/account" },
-  { from: "cloud/earnings", to: "/cloud/monetization" },
-  { from: "cloud/affiliates", to: "/cloud/monetization" },
-];
-/**
- * Substitute `:param` segments from the matched route params, preserve the
- * query string, and keep any `#hash` on the target after the query (a naive
- * `to + search` concatenation would swallow the query into the hash).
- */
-function ParamRedirect({ to }: { to: string }): React.JSX.Element {
-  const location = useLocation();
-  const params = useParams();
-  const resolved = to.replace(/:([a-zA-Z]+)/g, (_, key) => params[key] ?? "");
-  const [path, hash] = resolved.split("#");
-  return (
-    <Navigate
-      to={`${path}${location.search}${hash ? `#${hash}` : ""}`}
-      replace
-    />
-  );
-}
-/**
- * Settings-tab URLs issued by older OAuth and billing flows map onto their
- * canonical managed Cloud pages. Unknown/absent tabs land on Cloud home.
- */
-const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
-  connections: "/cloud/connectors",
-  billing: "/cloud/billing",
-  organization: "/cloud/organization",
-  agents: "/cloud/agents",
-};
+
 /** Settings sections whose bodies already have a standalone Cloud route. */
 const CLOUD_SETTINGS_SECTION_TARGETS: Readonly<Record<string, string>> = {
   "#cloud-account": "/cloud/account",
@@ -143,15 +80,6 @@ const CLOUD_SETTINGS_SECTION_TARGETS: Readonly<Record<string, string>> = {
   "#cloud-organization": "/cloud/organization",
   "#cloud-plugin-grants": "/cloud/security/permissions",
 };
-function LegacySettingsTabRedirect(): React.JSX.Element {
-  const location = useLocation();
-  const target = resolveLegacyCloudSettingsTarget(location.search);
-  return <Navigate to={`${target}${location.search}`} replace />;
-}
-export function resolveLegacyCloudSettingsTarget(search: string): string {
-  const tab = new URLSearchParams(search).get("tab") ?? "";
-  return LEGACY_SETTINGS_TAB_TARGETS[tab] ?? "/cloud";
-}
 function renderRouteElement(route: CloudRouteDef): React.JSX.Element {
   const RouteComponent = route.element as ComponentType<unknown>;
   return (
@@ -337,18 +265,6 @@ export function CloudManagementSessionGate({
   }
   return <>{children}</>;
 }
-/** Preserve any retired dashboard deep link not covered by a narrower map. */
-function LegacyDashboardFallbackRedirect(): React.JSX.Element {
-  const location = useLocation();
-  const params = useParams();
-  const suffix = params["*"] ? `/${params["*"]}` : "";
-  return (
-    <Navigate
-      to={`/cloud${suffix}${location.search}${location.hash}`}
-      replace
-    />
-  );
-}
 /**
  * Cloud-side providers shared by every registered cloud / auth / payment route.
  * The tab/view App (catch-all) brings its own `AppProvider`, so these never
@@ -357,19 +273,36 @@ function LegacyDashboardFallbackRedirect(): React.JSX.Element {
  */
 function CloudProviders({
   children,
+  branding,
 }: {
   children: ReactNode;
+  branding?: Partial<BrandingConfig>;
 }): React.JSX.Element {
   return (
-    <QueryClientProvider client={queryClient}>
-      <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
-        {children}
-      </CloudI18nProvider>
-    </QueryClientProvider>
+    <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, ...branding }}>
+      <QueryClientProvider client={queryClient}>
+        <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
+          {children}
+        </CloudI18nProvider>
+      </QueryClientProvider>
+    </BrandingContext.Provider>
   );
 }
 /** Route groups consolidated into the normal Eliza agent-app shell. */
 const MANAGED_CLOUD_APP_GROUPS = new Set(["cloud", "admin"]);
+function LegacySecurityRedirect(): React.JSX.Element {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: "/cloud/account",
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
+}
 function CanonicalCloudAppRedirect(): React.JSX.Element {
   const location = useLocation();
   const environment = elizaCloudEnvironmentForHostname(
@@ -421,6 +354,8 @@ function CloudRouteElement({
   );
 }
 export interface CloudRouterShellProps {
+  /** Host-owned identity for public Cloud routes outside the app provider. */
+  branding?: Partial<BrandingConfig>;
   /**
    * The existing tab/view app subtree (`<App/>` plus any host runtimes the
    * shell must not know about — desktop nav/tray, etc.). Rendered unchanged
@@ -542,6 +477,7 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
  */
 export function CloudRouterShell({
   appElement,
+  branding,
   cloudManagementElement,
   marketingHomeElement,
   downloadsElement,
@@ -565,7 +501,7 @@ export function CloudRouterShell({
        * is applied per-route (CloudRouteElement) so the app catch-all and public
        * token routes never load the @stwd/* runtime.
        */}
-      <CloudProviders>
+      <CloudProviders branding={branding}>
         <PrivateCloudRegistrationCoordinator />
         <Routes>
           {/* The marketing homepage owns `/` ONLY on a marketing host. Every
@@ -588,6 +524,8 @@ export function CloudRouterShell({
             />
           ) : null}
 
+          <Route path="cloud/security" element={<LegacySecurityRedirect />} />
+
           {cloudRoutes.map((route) => (
             <Route
               key={route.path}
@@ -601,31 +539,6 @@ export function CloudRouterShell({
               }
             />
           ))}
-
-          {LEGACY_DASHBOARD_REDIRECTS.map(({ from, to }) => (
-            <Route key={from} path={from} element={<ParamRedirect to={to} />} />
-          ))}
-
-          {CLOUD_MANAGEMENT_COMPAT_REDIRECTS.map(({ from, to }) => (
-            <Route key={from} path={from} element={<ParamRedirect to={to} />} />
-          ))}
-
-          {/* Old OAuth/Stripe callbacks can still carry the retired
-            /dashboard/settings?tab=<x> shape. */}
-          <Route
-            path="dashboard/settings"
-            element={<LegacySettingsTabRedirect />}
-          />
-
-          <Route
-            path="cloud/settings"
-            element={<LegacySettingsTabRedirect />}
-          />
-
-          <Route
-            path="dashboard/*"
-            element={<LegacyDashboardFallbackRedirect />}
-          />
 
           {/* A cold direct /cloud/* load must finish registering the lazy
             app-shell page before the tab router resolves the path. */}

@@ -12,7 +12,7 @@ import {
   onViewEvent,
   type ViewEvent,
   type ViewEventPayload,
-} from "../views/view-event-bus";
+} from "../events/view-events";
 
 /**
  * Subscribe to a view event type inside a React component.

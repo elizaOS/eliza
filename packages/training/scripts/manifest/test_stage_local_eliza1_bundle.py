@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import stage_local_eliza1_bundle as stage  # noqa: E402
+from eliza_training.manifest import stage_local_eliza1_bundle as stage  # noqa: E402
 
 
 def _write(path: Path, payload: str | bytes) -> Path:

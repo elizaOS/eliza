@@ -5,8 +5,8 @@
  * the runtime must salvage structure from a weak model's not-quite-valid JSON.
  */
 
-import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
-import { formatError } from "../utils/format-error.ts";
+import { unwrapWholeCodeFence } from "../markdown/code.ts";
+import { formatError } from "../utils/errors.ts";
 
 export function parseJsonObject<T extends object>(raw: string): T | null {
 	const trimmed = raw.trim();
@@ -16,25 +16,49 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 
 	const candidate = unwrapWholeCodeFence(trimmed, ["json"]) ?? trimmed;
 
-	const parsedCandidate =
-		parseObjectCandidate<T>(candidate) ??
-		parseObjectCandidate<T>(repairJsonStringEscapes(candidate));
+	const parsedCandidate = parseObjectCandidateWithRepairs<T>(candidate);
 	if (parsedCandidate) {
 		return parsedCandidate;
 	}
 
-	const repairedCandidate = repairJsonStringEscapes(candidate);
-	const objectText =
-		extractJsonObjects(candidate)[0] ??
-		(repairedCandidate === candidate
-			? null
-			: extractJsonObjects(repairedCandidate)[0]);
-	if (!objectText) return null;
-
+	// The reply is not one bare object. Read the outermost object regions and
+	// keep the first region that is JSON. A `{` in prose that never closes, or a
+	// quote that only frames a word, must not hide the object after it, and a
+	// region that is not JSON (a placeholder such as `{name}`) must not hide the
+	// next one.
 	return (
-		parseObjectCandidate<T>(objectText) ??
-		parseObjectCandidate<T>(repairJsonStringEscapes(objectText))
+		parseFirstObjectRegion<T>(candidate) ??
+		parseFirstObjectRegion<T>(repairJsonStringEscapes(candidate))
 	);
+}
+
+/** Parse one candidate, then the same text with its string escapes repaired. */
+function parseObjectCandidateWithRepairs<T extends object>(
+	text: string,
+): T | null {
+	return (
+		parseObjectCandidate<T>(text) ??
+		parseObjectCandidate<T>(
+			repairJsonStringEscapes(text, { trailingBackslashQuotes: false }),
+		) ??
+		parseObjectCandidate<T>(repairJsonStringEscapes(text))
+	);
+}
+
+/**
+ * First object region that parses. The regions come from
+ * {@link extractJsonObjectSpans}, so prose before a brace never changes how that
+ * brace is read and an unclosed brace is dropped instead of swallowing the
+ * objects after it.
+ */
+function parseFirstObjectRegion<T extends object>(text: string): T | null {
+	for (const { start, end } of extractJsonObjectSpans(text)) {
+		const parsed = parseObjectCandidateWithRepairs<T>(text.slice(start, end));
+		if (parsed) {
+			return parsed;
+		}
+	}
+	return null;
 }
 
 function parseObjectCandidate<T extends object>(candidate: string): T | null {
@@ -111,7 +135,90 @@ export function extractJsonObjects(raw: string): string[] {
 	return objects;
 }
 
-export function repairJsonStringEscapes(raw: string): string {
+/**
+ * Spans of the outermost complete `{...}` objects embedded in prose, in order.
+ * Unlike {@link extractJsonObjects}, text before a `{` never changes how that
+ * object is read: a `"` outside every object is prose (`5" wide`), and a `{`
+ * that never closes (`{ 5"`) is dropped instead of hiding the objects after it.
+ * Linear: the end of each `{` and of each string is resolved once and reused.
+ */
+export function extractJsonObjectSpans(
+	raw: string,
+): Array<{ start: number; end: number }> {
+	const UNRESOLVED = -2;
+	const UNCLOSED = -1;
+	const objectEnds = new Int32Array(raw.length).fill(UNRESOLVED);
+	const stringEnds = new Int32Array(raw.length).fill(UNRESOLVED);
+	// Index of the quote that closes a string whose content starts at `from`.
+	const resolveStringEnd = (from: number): number => {
+		const visited: number[] = [];
+		let end = UNCLOSED;
+		for (let index = from; index < raw.length; index++) {
+			const known = stringEnds[index] as number;
+			if (known !== UNRESOLVED) {
+				end = known;
+				break;
+			}
+			visited.push(index);
+			if (raw[index] === "\\") {
+				index++;
+			} else if (raw[index] === '"') {
+				end = index;
+				break;
+			}
+		}
+		for (const index of visited) stringEnds[index] = end;
+		return end;
+	};
+	// Exclusive end of the object opened by the `{` at `from`, or UNCLOSED.
+	const resolveObjectEnd = (from: number): number => {
+		const frames = [{ start: from, index: from + 1 }];
+		let childEnd = UNRESOLVED;
+		while (frames.length > 0) {
+			const frame = frames[frames.length - 1] as (typeof frames)[number];
+			let end = childEnd === UNCLOSED ? UNCLOSED : UNRESOLVED;
+			if (childEnd >= 0) frame.index = childEnd;
+			childEnd = UNRESOLVED;
+			for (; end === UNRESOLVED && frame.index < raw.length; frame.index++) {
+				const char = raw[frame.index];
+				if (char === '"') {
+					const close = resolveStringEnd(frame.index + 1);
+					if (close === UNCLOSED) end = UNCLOSED;
+					else frame.index = close;
+				} else if (char === "}") {
+					end = frame.index + 1;
+				} else if (char === "{") {
+					const nested = objectEnds[frame.index] as number;
+					if (nested === UNRESOLVED) break;
+					if (nested === UNCLOSED) end = UNCLOSED;
+					else frame.index = nested - 1;
+				}
+			}
+			if (end === UNRESOLVED && frame.index < raw.length) {
+				frames.push({ start: frame.index, index: frame.index + 1 });
+				continue;
+			}
+			childEnd = end === UNRESOLVED ? UNCLOSED : end;
+			objectEnds[frame.start] = childEnd;
+			frames.pop();
+		}
+		return childEnd;
+	};
+	const spans: Array<{ start: number; end: number }> = [];
+	for (let start = raw.indexOf("{"); start >= 0; ) {
+		const end = resolveObjectEnd(start);
+		if (end >= 0) spans.push({ start, end });
+		start = raw.indexOf("{", end >= 0 ? end : start + 1);
+	}
+	return spans;
+}
+
+function repairJsonStringEscapes(
+	raw: string,
+	{
+		trailingBackslashQuotes = true,
+	}: { trailingBackslashQuotes?: boolean } = {},
+): string {
 	let output = "";
 	let inString = false;
 	let escaped = false;
@@ -127,7 +234,11 @@ export function repairJsonStringEscapes(raw: string): string {
 		}
 
 		if (escaped) {
-			if (char === '"' && looksLikeJsonDelimiterAfterString(raw, index + 1)) {
+			if (
+				trailingBackslashQuotes &&
+				char === '"' &&
+				looksLikeJsonDelimiterAfterString(raw, index + 1)
+			) {
 				output += '\\\\"';
 				inString = false;
 				escaped = false;
@@ -196,9 +307,10 @@ function isValidJsonEscape(raw: string, index: number): boolean {
 	if (char !== "u") {
 		return false;
 	}
-	const hex = raw.slice(index + 1, index + 5);
-	return /^[0-9a-fA-F]{4}$/.test(hex);
+	return HEX4_RE.test(raw.slice(index + 1, index + 5));
 }
+
+const HEX4_RE = /^[0-9a-fA-F]{4}$/;
 
 function escapeRawJsonStringChar(char: string): string {
 	switch (char) {
@@ -234,7 +346,7 @@ export function stringifyForDiagnostics(value: unknown): string {
 	// single never-pruned WeakSet rendered a shared (non-cyclic) sub-object — a
 	// DAG, e.g. the same tool result referenced from two keys — as "[Circular]",
 	// silently dropping the second reference from recorded trajectories and
-	// evaluator diagnostics (#31004). `this` is the holder of the key being
+	// evaluator diagnostics. `this` is the holder of the key being
 	// visited and JSON.stringify walks depth-first, so pruning the stack back to
 	// `this` keeps exactly the ancestor chain while still collapsing true cycles.
 	const ancestors: object[] = [];
@@ -261,16 +373,19 @@ export function stringifyForDiagnostics(value: unknown): string {
 	}
 }
 
+/** `_`-bearing uppercase tag name: the only shape recovered as an invocation. */
+const PSEUDO_TOOL_SNAKE_NAME_SRC = "[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+";
+
 /**
  * Tag-name shape of an invented pseudo-tool tag: `_`-bearing OR ≥4 uppercase
  * chars, case-sensitive, so quoted real acronyms (`<AI>`) stay prose. Single
- * source of truth shared by the reply stripper below, the planner's embedded
- * tool-call recovery, and the evaluator's user-facing-answer screen — the
- * three must agree on what counts as tool markup, or text screened by one is
- * silently laundered by another (matrix F38, tj-9129a432454364).
+ * source of truth shared by the reply stripper, the planner's embedded
+ * tool-call recovery ({@link parsePseudoTagToolInvocations}), and the
+ * evaluator's user-facing-answer screen ({@link containsToolCallShapedMarkup})
+ * — the three must agree on what counts as tool markup, or text screened by
+ * one is silently laundered by another (matrix F38, tj-9129a432454364).
  */
-export const PSEUDO_TOOL_TAG_NAME_SRC =
-	"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,}";
+const PSEUDO_TOOL_TAG_NAME_SRC = `${PSEUDO_TOOL_SNAKE_NAME_SRC}|[A-Z][A-Z0-9]{3,}`;
 
 const PSEUDO_TOOL_TAG_BLOCK_RE = new RegExp(
 	`<(${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*?</\\1>`,
@@ -280,6 +395,17 @@ const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
 	`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>[\\s\\S]*$`,
 	"g",
 );
+const PSEUDO_TOOL_TAG_OPEN_RE = new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`);
+const NATIVE_TOOL_CALL_MARKUP_RE =
+	/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i;
+const PSEUDO_TAG_INVOCATION_RE = new RegExp(
+	`<(${PSEUDO_TOOL_SNAKE_NAME_SRC})>\\s*(\\{[\\s\\S]*?\\})\\s*<\\/\\1>`,
+	"g",
+);
+const PAIRED_TOOL_CALL_RE = /<tool_call\b[\s\S]*?<\/tool_call>/gi;
+const TRUNCATED_TOOL_CALL_RE =
+	/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g;
+const JSON_PUNCTUATION_ONLY_RE = /^[\s{}[\]":,]+$/;
 
 /**
  * Detects tool-call-shaped markup a model emitted as reply text instead of a
@@ -291,8 +417,7 @@ const PSEUDO_TOOL_TAG_OPEN_TAIL_RE = new RegExp(
  */
 export function containsToolCallShapedMarkup(text: string): boolean {
 	return (
-		/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text) ||
-		new RegExp(`<(?:${PSEUDO_TOOL_TAG_NAME_SRC})>`).test(text)
+		NATIVE_TOOL_CALL_MARKUP_RE.test(text) || PSEUDO_TOOL_TAG_OPEN_RE.test(text)
 	);
 }
 
@@ -310,9 +435,7 @@ export function parsePseudoTagToolInvocations(
 ): Array<{ name: string; params: Record<string, unknown> }> {
 	if (!text?.includes("<")) return [];
 	const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
-	const blockRe =
-		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g;
-	for (const match of text.matchAll(blockRe)) {
+	for (const match of text.matchAll(PSEUDO_TAG_INVOCATION_RE)) {
 		try {
 			const parsed: unknown = JSON.parse(match[2]);
 			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -334,12 +457,12 @@ export function parsePseudoTagToolInvocations(
  * Clean a model-produced reply field before it reaches the user. Removes
  * structural junk that weak models emit as plain text but which is never
  * user-facing content:
- *   1. the model's NATIVE tool-call serialization emitted as text instead of a
- *      structured call, e.g.
- *      `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
- *      (observed on cerebras gpt-oss / zai; eliza routes real tool calls
- *      structurally, and this markup never appears in eliza's own format), and
- *   2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
+ * 1. the model's NATIVE tool-call serialization emitted as text instead of a
+ * structured call, e.g.
+ * `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
+ * (observed on cerebras gpt-oss / zai; eliza routes real tool calls
+ * structurally, and this markup never appears in eliza's own format), and
+ * 2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
  *
  * Structural artifact removal - the sibling of the existing `[tool output:]`
  * markup stripping - not semantic-content matching. The truncated-open branch is
@@ -351,16 +474,13 @@ export function parsePseudoTagToolInvocations(
 export function stripJsonStructuralJunkReply(value: string): string {
 	const cleaned = value
 		// Fully-serialized (paired) tool-call markup leaked as text.
-		.replace(/<tool_call\b[\s\S]*?<\/tool_call>/gi, "")
+		.replace(PAIRED_TOOL_CALL_RE, "")
 		// Truncated-open markup (no closing tag): only strip to end when it is
 		// clearly a leaked serialization - an uppercase ACTION token or the native
 		// `<arg_key>`/`<arg_value>` markup follows. Case-SENSITIVE on purpose: the
 		// uppercase action token is what distinguishes a real leaked call from a
 		// bare prose mention of `<tool_call>` (which must be preserved).
-		.replace(
-			/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g,
-			"",
-		)
+		.replace(TRUNCATED_TOOL_CALL_RE, "")
 		// Invented pseudo-tool-invocation tags: a weak model reaching for a
 		// capability it cannot call structurally emits a bare `<UPPER_SNAKE>`
 		// tag block instead (observed on cerebras zai/gemma:
@@ -372,5 +492,5 @@ export function stripJsonStructuralJunkReply(value: string): string {
 		.replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
 		.trim();
 	if (!cleaned) return "";
-	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
+	return JSON_PUNCTUATION_ONLY_RE.test(cleaned) ? "" : cleaned;
 }

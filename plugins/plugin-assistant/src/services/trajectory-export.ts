@@ -11,4 +11,4 @@ export {
 export {
   type TrajectoryPlaintextOptions,
   trajectoryToPlaintext,
-} from "@elizaos/core/activity-plaintext";
+} from "@elizaos/core/protocol";

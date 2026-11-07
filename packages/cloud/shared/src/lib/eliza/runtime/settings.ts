@@ -73,10 +73,23 @@ export function buildRuntimeSettings(context: UserContext): Record<string, strin
   );
 }
 
+/**
+ * `parseCharacter` moves every settings key its schema does not declare into
+ * `settings.extra` (runtime `getSetting` reads both). Read the character's own
+ * keys from both places, top level first, as `getSetting` does.
+ */
+function flatCharacterSettings(character: Character): Record<string, unknown> {
+  const { extra, ...rest } = (character.settings ?? {}) as Record<string, unknown>;
+  return extra && typeof extra === "object" && !Array.isArray(extra)
+    ? { ...(extra as Record<string, unknown>), ...rest }
+    : rest;
+}
+
 /** Resolve once by the same precedence for provider settings, adapter setup, and cache metadata. */
 export function resolveHostedEmbeddingModel(character: Character): string {
+  const characterSettings = flatCharacterSettings(character);
   for (const key of ["OPENAI_EMBEDDING_MODEL", "ELIZAOS_CLOUD_EMBEDDING_MODEL"] as const) {
-    const value = character.settings?.[key];
+    const value = characterSettings[key];
     if (value === undefined || value === null || value === "") continue;
     if (typeof value !== "string" || !value.trim()) {
       throw new ElizaError("Configure the embedding model as a non-empty model identifier", {
@@ -111,7 +124,7 @@ export function buildSettings(
     ORGANIZATION_ID: _stripOrgId,
     IS_ANONYMOUS: _stripIsAnon,
     ...charSettings
-  } = (character.settings || {}) as Record<string, unknown>;
+  } = flatCharacterSettings(character);
 
   const getSetting = (key: string, fallback: string) =>
     (charSettings[key] as string) || process.env[key] || fallback;

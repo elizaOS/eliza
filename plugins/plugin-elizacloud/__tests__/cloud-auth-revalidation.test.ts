@@ -180,6 +180,34 @@ describe("CloudAuthService.probeApiKey classification (I/O)", () => {
     expect(result).not.toBe("invalid");
   });
 
+  it("re-authorization with a new key drops the old key's revoked verdict and probes the new key", async () => {
+    next = { status: 200, hang: false };
+    const service = new CloudAuthService();
+    service.getClient().setBaseUrl(baseUrl);
+    const internals = service as unknown as {
+      revalidationState: RevalidationState;
+      revalidationTimer: unknown;
+    };
+    // Confirmed revoked against the previous key.
+    internals.revalidationState = { keyState: "invalid", consecutiveInvalid: 2 };
+    expect(service.isApiKeyInvalid()).toBe(true);
+
+    service.authenticateWithApiKey({ apiKey: "replacement-key" });
+    expect(service.isApiKeyInvalid()).toBe(false);
+    expect(internals.revalidationTimer).not.toBeNull();
+
+    const deadline = Date.now() + 5_000;
+    while (internals.revalidationState.keyState !== "valid" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(internals.revalidationState.keyState).toBe("valid");
+
+    service.clearAuth();
+    expect(internals.revalidationTimer).toBeNull();
+    expect(service.isApiKeyInvalid()).toBe(false);
+    await service.stop();
+  });
+
   it("connection refused (no server) → unreachable, NOT invalid", async () => {
     const service = new CloudAuthService();
     // Reserved-by-RFC port that nothing listens on → ECONNREFUSED (raw fetch error).

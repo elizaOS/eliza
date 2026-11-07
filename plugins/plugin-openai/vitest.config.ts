@@ -1,8 +1,4 @@
-/**
- * Vitest config for the default unit/shape suite: aliases `@elizaos/plugin-sql`
- * to workspace source and excludes the live, real-drift, and PGLite real-runtime
- * lanes (each has its own config or gated invocation).
- */
+/** Adapter integration checks; live and keyless-runtime suites have dedicated configs. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
@@ -32,12 +28,20 @@ export default defineConfig({
 				replacement: path.join(pluginSqlRoot, "types.ts"),
 			},
 			{
+				find: /^@elizaos\/plugin-sql\/errors$/,
+				replacement: path.join(pluginSqlRoot, "pglite", "errors.ts"),
+			},
+			{
 				find: /^@elizaos\/plugin-sql\/(.+)$/,
 				replacement: path.join(pluginSqlRoot, "$1"),
 			},
 		],
 	},
 	test: {
+    maxWorkers: 2,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    fsModuleCache: true,
 		environment: "node",
 		include: [
 			"__tests__/**/*.test.ts",

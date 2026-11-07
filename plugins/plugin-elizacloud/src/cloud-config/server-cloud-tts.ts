@@ -12,10 +12,11 @@
  * plugin because it ties together the agent runtime route surface.
  */
 import fs from "node:fs";
+import { isOpenAiVoiceAlias } from "../utils/voice-aliases.js";
 import path from "node:path";
 import { getCloudSecret } from "./cloud-secrets.js";
 import { getElizaNamespace } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
 import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { resolveDevCloudAuthorityEnvValue } from "./dev-cloud-env-authority.js";
 import { resolveDevCloudEnvAuthority } from "./dev-cloud-env-authority.js";
@@ -261,18 +262,6 @@ export function resolveCloudSttCandidateUrls(env: NodeJS.ProcessEnv = process.en
 export function shouldRetryCloudTtsUpstream(status: number): boolean {
     return status === 404 || status === 502 || status === 503;
 }
-/** OpenAI-style names — not valid ElevenLabs `voiceId`; map to default voice. */
-const OPENAI_STYLE_VOICE_ALIASES = new Set([
-    "alloy",
-    "ash",
-    "ballad",
-    "coral",
-    "echo",
-    "nova",
-    "sage",
-    "shimmer",
-    "verse",
-]);
 /** Eliza Cloud default premade voice (matches eliza-cloud-v2 ElevenLabs service). */
 const DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID = "eleven_flash_v2_5";
@@ -286,8 +275,7 @@ function normalizeElizaCloudVoiceId(raw: string): string {
     const trimmed = raw.trim();
     if (!trimmed)
         return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
-    const lower = trimmed.toLowerCase();
-    if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) {
+    if (isOpenAiVoiceAlias(trimmed)) {
         return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
     }
     if (isLikelyEdgeOrAzureNeuralVoiceId(trimmed)) {
@@ -309,8 +297,7 @@ export function normalizeElizaCloudTtsModelId(raw: string): string {
     const trimmed = raw.trim();
     if (!trimmed)
         return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
-    const lower = trimmed.toLowerCase();
-    if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) {
+    if (isOpenAiVoiceAlias(trimmed)) {
         return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
     }
     if (/^gpt-/i.test(trimmed)) {

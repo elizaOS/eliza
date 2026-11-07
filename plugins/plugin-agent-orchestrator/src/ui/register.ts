@@ -3,7 +3,7 @@
  * Native clients cannot execute agent-served JavaScript, so these lazy page
  * loaders are the signed in-app counterparts to the runtime view manifest.
  */
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerAppShellPage } from "@elizaos/ui";
 import "./register-slots.js";
 
 const pluginId = "@elizaos/plugin-agent-orchestrator";
@@ -30,7 +30,7 @@ registerAppShellPage({
   icon: "Layers",
   path: "/orchestrator",
   viewKind: "developer",
-  developerOnly: true,
+
   surface: agentSurface,
   loader: () =>
     import("./OrchestratorView.js").then((module) => ({
@@ -45,7 +45,7 @@ registerAppShellPage({
   icon: "TerminalSquare",
   path: "/cockpit",
   viewKind: "developer",
-  developerOnly: true,
+
   surface: agentSurface,
   loader: () =>
     import("./CockpitRoute.js").then((module) => ({

@@ -11,11 +11,14 @@
  * `lifeops/service-normalize-gmail.ts` for its historical importers.
  */
 import crypto from "node:crypto";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
+  fail,
+  GOOGLE_CALENDAR_CACHE_TTL_MS,
+  GOOGLE_GMAIL_CACHE_TTL_MS,
   LIFEOPS_GMAIL_BULK_OPERATIONS,
   LIFEOPS_GMAIL_DRAFT_TONES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
+  type LifeOpsCalendarEvent,
   type LifeOpsConnectorGrant,
   type LifeOpsGmailBatchReplyDraftsFeed,
   type LifeOpsGmailBulkOperation,
@@ -30,18 +33,11 @@ import {
   type LifeOpsGmailSpamReviewStatus,
   type LifeOpsGmailTriageFeed,
   type LifeOpsGmailUnrespondedFeed,
-} from "@elizaos/core/contracts/personal-assistant";
-import {
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
-  GOOGLE_GMAIL_CACHE_TTL_MS,
-} from "@elizaos/core/lifeops-constants/service-constants";
-import {
-  fail,
   normalizeEnumValue,
   normalizeFiniteNumber,
   normalizeOptionalString,
   requireNonEmptyString,
-} from "@elizaos/core/lifeops-normalize/service-normalize";
+} from "@elizaos/contracts";
 import { extractLooseEmailAddress } from "./email-address.ts";
 export type SyncedGoogleGmailMessageSummary = Omit<
   LifeOpsGmailMessageSummary,
@@ -137,6 +133,13 @@ export function splitMailboxLikeList(value: string): string[] {
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
     const next = value[index + 1];
+    // RFC 5322 quoted-pair: a backslash inside a display name keeps the next
+    // character literal, so \" does not end the quoted name.
+    if (inQuotes && char === "\\" && next !== undefined) {
+      current += char + next;
+      index += 1;
+      continue;
+    }
     if (char === '"') {
       inQuotes = !inQuotes;
       current += char;
@@ -317,12 +320,19 @@ export function normalizeGmailSearchQueryMatches(
       return true;
     }
     if (tokenBody.startsWith("{") && tokenBody.endsWith("}")) {
-      const rawGroupMembers = tokenBody
-        .slice(1, -1)
-        .trim()
-        .split(/\s+/)
-        .map((entry) => entry.trim())
-        .filter(Boolean);
+      // Split on whitespace but keep quoted phrases (with any operator prefix)
+      // together: `{subject:"project alpha"}` must stay one member, not split
+      // into `subject:"project` / `alpha"`. Mirrors the quote-preserving
+      // tokenizer used by describeEmailSearchQuery().
+      const rawGroupMembers =
+        tokenBody
+          .slice(1, -1)
+          .trim()
+          // An unmatched trailing quote stays part of the member (e.g. the
+          // `subject:` fragment keeps its `"unbalanced` tail), so the member
+          // degrades to a literal subject search instead of collapsing to an
+          // empty `subject:` that matches every message.
+          .match(/(?:[^\s"]+|"[^"]*"|"[^"]*$)+/g) ?? [];
       // Gmail brace groups are already implicit disjunctions. A redundant
       // uppercase OR inside the group is syntax, not a search term: treating it
       // as a bare substring makes `{from:alice OR from:bob}` match unrelated
@@ -1170,7 +1180,7 @@ export function summarizeGmailRecommendations(
  * alongside the email classifier that depends on it; this preserves the
  * historical import path for in-plugin callers.
  */
-export { wrapUntrustedEmailContent } from "@elizaos/core/text/untrusted-email-content";
+export { wrapUntrustedEmailContent } from "@elizaos/core/protocol";
 export function buildFallbackGmailReplyDraftBody(args: {
   message: LifeOpsGmailMessageSummary;
   tone: "brief" | "neutral" | "warm";

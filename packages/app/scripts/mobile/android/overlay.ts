@@ -19,6 +19,7 @@ import {
   ANDROID_PERMISSIONS,
   androidAospRoleLauncherIntentFilter,
   ensureElizaBootReceiverManifest,
+  ensureElizaClockActivityManifest,
 } from "./manifest-policy.ts";
 import {
   assertSharedTreeOnlyForEliza,
@@ -327,6 +328,17 @@ export function overlayAndroid({
     let xml = fs.readFileSync(manifestPath, "utf8");
     let dirty = false;
 
+    // Existing generated projects can retain the canonical component names
+    // after Java has moved into the product namespace.
+    const withNotificationNamespace = xml.replace(
+      /(android:name=")(?:ai\.elizaos\.app\.|\.)NativeNotificationConnection(Service|Receiver)"/g,
+      `$1${androidPackage}.NativeNotificationConnection$2"`,
+    );
+    if (withNotificationNamespace !== xml) {
+      xml = withNotificationNamespace;
+      dirty = true;
+    }
+
     const withLocalCleartext = applyAndroidCleartextPolicy(xml, {
       allowCleartext: true,
     });
@@ -425,11 +437,11 @@ export function overlayAndroid({
       "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
       "ElizaCameraActivity",
-      "ElizaClockActivity",
       "ElizaCalendarActivity",
     ]) {
       const nextXml = removeApplicationComponentBlock(
@@ -456,11 +468,11 @@ export function overlayAndroid({
       "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
       "ElizaCameraActivity",
-      "ElizaClockActivity",
       "ElizaCalendarActivity",
       "ElizaDialActivity",
       "ElizaAssistActivity",
@@ -470,6 +482,7 @@ export function overlayAndroid({
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
     ]) {
       const nextXml = removeApplicationComponentClassBlock(xml, component);
@@ -686,6 +699,18 @@ export function overlayAndroid({
             </intent-filter>
         </service>`,
     );
+    // Owner review of a Cloud-drafted SMS reply: not exported, opened from the app's own notice.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaSmsReplyReviewActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />`,
+    );
     xml = appendMissingApplicationBlock(
       xml,
       `${androidPackage}.ElizaSmsComposeActivity`,
@@ -784,42 +809,23 @@ export function overlayAndroid({
             </intent-filter>
         </activity>`,
     );
-    // Clock: replaces stripped DeskClock. SET_ALARM is critical.
-    xml = appendMissingApplicationBlock(
-      xml,
-      `${androidPackage}.ElizaClockActivity`,
-      `
-        <activity
-            android:name="${androidPackage}.ElizaClockActivity"
-            android:exported="true"
-            android:label="Clock"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
-              {
-                enabled: includeAospRoleLaunchers,
-              },
-            )}
-            <intent-filter>
-                <action android:name="android.intent.action.SET_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_ALARMS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_TIMER" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_TIMERS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.DISMISS_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>`,
+    // The source template owns Clock's app entry. It does not replace DeskClock.
+    const clockTemplatePath = path.join(
+      platformsDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "AndroidManifest.xml",
     );
+    xml = ensureElizaClockActivityManifest(xml, androidPackage, {
+      templateXml: fs.existsSync(clockTemplatePath)
+        ? fs.readFileSync(clockTemplatePath, "utf8")
+        : undefined,
+      javaAvailable: fs.existsSync(
+        path.join(dstJava, "ElizaClockActivity.java"),
+      ),
+    });
     // Calendar: replaces stripped Calendar.
     xml = appendMissingApplicationBlock(
       xml,
@@ -991,6 +997,7 @@ export function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaSmsGatewayService",
     "ElizaRespondViaMessageService",
     "ElizaSmsComposeActivity",
+    "ElizaSmsReplyReviewActivity",
     "ElizaBootReceiver",
     "ElizaBrowserActivity",
     "ElizaContactsActivity",

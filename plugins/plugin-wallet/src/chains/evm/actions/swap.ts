@@ -21,7 +21,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import {
   createConfig,
@@ -35,6 +35,7 @@ import {
   type Address,
   encodeFunctionData,
   formatUnits,
+  type Hash,
   type Hex,
   parseAbi,
   parseUnits,
@@ -54,6 +55,7 @@ import {
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
+import { parseEvmBaseUnits } from "../exact-units";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
   type ChainBalanceState,
@@ -218,6 +220,38 @@ export class SwapAction {
       `All swap attempts failed after ${attemptCount} tries. ${lastError?.message ?? "Unknown error"}`
     );
   }
+  /**
+   * Wait for a broadcast swap's receipt. A reverted swap throws, so the next
+   * route can be tried. Any other failure (receipt timeout, RPC error) leaves
+   * the swap's outcome unknown: it may still land, so it is reported as
+   * unconfirmed instead of failed, and no other route is tried with the same
+   * funds.
+   */
+  private async waitForSwapReceipt(
+    publicClient: ReturnType<WalletProvider["getPublicClient"]>,
+    hash: Hash,
+    revertedMessage: string
+  ): Promise<"confirmed" | "unconfirmed"> {
+    let receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: TX_CONFIRMATION_TIMEOUT_MS,
+      });
+    } catch (error) {
+      // error-policy:J2 the transaction was broadcast; its outcome is unknown.
+      logger.warn(
+        `Swap ${hash} was broadcast but its receipt could not be read: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return "unconfirmed";
+    }
+    if (receipt.status === "reverted") {
+      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, revertedMessage);
+    }
+    return "confirmed";
+  }
   private isRecoverableError(error: Error): boolean {
     const message = error.message;
     return (
@@ -251,15 +285,18 @@ export class SwapAction {
       });
       fromTokenDecimals = Number(decimals);
     }
+    // Parsed here, outside the per-aggregator catch blocks, so an amount the
+    // token cannot hold is refused instead of reported as "No routes found".
+    const fromAmount = parseEvmBaseUnits(params.amount, fromTokenDecimals).toString();
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
-      this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
+      this.getLifiQuote(fromAddress, params, fromAmount, slippage),
       // The current Bebop request does not carry an enforceable slippage
       // bound. Keep it available for the legacy default path, but never let
       // it win a quote the user confirmed with an explicit tolerance.
       ...(params.slippageBps === undefined
-        ? [this.getBebopQuote(fromAddress, params, fromTokenDecimals)]
+        ? [this.getBebopQuote(fromAddress, params, fromAmount)]
         : []),
-      this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
+      this.getKyberSwapQuote(fromAddress, params, fromAmount, slippage),
     ];
     const quotesResults = await Promise.all(quotesPromises);
     const sortedQuotes = quotesResults.filter((quote): quote is SwapQuote => quote !== undefined);
@@ -272,7 +309,7 @@ export class SwapAction {
   private async getLifiQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number,
+    fromAmount: string,
     slippage: number = DEFAULT_SLIPPAGE_PERCENT
   ): Promise<SwapQuote | undefined> {
     try {
@@ -281,7 +318,7 @@ export class SwapAction {
         toChainId: this.walletProvider.getChainConfigs(params.chain).id,
         fromTokenAddress: params.fromToken,
         toTokenAddress: params.toToken,
-        fromAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        fromAmount,
         fromAddress,
         options: {
           slippage,
@@ -307,7 +344,7 @@ export class SwapAction {
   private async getBebopQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number
+    fromAmount: string
   ): Promise<SwapQuote | undefined> {
     try {
       const chainName = BEBOP_CHAIN_MAP[params.chain] ?? params.chain;
@@ -318,7 +355,7 @@ export class SwapAction {
       const reqParams = new URLSearchParams({
         sell_tokens: resolvedFromToken,
         buy_tokens: resolvedToToken,
-        sell_amounts: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sell_amounts: fromAmount,
         taker_address: fromAddress,
         approval_type: "Standard",
         skip_validation: "true",
@@ -344,7 +381,7 @@ export class SwapAction {
       }
       const route: BebopRoute = {
         data: quoteTx.data,
-        sellAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
+        sellAmount: fromAmount,
         approvalTarget: firstRoute.quote.approvalTarget as Address,
         from: quoteTx.from as Address,
         value: quoteTx.value?.toString() ?? "0",
@@ -362,8 +399,7 @@ export class SwapAction {
       const buyTokenInfo =
         buyTokens[resolvedToToken] ??
         buyTokens[params.toToken] ??
-        buyTokens[resolvedToToken.toLowerCase()] ??
-        Object.values(buyTokens)[0];
+        buyTokens[resolvedToToken.toLowerCase()];
       if (!buyTokenInfo?.minimumAmount) {
         throw new Error("Cannot determine minimum output amount");
       }
@@ -383,7 +419,7 @@ export class SwapAction {
   private async getKyberSwapQuote(
     fromAddress: Address,
     params: SwapParams,
-    fromTokenDecimals: number,
+    fromAmount: string,
     slippage: number
   ): Promise<SwapQuote | undefined> {
     try {
@@ -393,11 +429,10 @@ export class SwapAction {
         params.fromToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.fromToken;
       const toToken =
         params.toToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.toToken;
-      const amountIn = parseUnits(params.amount, fromTokenDecimals).toString();
       const url = new URL(`https://aggregator-api.kyberswap.com/${chainSlug}/api/v1/routes`);
       url.searchParams.set("tokenIn", fromToken);
       url.searchParams.set("tokenOut", toToken);
-      url.searchParams.set("amountIn", amountIn);
+      url.searchParams.set("amountIn", fromAmount);
       url.searchParams.set("gasInclude", "true");
       url.searchParams.set("source", "elizaos");
       const res = await fetch(url.toString(), {
@@ -422,7 +457,7 @@ export class SwapAction {
           chainSlug,
           fromToken,
           toToken,
-          amountIn,
+          amountIn: fromAmount,
           slippageBps,
           fromAddress,
         } satisfies KyberSwapRouteData,
@@ -488,13 +523,11 @@ export class SwapAction {
           : undefined,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Transaction reverted. Hash: ${hash}`);
-    }
+      `Transaction reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -502,6 +535,7 @@ export class SwapAction {
       value: BigInt(txRequest.value ?? "0"),
       data: txRequest.data as Hex,
       chainId: route.fromChainId,
+      confirmationStatus,
     };
   }
   private async executeBebopQuote(
@@ -535,13 +569,11 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Bebop swap reverted. Hash: ${hash}`);
-    }
+      `Bebop swap reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -549,6 +581,7 @@ export class SwapAction {
       value: BigInt(bebopRoute.value),
       data: bebopRoute.data as Hex,
       chainId: chainConfig.id,
+      confirmationStatus,
     };
   }
   private async executeKyberSwapQuote(
@@ -609,13 +642,11 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `KyberSwap swap reverted. Hash: ${hash}`);
-    }
+      `KyberSwap swap reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -623,6 +654,7 @@ export class SwapAction {
       value: BigInt(tx.transactionValue ?? "0"),
       data: tx.data as Hex,
       chainId: this.walletProvider.getChainConfigs(params.chain).id,
+      confirmationStatus,
     };
   }
   private async handleTokenApproval(
@@ -845,7 +877,12 @@ async function resolveRelativeSwapAmount(
   opts: { rawPercent: unknown; nativeBalance: string | undefined }
 ): Promise<string> {
   if (isNativeFromToken(wp, chain, fromToken)) {
-    return resolveRelativeAmount(mode, opts.rawPercent, opts.nativeBalance);
+    // Native decimals are chain-specific (e.g. Tempo uses 6); fall back to
+    // 18 only when the chain itself is not configured (parseSwapParams will
+    // reject it below).
+    const chainConfig = wp.chains[chain] ? wp.getChainConfigs(chain as SupportedChain) : undefined;
+    const nativeDecimals = chainConfig?.nativeCurrency.decimals ?? 18;
+    return resolveRelativeAmount(mode, opts.rawPercent, opts.nativeBalance, nativeDecimals);
   }
   const { raw, decimals } = await fetchFromTokenBalance(wp, chain, fromToken);
   return resolveRelativeTokenAmount(mode, opts.rawPercent, raw, decimals);
@@ -890,18 +927,34 @@ function resolveRelativeTokenAmount(
 }
 
 /**
+ * Reverse `formatUnits(wei, nativeDecimals)` exactly. `parseFloat` then
+ * `Number#toString` turns tiny balances into `"5e-7"`, which `parseUnits`
+ * rejects, so the relative swap never gets a quote.
+ */
+function nativeBalanceToWei(balance: string, nativeDecimals: number): bigint {
+  try {
+    return parseUnits(balance, nativeDecimals);
+  } catch (error) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      `Cannot resolve a relative swap amount: native balance is not an exact ${nativeDecimals}-decimal value.`,
+      error instanceof Error ? error : undefined
+    );
+  }
+}
+
+/**
  * Resolve a relative native-asset swap size ("half"/"max"/"percent") into an
  * absolute, human-readable amount string from the supplied native balance.
- * `max` keeps a 10% gas reserve (0.9 * balance).
- * Native balances are gas-token scale, so the float basis here is unchanged
- * from before; ERC-20 inputs take the exact-integer path in
- * `resolveRelativeTokenAmount` instead. Throws INVALID_PARAMS when the balance
- * is unknown or a percentage is out of the 1-100 range.
+ * `max` keeps a 10% gas reserve. Arithmetic stays in wei and floors, so the
+ * quote cannot ask for more than that share. Throws INVALID_PARAMS when the
+ * balance is unknown, not an exact decimal, or a percentage is outside 1-100.
  */
 function resolveRelativeAmount(
   mode: Exclude<AmountMode, "absolute">,
   rawPercent: unknown,
-  balance: string | undefined
+  balance: string | undefined,
+  nativeDecimals: number
 ): string {
   if (balance === undefined) {
     throw new EVMError(
@@ -909,21 +962,11 @@ function resolveRelativeAmount(
       `Cannot resolve a relative swap amount: unknown balance for the selected chain.`
     );
   }
-  const balanceNum = parseFloat(balance);
-  if (mode === "half") {
-    return (balanceNum / 2).toString();
-  }
+  const raw = nativeBalanceToWei(balance, nativeDecimals);
   if (mode === "max") {
-    return (balanceNum * 0.9).toString();
+    return formatUnits((raw * 9n) / 10n, nativeDecimals);
   }
-  const percent = Number(rawPercent);
-  if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
-    throw new EVMError(
-      EVMErrorCode.INVALID_PARAMS,
-      `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
-    );
-  }
-  return ((balanceNum * percent) / 100).toString();
+  return resolveRelativeTokenAmount(mode, rawPercent, raw, nativeDecimals);
 }
 export const swapAction = {
   name: spec.name,

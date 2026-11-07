@@ -7,12 +7,12 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
-import { openPermissionSettings } from "@elizaos/core/utils/permission-deep-links";
+import type { PermissionId } from "@elizaos/core/protocol";
+import { openPermissionSettings } from "@elizaos/core/protocol";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { cn } from "../../lib/utils";
 import { openMobilePermissionSettings } from "../../platform/mobile-permissions-client";
+import { cn } from "../../utils/cn";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 export interface PermissionRecoveryCalloutProps {
@@ -87,7 +87,7 @@ export function PermissionRecoveryCallout({
     <Alert
       variant="warningStrong"
       data-testid={testId}
-      className={cn("p-3 text-left", className)}
+      className={cn("block p-3 text-left", className)}
     >
       <div className="text-sm font-semibold text-txt-strong">{title}</div>
       <p className="mt-1 text-sm leading-snug text-txt">{description}</p>

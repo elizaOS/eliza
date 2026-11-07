@@ -18,15 +18,13 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
 } from "../src/lifeops/approval-queue.types.js";
-import { personalAssistantPlugin } from "../src/plugin.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 class FailingNotificationService extends Service {
   static override serviceType = ServiceType.NOTIFICATION;
@@ -71,9 +69,7 @@ function messageInput(): ApprovalEnqueueInput {
 beforeAll(async () => {
   stateDir = mkdtempSync(join(tmpdir(), "approval-notify-err-"));
   process.env.ELIZA_STATE_DIR = stateDir;
-  const result = await createRealTestRuntime({
-    plugins: [schedulingPlugin, personalAssistantPlugin],
-  });
+  const result = await createLifeOpsTestRuntime();
   runtime = result.runtime;
   cleanup = result.cleanup;
   await runtime.registerService(FailingNotificationService);

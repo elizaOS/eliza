@@ -3,7 +3,7 @@
  * expanded, collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { SidebarHeaderStack } from "./sidebar-header-stack";
+import { SidebarHeaderStack } from "./sidebar-layout";
 
 const meta = {
   title: "Composites/Sidebar/SidebarHeaderStack",

@@ -11,12 +11,13 @@ import { useSessionAuth } from "../../cloud/lib/use-session-auth";
 import { dispatchChatOpen } from "../../events";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { cn } from "../../lib/utils";
 import { logger } from "../../logger.ts";
 import { isAospShellEnabled } from "../../navigation";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { useShellSurface } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { shellHistory } from "../../surface-realm-channel";
+import { cn } from "../../utils/cn";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { getAppSlug } from "../apps/helpers";
 import { Launcher } from "./Launcher";
@@ -27,6 +28,7 @@ import {
   LAUNCHER_APPS_ORDER,
   LAUNCHER_DEVELOPER_ORDER,
 } from "./launcher-curation";
+import { NativeInstalledAppsLauncher } from "./NativeInstalledAppsLauncher";
 
 export interface LauncherSurfaceProps {
   /** Full-screen route or natural-height content inside Home's app scroller. */
@@ -58,6 +60,7 @@ export const LauncherSurface = React.memo(function LauncherSurface({
     }));
   const { authenticated: cloudAuthenticated } = useSessionAuth();
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
+  const surface = useShellSurface();
 
   const page = React.useMemo<ViewEntry[]>(
     () =>
@@ -195,14 +198,25 @@ export const LauncherSurface = React.memo(function LauncherSurface({
           : "relative w-full flex-none",
       )}
     >
-      <Launcher
-        entries={page}
-        loading={loading}
-        error={error}
-        onRetry={refresh}
-        onLaunch={handleLaunch}
-        embedded={layout === "embedded"}
-      />
+      {isAosp ? (
+        <NativeInstalledAppsLauncher
+          entries={page}
+          loading={loading}
+          active={catalogMode !== "demo" || surface.page === "launcher"}
+          error={error}
+          onRetry={refresh}
+          onLaunch={handleLaunch}
+        />
+      ) : (
+        <Launcher
+          entries={page}
+          loading={loading}
+          error={error}
+          onRetry={refresh}
+          onLaunch={handleLaunch}
+          embedded={layout === "embedded"}
+        />
+      )}
     </div>
   );
 });

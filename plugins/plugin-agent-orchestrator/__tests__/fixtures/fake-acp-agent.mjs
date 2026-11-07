@@ -17,6 +17,10 @@
 import { createInterface } from "node:readline";
 
 const SCENARIO = process.env.FAKE_ACP_SCENARIO || "random-color";
+// `--slow-initialize` delays the `initialize` reply, to hold a reattach open.
+const INITIALIZE_DELAY_MS = process.argv.includes("--slow-initialize")
+  ? 1500
+  : 0;
 const PROTOCOL_VERSION = 1;
 
 // Each scenario: the files the "agent" writes + the completion evidence it
@@ -211,6 +215,9 @@ rl.on("line", async (line) => {
   }
   const { id, method, params } = msg;
   if (method === "initialize") {
+    if (INITIALIZE_DELAY_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, INITIALIZE_DELAY_MS));
+    }
     send({
       jsonrpc: "2.0",
       id,

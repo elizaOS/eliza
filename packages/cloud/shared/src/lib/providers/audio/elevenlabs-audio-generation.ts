@@ -1,4 +1,5 @@
 // Defines cloud shared elevenlabs audio generation behavior for backend service consumers.
+import { APICallError } from "ai";
 import type { AudioGenRequest, AudioProvider, GeneratedAudio } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.elevenlabs.io";
@@ -52,7 +53,15 @@ async function readUpstreamErrorText(response: Response, label: string): Promise
 
 async function throwUpstreamError(response: Response, label: string): Promise<never> {
   const text = await readUpstreamErrorText(response, label);
-  throw new Error(`ElevenLabs ${label} failed (${response.status}): ${text}`);
+  // Keep the HTTP status so billing can tell a rejection from an ambiguous
+  // failure (isKnownUnacceptedProviderError reads APICallError.statusCode).
+  throw new APICallError({
+    message: `ElevenLabs ${label} failed (${response.status}): ${text}`,
+    url: response.url,
+    requestBodyValues: {},
+    statusCode: response.status,
+    responseBody: text,
+  });
 }
 
 async function generateElevenLabsMusic(request: AudioGenRequest): Promise<GeneratedAudio> {

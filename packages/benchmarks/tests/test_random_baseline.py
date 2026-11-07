@@ -309,6 +309,24 @@ def test_is_better_than_random_on_missing_inputs() -> None:
     assert rb.is_better_than_random(0.5, 0.0, higher_is_better=True) is False
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
+@pytest.mark.parametrize("higher_is_better", [True, False])
+def test_invalid_measurements_cannot_beat_random(value, higher_is_better) -> None:
+    assert rb.lift_over_random(value, 0.5, higher_is_better=higher_is_better) is None
+    assert rb.lift_over_random(0.5, value, higher_is_better=higher_is_better) is None
+    assert not rb.is_better_than_random(value, 0.5, higher_is_better=higher_is_better)
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), 0, -1, True])
+def test_invalid_lift_threshold_is_rejected(threshold) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        rb.is_better_than_random(1, 0.5, higher_is_better=True, min_lift=threshold)
+
+
+def test_overflowed_lift_is_unavailable() -> None:
+    assert rb.lift_over_random(1e308, 1e-308, higher_is_better=True) is None
+
+
 # -------- generate_random_response --------
 
 

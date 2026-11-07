@@ -5,9 +5,8 @@
  * and performs no user, organization, identity, or tenant provisioning.
  */
 
-import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { Hono } from "hono";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   isStagingSessionExchangeEnabled,
   isStagingSessionSigningConfigured,
@@ -16,26 +15,27 @@ import {
   StagingSessionConfigurationError,
   StagingSessionEligibilityError,
   validateStagingSessionBinding,
-} from "@/lib/auth/staging-session-binding";
+} from "@elizaos/cloud-shared/lib/auth/staging-session-binding";
 import {
   mintStewardTokenFromClaims,
   type StewardTokenClaims,
   type StewardVerifyEnv,
-} from "@/lib/auth/steward-client";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   consumeStagingSessionCode,
   issueStagingSessionCode,
   looksLikeStagingSessionChallenge,
   looksLikeStagingSessionCode,
-} from "@/lib/services/staging-session-exchange-codes";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/staging-session-exchange-codes";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { Hono } from "hono";
 
 const STAGING_API_ORIGIN = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 const STAGING_API_HOST = new URL(STAGING_API_ORIGIN).hostname;

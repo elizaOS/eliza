@@ -7,7 +7,7 @@
  * the partial unique index `app_frontend_deployments_active_idx`.
  */
 
-import { and, desc, eq, max, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, max, ne } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AppFrontendDeployment,
@@ -24,6 +24,9 @@ function isVersionRaceConflict(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /app_frontend_deployments_app_version_idx|duplicate key value/i.test(message);
 }
+
+/** Raised inside the activation transaction to roll the demotion back. */
+class DeploymentNotPromotable extends Error {}
 
 export class AppFrontendDeploymentsRepository {
   /**
@@ -152,6 +155,15 @@ export class AppFrontendDeploymentsRepository {
    * partial unique index guarantees no two rows are ever active at once.
    */
   async activate(appId: string, id: string): Promise<AppFrontendDeployment | undefined> {
+    try {
+      return await this.activateOrRollBack(appId, id);
+    } catch (error) {
+      if (error instanceof DeploymentNotPromotable) return undefined;
+      throw error;
+    }
+  }
+
+  private async activateOrRollBack(appId: string, id: string): Promise<AppFrontendDeployment> {
     return await dbWrite.transaction(async (tx) => {
       await tx
         .update(appFrontendDeployments)
@@ -168,15 +180,38 @@ export class AppFrontendDeploymentsRepository {
       const [row] = await tx
         .update(appFrontendDeployments)
         .set({ status: "active", activated_at: now, updated_at: now })
-        .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.app_id, appId)))
+        .where(
+          and(
+            eq(appFrontendDeployments.id, id),
+            eq(appFrontendDeployments.app_id, appId),
+            inArray(appFrontendDeployments.status, ["ready", "superseded", "active"]),
+          ),
+        )
         .returning();
+      // The target was deleted or left a promotable state after the caller
+      // read it: roll the demotion back so the app keeps its live deployment.
+      if (!row) throw new DeploymentNotPromotable();
       return row;
     });
   }
 
-  /** Delete a deployment row (callers must ensure it is not the active one). */
-  async delete(id: string): Promise<void> {
-    await dbWrite.delete(appFrontendDeployments).where(eq(appFrontendDeployments.id, id));
+  /**
+   * Delete a deployment row unless it is the active one, in one statement, so
+   * a concurrent activation can never lose its live deployment. Returns the
+   * deleted row, or undefined when none was deleted.
+   */
+  async deleteInactive(appId: string, id: string): Promise<AppFrontendDeployment | undefined> {
+    const [row] = await dbWrite
+      .delete(appFrontendDeployments)
+      .where(
+        and(
+          eq(appFrontendDeployments.id, id),
+          eq(appFrontendDeployments.app_id, appId),
+          ne(appFrontendDeployments.status, "active"),
+        ),
+      )
+      .returning();
+    return row;
   }
 }
 

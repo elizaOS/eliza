@@ -3,7 +3,7 @@
 Each turn uses the pinned Hermes interpreter to instantiate
 ``run_agent.AIAgent`` against a loopback OpenAI-compatible gateway. A generated
 user plugin exposes only benchmark-provided tools and records their execution;
-legacy in-process/direct-provider paths fail closed as nonpublishable.
+Only the isolated subprocess transport is supported.
 """
 
 from __future__ import annotations
@@ -287,23 +287,17 @@ def _resolved_campaign_provider(provider: str | None) -> str:
     return (provider or campaign_provider or "cerebras").strip() or "cerebras"
 
 
-def _resolved_campaign_model(model: str | None, *, provider: str) -> str:
+def _resolved_campaign_model(model: str | None) -> str:
     """Resolve the model label recorded on every native Hermes turn."""
 
     campaign_model = os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
-    if provider.lower() == "claude-subscription" and campaign_model:
-        return campaign_model
     return (
         model or campaign_model or os.environ.get("MODEL_NAME") or "gemma-4-31b"
     ).strip() or "gemma-4-31b"
 
 
-def resolve_hermes_mode(
-    mode: str | None = None,
-    *,
-    provider: str | None = None,
-) -> str:
-    """Resolve the native execution mode and fail closed on unsafe campaigns."""
+def resolve_hermes_mode(mode: str | None = None) -> str:
+    """Resolve and validate the supported native execution mode."""
 
     configured = {
         value
@@ -317,15 +311,9 @@ def resolve_hermes_mode(
     resolved = (
         mode or (next(iter(configured)) if configured else "subprocess")
     ).strip()
-    if resolved not in {"subprocess", "in_process"}:
+    if resolved != "subprocess":
         raise ValueError(
-            f"Unknown mode {resolved!r}; expected 'subprocess' or 'in_process'"
-        )
-    campaign_provider = _resolved_campaign_provider(provider).lower()
-    if campaign_provider == "claude-subscription" and resolved != "subprocess":
-        raise ValueError(
-            "Claude-subscription Hermes runs require mode='subprocess' so "
-            "run_agent.AIAgent provenance can be verified"
+            f"Unknown mode {resolved!r}; expected 'subprocess'"
         )
     return resolved
 
@@ -707,8 +695,8 @@ class HermesClient:
         workspace_path: Path | None = None,
     ) -> None:
         resolved_provider = _resolved_campaign_provider(provider)
-        resolved_model = _resolved_campaign_model(model, provider=resolved_provider)
-        resolved_mode = resolve_hermes_mode(mode, provider=resolved_provider)
+        resolved_model = _resolved_campaign_model(model)
+        resolved_mode = resolve_hermes_mode(mode)
         self.repo_path, self.venv_python = _runtime_paths(repo_path, venv_python)
         self.workspace_path = (
             Path(workspace_path).resolve()
@@ -778,10 +766,6 @@ class HermesClient:
     def health(self) -> dict[str, object]:
         """Prove AIAgent instantiation, pinned source, and scoped plugin loading."""
 
-        if self.mode == "in_process":
-            return self._nonpublishable_result(
-                "in_process mode cannot isolate HERMES_HOME before run_agent import"
-            )
         if not self.venv_python.exists():
             return self._nonpublishable_result(
                 f"venv python not found at {self.venv_python}"
@@ -900,10 +884,7 @@ class HermesClient:
 
         started = time.monotonic()
         try:
-            if self.mode == "in_process":
-                response = self._send_in_process(text, context)
-            else:
-                response = self._send_subprocess(text, context)
+            response = self._send_subprocess(text, context)
         except Exception as exc:
             _write_telemetry(
                 harness="hermes",
@@ -989,8 +970,6 @@ class HermesClient:
             nonpublishable_reason: str | None = (
                 "unsupported non-OpenAI benchmark tool schema"
             )
-        elif self.mode == "in_process":
-            nonpublishable_reason = "legacy in_process mode"
         elif not is_loopback_base_url(self.base_url):
             nonpublishable_reason = "gateway base URL is not loopback"
         else:
@@ -1102,18 +1081,6 @@ class HermesClient:
                 f"hermes-agent send_message returned adapter error: {adapter_error}"
             )
         return response
-
-    def _send_in_process(
-        self,
-        text: str,
-        context: Mapping[str, object] | None,
-    ) -> MessageResponse:
-        del text, context
-        raise RuntimeError(
-            "Hermes mode='in_process' is a nonpublishable legacy path: native "
-            "benchmark execution requires a fresh subprocess so HERMES_HOME and "
-            "plugin discovery are isolated before importing run_agent"
-        )
 
     @staticmethod
     def _parse_response(raw: Mapping[str, object]) -> MessageResponse:

@@ -1,4 +1,5 @@
 /** Public surface of the local voice pipeline: audio ingest, barge-in, cancellation, streaming ASR, phrase scheduling, speaker attribution, and the engine bridge. */
+
 export {
 	type AttributedTurn,
 	type AttributedTurnListener,
@@ -19,6 +20,18 @@ export {
 	type BargeInListener,
 	type CancelSignal,
 } from "./barge-in";
+export {
+	type BionicAsrHost,
+	type BionicAsrStreamHandle,
+	BionicStreamingTranscriber,
+	type BionicStreamingTranscriberOptions,
+	createBionicStreamingTranscriber,
+	DEFAULT_BIONIC_PARTIAL_INTERVAL_MS,
+} from "./bionic-streaming-transcriber";
+export {
+	type BionicTranscriptionHost,
+	transcribeViaBionicHost,
+} from "./bionic-transcription";
 export {
 	type CoordinatorRuntime,
 	VoiceCancellationCoordinator,
@@ -51,25 +64,10 @@ export {
 	mergeContext,
 } from "./eager-context-builder";
 export {
-	DEFAULT_PLAYBACK_DELAY_MS,
-	type EchoDelayEstimate,
-	type EchoDelayOptions,
-	estimateEchoDelaySamples,
-	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
-	platformPlaybackDelayMs,
-	platformPlaybackDelaySamples,
-} from "./echo-delay";
-export {
 	type AecCaptureReplayInput,
 	type AecCaptureReplayResult,
-	computeErle,
-	computeFarActiveErle,
 	replayAecCaptureErle,
 } from "./echo-metrics";
-export {
-	EchoReferenceBuffer,
-	type EchoReferenceBufferOptions,
-} from "./echo-reference-buffer";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -177,6 +175,23 @@ export {
 	type VoiceLifecycleState,
 } from "./lifecycle";
 export {
+	LiveStreamingAsrSession,
+	type LiveStreamingAsrSessionOptions,
+	type LiveTurnResult,
+	PushVadEventSource,
+} from "./live-streaming-asr-session";
+export {
+	createVoiceTranscriptEmitter,
+	type LiveTranscriptMode,
+	VOICE_TRANSCRIPT_STREAM,
+	type VoiceTranscriptEvent,
+} from "./live-transcript-events";
+export {
+	AWAIT_FIRST_TOKEN_MS,
+	hasLiveVoiceTurnAwaitingToken,
+	noteLlmFirstToken,
+} from "./live-voice-latency";
+export {
 	buildMeetingAcousticStressMatrix,
 	MEETING_ACOUSTIC_STRESS_SOURCE_MANIFESTS,
 	MEETING_STRESS_BACKGROUNDS,
@@ -203,10 +218,6 @@ export {
 	resolveDesktopRecorder,
 } from "./mic-source";
 export {
-	NlmsEchoCanceller,
-	type NlmsEchoCancellerOptions,
-} from "./nlms-echo-canceller";
-export {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
 	OptimisticGenerationPolicy,
 	type OptimisticPolicyOptions,
@@ -228,6 +239,12 @@ export {
 	FIRST_AUDIO_FILLERS,
 	PhraseCache,
 } from "./phrase-cache";
+export {
+	PhraseChunkedTts,
+	type PhraseChunkedTtsOptions,
+	type PhraseTtsHandler,
+	speakStreamingText,
+} from "./phrase-chunked-tts";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
 	type DraftProposer,
@@ -296,7 +313,6 @@ export {
 	VoiceScheduler,
 } from "./scheduler";
 export {
-	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
 	AgentSelfVoiceImprint,
 	type AgentSelfVoiceImprintOptions,
 	type AgentSelfVoiceImprintSource,

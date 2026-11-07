@@ -9,11 +9,11 @@ export {
   BUILT_IN_RELATIONSHIP_TYPES,
   type BuiltInRelationshipType,
   defaultRelationshipTypeRegistry,
-  type Relationship,
+  type KnowledgeGraphRelationship as Relationship,
+  type LifeOpsGraphRelationshipSource as RelationshipSource,
+  type LifeOpsGraphRelationshipState as RelationshipState,
+  type LifeOpsGraphRelationshipStatus as RelationshipStatus,
   type RelationshipFilter,
   type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
   RelationshipTypeRegistry,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+} from "@elizaos/contracts";

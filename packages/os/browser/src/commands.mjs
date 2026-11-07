@@ -1,324 +1,9 @@
 /** Executes fixed browser operations against explicit tabs and isolated-world snapshot references. */
+
+import { blockerSelectors, pageCommand } from "./page-command.mjs";
 import { BridgeError } from "./protocol.mjs";
 
-export function pageCommand(command, snapshotId, validateOnly = false) {
-  const policy = command.taskPolicy;
-  const denied = () => ({
-    error: {
-      kind: "POLICY_BLOCKED",
-      message:
-        "This action requires the person or a new authorized task observation.",
-    },
-  });
-  if (
-    policy &&
-    (window !== window.top ||
-      location.origin !== policy.origin ||
-      Date.now() >= policy.expiresAt)
-  )
-    return denied();
-  const key = "__elizaBrowserControlV1";
-  const monitorKey = "__elizaBrowserObservationV1";
-  let monitor = globalThis[monitorKey];
-  if (!monitor || monitor.document !== document) {
-    monitor = {
-      document,
-      domRevision: 0,
-      inputRevision: 0,
-      ownedHosts: new WeakSet(),
-    };
-    monitor.recordMutations = (records) => {
-      if (
-        records.some(
-          (record) =>
-            !(
-              record.type === "childList" &&
-              record.target === document.documentElement &&
-              [...record.addedNodes, ...record.removedNodes].length > 0 &&
-              [...record.addedNodes, ...record.removedNodes].every((node) =>
-                monitor.ownedHosts.has(node),
-              )
-            ),
-        )
-      )
-        monitor.domRevision++;
-    };
-    monitor.observer = new MutationObserver(monitor.recordMutations);
-    monitor.observer.observe(document, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    });
-    const input = () => {
-      monitor.inputRevision++;
-    };
-    document.addEventListener("beforeinput", input, true);
-    document.addEventListener("input", input, true);
-    document.addEventListener("change", input, true);
-    document.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (event.isTrusted) input();
-      },
-      true,
-    );
-    globalThis[monitorKey] = monitor;
-  }
-  // Drain queued mutations synchronously as an effect may arrive before the
-  // MutationObserver microtask. Never store or return form values in this monitor.
-  monitor.recordMutations(monitor.observer.takeRecords());
-  const bounds = (node) => {
-    const rect = node.getBoundingClientRect();
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-  };
-  const viewport = () => ({
-    width: innerWidth,
-    height: innerHeight,
-    scrollX,
-    scrollY,
-    devicePixelRatio,
-    scale: visualViewport?.scale ?? 1,
-    offsetLeft: visualViewport?.offsetLeft ?? 0,
-    offsetTop: visualViewport?.offsetTop ?? 0,
-  });
-  if (command.subaction === "snapshot") {
-    const readVisibleText = (root) => {
-      const visibleText = [];
-      const collectText = (node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const visibility = node.parentElement
-            ? getComputedStyle(node.parentElement).visibility
-            : "visible";
-          if (
-            visibility !== "hidden" &&
-            visibility !== "collapse" &&
-            node.textContent.trim()
-          )
-            visibleText.push(node.textContent);
-          return;
-        }
-        if (!(node instanceof Element)) return;
-        if (
-          node.matches("input,textarea,select,script,style,noscript") ||
-          node.isContentEditable
-        )
-          return;
-        const style = getComputedStyle(node);
-        if (style.display === "none") return;
-        for (const child of node.childNodes) collectText(child);
-      };
-      collectText(root);
-      return visibleText.join("\n").trim();
-    };
-    const nodes = new Map();
-    const elements = [];
-    const candidates = document.querySelectorAll(
-      "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
-    );
-    for (const node of candidates) {
-      const id = String(nodes.size);
-      const geometry = bounds(node);
-      // This equality sentinel never leaves the isolated page realm.
-      nodes.set(id, {
-        node,
-        bounds: geometry,
-        value: typeof node.value === "string" ? node.value : null,
-      });
-      elements.push({
-        bounds: geometry,
-        id,
-        tag: node.tagName.toLowerCase(),
-        role: node.getAttribute("role"),
-        label:
-          node.getAttribute("aria-label") ||
-          node.getAttribute("placeholder") ||
-          (node instanceof HTMLInputElement && node.type === "password"
-            ? "Password"
-            : node instanceof HTMLTextAreaElement ||
-                node instanceof HTMLSelectElement ||
-                node.isContentEditable
-              ? ""
-              : readVisibleText(node)),
-        type: node.getAttribute("type"),
-        heading: node.querySelector("h1,h2,h3,h4,h5,h6")
-          ? readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6"))
-          : null,
-        href:
-          node instanceof HTMLAnchorElement && /^https?:/.test(node.href)
-            ? node.href
-            : null,
-      });
-    }
-    globalThis[key] = {
-      snapshotId,
-      nodes,
-      document,
-      url: location.href,
-      domRevision: monitor.domRevision,
-      inputRevision: monitor.inputRevision,
-      viewport: viewport(),
-    };
-    return {
-      url: location.href,
-      title: document.title,
-      readyState: document.readyState,
-      domRevision: monitor.domRevision,
-      inputRevision: monitor.inputRevision,
-      viewport: viewport(),
-      text: readVisibleText(document.body ?? document.documentElement),
-      complete: true,
-      omitted: [
-        "form control values and editable region contents (credential boundary)",
-      ],
-      elements,
-    };
-  }
-  const state = globalThis[key];
-  if (
-    !state ||
-    state.snapshotId !== command.snapshotId ||
-    state.document !== document ||
-    state.url !== location.href ||
-    state.domRevision !== monitor.domRevision ||
-    state.inputRevision !== monitor.inputRevision ||
-    JSON.stringify(state.viewport) !== JSON.stringify(viewport())
-  )
-    return {
-      error: {
-        kind: "STALE_REF",
-        message: "Read a fresh snapshot of this tab.",
-      },
-    };
-  const recorded = state.nodes.get(command.nodeId);
-  const node = recorded?.node;
-  if (
-    !node?.isConnected ||
-    recorded.value !== (typeof node.value === "string" ? node.value : null) ||
-    JSON.stringify(recorded.bounds) !== JSON.stringify(bounds(node))
-  )
-    return {
-      error: {
-        kind: "STALE_REF",
-        message: "The referenced page element changed; read a fresh snapshot.",
-      },
-    };
-  if (policy) {
-    // The native host supplies reviewed target permissions; DOM text cannot
-    // grant an action. Re-check the actual node immediately before the effect.
-    if (
-      !policy.targets.some((target) => {
-        const permission =
-          command.subaction === "fill" &&
-          policy.protectedValueKind === "verification-code"
-            ? "fill-code"
-            : command.subaction;
-        if (target.action !== permission) return false;
-        try {
-          const matches = document.querySelectorAll(target.selector);
-          return matches.length === 1 && matches[0] === node;
-        } catch {
-          return false;
-        }
-      })
-    )
-      return denied();
-    const label = `${node.getAttribute("aria-label") || ""} ${node.textContent || ""}`;
-    if (
-      command.subaction === "click" &&
-      (node.matches(
-        "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
-      ) ||
-        /\b(sign\s*in|log\s*in|verify|pay|purchase|place\s+order|submit)\b/i.test(
-          label,
-        ))
-    )
-      return denied();
-    if (
-      command.subaction === "fill" &&
-      (!(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-        (node instanceof HTMLInputElement &&
-          !["text", "email", "tel", "number", "search", "url"].includes(
-            node.type,
-          )) ||
-        (policy.protectedValueKind === "verification-code"
-          ? !(node instanceof HTMLInputElement) ||
-            node.autocomplete !== "one-time-code" ||
-            !/^[A-Za-z0-9]{4,12}$/.test(command.text)
-          : /(?:password|one-time-code|cc-)/i.test(node.autocomplete || "")))
-    )
-      return denied();
-  }
-  if (command.subaction === "fill" && (node.disabled || node.readOnly))
-    return denied();
-  if (validateOnly) return { validated: true };
-  if (policy?.actionId) {
-    const feedback = globalThis.__elizaPageGuidanceV1;
-    if (
-      !feedback?.actionReady?.(
-        policy.actionId,
-        command.snapshotId,
-        command.nodeId,
-        command.subaction,
-      )
-    )
-      return denied();
-    feedback.markActed();
-  }
-  delete globalThis[key];
-  if (command.subaction === "click") {
-    node.click();
-  } else if (command.subaction === "fill") {
-    if (
-      !(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-      node.disabled ||
-      node.readOnly
-    )
-      return {
-        error: {
-          kind: "UNSUPPORTED",
-          message: "The target is not an editable form control.",
-        },
-      };
-    const prototype =
-      node instanceof HTMLInputElement
-        ? HTMLInputElement.prototype
-        : node instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLSelectElement.prototype;
-    Object.getOwnPropertyDescriptor(prototype, "value").set.call(
-      node,
-      command.text,
-    );
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
-  } else if (command.subaction === "scroll") {
-    node.scrollBy({
-      top:
-        command.direction === "up"
-          ? -500
-          : command.direction === "down"
-            ? 500
-            : 0,
-      left:
-        command.direction === "left"
-          ? -500
-          : command.direction === "right"
-            ? 500
-            : 0,
-      behavior: "instant",
-    });
-  }
-  return { dispatched: true, completed: false, requiresReadback: true };
-}
+export { COMMIT_CONTROL, pageCommand } from "./page-command.mjs";
 
 /** Resolves required browser context without admitting or performing an effect. */
 export async function prepareCommand(api, command) {
@@ -366,9 +51,10 @@ export async function executeCommand(
   };
   requireCurrent();
   const action = command.subaction;
-  if (action === "list")
+  if (action === "list") {
+    const all = await read(() => api.tabs.query({}));
     return {
-      tabs: (await read(() => api.tabs.query({})))
+      tabs: all
         .filter((tab) => /^https?:/.test(tab.url ?? ""))
         .map((tab) => ({
           id: String(tab.id),
@@ -377,7 +63,11 @@ export async function executeCommand(
           active: tab.active,
           windowId: tab.windowId,
         })),
+      // Windows counted before the filter: a window that holds only a new-tab,
+      // settings or PDF page is still a window she may be looking at.
+      windowCount: new Set(all.map((tab) => tab.windowId)).size,
     };
+  }
   if (action === "open") {
     const context =
       prepared ?? (await read(() => prepareCommand(api, command)));
@@ -411,6 +101,7 @@ export async function executeCommand(
       throw new BridgeError(
         "UNAVAILABLE",
         "The exact browser tab is still loading; read it again without repeating navigation.",
+        "page-loading",
       );
   }
   if (!/^https?:/.test(tab.url ?? ""))
@@ -426,9 +117,18 @@ export async function executeCommand(
   else if (action === "reload") await effect(() => api.tabs.reload(tabId));
   else if (action === "snapshot") {
     const snapshotId = crypto.randomUUID();
-    const before = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    // The page she sees is the tab's active document. Chromium also lists documents it has
+    // not shown (a prerendered search warmup, a cached page); script injection never reaches
+    // them, so counting them failed every read while one was attached.
+    const pageFrames = (inventory) =>
+      inventory?.filter(
+        (frame) =>
+          (frame.documentLifecycle ?? "active") === "active" &&
+          (!command.taskPolicy || frame.frameId === 0),
+      );
+    const before = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !before?.length ||
       before.some((frame) => frame.errorOccurred || !frame.documentId)
@@ -436,6 +136,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "The browser could not inventory every frame document.",
+        "frame-inventory-incomplete",
       );
     const frames = await read(() =>
       api.scripting.executeScript({
@@ -447,9 +148,9 @@ export async function executeCommand(
         world: "ISOLATED",
       }),
     );
-    const after = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    const after = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !after ||
       before.length !== after.length ||
@@ -471,6 +172,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "A frame was inaccessible or changed during the read; no partial snapshot is returned.",
+        "frame-identity-changed",
       );
     return {
       id: command.id,
@@ -480,6 +182,7 @@ export async function executeCommand(
           throw new BridgeError(
             "INCOMPLETE_SNAPSHOT",
             "A frame could not be read completely; no partial snapshot is returned.",
+            "frame-read-incomplete",
           );
         return {
           frameId,
@@ -489,6 +192,10 @@ export async function executeCommand(
             ...element,
             selector: `${snapshotId}:${frameId}:${id}`,
           })),
+          blockers: blockerSelectors(
+            result.blockers,
+            `${snapshotId}:${frameId}`,
+          ),
         };
       }),
     };

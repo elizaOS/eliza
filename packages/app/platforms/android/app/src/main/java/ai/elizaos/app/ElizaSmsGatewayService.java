@@ -1,13 +1,9 @@
 package ai.elizaos.app;
 
 import android.app.Service;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.IBinder;
-import android.provider.Telephony;
-import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
 import ai.elizaos.app.BuildConfig;
@@ -23,10 +19,14 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * Forwards each incoming text to Eliza Cloud. A reply Cloud drafts is never sent from here: it
+ * becomes a pending `sms.send.v1` proposal with a review notice ({@link ElizaSmsGatewayFlow},
+ * {@link ElizaSmsReplyReviewActivity}), and only the owner's Send press sends it, through the shared
+ * reviewed send.
+ */
 public class ElizaSmsGatewayService extends Service {
     private static final String TAG = "ElizaSmsGateway";
 
@@ -34,6 +34,8 @@ public class ElizaSmsGatewayService extends Service {
     private static final String EXTRA_BODY = "body";
     private static final String EXTRA_TIMESTAMP = "timestamp";
     private static final String EXTRA_MESSAGE_ID = "messageId";
+    /** Absent from work queued by earlier releases; those replies use the default SMS SIM. */
+    private static final String EXTRA_SUBSCRIPTION_ID = "subscriptionId";
 
     public static class SmsGatewayWorker extends Worker {
         public SmsGatewayWorker(Context context, WorkerParameters params) {
@@ -47,7 +49,8 @@ public class ElizaSmsGatewayService extends Service {
                 String body = getInputData().getString(EXTRA_BODY);
                 long timestamp = getInputData().getLong(EXTRA_TIMESTAMP, System.currentTimeMillis());
                 String messageId = getInputData().getString(EXTRA_MESSAGE_ID);
-                forwardAndReply(getApplicationContext(), sender, body, timestamp, messageId);
+                int subscriptionId = getInputData().getInt(EXTRA_SUBSCRIPTION_ID, -1);
+                forwardAndPropose(getApplicationContext(), sender, body, timestamp, messageId, subscriptionId);
                 return Result.success();
             } catch (Exception error) {
                 Log.e(TAG, "SMS gateway worker failed.", error);
@@ -72,10 +75,11 @@ public class ElizaSmsGatewayService extends Service {
         final String body = intent.getStringExtra(EXTRA_BODY);
         final long timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis());
         final String messageId = intent.getStringExtra(EXTRA_MESSAGE_ID);
+        final int subscriptionId = intent.getIntExtra(EXTRA_SUBSCRIPTION_ID, -1);
 
         new Thread(() -> {
             try {
-                forwardAndReply(this, sender, body, timestamp, messageId);
+                forwardAndPropose(this, sender, body, timestamp, messageId, subscriptionId);
             } catch (Exception error) {
                 Log.e(TAG, "SMS gateway forwarding failed.", error);
             } finally {
@@ -91,7 +95,8 @@ public class ElizaSmsGatewayService extends Service {
             String sender,
             String body,
             long timestamp,
-            String messageId
+            String messageId,
+            int subscriptionId
     ) {
         if (!BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_ENABLED) {
             return false;
@@ -108,7 +113,8 @@ public class ElizaSmsGatewayService extends Service {
             Data.Builder input = new Data.Builder()
                     .putString(EXTRA_SENDER, sender)
                     .putString(EXTRA_BODY, body)
-                    .putLong(EXTRA_TIMESTAMP, timestamp);
+                    .putLong(EXTRA_TIMESTAMP, timestamp)
+                    .putInt(EXTRA_SUBSCRIPTION_ID, subscriptionId);
             if (!TextUtils.isEmpty(messageId)) {
                 input.putString(EXTRA_MESSAGE_ID, messageId);
             }
@@ -125,38 +131,30 @@ public class ElizaSmsGatewayService extends Service {
         }
     }
 
-    private static void forwardAndReply(
+    private static void forwardAndPropose(
             Context context,
             String sender,
             String body,
             long timestamp,
-            String messageId
+            String messageId,
+            int subscriptionId
     ) throws Exception {
-        JSONObject reply = postToCloud(sender, body, timestamp, messageId);
-        String replyText = reply.optString("replyText", "").trim();
-        if (replyText.isEmpty()) {
+        ElizaSmsGatewayFlow.Result result = ElizaSmsGatewayFlow.forward(
+                new ElizaSmsGatewayFlow.Inbound(sender, body, timestamp, messageId, subscriptionId),
+                BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER,
+                BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL,
+                ElizaSmsReviewedSend.defaultSubscription(),
+                ElizaSmsGatewayService::postToCloud,
+                proposal -> ElizaSmsReviewedSend.propose(context, proposal),
+                System.currentTimeMillis());
+        if (result.skipped == ElizaSmsGatewayFlow.Skipped.NO_REPLY) {
             Log.i(TAG, "Cloud handled SMS without a reply for " + sender + ".");
-            return;
+        } else if (result.skipped != null) {
+            Log.w(TAG, "Cloud drafted a reply for " + sender + " that cannot be proposed (" + result.skipped + "); nothing was sent.");
         }
-
-        SmsManager smsManager = SmsManager.getDefault();
-        ArrayList<String> parts = smsManager.divideMessage(replyText);
-        Log.i(TAG, "Sending SMS gateway reply to " + sender + " in " + parts.size() + " part(s).");
-        if (parts.size() > 1) {
-            smsManager.sendMultipartTextMessage(sender, null, parts, null, null);
-        } else {
-            smsManager.sendTextMessage(sender, null, replyText, null, null);
-        }
-        persistSentMessage(context, sender, replyText);
-        Log.i(TAG, "SMS gateway reply sent and persisted for " + sender + ".");
     }
 
-    private static JSONObject postToCloud(
-            String sender,
-            String body,
-            long timestamp,
-            String messageId
-    ) throws Exception {
+    private static JSONObject postToCloud(JSONObject cloudPayload) throws Exception {
         URL url = new URL(BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("POST");
@@ -170,9 +168,7 @@ public class ElizaSmsGatewayService extends Service {
                 BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_SECRET
         );
 
-        byte[] payload = buildCloudPayload(sender, body, timestamp, messageId)
-                .toString()
-                .getBytes(StandardCharsets.UTF_8);
+        byte[] payload = cloudPayload.toString().getBytes(StandardCharsets.UTF_8);
         connection.setFixedLengthStreamingMode(payload.length);
         try (OutputStream output = connection.getOutputStream()) {
             output.write(payload);
@@ -183,50 +179,8 @@ public class ElizaSmsGatewayService extends Service {
         if (status < 200 || status >= 300) {
             throw new IllegalStateException("Cloud gateway failed (" + status + "): " + responseText);
         }
-        Log.i(TAG, "Cloud gateway accepted SMS from " + sender + " with HTTP " + status + ".");
+        Log.i(TAG, "Cloud gateway accepted SMS with HTTP " + status + ".");
         return responseText.isEmpty() ? new JSONObject() : new JSONObject(responseText);
-    }
-
-    private static JSONObject buildCloudPayload(
-            String sender,
-            String body,
-            long timestamp,
-            String messageId
-    ) throws Exception {
-        String id = !TextUtils.isEmpty(messageId)
-                ? messageId
-                : "android-sms-" + sender + "-" + timestamp;
-
-        JSONObject metadata = new JSONObject();
-        metadata.put("localPhoneNumber", BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER);
-        metadata.put("phoneNumber", BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER);
-        metadata.put("phoneAccountId", BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER);
-        metadata.put("phoneAccountLabel", BuildConfig.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL);
-        metadata.put("androidSmsGateway", true);
-
-        JSONObject handle = new JSONObject();
-        handle.put("address", sender);
-        handle.put("service", "SMS");
-
-        JSONObject chat = new JSONObject();
-        chat.put("guid", "SMS;-;" + sender);
-        chat.put("chatIdentifier", sender);
-        JSONArray chats = new JSONArray();
-        chats.put(chat);
-
-        JSONObject data = new JSONObject();
-        data.put("guid", id);
-        data.put("text", body);
-        data.put("isFromMe", false);
-        data.put("handle", handle);
-        data.put("chats", chats);
-        data.put("dateCreated", timestamp);
-        data.put("metadata", metadata);
-
-        JSONObject payload = new JSONObject();
-        payload.put("type", "new-message");
-        payload.put("data", data);
-        return payload;
     }
 
     private static String readResponse(HttpURLConnection connection, int status) throws Exception {
@@ -246,23 +200,6 @@ public class ElizaSmsGatewayService extends Service {
                 body.append(line);
             }
             return body.toString();
-        }
-    }
-
-    private static void persistSentMessage(Context context, String recipient, String message) {
-        long sentAt = System.currentTimeMillis();
-        ContentValues values = new ContentValues();
-        values.put(Telephony.Sms.ADDRESS, recipient);
-        values.put(Telephony.Sms.BODY, message);
-        values.put(Telephony.Sms.DATE, sentAt);
-        values.put(Telephony.Sms.DATE_SENT, sentAt);
-        values.put(Telephony.Sms.READ, 1);
-        values.put(Telephony.Sms.SEEN, 1);
-        values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT);
-
-        Uri inserted = context.getContentResolver().insert(Telephony.Sms.Sent.CONTENT_URI, values);
-        if (inserted == null) {
-            Log.w(TAG, "SMS provider returned no sent row URI for gateway reply.");
         }
     }
 }

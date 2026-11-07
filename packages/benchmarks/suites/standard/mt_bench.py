@@ -14,7 +14,7 @@ strong-model judge (GPT-4, Claude, eliza-1-70b, …).
 
 CLI:
 
-    python -m benchmarks.standard.mt_bench \\
+    python -m benchmarks.suites.standard.mt_bench \\
         --model-endpoint http://localhost:8000/v1 \\
         --model eliza-1-9b \\
         --judge-endpoint https://api.openai.com/v1 \\
@@ -458,7 +458,7 @@ class MTBenchRunner:
 
 
 class _MTBenchFactory(RunnerFactory):
-    prog = "benchmarks.standard.mt_bench"
+    prog = "benchmarks.suites.standard.mt_bench"
     description = (
         "MT-Bench multi-turn open-ended benchmark with judge model (LMSYS-style)."
     )

@@ -14,8 +14,7 @@
  * tracked socket on an interval and terminates the ones that did not answer,
  * which covers peers that stall without traffic.
  */
-import { logger } from "@elizaos/core";
-import type { StreamEventEnvelope } from "./server-types.ts";
+import { logger, type StreamEventEnvelope } from "@elizaos/core";
 
 export interface EventSocket {
   readonly readyState: number;
@@ -38,6 +37,36 @@ export interface ApiEventHub {
   ): void;
   sendToClient(clientId: string, payload: unknown): number;
   sendToConversation(conversationId: string, payload: unknown): number;
+}
+
+/**
+ * Agent-event streams that are delivered live and never buffered: they skip
+ * the replay buffer (and so diagnostics and reconnect replay) and are not
+ * routed into conversations. `voice-transcript` carries interim ASR text
+ * (`@elizaos/plugin-local-inference` live-transcript-events), which must not
+ * outlive the moment.
+ */
+export const EPHEMERAL_AGENT_EVENT_STREAMS: ReadonlySet<string> = new Set([
+  "voice-transcript",
+]);
+
+let ephemeralEventCounter = 0;
+
+/**
+ * Envelope for an ephemeral agent event. Same shape as a buffered
+ * `agent_event`, with `ephemeral: true` and an `eph-<n>` id that is not a
+ * replay cursor (no `bufferSeq`).
+ */
+export function buildEphemeralAgentEventEnvelope(
+  event: Omit<StreamEventEnvelope, "eventId" | "version" | "bufferSeq">,
+): StreamEventEnvelope & { ephemeral: true } {
+  ephemeralEventCounter += 1;
+  return {
+    ...event,
+    eventId: `eph-${ephemeralEventCounter}`,
+    version: 1,
+    ephemeral: true,
+  };
 }
 
 /** Queued bytes above which a peer's grace period starts counting down. */

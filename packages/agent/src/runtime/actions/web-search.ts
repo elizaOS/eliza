@@ -1,3 +1,4 @@
+import { parseBooleanValue } from "@elizaos/core";
 /**
  * WEB_SEARCH — owner-selected browser search with keyless provider fallback.
  *
@@ -35,18 +36,6 @@ import {
   searchBrowserFirstWeb,
 } from "@elizaos/plugin-web-search/browser-web-search";
 
-function readBooleanEnv(name: string): boolean | undefined {
-  const raw = process.env[name]?.trim().toLowerCase();
-  if (raw === undefined || raw.length === 0) return undefined;
-  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
-    return false;
-  }
-  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
-    return true;
-  }
-  return undefined;
-}
-
 /**
  * Capability gate for the INLINE keyless web-search action. Inline WEB_SEARCH
  * is the default surface because it goes through Eliza action routing/audit.
@@ -55,13 +44,13 @@ function readBooleanEnv(name: string): boolean | undefined {
  * off unless `ELIZA_INLINE_WEB_SEARCH` explicitly overrides it.
  */
 export function isWebSearchEnabled(): boolean {
-  const master = readBooleanEnv("ELIZA_WEB_SEARCH");
+  const master = parseBooleanValue(process.env.ELIZA_WEB_SEARCH);
   if (master === false) return false;
 
-  const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
+  const inline = parseBooleanValue(process.env.ELIZA_INLINE_WEB_SEARCH);
   if (inline !== undefined) return inline;
 
-  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") !== true;
+  return parseBooleanValue(process.env.ELIZA_SERVER_WEB_SEARCH) !== true;
 }
 
 interface WebSearchParams {
@@ -147,16 +136,24 @@ export const webSearch: Action & Record<string, unknown> = {
       // NOT delivered as a user-facing callback. Delivering them dumped the raw
       // search JSON/article text straight into the chat (chunked into several
       // messages) before the synthesized reply. Errors DO still call back.
+      const text = result.text;
+      const data = {
+        actionName: "WEB_SEARCH",
+        query,
+        provider: result.provider,
+        value: text,
+        truncated: result.truncated,
+      };
+      // Cost: no new I/O. The model sees the complete body once, in text;
+      // raw data.value stays intact for receipts and runtime consumers.
+      // Equality is guaranteed here by construction, never inferred by the renderer.
+      const { value: _value, ...promptData } = data;
       return {
-        text: result.text,
+        text,
         success: true,
-        data: {
-          actionName: "WEB_SEARCH",
-          query,
-          provider: result.provider,
-          value: result.text,
-          truncated: result.truncated,
-        },
+        data,
+        promptData,
+        promptDataMode: "replace-data",
       };
     } catch (err) {
       // error-policy:J1 Action failures are returned to the planner for recovery.

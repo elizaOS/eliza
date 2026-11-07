@@ -4,14 +4,10 @@ Multi-turn orchestration lifecycle benchmark: evaluates the elizaOS agent's abil
 
 This directory is part of `packages/benchmarks`.
 
-Build from the repository root:
-
-```bash
-bun run --cwd packages/benchmarks build:plugin
-```
+Install the suite’s Python dependencies before running its tests.
 
 Test from the repository root:
 
 ```bash
-bun run --cwd packages/benchmarks test:py
+PYTHONPATH="$PWD/packages" python -m pytest packages/benchmarks/suites/orchestrator_lifecycle/tests --import-mode=importlib
 ```

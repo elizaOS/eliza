@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.ts";
 import { createApiSupervisor } from "./lib/api-supervisor.ts";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.ts";

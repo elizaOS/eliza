@@ -6,6 +6,10 @@
  */
 
 import { createRequire } from "node:module";
+import {
+  type DevSubsystemBannerKind,
+  renderDevSubsystemFigletHeading as renderPlainHeading,
+} from "../dev-tools.ts";
 
 type FigletModule = {
   textSync: (
@@ -29,25 +33,6 @@ function loadFiglet(): FigletModule | null {
   }
 }
 
-function renderFallbackHeading(text: string): string {
-  const rule = "_".repeat(text.length + 2);
-  return [` ${rule} `, `| ${text} |`, `|${rule}|`].join("\n");
-}
-
-/** Subsystem printed as giant ASCII above each dev settings table. */
-export type DevSubsystemBannerKind =
-  | "orchestrator"
-  | "vite"
-  | "api"
-  | "electrobun";
-
-const SUBSYSTEM_FIGLET_TEXT: Record<DevSubsystemBannerKind, string> = {
-  orchestrator: "ORCHESTRATOR",
-  vite: "VITE",
-  api: "API",
-  electrobun: "ELECTROBUN",
-};
-
 /**
  * Renders a figlet block (Standard font, fits ~80 cols) for the given subsystem.
  * On failure (missing font), falls back to a short plain marker.
@@ -58,10 +43,10 @@ export function renderDevSubsystemFigletHeading(
 ): string {
   const maxWidth = options?.maxWidth ?? 80;
   const font = options?.font ?? "Standard";
-  const text = SUBSYSTEM_FIGLET_TEXT[kind];
+  const text = kind.toUpperCase();
   const figlet = loadFiglet();
   if (!figlet) {
-    return renderFallbackHeading(text);
+    return renderPlainHeading(kind);
   }
   try {
     const block = figlet.textSync(text, {
@@ -71,7 +56,7 @@ export function renderDevSubsystemFigletHeading(
     });
     return block.replace(/\s+$/u, "");
   } catch {
-    return renderFallbackHeading(text);
+    return renderPlainHeading(kind);
   }
 }
 

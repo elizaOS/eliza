@@ -118,11 +118,21 @@ function unrefTimer(handle: ReturnType<typeof setTimeout>): void {
 
 type LastGoodValidation = {
   actions: Action[];
-  discoverableToolCount: number;
   createdAt: number;
 };
 
-let lastGoodValidation: LastGoodValidation | null = null;
+// Per runtime and sender: a catalog validated for one organization's runtime
+// or for the owner must never be shown to another runtime or sender.
+const lastGoodValidations = new WeakMap<IAgentRuntime, Map<string, LastGoodValidation>>();
+
+function lastGoodFor(runtime: IAgentRuntime): Map<string, LastGoodValidation> {
+  let bySender = lastGoodValidations.get(runtime);
+  if (!bySender) {
+    bySender = new Map();
+    lastGoodValidations.set(runtime, bySender);
+  }
+  return bySender;
+}
 
 function getMessageText(message: Memory): string {
   const content = message.content;
@@ -239,9 +249,11 @@ export const actionsProvider: Provider = {
           // and then hide the image/ad action behind a provider timeout.
           actionsData = narrowActionsForIntent(runtime.actions, message);
         } else {
+          const senderKey = String(message.entityId ?? "");
+          const storedLastGood = lastGoodFor(runtime).get(senderKey);
           const freshLastGood =
-            lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
-              ? lastGoodValidation
+            storedLastGood && Date.now() - storedLastGood.createdAt < lastGoodCacheTtlMs
+              ? storedLastGood
               : null;
           const validation = Promise.all(
             runtime.actions.map((action: Action) =>
@@ -259,9 +271,19 @@ export const actionsProvider: Provider = {
             logger.warn(
               `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using last-good action catalog for this turn`,
             );
+            // This runtime's own list; execution re-validates every action.
             actionsData = freshLastGood?.actions ?? runtime.actions;
           } else {
             actionsData = validationResult;
+            // Only a completed validation becomes the sender's last-good list.
+            if (actionsData.length > 0) {
+              const bySender = lastGoodFor(runtime);
+              const now = Date.now();
+              for (const [key, entry] of bySender) {
+                if (now - entry.createdAt >= lastGoodCacheTtlMs) bySender.delete(key);
+              }
+              bySender.set(senderKey, { actions: actionsData, createdAt: now });
+            }
           }
         }
 
@@ -275,14 +297,6 @@ export const actionsProvider: Provider = {
           }
         } catch {
           /* MCP service may not be available */
-        }
-
-        if (actionsData.length > 0) {
-          lastGoodValidation = {
-            actions: actionsData,
-            discoverableToolCount,
-            createdAt: Date.now(),
-          };
         }
 
         cached = { actions: actionsData, discoverableToolCount };

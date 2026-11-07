@@ -1,11 +1,17 @@
+import {
+  ApiError as PrivateOwnerApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 /** Updates and deletes managed Google Calendar events. */
 
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { agentGoogleRouteDeps } from "@/lib/services/agent-google-route-deps";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const attendeeSchema = z.object({
   email: z.string().email(),
@@ -26,14 +32,52 @@ const patchRequestSchema = z.object({
   attendees: z.array(attendeeSchema).optional(),
 });
 
+/**
+ * Reads an optional `If-Match`: one exact Google event `etag`, as the feed
+ * returned it. `*` and lists are refused; Google answers a stale one with 412.
+ */
+function readIfMatch(
+  request: Request,
+): { ok: true; value?: string } | { ok: false } {
+  const raw = request.headers.get("if-match");
+  if (raw === null) return { ok: true };
+  const value = raw.trim();
+  if (
+    !value ||
+    value === "*" ||
+    value.length > 1024 ||
+    value.includes(",") ||
+    !/^[\x20-\x7e]+$/.test(value)
+  )
+    return { ok: false };
+  return { ok: true, value };
+}
+
+const INVALID_IF_MATCH = {
+  error: "If-Match must be one exact event etag from a calendar read.",
+  code: "invalid_if_match",
+};
+
+function connectorFailure(error: { status: number; message: string }) {
+  return Response.json(
+    error.status === 412
+      ? { error: error.message, code: "precondition_failed" }
+      : { error: error.message },
+    { status: error.status },
+  );
+}
+
 async function __hono_PATCH(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
-    const { user } =
-      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { eventId } = await params;
+    const ifMatch = readIfMatch(request);
+    if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
     const decodedRawBody = await decodeRequestJson(request);
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
@@ -51,8 +95,17 @@ async function __hono_PATCH(
       );
     }
 
-    return Response.json(
-      await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent({
+    if (parsed.data.side !== "agent")
+      await requirePrivateOwnerCredential({
+        userId: user.id,
+        organizationId: user.organization_id,
+        authMethod: auth.authMethod,
+        apiKeyId: auth.apiKey?.id,
+        apiKeyHash: auth.apiKey?.key_hash,
+        env,
+      });
+    const updated = await agentGoogleRouteDeps.updateManagedGoogleCalendarEvent(
+      {
         organizationId: user.organization_id,
         userId: user.id,
         side: parsed.data.side ?? "owner",
@@ -66,18 +119,24 @@ async function __hono_PATCH(
         endAt: parsed.data.endAt,
         timeZone: parsed.data.timeZone,
         attendees: parsed.data.attendees,
-      }),
+        ...(ifMatch.value ? { ifMatch: ifMatch.value } : {}),
+      },
+    );
+    const etag = updated.event.etag;
+    return Response.json(
+      updated,
+      etag && /^[\x20-\x7e]+$/.test(etag) ? { headers: { ETag: etag } } : {},
     );
   } catch (error) {
-    if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
+    if (error instanceof PrivateOwnerApiError)
       return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
+      return connectorFailure(error);
     }
+    logger.error("[Google Calendar] Failed to update event:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -87,11 +146,14 @@ async function __hono_PATCH(
 async function __hono_DELETE(
   request: Request,
   { params }: RouteContext<{ eventId: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
-    const { user } =
-      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const auth = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } = auth;
     const { eventId } = await params;
+    const ifMatch = readIfMatch(request);
+    if (!ifMatch.ok) return Response.json(INVALID_IF_MATCH, { status: 400 });
     const sideRaw = new URL(request.url).searchParams.get("side");
     const grantId =
       new URL(request.url).searchParams.get("grantId")?.trim() || undefined;
@@ -109,6 +171,15 @@ async function __hono_DELETE(
       );
     }
 
+    if (sideRaw !== "agent")
+      await requirePrivateOwnerCredential({
+        userId: user.id,
+        organizationId: user.organization_id,
+        authMethod: auth.authMethod,
+        apiKeyId: auth.apiKey?.id,
+        apiKeyHash: auth.apiKey?.key_hash,
+        env,
+      });
     return Response.json(
       await agentGoogleRouteDeps.deleteManagedGoogleCalendarEvent({
         organizationId: user.organization_id,
@@ -117,18 +188,19 @@ async function __hono_DELETE(
         grantId,
         calendarId: calendarIdRaw?.trim() || "primary",
         eventId,
+        ...(ifMatch.value ? { ifMatch: ifMatch.value } : {}),
       }),
     );
   } catch (error) {
-    if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
+    if (error instanceof PrivateOwnerApiError)
       return Response.json({ error: error.message }, { status: error.status });
+    if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
+      return connectorFailure(error);
     }
+    logger.error("[Google Calendar] Failed to delete event:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -137,13 +209,21 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, {
-    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
-  }),
+  __hono_PATCH(
+    c.req.raw,
+    {
+      params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+    },
+    c.env,
+  ),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, {
-    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
-  }),
+  __hono_DELETE(
+    c.req.raw,
+    {
+      params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;

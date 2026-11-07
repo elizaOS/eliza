@@ -6,15 +6,13 @@
 
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/testing";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  scenario,
-  strictActionRouteFixtures,
-} from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   matchesTypedTurnInput,
+  type RuntimeWithScenarioModelFixtures,
+  strictActionRouteFixtures,
   typedTurnEvaluationFixtures,
-} from "../../../scenarios/_fixtures/simple-turn-memory.ts";
+} from "@elizaos/testing/models";
 
 const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;

@@ -1,7 +1,20 @@
 /** View declaration types carried by plugins; host presentation policies live in shared. */
 
+/**
+ * How the app shell treats the screen background while a view is active.
+ * - `opaque` (default): the host paints a full-window theme background behind
+ * the view so the shared wallpaper cannot leak through safe areas.
+ * - `shared`: the view sits on the same unified background as Home/Launcher.
+ */
 export type AppShellBackgroundPolicy = "opaque" | "shared";
 
+/**
+ * How the app shell frames a view's top bar.
+ * - `normal` (default): the shell requires the shared `ViewHeader`.
+ * - `fullscreen`: the view owns its window and supplies its own chrome.
+ * - `modal`: a modal/sheet with its own dismiss affordance.
+ * - `immersive`: a chrome-free surface (e.g. launcher/background).
+ */
 export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
 
 /** A view's isolation level. See {@link SURFACE_ISOLATION_LEVELS}. */
@@ -24,11 +37,11 @@ export type SurfaceCapability =
  * no longer the foreground surface. Purely declarative; the shell's view cache
  * (`DynamicViewLoader`) reads it to decide retention.
  *
- *  - `ephemeral` (default) — dropped/cleaned up when navigated away from, after
- *                            the shell's idle grace window.
- *  - `retained`            — kept warm in the background (e.g. a running
- *                            browser/workbench a user tabs back to). The shell
- *                            still evicts it under real memory pressure.
+ * - `ephemeral` (default) — dropped/cleaned up when navigated away from, after
+ * the shell's idle grace window.
+ * - `retained` — kept warm in the background (e.g. a running
+ * browser/workbench a user tabs back to). The shell
+ * still evicts it under real memory pressure.
  */
 export type SurfaceLifecyclePolicy = "ephemeral" | "retained";
 
@@ -73,7 +86,7 @@ export interface SurfaceManifest {
 	 * `"opaque"`. Defaults to `"opaque"`.
 	 */
 	background?: AppShellBackgroundPolicy;
-	/** Top-bar framing policy (#13586). Defaults to `"normal"`. */
+	/** Top-bar framing policy. Defaults to `"normal"`. */
 	header?: ViewHeaderPolicy;
 	/** How the view is isolated from the host and other views. Default `"in-process"`. */
 	isolation?: SurfaceIsolationLevel;
@@ -104,25 +117,8 @@ export interface ResolvedSurfaceManifest {
 	capabilities: ReadonlySet<SurfaceCapability>;
 }
 
-/**
- * The sparse per-view fields the resolver reads. A view registration
- * (`ViewDeclaration`, `PluginAppNavTab`, `AppShellPageRegistration`, and the
- * `ViewRegistryEntry` transport DTO) carries an optional `surface` manifest plus
- * the legacy `backgroundPolicy` / `headerPolicy` fields that predate it. The
- * manifest wins when present; the legacy fields are the fallback so existing
- * declarations keep resolving to the same policy.
- */
+/** Declared surface policies and capability grants. */
 export interface SurfaceManifestBearer {
 	/** The declared manifest. Preferred source for every surface field. */
 	surface?: SurfaceManifest;
-	/**
-	 * Legacy standalone background policy, predating {@link surface}. Used only
-	 * when `surface.background` is absent.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Legacy standalone header policy, predating {@link surface}. Used only when
-	 * `surface.header` is absent.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
 }

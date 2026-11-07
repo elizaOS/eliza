@@ -15,6 +15,7 @@
  * projects the new knowledge-graph stores at position -4.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type IAgentRuntime,
   logger,
@@ -23,7 +24,6 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "../knowledge-graph/service.js";
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
 

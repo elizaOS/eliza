@@ -27,26 +27,25 @@ const PaymentRequestPage = lazy(
 const PaymentSuccessPage = lazy(
   () => import("./pages/payment/payment-success-page"),
 );
-const ApprovalPage = lazy(() => import("./pages/approve/approval-page"));
-const BallotPage = lazy(() => import("./pages/ballot/ballot-page"));
+const ApprovalPage = lazy(() => import("./pages/approval-page"));
+const BallotPage = lazy(() => import("./pages/ballot-page"));
 const SensitiveRequestPage = lazy(
-  () => import("./pages/sensitive-requests/sensitive-request-page"),
+  () => import("./pages/sensitive-request-page"),
 );
-const PublicChatPage = lazy(() => import("./pages/chat/public-chat-page"));
-const InviteAcceptPage = lazy(
-  () => import("./pages/invite/invite-accept-page"),
-);
+const PublicChatPage = lazy(() => import("./pages/public-chat-page"));
+const InviteAcceptPage = lazy(() => import("./pages/invite-accept-page"));
 const LoginPage = lazy(() => import("./pages/login/login-page"));
+const NetworkSignInPage = lazy(
+  () => import("./pages/login/network-sign-in-page"),
+);
 const AuthSuccessPage = lazy(() => import("./pages/auth/auth-success-page"));
 const AuthErrorPage = lazy(() => import("./pages/auth/auth-error-page"));
 const CliLoginPage = lazy(() => import("./pages/auth/cli-login-page"));
 const EmailCallbackPage = lazy(
   () => import("./pages/auth/email-callback-page"),
 );
-const AppAuthAuthorizePage = lazy(
-  () => import("./pages/app-auth/app-authorize-page"),
-);
-const OidcContinuePage = lazy(() => import("./pages/oidc/oidc-continue-page"));
+const AppAuthAuthorizePage = lazy(() => import("./pages/app-authorize-page"));
+const OidcContinuePage = lazy(() => import("./pages/oidc-continue-page"));
 const SsoBridgePage = lazy(() => import("../sso-bridge/SsoBridgeRoute"));
 const TermsOfServicePage = lazy(
   () => import("./pages/legal/terms-of-service-page"),
@@ -138,6 +137,12 @@ export function registerPublicPages(): void {
   });
 
   // ── Login + Steward auth surfaces ──
+  registerCloudRoute({
+    path: "network/sign-in",
+    element: NetworkSignInPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
   registerCloudRoute({
     path: "login",
     element: LoginPage,

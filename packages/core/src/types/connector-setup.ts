@@ -1,25 +1,5 @@
 /**
- * Canonical contract for connector setup HTTP routes.
- *
- * This is the single source of truth for the connector-setup wire shapes.
- * It lives in `@elizaos/core` — the innermost package every connector plugin
- * and the API host (`@elizaos/app`) already depend on — so both the
- * server that mounts the routes and the plugins that implement them agree on
- * one definition instead of mirroring it locally (see #10201).
- *
- * Every connector plugin's setup-routes export MUST satisfy:
- *
- *   GET  /api/setup/<connector>/status   → SetupStatusResponse
- *   POST /api/setup/<connector>/start    → SetupStatusResponse (state: 'configuring')
- *   POST /api/setup/<connector>/cancel   → SetupStatusResponse (state: 'idle')
- *
- * Error responses follow `{ error: { code, message } }` — never bare strings.
- *
- * This contract is pinned by `plugins/__tests__/setup-routes-contract.test.ts`.
- * `docs/first-run-contracts.md` covers the connector setup surface.
- *
- * Distinct from `./setup` (the onboarding state machine for the first-run
- * wizard) — that models CLI/DM setup steps, this models connector HTTP routes.
+ * Serialized connector-setup contracts shared by hosts and clients.
  */
 
 /** Setup lifecycle states a connector can be in. */
@@ -49,6 +29,8 @@ export interface SetupErrorResponse {
 		code: string;
 		message: string;
 	};
+	/** Same text as `error.message`, for clients that read a top-level message. */
+	message: string;
 }
 
 /** Common error codes used across connector setup routes. */
@@ -67,23 +49,12 @@ export type SetupErrorCode =
  *
  * Use this on every error path in connector setup handlers so the UI
  * layer can branch on `error.code` rather than substring-matching
- * `error.message`.
+ * `error.message`. The message is repeated at the top level because the UI
+ * API client reads a string `error` or `message` for the text it shows.
  */
 export function buildSetupError(
 	code: SetupErrorCode | string,
 	message: string,
 ): SetupErrorResponse {
-	return { error: { code, message } };
-}
-
-/**
- * Compose the canonical path for a connector setup endpoint.
- *
- * `setupPath("telegram", "start")` → `/api/setup/telegram/start`.
- */
-export function setupPath(
-	connector: string,
-	action: "status" | "start" | "cancel",
-): string {
-	return `/api/setup/${connector}/${action}`;
+	return { error: { code, message }, message };
 }

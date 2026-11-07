@@ -11,7 +11,6 @@
  * state it owns locally; filtering the already-built node list is
  * presentation-only.
  */
-
 import {
   Button,
   Card,
@@ -21,9 +20,10 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
+  PagePanel,
+  useAgentElement,
 } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+
 import { type ComponentProps, useCallback, useState } from "react";
 
 /** A typed edge shown under its source entity, already projected for display. */

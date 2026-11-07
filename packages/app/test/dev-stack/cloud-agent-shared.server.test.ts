@@ -574,3 +574,39 @@ describe("startCloudAgent HTTP handlers", () => {
     ).toBe(404);
   });
 });
+
+describe("bridge message content", () => {
+  it("carries gateway attachments with their types into the runtime message", async () => {
+    const { buildBridgeMessageContent, normalizeBridgeMessage } = await import(
+      "../../deploy/cloud-agent-shared"
+    );
+    const base =
+      "https://api.twilio.com/2010-04-01/Accounts/AC/Messages/MM1/Media";
+    // The params the cloud gateway router sends for an MMS with a voice memo
+    // and a PDF.
+    const normalized = normalizeBridgeMessage({
+      text: "what does this say?",
+      source: "twilio",
+      attachments: [
+        { type: "audio", url: `${base}/ME0` },
+        { type: "document", url: `${base}/ME1` },
+        { type: "sticker", url: `${base}/ME2` },
+        { url: "" },
+      ],
+    });
+    const content = buildBridgeMessageContent(normalized, "DM", false);
+
+    expect(content).toMatchObject({
+      text: "what does this say?",
+      source: "twilio",
+      channelType: "DM",
+      attachments: [
+        { url: `${base}/ME0`, contentType: "audio" },
+        { url: `${base}/ME1`, contentType: "document" },
+        { url: `${base}/ME2` },
+      ],
+    });
+    expect(content.attachments?.[2]).not.toHaveProperty("contentType");
+    expect(content.attachments).toHaveLength(3);
+  });
+});

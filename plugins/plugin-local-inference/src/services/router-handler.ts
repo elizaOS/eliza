@@ -54,7 +54,7 @@
  *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
  *
  * Same precedence applies to `TRANSCRIPTION`, with the local side using
- * the fused Gemma ASR path when the active bundle stages eligible ASR
+ * Phonon-2 on libelizainference when the active bundle stages eligible ASR
  * artifacts (no whisper.cpp fallback).
  *
  * Users can override this per slot via the routing-preferences settings
@@ -77,7 +77,10 @@ import {
 	isLocalInferenceUnavailableError,
 	LocalInferenceUnavailableError,
 } from "../provider";
-import { readEffectiveAssignments } from "./assignments";
+import {
+	AssignmentsUnreadableError,
+	readEffectiveAssignments,
+} from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
 import { handlerRegistry } from "./handler-registry";
@@ -89,7 +92,11 @@ import {
 	type RoutingPolicy,
 	readRoutingPreferences,
 } from "./routing-preferences";
-import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
+import {
+	AGENT_MODEL_SLOTS,
+	type AgentModelSlot,
+	type ModelAssignments,
+} from "./types";
 
 export const ROUTER_PROVIDER = "eliza-router";
 /**
@@ -207,6 +214,24 @@ function shouldForceLocalInference(
 }
 
 /**
+ * True when the user's own slot policy routes away from local inference:
+ * `cloud-only`, or a manual pin to another provider that is registered.
+ */
+function userRoutesAwayFromLocalInference(
+	policy: string,
+	preferredProvider: string | null,
+	candidates: RoutableCandidate[],
+): boolean {
+	if (policy === "cloud-only") return true;
+	return (
+		policy === "manual" &&
+		preferredProvider !== null &&
+		preferredProvider !== "eliza-local-inference" &&
+		candidates.some((candidate) => candidate.provider === preferredProvider)
+	);
+}
+
+/**
  * Read the live model registry off the runtime and return the dispatchable
  * candidates (with handlers) for a model type, excluding the router itself.
  * This is the router's dispatch source: `getModelRegistrations()` exposes the
@@ -294,13 +319,16 @@ export async function filterUnavailableLocalInference(
 	// deliberately keep embeddings on Cloud set `ELIZAOS_CLOUD_USE_EMBEDDINGS`
 	// (cloud containers whose dim1536 store must stay consistent do this at boot);
 	// that flag also skips the gte-small warmup, so honour it here and let cloud
-	// win without a per-call local throw. Without that explicit opt-in, a local
-	// failure surfaces to recall's keyword/BM25 fallback instead of silently
-	// adding a cloud round-trip. A local-only/manual pin still forces local.
+	// win without a per-call local throw. A user who picks "Cloud only" or pins
+	// another provider for the Embeddings slot has opted in the same way. Without
+	// an explicit opt-in, a local failure surfaces to recall's keyword/BM25
+	// fallback instead of silently adding a cloud round-trip. A local-only/manual
+	// pin still forces local.
 	if (slot === "TEXT_EMBEDDING") {
 		if (
-			readBooleanEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS") &&
-			!shouldForceLocalInference(policy, preferredProvider)
+			userRoutesAwayFromLocalInference(policy, preferredProvider, candidates) ||
+			(readBooleanEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS") &&
+				!shouldForceLocalInference(policy, preferredProvider))
 		) {
 			return filterUnavailableLocalInferenceCandidates(
 				candidates,
@@ -325,11 +353,38 @@ export async function filterUnavailableLocalInference(
 		return candidates;
 	}
 
-	const assignments = await readEffectiveAssignments();
+	const forceLocalInference = shouldForceLocalInference(
+		policy,
+		preferredProvider,
+	);
+	let assignments: ModelAssignments;
+	try {
+		assignments = await readEffectiveAssignments();
+	} catch (error) {
+		if (!(error instanceof AssignmentsUnreadableError)) throw error;
+		logger.error(
+			{
+				slot,
+				policy,
+				filePath: error.filePath,
+				error: error.cause instanceof Error ? error.cause.message : error.cause,
+			},
+			"[LocalInferenceRouter] Local inference assignments are unreadable",
+		);
+		// A forced-local policy must never fall back to another provider, so the
+		// unreadable policy is this call's error. Otherwise local has no readable
+		// slot policy for this call and the other providers stay eligible.
+		if (forceLocalInference) throw error;
+		return filterUnavailableLocalInferenceCandidates(
+			candidates,
+			localInferenceEngine.hasLoadedModel(),
+			false,
+		);
+	}
 	return filterUnavailableLocalInferenceCandidates(
 		candidates,
 		Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
-		shouldForceLocalInference(policy, preferredProvider),
+		forceLocalInference,
 	);
 }
 

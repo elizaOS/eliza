@@ -461,7 +461,7 @@ describe("OrgStorageMutationsRepository", () => {
     ).toEqual([object.provider_key]);
   });
 
-  test("repairs historical quota drift from the adopted catalog plus active reservations", async () => {
+  test("raises an under-counted quota to the adopted catalog plus active reservations", async () => {
     await repository.adoptLegacyObjects([
       {
         organizationId: ORG,
@@ -483,7 +483,7 @@ describe("OrgStorageMutationsRepository", () => {
       },
     ]);
     await dbWrite.execute(sql`UPDATE org_storage_quota
-      SET bytes_used = 99, bytes_limit = 1000
+      SET bytes_used = 2, bytes_limit = 1000
       WHERE organization_id = ${ORG}`);
     await Promise.all([
       repository.reconcileNativeQuotaFromCatalog(ORG),
@@ -494,6 +494,32 @@ describe("OrgStorageMutationsRepository", () => {
       WHERE organization_id = ${ORG}`);
     expect(BigInt(String(quota.rows[0]?.bytes_used))).toBe(12n);
     expect(await repository.quotaNeedsNativeCatalogReconciliation(ORG)).toBe(false);
+  });
+
+  test("keeps bytes charged by other writers of the shared counter through the catalog reconcile", async () => {
+    // Cloud files, generated media and avatars charge org_storage_quota.bytes_used
+    // without rows in the native catalog.
+    await dbWrite.execute(sql`UPDATE org_storage_quota
+      SET bytes_used = 4000, bytes_limit = 5000
+      WHERE organization_id = ${ORG}`);
+    await repository.adoptLegacyObjects([
+      {
+        organizationId: ORG,
+        logicalKey: "legacy/one.bin",
+        providerKey: `org/${ORG}/legacy/one.bin`,
+        sizeBytes: 3n,
+        contentType: "application/octet-stream",
+        etag: "one-etag",
+        uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+      },
+    ]);
+
+    expect(await repository.reconcileNativeQuotaFromCatalog(ORG)).toBe(4000n);
+    const quota = await dbWrite.execute(sql`SELECT bytes_used FROM org_storage_quota
+      WHERE organization_id = ${ORG}`);
+    expect(BigInt(String(quota.rows[0]?.bytes_used))).toBe(4000n);
+    // 4000 + 2000 exceeds the 5000 limit: the other writers' bytes still count.
+    await expect(prepare("big.bin", "g", 2000n)).rejects.toThrow(/quota/i);
   });
 
   test("filters non-recursive catalog depth before applying the result limit", async () => {

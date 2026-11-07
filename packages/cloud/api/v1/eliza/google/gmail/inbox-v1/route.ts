@@ -1,20 +1,27 @@
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   managedInboxProvider,
   managedInboxReceipts,
-} from "@/lib/services/agent-google-connector/inbox-managed";
-import { createInboxOperationRoutes } from "@/lib/services/agent-google-connector/inbox-operation-routes";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-managed";
+import { createInboxOperationRoutes } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-operation-routes";
 import {
   DefiniteProviderRejection,
   InboxContractError,
-} from "@/lib/services/agent-google-connector/inbox-receipts";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-receipts";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 async function identity(context: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(context);
+  await requirePrivateOwnerAccess(context, user);
   return { organizationId: user.organization_id, userId: user.id };
 }
 async function selected(context: AppContext) {
@@ -59,7 +66,11 @@ app.get("/thread", async (context) =>
 );
 app.get("/attachment", async (context) =>
   context.json(
-    await managedInboxProvider.attachment(
+    await (context.req.query("opaque") === "1"
+      ? managedInboxProvider.opaqueAttachment
+      : managedInboxProvider.attachment
+    ).call(
+      managedInboxProvider,
       await selected(context),
       context.req.query("messageId") || "",
       context.req.query("partId") || "",
@@ -67,7 +78,22 @@ app.get("/attachment", async (context) =>
     ),
   ),
 );
+app.get("/drafts", async (context) =>
+  context.json(
+    await managedInboxProvider.drafts(
+      await selected(context),
+      context.req.query("pageToken"),
+    ),
+  ),
+);
 app.get("/draft", async (context) => {
+  if (context.req.query("content") === "1")
+    return context.json(
+      await managedInboxProvider.draftContent(
+        await selected(context),
+        context.req.query("draftId") ?? "",
+      ),
+    );
   const { raw: _raw, ...metadata } = await managedInboxProvider.draft(
     await selected(context),
     context.req.query("draftId") ?? "",

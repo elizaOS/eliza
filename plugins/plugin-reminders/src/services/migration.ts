@@ -119,7 +119,6 @@ export async function migrateReminderTable(
     return { table, outcome: "already-migrated" };
   }
   if (!(await sourceTableExists(exec, table))) {
-    await writeMigrationMarker(exec, table);
     return { table, outcome: "source-missing" };
   }
 

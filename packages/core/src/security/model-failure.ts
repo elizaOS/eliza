@@ -15,10 +15,11 @@ import { ModelType } from "../types/model.ts";
 import {
 	isModelFundingAuthorityError,
 	isProviderContextOverflowFailure,
+	modelProviderErrorStatus,
 } from "../utils/model-errors.ts";
 import {
 	findNextCloseTag,
-	REASONING_TAG_NAMES,
+	REASONING_TAG_ALTERNATION,
 	stripPairedTagBlocks,
 	stripUnclosedTagSuffix,
 } from "../utils/reasoning-tags.ts";
@@ -67,16 +68,8 @@ export function isModelProviderRetryBudgetExhaustedError(
 }
 
 function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
-	const candidate = asErrorObject(error);
-	if (!candidate) return false;
-	return statuses.includes(Number(candidate.statusCode ?? candidate.status));
-}
-
-function readHttpStatus(error: unknown): number | undefined {
-	const candidate = asErrorObject(error);
-	if (!candidate) return undefined;
-	const status = Number(candidate.statusCode ?? candidate.status);
-	return Number.isFinite(status) && status > 0 ? status : undefined;
+	const status = modelProviderErrorStatus(error);
+	return status !== undefined && statuses.includes(status);
 }
 
 /**
@@ -126,7 +119,7 @@ function extractErrorMessage(error: unknown): string | undefined {
  */
 export function describeModelCallError(error: unknown): string {
 	const unwrapped = unwrapRetryError(error);
-	const status = readHttpStatus(unwrapped) ?? readHttpStatus(error);
+	const status = modelProviderErrorStatus(error);
 	const message = extractErrorMessage(unwrapped) ?? extractErrorMessage(error);
 	if (message && status) return `HTTP ${status}: ${message}`;
 	if (message) return message;
@@ -141,22 +134,9 @@ export function describeModelCallError(error: unknown): string {
 	return String(error);
 }
 
-/**
- * Detect provider rate-limit / 429 failures so the user-facing failure reply
- * can say "I'm being rate-limited, try again shortly" instead of the opaque
- * generic "something went wrong".
- *
- * The structural check runs FIRST and is the canonical signal: the AI SDK
- * carries the upstream HTTP status on `APICallError.statusCode` (wrapped by
- * `RetryError` when retries are exhausted), so we unwrap the retry envelope and
- * read `statusCode === 429` directly — mirroring cloud-shared `aiSdkErrorStatus`.
- * The message substring scan is only a status-less fallback for errors that do
- * not surface a structured status (e.g. raw text), and the legacy `.status`
- * duck-type covers raw OpenAI-SDK errors that expose `.status` instead.
- */
+/** Recognizes rate limits from structured provider status, including retry envelopes. Status-less errors use message matching; status and statusCode are both supported. */
 export function isRateLimitError(error: unknown): boolean {
-	const unwrapped = unwrapRetryError(error);
-	if (hasHttpStatus(unwrapped, [429])) {
+	if (hasHttpStatus(error, [429])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;
@@ -199,7 +179,7 @@ export const INSUFFICIENT_CREDITS_REPLY =
 // "out of credits" and tell the user to spend money on a condition that
 // resolves by waiting.
 const INSUFFICIENT_CREDITS_RE =
-	/\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*zero)\b/i;
+	/\b(?:insufficient(?:[_\s]+(?:credits?|quota|funds))|insufficient_quota|out of credits|max usage reached|quota(?:\s+exceeded)?|billing.*disabled|payment.*required|account.*suspended|spending.*limit|budget.*exceeded|no.*api.*credits|credit.*balance.*(?:zero|too low))\b/i;
 
 const BILLING_KEYWORDS_RE =
 	/\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
@@ -224,7 +204,7 @@ export function isInsufficientCreditsMessage(message: string): boolean {
 export function isInsufficientCreditsError(error: unknown): boolean {
 	if (typeof error === "string") return isInsufficientCreditsMessage(error);
 	const unwrapped = unwrapRetryError(error);
-	if (hasHttpStatus(unwrapped, [402])) {
+	if (hasHttpStatus(error, [402])) {
 		return true;
 	}
 	const candidate = asErrorObject(unwrapped);
@@ -242,7 +222,7 @@ export function isInsufficientCreditsError(error: unknown): boolean {
 	}
 	const message = unwrapped instanceof Error ? unwrapped.message : "";
 	if (isInsufficientCreditsMessage(message)) return true;
-	return hasHttpStatus(unwrapped, [429]) && BILLING_KEYWORDS_RE.test(message);
+	return hasHttpStatus(error, [429]) && BILLING_KEYWORDS_RE.test(message);
 }
 
 /**
@@ -253,8 +233,7 @@ export function isInsufficientCreditsError(error: unknown): boolean {
  * first, message-substring fallback second.
  */
 export function isAuthError(error: unknown): boolean {
-	const unwrapped = unwrapRetryError(error);
-	if (hasHttpStatus(unwrapped, [401, 403])) {
+	if (hasHttpStatus(error, [401, 403])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;
@@ -272,6 +251,16 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
+/** Socket-level error codes that mean the provider was unreachable, not wrong. */
+const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+]);
+
 /**
  * Detect failures where another model provider is worth trying before giving up.
  * This intentionally includes {@link isRateLimitError} so subscription-credit
@@ -282,7 +271,7 @@ export function isAuthError(error: unknown): boolean {
  * a voice swap is not a transient-recoverable condition, and a Kokoro
  * model-download failure surfaces as `fetch failed`, which would otherwise match
  * the transient heuristics below and silently rotate to a different voice engine
- * (#12253). TTS fails closed — the configured voice errors loudly instead.
+ *. TTS fails closed — the configured voice errors loudly instead.
  */
 export function isModelProviderFallbackError(
 	error: unknown,
@@ -318,14 +307,7 @@ export function isModelProviderFallbackError(
 	const localFailure = asErrorObject(unwrapped);
 	if (
 		typeof localFailure?.code === "string" &&
-		[
-			"ECONNREFUSED",
-			"ECONNRESET",
-			"ENETUNREACH",
-			"EHOSTUNREACH",
-			"EAI_AGAIN",
-			"ETIMEDOUT",
-		].includes(localFailure.code)
+		TRANSIENT_NETWORK_ERROR_CODES.has(localFailure.code)
 	)
 		return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
@@ -337,7 +319,7 @@ export function isModelProviderFallbackError(
 	if (isRateLimitError(error)) {
 		return true;
 	}
-	if (hasHttpStatus(unwrapped, [500, 502, 503, 504, 529])) {
+	if (hasHttpStatus(error, [500, 502, 503, 504, 529])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;
@@ -361,21 +343,21 @@ export function isModelProviderFallbackError(
 
 /**
  * Why the turn ended on the structured-failure path, classified from the
- * error that killed the runtime (#17027 AC6). Distinguishable causes get
+ * error that killed the runtime. Distinguishable causes get
  * distinguishable user-facing replies instead of one generic
  * "something flaked" template:
  *
  * - `missing_capability` — the planner requested a tool which was not
- *   registered or otherwise invocable in this runtime. Retrying cannot help;
- *   the honest reply names the gap.
+ * registered or otherwise invocable in this runtime. Retrying cannot help;
+ * the honest reply names the gap.
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
- *   repeated failures, token budget) before finishing. Retrying may help.
+ * repeated failures, token budget) before finishing. Retrying may help.
  * - `context_overflow` — the provider rejected the model call at its
- *   documented context limit and the planner terminated without rewriting
- *   completed results. Retrying the identical request cannot help; the
- *   honest reply asks for a smaller range or narrower request.
+ * documented context limit and the planner terminated without rewriting
+ * completed results. Retrying the identical request cannot help; the
+ * honest reply asks for a smaller range or narrower request.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
- *   generic path.
+ * generic path.
  */
 export type StructuredFailureCause =
 	| "missing_capability"
@@ -496,8 +478,6 @@ export function buildFailureReplyPrompt(
 		"Reply:",
 	].join("\n");
 }
-
-const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
 
 /**
  * Strips a leading close-only residue prefix — model output can open with a

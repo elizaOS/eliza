@@ -4,24 +4,27 @@
  * payload parsing, idempotency, or agent routing.
  */
 
-import { Hono } from "hono";
-import { ZodError } from "zod";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { blooioAutomationService } from "@/lib/services/blooio-automation";
-import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { blooioAutomationService } from "@elizaos/cloud-shared/lib/services/blooio-automation";
+import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
 import {
   type BlooioWebhookEvent,
   extractBlooioMediaUrls,
   markChatAsRead,
   parseBlooioWebhookEvent,
   verifyBlooioSignature,
-} from "@/lib/utils/blooio-api";
-import { processOnce } from "@/lib/utils/idempotency";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/utils/blooio-api";
+import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { ZodError } from "zod";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -198,8 +201,8 @@ async function handleIncomingMessage(
 ): Promise<void> {
   const [{ messageRouterService }, { agentGatewayRouterService }] =
     await Promise.all([
-      import("@/lib/services/message-router"),
-      import("@/lib/services/agent-gateway-router"),
+      import("@elizaos/cloud-shared/lib/services/message-router"),
+      import("@elizaos/cloud-shared/lib/services/agent-gateway-router"),
     ]);
 
   const chatId = event.external_id || event.sender;

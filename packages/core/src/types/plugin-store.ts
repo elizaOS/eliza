@@ -6,23 +6,9 @@
  */
 import type { UUID } from "./primitives";
 
-/**
- * Plugin Schema Registration and Store System
- *
- * WHY: Plugins need to store custom data (goals, todos, etc.) but shouldn't
- * cast runtime.db to Drizzle types. This creates tight coupling to SQL adapters
- * and prevents plugins from working with in-memory adapters.
- *
- * DESIGN: Provide a simple, generic CRUD interface that:
- * - Works across SQL and in-memory adapters
- * - Handles schema registration and migrations
- * - Supports common query patterns (equality, IN, limit/offset)
- * - Doesn't try to be a full ORM (no joins, subqueries, etc.)
- */
+/** Adapter-neutral plugin schema registration and CRUD. Plugins depend on this contract rather than concrete SQL adapters. */
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Schema Definition Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Column types supported by the plugin store
@@ -85,9 +71,7 @@ export interface PluginSchema {
 	version?: number; // Schema version for migrations.
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Query Filter Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Filter conditions for plugin store queries
@@ -135,9 +119,7 @@ export interface PluginQueryOptions {
 	orderBy?: PluginOrderBy | PluginOrderBy[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Plugin Store Interface
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Generic CRUD interface for plugin data access

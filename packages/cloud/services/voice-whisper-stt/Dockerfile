@@ -1,9 +1,5 @@
-# Reproducible build of the free-cloud Whisper STT service that lives behind the
-# cloud-api /api/v1/voice/stt route (the `WHISPER_STT_URL` branch). It wraps the
-# upstream Speaches (formerly faster-whisper-server) image so the deploy is a
-# pinned, in-repo artifact instead of an unreproducible Railway pet: the
-# previously-provisioned instance (whisper-stt-production-6fc7.up.railway.app)
-# existed only as a test-default URL.
+# Pinned optional self-hosted Whisper image for the cloud-api compatibility route.
+# Managed Cloud voice uses Workers AI instead.
 #
 # Contract this image MUST satisfy (asserted by
 # packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts):

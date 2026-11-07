@@ -16,10 +16,9 @@ import {
   Unplug,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-
-import { cn } from "../../lib/utils";
 import type { SshHostInspection } from "../../platform/ssh-runtime";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";

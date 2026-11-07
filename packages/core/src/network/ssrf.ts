@@ -97,15 +97,7 @@ function parseIpv4(address: string): number[] | null {
 	return numbers;
 }
 
-/**
- * Parse the legacy/non-canonical IPv4 forms that the OS resolver
- * (`getaddrinfo`/`inet_aton`) accepts: octal (`0177`), hex (`0x7f`), plain
- * decimal (`2130706433`), and 1-3 part short forms (`127.1`). An SSRF guard
- * must classify these the way the resolver would actually connect, otherwise
- * `http://0177.0.0.1/` (octal localhost) slips past a literal-IP check.
- * Returns the four octets of the resulting 32-bit address, or null when the
- * string is not a numeric IPv4 in any of these encodings.
- */
+/** Parses resolver-accepted IPv4 forms, including octal, hex, integer, and short notation. SSRF checks must classify the destination the OS would connect to. */
 function parseIpv4Loose(address: string): number[] | null {
 	const parts = address.split(".");
 	if (parts.length < 1 || parts.length > 4) {
@@ -154,6 +146,7 @@ function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 	}
 	const parts = mapped.split(":").filter(Boolean);
 	if (parts.length === 1) {
+		if (!/^[0-9a-f]+$/i.test(parts[0])) return null;
 		const value = Number.parseInt(parts[0], 16);
 		if (Number.isNaN(value) || value < 0 || value > 0xffff_ffff) {
 			return null;
@@ -166,6 +159,9 @@ function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 		];
 	}
 	if (parts.length !== 2) {
+		return null;
+	}
+	if (!/^[0-9a-f]+$/i.test(parts[0]) || !/^[0-9a-f]+$/i.test(parts[1])) {
 		return null;
 	}
 	const high = Number.parseInt(parts[0], 16);
@@ -288,7 +284,7 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 		(h7 >> 8) & 0xff,
 		h7 & 0xff,
 	];
-	// IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96 spellings that
+	// IPv4-compatible::/96 and IPv4-mapped::ffff:0:0/96 spellings that
 	// survived normalizeIpForPolicy — the embedded address is the low 32 bits.
 	// (`::` and `::1` are classified by the caller before this runs.)
 	if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {
@@ -553,14 +549,4 @@ export async function resolvePinnedHostname(
 	lookupFn?: LookupFn,
 ): Promise<PinnedHostname> {
 	return resolvePinnedHostnameWithPolicy(hostname, { lookupFn });
-}
-
-/**
- * Assert that a hostname resolves to a public IP address.
- */
-export async function assertPublicHostname(
-	hostname: string,
-	lookupFn?: LookupFn,
-): Promise<void> {
-	await resolvePinnedHostname(hostname, lookupFn);
 }

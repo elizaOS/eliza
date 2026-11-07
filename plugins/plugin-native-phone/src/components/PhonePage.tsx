@@ -4,7 +4,7 @@
  * does not import or frame the phone feature.
  */
 
-import { PluginPageFrame } from "@elizaos/ui/components";
+import { PluginPageFrame } from "@elizaos/ui";
 import { PhoneView } from "./PhoneView.tsx";
 
 export function PhonePage(): React.JSX.Element {

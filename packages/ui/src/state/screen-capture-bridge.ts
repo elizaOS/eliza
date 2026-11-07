@@ -3,12 +3,12 @@
  * queued capture requests and POSTs frames back, since Android has no
  * agent→renderer push channel. See the block below for the full protocol.
  */
-import { Capacitor } from "@capacitor/core";
 import {
   normalizeScreenCaptureRequestContract,
   type ScreenCaptureRequestContract,
-} from "@elizaos/core/contracts/screen-capture";
+} from "@elizaos/contracts";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
+import { isNativeMobile } from "../platform/native-mobile";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 
 /**
@@ -56,7 +56,6 @@ export function normalizeCaptureRequests(value: unknown): CaptureRequest[] {
   });
 }
 let started = false;
-let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let pollGeneration = 0;
 let activePollController: AbortController | null = null;
@@ -69,15 +68,7 @@ function clampQuality(quality: number): number {
   if (!Number.isFinite(quality)) return 70;
   return Math.min(100, Math.max(1, Math.round(quality)));
 }
-function isNativeMobile(): boolean {
-  try {
-    const platform = Capacitor.getPlatform();
-    return platform === "android" || platform === "ios";
-  } catch {
-    // error-policy:J3 an exotic host global shape reads as "not native".
-    return false;
-  }
-}
+
 async function postScreenFrame(
   body: Record<string, unknown>,
   signal: AbortSignal,
@@ -180,7 +171,7 @@ async function poll(signal: AbortSignal): Promise<void> {
  * No-op on web/desktop and on repeat calls.
  */
 function scheduleNextPoll(delayMs: number, generation: number): void {
-  pollTimer = setTimeout(() => {
+  setTimeout(() => {
     const controller = new AbortController();
     activePollController = controller;
     void poll(controller.signal).finally(() => {
@@ -200,18 +191,4 @@ export function initScreenCaptureBridge(): void {
   consecutiveFailures = 0;
   pollGeneration += 1;
   scheduleNextPoll(POLL_INTERVAL_MS, pollGeneration);
-}
-/** Test-only reset hook. */
-export function __resetScreenCaptureBridgeForTests(): void {
-  pollGeneration += 1;
-  activePollController?.abort(
-    new DOMException("Screen-capture poll stopped", "AbortError"),
-  );
-  activePollController = null;
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
-  started = false;
-  consecutiveFailures = 0;
 }

@@ -20,7 +20,7 @@
  * the owning plugin's `register.ts`, adding it to the guard's scan set).
  */
 
-import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+import { registerHostExternalImporter } from "@elizaos/ui";
 
 let registered = false;
 

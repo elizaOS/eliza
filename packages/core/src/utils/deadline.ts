@@ -23,11 +23,14 @@ export async function resolveAtDeadline<T, TTimeout>(
 	try {
 		return await Promise.race([
 			promise,
-			new Promise<TTimeout>((resolve) => {
-				timer = setTimeout(
-					() => resolve(options.onTimeout()),
-					options.timeoutMs,
-				);
+			new Promise<TTimeout>((resolve, reject) => {
+				timer = setTimeout(() => {
+					try {
+						resolve(options.onTimeout());
+					} catch (error) {
+						reject(error);
+					}
+				}, options.timeoutMs);
 				unrefTimer(timer);
 			}),
 		]);
@@ -41,12 +44,10 @@ export function rejectAtDeadline<T>(
 	promise: Promise<T>,
 	options: DeadlineOptions<Error>,
 ): Promise<T> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const timeout = new Promise<never>((_resolve, reject) => {
-		timer = setTimeout(() => reject(options.onTimeout()), options.timeoutMs);
-		unrefTimer(timer);
-	});
-	return Promise.race([promise, timeout]).finally(() => {
-		if (timer !== undefined) clearTimeout(timer);
+	return resolveAtDeadline(promise, {
+		timeoutMs: options.timeoutMs,
+		onTimeout: () => {
+			throw options.onTimeout();
+		},
 	});
 }

@@ -62,6 +62,14 @@ export interface ConnectionState {
   lastConnected?: Date;
   lastError?: Error;
   consecutivePingFailures: number;
+  /**
+   * The JSON-serialized server config this connection reconnects with. Kept on
+   * the state (not read back off the live McpConnection) so the reconnect
+   * ladder survives connect()'s leading disconnect(): when a retry's transport
+   * build throws before the connection is re-added, the map lookup would be
+   * undefined and the ladder would die after one attempt.
+   */
+  config: string;
 }
 
 export type McpServerStatus = "connecting" | "connected" | "disconnected";

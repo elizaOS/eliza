@@ -1329,3 +1329,11 @@ def test_response_from_payload_preserves_zero_usage_cache_metadata() -> None:
     assert usage["total_tokens"] == 15
     assert usage["prompt_tokens_details"]["cached_tokens"] == 0
     assert usage["prompt_tokens_details"]["cache_write_tokens"] == 7
+
+
+def test_explicit_default_model_is_not_replaced_by_campaign(monkeypatch) -> None:
+    from openclaw_adapter.client import DEFAULT_MODEL
+
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "campaign-model")
+    client = OpenClawClient(provider="openai", model=DEFAULT_MODEL)
+    assert client.model == DEFAULT_MODEL

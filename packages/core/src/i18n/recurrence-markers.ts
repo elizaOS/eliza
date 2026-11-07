@@ -12,13 +12,24 @@
  * quantifier uses ("invite every member") stay out; CJK matches by substring.
  */
 
+// Spelled-out counts accepted wherever a digit count is ("every two weeks",
+// "three times a day" read the same as "every 2 weeks", "3 times a day").
+const ENGLISH_COUNT_WORD =
+	"(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty)";
+
 const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	// en: every/each anchored to a schedule noun within the phrase
-	/\b(?:every|each)\s+(?:(?:other|\d+)\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b/i,
+	new RegExp(
+		String.raw`\b(?:every|each)\s+(?:(?:other|\d+|${ENGLISH_COUNT_WORD})\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b`,
+		"i",
+	),
 	/\bdaily\b/i,
 	/\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/i,
 	/\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/i,
-	/\b(?:once|twice|thrice|\d+\s*times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b/i,
+	new RegExp(
+		String.raw`\b(?:once|twice|thrice|(?:\d+\s*|${ENGLISH_COUNT_WORD}\s+)times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b`,
+		"i",
+	),
 	/\bper\s+(?:day|week|month|year)\b/i,
 	/\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/i,
 	/\b(?:weekdays|weekends)\b/i,
@@ -28,8 +39,9 @@ const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	/\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/i,
 	/\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/i,
 	/\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/i,
-	// pt: cada / todos os / todas as + schedule noun; adjective forms
-	/\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)\b/i,
+	// pt: cada / todos os / todas as + schedule noun; adjective forms. The
+	// closing boundary is Unicode-aware: an ASCII \b never follows "manhã".
+	/\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/iu,
 	/\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/i,
 	/\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/i,
 	/\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/i,
@@ -81,7 +93,7 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 
 // Negative/one-shot directives participate in the same ordered intent stream
 // as positive cadence markers. The last explicit directive wins, while a
-// positive marker nested inside "not every ..." is ignored. Cadence
+// positive marker nested inside "not every..." is ignored. Cadence
 // adjectives ("not weekly") and plural weekday nouns ("not on Mondays")
 // negate the same way as determiner forms — a directly negated cadence word
 // is a one-shot statement, not a recurring one. "Only once a week" remains
@@ -114,16 +126,35 @@ type IntentMarker = {
 	start: number;
 };
 
-function patternMatches(text: string, pattern: RegExp): IntentMarker[] {
-	const flags = pattern.flags.includes("g")
-		? pattern.flags
-		: `${pattern.flags}g`;
-	const matcher = new RegExp(pattern.source, flags);
-	return Array.from(text.matchAll(matcher), (match) => ({
-		end: (match.index ?? 0) + match[0].length,
-		kind: "recurrence" as const,
-		start: match.index ?? 0,
-	}));
+// matchAll needs the global flag. Compile the global forms once; matchAll
+// clones its regex, so the shared instances never carry lastIndex state.
+function toGlobal(patterns: readonly RegExp[]): readonly RegExp[] {
+	return patterns.map((pattern) =>
+		pattern.global ? pattern : new RegExp(pattern.source, `${pattern.flags}g`),
+	);
+}
+const GLOBAL_ONE_SHOT_PATTERNS = toGlobal(ONE_SHOT_DIRECTIVE_PATTERNS);
+const GLOBAL_RECURRENCE_PATTERNS = toGlobal([
+	...ASCII_RECURRENCE_PATTERNS,
+	...JAPANESE_RECURRENCE_PATTERNS,
+]);
+const ROLE_LABELS = new Set(["user", "owner", "assistant", "agent", "system"]);
+
+function pushPatternMatches(
+	out: IntentMarker[],
+	text: string,
+	patterns: readonly RegExp[],
+	kind: IntentMarker["kind"],
+): void {
+	for (const pattern of patterns) {
+		for (const match of text.matchAll(pattern)) {
+			out.push({
+				end: match.index + match[0].length,
+				kind,
+				start: match.index,
+			});
+		}
+	}
 }
 
 function orderedIntentMarkers(text: string): IntentMarker[] {
@@ -132,14 +163,14 @@ function orderedIntentMarkers(text: string): IntentMarker[] {
 			value.replace(pattern, (match) => " ".repeat(match.length)),
 		text,
 	);
-	const oneShot = ONE_SHOT_DIRECTIVE_PATTERNS.flatMap((pattern) =>
-		patternMatches(sanitized, pattern).map((match) => ({
-			...match,
-			kind: "one-shot" as const,
-		})),
-	);
-	const recurrence = ASCII_RECURRENCE_PATTERNS.flatMap((pattern) =>
-		patternMatches(sanitized, pattern),
+	const oneShot: IntentMarker[] = [];
+	pushPatternMatches(oneShot, sanitized, GLOBAL_ONE_SHOT_PATTERNS, "one-shot");
+	const recurrence: IntentMarker[] = [];
+	pushPatternMatches(
+		recurrence,
+		sanitized,
+		GLOBAL_RECURRENCE_PATTERNS,
+		"recurrence",
 	);
 	for (const marker of CJK_RECURRENCE_MARKERS) {
 		let start = sanitized.indexOf(marker);
@@ -151,9 +182,6 @@ function orderedIntentMarkers(text: string): IntentMarker[] {
 			});
 			start = sanitized.indexOf(marker, start + marker.length);
 		}
-	}
-	for (const pattern of JAPANESE_RECURRENCE_PATTERNS) {
-		recurrence.push(...patternMatches(sanitized, pattern));
 	}
 	const nonNegatedRecurrence = recurrence.filter(
 		(positive) =>
@@ -176,7 +204,7 @@ function authoritativeSegments(text: string): string[] {
 			const colonIndex = line.indexOf(":");
 			if (colonIndex < 0) return [line];
 			const role = line.slice(0, colonIndex).trim().toLowerCase();
-			if (!["user", "owner", "assistant", "agent", "system"].includes(role)) {
+			if (!ROLE_LABELS.has(role)) {
 				return [line];
 			}
 			return role === "user" || role === "owner"

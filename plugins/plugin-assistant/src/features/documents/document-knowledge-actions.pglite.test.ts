@@ -3,16 +3,16 @@
 import {
   type ActionResult,
   ChannelType,
-  type DocumentMemoryMetadata,
   type HandlerOptions,
   type Memory,
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { documentAction } from "./actions.ts";
 import { DocumentService } from "./service.ts";
+import type { DocumentMemoryMetadata } from "./types.ts";
 
 const owner = "f4350000-0000-4000-8000-000000000001" as UUID;
 const room = "f4350000-0000-4000-8000-000000000002" as UUID;

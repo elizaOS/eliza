@@ -290,7 +290,11 @@ export class KaminoLiquidityService extends Service {
           address: tokenData.address || tokenIdentifier,
           price: tokenData.price || 0,
           liquidity: tokenData.liquidity || 0,
-          decimals: tokenData.decimals || 9,
+          decimals:
+            typeof tokenData.decimals === "number" &&
+            Number.isFinite(tokenData.decimals)
+              ? tokenData.decimals
+              : 9,
           marketCap: tokenData.mc || 0,
           volume24h: tokenData.volume24h || 0,
           priceChange24h: tokenData.priceChange24hPercent || 0,
@@ -400,21 +404,23 @@ export class KaminoLiquidityService extends Service {
 
       const stats = {
         timestamp: new Date().toISOString(),
+        // Kamino returns APY as a fraction; the strategy APYs in this file are
+        // percentages (see calculateLimoApy), so use the same unit here.
         stakingYields: {
           total: stakingYields.length,
           averageApy:
             stakingYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
+              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
               0,
             ) / stakingYields.length,
           maxApy: Math.max(
-            ...stakingYields.map((stakingYield) =>
-              parseFloat(stakingYield.apy),
+            ...stakingYields.map(
+              (stakingYield) => parseFloat(stakingYield.apy) * 100,
             ),
           ),
           minApy: Math.min(
-            ...stakingYields.map((stakingYield) =>
-              parseFloat(stakingYield.apy),
+            ...stakingYields.map(
+              (stakingYield) => parseFloat(stakingYield.apy) * 100,
             ),
           ),
         },
@@ -422,7 +428,7 @@ export class KaminoLiquidityService extends Service {
           total: medianYields.length,
           averageApy:
             medianYields.reduce(
-              (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
+              (sum, stakingYield) => sum + parseFloat(stakingYield.apy) * 100,
               0,
             ) / medianYields.length,
         },
@@ -470,7 +476,7 @@ export class KaminoLiquidityService extends Service {
           strategyType: "Staking Strategy",
           estimatedTvl: 0, // Would need additional API calls to get TVL
           volume24h: 0,
-          apy: parseFloat(stakingYield.apy),
+          apy: parseFloat(stakingYield.apy) * 100, // Convert to percentage, as in calculateLimoApy
           tokenA: stakingYield.tokenMint,
           tokenB: "SOL", // Assuming staking against SOL
           feeTier: "0%",
@@ -551,7 +557,7 @@ export class KaminoLiquidityService extends Service {
           strategyType: "Staking Strategy",
           estimatedTvl: 0,
           volume24h: 0,
-          apy: parseFloat(stakingStrategy.apy),
+          apy: parseFloat(stakingStrategy.apy) * 100, // Convert to percentage, as in calculateLimoApy
           tokenA: stakingStrategy.tokenMint,
           tokenB: "SOL",
           feeTier: "0%",
@@ -718,7 +724,7 @@ export class KaminoLiquidityService extends Service {
               strategyType: "Staking Strategy",
               estimatedTvl: 0,
               volume24h: 0,
-              apy: parseFloat(stakingYield.apy),
+              apy: parseFloat(stakingYield.apy) * 100, // Convert to percentage, as in calculateLimoApy
               tokenA: stakingYield.tokenMint,
               tokenB: "SOL",
               feeTier: "0%",

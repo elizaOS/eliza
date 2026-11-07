@@ -41,8 +41,8 @@ export function getChainByName(chainName: string): Chain {
 
 export const AddressSchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address format")
-  .transform((addr) => addr as Address);
+  .regex(/^0[xX][a-fA-F0-9]{40}$/, "Invalid Ethereum address format")
+  .transform((addr) => `0x${addr.slice(2)}` as Address);
 
 export const HashSchema = z
   .string()
@@ -56,28 +56,28 @@ export const HexSchema = z
 
 export const PrivateKeySchema = z
   .string()
-  .regex(/^0x[a-fA-F0-9]{64}$/, "Invalid private key format")
-  .transform((key) => key as `0x${string}`);
+  .regex(/^0[xX][a-fA-F0-9]{64}$/, "Invalid private key format")
+  .transform((key) => `0x${key.slice(2)}` as `0x${string}`);
 
-export const AmountSchema = z.string().refine(
-  (val) => {
-    const num = parseFloat(val);
-    return !Number.isNaN(num) && num > 0;
-  },
-  { message: "Amount must be a positive number" }
-);
+// Keep the decimal string exact for viem's unit conversion.
+function isPositiveDecimalAmount(value: string): boolean {
+  return (
+    value.trim() === value &&
+    /^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$/.test(value) &&
+    /[1-9]/.test(value)
+  );
+}
+
+export const AmountSchema = z
+  .string()
+  .refine(isPositiveDecimalAmount, { message: "Amount must be a positive number" });
 
 export const OptionalAmountSchema = z
   .string()
   .optional()
-  .refine(
-    (val) => {
-      if (val === undefined) return true;
-      const num = parseFloat(val);
-      return !Number.isNaN(num) && num > 0;
-    },
-    { message: "If provided, amount must be a positive number" }
-  );
+  .refine((val) => val === undefined || isPositiveDecimalAmount(val), {
+    message: "If provided, amount must be a positive number",
+  });
 
 export interface Transaction {
   readonly hash: Hash;
@@ -87,6 +87,8 @@ export interface Transaction {
   readonly data?: Hex;
   readonly chainId?: number;
   readonly logs?: readonly Log[];
+  /** "unconfirmed": broadcast, but the receipt could not be read in time. */
+  readonly confirmationStatus?: "confirmed" | "unconfirmed";
 }
 
 export const TransactionSchema = z.object({

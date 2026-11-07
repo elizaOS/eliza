@@ -9,13 +9,13 @@ import assert from "node:assert/strict";
 import {
   createDeterministicModelPlugin,
   strictTerminalReplyFixture,
-} from "@elizaos/testing";
-import { startApiServer } from "../src/api/server.ts";
+} from "@elizaos/testing/models";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../test/helpers/http.ts";
+} from "@elizaos/testing/runtime";
+import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 

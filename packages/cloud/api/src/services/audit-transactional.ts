@@ -4,9 +4,9 @@
  * mutation back), then the committed event fans out to the remaining sinks.
  */
 
+import type { DbTransaction } from "@elizaos/cloud-shared/db/client";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AuditEvent, EmitInput } from "@/api-app/services/audit";
-import type { DbTransaction } from "@/db/client";
-import { logger } from "@/lib/utils/logger";
 import { getAuditDispatcher } from "./audit-dispatcher-singleton";
 import { auditEventsSink } from "./audit-events";
 

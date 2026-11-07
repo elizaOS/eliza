@@ -28,8 +28,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type StoredFile } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { StoredFile } from "../../api/client-files";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import {
   FramedPage,
   FramedPageBody,
@@ -38,11 +40,7 @@ import {
 } from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import {
-  formatByteSize,
-  formatRelativeTime,
-  resolveAppAssetUrl,
-} from "../../utils";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
   canShareFiles,
@@ -50,6 +48,7 @@ import {
   filenameForMime,
   shareAttachment,
 } from "../../utils/download-share";
+import { formatByteSize, formatRelativeTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
@@ -311,9 +310,10 @@ const FileCard = memo(function FileCard({
 /* ── main view ────────────────────────────────────────────────────────── */
 
 export function FilesView() {
+  const authority = useActiveAgentAuthority();
   return (
     <ShellViewAgentSurface viewId="files">
-      <FilesViewBody />
+      <FilesViewBody key={authority} />
     </ShellViewAgentSurface>
   );
 }
@@ -533,9 +533,7 @@ function FilesViewBody() {
       data-testid="files-view"
       aria-busy={loading}
     >
-      <FramedPageHeader
-        title={t("filesview.title", { defaultValue: "Files" })}
-      />
+      <FramedPageHeader />
       {!loading && !restricted && files.length > 0 ? (
         <FramedPageNavigation className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted">Show</span>

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-agent",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Starts, stops, and monitors the embedded Eliza agent runtime.",
   "keywords": [
     "agent-runtime",
@@ -18,7 +18,8 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./native-host/*": "./native-host/*.mjs"
   },
   "unpkg": "dist/plugin.js",
   "files": [
@@ -27,7 +28,8 @@
     "dist/",
     "ios/Sources/",
     "*.podspec",
-    "dist"
+    "dist",
+    "native-host/*.mjs"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -47,14 +49,18 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node scripts/test-native-host.mjs && node --test test/provider-admission/provider-admission.node.mjs test/connection/connection.node.mjs"
+  },
+  "dependencies": {
+    "@elizaos/capacitor-secure-store": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.63.5",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

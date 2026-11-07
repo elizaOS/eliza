@@ -3,8 +3,11 @@ import {
   asUUID,
   ChannelType,
   type ChatMessage,
+  COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   type ContextDefinition,
   type ContextObject,
+  compactHistoricalReceiptSegments,
+  completionContextSources,
   HANDLE_RESPONSE_TOOL_NAME,
   type IAgentRuntime,
   type Memory,
@@ -25,7 +28,6 @@ import {
   formatAvailableContextsForPrompt,
   listAvailableContextsForTurn,
 } from "./context-catalog.js";
-import { compactHistoricalReceiptSegments } from "./historical-receipt-wire.js";
 import {
   type HistoryDiscovery,
   historyReferenceNotice,
@@ -33,6 +35,7 @@ import {
   projectBackgroundHistory,
   withBackgroundHistory,
 } from "./history-discovery.js";
+import { labelHistorySources } from "./history-wire.js";
 import { messageHandlerTemplate } from "./prompts.js";
 import {
   ambientTurnProviderExclusions,
@@ -150,6 +153,8 @@ export function renderMessageHandlerModelInput(
     contextCatalog?: ContextCatalogReference;
     history?: HistoryDiscovery;
     historyReadEvidence?: HistoryDiscovery;
+    /** Label originals only when the native response schema offers review. */
+    completionContextSelection?: boolean;
   },
 ): {
   messages: ChatMessage[];
@@ -170,7 +175,7 @@ export function renderMessageHandlerModelInput(
       id: "background-history-notice",
       stable: false,
       content:
-        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning; use history:all for exhaustive or uncertain recall." +
+        "Earlier originals were deferred by a complete, source-bound background review. This is not a review of the current request. Read missing constraints, corrections, referents or exact historical evidence before replying or planning. For a specific saved-fact lookup, first use advertised stored-memory references, known history IDs or literal searches of the fact's subject; inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed." +
         historyReferenceNotice(context, options?.history),
     });
   const instructions = renderMessageHandlerInstructions(
@@ -195,9 +200,18 @@ export function renderMessageHandlerModelInput(
   const priorDialogueSegments = remainingDynamicSegments.filter(
     (segment) => segment.label?.startsWith("prior_message:") === true,
   );
-  const transcript = priorDialogueSegments
-    .map((segment) => segment.content)
-    .join("\n");
+  const transcriptSegments = options?.completionContextSelection
+    ? labelHistorySources(
+        priorDialogueSegments,
+        new Map(
+          completionContextSources(context).sources.map(({ id, event }) => [
+            event.id,
+            id,
+          ]),
+        ),
+      )
+    : priorDialogueSegments;
+  const transcript = transcriptSegments.map(segmentBlock).join("\n");
   // Past effects remain complete historical evidence, before the instruction
   // that establishes the current request. They cannot become pending work by
   // being regrouped into the current turn's tool/result tail.
@@ -220,18 +234,25 @@ export function renderMessageHandlerModelInput(
     taskIndex > 0 ? instructions.slice(0, taskIndex).trim() : "";
   const taskInstructions =
     taskIndex >= 0 ? instructions.slice(taskIndex) : `# Task\n${instructions}`;
-  const currentMessages = turnTailSegments.filter(
-    (segment) => segment.label === "message:user",
-  );
+  // A platform reply's referenced message belongs to the current turn: keep it
+  // in event order directly before the current message, not ahead of the task.
+  const isCurrentTurnMessage = (segment: { label?: string }) =>
+    segment.label === "message:user" || segment.label === "reply_reference";
+  const currentMessages = turnTailSegments.filter(isCurrentTurnMessage);
   const otherTurnSegments = turnTailSegments.filter(
-    (segment) => segment.label !== "message:user",
+    (segment) => !isCurrentTurnMessage(segment),
   );
+  // The authored catalog and Task text are the same on every turn of a room,
+  // so they lead the user message ahead of the clock, providers and history
+  // and extend the cached prompt prefix. Past effects still precede the
+  // current-turn boundary that establishes the request.
   const orderedDynamicSegments = [
-    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
-    ...dynamicProviderSegments,
     ...(catalogInstructions
       ? [{ content: catalogInstructions, stable: false }]
       : []),
+    { id: "runtime-task", content: taskInstructions, stable: false },
+    ...compactHistoricalReceiptSegments(historicalNavigationSegments),
+    ...dynamicProviderSegments,
     ...(options?.contextCatalog?.loaded
       ? [
           {
@@ -248,17 +269,15 @@ export function renderMessageHandlerModelInput(
       false,
     ),
     ...compactHistoricalReceiptSegments(otherTurnSegments),
-    {
-      id: "runtime-task",
-      content: [
-        taskInstructions,
-        ...currentTurnBoundary.map(segmentBlock),
-      ].join("\n\n"),
-      stable: false,
-    },
+    ...currentTurnBoundary,
     {
       id: "conversation",
-      content: `# Conversation\n${transcript}`,
+      content: [
+        ...(options?.completionContextSelection
+          ? [COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS]
+          : []),
+        `# Conversation\n${transcript}`,
+      ].join("\n\n"),
       stable: false,
     },
     ...currentMessages,

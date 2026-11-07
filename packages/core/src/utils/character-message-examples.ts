@@ -30,10 +30,6 @@ function extractLikelyJson(input: string): string {
 		.replace(/[ \t\r\n]{0,1024}```$/i, "")
 		.trim();
 
-	if (withoutFences.startsWith("{") || withoutFences.startsWith("[")) {
-		return withoutFences;
-	}
-
 	const firstBracket = withoutFences.indexOf("[");
 	const firstBrace = withoutFences.indexOf("{");
 	const starts = [firstBracket, firstBrace].filter((index) => index >= 0);
@@ -42,9 +38,24 @@ function extractLikelyJson(input: string): string {
 	const start = Math.min(...starts);
 	const opener = withoutFences[start];
 	const closer = opener === "[" ? "]" : "}";
-	const end = withoutFences.lastIndexOf(closer);
-	if (end <= start) return withoutFences;
-	return withoutFences.slice(start, end + 1);
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let index = start; index < withoutFences.length; index += 1) {
+		const char = withoutFences[index];
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (char === "\\") escaped = true;
+			else if (char === '"') inString = false;
+			continue;
+		}
+		if (char === '"') inString = true;
+		else if (char === opener) depth += 1;
+		else if (char === closer && --depth === 0) {
+			return withoutFences.slice(start, index + 1);
+		}
+	}
+	return withoutFences;
 }
 
 function normalizeSpeakerName(

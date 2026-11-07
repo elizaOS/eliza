@@ -7,7 +7,7 @@ strict integer match.
 
 CLI:
 
-    python -m benchmarks.standard.gsm8k \\
+    python -m benchmarks.suites.standard.gsm8k \\
         --model-endpoint http://localhost:8000/v1 \\
         --model gpt-4o-mini \\
         --output /tmp/gsm8k
@@ -263,7 +263,7 @@ class GSM8KRunner:
 
 
 class _GSM8KFactory(RunnerFactory):
-    prog = "benchmarks.standard.gsm8k"
+    prog = "benchmarks.suites.standard.gsm8k"
     description = "GSM8K grade-school math benchmark (openai/gsm8k) with #### parsing."
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:

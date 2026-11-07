@@ -8,7 +8,12 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccount,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  InMemoryConnectorAccountStorage,
+} from "@elizaos/core";
 import {
   __resetDefaultMessageRefStoreForTests,
   __resetDefaultTriageServiceForTests,
@@ -23,6 +28,7 @@ import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MESSAGE_DRAFT_DISPATCH_CHANNEL,
@@ -30,14 +36,6 @@ import {
   registerMessageDraftScheduledTaskBridge,
   unregisterMessageDraftScheduledTaskBridge,
 } from "../src/lifeops/scheduled-task/message-draft-dispatch.js";
-
-type RawSqlQuery = {
-  queryChunks: Array<{ value?: unknown }>;
-};
-
-function rawQueryText(query: RawSqlQuery): string {
-  return String(query.queryChunks.map((chunk) => chunk.value ?? "").join(""));
-}
 
 class DurableDraftAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "discord";
@@ -102,9 +100,7 @@ async function bootRuntime(
   adapter?: DurableDraftAdapter,
   options: { bridgeInstanceId?: string } = {},
 ): Promise<RuntimeHarness> {
-  const db = {
-    execute: (query: RawSqlQuery) => pg.query(rawQueryText(query)),
-  };
+  const db = drizzle(pg);
   let service: ScheduledTaskRunnerService | null = null;
   const runtime = {
     agentId,
@@ -135,20 +131,23 @@ async function bootRuntime(
   };
 }
 
-function saveDraft(): void {
+function saveDraft(runtime: IAgentRuntime): void {
   getDefaultTriageService()
     .getStore()
-    .saveDraft({
-      draftId: "durable-draft-1",
-      source: "discord",
-      to: [{ identifier: "family-channel" }],
-      body: "Pickup moved to 5:30; please confirm.",
-      preview: "Pickup moved to 5:30; please confirm.",
-      createdAtMs: Date.parse("2026-07-27T20:00:00.000Z"),
-      sent: false,
-      channelId: "family-channel",
-      metadata: { accountId: "family-account" },
-    });
+    .saveDraft(
+      {
+        draftId: "durable-draft-1",
+        source: "discord",
+        to: [{ identifier: "family-channel" }],
+        body: "Pickup moved to 5:30; please confirm.",
+        preview: "Pickup moved to 5:30; please confirm.",
+        createdAtMs: Date.parse("2026-07-27T20:00:00.000Z"),
+        sent: false,
+        channelId: "family-channel",
+        metadata: { accountId: "family-account" },
+      },
+      runtime.agentId,
+    );
 }
 
 function resetCoreMessageSingletons(): void {
@@ -172,7 +171,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
     const firstAdapter = new DurableDraftAdapter();
     const first = await bootRuntime(pg, "agent-durable-message", firstAdapter);
     harnesses.push(first);
-    saveDraft();
+    saveDraft(first.runtime);
     const sendAtMs = Date.parse("2026-07-28T09:00:00.000Z");
 
     const [scheduledA, scheduledB] = await Promise.all([
@@ -226,7 +225,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
       restartedAdapter,
     );
     harnesses.push(restarted);
-    saveDraft();
+    saveDraft(restarted.runtime);
     const replay = await getDefaultTriageService().scheduleDraftSend(
       restarted.runtime,
       "durable-draft-1",
@@ -270,6 +269,36 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
         channelKey: MESSAGE_DRAFT_DISPATCH_CHANNEL,
       },
     });
+  });
+
+  it("refuses to send a scheduled draft now, so the schedule delivers it once", async () => {
+    const pg = new PGlite();
+    databases.push(pg);
+    const adapter = new DurableDraftAdapter();
+    const harness = await bootRuntime(pg, "agent-send-now", adapter);
+    harnesses.push(harness);
+    saveDraft(harness.runtime);
+    const service = getDefaultTriageService();
+    const scheduled = await service.scheduleDraftSend(
+      harness.runtime,
+      "durable-draft-1",
+      Date.parse("2026-07-28T09:00:00.000Z"),
+    );
+
+    // "Actually, send it now": no adapter can cancel the durable task.
+    await expect(
+      service.sendDraft(harness.runtime, "durable-draft-1"),
+    ).rejects.toMatchObject({ code: "MESSAGE_DRAFT_ALREADY_SCHEDULED" });
+    expect(adapter.sendCount).toBe(0);
+
+    const runner = getScheduledTaskRunner(harness.runtime, {
+      agentId: "agent-send-now",
+      now: () => new Date("2026-07-28T09:01:00.000Z"),
+    });
+    expect(
+      (await runner.fireWithResult(scheduled.scheduledId ?? "")).kind,
+    ).toBe("fired");
+    expect(adapter.sendCount).toBe(1);
   });
 
   it("fails a tampered task whose persisted draft snapshot is missing", async () => {
@@ -320,7 +349,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
       new DurableDraftAdapter(),
     );
     harnesses.push(first);
-    saveDraft();
+    saveDraft(first.runtime);
     const scheduled = await getDefaultTriageService().scheduleDraftSend(
       first.runtime,
       "durable-draft-1",
@@ -356,7 +385,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
     adapter.failSend = true;
     const harness = await bootRuntime(pg, "agent-failed-message", adapter);
     harnesses.push(harness);
-    saveDraft();
+    saveDraft(harness.runtime);
     const scheduled = await getDefaultTriageService().scheduleDraftSend(
       harness.runtime,
       "durable-draft-1",
@@ -390,7 +419,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
       bridgeInstanceId: "attempt-order-process",
     });
     harnesses.push(harness);
-    saveDraft();
+    saveDraft(harness.runtime);
     const scheduled = await getDefaultTriageService().scheduleDraftSend(
       harness.runtime,
       "durable-draft-1",
@@ -444,7 +473,7 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
       { bridgeInstanceId: "current-process" },
     );
     harnesses.push(harness);
-    saveDraft();
+    saveDraft(harness.runtime);
     const scheduled = await getDefaultTriageService().scheduleDraftSend(
       harness.runtime,
       "durable-draft-1",
@@ -508,5 +537,90 @@ describe("deferred MESSAGE scheduling — durable ScheduledTask path", () => {
       reason: "terminal:failed",
     });
     expect(adapter.sendCount).toBe(0);
+  });
+
+  describe("new Gmail compose", () => {
+    class GmailDraftAdapter extends DurableDraftAdapter {
+      override readonly source: MessageSource = "gmail";
+    }
+
+    function googleAccount(id: string): ConnectorAccount {
+      return {
+        id,
+        provider: "google",
+        role: "OWNER",
+        purpose: ["messaging"],
+        accessGate: "owner_binding",
+        status: "connected",
+        createdAt: 1,
+        updatedAt: 1,
+      };
+    }
+
+    async function bootWithGoogleAccounts(agentId: string, ids: string[]) {
+      const pg = new PGlite();
+      databases.push(pg);
+      const harness = await bootRuntime(pg, agentId, new GmailDraftAdapter());
+      harnesses.push(harness);
+      const storage = new InMemoryConnectorAccountStorage();
+      for (const id of ids) await storage.upsertAccount(googleAccount(id));
+      getConnectorAccountManager(harness.runtime, storage);
+      getDefaultTriageService()
+        .getStore()
+        .saveDraft(
+          {
+            draftId: "gmail-draft-1",
+            source: "gmail",
+            to: [{ identifier: "pat@example.com" }],
+            subject: "Contract",
+            body: "Signed copy attached.",
+            preview: "Signed copy attached.",
+            createdAtMs: Date.parse("2026-07-27T20:00:00.000Z"),
+            sent: false,
+          },
+          harness.runtime.agentId,
+        );
+      return { pg, harness };
+    }
+
+    it("binds the sending Google account when the email is scheduled", async () => {
+      const { pg, harness } = await bootWithGoogleAccounts(
+        "agent-gmail-compose",
+        ["acct-a"],
+      );
+      await getDefaultTriageService().scheduleDraftSend(
+        harness.runtime,
+        "gmail-draft-1",
+        Date.parse("2026-07-28T17:00:00.000Z"),
+      );
+
+      const persisted = await pg.query<{ metadata_json: string }>(
+        `SELECT metadata_json FROM app_scheduling.life_scheduled_tasks
+          WHERE agent_id = 'agent-gmail-compose'`,
+      );
+      // Send time looks up acct-a by id; if it was disconnected the send
+      // fails instead of moving to whichever account is left.
+      expect(
+        JSON.parse(persisted.rows[0]?.metadata_json ?? "{}"),
+      ).toMatchObject({
+        deferredMessageDraft: { draft: { worldId: "acct-a" } },
+      });
+    });
+
+    it("refuses to schedule when the sending account is ambiguous", async () => {
+      const { harness } = await bootWithGoogleAccounts("agent-gmail-two", [
+        "acct-a",
+        "acct-b",
+      ]);
+      await expect(
+        getDefaultTriageService().scheduleDraftSend(
+          harness.runtime,
+          "gmail-draft-1",
+          Date.parse("2026-07-28T17:00:00.000Z"),
+        ),
+      ).rejects.toMatchObject({
+        code: "MESSAGE_DRAFT_GMAIL_ACCOUNT_UNRESOLVED",
+      });
+    });
   });
 });

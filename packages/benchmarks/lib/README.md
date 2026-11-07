@@ -1,16 +1,11 @@
-# @elizaos-benchmarks/lib
+# Benchmark infrastructure
 
-Shared infrastructure imported by every harness and the orchestrator in the LifeOpsBench
-suite — not a runnable benchmark and not registered in the suite registry.
+Shared Python retry, pricing, telemetry, result history and corpus utilities.
+Transport clients belong to `harnesses/`; workload policy belongs to its suite.
+Cross-package callers use the public `benchmarks.lib` API where available.
 
-## Development
-
-Install dependencies with `bun install` at the repository root. Run from that root:
+From the repository root with `requirements-ci.txt` installed:
 
 ```bash
-bun run --cwd packages/benchmarks/lib typecheck  # static validation
+PYTHONPATH=packages python -m pytest packages/benchmarks/lib
 ```
-
-No standalone build script is defined; this package is consumed or executed from source.
-
-No standalone `test` script is defined in this package. Typechecking is not a substitute for runtime tests.

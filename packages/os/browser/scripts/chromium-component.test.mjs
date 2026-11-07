@@ -12,6 +12,7 @@ import {
   EXTENSION_ID,
   generateComponentOverlay,
   pin,
+  protectionAssetNames,
   sha256,
 } from "./chromium-component.mjs";
 
@@ -31,8 +32,15 @@ const certificate = "A".repeat(64);
 function assets() {
   return {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
+    "task-bindings.mjs": Buffer.from("export const authority = true;\n"),
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
+    "page-command.mjs": Buffer.from("export function pageCommand() {}\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
+    "effect-watch.mjs": Buffer.from("export const network = true;\n"),
+    "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
+    "guide-font.mjs": Buffer.from(
+      'export const guideFonts = [{ weight: 500, data: "d09GMgAB" }];\n',
+    ),
     "manual-activity.mjs": Buffer.from("export const manualActivity = true;\n"),
     "native-connection.mjs": Buffer.from("export const recovery = true;\n"),
     "task-guidance.mjs": Buffer.from("export const admission = true;\n"),
@@ -51,11 +59,17 @@ function assets() {
           "tabs",
           "scripting",
           "webNavigation",
+          "webRequest",
           "storage",
           "nativeMessaging",
           "alarms",
         ],
-        host_permissions: ["http://*/*", "https://*/*"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*",
+          "ws://*/*",
+          "wss://*/*",
+        ],
         background: { service_worker: "background.mjs", type: "module" },
       }),
     ),
@@ -120,6 +134,16 @@ test("pinned Chromium sources produce deterministic component and narrow native 
       sha256(first.files[`chrome/browser/resources/eliza_browser/${name}`]),
       first.report.resources[name].sha256,
     );
+  const grit =
+    first.files["chrome/browser/resources/component_extension_resources.grd"];
+  assert.match(
+    grit,
+    /"IDR_ELIZA_BROWSER_GUIDE_FONT" file="eliza_browser\/guide-font\.mjs"/,
+  );
+  assert.match(
+    grit,
+    /"IDR_ELIZA_BROWSER_GUIDE_FONT_LICENSE" file="eliza_browser\/figtree-OFL\.txt"/,
+  );
 });
 
 test("both owned platforms serialize each Blink generator action without changing its inputs or outputs", async () => {
@@ -177,6 +201,99 @@ test("both platforms emit the reviewed order-independent IndexedDB fix and nativ
   }
 });
 
+test("Android connects to an address only through a navigation the protection rules see", async () => {
+  const warmup =
+    "chrome/android/java/src/org/chromium/chrome/browser/WarmupManager.java";
+  const customTabs =
+    "chrome/android/java/src/org/chromium/chrome/browser/customtabs/CustomTabsConnection.java";
+  const prefs = "chrome/browser/preloading/preloading_prefs.cc";
+  const android = await generateComponentOverlay(request());
+  // No preloading by default: LoadingPredictor's navigation-start preconnect follows this pref.
+  assert.match(
+    android.files[prefs],
+    /prefs::kNetworkPredictionOptions,\n.*\n\s+static_cast<int>\(NetworkPredictionOptions::kDisabled\)/,
+  );
+  assert.doesNotMatch(
+    android.files[prefs],
+    /NetworkPredictionOptions::kDefault\)/,
+  );
+  // Intent and Custom Tab speculation: DNS prefetch, preconnect, hidden tabs, prefetch, parallel requests.
+  assert.match(
+    android.files[warmup],
+    /public static boolean isEarlyConnectionAllowed\(\) \{\n\s+return false;/,
+  );
+  assert.equal(
+    android.files[warmup].match(/if \(!isEarlyConnectionAllowed\(\)\) return;/g)
+      .length,
+    3,
+  );
+  assert.equal(
+    android.files[customTabs].match(
+      /if \(!WarmupManager\.isEarlyConnectionAllowed\(\)\) return/g,
+    ).length,
+    4,
+  );
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(
+      android.report.outputs[filename],
+      sha256(android.files[filename]),
+    );
+  // Desktop builds keep Chromium's behavior: none of these files is changed.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(linux.files[filename], undefined);
+});
+
+test("Android pages follow a font size change while the browser stays open", async () => {
+  const tracker =
+    "chrome/android/java/src/org/chromium/chrome/browser/ChromeActivitySessionTracker.java";
+  const android = await generateComponentOverlay(request());
+  const source = android.files[tracker];
+  // Chromium sets the factor once per profile when a foreground session starts; that stays.
+  assert.match(
+    source,
+    /handlePerProfileForegroundSessionStart\(Profile profile\) \{[\s\S]*?FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  // The application's configuration callback sets it again when the font scale changes.
+  const initialize = source.slice(
+    source.indexOf("public void initializeWithNative() {"),
+    source.indexOf("private void onFontScaleChanged() {"),
+  );
+  assert.match(
+    initialize,
+    /ApplicationStatus\.registerApplicationStateListener\(createApplicationStateListener\(\)\);[\s\S]*ContextUtils\.getApplicationContext\(\)\s*\.registerComponentCallbacks\(/,
+  );
+  assert.match(
+    initialize,
+    /public void onConfigurationChanged\(Configuration configuration\) \{\s*if \(configuration\.fontScale == mFontScale\) return;\s*mFontScale = configuration\.fontScale;\s*onFontScaleChanged\(\);/,
+  );
+  // Only during a session, and for each profile the session started.
+  assert.match(
+    source,
+    /private void onFontScaleChanged\(\) \{\s*ThreadUtils\.assertOnUiThread\(\);\s*if \(!mIsStarted\) return;\s*for \(Profile profile : mStartupProfileTasksCompleted\.getTrackedProfiles\(\)\) \{\s*FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  for (const name of [
+    "android.content.ComponentCallbacks",
+    "android.content.res.Configuration",
+    "org.chromium.base.ContextUtils",
+  ])
+    assert.equal(source.split(`import ${name};`).length, 2);
+  assert.equal(android.report.outputs[tracker], sha256(source));
+  // Desktop builds keep Chromium's file unchanged.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  assert.equal(linux.files[tracker], undefined);
+});
+
 test("source mutations, unsupported revisions, identity changes, and unexpected resources fail before output", async () => {
   await assert.rejects(
     generateComponentOverlay({ ...request(), revision: "0".repeat(40) }),
@@ -194,6 +311,13 @@ test("source mutations, unsupported revisions, identity changes, and unexpected 
   unexpected["unreviewed.mjs"] = Buffer.from("code");
   await assert.rejects(
     generateComponentOverlay({ ...request(), assets: unexpected }),
+    /inventory changed/,
+  );
+  // The bundled guide font ships only with its licence.
+  const unlicensed = assets();
+  delete unlicensed["figtree-OFL.txt"];
+  await assert.rejects(
+    generateComponentOverlay({ ...request(), assets: unlicensed }),
     /inventory changed/,
   );
   const wrongKey = assets();
@@ -359,8 +483,12 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     /"chrome\/browser\/resources\/component_extension_resources.grd":\s*\{\s*"includes": \[(\d+)\],\s*"structures": \[(\d+)\]/,
   );
   assert.ok(allocation);
-  assert.ok(count <= Number(allocation[2]) - Number(allocation[1]));
-  assert.equal(count, 21); // Includes both optional Hangouts entries, conservatively.
+  // Optional protection resources must fit the same reserved range.
+  assert.ok(
+    count + protectionAssetNames.length <=
+      Number(allocation[2]) - Number(allocation[1]),
+  );
+  assert.equal(count, 26); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"
@@ -438,4 +566,50 @@ test("Android embedding is opt-in and restricted to the provisioned native host 
     generateComponentOverlay(linux),
     /explicit Android-only/,
   );
+});
+
+test("optional protection embeds a complete reviewed inventory without broadening ordinary builds", async () => {
+  const input = request();
+  for (const name of [
+    "protection.mjs",
+    "advisory.mjs",
+    "policy.mjs",
+    "warning.html",
+    "warning.mjs",
+    "warning.css",
+    "licenses.html",
+  ])
+    input.assets[name] = Buffer.from("reviewed product resource");
+  const manifest = JSON.parse(input.assets["manifest.json"]);
+  manifest.permissions.push("declarativeNetRequest");
+  manifest.web_accessible_resources = [
+    { resources: ["warning.html"], matches: ["<all_urls>"] },
+  ];
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  const overlay = await generateComponentOverlay(input);
+  assert.equal(
+    Object.keys(overlay.report.resources).length,
+    assetNames.length + protectionAssetNames.length,
+  );
+  assert.match(
+    overlay.files[
+      "components/android_autofill/browser/form_data_android_bridge_impl.cc"
+    ],
+    /main_frame_origin\(\)\.Serialize\(\)/,
+  );
+  assert.ok(
+    overlay.files["chrome/browser/resources/eliza_browser/warning.html"],
+  );
+  const omitted = { ...input, assets: { ...input.assets } };
+  delete omitted.assets["policy.mjs"];
+  await assert.rejects(generateComponentOverlay(omitted), /inventory/);
+  manifest.permissions.push("debugger");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  manifest.permissions.pop();
+  manifest.web_accessible_resources[0].resources.push("policy.mjs");
+  input.assets["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  await assert.rejects(generateComponentOverlay(input), /capabilities/);
+  const ordinary = await generateComponentOverlay(request());
+  assert.equal(ordinary.report.resources["protection.mjs"], undefined);
 });

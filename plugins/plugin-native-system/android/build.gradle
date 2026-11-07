@@ -1,4 +1,5 @@
 ext {
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'
     junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
     androidxActivityVersion = project.hasProperty('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.8.0'
 }
@@ -36,9 +37,13 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    // Plugin.getActivity() exposes AppCompatActivity in the production Java API.
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.activity:activity:$androidxActivityVersion"
 
     // Instrumented test deps (issue #9967 — first androidTest for a native plugin).
+    // Test activities extend Capacitor BridgeActivity; its implementation dependency is not exported.
+    androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     androidTestImplementation "androidx.test:core:1.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test.ext:junit:1.1.5"

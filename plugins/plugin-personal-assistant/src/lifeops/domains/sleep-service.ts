@@ -5,11 +5,11 @@
  * domain — no cross-domain dependencies.
  */
 
-import {
-  type LifeOpsPersonalBaselineResponse,
-  type LifeOpsSleepHistoryResponse,
-  type LifeOpsSleepRegularityResponse,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsPersonalBaselineResponse,
+  LifeOpsSleepHistoryResponse,
+  LifeOpsSleepRegularityResponse,
+} from "@elizaos/contracts";
 import { createHealthSleepServiceMethods } from "@elizaos/plugin-health";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import type { LifeOpsContext } from "../lifeops-context.js";

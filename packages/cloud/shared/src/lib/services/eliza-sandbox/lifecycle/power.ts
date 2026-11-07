@@ -1,5 +1,6 @@
 /** Owns sandbox power operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
@@ -17,7 +18,6 @@ import {
   CONTAINER_BACKED_EXECUTION_TIERS,
   WARM_POOL_ORG_ID,
 } from "../../../../db/schemas/agent-sandboxes";
-import { AGENT_PRICING } from "../../../constants/agent-pricing";
 import { logger } from "../../../utils/logger";
 import { computeStateHash } from "../../agent-backup-diff";
 import { agentComputeFundingService } from "../../agent-compute-funding";
@@ -1498,10 +1498,8 @@ export class SandboxPower {
       : await provider.checkHealth(handle, { kind: "canonical" });
     if (!ready)
       return {
-        success: false,
+        ...(await release("Retained runtime started but is not ready; resume can be retried")),
         containerStarted: true,
-        reprovisioned: false,
-        error: "Retained runtime started but is not ready; resume can be retried",
       };
     await dbWrite.transaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, orgId);

@@ -48,3 +48,15 @@ export async function clickViewBackControl(
     /(?:404\s+not\s+found|page not found|route not found)/i,
   );
 }
+
+export async function assertHeaderlessViewChrome(
+  page: Page,
+  { within }: { within?: string } = {},
+): Promise<void> {
+  const scope = within ? page.locator(within) : page.locator("#root");
+  await expect(scope).toBeVisible();
+  await expect(scope.getByTestId("view-header")).toHaveCount(0);
+  await expect(
+    scope.getByRole("button", { name: "Back to launcher", exact: true }),
+  ).toHaveCount(0);
+}

@@ -8,8 +8,7 @@
  *   `v2:${timestamp}.${deliveryId}.${eventType}.${body}`
  * binding the dispatch timestamp, a stable per-delivery nonce (`X-Steward-Delivery-Id`)
  * and the event type (`X-Steward-Event`) into the HMAC. This prevents replaying a
- * captured/persisted event with a tampered event type, and the deliveryId + timestamp
- * are stable across retries so consumers can dedup replays within the tolerance window.
+ * captured/persisted event with a tampered event type, and deliveryId is stable across retries while each attempt gets a fresh timestamp.
  *
  * Legacy (backward-compat, opt-in): a bare hex digest over `${timestamp}.${body}`
  * or — with `allowLegacyBodySignature` — the raw body. Body-only signatures have no
@@ -20,8 +19,11 @@
  * runtime-specific code paths.
  */
 
-const encoder = new TextEncoder();
-const SIGNATURE_SCHEME = "v2";
+import {
+  canonicalSignedPayload,
+  hmacSha256Hex,
+  SIGNATURE_SCHEME,
+} from "../contracts/index";
 
 function hexToBytes(hex: string): Uint8Array {
   const normalized = hex.toLowerCase().replace(/^0x/, "");
@@ -31,15 +33,6 @@ function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(normalized.length / 2);
   for (let i = 0; i < normalized.length; i += 2) {
     out[i / 2] = parseInt(normalized.slice(i, i + 2), 16);
-  }
-  return out;
-}
-
-function bytesToHex(buf: ArrayBuffer): string {
-  const view = new Uint8Array(buf);
-  let out = "";
-  for (let i = 0; i < view.length; i++) {
-    out += view[i].toString(16).padStart(2, "0");
   }
   return out;
 }
@@ -54,20 +47,6 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
-async function importHmacKey(secret: string): Promise<CryptoKey> {
-  const secretBytes = encoder.encode(secret);
-  return crypto.subtle.importKey(
-    "raw",
-    secretBytes.buffer.slice(
-      secretBytes.byteOffset,
-      secretBytes.byteOffset + secretBytes.byteLength,
-    ) as ArrayBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
-
 /**
  * Compute the canonical hex signature for `body` with `secret`. Exposed so
  * tests and self-checks can produce expected values without re-implementing
@@ -77,17 +56,7 @@ export async function signWebhookPayload(
   body: string,
   secret: string,
 ): Promise<string> {
-  const key = await importHmacKey(secret);
-  const bytes = encoder.encode(body);
-  const sig = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer,
-  );
-  return bytesToHex(sig);
+  return hmacSha256Hex(secret, body);
 }
 
 export interface VerifyWebhookOptions {
@@ -173,7 +142,12 @@ export async function verifyWebhookSignature(
       return { valid: false, reason: "bad-signature" };
     // Length-prefix deliveryId/eventType so field boundaries cannot be shifted
     // (event types and bodies contain '.'); must match dispatcher.canonicalSignedPayload.
-    const canonical = `${SIGNATURE_SCHEME}:${timestamp}.${deliveryId.length}:${deliveryId}.${eventType.length}:${eventType}.${body}`;
+    const canonical = canonicalSignedPayload(
+      String(timestamp),
+      deliveryId,
+      eventType,
+      body,
+    );
     const expected = hexToBytes(await signWebhookPayload(canonical, secret));
     if (constantTimeEqual(provided, expected)) {
       return { valid: true, scheme: "v2", deliveryId };

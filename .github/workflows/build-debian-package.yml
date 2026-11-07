@@ -96,7 +96,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
       - name: Validate immutable inputs and native host
@@ -111,15 +111,14 @@ jobs:
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
           test "$(dpkg --print-architecture)" = "${{ matrix.debian-architecture }}"
-          pinned_commit="$(node --input-type=module -e 'import { readElizaSourceLock } from "./scripts/read-eliza-source-lock.ts"; process.stdout.write(readElizaSourceLock().commit);')"
-          test "$DESKTOP_SOURCE_SHA" = "$pinned_commit"
+          test "$DESKTOP_SOURCE_SHA" = "$(git rev-parse HEAD)"
       - name: Install deterministic Debian packaging tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             appstream binutils debhelper desktop-file-utils dpkg-dev lintian python3-cryptography zstd
       - name: Download signed native desktop and agent artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           repository: elizaOS/eliza
           run-id: ${{ inputs.desktop_run_id }}
@@ -167,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           cp -a linux/packaging/debian "$WORK_ROOT/source/debian"
-          cp -- linux/elizaos/assets/logo_blue_nobg.svg "$WORK_ROOT/source/debian/elizaos-icon.svg"
+          cp -- linux/assets/logo_blue_nobg.svg "$WORK_ROOT/source/debian/elizaos-icon.svg"
           mkdir -p "$WORK_ROOT/source/upstream"
           cp -- "$WORK_ROOT/upstream/desktop-artifact-manifest.json" "$WORK_ROOT/source/upstream/desktop-artifact-manifest.json"
           cp -- "$WORK_ROOT/upstream/desktop-artifact-manifest.json.sig" "$WORK_ROOT/source/upstream/desktop-artifact-manifest.json.sig"
@@ -231,7 +230,7 @@ jobs:
           if grep -q '^E:' "$WORK_ROOT/lintian.log"; then exit 1; fi
           exit "$status"
       - name: Attest exact Debian package
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: ${{ steps.deb.outputs.path }}
       - name: Bind producer evidence to exact package bytes
@@ -246,7 +245,7 @@ jobs:
             --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --workflow "$GITHUB_WORKFLOW_REF" --job build-deb
       - name: Upload architecture-specific package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-debian-package-${{ matrix.debian-architecture }}
           path: |
@@ -258,4 +257,4 @@ jobs:
           retention-days: 30
       - name: Remove package workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: sudo node ../scripts/rm-path-recursive.ts "$WORK_ROOT"

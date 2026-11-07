@@ -4,17 +4,20 @@
  * tombstone without disclosing credentials belonging to another account.
  */
 
-import { Hono } from "hono";
-import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireSessionUserWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));

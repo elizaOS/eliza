@@ -6,11 +6,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { runConsumerFixture } from "./lib/android-consumer-fixture.ts";
 import { acquireDeviceLease } from "./lib/device-lease.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 
 export function inventory(repoRoot = root) {
+  const descriptors = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        root,
+        "packages/app/scripts/android-native-plugins-gradle/bridge-tests/plugins.json",
+      ),
+      "utf8",
+    ),
+  );
   return fs
     .readdirSync(path.join(repoRoot, "plugins"))
     .filter(
@@ -25,16 +35,30 @@ export function inventory(repoRoot = root) {
         fs.readFileSync(path.join(dir, "package.json"), "utf8"),
       );
       const android = fs.existsSync(path.join(dir, "android/build.gradle"));
-      const testDir = path.join(dir, "android/src/androidTest");
-      const tests = fs.existsSync(testDir)
-        ? fs
-            .readdirSync(testDir, { recursive: true })
-            .filter((name) => /\.(kt|java)$/.test(name))
-            .flatMap((name) => {
-              const source = fs.readFileSync(path.join(testDir, name), "utf8");
-              const count = [...source.matchAll(/@Test\b/g)].length;
-              return count ? [{ file: name, count }] : [];
-            })
+      const readTests = (testDir: string) =>
+        fs.existsSync(testDir)
+          ? fs
+              .readdirSync(testDir, { recursive: true })
+              .filter((name) => /\.(kt|java)$/.test(name))
+              .flatMap((name) => {
+                const source = fs.readFileSync(
+                  path.join(testDir, name),
+                  "utf8",
+                );
+                const count = [...source.matchAll(/@Test\b/g)].length;
+                return count ? [{ file: name, count }] : [];
+              })
+          : [];
+      const tests = readTests(path.join(dir, "android/src/androidTest"));
+      const consumerProject =
+        descriptors[directory]?.kind === "host-configured-library" &&
+        fs.existsSync(path.join(dir, "test/android-consumer/build.gradle"))
+          ? `plugins/${directory}/test/android-consumer`
+          : null;
+      const consumerTests = consumerProject
+        ? readTests(
+            path.join(repoRoot, consumerProject, "host/src/androidTest"),
+          )
         : [];
       return {
         directory,
@@ -42,8 +66,13 @@ export function inventory(repoRoot = root) {
         project: manifest.name.replace(/^@/, "").replaceAll("/", "-"),
         android,
         tests,
+        consumerProject,
+        consumerTests,
         expectedTests:
-          tests.reduce((sum, test) => sum + test.count, 0) + (android ? 1 : 0),
+          tests.reduce((sum, test) => sum + test.count, 0) +
+          (android && descriptors[directory]?.kind !== "host-configured-library"
+            ? 1
+            : 0),
       };
     });
 }
@@ -238,6 +267,7 @@ async function main() {
     dnsOutage,
     dnsOutageChain,
     systemControls,
+    surfaceControl: args.includes("--surface-control"),
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -256,7 +286,10 @@ async function main() {
       fingerprint: adb("shell", "getprop", "ro.build.fingerprint").trim(),
       webView: adb("shell", "dumpsys", "webviewupdate").trim(),
     };
-    if (!args.includes("--no-build")) {
+    if (
+      !args.includes("--no-build") &&
+      selected.some((plugin) => plugin.expectedTests > 0)
+    ) {
       console.log(`Building ${selected.length} Android native test APKs`);
       let build;
       try {
@@ -267,9 +300,9 @@ async function main() {
             "packages/app/scripts/android-native-plugins-gradle",
             "--no-daemon",
             "--max-workers=4",
-            ...selected.map(
-              (plugin) => `:${plugin.project}:assembleDebugAndroidTest`,
-            ),
+            ...selected
+              .filter((plugin) => plugin.expectedTests > 0)
+              .map((plugin) => `:${plugin.project}:assembleDebugAndroidTest`),
             ...(selected.some(
               (plugin) => plugin.directory === "plugin-native-appblocker",
             )
@@ -296,6 +329,26 @@ async function main() {
         problems: [],
       };
       report.results.push(entry);
+      if (plugin.expectedTests === 0 && plugin.consumerProject) {
+        await runConsumerFixture({
+          root,
+          plugin,
+          entry,
+          outputDir,
+          adb,
+          build: !args.includes("--no-build"),
+          parseInstrumentation,
+          parseNativeArtifacts,
+        });
+        console.log(
+          `${entry.pass ? "PASS" : "FAIL"} ${plugin.directory}: consumer fixture`,
+        );
+        fs.writeFileSync(
+          path.join(outputDir, "report.json"),
+          JSON.stringify(report, null, 2),
+        );
+        continue;
+      }
       let applicationId;
       let fixtureInstalled = false;
       let preservePackageForRecovery = false;
@@ -459,6 +512,10 @@ async function main() {
             "-r",
             ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
             ...(systemControls ? ["-e", "systemControls", "1"] : []),
+            ...(args.includes("--surface-control") &&
+            plugin.directory === "plugin-native-browser-surface"
+              ? ["-e", "surfaceControl", "1"]
+              : []),
             ...(dnsOutage
               ? ["-e", "dnsOutage", "1", "-e", "dnsOutageChain", dnsOutageChain]
               : []),

@@ -128,7 +128,7 @@ describe("Android Play account-deletion contract", () => {
     expect(publicPage).toContain("30-day recovery");
     expect(publicPage).toContain("support@eliza.cloud");
     expect(publicPage).not.toContain("sign back in");
-    expect(read("cloud/shared/src/lib/cron/cloudflare-cron.ts")).toContain(
+    expect(read("cloud/api/src/cron.ts")).toContain(
       '"/api/cron/process-account-deletions"',
     );
   });

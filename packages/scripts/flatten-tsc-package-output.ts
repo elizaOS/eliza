@@ -135,6 +135,44 @@ async function removeNestedRoots() {
   await removePathRecursive(path.join(distDir, "plugins"));
 }
 
+/** Re-anchor emitted references to this package's copied source declarations.
+ * Cost: one read per emitted declaration during builds; no runtime I/O. */
+async function relocateDeclarationReferences(dir) {
+  const sourceRoot = path.join(packageDir, "src");
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await relocateDeclarationReferences(file);
+    } else if (entry.isFile() && entry.name.endsWith(".d.ts")) {
+      const text = await fs.readFile(file, "utf8");
+      const destination = path.join(
+        distDir,
+        path.relative(nestedSourceDir, file),
+      );
+      const rewritten = text.replace(
+        /^(\s*\/\/\/\s*<reference\s+path=)(["'])([^"']+)\2/gm,
+        (whole, prefix, quote, reference) => {
+          const target = path.resolve(path.dirname(file), reference);
+          const relative = path.relative(sourceRoot, target);
+          if (
+            relative.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relative) ||
+            !target.endsWith(".d.ts")
+          )
+            return whole;
+          const packagedTarget = path.join(distDir, relative);
+          const relocated = path
+            .relative(path.dirname(destination), packagedTarget)
+            .split(path.sep)
+            .join("/");
+          return `${prefix}${quote}${relocated.startsWith(".") ? relocated : `./${relocated}`}${quote}`;
+        },
+      );
+      if (rewritten !== text) await fs.writeFile(file, rewritten);
+    }
+  }
+}
+
 let flattened = false;
 for (let attempt = 0; attempt < 20; attempt += 1) {
   if (!(await pathExists(nestedSourceDir))) {
@@ -145,6 +183,7 @@ for (let attempt = 0; attempt < 20; attempt += 1) {
     process.exit(1);
   }
 
+  await relocateDeclarationReferences(nestedSourceDir);
   await flattenNestedSource();
   flattened = true;
   await removeNestedRoots();

@@ -71,15 +71,44 @@ function asAddressArray(values: readonly string[], key: string): Address[] {
 
 function asHexArray(values: readonly string[], key: string): Hex[] {
   return values.map((value) => {
-    if (!/^0x[0-9a-fA-F]*$/.test(value)) {
+    // Whole bytes only: viem right-pads an odd digit count instead of
+    // refusing it, so the signed calldata would differ from the confirmed text.
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(value)) {
       throw new Error(`${key} must contain only hex calldata values.`);
     }
     return value as Hex;
   });
 }
 
-function asBigIntArray(values: readonly string[]): bigint[] {
-  return values.map((value) => BigInt(value));
+function asBigInt(value: string, key: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    // BigInt's own SyntaxError text is engine-specific and does not name the
+    // field; this message reaches the user as the INVALID_PARAMS detail.
+    throw new Error(`${key} must be a base-10 integer string.`);
+  }
+}
+
+/**
+ * The parallel `targets` / `values` (wei) / `calldatas` arrays of a Governor
+ * call. The Governor reverts when their lengths differ, so that is rejected
+ * here, before anything is confirmed or signed.
+ */
+function proposalCalls(
+  params: WalletRouterParams,
+): [Address[], bigint[], Hex[]] {
+  const targets = asAddressArray(requireArray(params, "targets"), "targets");
+  const values = requireArray(params, "values").map((value) =>
+    asBigInt(value, "values"),
+  );
+  const calldatas = asHexArray(requireArray(params, "calldatas"), "calldatas");
+  if (targets.length !== values.length || targets.length !== calldatas.length) {
+    throw new Error(
+      `targets, values and calldatas must have the same length for governance ${params.op}.`,
+    );
+  }
+  return [targets, values, calldatas];
 }
 
 function descriptionHash(description: string): Hex {
@@ -93,33 +122,12 @@ export function validateWalletGovParams(
     if (!params.op) {
       return "op is required for governance actions.";
     }
-    requireGovernor(params);
-    switch (params.op) {
-      case "propose":
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
-      case "vote":
-        requireProposalId(params);
-        if (params.support === undefined) {
-          return "support is required for governance vote.";
-        }
-        break;
-      case "queue":
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
-      case "execute":
-        requireProposalId(params);
-        requireArray(params, "targets");
-        requireArray(params, "values");
-        requireArray(params, "calldatas");
-        requireDescription(params);
-        break;
+    // Run the signer path's presence checks, parsing and ABI encoding now, so
+    // a missing or malformed governor, proposalId, target, value or calldata
+    // is refused before the user is asked to confirm instead of after.
+    encodeWalletGovData(params);
+    if (params.op === "vote" && params.support === undefined) {
+      return "support is required for governance vote.";
     }
     return null;
   } catch (error) {
@@ -137,9 +145,7 @@ export function encodeWalletGovData(params: WalletRouterParams): Hex {
         abi: governorArtifacts.abi,
         functionName: "propose",
         args: [
-          asAddressArray(requireArray(params, "targets"), "targets"),
-          asBigIntArray(requireArray(params, "values")),
-          asHexArray(requireArray(params, "calldatas"), "calldatas"),
+          ...proposalCalls(params),
           requireDescription(params),
         ],
       }) as Hex;
@@ -147,7 +153,10 @@ export function encodeWalletGovData(params: WalletRouterParams): Hex {
       return encodeFunctionData({
         abi: governorArtifacts.abi,
         functionName: "castVote",
-        args: [BigInt(requireProposalId(params)), BigInt(params.support ?? 0)],
+        args: [
+          asBigInt(requireProposalId(params), "proposalId"),
+          BigInt(params.support ?? 0),
+        ],
       }) as Hex;
     case "queue": {
       const description = requireDescription(params);
@@ -155,9 +164,7 @@ export function encodeWalletGovData(params: WalletRouterParams): Hex {
         abi: governorArtifacts.abi,
         functionName: "queue",
         args: [
-          asAddressArray(requireArray(params, "targets"), "targets"),
-          asBigIntArray(requireArray(params, "values")),
-          asHexArray(requireArray(params, "calldatas"), "calldatas"),
+          ...proposalCalls(params),
           descriptionHash(description),
         ],
       }) as Hex;
@@ -169,9 +176,7 @@ export function encodeWalletGovData(params: WalletRouterParams): Hex {
         abi: governorArtifacts.abi,
         functionName: "execute",
         args: [
-          asAddressArray(requireArray(params, "targets"), "targets"),
-          asBigIntArray(requireArray(params, "values")),
-          asHexArray(requireArray(params, "calldatas"), "calldatas"),
+          ...proposalCalls(params),
           descriptionHash(description),
         ],
       }) as Hex;

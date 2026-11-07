@@ -10,11 +10,14 @@
  * connection strings). The original error is logged server-side.
  */
 
-import { errorEnvelope } from "@/lib/api/compat-envelope";
-import { ApiError, getErrorStatusCode } from "@/lib/api/errors";
-import { ServiceKeyAuthError } from "@/lib/auth/service-key";
-import { applyCorsHeaders } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
+import { errorEnvelope } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import {
+  ApiError,
+  getErrorStatusCode,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { ServiceKeyAuthError } from "@elizaos/cloud-shared/lib/auth/service-key";
+import { applyCorsHeaders } from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 function compatErrorResponse(
   message: string,

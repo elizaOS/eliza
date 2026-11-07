@@ -12,7 +12,6 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 
 ```bash
 bun run --cwd plugins/plugin-native-canvas build  # build
-bun run --cwd plugins/plugin-native-canvas test   # tests
 ```
 
 Android drawing and clearing reject unknown or deleted layer IDs with

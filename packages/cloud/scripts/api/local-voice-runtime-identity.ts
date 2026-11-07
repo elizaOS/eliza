@@ -16,9 +16,9 @@ const UUID_SHAPE_PATTERN =
 const LOOPBACK_IP_LITERALS = new Set(["127.0.0.1", "[::1]"]);
 const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
 const MAX_RUNTIME_CONVERSATION_ID_LENGTH = 128;
-// restoreConversationsFromDb bypasses the runtime's own
-// evictOldestConversation(..., 500), so a legitimate list can exceed 500 and a
-// cap at that number would refuse startup on a healthy host. This bound exists
+// restoreConversationsFromDb loads every web conversation, so a legitimate
+// list can exceed 500 and a cap at that number would refuse startup on a
+// healthy host. This bound exists
 // only to stop an unbounded response, not to express a product limit.
 const MAX_RUNTIME_CONVERSATION_RECORDS = 2000;
 

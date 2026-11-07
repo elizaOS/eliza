@@ -15,7 +15,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
@@ -24,7 +24,7 @@ import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
-import { type VisionService } from "./service";
+import type { VisionService } from "./service";
 import { hasReadyInputForMode, VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10000;
@@ -272,13 +272,14 @@ async function runGetScreen(
     capturedAt: frame.capturedAt,
   });
   const text = summarizeGetScreen(result);
+  const success = result.ocrError === undefined;
   await saveExecutionRecord(runtime, message, text, text, ["VISION"]);
   if (callback) await callback({ thought: text, text, actions: ["VISION"] });
   return {
-    success: true,
+    success,
     text,
     values: {
-      success: true,
+      success,
       visionAvailable: true,
       ocrAvailable: result.ocrAvailable,
       elementCount: result.elementCount,
@@ -1245,21 +1246,15 @@ export const visionAction: Action = {
     "OCR_SCREEN",
   ],
   description:
-    "Camera and screen vision: describe the current scene, capture an image, GET_SCREEN (token-frugal structured readout — OCR text + grounded UI elements with coordinates, no image unless includeImage=true), switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
+    "Camera and screen vision: describe the current scene, capture an image, GET_SCREEN (token-frugal structured readout — OCR text + grounded UI elements with coordinates, no image unless includeImage=true), switch vision mode (off/camera/screen/both), enable or disable the camera or screen source, name the largest visible person, identify the people in view, or start tracking the visible entities. The action parameter is required.",
   descriptionCompressed:
     "Vision: describe / capture / get_screen (OCR+elements, no image) / set_mode / name_entity / identify_person / track_entity.",
   parameters: [
     {
       name: "action",
       description:
-        "Operation to perform: describe, capture, set_mode, name_entity, identify_person, or track_entity. Inferred from message text when omitted.",
-      required: false,
-      schema: { type: "string", enum: [...VISION_OPS] },
-    },
-    {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      required: false,
+        "Operation to perform: describe, capture, get_screen, set_mode, enable_camera, disable_camera, enable_screen, disable_screen, name_entity, identify_person, or track_entity.",
+      required: true,
       schema: { type: "string", enum: [...VISION_OPS] },
     },
     {
@@ -1281,6 +1276,27 @@ export const visionAction: Action = {
       schema: { type: "boolean", default: false },
     },
     {
+      name: "includeOcr",
+      description:
+        "For action=get_screen: when false, skip OCR and return only the grounded elements. Default true.",
+      required: false,
+      schema: { type: "boolean", default: true },
+    },
+    {
+      name: "displayId",
+      description:
+        "For action=get_screen: display to read. Omit for the default display.",
+      required: false,
+      schema: { type: "integer", minimum: 0 },
+    },
+    {
+      name: "displayIds",
+      description:
+        "For action=enable_screen: displays to capture. The first id is the primary display; more than one id captures all displays.",
+      required: false,
+      schema: { type: "array", items: { type: "integer", minimum: 0 } },
+    },
+    {
       name: "mode",
       description:
         "For action=set_mode: vision mode to set: off, camera, screen, or both.",
@@ -1290,30 +1306,9 @@ export const visionAction: Action = {
     {
       name: "name",
       description:
-        "For action=name_entity: the name to assign to the most relevant visible person or object.",
+        "For action=name_entity: the name to assign to the largest visible person.",
       required: false,
       schema: { type: "string" },
-    },
-    {
-      name: "targetHint",
-      description:
-        "For action=name_entity or action=identify_person: optional phrase describing which visible entity to focus on.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "description",
-      description:
-        "For action=track_entity: optional description of the visible entity to prioritize for tracking.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "includeUnknown",
-      description:
-        "For action=identify_person: whether to mention unidentified people in the response.",
-      required: false,
-      schema: { type: "boolean", default: true },
     },
   ],
   validate: async (
@@ -1423,13 +1418,13 @@ export const visionAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "the person wearing the blue shirt is named Alice" },
+        content: { text: "this is Alice" },
       },
       {
         name: "{{agent}}",
         content: {
           actions: ["VISION"],
-          text: "I've identified the person in the blue shirt as Alice. I'll remember them for future interactions.",
+          text: "I've identified the person as Alice. I'll remember them for future interactions.",
         },
       },
     ],
@@ -1449,13 +1444,13 @@ export const visionAction: Action = {
     [
       {
         name: "{{user}}",
-        content: { text: "track the person wearing the red shirt" },
+        content: { text: "start tracking what you see" },
       },
       {
         name: "{{agent}}",
         content: {
           actions: ["VISION"],
-          text: "I'm now tracking the person in the red shirt.",
+          text: "I'm now tracking 3 entities in the scene (1 people, 2 objects).",
         },
       },
     ],

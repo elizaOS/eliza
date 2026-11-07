@@ -3,29 +3,33 @@
  * custom actions, WhatsApp, agent events.
  */
 
-import type { AppPermissionsView } from "@elizaos/core/contracts/app-permissions";
-import type { PutAppPermissionsRequest } from "@elizaos/core/contracts/app-permissions-routes";
-import { packageNameToAppRouteSlug } from "@elizaos/core/contracts/apps";
-import type { CustomActionDef } from "@elizaos/core/contracts/config";
-import { ElizaClient } from "./client-base";
 import type {
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunSummary,
-  AppSessionActionResult,
-  AppSessionControlAction,
-  AppSessionState,
-  AppStopResult,
-  InstalledAppInfo,
+  AppPermissionsView,
+  CustomActionDef,
+  PutAppPermissionsRequest,
+} from "@elizaos/contracts";
+import {
+  type AppLaunchResult,
+  type AppRunActionResult,
+  type AppRunSummary,
+  type AppSessionActionResult,
+  type AppSessionControlAction,
+  type AppSessionState,
+  type AppStopResult,
+  packageNameToAppRouteSlug,
+  type RegistryAppInfo,
+} from "@elizaos/core/protocol";
+import { ElizaClient } from "./client-base";
+import type { InstalledAppInfo } from "./client-types-cloud";
+import type {
   InstalledPlugin,
   PluginInstallResult,
   PluginMutationResult,
-  RegistryAppInfo,
   RegistryPlugin,
   RegistryPluginItem,
   SkillInfo,
   SkillScanReportSummary,
-} from "./client-types";
+} from "./client-types-config";
 export type AppRunSteeringDisposition =
   | "accepted"
   | "queued"
@@ -43,7 +47,7 @@ export interface AppRunSteeringResult {
  * Wrapped response shape for `/api/setup/telegram-account/*` routes.
  *
  * Matches the canonical `SetupStatusResponse` in
- * `eliza/packages/app/src/api/setup-contract.ts` plus the connector-
+ * `packages/core/src/types/connector-setup.ts` plus the connector-
  * specific detail block that drives the multi-step login wizard.
  */
 export interface TelegramAccountSetupStatus {
@@ -71,7 +75,7 @@ export interface TelegramAccountSetupStatus {
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getSkills(): Promise<{
       skills: SkillInfo[];
@@ -595,7 +599,7 @@ ElizaClient.prototype.setAppPermissions = async function (
 ) {
   // Body shape derived from the zod schema so a server-side rename
   // surfaces as a TS error here at compile time. See
-  // packages/core/src/contracts/app-permissions-routes.ts for the
+  // packages/contracts/src/contracts/app-permissions-routes.ts for the
   // schema this type comes from.
   const body: PutAppPermissionsRequest = {
     namespaces: Array.from(namespaces),
@@ -891,43 +895,55 @@ ElizaClient.prototype.disconnectTelegramAccount = async function (
     method: "POST",
   });
 };
+type DiscordLocalStatus = Awaited<
+  ReturnType<ElizaClient["getDiscordLocalStatus"]>
+>;
 ElizaClient.prototype.getDiscordLocalStatus = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/status");
+  // plugin-discord serves setup as /api/setup/discord/* and wraps the
+  // service status in { connector, state, detail }.
+  const res = await this.fetch<{ detail: DiscordLocalStatus }>(
+    "/api/setup/discord/status",
+  );
+  return res.detail;
 };
 ElizaClient.prototype.authorizeDiscordLocal = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/authorize", {
-    method: "POST",
-  });
+  const res = await this.fetch<{ detail: DiscordLocalStatus }>(
+    "/api/setup/discord/start",
+    { method: "POST" },
+  );
+  return res.detail;
 };
 ElizaClient.prototype.disconnectDiscordLocal = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/disconnect", {
-    method: "POST",
-  });
+  const res = await this.fetch<{ state?: string }>(
+    "/api/setup/discord/cancel",
+    { method: "POST" },
+  );
+  return { ok: res.state === "idle" };
 };
 ElizaClient.prototype.listDiscordLocalGuilds = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/discord-local/guilds");
+  return this.fetch("/api/discord/guilds");
 };
 ElizaClient.prototype.listDiscordLocalChannels = async function (
   this: ElizaClient,
   guildId,
 ) {
   return this.fetch(
-    `/api/discord-local/channels?guildId=${encodeURIComponent(guildId)}`,
+    `/api/discord/channels?guildId=${encodeURIComponent(guildId)}`,
   );
 };
 ElizaClient.prototype.saveDiscordLocalSubscriptions = async function (
   this: ElizaClient,
   channelIds,
 ) {
-  return this.fetch("/api/discord-local/subscriptions", {
+  return this.fetch("/api/discord/subscriptions", {
     method: "POST",
     body: JSON.stringify({ channelIds }),
   });

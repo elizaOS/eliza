@@ -254,8 +254,9 @@ export const secretAuditLog = pgTable(
     created_at: timestamp("created_at").notNull().defaultNow(),
     // Retention horizon (D-4). Default 7 years from creation for SOC2
     // security-relevant audit. Configurable per row by writers that need
-    // shorter retention (e.g. dev events). Purge job at
-    // packages/cloud/api/src/jobs/audit-log-purge.ts removes rows where
+    // shorter retention (e.g. dev events). The purge service at
+    // packages/cloud/shared/src/lib/services/audit-log-purge.ts (scheduled by
+    // packages/cloud/api/cron/audit-log-purge) removes rows where
     // expires_at < now().
     expires_at: timestamp("expires_at").notNull().default(sql`now() + interval '7 years'`),
   },

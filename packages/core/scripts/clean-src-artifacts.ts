@@ -15,12 +15,12 @@ const srcRoot = path.join(pkgRoot, "src");
 
 const EXTS = new Set([".js", ".js.map", ".d.ts", ".d.ts.map"]);
 
-function endsWithAny(name) {
+function endsWithAny(name: string) {
 	for (const ext of EXTS) if (name.endsWith(ext)) return true;
 	return false;
 }
 
-function findArtifacts(dir, artifacts = []) {
+function findArtifacts(dir: string, artifacts: string[] = []) {
 	const entries = readdirSync(dir, { withFileTypes: true });
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);

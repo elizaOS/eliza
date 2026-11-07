@@ -9,17 +9,14 @@
  * the `/api/lifeops/...` prefix exactly).
  */
 
-import { type IncomingMessage, type ServerResponse } from "node:http";
-import { type IAgentRuntime } from "@elizaos/core";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-  type LegacyRouteHandler,
-  type Route,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host";
+import type { LegacyRouteHandler, Route } from "@elizaos/host/protocol";
 import { getScheduledTaskRunner } from "../scheduled-task/runner-service.js";
 import {
   makeScheduledTasksRouteHandler,

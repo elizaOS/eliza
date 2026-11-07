@@ -11,27 +11,30 @@
  * can share it without resorting to fake `params: Promise<...>` shapes.
  */
 
-import type { Context } from "hono";
+import {
+  requirePrivateOwnerAccess,
+  requireUserOrApiKeyWithOrg,
+} from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
-} from "@/lib/api/cloud-worker-errors";
-import { ApiError } from "@/lib/api/errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import {
   getDefaultPlatformRedirectOrigins,
   isAllowedAbsoluteRedirectUrl,
   isSafeRelativeRedirectPath,
   LOOPBACK_REDIRECT_ORIGINS,
-} from "@/lib/security/redirect-validation";
-import { OAuthError } from "@/lib/services/oauth";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { OAuthError } from "@elizaos/cloud-shared/lib/services/oauth";
 import {
   getProvider,
   isProviderConfigured,
-} from "@/lib/services/oauth/provider-registry";
-import { initiateOAuth2 } from "@/lib/services/oauth/providers";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { initiateOAuth2 } from "@elizaos/cloud-shared/lib/services/oauth/providers";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
 
 interface InitiateRequestBody {
   redirectUrl?: string;
@@ -103,7 +106,7 @@ export async function handleGenericOAuthInitiate(
       // Empty body is fine — defaults apply.
     }
 
-    const redirectUrl = body.redirectUrl || "/cloud/settings?tab=connections";
+    const redirectUrl = body.redirectUrl || "/cloud/connectors";
     if (redirectUrl.startsWith("http")) {
       const allowedAbsoluteOrigins = [
         ...getDefaultPlatformRedirectOrigins(),
@@ -144,6 +147,9 @@ export async function handleGenericOAuthInitiate(
         400,
       );
     }
+
+    if (provider.id === "google" && connectionRole !== "agent")
+      await requirePrivateOwnerAccess(c, user);
 
     logger.info(`[OAuth ${platform}] Initiating auth`, {
       organizationId,

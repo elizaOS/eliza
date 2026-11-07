@@ -329,6 +329,12 @@ export async function updateRoleHandler(
       summaryLines.push(
         `Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
       );
+      // Role changes must invalidate cached permission decisions immediately
+      // so a demotion takes effect instead of lingering for the cache TTL.
+      const permService = runtime.getService("contextual-permissions") as
+        | { invalidatePermissionCache?: (entityId?: UUID) => void }
+        | undefined;
+      permService?.invalidatePermissionCache?.(assignment.entityId as UUID);
     } else if (casResult.status === "world_not_found") {
       summaryLines.push(
         `Could not update ${targetEntity.names[0]}'s role; the world is gone.`,

@@ -9,6 +9,7 @@
  * `node:dns` resolver the guard pins against.
  */
 import { Buffer } from "node:buffer";
+import { lookup as dnsLookupCallback } from "node:dns";
 import { lookup as dnsLookup } from "node:dns/promises";
 import {
 	type RequestOptions as HttpRequestOptions,
@@ -16,16 +17,13 @@ import {
 	request as requestHttp,
 } from "node:http";
 import { request as requestHttps } from "node:https";
+import type { LookupFunction } from "node:net";
+import { Readable } from "node:stream";
 import type { PinnedLookupFetchLike } from "./fetch-guard.js";
 import type { LookupFn } from "./ssrf.js";
 
-export const nodeLookupFn: LookupFn = async (hostname, options) => {
-	const results = await dnsLookup(hostname, options);
-	return results.map((entry) => ({
-		address: entry.address,
-		family: entry.family,
-	}));
-};
+export const nodeLookupFn: LookupFn = (hostname, options) =>
+	dnsLookup(hostname, options);
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
 	const normalized: Record<string, string> = {};
@@ -46,44 +44,16 @@ async function requestBodyToBuffer(
 	return Buffer.from(await new Response(body).arrayBuffer());
 }
 
-function nodeReadableChunkToUint8Array(
-	chunk: Buffer | Uint8Array | string,
-): Uint8Array {
-	if (typeof chunk === "string") return new Uint8Array(Buffer.from(chunk));
-	return new Uint8Array(chunk);
-}
-
 function incomingMessageToWebBody(
 	stream: IncomingMessage,
 	cleanup: () => void,
 ): BodyInit {
-	const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<
-		Buffer | Uint8Array | string
-	>;
-
-	return new ReadableStream<Uint8Array>({
-		async pull(controller) {
-			try {
-				const next = await iterator.next();
-				if (next.done) {
-					cleanup();
-					controller.close();
-					return;
-				}
-				controller.enqueue(nodeReadableChunkToUint8Array(next.value));
-			} catch (error) {
-				// error-policy:J1 The Web Stream controller is the consumer-facing
-				// transport boundary for failures from the Node response iterator.
-				cleanup();
-				controller.error(error);
-			}
-		},
-		async cancel(reason) {
-			cleanup();
-			await iterator.return?.();
-			stream.destroy(reason instanceof Error ? reason : undefined);
-		},
-	});
+	// Node's bridge installs error/abort listeners before the first pull and
+	// owns cancellation. Hand-rolled async iterators can leave an aborted
+	// response without an error listener between headers and that first pull.
+	stream.once("close", cleanup);
+	stream.once("end", cleanup);
+	return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
 }
 
 function responseFromIncomingMessage(
@@ -106,6 +76,8 @@ function responseFromIncomingMessage(
 		headers,
 	} satisfies ResponseInit;
 	if (status === 204 || status === 205 || status === 304) {
+		response.once("error", cleanup);
+		response.resume();
 		cleanup();
 		return new Response(null, init);
 	}
@@ -141,7 +113,7 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 
 	return new Promise<Response>((resolve, reject) => {
 		let settled = false;
-		const signal = init.signal ?? undefined;
+		const signal = init.signal;
 
 		const cleanupSignal = () => {
 			signal?.removeEventListener("abort", onAbort);
@@ -164,9 +136,7 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 			resolve(responseFromIncomingMessage(response, cleanupSignal));
 		});
 
-		request.on("error", (error) => {
-			rejectOnce(error);
-		});
+		request.on("error", rejectOnce);
 
 		if (signal) {
 			if (signal.aborted) {
@@ -182,3 +152,35 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 		request.end();
 	});
 };
+
+/** Validate every DNS candidate, including Node's Happy Eyeballs lookup form. */
+export function createValidatedLookup(
+	validate: (address: string, family: number) => void,
+	resolve: LookupFunction = dnsLookupCallback,
+): LookupFunction {
+	return (hostname, options, callback) => {
+		resolve(hostname, { ...options, all: true }, (error, result, family) => {
+			if (error) {
+				callback(error, []);
+				return;
+			}
+			const addresses = Array.isArray(result)
+				? result
+				: [{ address: result, family: family ?? 0 }];
+			try {
+				if (addresses.length === 0)
+					throw new Error("Destination host did not resolve");
+				for (const entry of addresses) {
+					if (entry.family !== 4 && entry.family !== 6)
+						throw new Error("Destination address family is invalid");
+					validate(entry.address, entry.family);
+				}
+			} catch (cause) {
+				callback(cause as NodeJS.ErrnoException, []);
+				return;
+			}
+			if (options.all) callback(null, addresses);
+			else callback(null, addresses[0].address, addresses[0].family);
+		});
+	};
+}

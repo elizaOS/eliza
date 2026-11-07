@@ -5,10 +5,10 @@
  * raw provider errors and event details never become source-health copy.
  */
 
-import {
-  type LifeOpsCalendarSourceHealth,
-  type LifeOpsCalendarSourceStatus,
-} from "@elizaos/core/contracts/calendar";
+import type {
+  LifeOpsCalendarSourceHealth,
+  LifeOpsCalendarSourceStatus,
+} from "@elizaos/contracts";
 import type { CalendarSurfaceStatus } from "../../hooks/useCalendarWeek.js";
 
 export type CalendarSourceTone = "success" | "warning" | "danger" | "muted";

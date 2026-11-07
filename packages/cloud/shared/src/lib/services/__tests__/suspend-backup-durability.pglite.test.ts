@@ -13,6 +13,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { ProvisioningJobService } from "@elizaos/cloud-shared/node";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
@@ -42,7 +43,6 @@ import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
 import { SandboxBackup } from "../eliza-sandbox/backup/service";
-import { ProvisioningJobService } from "../provisioning-jobs";
 import type { SandboxProvider } from "../sandbox-provider-types";
 
 const TEST_TIMEOUT = 300_000;

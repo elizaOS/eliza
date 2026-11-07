@@ -10,6 +10,54 @@
  * the full text before responding rather than streaming back.
  */
 
+import { UntrustedA2AChatMessagesSchema } from "@elizaos/cloud-shared/lib/api/a2a/chat-messages";
+import {
+  A2AJsonRpcRequestSchema,
+  type JsonRpcId,
+  jsonRpcIdFromUnknown,
+} from "@elizaos/cloud-shared/lib/api/a2a/request-validation";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateRequestCost,
+  getProviderFromModel,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  type AnthropicCotEnv,
+  mergeAnthropicCotProviderOptions,
+  parseThinkingBudgetFromCharacterSettings,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  charactersService,
+  type UserCharacter,
+} from "@elizaos/cloud-shared/lib/services/characters";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -20,47 +68,6 @@ import {
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
-import {
-  A2AJsonRpcRequestSchema,
-  type JsonRpcId,
-  jsonRpcIdFromUnknown,
-} from "@/lib/api/a2a/request-validation";
-import {
-  ApiError,
-  safeUnknownErrorMessage,
-} from "@/lib/api/cloud-worker-errors";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  calculateCost,
-  estimateRequestCost,
-  getProviderFromModel,
-} from "@/lib/pricing";
-import {
-  type AnthropicCotEnv,
-  mergeAnthropicCotProviderOptions,
-  parseThinkingBudgetFromCharacterSettings,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  getLanguageModel,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import {
-  charactersService,
-  type UserCharacter,
-} from "@/lib/services/characters/characters";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 
@@ -88,9 +95,9 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
     image: character.avatar_url || `${baseUrl}/default-avatar.png`,
     version: "1.0.0",
     capabilities: {
-      streaming: true,
+      streaming: false,
       pushNotifications: false,
-      stateTransitionHistory: true,
+      stateTransitionHistory: false,
     },
     authentication: {
       schemes: [
@@ -109,15 +116,6 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
           type: "token-based" as const,
           inputCostPer1k: 0.005,
           outputCostPer1k: 0.015,
-        },
-      },
-      {
-        id: "generate_image",
-        name: "Image Generation",
-        description: `Generate images as ${character.name}`,
-        pricing: {
-          type: "fixed" as const,
-          amount: 0.05,
         },
       },
     ],
@@ -158,11 +156,12 @@ function a2aAuthError(c: AppContext, error: unknown, id: JsonRpcId | null) {
         jsonrpc: "2.0",
         error: {
           code: -32004,
-          message: "Authorization cache unavailable; retry shortly",
+          message: "Authorization is unavailable; retry shortly",
         },
         id,
       },
       503,
+      { "Retry-After": "1" },
     );
   }
   if (boundaryError.status !== 401 && boundaryError.status !== 403) {
@@ -235,39 +234,7 @@ app.post("/", async (c) => {
     });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const characterResolution = executionCtx
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
-    if (characterResolution.kind !== "ready") {
-      // A cache-only miss cannot distinguish a real agent from an unknown id.
-      // Confirm only the negative case authoritatively; an existing cold agent
-      // still gets the retryable response and never joins Postgres to dispatch.
-      if (!(await charactersService.getById(id))) {
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Agent not found" },
-            id: null,
-          },
-          404,
-        );
-      }
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Agent cache is warming; retry shortly",
-          },
-          id: null,
-        },
-        503,
-      );
-    }
-    const character = characterResolution.character;
+    const character = (await charactersService.getById(id)) ?? null;
     if (!character) {
       return c.json(
         {
@@ -487,11 +454,17 @@ async function handleChat(
   }
 
   let providerDispatchStarted = false;
+  // The provider error of a failed stream; the thrown error is a generic
+  // "No output generated" that does not carry the provider status.
+  let streamError: unknown;
   try {
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;
     const result = await streamText({
       model: getLanguageModel(model),
+      onError: ({ error }) => {
+        streamError = error;
+      },
       messages: fullMessages,
       ...mergeAnthropicCotProviderOptions(
         model,
@@ -564,9 +537,12 @@ async function handleChat(
     // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
     // with unknown usage, while failures before provider dispatch are safe to
     // refund in full.
-    const terminal = providerDispatchStarted
-      ? admission.settleUnknown()
-      : admission.settle(0);
+    // A clear provider rejection means no inference was accepted.
+    const terminal =
+      providerDispatchStarted &&
+      !isKnownUnacceptedProviderError(streamError ?? error)
+        ? admission.settleUnknown()
+        : admission.settle(0);
     if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
     else await terminal;
     if (error instanceof InsufficientCreditsError) {

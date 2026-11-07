@@ -1,3 +1,10 @@
+import {
+  ResponseHandlerFieldRegistry,
+  runWithStreamingContext,
+} from "@elizaos/core";
+import { calendarReadCoverage } from "../../plugin-assistant/src/runtime/evaluator.js";
+import { calendarReadBindingField } from "../src/read-binding.js";
+import { withCalendarSearchAuthorization } from "../src/search-filter-evidence.js";
 /**
  * Exercises the built-in Eliza calendar through CalendarService against the
  * production PGlite schema. External providers use disconnected or deterministic adapters so default
@@ -5,14 +12,26 @@
  * without a connector or a second event store.
  */
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import type { LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/contracts";
+import {
+  bindTaskExtractionContext,
+  type ContextObject,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -20,12 +39,18 @@ import {
   it,
   vi,
 } from "vitest";
-import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
+import { NotesService } from "../../plugin-notes/src/service.js";
+import {
+  createCalendarActionRunner,
+  inferNativeCalendarCreate,
+  registerCalendarActionHostAdapter,
+} from "../src/actions/calendar-handler.js";
 import { __testing } from "../src/apple-calendar.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "../src/internal/eliza-calendar.js";
+import { calendarPlugin } from "../src/plugin.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -45,6 +70,22 @@ let pg: PGlite;
 let service: CalendarService;
 let runtime: IAgentRuntime;
 const reminderPlans: LifeOpsReminderPlan[] = [];
+
+function createEvidence(
+  id: string,
+  text: string,
+  guests: { name: string; email: string | null; optional: boolean }[] = [],
+) {
+  const evidence = [{ sourceId: `current:${id}`, quote: text }];
+  return {
+    guestIntent: {
+      state: guests.length ? "requested" : "none",
+      evidence,
+      guests,
+    },
+    noteIntent: { state: "none", evidence, sourceNote: null },
+  };
+}
 
 function gate(): CalendarHostGate {
   return {
@@ -132,6 +173,7 @@ beforeAll(async () => {
     initPromise: Promise.resolve(),
     getCache: async () => undefined,
     setCache: async () => undefined,
+    getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === CalendarService.serviceType ? service : null,
     reportError: async () => {},
@@ -168,10 +210,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(
-        async ({ actionType, temperature, responseSchema }) => {
+        async ({ actionType, temperature, responseSchema, thinking }) => {
           if (actionType !== "lifeops.calendar.extract_update_event")
             return null;
           expect(temperature).toBe(0);
+          expect(thinking).toBe("off");
           expect(responseSchema).toMatchObject({
             required: expect.arrayContaining([
               "requiresInput",
@@ -308,6 +351,32 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expect(reminderPlans).toEqual(remindersBefore);
     },
   );
+
+  it("serves built-in events through the calendar plugin's own feed route", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const feedRoute = calendarPlugin.routes?.find(
+      (route) => route.path === "/api/lifeops/calendar/feed",
+    );
+    if (!feedRoute?.routeHandler) throw new Error("Feed route is not mounted");
+
+    const result = await feedRoute.routeHandler({
+      signal: new AbortController().signal,
+      body: undefined,
+      params: {},
+      query: { side: "owner", ...WINDOW, timeZone: "UTC" },
+      headers: { host: "127.0.0.1" },
+      method: "GET",
+      path: "/api/lifeops/calendar/feed",
+      runtime,
+      inProcess: false,
+      isTrustedLocal: true,
+    });
+
+    expect(result.status).toBe(200);
+    expect(
+      (result.body as { events: LifeOpsCalendarEvent[] }).events,
+    ).toMatchObject([{ title: originalEvent.title, provider: "eliza" }]);
+  });
 
   it("persists either explicitly chosen occurrence of a repeated local time", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
@@ -453,12 +522,17 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
-  it("coaches malformed generated attendee arguments and permits a corrected solo event", async () => {
+  it("ignores invented generated attendees after one original-grounded solo extraction", async () => {
     const extract = vi.fn(async ({ actionType }: { actionType: string }) =>
       actionType === "lifeops.calendar.extract_create_event"
         ? {
             rawResponse: "{}",
             parsed: {
+              ...createEvidence(
+                "00000000-0000-0000-0000-000000000309",
+                "Create a calendar event called Latency comparison September 18 at 3 PM New York time for 15 minutes.",
+              ),
+              title: "Latency comparison",
               grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
               startAt: "2050-09-18T15:00:00-04:00",
@@ -495,39 +569,22 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         attendees: [{ email: "11:15:00" }, { email: "America/Los_Angeles" }],
       },
     };
-    const rejected = await action.handler(runtime, message, undefined, {
+    // The outer strings are schema-valid but not user-authorized guests.
+    // One domain extraction may create the requested solo event; no retry is needed.
+    const created = await action.handler(runtime, message, undefined, {
       parameters,
     });
-    expect(extract).not.toHaveBeenCalled();
-    expect(rejected).toMatchObject({
-      success: false,
-      data: {
-        error: "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
-        coachingFailure: true,
-        invalidParameterNames: ["details.attendees"],
-      },
-    });
-    expect(rejected?.data?.awaitingUserInput).not.toBe(true);
-    expect(rejected?.effectReceipts?.[0]).toMatchObject({
-      outcome: "failed",
-      failure: { acceptance: "rejected" },
-    });
-    expect(
-      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toHaveLength(0);
-    const corrected = await action.handler(runtime, message, undefined, {
-      parameters: {
-        ...parameters,
-        details: { ...parameters.details, attendees: [] },
-      },
-    });
-    expect(corrected?.success, JSON.stringify(corrected)).toBe(true);
+    expect(extract).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ thinking: "off" }),
+    );
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    expect(created?.data?.event).toMatchObject({ attendees: [] });
     expect(
       (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
     ).toHaveLength(1);
   });
 
-  it("rejects an unverified proposed guest before creating an event", async () => {
+  it("keeps the original solo barber request despite an invented planner guest", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async ({ actionType }) =>
@@ -535,6 +592,12 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                ...createEvidence(
+                  "00000000-0000-0000-0000-000000000301",
+                  "add a barber appointment friday at 3pm to my calendar",
+                ),
+                title: "Barber appointment",
+
                 grantId: "eliza-calendar",
                 calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
@@ -574,13 +637,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         },
       },
     );
-    expect(result?.success).toBe(false);
-    expect(JSON.stringify(result)).toContain(
-      "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.event).toMatchObject({ attendees: [] });
     expect(
       (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("pauses a named guest with an unverified address before any calendar write", async () => {
@@ -592,6 +653,13 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                ...createEvidence(
+                  "00000000-0000-0000-0000-000000000301",
+                  "add a meeting with Dana friday at 3pm to my calendar",
+                  [{ name: "Dana", email: null, optional: false }],
+                ),
+                title: "Meeting with Dana",
+
                 grantId: "eliza-calendar",
                 calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
@@ -656,6 +724,125 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(feed.events).toEqual([]);
   });
 
+  it.each([
+    { text: "Make another one for breakfast at 11am.", title: "Breakfast" },
+    {
+      text: 'Make another one titled "11am Stories" at 11am.',
+      title: "11am Stories",
+    },
+  ])(
+    "creates a separate follow-up on the user-stated day with literal title authority: $title",
+    async ({ text, title }) => {
+      const id = "00000000-0000-0000-0000-000000000941";
+      const previous = "Create dinner tomorrow at 5pm.";
+      const extract = vi.fn(async ({ actionType, prompt }) => {
+        if (actionType !== "lifeops.calendar.extract_create_event") return null;
+        expect(prompt).toContain(
+          "keeps the day the user stated for the event just discussed",
+        );
+        expect(prompt).toContain("unless the user quoted an exact title");
+        expect(prompt).toContain(
+          "Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept",
+        );
+        expect(prompt).toContain(previous);
+        expect(prompt).toContain(text);
+        return {
+          rawResponse: "{}",
+          parsed: {
+            ...createEvidence(id, text),
+            requiresInput: false,
+            title,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            startAt: "2026-10-30T11:00:00",
+            durationMinutes: 60,
+            timeZone: "UTC",
+          },
+        };
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: extract,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const current = {
+        id,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-10-29T10:00:00Z"),
+        content: { text },
+      } as Memory;
+      const state = {
+        values: {
+          selectedActionConversation: `2026-10-29T09:59:00Z Owner: ${previous}`,
+        },
+        data: {},
+        text: "",
+      } as State;
+      const context = {
+        id: "create-follow-up",
+        metadata: { messageId: current.id, roomId: current.roomId },
+        events: [
+          {
+            id: "history:create-request",
+            type: "segment",
+            source: "prior-dialogue",
+            createdAt: Date.parse("2026-10-29T09:59:00Z"),
+            segment: {
+              id: "history:create-request",
+              label: "prior_message:user",
+              content: `Owner: ${previous}`,
+              metadata: {
+                roomId: current.roomId,
+                entityId: current.entityId,
+                speakerName: "Owner",
+              },
+            },
+          },
+        ],
+      } as ContextObject;
+      bindTaskExtractionContext(state, current, context, context);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(current.createdAt));
+      try {
+        const result = await action.handler(runtime, current, state, {
+          parameters: {
+            subaction: "create_event",
+            title: "Planner title at 9am",
+            details: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              timeZone: "UTC",
+              start: "2026-10-31T09:00:00",
+              durationMinutes: 30,
+            },
+          },
+        });
+        expect(result?.success, JSON.stringify(result)).toBe(true);
+        expect(extract).toHaveBeenCalledTimes(1);
+        const feed = await service.getCalendarFeed(INTERNAL_URL, {
+          timeMin: "2026-10-29T00:00:00Z",
+          timeMax: "2026-11-01T00:00:00Z",
+          timeZone: "UTC",
+        });
+        expect(feed.events).toHaveLength(1);
+        expect(feed.events[0]).toMatchObject({
+          title,
+          startAt: "2026-10-30T11:00:00.000Z",
+          endAt: "2026-10-30T12:00:00.000Z",
+          metadata: { version: 1 },
+        });
+        expect(result?.effectReceipts?.[0]).toMatchObject({
+          operation: "calendar.event.create",
+          outcome: "applied",
+          commit: { kind: "durable", id: feed.events[0].id },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("preserves a guest from selected user history after a time-only follow-up", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
@@ -664,6 +851,24 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                ...createEvidence(
+                  "00000000-0000-0000-0000-000000000301",
+                  "Friday at 3 PM for an hour.",
+                ),
+                title: "Meeting with Dana",
+                guestIntent: {
+                  state: "requested",
+                  evidence: [
+                    {
+                      sourceId: "history:request",
+                      quote: "Create a meeting with dana@acme.com.",
+                    },
+                  ],
+                  guests: [
+                    { name: "Dana", email: "dana@acme.com", optional: false },
+                  ],
+                },
+
                 grantId: "eliza-calendar",
                 calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
@@ -675,55 +880,52 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       ),
       recentConversationTexts: vi.fn(async () => []),
     });
-    const result = await action.handler(
-      runtime,
-      {
-        id: "00000000-0000-0000-0000-000000000301",
-        entityId: "00000000-0000-0000-0000-000000000102",
-        roomId: "00000000-0000-0000-0000-000000000103",
-        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
-        content: {
-          text: "Friday at 3 PM for an hour.",
-        },
-      } as Memory,
-      {
-        values: {
-          selectedActionConversation: JSON.stringify([
-            {
-              id: "history:request",
-              type: "segment",
-              source: "prior-dialogue",
-              segment: {
-                id: "history:request",
-                label: "prior_message:user",
-                content: "Create a meeting with dana@acme.com.",
-                metadata: {
-                  roomId: "00000000-0000-0000-0000-000000000103",
-                  entityId: "00000000-0000-0000-0000-000000000102",
-                },
-              },
+    const currentMessage = {
+      id: "00000000-0000-0000-0000-000000000301",
+      entityId: "00000000-0000-0000-0000-000000000102",
+      roomId: "00000000-0000-0000-0000-000000000103",
+      createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+      content: { text: "Friday at 3 PM for an hour." },
+    } as Memory;
+    const state = { values: {}, data: {}, text: "" } as State;
+    const context = {
+      id: "guest-history",
+      metadata: { messageId: currentMessage.id, roomId: currentMessage.roomId },
+      events: [
+        {
+          id: "history:request",
+          type: "segment",
+          source: "prior-dialogue",
+          createdAt: 1,
+          segment: {
+            id: "history:request",
+            label: "prior_message:user",
+            content: "Owner: Create a meeting with dana@acme.com.",
+            metadata: {
+              roomId: currentMessage.roomId,
+              entityId: currentMessage.entityId,
+              speakerName: "Owner",
             },
-          ]),
-        },
-        data: {},
-        text: "",
-      },
-      {
-        parameters: {
-          subaction: "create_event",
-          title: "Meeting with Dana",
-          details: {
-            grantId: ELIZA_CALENDAR_GRANT_ID,
-            calendarId: ELIZA_CALENDAR_ID,
-            timeZone: "America/New_York",
-            start: "2026-09-18T15:00:00",
-            end: "2026-09-18T16:00:00",
-            durationMinutes: 60,
-            attendees: [{ email: "dana@acme.com", displayName: "Dana" }],
           },
         },
+      ],
+    } as ContextObject;
+    bindTaskExtractionContext(state, currentMessage, context, context);
+    const result = await action.handler(runtime, currentMessage, state, {
+      parameters: {
+        subaction: "create_event",
+        title: "Meeting with Dana",
+        details: {
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          timeZone: "America/New_York",
+          start: "2026-09-18T15:00:00",
+          end: "2026-09-18T16:00:00",
+          durationMinutes: 60,
+          attendees: [{ email: "dana@acme.com", displayName: "Dana" }],
+        },
       },
-    );
+    });
     expect(result?.success, JSON.stringify(result)).toBe(true);
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
       timeMin: "2026-09-18T00:00:00Z",
@@ -735,71 +937,270 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ]);
   });
 
-  it("preserves supplied note content when scheduling extraction rewrites the description", async () => {
-    const description = "Bring the green notebook at 4:30.\nKeep  two spaces.";
-    const action = createCalendarActionRunner({
-      runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async ({ actionType }) =>
-        actionType === "lifeops.calendar.extract_create_event"
-          ? {
-              rawResponse: "{}",
-              parsed: {
-                grantId: "eliza-calendar",
-                calendarId: "primary",
-                startAt: "2026-09-20T10:00:00-04:00",
-                endAt: "2026-09-20T10:15:00-04:00",
-                timeZone: "America/New_York",
-                description:
-                  "Bring the green notebook at 4:30. Keep two spaces",
-              },
-            }
-          : null,
-      ),
-      recentConversationTexts: vi.fn(async () => []),
-    });
-    const result = await action.handler(
-      runtime,
-      {
-        id: "00000000-0000-0000-0000-000000000450",
-        entityId: "00000000-0000-0000-0000-000000000102",
-        roomId: "00000000-0000-0000-0000-000000000103",
-        createdAt: Date.parse("2026-09-18T12:00:00.000Z"),
-        content: {
-          text: "Create a local event Sunday September 20 at 10 AM America/New_York for 15 minutes using the note's exact body as its description. No guests.",
-        },
-      } as Memory,
-      undefined,
-      {
-        parameters: {
-          subaction: "create_event",
-          title: "Shaw flow QA",
-          details: {
-            grantId: ELIZA_CALENDAR_GRANT_ID,
-            calendarId: ELIZA_CALENDAR_ID,
-            timeZone: "America/New_York",
-            // Scheduling extraction must still override a mistaken planner time.
-            start: "2026-09-20T16:30:00-04:00",
-            end: "2026-09-20T16:45:00-04:00",
-            description,
+  it.each([
+    "verbatim",
+    "extracted",
+    "unavailable",
+    "stale",
+    "foreign",
+    "wrong-note",
+    "named",
+    "missing",
+    "changed",
+    "solo-selected",
+    "native",
+    "native-inline",
+    "boundary",
+    "solo-missing",
+    "solo-wrong-hint",
+    "wrong-hint",
+  ] as const)(
+    "grounds the note description in real Notes bytes (%s)",
+    async (mode) => {
+      const native = mode === "native" || mode === "native-inline";
+      const solo = [
+        "solo-selected",
+        "solo-missing",
+        "solo-wrong-hint",
+      ].includes(mode);
+      const inlineDescription = "Bring the green notebook.";
+      const description =
+        mode === "boundary"
+          ? " \nBring the green notebook at 4:30.\nKeep  two spaces.  \n"
+          : "Bring the green notebook at 4:30.\nKeep  two spaces.";
+      const paraphrase = "Bring the green notebook at 4:30. Keep two spaces";
+      const stateDir = await mkdtemp(join(tmpdir(), "calendar-note-source-"));
+      const notes = new NotesService(runtime, { stateDir });
+      const originalGetService = runtime.getService.bind(runtime);
+      const getService = vi
+        .spyOn(runtime, "getService")
+        .mockImplementation((name) =>
+          name === "notes"
+            ? mode === "unavailable"
+              ? null
+              : notes
+            : originalGetService(name),
+        );
+      try {
+        await notes.initialize();
+        const note = await notes.createNote({
+          title: "Notebook source",
+          body: description,
+        });
+        const other = await notes.createNote({
+          title: "Other source",
+          body: "Wrong body",
+        });
+        // Notes owns its canonical body/separator representation. The event
+        // must copy these actual persisted bytes, not reconstruct the input.
+        const savedBody = notes.getNote(note.id).body;
+        const source = notes.sourceReference(note);
+        const proposed =
+          mode === "wrong-note" || mode === "wrong-hint"
+            ? notes.sourceReference(other)
+            : mode === "stale"
+              ? { ...source, contentHash: "0".repeat(64) }
+              : mode === "foreign"
+                ? { ...source, agentId: "another-agent" }
+                : source;
+        const text =
+          mode === "native-inline"
+            ? "Create Shaw flow QA Sunday September 20 at 10 AM America/New_York for 15 minutes. Description: Bring the green notebook. No guests."
+            : solo
+              ? "Create a local event Sunday September 20 at 10 AM America/New_York for 15 minutes. No guests."
+              : `Create a local event Sunday September 20 at 10 AM America/New_York for 15 minutes using ${(mode === "wrong-note" || mode === "wrong-hint") || mode === "named" ? 'the note "Notebook source"' : "the note"}'s ${mode === "extracted" ? "summarized" : "exact"} body as its description. No guests.`;
+        const evidence = [
+          {
+            sourceId: "current:00000000-0000-0000-0000-000000000450",
+            quote: text,
           },
-        },
-      },
-    );
-    expect(result?.success, JSON.stringify(result)).toBe(true);
-    const created = result?.data?.event as LifeOpsCalendarEvent;
-    expect(created).toMatchObject({
-      description,
-      startAt: "2026-09-20T14:00:00.000Z",
-      endAt: "2026-09-20T14:15:00.000Z",
-      attendees: [],
-    });
-    const rows = await pg.query<{ description: string }>(
-      "SELECT description FROM app_calendar.life_calendar_events",
-    );
-    expect(rows.rows).toEqual([{ description }]);
-  });
+        ];
+        const runJsonModel = vi.fn(async ({ prompt }: { prompt: string }) => {
+          if (
+            native ||
+            mode === "unavailable" ||
+            mode === "missing" ||
+            mode === "solo-missing"
+          )
+            expect(prompt).toContain("Verified note references: []");
+          else {
+            expect(prompt).toContain('"title":"Notebook source"');
+            expect(prompt).not.toContain(description);
+          }
+          if (mode === "changed")
+            await notes.updateNote(
+              note.id,
+              {
+                body: "Changed during extraction",
+              },
+              notes.snapshot().revision,
+            );
+          const parsed = {
+            title: "Shaw flow QA",
+            grantId: native ? null : "eliza-calendar",
+            calendarId: native ? null : "primary",
+            requiresInput: false,
+            clarification: null,
+            startAt: native
+              ? "2026-09-20T10:00:00"
+              : "2026-09-20T10:00:00-04:00",
+            endAt: native ? "2026-09-20T10:15:00" : "2026-09-20T10:15:00-04:00",
+            timeZone: "America/New_York",
+            description:
+              mode === "native-inline"
+                ? inlineDescription
+                : solo
+                  ? null
+                  : paraphrase,
+            location: null,
+            guestIntent: { state: "none", evidence, guests: [] },
+            noteIntent: {
+              state: solo || mode === "native-inline" ? "none" : "requested",
+              evidence,
+              sourceNote:
+                solo || mode === "native-inline"
+                  ? null
+                  : mode === "stale" || mode === "foreign"
+                    ? proposed
+                    : mode === "wrong-note"
+                      ? notes.sourceReference(other)
+                      : source,
+              descriptionMode:
+                solo || mode === "extracted" || mode === "native-inline"
+                  ? "extracted"
+                  : "verbatim",
+            },
+          };
+          return { rawResponse: JSON.stringify(parsed), parsed };
+        });
+        const action = createCalendarActionRunner({
+          runTextModel: vi.fn(async () => null),
+          runJsonModel,
+          recentConversationTexts: vi.fn(async () => []),
+        });
+        const requestMessage = {
+          id: "00000000-0000-0000-0000-000000000450",
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse("2026-09-18T12:00:00.000Z"),
+          content: {
+            text,
+            metadata: {
+              clientDevice: {
+                context: {
+                  view: "notes",
+                  sensitive: false,
+                  revision: 1,
+                  // Explicitly named source A must beat selected source B.
+                  selectedObject: {
+                    kind: "canonical-note",
+                    id:
+                      mode === "wrong-note" ||
+                      mode === "wrong-hint" ||
+                      mode === "named"
+                        ? other.id
+                        : mode === "missing" || mode === "solo-missing"
+                          ? "note-missing"
+                          : note.id,
+                  },
+                },
+              },
+            },
+          },
+        } as Memory;
+        if (native) {
+          const nativeRuntime = Object.create(runtime) as IAgentRuntime;
+          registerCalendarActionHostAdapter(nativeRuntime, { runJsonModel });
+          const draft = await inferNativeCalendarCreate({
+            runtime: nativeRuntime,
+            message: requestMessage,
+            timeZone: "America/New_York",
+            signal: new AbortController().signal,
+          });
+          if (mode === "native") expect(draft.fields).toBeUndefined();
+          else
+            expect(draft.fields).toMatchObject({
+              title: "Shaw flow QA",
+              description: inlineDescription,
+              start: "2026-09-20T14:00:00.000Z",
+              end: "2026-09-20T14:15:00.000Z",
+              timeZone: "America/New_York",
+            });
+          expect(
+            (await pg.query("SELECT id FROM app_calendar.life_calendar_events"))
+              .rows,
+          ).toEqual([]);
+          return;
+        }
+        const result = await action.handler(
+          runtime,
+          requestMessage,
+          undefined,
+          {
+            parameters: {
+              subaction: "create_event",
+              title: "Shaw flow QA",
+              details: {
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+                timeZone: "America/New_York",
+                start: "2026-09-20T16:30:00-04:00",
+                end: "2026-09-20T16:45:00-04:00",
+                description: "Invented planner text",
+                sourceNote:
+                  mode === "solo-wrong-hint"
+                    ? notes.sourceReference(other)
+                    : solo
+                      ? undefined
+                      : proposed,
+              },
+            },
+          },
+        );
+        const rows = await pg.query<{ description: string }>(
+          "SELECT description FROM app_calendar.life_calendar_events",
+        );
+        if (
+          mode === "verbatim" ||
+          mode === "extracted" ||
+          mode === "named" ||
+          solo ||
+          mode === "boundary" ||
+          mode === "wrong-hint"
+        ) {
+          const expected = solo
+            ? ""
+            : mode === "extracted"
+              ? paraphrase
+              : savedBody;
+          expect(result?.success, JSON.stringify(result)).toBe(true);
+          expect(result?.data?.event).toMatchObject({
+            description: expected,
+            startAt: "2026-09-20T14:00:00.000Z",
+            endAt: "2026-09-20T14:15:00.000Z",
+            attendees: [],
+          });
+          expect(rows.rows).toEqual([{ description: expected }]);
+          expect(runJsonModel).toHaveBeenCalledTimes(1);
+        } else {
+          expect(result).toMatchObject({
+            success: false,
+            data: { requiresInput: true },
+          });
+          expect(rows.rows).toEqual([]);
+        }
+      } finally {
+        getService.mockRestore();
+        await notes.stop();
+        await rm(stateDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("keeps the create self-verified when the planner's description only repeats the title (live 2026-09-16)", async () => {
+    let currentId = "";
+    let currentText = "";
+    let requestedDescription: string | null = null;
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async ({ actionType }) =>
@@ -807,6 +1208,10 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           ? {
               rawResponse: "{}",
               parsed: {
+                ...createEvidence(currentId, currentText),
+                title: "Optometrist appointment",
+                description: requestedDescription,
+
                 grantId: "eliza-calendar",
                 calendarId: "primary",
                 startAt: "2026-09-18T15:00:00-04:00",
@@ -818,8 +1223,17 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       ),
       recentConversationTexts: vi.fn(async () => []),
     });
-    const run = async (id: string, description: string) =>
-      action.handler(
+    const run = async (
+      id: string,
+      description: string,
+      userDescription?: string,
+    ) => {
+      currentId = `00000000-0000-0000-0000-0000000004${id}`;
+      currentText =
+        "add a optometrist appointment friday at 3pm to my calendar" +
+        (userDescription ? `. Description: ${userDescription}` : "");
+      requestedDescription = userDescription ?? null;
+      return action.handler(
         runtime,
         {
           id: `00000000-0000-0000-0000-0000000004${id}`,
@@ -827,7 +1241,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           roomId: "00000000-0000-0000-0000-000000000103",
           createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
           content: {
-            text: "add a optometrist appointment friday at 3pm to my calendar",
+            text: currentText,
           },
         } as Memory,
         undefined,
@@ -846,12 +1260,14 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           },
         },
       );
+    };
     const echoed = await run("01", "Optometrist appointment");
     expect(echoed?.success, JSON.stringify(echoed)).toBe(true);
     expect(echoed?.modelReplyRequired, JSON.stringify(echoed)).toBe(true);
     expect((echoed?.data?.replyContext as { facts: string })?.facts).toBe(
       "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
+    expect(echoed?.data?.replyContext).not.toHaveProperty("context.event");
     // Keep the independent content case free of a deliberate scheduling conflict.
     const echoedEvent = echoed?.data?.event as LifeOpsCalendarEvent;
     await service.deleteCalendarEvent(INTERNAL_URL, {
@@ -860,7 +1276,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       calendarId: echoedEvent.calendarId,
       grantId: echoedEvent.grantId,
     });
-    const noted = await run("02", "Bring the insurance card");
+    const noted = await run(
+      "02",
+      "Bring the insurance card",
+      "Bring the insurance card",
+    );
     expect(noted?.success, JSON.stringify(noted)).toBe(true);
     expect(noted?.verifiedUserFacing).toBeUndefined();
   });
@@ -959,6 +1379,96 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expect(persisted.events[0]).toMatchObject(moved);
     },
   );
+
+  it("keeps the duration when moving an event saved without a time zone", async () => {
+    // Google events without start.timeZone and Apple floating events are
+    // stored with no zone; the move is read in the owner's zone (Tokyo).
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      ...originalEvent,
+      idempotencyKey: "calendar-zone-less-move",
+    });
+    await pg.query(
+      "UPDATE app_calendar.life_calendar_events SET timezone = NULL WHERE id = $1",
+      [created.event?.id],
+    );
+
+    const moved = await runUpdate(
+      "Move Willow Harbor QA to 3pm on August 10.",
+      { timeZone: "Asia/Tokyo" },
+      { startAt: "2026-08-10T15:00:00" },
+    );
+
+    // 15:00 Tokyo, still 15 minutes long.
+    expect(moved).toMatchObject({
+      startAt: "2026-08-10T06:00:00.000Z",
+      endAt: "2026-08-10T06:15:00.000Z",
+    });
+  });
+
+  it("preserves elapsed duration when a pure move crosses a DST fold", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Overnight maintenance",
+      startAt: "2026-10-25T04:30:00.000Z",
+      endAt: "2026-10-25T06:30:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "calendar-fold-duration-regression",
+    });
+    if (!created.event)
+      throw new Error("Calendar fixture event was not created");
+
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_update_event"
+          ? {
+              rawResponse: JSON.stringify({
+                startAt: "2026-11-01T00:30:00",
+                timeZone: "America/New_York",
+              }),
+              parsed: {
+                startAt: "2026-11-01T00:30:00",
+                timeZone: "America/New_York",
+              },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000205",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-10-31T16:00:00.000Z"),
+        content: {
+          text: "move overnight maintenance to November 1 at 12:30am",
+        },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          query: "overnight maintenance",
+          details: {
+            eventId: created.event.id,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            start: "2026-11-01T00:30:00",
+          },
+        },
+      },
+    );
+
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (result?.data as { event?: LifeOpsCalendarEvent })?.event,
+    ).toMatchObject({
+      startAt: "2026-11-01T04:30:00.000Z",
+      endAt: "2026-11-01T06:30:00.000Z",
+    });
+  });
 
   it("moves a source-scoped target when only the destination is stated in the follow-up", async () => {
     const created = await service.createCalendarEventMutation(
@@ -1219,12 +1729,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     },
   );
 
-  it("rejects an unverified proposed guest before creating an event", async () => {
+  it("keeps the original solo barber request despite an invented planner guest", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(async () => ({
         rawResponse: "{}",
         parsed: {
+          ...createEvidence(
+            "00000000-0000-0000-0000-000000000301",
+            "add a barber appointment friday at 3pm to my calendar",
+          ),
+          title: "Barber appointment",
+
           grantId: ELIZA_CALENDAR_GRANT_ID,
           calendarId: ELIZA_CALENDAR_ID,
           startAt: "2026-09-18T15:00:00",
@@ -1262,13 +1778,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         },
       },
     );
-    expect(result?.success).toBe(false);
-    expect(JSON.stringify(result)).toContain(
-      "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
-    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.event).toMatchObject({ attendees: [] });
     expect(
       (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
@@ -1553,6 +2067,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       };
       const scopedRuntime = {
         ...runtime,
+        getSetting: () => undefined,
         getService: (name: string) =>
           name === "google" ? google : runtime.getService(name),
       } as unknown as IAgentRuntime;
@@ -1736,6 +2251,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     };
     const recoveryRuntime = {
       ...runtime,
+      getSetting: () => undefined,
       getService: (name: string) =>
         name === "google" ? google : runtime.getService(name),
     } as unknown as IAgentRuntime;
@@ -1846,5 +2362,590 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         metadata: { version: 1, etag: '"eliza-1"' },
       },
     );
+  });
+});
+
+// Live QA 2026-10-29 (trajectory tj-4eb0d496f71caa): at 10:35 PM PDT the owner
+// asked to fix the title of "drink coffeee", created for 9 AM that same day.
+// Model-bound read results mask every `key` field (CalendarFeed sources[].key
+// included) with the runtime's TOOL_DIAGNOSTIC_MASK, and the planner copied
+// that mask back as grantId/calendarId. The junk grant was dropped, but the
+// "[REDACTED]" calendarId survived, matched no listed calendar and redirected
+// the read to the unsupported Apple placeholder, so the earlier-today event
+// was never searched.
+describe("redacted source placeholders (real PGlite)", {
+  timeout: 30_000,
+}, () => {
+  const NOW = "2026-10-30T05:35:53.092Z"; // Thu Oct 29, 10:35 PM PDT
+  const TIME_ZONE = "America/Los_Angeles";
+  const REQUEST = "New edit the drink coffee event to remove the extra E.";
+
+  async function seedEarlierTodayCoffee() {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "drink coffeee",
+      startAt: "2026-10-29T16:00:00.000Z",
+      endAt: "2026-10-29T17:00:00.000Z",
+      timeZone: TIME_ZONE,
+      idempotencyKey: "earlier-today-coffee",
+    });
+    if (!created.event) throw new Error("Expected a persisted seed event");
+    return created.event;
+  }
+
+  function coffeeRequest(id: string): Memory {
+    return {
+      id,
+      entityId: "00000000-0000-0000-0000-000000000102",
+      roomId: "00000000-0000-0000-0000-000000000103",
+      createdAt: Date.parse(NOW),
+      content: { text: REQUEST },
+    } as Memory;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(["requested_read", "mutation_prerequisite"] as const)(
+    "revision2 full field-dispatch, actual search handler and evaluator preserve %s",
+    async (purpose) => {
+      const seeded = await seedEarlierTodayCoffee();
+      const request = {
+        ...coffeeRequest("00000000-0000-0000-0000-000000000991"),
+        content: {
+          text: purpose === "requested_read" ? "When is that event?" : REQUEST,
+        },
+      };
+      const state = {
+        values: {},
+        text: "",
+        data: {
+          providers: {
+            RECENT_MESSAGES: {
+              data: {
+                recentMessages: [
+                  {
+                    ...request,
+                    id: "prior-coffee",
+                    createdAt: request.createdAt! - 1,
+                    entityId: runtime.agentId,
+                    content: { text: "The drink coffee event." },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const registry = new ResponseHandlerFieldRegistry();
+      registry.register(calendarReadBindingField);
+      const model = vi.fn(async () => {
+        throw Error("No extra model call permitted in typed search");
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: model,
+        runJsonModel: model,
+        recentConversationTexts: async () => [],
+      });
+      const boundRuntime = {
+        ...runtime,
+        actions: [{ name: "CALENDAR_SEARCH_EVENTS" }],
+      } as IAgentRuntime;
+      await runWithStreamingContext(
+        { messageId: request.id, abortSignal: new AbortController().signal },
+        async () => {
+          const fields = await registry.dispatch({
+            runtime: boundRuntime,
+            message: request,
+            state,
+            senderRole: "OWNER",
+            turnSignal: new AbortController().signal,
+            rawParsed: {
+              intents: [request.content.text],
+              calendarReadBindings: [
+                {
+                  intentId: "intent:1",
+                  purpose,
+                  operation: "search_events",
+                  execution: "required",
+                  filterEvidence: [
+                    {
+                      query: "coffee",
+                      quote: "coffee",
+                      origin:
+                        purpose === "requested_read" ? "referent" : "current",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          const result = await action.handler(boundRuntime, request, state, {
+            parameters: {
+              subaction: "search_events",
+              query: "coffee",
+              details: { timeZone: TIME_ZONE },
+            },
+          });
+          expect(result).toMatchObject({
+            success: true,
+            data: { events: [{ id: seeded.id }] },
+          });
+          expect(fields.parsed.calendarReadBindings).toHaveLength(
+            purpose === "requested_read" ? 1 : 0,
+          );
+          const context = {
+            id: request.id,
+            metadata: {
+              messageId: request.id,
+              roomId: request.roomId,
+              actorId: request.entityId,
+              calendarReadBindings: fields.parsed.calendarReadBindings,
+            },
+          };
+          const trajectory = {
+            context,
+            outcomeIntents: [request.content.text],
+            steps: [
+              {
+                iteration: 1,
+                toolCall: {
+                  id: "search",
+                  name: "CALENDAR_SEARCH_EVENTS",
+                  params: { query: "coffee" },
+                },
+                result,
+              },
+            ],
+            evaluatorOutputs: [],
+            plannedQueue: [],
+          };
+          expect(
+            calendarReadCoverage(
+              {
+                success: true,
+                decision: "FINISH",
+                requestFullyCovered: true,
+                outcomeCoverage: [
+                  {
+                    intentId: "intent:1",
+                    status: "completed",
+                    evidenceStepIds: ["step:1"],
+                  },
+                ],
+              },
+              context,
+              trajectory,
+            ).verified,
+          ).toBe(true);
+          expect(model).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+
+  it("revision2 rejected filter preserves Notes and allows existing planner feed without another Stage1", async () => {
+    const seeded = await seedEarlierTodayCoffee();
+    const request = {
+      ...coffeeRequest("00000000-0000-0000-0000-000000000992"),
+      content: { text: "Check notes and anything on my calendar today." },
+    };
+    const state = { values: {}, data: {}, text: "" };
+    const model = vi.fn(async () => {
+      throw Error("No extra model call in typed feed");
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: model,
+      runJsonModel: model,
+      recentConversationTexts: async () => [],
+    });
+    const boundRuntime = {
+      ...runtime,
+      actions: [{ name: "CALENDAR_FEED" }],
+    } as IAgentRuntime;
+    const registry = new ResponseHandlerFieldRegistry();
+    registry.register(calendarReadBindingField);
+    await runWithStreamingContext(
+      { messageId: request.id, abortSignal: new AbortController().signal },
+      async () => {
+        const fields = await registry.dispatch({
+          runtime: boundRuntime,
+          message: request,
+          state,
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+          rawParsed: {
+            intents: ["check notes", "read calendar"],
+            replyText: "No events",
+            calendarReadBindings: [
+              {
+                intentId: "intent:2",
+                purpose: "requested_read",
+                operation: "search_events",
+                execution: "required",
+                filterEvidence: [
+                  { query: "agenda", quote: "agenda", origin: "current" },
+                ],
+              },
+            ],
+          },
+        });
+        expect(fields.parsed.replyText).toBe("");
+        expect(fields.parsed.intents).toEqual(["check notes", "read calendar"]);
+        expect(fields.parsed.calendarReadBindings).toEqual([]);
+        // The existing planner chooses this typed operation from the retained literal request.
+        // This verifies execution compatibility, not the probabilistic model choice itself.
+        const result = await action.handler(boundRuntime, request, state, {
+          parameters: {
+            subaction: "feed",
+            details: { date: "2026-10-29", timeZone: TIME_ZONE },
+          },
+        });
+        expect(result).toMatchObject({
+          success: true,
+          data: { events: [{ id: seeded.id }] },
+        });
+        expect(model).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it.each([
+    [
+      "the runtime mask copied as source ids",
+      { grantId: "[REDACTED]", calendarId: "[REDACTED]" },
+    ],
+    ["omitted source ids", {}],
+  ])(
+    "a dateless title search finds an event that ended earlier today with %s",
+    async (_label, sourceIds) => {
+      const seeded = await seedEarlierTodayCoffee();
+      const model = vi.fn(async () => {
+        throw new Error("A typed title search must not call a model");
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: model,
+        runJsonModel: model,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      // The second CALENDAR_SEARCH_EVENTS call from the trajectory, verbatim.
+      const request = coffeeRequest("00000000-0000-0000-0000-000000000901");
+      const result = await withCalendarSearchAuthorization(
+        {
+          current: request,
+          agentId: runtime.agentId,
+          recent: [],
+          filterEvidence: ["coffee", "drink coffee"].map((query) => ({
+            query,
+            quote: query,
+            origin: "current",
+          })),
+          signal: new AbortController().signal,
+        },
+        () =>
+          action.handler(runtime, request, undefined, {
+            parameters: {
+              subaction: "search_events",
+              intent:
+                "Locate the existing coffee event so its title can be corrected.",
+              query: "coffee",
+              queries: ["drink coffee"],
+              details: {
+                timeZone: TIME_ZONE,
+                timezone: TIME_ZONE,
+                time_zone: TIME_ZONE,
+                includeHiddenCalendars: true,
+                oldTitle: "coffee",
+                query: "coffee",
+                queries: ["coffee", "drink coffee"],
+              },
+              ...sourceIds,
+            },
+          }),
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          state: "complete",
+          // The default search window starts at local midnight today.
+          timeMin: "2026-10-29T07:00:00.000Z",
+          events: [{ id: seeded.id, title: "drink coffeee" }],
+          replyContext: {
+            context: { sourceScope: { grantId: null, calendarId: null } },
+          },
+        },
+        effectReceipts: [{ operation: "calendar.event.search" }],
+      });
+      expect(result?.data?.sources).toEqual([
+        expect.objectContaining({ status: "fresh", summary: "Eliza Calendar" }),
+      ]);
+      expect(model).not.toHaveBeenCalled();
+    },
+  );
+
+  it("grounds a weak search match with provider reasoning off", async () => {
+    // Location-only matches score below the direct-title threshold, so the
+    // search asks the model to decide which candidates are real matches.
+    const [seeded] = await Promise.all(
+      ["Team standup", "Design sync"].map(async (title, index) => {
+        const created = await service.createCalendarEventMutation(
+          INTERNAL_URL,
+          {
+            title,
+            location: "Blue Bottle Coffee",
+            startAt: `2026-10-29T1${6 + index}:00:00.000Z`,
+            endAt: `2026-10-29T1${6 + index}:30:00.000Z`,
+            timeZone: TIME_ZONE,
+            idempotencyKey: `weak-coffee-match-${index}`,
+          },
+        );
+        if (!created.event) throw new Error("Expected a persisted seed event");
+        return created.event;
+      }),
+    );
+    const ground = vi.fn(async () => JSON.stringify({ matchIds: [seeded.id] }));
+    const action = createCalendarActionRunner({
+      runTextModel: ground,
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const request = coffeeRequest("00000000-0000-0000-0000-000000000902");
+    const result = await withCalendarSearchAuthorization(
+      {
+        current: request,
+        agentId: runtime.agentId,
+        recent: [],
+        filterEvidence: [
+          { query: "coffee", quote: "coffee", origin: "current" },
+        ],
+        signal: new AbortController().signal,
+      },
+      () =>
+        action.handler(runtime, request, undefined, {
+          parameters: {
+            subaction: "search_events",
+            query: "coffee",
+            queries: ["coffee"],
+            details: { timeZone: TIME_ZONE },
+          },
+        }),
+    );
+    expect(ground).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        actionType: "lifeops.calendar.ground_search_matches",
+        thinking: "off",
+      }),
+    );
+    expect(result?.data?.events).toEqual([
+      expect.objectContaining({ id: seeded.id }),
+    ]);
+  });
+
+  it("updates the searched earlier-today event when the planner copies the mask as source ids", async () => {
+    const seeded = await seedEarlierTodayCoffee();
+    const extract = vi.fn(async ({ actionType }: { actionType: string }) => {
+      if (actionType !== "lifeops.calendar.extract_update_event") return null;
+      const parsed = { requiresInput: false, title: "drink coffee" };
+      return { rawResponse: JSON.stringify(parsed), parsed };
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: extract,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const update = (id: string, target: string) =>
+      action.handler(runtime, coffeeRequest(id), undefined, {
+        parameters: {
+          subaction: "update_event",
+          intent: "Rename drink coffeee to drink coffee.",
+          targetKind: "query",
+          target,
+          grantId: "[REDACTED]",
+          calendarId: "[REDACTED]",
+          details: { timeZone: TIME_ZONE },
+        },
+      });
+
+    // Mutation targets keep exact phrase identity: the corrected spelling is
+    // not the stored title, so it must not select the event by itself.
+    const unmatched = await update(
+      "00000000-0000-0000-0000-000000000902",
+      "drink coffee",
+    );
+    expect(unmatched).toMatchObject({
+      success: false,
+      data: { requiresInput: true, missing: ["event target"] },
+    });
+    expect(extract).not.toHaveBeenCalled();
+
+    // The stored title returned by the search above identifies it exactly.
+    const renamed = await update(
+      "00000000-0000-0000-0000-000000000903",
+      "drink coffeee",
+    );
+    expect(renamed?.success).toBe(true);
+    expect(await service.getCalendarEventById(seeded.id)).toMatchObject({
+      title: "drink coffee",
+      startAt: "2026-10-29T16:00:00.000Z",
+      endAt: "2026-10-29T17:00:00.000Z",
+    });
+  });
+});
+
+// Live QA 2026-10-29: at 11:07 PM PDT "make event for today that says qa lunch
+// at 12pm" (tj-6bd43ea36dc7e0) paused as a past start and asked which date,
+// while "make an event for today at 8am called qa stretchh" (tj-593942fca07d65)
+// was created only because the planner happened to add allowPast. The user had
+// already stated the date, so the past-start pause must not depend on it.
+describe("past start on a stated date (real PGlite)", {
+  timeout: 30_000,
+}, () => {
+  const NOW = "2026-10-30T06:07:42.142Z"; // Thu Oct 29, 11:07 PM PDT
+  const TIME_ZONE = "America/Los_Angeles";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function createQaLunch(
+    id: string,
+    text: string,
+    details: Record<string, unknown>,
+    extracted = {
+      startAt: "2026-10-29T12:00:00-07:00",
+      endAt: "2026-10-29T13:00:00-07:00",
+    },
+  ) {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                ...createEvidence(id, text),
+                title: "qa lunch",
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+                ...extracted,
+                timeZone: TIME_ZONE,
+              },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    return action.handler(
+      runtime,
+      {
+        id,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse(NOW),
+        content: { text },
+      } as Memory,
+      undefined,
+      { parameters: { subaction: "create_event", title: "qa lunch", details } },
+    );
+  }
+
+  it("creates an explicitly requested time earlier today without allowPast", async () => {
+    // The trajectory's CALENDAR_CREATE_EVENT details, verbatim.
+    const result = await createQaLunch(
+      "00000000-0000-0000-0000-000000000911",
+      "make event for today that says qa lunch at 12pm",
+      {
+        start: "2026-10-29T12:00:00",
+        durationMinutes: 60,
+        recurrence: [],
+        sourceNote: {
+          agentId: AGENT_ID,
+          noteId: "message-handler:1793340462693",
+          contentHash:
+            "73449ec497d8444d78c85746a751b23f86f3bc4b4f748092769fc37d92fc07db",
+        },
+        attendees: [{ email: "user@example.com", displayName: "User" }],
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.event).toMatchObject({
+      title: "qa lunch",
+      startAt: "2026-10-29T19:00:00.000Z",
+      endAt: "2026-10-29T20:00:00.000Z",
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    ["no stated date", "add qa lunch at 12pm", undefined],
+    [
+      "a bare weekday",
+      "add qa lunch thursday at 12pm",
+      // Next Thursday at noon, after the November 1 return to PST.
+      "2026-11-05T20:00:00.000Z",
+    ],
+  ])(
+    "still asks before creating a past start with %s",
+    async (_label, text, suggestedStartAt) => {
+      const result = await createQaLunch(
+        "00000000-0000-0000-0000-000000000912",
+        text,
+        { start: "2026-10-29T12:00:00", durationMinutes: 60 },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          requiresInput: true,
+          missing: ["confirmed date"],
+          requestedStartAt: "2026-10-29T19:00:00.000Z",
+        },
+        effectReceipts: [
+          { operation: "calendar.event.create", outcome: "noop" },
+        ],
+      });
+      expect(result?.data?.suggestedStartAt).toBe(suggestedStartAt);
+      expect(
+        (await pg.query("SELECT id FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toHaveLength(0);
+    },
+  );
+
+  it("still asks before creating a yearless date that passed earlier this year", async () => {
+    // "january 5" said in October parses to this year's January 5, and the
+    // stated-date guard moves the extractor's next-year start onto it. Only the
+    // user can say which year they meant.
+    const result = await createQaLunch(
+      "00000000-0000-0000-0000-000000000913",
+      "add qa lunch on january 5 at 12pm",
+      { start: "2027-01-05T12:00:00", durationMinutes: 60 },
+      {
+        startAt: "2027-01-05T12:00:00-08:00",
+        endAt: "2027-01-05T13:00:00-08:00",
+      },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        requiresInput: true,
+        missing: ["confirmed date"],
+        requestedStartAt: "2026-01-05T20:00:00.000Z",
+      },
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
   });
 });

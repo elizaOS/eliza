@@ -36,38 +36,41 @@
  *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
-import { type Context, Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { checkAgentTierUpgradeCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
   PersonalDedicatedAuthorityRetainedError,
   PersonalDedicatedSelectionRequiredError,
-} from "@/lib/services/agent-tier-upgrade-target";
-import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
+} from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { buildDefaultAgentCharacterConfig } from "@elizaos/cloud-shared/lib/services/default-agent-character";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { stripReservedEnvKeys } from "@/lib/services/reserved-env-keys";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { stripReservedEnvKeys } from "@elizaos/cloud-shared/lib/services/reserved-env-keys";
 import {
   isPersonalSharedAgentId,
   personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
 const DEDICATED_QUOTE_VERSION = "personal-dedicated-v2";
@@ -311,7 +314,9 @@ async function respondToLiveTarget(
     orgId: user.organization_id,
     status: target.status,
   });
-  if (target.status === "running") {
+  // A disconnected target keeps its container; disconnected recovery owns
+  // reconnecting or reprovisioning it, so report it as in progress.
+  if (target.status === "running" || target.status === "disconnected") {
     return json({
       success: true,
       created: false,

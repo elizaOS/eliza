@@ -594,6 +594,21 @@ describe("StewardTradingService dev launcher authority", () => {
     resetDevCloudEnvAuthorityForTests();
     rmSync(stateDir, { force: true, recursive: true });
   });
+  it.each([
+    ["malformed JSON", '{"apiUrl":"https://steward.local",'],
+    ["a non-object root", "[]"],
+  ])(
+    "fails closed when persisted Steward credentials contain %s",
+    (_, data) => {
+      writeFileSync(path.join(stateDir, "steward-credentials.json"), data);
+
+      expect(() => new StewardTradingService(runtime())).toThrowError(
+        expect.objectContaining({
+          code: "STEWARD_CREDENTIALS_CORRUPT",
+        }),
+      );
+    },
+  );
   it("does not trade from persisted or runtime production credentials in default staging", async () => {
     writeFileSync(
       path.join(stateDir, "steward-credentials.json"),

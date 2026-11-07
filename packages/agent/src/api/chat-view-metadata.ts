@@ -60,10 +60,13 @@ export function resolveChatMetadataView(
   metadata: Record<string, unknown>,
   views: readonly ViewRegistryEntry[],
 ): ViewRegistryEntry | null {
+  // Client-owned counterparts retain registry facts without a hosted web bundle.
+  // This chooses the delivery surface; action and renderer authorization remain separate.
+  const completedAction = metadata.viewDelivery === "completed-action";
   const candidatePath = normalizeViewPath(metadata.uiViewPath);
   if (candidatePath) {
     const byPath = views
-      .filter((view) => view.available !== false)
+      .filter((view) => view.available !== false || completedAction)
       .flatMap((view) => {
         const registeredPath = normalizeViewPath(view.path);
         return registeredPath && viewPathMatches(candidatePath, registeredPath)
@@ -77,8 +80,11 @@ export function resolveChatMetadataView(
   const candidateId = asString(metadata.uiView);
   if (!candidateId) return null;
   return (
-    views.find((view) => view.id === candidateId && view.available !== false) ??
-    null
+    views.find(
+      (view) =>
+        view.id === candidateId &&
+        (view.available !== false || completedAction),
+    ) ?? null
   );
 }
 

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop brand config ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +11,6 @@ import { readDesktopEnvFlag } from "./desktop-env-flags";
  * apps (e.g. the app) override via env or by importing and calling
  * `overrideBrandConfig()` before the shell boots.
  *
- * Env precedence: ELIZA_ > ELIZA_ (legacy) > default.
  */
 
 export interface DesktopBrandConfig {

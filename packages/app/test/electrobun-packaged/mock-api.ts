@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 
 export interface MockApiServerOptions {
   port?: number;
@@ -533,13 +534,14 @@ export async function startMockApiServer(
     },
   };
 
-  const statusPayload = () => ({
-    state: agentState,
-    agentName,
-    model: "mock-model",
-    startedAt: Date.now() - 60_000,
-    uptime: 60_000,
-  });
+  const statusPayload = () =>
+    fixtureAgentStatus({
+      state: agentState,
+      agentName,
+      model: "mock-model",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
 
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? "GET";
@@ -1067,21 +1069,6 @@ export async function startMockApiServer(
       json(res, 200, { installed: [], available: false });
       return;
     }
-    if (
-      method === "GET" &&
-      pathname === "/api/coding-agents/coordinator/status"
-    ) {
-      json(res, 200, {
-        supervisionLevel: "unavailable",
-        taskCount: 0,
-        tasks: [],
-        pendingConfirmations: 0,
-        taskThreadCount: 0,
-        taskThreads: [],
-        frameworks: [],
-      });
-      return;
-    }
     if (method === "GET" && pathname === "/api/orchestrator/status") {
       json(res, 200, emptyOrchestratorStatus);
       return;
@@ -1093,11 +1080,9 @@ export async function startMockApiServer(
 
     if (method === "GET" && pathname === "/api/workbench/overview") {
       json(res, 200, {
-        tasks: [],
         triggers: [],
         todos: [],
         autonomy: { enabled: true, thinking: false, lastEventAt: null },
-        tasksAvailable: true,
         triggersAvailable: true,
         todosAvailable: true,
       });
@@ -1555,21 +1540,6 @@ export async function startMockApiServer(
       return;
     }
 
-    if (method === "GET" && pathname === "/api/registry/status") {
-      json(res, 200, {
-        registered: false,
-        tokenId: 0,
-        agentName,
-        agentEndpoint: "",
-        capabilitiesHash: "",
-        isActive: false,
-        tokenURI: "",
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        totalAgents: 0,
-        configured: true,
-      });
-      return;
-    }
     if (method === "GET" && pathname === "/api/drop/status") {
       json(res, 200, {
         dropEnabled: false,

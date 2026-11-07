@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-location",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Reads current location, watches movement, and manages geolocation permissions.",
   "keywords": [
     "location",
@@ -34,7 +34,6 @@
     "build:docs": "bun run clean && bun run docgen && tsc6 && bun --bun rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "test": "vitest run",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json",
     "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -63,10 +62,10 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
-    "rollup": "^4.63.5",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

@@ -11,13 +11,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  logger,
-  requireConfirmation,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+import { ElizaError, logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   buildResolvedClient,
+  confirmPreviewedRequest,
   describeSelection,
   requireNumber,
   requireString,
@@ -102,7 +99,7 @@ async function runList(
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
   const selection = resolveAccountSelection(options, "agent");
-  const resolved = buildResolvedClient(runtime, selection);
+  const resolved = await buildResolvedClient(runtime, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -113,57 +110,106 @@ async function runList(
   const repo = requireString(options, "repo");
   const prs: PRSummary[] = [];
 
-  if (repo) {
-    const parts = splitRepo(repo);
-    if (!parts) {
-      const err = `Invalid repo "${repo}" — expected "owner/name"`;
-      await callback?.({ text: err });
-      return { success: false, error: err };
-    }
-    const resp = await resolved.client.pulls.list({
-      owner: parts.owner,
-      repo: parts.name,
-      state,
-      per_page: 100,
-    });
-    for (const pr of resp.data) {
-      // GitHub logins are case-insensitive; compare case-insensitively so
-      // this branch matches the `author:` search qualifier's semantics.
-      if (author && pr.user?.login?.toLowerCase() !== author.toLowerCase()) {
-        continue;
-      }
-      prs.push({
-        repo,
-        number: pr.number,
-        title: pr.title,
-        author: pr.user?.login ?? null,
-        state: pr.state,
-        url: pr.html_url,
+  // Without a repo or an author the search query matches every PR on GitHub,
+  // which the search API cannot return in full.
+  if (!repo && !author) {
+    const err =
+      "PR list requires repo (owner/name) or author (a GitHub login, or @me for the token's own account)";
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+
+  const parts = repo ? splitRepo(repo) : null;
+  if (repo && !parts) {
+    const err = `Invalid repo "${repo}" — expected "owner/name"`;
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+
+  if (repo && parts && !author) {
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.pulls.list({
+        owner: parts.owner,
+        repo: parts.name,
+        state,
+        per_page: 100,
+        page,
+        sort: "created",
+        direction: "asc",
       });
+      for (const pr of resp.data) {
+        prs.push({
+          repo,
+          number: pr.number,
+          title: pr.title,
+          author: pr.user?.login ?? null,
+          state: pr.state,
+          url: pr.html_url,
+        });
+      }
+      if (resp.data.length < 100) break;
     }
   } else {
+    // An author filter runs server-side through search (with a `repo:`
+    // qualifier when scoped): filtering one REST page client-side missed every
+    // matching PR beyond the newest 100.
     const q = [
       "is:pr",
       state === "all" ? "" : `is:${state}`,
+      parts ? `repo:${parts.owner}/${parts.name}` : "",
       author ? `author:${author}` : "",
     ]
       .filter(Boolean)
       .join(" ");
-    const resp = await resolved.client.search.issuesAndPullRequests({
-      q,
-      per_page: 50,
-    });
-    for (const item of resp.data.items) {
-      const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(item.repository_url);
-      const repoName = match?.[1] ?? item.repository_url;
-      prs.push({
-        repo: repoName,
-        number: item.number,
-        title: item.title,
-        author: item.user?.login ?? null,
-        state: item.state,
-        url: item.html_url,
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.search.issuesAndPullRequests({
+        q,
+        per_page: 100,
+        page,
+        sort: "created",
+        order: "asc",
       });
+      if (resp.data.incomplete_results || (resp.data.total_count ?? 0) > 1000) {
+        throw new ElizaError(
+          "GitHub search cannot return a complete PR list; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
+      for (const item of resp.data.items) {
+        const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(
+          item.repository_url,
+        );
+        const repoName = match?.[1] ?? item.repository_url;
+        prs.push({
+          repo: repoName,
+          number: item.number,
+          title: item.title,
+          author: item.user?.login ?? null,
+          state: item.state,
+          url: item.html_url,
+        });
+      }
+      if (
+        resp.data.items.length < 100 ||
+        prs.length === resp.data.total_count
+      ) {
+        if (
+          resp.data.total_count !== undefined &&
+          prs.length !== resp.data.total_count
+        ) {
+          throw new ElizaError(
+            "GitHub search changed while reading pages; retry for a complete PR list",
+            { code: "GITHUB_PR_LIST_INCOMPLETE" },
+          );
+        }
+        break;
+      }
+      if (page === 10) {
+        throw new ElizaError(
+          "GitHub search reached its result limit; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
     }
   }
 
@@ -180,12 +226,12 @@ async function runReview(
   const selection = resolveAccountSelection(options, "user");
   const repo = requireString(options, "repo");
   const number = requireNumber(options, "number");
-  const action = parseReviewAction(options?.action);
+  const action = parseReviewAction(options?.review_action);
   const body = requireString(options, "body");
 
   if (!repo || !number || !action) {
     const err =
-      "GITHUB_PR_OP review requires repo (owner/name), number (integer), and action (approve|request-changes|comment)";
+      "GITHUB_PR_OP review requires repo (owner/name), number (integer), and review_action (approve|request-changes|comment)";
     await callback?.({ text: err });
     return { success: false, error: err };
   }
@@ -196,6 +242,23 @@ async function runReview(
     return { success: false, error: err };
   }
 
+  // Reject what the review cannot run with before asking: a confirmation the
+  // user answers must not be followed by an argument or account error.
+  // GitHub requires a body for both REQUEST_CHANGES and COMMENT reviews.
+  if (action !== "approve" && !body) {
+    const err =
+      action === "request-changes"
+        ? "request-changes review requires a body explaining the changes"
+        : "comment review requires a body";
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+  const resolved = await buildResolvedClient(runtime, selection);
+  if ("error" in resolved) {
+    await callback?.({ text: resolved.error });
+    return { success: false, error: resolved.error };
+  }
+
   const preview = buildReviewPreview(
     action,
     repo,
@@ -203,15 +266,16 @@ async function runReview(
     body,
     describeSelection(selection),
   );
-  const decision = await requireConfirmation({
+  const decision = await confirmPreviewedRequest({
     runtime,
     message,
     actionName: GitHubActions.GITHUB_PR_OP,
     pendingKey: `review:${repo}:${number}:${action}`,
     prompt: `${preview} Reply yes to confirm or no to cancel.`,
     callback,
+    request: { repo, number, action, body, selection },
   });
-  if (decision.status === "pending") {
+  if (decision === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;
     // requireConfirmation already delivered the pending prompt exactly once.
     return {
@@ -220,22 +284,10 @@ async function runReview(
       data: { requiresConfirmation: true, preview, awaitingUserInput: true },
     };
   }
-  if (decision.status === "cancelled") {
+  if (decision === "cancelled") {
     const text = "GitHub PR review cancelled.";
     await callback?.({ text });
     return { success: true, text, data: { cancelled: true } };
-  }
-
-  if (action === "request-changes" && !body) {
-    const err = "request-changes review requires a body explaining the changes";
-    await callback?.({ text: err });
-    return { success: false, error: err };
-  }
-
-  const resolved = buildResolvedClient(runtime, selection);
-  if ("error" in resolved) {
-    await callback?.({ text: resolved.error });
-    return { success: false, error: resolved.error };
   }
 
   const resp = await resolved.client.pulls.createReview({
@@ -265,7 +317,7 @@ export const prOpAction: Action = {
     "COMMENT_ON_PR",
   ],
   description:
-    "Single router for GitHub PR ops: list and review. Review requires confirmed:true.",
+    "Single router for GitHub PR ops: list and review. Review asks the user to reply yes before it is submitted.",
   descriptionCompressed:
     "GitHub PR ops: list pull requests, submit review with confirmation.",
   parameters: [
@@ -277,7 +329,8 @@ export const prOpAction: Action = {
     },
     {
       name: "repo",
-      description: "Repository in owner/name form.",
+      description:
+        "Repository in owner/name form. list requires repo or author.",
       required: false,
       schema: { type: "string" },
     },
@@ -299,12 +352,13 @@ export const prOpAction: Action = {
     },
     {
       name: "author",
-      description: "Optional PR author username filter for list.",
+      description:
+        "PR author login filter for list; @me means the token's own account. list requires repo or author.",
       required: false,
       schema: { type: "string" },
     },
     {
-      name: "action",
+      name: "review_action",
       description: "Review action: approve, request-changes, or comment.",
       required: false,
       schema: {
@@ -314,15 +368,17 @@ export const prOpAction: Action = {
     },
     {
       name: "body",
-      description: "Review body for comment or request-changes.",
+      description:
+        "Review body. Required for review_action comment and request-changes; optional for approve.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "as",
-      description: "Identity to use: agent or user.",
+      description:
+        "Identity to use: agent or user. When omitted, list runs as agent and review runs as user.",
       required: false,
-      schema: { type: "string", enum: ["agent", "user"], default: "agent" },
+      schema: { type: "string", enum: ["agent", "user"] },
     },
     {
       name: "accountId",
@@ -331,19 +387,15 @@ export const prOpAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "confirmed",
-      description: "Must be true to submit a review.",
-      required: false,
-      schema: { type: "boolean", default: false },
-    },
   ],
 
   validate: async (
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const r = buildResolvedClient(runtime, "agent");
+    const r = await buildResolvedClient(runtime, "agent", {
+      refresh: "on-miss",
+    });
     return !("error" in r);
   },
 

@@ -242,9 +242,10 @@ export class BargeInController implements WordsDetectedSink {
 		evidence?: Partial<BargeInInterruptEvidence>;
 	}): void {
 		if (args.wordCount < 1) return;
-		const withinConfirmWindow =
-			this.wordConfirmExpiresAtMs != null &&
-			args.timestampMs <= this.wordConfirmExpiresAtMs;
+		// The window is measured on this controller's clock: the ASR sink reports
+		// its own (wall-clock) timestamps, so the caller's value cannot be
+		// compared with an expiry armed from an audio-clock position.
+		const withinConfirmWindow = this.withinWordConfirmWindow();
 		if (
 			!this.agentSpeaking ||
 			(!this.awaitingWordConfirm && !withinConfirmWindow)
@@ -254,16 +255,21 @@ export class BargeInController implements WordsDetectedSink {
 		const decision = this.evaluateInterrupt(args);
 		if (isPromiseLike(decision)) {
 			void decision.then(
-				(resolved) => this.applyInterruptDecision(args, resolved),
+				(resolved) =>
+					this.applyInterruptDecision(args, resolved, withinConfirmWindow),
 				() =>
-					this.applyInterruptDecision(args, {
-						allow: false,
-						reason: "interrupt-gate-error",
-					}),
+					this.applyInterruptDecision(
+						args,
+						{
+							allow: false,
+							reason: "interrupt-gate-error",
+						},
+						withinConfirmWindow,
+					),
 			);
 			return;
 		}
-		this.applyInterruptDecision(args, decision);
+		this.applyInterruptDecision(args, decision, withinConfirmWindow);
 	}
 
 	private applyInterruptDecision(
@@ -274,10 +280,8 @@ export class BargeInController implements WordsDetectedSink {
 			evidence?: Partial<BargeInInterruptEvidence>;
 		},
 		decision: BargeInInterruptDecision,
+		withinConfirmWindow: boolean,
 	): void {
-		const withinConfirmWindow =
-			this.wordConfirmExpiresAtMs != null &&
-			args.timestampMs <= this.wordConfirmExpiresAtMs;
 		if (
 			!this.agentSpeaking ||
 			(!this.awaitingWordConfirm && !withinConfirmWindow)
@@ -393,7 +397,10 @@ export class BargeInController implements WordsDetectedSink {
 
 	private armWordConfirmDeadline(timestampMs: number): void {
 		this.clearWordConfirm();
-		this.wordConfirmExpiresAtMs = timestampMs + this.wordsGraceMs;
+		// VAD events carry the audio clock. The window bounds the real time ASR
+		// gets to confirm words, so it is armed on the wall clock and read back
+		// by `withinWordConfirmWindow()` on the same clock.
+		this.wordConfirmExpiresAtMs = Date.now() + this.wordsGraceMs;
 		this.wordConfirmDeadlineTimer = setTimeout(() => {
 			this.wordConfirmDeadlineTimer = null;
 			if (this.awaitingWordConfirm && this.agentSpeaking) {
@@ -415,6 +422,13 @@ export class BargeInController implements WordsDetectedSink {
 		) {
 			(this.wordConfirmDeadlineTimer as { unref: () => void }).unref();
 		}
+	}
+
+	private withinWordConfirmWindow(): boolean {
+		return (
+			this.wordConfirmExpiresAtMs != null &&
+			Date.now() <= this.wordConfirmExpiresAtMs
+		);
 	}
 
 	private clearWordConfirm(options: { keepWindow?: boolean } = {}): void {

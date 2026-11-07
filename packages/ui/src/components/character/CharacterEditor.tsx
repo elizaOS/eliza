@@ -7,13 +7,13 @@
  * can land here without a chunk fetch.
  */
 
-import { getStylePresets } from "@elizaos/core/character-presets";
-import { normalizeCharacterMessageExamples } from "@elizaos/core/utils/character-message-examples";
+import { normalizeCharacterMessageExamples } from "@elizaos/core/protocol";
 import {
+  getStylePresets,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
-} from "@elizaos/core/voice";
+} from "@elizaos/host/protocol";
 import {
   type ChangeEvent,
   type ComponentPropsWithoutRef,
@@ -26,18 +26,20 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { type CharacterData, client } from "../../api/client";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { CharacterData } from "../../api/client-types-config";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events/index";
-import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { logger } from "../../logger.ts";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -296,14 +298,7 @@ export function CharacterEditor({
     activePackId,
     t,
     uiLanguage,
-    registryStatus: _registryStatus,
-    registryLoading: _registryLoading,
-    registryRegistering: _registryRegistering,
-    registryError: _registryError,
     dropStatus: _dropStatus,
-    loadRegistryStatus,
-    registerOnChain: _registerOnChain,
-    syncRegistryProfile: _syncRegistryProfile,
     loadDropStatus,
     walletConfig: _walletConfig,
     elizaCloudConnected,
@@ -332,14 +327,7 @@ export function CharacterEditor({
     activePackId: s.activePackId,
     t: s.t,
     uiLanguage: s.uiLanguage,
-    registryStatus: s.registryStatus,
-    registryLoading: s.registryLoading,
-    registryRegistering: s.registryRegistering,
-    registryError: s.registryError,
     dropStatus: s.dropStatus,
-    loadRegistryStatus: s.loadRegistryStatus,
-    registerOnChain: s.registerOnChain,
-    syncRegistryProfile: s.syncRegistryProfile,
     loadDropStatus: s.loadDropStatus,
     walletConfig: s.walletConfig,
     elizaCloudConnected: s.elizaCloudConnected,
@@ -349,9 +337,8 @@ export function CharacterEditor({
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
   useEffect(() => {
     void loadCharacter();
-    void loadRegistryStatus();
     void loadDropStatus();
-  }, [loadCharacter, loadRegistryStatus, loadDropStatus]);
+  }, [loadCharacter, loadDropStatus]);
   const handleFieldEdit = useCallback(
     (field: string, value: unknown) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);

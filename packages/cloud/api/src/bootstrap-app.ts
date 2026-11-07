@@ -10,42 +10,47 @@
  * any dispatch that has no concrete request path).
  */
 
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getPresentedMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
+import {
+  rateLimit,
+  rateLimitConfigVerdict,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { observeCloudRequest } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { httpTelemetryMiddleware } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import {
+  getCloudAwareEnv,
+  runWithCloudBindingsAsync,
+} from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { configureAppsDeprovisionTrigger } from "@elizaos/cloud-shared/lib/services/app-db-deprovision-job-service";
+import { configureAppsDeployTrigger } from "@elizaos/cloud-shared/lib/services/app-deploy-job-service";
+import { getProviderEnvDiagnostics } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import {
+  SubscriptionCatalogError,
+  validateSubscriptionCatalogConfiguration,
+} from "@elizaos/cloud-shared/lib/services/subscription-catalog";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { describeUnhandledError } from "@elizaos/cloud-shared/lib/utils/unhandled-error-detail";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { normalizeLanguage, type UiLanguage } from "@elizaos/core/protocol";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
-import { runWithDbCacheAsync } from "@/db/client";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  getPresentedMobileApiKeySecret,
-  mobileApiKeyIngressRateLimitKey,
-} from "@/lib/auth/mobile-api-key";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
-import {
-  rateLimit,
-  rateLimitConfigVerdict,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import {
-  getCloudAwareEnv,
-  runWithCloudBindingsAsync,
-} from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
-import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
-import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
-import {
-  SubscriptionCatalogError,
-  validateSubscriptionCatalogConfiguration,
-} from "@/lib/services/subscription-catalog";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import assetLinksRoute from "../.well-known/assetlinks.json/route";
 import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
@@ -57,13 +62,6 @@ import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guar
 import { routeShardKey } from "./router-shards";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
-
-/**
- * Supported UI languages, mirrored from `packages/ui/src/i18n/messages.ts`.
- * Kept inline because cloud-api must not import the React UI package into the
- * Workers bundle.
- */
-type UiLanguage = "en" | "zh-CN" | "ko" | "ja" | "vi" | "tl" | "pt" | "es";
 
 const REDIS_INDEPENDENT_INFERENCE_ROUTES = [
   "/api/v1/chat",
@@ -132,31 +130,43 @@ const REGION_LANGUAGE: Record<string, UiLanguage> = {
   PR: "es",
 };
 
-const SUPPORTED = new Set<string>(Object.values(REGION_LANGUAGE).concat("en"));
-
 function matchSupported(tag: string): UiLanguage | null {
   if (!tag) return null;
   if (/^en(-|$)/i.test(tag)) return "en";
-  const lower = tag.toLowerCase();
-  if (SUPPORTED.has(lower)) return lower as UiLanguage;
-  const base = lower.split("-")[0];
-  if (SUPPORTED.has(base)) return base as UiLanguage;
-  return null;
+  const normalized = normalizeLanguage(tag);
+  // The canonical normalizer defaults unknown tags to English; negotiation must skip them.
+  return normalized === "en" ? null : normalized;
 }
 
 function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
   if (typeof header !== "string" || !header.trim()) return null;
   const ranked = header
     .split(",")
-    .map((part) => {
+    .map((part): { tag: string; q: number } | null => {
       const [tag, ...params] = part.trim().split(";");
-      const q = params
+      const trimmedTag = tag.trim();
+      if (!trimmedTag || trimmedTag === "*") return null;
+      const qParam = params
         .map((p) => p.trim())
-        .find((p) => p.startsWith("q="))
-        ?.slice(2);
-      return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
+        .find((p) => p.toLowerCase().startsWith("q="));
+      const rawQ = qParam?.slice(2);
+      // RFC 9110 §12.4.2: qvalue is 0..1 with at most 3 decimals. Malformed
+      // q-values are ignored (mirrors parseAcceptLanguage in
+      // packages/app/src/api/i18n-locale-routes.ts).
+      if (
+        rawQ !== undefined &&
+        !/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(rawQ)
+      ) {
+        return null;
+      }
+      const q = rawQ === undefined ? 1 : Number(rawQ);
+      // `q=0` means "not acceptable" — such tags must be excluded, not merely
+      // ranked last, or a lone `ja;q=0` would still select Japanese.
+      // Mirrors `languageFromAcceptLanguage` in `@elizaos/ui/i18n/region`.
+      if (q <= 0) return null;
+      return { tag: trimmedTag, q };
     })
-    .filter((entry) => entry.tag && entry.tag !== "*")
+    .filter((entry): entry is { tag: string; q: number } => entry !== null)
     .sort((a, b) => b.q - a.q);
   for (const { tag } of ranked) {
     const matched = matchSupported(tag);
@@ -457,6 +467,9 @@ export async function createApp(
   // also mounts /api/ twins of these two files; those are never advertised.
   app.route("/.well-known/openid-configuration", oidcDiscoveryRoute);
   app.route("/.well-known/oidc/jwks.json", oidcJwksRoute);
+  // Android App Link verification fetches this from the link host's root and
+  // never follows a redirect; the Pages middleware proxies it from eliza.app.
+  app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
@@ -476,9 +489,14 @@ export async function createApp(
     }
     const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
     const verdict = rateLimitConfigVerdict({
+      backend: c.env.CLOUD_RATE_STATE_BACKEND,
+      hasDurableBinding: Boolean(c.env.RATE_LIMIT_STATE),
       environment: env.ENVIRONMENT,
       redisRateLimiting: env.REDIS_RATE_LIMITING,
-      hasRedisClient: Boolean(buildRedisClient(c.env)),
+      hasRedisClient:
+        c.env.CLOUD_RATE_STATE_BACKEND === "cloudflare"
+          ? false
+          : Boolean(buildRedisClient(c.env)),
     });
     if (!rateLimitConfigLogged) {
       rateLimitConfigLogged = true;

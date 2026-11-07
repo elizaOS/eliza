@@ -29,15 +29,15 @@ import {
   logger,
   normalizeCompletedActionHandoffId,
   parseClampedInteger,
+  READ_ONLY_VIEW_CAPABILITY_IDS,
   type RoleGateRole,
-  type RouteHelpers,
-  type RouteRequestMeta,
-  readJsonBody,
   type ShellNavigateViewPayload,
   STANDARD_CAPABILITIES,
   satisfiesRoleGate,
   type ViewType,
 } from "@elizaos/core";
+import { readJsonBody } from "@elizaos/host";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
@@ -52,6 +52,8 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
+import { resolveViewNavigationTargets } from "../runtime/view-navigation-targets.ts";
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
   detectClientPlatform,
@@ -204,14 +206,6 @@ const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...Object.values(STANDARD_CAPABILITIES),
   ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
-const READ_ONLY_VIEW_CAPABILITIES: ReadonlySet<string> = new Set<string>([
-  STANDARD_CAPABILITIES.GET_STATE,
-  STANDARD_CAPABILITIES.GET_TEXT,
-  "list-elements",
-  "describe-element",
-  "get-focus",
-  "get-agent-state",
-]);
 function isSurfaceBrokeredCapability(capability: string): boolean {
   return (
     STANDARD_CAPABILITY_IDS.has(capability) ||
@@ -219,7 +213,7 @@ function isSurfaceBrokeredCapability(capability: string): boolean {
   );
 }
 function isReadOnlyViewCapability(capability: string): boolean {
-  return READ_ONLY_VIEW_CAPABILITIES.has(capability);
+  return READ_ONLY_VIEW_CAPABILITY_IDS.has(capability);
 }
 function viewManifestAllowsCapability(
   entry: ViewRegistryEntry,
@@ -257,6 +251,19 @@ export {
   setViewsBroadcastWs,
 } from "./view-interaction-host.ts";
 export interface CurrentViewState {
+  /** Only a validated native switch acknowledgment may establish this history. */
+  navigationConfirmation?: {
+    ownerId: string;
+    handoffId: string;
+    installationId: string;
+    /** Alias verified by the prepared route, never supplied by its ack. */
+    resolvedAlias?: string;
+    previousView?: {
+      viewId: string;
+      installationId: string;
+      resolvedAlias?: string;
+    };
+  };
   viewId: string;
   viewPath: string | null;
   viewLabel: string;
@@ -346,6 +353,20 @@ export interface ViewsRouteContext
 }
 function callerRoles(ctx: ViewsRouteContext): RoleGateRole[] {
   return ctx.callerAuthorization?.ok ? [ctx.callerAuthorization.role] : [];
+}
+function navigationOwner(
+  ctx: ViewsRouteContext,
+  runtime: IAgentRuntime,
+): string | undefined {
+  const authority = ctx.callerAuthorization;
+  if (!authority?.ok || authority.role !== "OWNER") return undefined;
+  // Preserve a verified session principal. The existing single-owner native
+  // boundary may instead supply OWNER alone; use its canonical runtime owner.
+  return (
+    authority.identityId ??
+    authority.principal ??
+    resolveHostSessionAccessContext(authority, runtime)?.requesterEntityId
+  );
 }
 const PREFIX = "/api/views";
 export async function handleViewsRoutes(
@@ -718,6 +739,10 @@ export async function handleViewsRoutes(
     const callerOwnedDelivery =
       body?.delivery === "originating-client" ||
       body?.delivery === "completed-action";
+    if (body?.delivery === "originating-client" && entry?.available === false) {
+      error(res, "This destination has no available hosted view", 409);
+      return true;
+    }
     const originatingClientId = resolveViewInteractClientId(req, body);
     const scope = clientScope(ctx.hostKey, originatingClientId);
     currentViewState = getCurrentViewState(viewRuntime, scope);
@@ -742,11 +767,39 @@ export async function handleViewsRoutes(
     // process-global current-view/provider context would leak one client's
     // deep link to other clients and leave ghost state when its socket is stale.
     // The targeted frame or completed action is the only commit edge for it.
-    const commitCurrentViewState = (committedViewPath: string | null) => {
+    const commitCurrentViewState = (
+      committedViewPath: string | null,
+      announceSwitch = true,
+      confirmation?: {
+        ownerId: string;
+        handoffId: string;
+        resolvedAlias?: string;
+      },
+    ) => {
       if (isCloseNavigation) {
         clearCurrentViewState(viewRuntime, scope);
         return;
       }
+      // Read at commit, not from the request's earlier asynchronous snapshot.
+      currentViewState = getCurrentViewState(viewRuntime, scope);
+      const priorConfirmation = currentViewState?.navigationConfirmation;
+      const previousConfirmed =
+        confirmation &&
+        priorConfirmation &&
+        priorConfirmation.ownerId === confirmation.ownerId &&
+        currentViewState &&
+        getView(viewRuntime, currentViewState.viewId, { viewType: "gui" })
+          ?.installationId === priorConfirmation?.installationId
+          ? currentViewState.viewId === id
+            ? priorConfirmation?.previousView
+            : {
+                viewId: currentViewState.viewId,
+                installationId: priorConfirmation.installationId,
+                ...(priorConfirmation.resolvedAlias
+                  ? { resolvedAlias: priorConfirmation.resolvedAlias }
+                  : {}),
+              }
+          : undefined;
       const now = new Date().toISOString();
       const source = reportedSource;
       // Stamp `switchedAt` only when the view actually changes; a re-navigate to
@@ -757,6 +810,17 @@ export async function handleViewsRoutes(
         ? now
         : (currentViewState?.switchedAt ?? now);
       currentViewState = {
+        ...(confirmation && typeof entry?.installationId === "string"
+          ? {
+              navigationConfirmation: {
+                ...confirmation,
+                installationId: entry.installationId,
+                ...(previousConfirmed
+                  ? { previousView: previousConfirmed }
+                  : {}),
+              },
+            }
+          : {}),
         viewId: id,
         viewPath: committedViewPath,
         viewLabel,
@@ -791,7 +855,7 @@ export async function handleViewsRoutes(
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
-      if (viewChanged && ctx.runtime) {
+      if (viewChanged && ctx.runtime && announceSwitch) {
         void ctx.runtime
           .emitEvent(EventType.VIEW_SWITCHED, {
             runtime: ctx.runtime,
@@ -824,6 +888,106 @@ export async function handleViewsRoutes(
     // completed-action has a caller-scoped terminal fallback, so sanitized
     // canonical state can commit immediately. Voice/originating-client has no
     // fallback and commits only after its targeted renderer accepts delivery.
+    if (body?.delivery === "completed-action" && body.prepareOnly === true) {
+      const ownerId = navigationOwner(ctx, viewRuntime);
+      const handoffId = normalizeCompletedActionHandoffId(
+        body.completedActionHandoffId,
+      );
+      // A prepared navigation is not an active view and grants no view interaction.
+      if (
+        !ownerId ||
+        !originatingClientId ||
+        !entry ||
+        !handoffId ||
+        resolvedViewType !== "gui" ||
+        Object.keys(body).some(
+          (key) =>
+            ![
+              "clientId",
+              "delivery",
+              "completedActionHandoffId",
+              "viewType",
+              "prepareOnly",
+              "resolvedAlias",
+            ].includes(key),
+        ) ||
+        action ||
+        subview ||
+        alwaysOnTop ||
+        layoutViews ||
+        layout ||
+        placement ||
+        payload !== undefined
+      ) {
+        error(
+          res,
+          "Navigation preparation requires an owner, renderer and plain registered destination",
+          409,
+        );
+        return true;
+      }
+      // The action may carry its already resolved alias. Re-resolve it against
+      // this exact installed destination; arbitrary presentation text is ignored.
+      const requestedAlias =
+        typeof body.resolvedAlias === "string"
+          ? resolveViewNavigationTargets([entry], body.resolvedAlias)[0]
+              ?.resolvedAlias
+          : undefined;
+      const preparedBase = currentViewState;
+      let settled: Promise<ViewInteractResult>;
+      try {
+        settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
+          handoffId,
+          originatingClientId,
+          entry,
+          120000,
+          { ownerId, navigation: true },
+        );
+      } catch (cause) {
+        if (
+          !(cause instanceof ElizaError) ||
+          (cause.code !== "VIEW_NAVIGATION_BUSY" &&
+            cause.code !== "VIEW_REQUEST_PENDING")
+        )
+          throw cause;
+        error(res, cause.message, 409);
+        return true;
+      }
+      // Return the handoff before waiting for its renderer; awaiting here deadlocks.
+      void settled
+        .then((result) => {
+          if (!result.success) return;
+          assertRuntimeViewEntry(viewRuntime, entry);
+          // A manual or newer switch after preparation wins over this acknowledgment.
+          if (getCurrentViewState(viewRuntime, scope) !== preparedBase) return;
+          // Explicit native navigation is not an invitation to a proactive greeting.
+          commitCurrentViewState(entry.path ?? null, false, {
+            ownerId,
+            handoffId,
+            ...(requestedAlias ? { resolvedAlias: requestedAlias } : {}),
+          });
+        })
+        .catch((error) => {
+          viewRuntime.reportError("VIEWS.preparedNavigation", error, {
+            viewId: id,
+            handoffId,
+          });
+        });
+      json(res, {
+        ok: true,
+        status: "prepared",
+        viewId: id,
+        completedActionHandoffId: handoffId,
+        navigationBinding: {
+          requestId: handoffId,
+          clientId: originatingClientId,
+          viewId: id,
+          viewType: resolvedViewType,
+          installationId: entry.installationId,
+        },
+      });
+      return true;
+    }
     if (body?.delivery !== "originating-client") {
       commitCurrentViewState(committedViewPath);
     }
@@ -1115,6 +1279,7 @@ export async function handleViewsRoutes(
         installationId: body.installationId,
       },
       callerRoles(ctx),
+      navigationOwner(ctx, viewRuntime),
     );
     if (!claimId) {
       error(
@@ -1158,8 +1323,12 @@ export async function handleViewsRoutes(
       error(res, "Missing client id for view interaction result", 400);
       return true;
     }
-    viewInteractionHost(viewRuntime, ctx.hostKey).resolve(clientId, result);
-    json(res, { ok: true });
+    const accepted = viewInteractionHost(viewRuntime, ctx.hostKey).resolve(
+      clientId,
+      result,
+      navigationOwner(ctx, viewRuntime),
+    );
+    json(res, { ok: true, accepted });
     return true;
   }
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
@@ -1309,6 +1478,7 @@ interface ViewInteractTransport {
   clientId?: string | null;
   runtime: IAgentRuntime;
   userRoles?: readonly RoleGateRole[];
+  ownerId?: string;
 }
 /**
  * Dispatch a capability to a view, reusing the established interact semantics.
@@ -1353,6 +1523,12 @@ export async function dispatchViewInteract(
       error: capabilityAuthorityDeniedMessage(viewId, capability),
     };
   }
+  // Run the owner's agent-operation restriction before either delivery path.
+  // Typed direct UI retains the existing broker authority; the owner callback
+  // consumes host execution provenance, never a caller's origin flag.
+  entry.beforeAgentInteract?.(capability, params, {
+    runtime: transport.runtime,
+  });
   const hasServerInteract = typeof entry.serverInteract === "function";
   const preferFrontend =
     !hasServerInteract || isSurfaceBrokeredCapability(capability);
@@ -1369,6 +1545,7 @@ export async function dispatchViewInteract(
       transport.clientId,
       entry,
       timeoutMs,
+      { ownerId: transport.ownerId },
     );
     const frame = {
       type: "view:interact",

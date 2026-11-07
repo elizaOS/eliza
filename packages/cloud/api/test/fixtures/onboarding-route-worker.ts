@@ -3,7 +3,7 @@
  * Miniflare can exercise the real public-to-Durable-Object transport path.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import onboardingRoute from "../../eliza-app/onboarding/chat/route";
 import { OnboardingSessionCoordinator } from "../../src/onboarding-session-coordinator";
 

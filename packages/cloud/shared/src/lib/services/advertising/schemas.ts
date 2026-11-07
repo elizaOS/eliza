@@ -1,5 +1,6 @@
 /** Validates advertising service inputs shared by API routes and providers. */
 import { z } from "zod";
+import { MIN_CAMPAIGN_BUDGET_AMOUNT } from "./types";
 
 export const AdPlatformSchema = z.enum([
   "meta",
@@ -232,7 +233,7 @@ export const CreateCampaignSchema = z
     name: z.string().min(1).max(200),
     objective: CampaignObjectiveSchema,
     budgetType: BudgetTypeSchema,
-    budgetAmount: z.number().positive(),
+    budgetAmount: z.number().min(MIN_CAMPAIGN_BUDGET_AMOUNT),
     budgetCurrency: z.string().length(3).optional(),
     spendCapCredits: z.number().positive().nullable().optional(),
     bidStrategy: CampaignBidStrategySchema.optional(),
@@ -247,7 +248,7 @@ export const CreateCampaignSchema = z
 export const UpdateCampaignSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
-    budgetAmount: z.number().positive().optional(),
+    budgetAmount: z.number().min(MIN_CAMPAIGN_BUDGET_AMOUNT).optional(),
     spendCapCredits: z.number().positive().nullable().optional(),
     bidStrategy: CampaignBidStrategySchema.optional(),
     optimizationGoal: CampaignOptimizationGoalSchema.optional(),

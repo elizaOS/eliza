@@ -11,8 +11,6 @@ Tests cover:
 """
 
 import math
-import sys
-from pathlib import Path
 
 import pytest
 
@@ -23,9 +21,8 @@ except ImportError:
     pytest.skip("torch not installed", allow_module_level=True)
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.training.atropos_trainer import (
+from eliza_training.rl.atropos_trainer import (
     AtroposTrainingConfig,
     FeedAtroposTrainer,
     LRSchedulerType,
@@ -366,8 +363,8 @@ class TestWarmupBehavior:
         )
 
         # Should not crash
-        for step in range(25):
-            lr = scheduler.get_last_lr()[0]
+        for _ in range(25):
+            assert scheduler.get_last_lr()[0] >= 0
             advance_scheduler(optimizer, scheduler)
 
 

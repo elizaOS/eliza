@@ -1,20 +1,20 @@
 /** Task binding over the existing durable message-interaction protocol. */
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core/errors";
-import { BUTTON_INTERACTION_PROFILE } from "@elizaos/core/messaging/interactions/profile-catalog";
-import { createConnectorInteractionCapabilityProfile } from "@elizaos/core/messaging/interactions/profiles";
 import {
+  BUTTON_INTERACTION_PROFILE,
+  createConnectorInteractionCapabilityProfile,
   decodeMessageInteractionCallback,
   encodeMessageInteractionCallback,
   type MessageInteractionSession,
   MessageInteractionSessionAuthority,
   type MessageInteractionSessionStore,
-} from "@elizaos/core/messaging/interactions/sessions";
-import type { InteractiveTask } from "@elizaos/core/messaging/interactive-task";
+} from "@elizaos/core";
+import type { InteractiveTask } from "@elizaos/core/protocol";
 import {
+  ElizaError,
   type TaskChoiceWidget,
   validateTaskChoiceWidget,
-} from "@elizaos/core/messaging/task-widgets";
+} from "@elizaos/core/protocol";
 import type { InteractiveTaskRuntime } from "./interactive-task-runtime.ts";
 
 function fail(): never {

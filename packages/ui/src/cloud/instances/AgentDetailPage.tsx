@@ -7,21 +7,21 @@ import {
   formatHourlyRate,
   formatMonthlyEstimate,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import {
-  Badge,
-  DashboardErrorState,
-  DashboardLoadingState,
-} from "@elizaos/ui/cloud-ui";
 import { AlertCircle, ArrowLeft, Cloud } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import {
+  DashboardErrorState,
+  DashboardLoadingState,
+} from "../../cloud-ui/components/dashboard/route-placeholders";
+import { Badge } from "../../components/ui/badge";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { getUserFacingAgentType } from "./lib/agent-type";
-import { useAgent } from "./lib/data/eliza-agents";
-import { useT } from "./lib/i18n";
+import { useAgent } from "./lib/eliza-agents";
 
 export default function AgentDetailPage() {
   const t = useT();

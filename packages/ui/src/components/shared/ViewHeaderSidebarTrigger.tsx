@@ -6,7 +6,7 @@ import { PanelLeftOpen } from "lucide-react";
 import type * as React from "react";
 
 import type { WorkspaceMobileSidebarControl } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 
 /**

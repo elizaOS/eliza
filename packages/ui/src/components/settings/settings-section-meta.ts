@@ -20,8 +20,7 @@ export interface SettingsSectionMeta {
   /**
    * Extra friendly tokens a user can type to jump here via `/settings <token>`,
    * beyond the `id` itself (which is always a token). This is the single source
-   * of truth for a section's aliases; `settings-section-tokens.ts` derives the
-   * token map from this field so the two never drift. Owner-declared, so a
+   * of truth for a section's aliases. Owner-declared, so a
    * plugin-registered section carries its own aliases (see the `aliases` field
    * on {@link SettingsSectionDef}) instead of needing a host edit to a central
    * literal.

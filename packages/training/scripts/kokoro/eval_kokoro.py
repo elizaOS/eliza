@@ -37,15 +37,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-from _config import load_config  # noqa: E402
+from eliza_training.kokoro._config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kokoro.eval")
@@ -416,7 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--run-dir", type=Path, required=True)
-    p.add_argument("--config", type=str, default="kokoro_lora_ljspeech.yaml")
+    p.add_argument("--config", type=str, default="kokoro_full_ljspeech.yaml")
     p.add_argument("--voice-bin", type=Path, default=None)
     p.add_argument(
         "--eval-out",

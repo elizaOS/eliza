@@ -198,6 +198,13 @@ export function wakeControllerReducer(
       if (path !== "two-stage-asr" || state.phase !== "confirming") {
         return { state, emit: null };
       }
+      const windowMs = config.confirmWindowMs ?? DEFAULT_CONFIRM_WINDOW_MS;
+      // Enforce the confirm window on the transcript path as well as on tick:
+      // a transcript arriving after the window expired must not revive a stale
+      // candidate, even if no tick was dispatched in between.
+      if (event.now - state.candidateAt >= windowMs) {
+        return { state: IDLE, emit: null };
+      }
       const m = matchWakeName(
         event.transcript,
         config.characterName,

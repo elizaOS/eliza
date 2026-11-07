@@ -1,7 +1,7 @@
 // Handles admin cloud API v1 admin containers ingress map route traffic with privileged auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: ingress map.
@@ -23,11 +23,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * node IPs which are operationally sensitive but not secrets.
  */
 
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { containers as containersTable } from "@elizaos/cloud-shared/db/schemas/containers";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { and, isNotNull, sql } from "drizzle-orm";
-import { dbRead } from "@/db/helpers";
-import { containers as containersTable } from "@/db/schemas/containers";
-import { requireAdmin } from "@/lib/auth";
-import { logger } from "@/lib/utils/logger";
 
 interface IngressEntry {
   host: string;

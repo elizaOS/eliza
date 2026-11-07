@@ -5,7 +5,7 @@
  */
 
 import type { UUID } from "@elizaos/core";
-import { and, desc, eq, gt, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, or, type SQL, sql } from "drizzle-orm";
 import {
   behavioralProfiles,
   identityLinks,
@@ -45,20 +45,16 @@ export async function getRecentIncidents(
   hours = 24,
 ): Promise<Array<Record<string, unknown>>> {
   const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const conditions: SQL[] = [gt(securityIncidents.timestamp, cutoff)];
+  if (roomId) {
+    conditions.push(sql`${securityIncidents.context}->>'roomId' = ${roomId}`);
+  }
   const rows: Array<Record<string, unknown>> = await db
     .select()
     .from(securityIncidents)
-    .where(gt(securityIncidents.timestamp, cutoff))
+    .where(and(...conditions))
     .orderBy(desc(securityIncidents.timestamp))
     .limit(100);
-
-  // Filter by roomId if provided (stored in context JSONB)
-  if (roomId) {
-    return rows.filter((row) => {
-      const ctx = row.context as Record<string, unknown> | null;
-      return ctx?.roomId === roomId;
-    });
-  }
   return rows;
 }
 
@@ -98,14 +94,7 @@ export async function getTrustEvidence(
   entityId: UUID,
   evaluatorId?: UUID,
 ): Promise<Array<Record<string, unknown>>> {
-  const evidenceCondition = or(
-    eq(trustEvidence.targetEntityId, entityId),
-    eq(trustEvidence.sourceEntityId, entityId),
-  );
-  if (!evidenceCondition) {
-    return [];
-  }
-  const conditions: SQL[] = [evidenceCondition];
+  const conditions: SQL[] = [eq(trustEvidence.targetEntityId, entityId)];
   if (evaluatorId) {
     conditions.push(eq(trustEvidence.evaluatorId, evaluatorId));
   }

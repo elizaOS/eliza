@@ -6,11 +6,10 @@
  * no command behavior.
  */
 
-import { type Command } from "commander";
-import { formatDocsLink } from "../../terminal/links.js";
-import { isRich, theme } from "../../terminal/theme.js";
+import type { Command } from "commander";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
 import { replaceCliName, resolveCliName } from "../cli-name";
+import { formatDocsLink, isRich, theme } from "../terminal.js";
 
 const CLI_NAME = resolveCliName();
 const EXAMPLES = [

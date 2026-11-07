@@ -1,10 +1,16 @@
 /**
  * Losslessly adapts generated text to Discord's per-message content limit.
  * Platform limits are transport framing constraints, never permission to drop
- * the remainder of a model response.
+ * the remainder of a model response. Splits follow the core Markdown chunker's
+ * fence/paragraph/word boundaries: a ````` ``` ````` marker is never cut in
+ * half across messages, and a split inside a code block closes the fence in
+ * the current message and reopens it in the next so neither message renders a
+ * dangling or broken code block.
  */
 
 import { createHash } from "node:crypto";
+
+import { chunkMarkdownText } from "@elizaos/core";
 
 export const DISCORD_MESSAGE_CONTENT_LIMIT = 2_000;
 
@@ -41,16 +47,7 @@ export function chunkDiscordText(
   const text = toWellFormedUnicode(input);
   if (!text) return [];
 
-  const chunks: string[] = [];
-  let offset = 0;
-  while (offset < text.length) {
-    let end = Math.min(offset + limit, text.length);
-    const finalCode = text.charCodeAt(end - 1);
-    if (finalCode >= 0xd800 && finalCode <= 0xdbff) end -= 1;
-    chunks.push(text.slice(offset, end));
-    offset = end;
-  }
-  return chunks;
+  return chunkMarkdownText(text, limit);
 }
 
 /** Stable decimal nonce for one chunk, within Discord's 25-character limit. */

@@ -4,27 +4,40 @@
  * Worker bindings and cache-authorized agent scope are mandatory; the route
  * never falls through to a repository-backed sandbox stream.
  */
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { chatSseFrame } from "@/lib/services/chat-sse-frames";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
+
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { coordinateSharedStream } from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { coordinateSharedStream } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
+import { prepareNetworkSharedTurn } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+
+import {
+  type BridgeExecutionContext,
+  normalizeSharedRuntimeRoom,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 
 // Streaming responses can be long-running
 
@@ -68,6 +81,7 @@ async function __hono_POST(
     namespace: RuntimeDurableObjectNamespace;
     executionCtx: BridgeExecutionContext;
   },
+  context: Context<AppEnv>,
 ) {
   try {
     // A missing/malformed JSON body is caller error: a typed 400, not the
@@ -95,6 +109,26 @@ async function __hono_POST(
     }
 
     let rpcRequest = parsed.data as BridgeRequest;
+    const requestedRoom =
+      typeof rpcRequest.params?.roomId === "string" &&
+      rpcRequest.params.roomId.trim()
+        ? normalizeSharedRuntimeRoom(rpcRequest.params.roomId)
+        : resolved.agent.id;
+    let trustedNetworkContext = await prepareNetworkSharedTurn(
+      context,
+      resolved.agent,
+      rpcRequest.params?.networkApp,
+      parsed.data.params.text,
+    );
+    if (trustedNetworkContext)
+      rpcRequest = {
+        ...rpcRequest,
+        params: {
+          ...rpcRequest.params,
+          userId: resolved.agent.user_id,
+        },
+      };
+
     // A personal turn follows its entitlement route (#25146): Dedicated
     // ownership is refused with its agent id, and a withdrawn Dedicated is
     // answered in the scoped fallback journal with the account state.
@@ -105,13 +139,10 @@ async function __hono_POST(
         >["accountState"]
       | undefined;
     if (resolved.agentKind === "personal") {
-      const requestedRoom = parsed.data.params.roomId;
       const target = await resolveSharedSurfaceTarget({
         agent: resolved.agent,
         personal: true,
-        conversationId: requestedRoom?.trim()
-          ? requestedRoom
-          : resolved.agent.id,
+        conversationId: requestedRoom,
         namespace: resolved.namespace,
       });
       if (!target.ok) {
@@ -124,13 +155,16 @@ async function __hono_POST(
           CORS_METHODS,
         );
       }
-      if (target.accountState) {
-        trustedAccountState = target.accountState;
-        rpcRequest = {
-          ...rpcRequest,
-          params: { ...rpcRequest.params, roomId: target.roomId },
-        };
-      }
+      trustedNetworkContext = networkContextForPersonalSurface(
+        trustedNetworkContext,
+        resolved.agent,
+        target.roomId,
+      );
+      trustedAccountState = target.accountState;
+      rpcRequest = {
+        ...rpcRequest,
+        params: { ...rpcRequest.params, roomId: target.roomId },
+      };
     }
 
     const upstreamResponse = await coordinateSharedStream(
@@ -141,6 +175,7 @@ async function __hono_POST(
         executionCtx: resolved.executionCtx,
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
+        ...(trustedNetworkContext ? { trustedNetworkContext } : {}),
         trustedUserUtterance: parsed.data.params.text,
         ...(trustedAccountState ? { trustedAccountState } : {}),
       },
@@ -268,6 +303,7 @@ __hono_app.post("/", async (c) => {
       namespace: worker.namespace,
       executionCtx: worker.executionCtx,
     },
+    c,
   );
 });
 export default __hono_app;

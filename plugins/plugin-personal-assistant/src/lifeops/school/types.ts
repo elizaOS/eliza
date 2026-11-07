@@ -7,8 +7,8 @@
  * to send, purchase, submit, or mutate a calendar.
  */
 import { createHash } from "node:crypto";
+import { isValidTimeZone } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
 
 export type SchoolJsonValue =
   | null

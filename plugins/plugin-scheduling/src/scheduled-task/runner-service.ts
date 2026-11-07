@@ -23,13 +23,15 @@
  * exactly one set of injected deps per runtime.
  */
 import {
+  agentProcessStartedAtMs,
   ElizaError,
   type IAgentRuntime,
   logger,
+  recordsMissedScheduledOccurrences,
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { resolvePlatform } from "@elizaos/core/runtime-env";
+import { resolvePlatform } from "@elizaos/host/protocol";
 import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql";
 import {
   createCodingAgentScheduleDispatcher,
@@ -96,6 +98,7 @@ import {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
 } from "./store.js";
+import { configuredDefaultTimeZone } from "./trigger-tz.js";
 import {
   type ActivitySignalBusView,
   type GlobalPauseView,
@@ -501,7 +504,12 @@ function defaultRunnerDeps(
         ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
         : createInMemoryScheduledTaskLogStore()),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
-    ownerFacts: () => ({}) as OwnerFactsView,
+    // Without an owner fact store, the owner zone is the one saved in the
+    // plugin settings (owner_local triggers otherwise run in UTC).
+    ownerFacts: () => {
+      const timezone = configuredDefaultTimeZone(runtime);
+      return (timezone ? { timezone } : {}) as OwnerFactsView;
+    },
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
     activity: makeMissingActivityBusView(runtime),
     subjectStore: makeMissingSubjectStoreView(runtime),
@@ -601,6 +609,11 @@ function buildRunner(
     ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
       ? { hostCapabilities: deps.hostCapabilities }
+      : {}),
+    // Powered-on hosts (a phone-resident agent) record occurrences that
+    // passed while the agent was stopped instead of running them late.
+    ...(recordsMissedScheduledOccurrences(runtime)
+      ? { poweredOnScheduling: { agentStartedAtMs: agentProcessStartedAtMs } }
       : {}),
     ...(opts.now ? { now: opts.now } : {}),
   });

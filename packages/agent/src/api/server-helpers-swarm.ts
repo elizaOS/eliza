@@ -1,3 +1,4 @@
+import { publishConversationUpdate } from "../runtime/agent-event-service.ts";
 /**
  * Swarm/autonomy/coding-agent helpers extracted from server.ts.
  */
@@ -18,6 +19,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_CODING_AGENT,
   type Media,
+  readReminderPresentation,
   requireConfirmedSendHandlerDelivery,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
@@ -25,6 +27,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import type {
@@ -95,12 +98,30 @@ export async function routeAutonomyTextToUser(
   responseText: string,
   source = "autonomy",
   reminderPresentation?: unknown,
+  reminderReference?: {
+    ownerType: "occurrence";
+    ownerId: string;
+    subjectType: "owner";
+    scheduledFor: string;
+    dueAt: string | null;
+  },
+  publishNotification?: (target?: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<unknown>,
 ): Promise<void> {
   const runtime = state.runtime;
-  if (!runtime) return;
+  if (!runtime) {
+    await publishNotification?.();
+    return;
+  }
 
-  const normalizedText = responseText.trim();
-  if (!normalizedText) return;
+  const presentation = readReminderPresentation(reminderPresentation);
+  const normalizedText = presentation ? responseText : responseText.trim();
+  if (!normalizedText.trim()) {
+    await publishNotification?.();
+    return;
+  }
 
   // Find target conversation (active, or most recent)
   let conv: ConversationMeta | undefined;
@@ -120,7 +141,10 @@ export async function routeAutonomyTextToUser(
     });
     conv = sorted[0];
   }
-  if (!conv) return; // No conversations exist yet
+  if (!conv) {
+    await publishNotification?.();
+    return;
+  } // No conversations exist yet
 
   if (CHAT_SUPPRESSED_AUTONOMY_SOURCES.has(source)) {
     return;
@@ -162,7 +186,7 @@ export async function routeAutonomyTextToUser(
     );
     agentVoiced = voiced.agentVoiced === true;
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
-      deliveredText = voiced.text.trim();
+      deliveredText = presentation ? voiced.text : voiced.text.trim();
     }
   }
 
@@ -177,24 +201,43 @@ export async function routeAutonomyTextToUser(
         text: deliveredText,
         source,
         ...(agentVoiced ? { agentVoiced: true } : {}),
+        ...(source === "reminder" && reminderReference
+          ? { metadata: reminderReference }
+          : {}),
       },
     });
-    await runtime.createMemory(agentMessage, "messages");
+    try {
+      await runtime.createMemory(agentMessage, "messages");
+    } catch (error) {
+      // Keep the notification available without claiming a nonexistent source.
+      await publishNotification?.();
+      throw error;
+    }
   }
   conv.updatedAt = new Date().toISOString();
+  if (!isEphemeral)
+    publishConversationUpdate(runtime, conv.id, conv.roomId, messageId);
 
-  // Broadcast to all WS clients (always, even for ephemeral sources)
-  state.broadcastWs?.({
-    type: "proactive-message",
-    conversationId: conv.id,
-    message: {
-      id: messageId,
-      role: "assistant",
-      text: deliveredText,
-      timestamp: Date.now(),
-      source,
-    },
-  });
+  // Notification failure cannot hide an already committed conversation row.
+  // Keep its rejection visible to the caller while publishing the WS frame.
+  try {
+    if (!isEphemeral)
+      await publishNotification?.({ conversationId: conv.id, messageId });
+  } finally {
+    // Ephemeral relays retain their original non-canonical frame shape.
+    state.broadcastWs?.({
+      type: "proactive-message",
+      ...(!isEphemeral ? { agentId: runtime.agentId } : {}),
+      conversationId: conv.id,
+      message: {
+        id: messageId,
+        role: "assistant",
+        text: deliveredText,
+        timestamp: Date.now(),
+        source,
+      },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -623,8 +666,9 @@ function removeLocalPathReferences(
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      // Function replacers insert the title literally; a string would expand "$&".
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const workdirs = payload.tasks
@@ -643,8 +687,8 @@ function removeLocalPathReferences(
     const title = path.basename(resolved);
     const escapedPath = escapeRegExp(localPath);
     cleaned = cleaned
-      .replace(new RegExp(`\`${escapedPath}\``, "gu"), title)
-      .replace(new RegExp(escapedPath, "gu"), title);
+      .replace(new RegExp(`\`${escapedPath}\``, "gu"), () => title)
+      .replace(new RegExp(escapedPath, "gu"), () => title);
   }
 
   const trimmed = cleaned.trim();
@@ -845,6 +889,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
 
           // Ensure the legacy chat connection exists (creates room/world if needed).
           const agentName = runtime.character.name ?? "Eliza";
+          const identityName = agentIdentityName(runtime.character) ?? "Eliza";
           const existingLegacyChatRoom = st.chatRoomId
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
@@ -854,10 +899,12 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             st.chatUserId = adminId;
             st.chatRoomId =
               st.chatRoomId ??
-              (stringToUuid(`${agentName}-web-chat-room`) as UUID);
-            const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
+              (stringToUuid(`${identityName}-web-chat-room`) as UUID);
+            const worldId = stringToUuid(
+              `${identityName}-web-chat-world`,
+            ) as UUID;
             const messageServerId = stringToUuid(
-              `${agentName}-web-server`,
+              `${identityName}-web-server`,
             ) as UUID;
             await runtime.ensureConnection({
               entityId: adminId,
@@ -865,7 +912,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
               worldId,
               userName: resolveAppUserName(st.config),
               source: MESSAGE_SOURCE_CLIENT_CHAT,
-              channelId: `${agentName}-web-chat`,
+              channelId: `${identityName}-web-chat`,
               type: ChannelType.DM,
               messageServerId,
               metadata: { ownership: { ownerId: adminId } },

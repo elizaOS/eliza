@@ -57,11 +57,7 @@ interface InventorySite {
 const CANONICAL = "1.4.2";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
-const GATE_WORKFLOWS = [
-  "ci.yml",
-  "pr-static-smoke.yml",
-  "cloud-cf-release.yml",
-];
+const GATE_WORKFLOWS = ["ci.yml", "pr-validation.yml", "cloud-cf-release.yml"];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
 // the step by expression — the shape the real gates use. The comment naming
@@ -215,15 +211,15 @@ describe("ci-bun-version-contract", () => {
 
   test("fails when a gate workflow drops the canonical pin entirely", () => {
     expectViolation(
-      buildRepo({ overrides: { "pr-static-smoke.yml": GATE_NO_PIN } }),
+      buildRepo({ overrides: { "pr-validation.yml": GATE_NO_PIN } }),
       /does not wire the canonical Bun pin/,
     );
   });
 
   test("fails loudly when a gate workflow is missing, instead of skipping", () => {
     expectViolation(
-      buildRepo({ overrides: { "pr-static-smoke.yml": null } }),
-      /pr-static-smoke\.yml/,
+      buildRepo({ overrides: { "pr-validation.yml": null } }),
+      /pr-validation\.yml/,
     );
   });
 
@@ -589,13 +585,13 @@ jobs:
     expectViolation(
       buildRepo({
         overrides: {
-          "pr-static-smoke.yml": gateStub().replace(
+          "pr-validation.yml": gateStub().replace(
             /\s+- run: node packages\/scripts\/ci-bun-version-contract\.ts --inventory[^\n]+/,
             "",
           ),
         },
       }),
-      /pr-static-smoke\.yml: required lane does not execute the Bun contract/,
+      /pr-validation\.yml: required lane does not execute the Bun contract/,
     );
   });
 

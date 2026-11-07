@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop index ts behavior for app shell integration. */
 export { VoiceError, voiceErrorToJson } from "./errors";
 export type {
 	VoiceComponentRole,

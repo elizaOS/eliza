@@ -11,8 +11,8 @@ import type {
   PendingUserActionOption,
 } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { useAuthStatus } from "../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 

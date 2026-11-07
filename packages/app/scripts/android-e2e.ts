@@ -117,12 +117,8 @@ const VOICE_MODELS = (() => {
   const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
   return [
     {
-      host: path.join(asrDir, "eliza-1-asr.gguf"),
-      dev: `${dev}/asr/eliza-1-asr.gguf`,
-    },
-    {
-      host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"),
-      dev: `${dev}/asr/eliza-1-asr-mmproj.gguf`,
+      host: path.join(asrDir, "phonon-2-fv5.gguf"),
+      dev: `${dev}/asr/phonon-2-fv5.gguf`,
     },
     {
       host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),

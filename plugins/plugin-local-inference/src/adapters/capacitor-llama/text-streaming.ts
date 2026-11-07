@@ -30,7 +30,7 @@ function createThinkTagStreamFilter(): {
 	let inThink = false;
 	const openMarker = "<think";
 	const closeMarker = "</think>";
-	const safeOpenTail = openMarker.length - 1;
+	const safeOpenTail = openMarker.length;
 	const safeCloseTail = closeMarker.length - 1;
 
 	const drain = (final: boolean): string[] => {
@@ -47,7 +47,7 @@ function createThinkTagStreamFilter(): {
 				continue;
 			}
 
-			const openAt = indexOfIgnoreCase(buffer, openMarker);
+			const openAt = buffer.search(/<think(?=[\s>])/i);
 			if (openAt === -1) {
 				let emitLength = final
 					? buffer.length

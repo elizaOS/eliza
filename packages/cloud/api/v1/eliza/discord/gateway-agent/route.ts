@@ -5,13 +5,16 @@
  * organization, creating one if needed.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { toCompatAgent } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { managedAgentDiscordService } from "@elizaos/cloud-shared/lib/services/agent-managed-discord";
+import { AgentQuotaExceededError } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { toCompatAgent } from "@/lib/api/compat-envelope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { managedAgentDiscordService } from "@/lib/services/agent-managed-discord";
-import { AgentQuotaExceededError } from "@/lib/services/eliza-sandbox";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

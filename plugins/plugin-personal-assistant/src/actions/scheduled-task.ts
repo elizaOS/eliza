@@ -30,7 +30,6 @@
 import type {
   Action,
   ActionExample,
-  ActionParameterSchema,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -38,8 +37,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
-import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
+import {
+  resolveScheduledAtIsoInTimeZone,
+  stableStringify,
+} from "@elizaos/core";
+import {
+  resolveMessageTimeZone,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -68,6 +73,7 @@ import type {
 } from "../lifeops/scheduled-task/index.js";
 import {
   ChannelKeyError,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   ScheduledTaskValidationError,
 } from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
@@ -98,6 +104,7 @@ type ScheduledTaskKindParam = ScheduledTaskKind;
 type ScheduledTaskStatusParam = ScheduledTaskStatus;
 type ScheduledTaskSubjectKindParam = ScheduledTaskSubjectKind;
 type ScheduledTaskPriorityParam = ScheduledTaskPriority;
+type ScheduledTaskSourceParam = ScheduledTask["source"];
 
 const MUTATING_SUBACTIONS: ReadonlySet<Subaction> = new Set([
   "create",
@@ -147,12 +154,12 @@ interface ScheduledTaskParams {
   priority?: ScheduledTaskPriorityParam;
   respectsGlobalPause?: boolean;
   ownerVisible?: boolean;
-  source?: ScheduledTask["source"];
+  source?: ScheduledTaskSourceParam;
   /** snooze-only: minutes to defer next fire. */
   minutes?: number;
   /** snooze-only: ISO timestamp to defer next fire to. */
   untilIso?: string;
-  /** skip / complete / acknowledge / dismiss / reopen: free-form reason. */
+  /** skip / complete / dismiss / reopen: free-form reason. */
   reason?: string;
   /** update-only: shallow patch of editable fields. */
   patch?: Partial<Omit<ScheduledTask, "taskId" | "state">>;
@@ -195,6 +202,13 @@ const SCHEDULED_TASK_SUBJECT_KINDS: readonly ScheduledTaskSubjectKindParam[] = [
   "document",
   "calendar_event",
   "self",
+];
+
+const SCHEDULED_TASK_SOURCES: readonly ScheduledTaskSourceParam[] = [
+  "default_pack",
+  "user_chat",
+  "first_run",
+  "plugin",
 ];
 
 function normalizeSubaction(value: unknown): Subaction | null {
@@ -275,6 +289,29 @@ function buildSubject(
   return { kind, id: id.trim() };
 }
 
+// A subject is a kind and an id together. The runner matches on both, so one
+// half alone cannot filter a list or bind a new task.
+function hasHalfSuppliedSubject(params: ScheduledTaskParams): boolean {
+  const hasKind =
+    typeof params.subjectKind === "string" &&
+    params.subjectKind.trim().length > 0;
+  const hasId =
+    typeof params.subjectId === "string" && params.subjectId.trim().length > 0;
+  return hasKind !== hasId;
+}
+
+function subjectIncompleteResult(subaction: Subaction): ActionResult {
+  return {
+    success: false,
+    text: "I need both the subject kind and the subject id.",
+    data: {
+      subaction,
+      error: "SUBJECT_INCOMPLETE",
+      message: "subjectKind and subjectId must be supplied together.",
+    },
+  };
+}
+
 function buildFilter(params: ScheduledTaskParams): ScheduledTaskFilter {
   const filter: ScheduledTaskFilter = {};
   const kind = normalizeKind(params.kind);
@@ -292,6 +329,8 @@ function buildFilter(params: ScheduledTaskParams): ScheduledTaskFilter {
 
 interface RunnerScope {
   runtime: IAgentRuntime;
+  /** Zone the planner's offset-free times are written in (CURRENT_TIME's). */
+  timeZone: string;
   runner: ScheduledTaskRunnerHandle;
   agentId: string;
   roomId: string | null;
@@ -302,6 +341,7 @@ function makeRunnerScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const runner = getScheduledTaskRunner(runtime, { agentId });
   return {
     runtime,
+    timeZone: resolveMessageTimeZone(runtime, message),
     runner,
     agentId,
     roomId: typeof message.roomId === "string" ? message.roomId : null,
@@ -730,7 +770,10 @@ function pickNumber(
  * `expression`, and the mid-runner throw surfaced as a bare
  * `success:false` with no message.)
  */
-function normalizeTriggerInput(value: unknown): TriggerNormalization {
+function normalizeTriggerInput(
+  value: unknown,
+  timeZone: string,
+): TriggerNormalization {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ok: false,
@@ -777,7 +820,11 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
       };
     }
     case "once": {
-      const atIso = onceAtIso;
+      // The planner writes an offset-free time as a wall clock in the user's
+      // zone; Date.parse would read it in the host zone.
+      const atIso = onceAtIso
+        ? resolveScheduledAtIsoInTimeZone(onceAtIso, timeZone)
+        : onceAtIso;
       if (!atIso || !Number.isFinite(Date.parse(atIso))) {
         return {
           ok: false,
@@ -908,6 +955,21 @@ function nonEmptyRecord<T>(value: T | undefined): T | undefined {
     return undefined;
   }
   return Object.keys(value).length > 0 ? value : undefined;
+}
+
+/**
+ * True when the planner supplied an output that is not the destination a
+ * chat-bound task is pinned to. The pinned destination always wins; the
+ * result must then say that the supplied one was not applied.
+ */
+function outputDiffersFromBound(
+  supplied: unknown,
+  bound: ScheduledTask["output"],
+): boolean {
+  return (
+    nonEmptyRecord(supplied) !== undefined &&
+    stableStringify(supplied) !== stableStringify(bound)
+  );
 }
 
 function defaultChatOutput(
@@ -1064,6 +1126,7 @@ async function handleList(
   scope: RunnerScope,
   params: ScheduledTaskParams,
 ): Promise<ActionResult> {
+  if (hasHalfSuppliedSubject(params)) return subjectIncompleteResult("list");
   const tasks = await scope.runner.list(buildFilter(params));
   const dueWindow = normalizeDueWindow(params.dueWindow);
   const filtered = dueWindow
@@ -1137,7 +1200,7 @@ async function handleCreate(
       },
     };
   }
-  const normalized = normalizeTriggerInput(params.trigger);
+  const normalized = normalizeTriggerInput(params.trigger, scope.timeZone);
   if (!normalized.ok) {
     return {
       success: false,
@@ -1154,6 +1217,7 @@ async function handleCreate(
   const kind = normalizeKind(params.kind) ?? "custom";
   const noun = scheduledItemNoun(kind);
   const priority: ScheduledTaskPriorityParam = params.priority ?? "medium";
+  if (hasHalfSuppliedSubject(params)) return subjectIncompleteResult("create");
   const subject = buildSubject(
     normalizeSubjectKind(params.subjectKind),
     params.subjectId,
@@ -1298,9 +1362,15 @@ async function handleCreate(
     });
   } catch (error) {
     if (error instanceof ScheduledTaskValidationError) {
+      // The timing text is true only when every issue is about the trigger.
+      const triggerOnly = error.issues.every((issue) =>
+        issue.startsWith("task.trigger"),
+      );
       return {
         success: false,
-        text: PLAIN_TIMING_MISSING_TEXT,
+        text: triggerOnly
+          ? PLAIN_TIMING_MISSING_TEXT
+          : "I could not save that scheduled item because it is not valid.",
         data: {
           subaction: "create",
           error: "INVALID_SCHEDULED_TASK",
@@ -1321,12 +1391,53 @@ async function handleCreate(
     }
     throw error;
   }
+  if (
+    chatDeliveryBinding &&
+    outputDiffersFromBound(params.output, created.output)
+  ) {
+    return {
+      success: true,
+      text: `Scheduled the ${noun}. It will be delivered to this ${chatDeliveryBinding.source} chat. An item created from a direct chat is always delivered to that chat, so the requested destination was not applied.`,
+      data: {
+        subaction: "create",
+        task: created,
+        outputIgnored: true,
+        boundOutput: created.output,
+      },
+    };
+  }
   return {
     success: true,
     text: `Scheduled the ${noun}.`,
     data: { subaction: "create", task: created },
   };
 }
+
+/**
+ * Every ScheduledTask field an edit can change: the whole task except the
+ * read-only `taskId` and `state`. The runner assigns the patch onto the stored
+ * task and validates only these fields, so any other key changes nothing.
+ */
+const SCHEDULED_TASK_PATCH_FIELDS = Object.keys({
+  kind: true,
+  promptInstructions: true,
+  contextRequest: true,
+  trigger: true,
+  priority: true,
+  shouldFire: true,
+  completionCheck: true,
+  escalation: true,
+  output: true,
+  pipeline: true,
+  subject: true,
+  idempotencyKey: true,
+  respectsGlobalPause: true,
+  source: true,
+  createdBy: true,
+  ownerVisible: true,
+  metadata: true,
+  executionProfile: true,
+} satisfies Record<keyof Omit<ScheduledTask, "taskId" | "state">, true>);
 
 async function handleUpdate(
   scope: RunnerScope,
@@ -1357,7 +1468,76 @@ async function handleUpdate(
       data: { subaction: "update", error: "NOT_FOUND" },
     };
   }
-  const patchEntries = Object.entries(params.patch);
+  const readOnlyKey = SCHEDULED_TASK_EDIT_READONLY_KEYS.find((key) =>
+    Object.hasOwn(params.patch as object, key),
+  );
+  if (readOnlyKey) {
+    return {
+      success: false,
+      text: "That part of a scheduled item cannot be edited directly.",
+      data: {
+        subaction: "update",
+        error: "READ_ONLY_FIELD",
+        message: `patch.${readOnlyKey} is read-only; use the snooze/skip/complete/acknowledge/dismiss/reopen ops to change task state.`,
+      },
+    };
+  }
+  const unknownKey = Object.keys(params.patch).find(
+    (key) => !SCHEDULED_TASK_PATCH_FIELDS.includes(key),
+  );
+  if (unknownKey !== undefined) {
+    return {
+      success: false,
+      text: "I could not update that scheduled item because the change names a field it does not have.",
+      data: {
+        subaction: "update",
+        error: "UNKNOWN_PATCH_FIELD",
+        message: `patch.${unknownKey} is not a ScheduledTask field. Editable fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}.`,
+      },
+    };
+  }
+  // The same trigger shapes create accepts must be accepted here: the patch
+  // replaces the stored trigger wholesale, so it is normalized the same way.
+  let patch = params.patch;
+  if (Object.hasOwn(patch, "trigger")) {
+    const normalized = normalizeTriggerInput(patch.trigger, scope.timeZone);
+    if (!normalized.ok) {
+      return {
+        success: false,
+        text: PLAIN_TIMING_MISSING_TEXT,
+        data: {
+          subaction: "update",
+          error: "INVALID_TRIGGER",
+          message: normalized.message,
+        },
+      };
+    }
+    patch = { ...patch, trigger: normalized.trigger };
+  }
+  const existingBinding = readScheduledTaskChatDeliveryBinding(
+    existing.metadata,
+  );
+  // A chat-bound task keeps its destination. A different patch.output is not
+  // applied, so it does not count as a change and the result reports it.
+  const outputIgnored =
+    existingBinding !== null &&
+    Object.hasOwn(patch, "output") &&
+    stableStringify(patch.output) !== stableStringify(existing.output);
+  const patchEntries = Object.entries(patch).filter(
+    ([key]) => !(outputIgnored && key === "output"),
+  );
+  if (outputIgnored && existingBinding && patchEntries.length === 0) {
+    return {
+      success: false,
+      text: `I did not change that scheduled item. It is always delivered to the ${existingBinding.source} chat it was created in.`,
+      data: {
+        subaction: "update",
+        error: "OUTPUT_BOUND_TO_CHAT",
+        message: `patch.output was not applied: this task is bound to ${existing.output?.target}. Omit patch.output.`,
+        boundOutput: existing.output,
+      },
+    };
+  }
   const unchanged =
     patchEntries.length === 0 ||
     patchEntries.every(([key, value]) => {
@@ -1367,28 +1547,76 @@ async function handleUpdate(
   if (unchanged) {
     return {
       success: true,
-      text: "That scheduled item is already up to date.",
-      data: { subaction: "update", task: existing, unchanged: true },
+      text:
+        outputIgnored && existingBinding
+          ? `That scheduled item is already up to date. It is always delivered to the ${existingBinding.source} chat it was created in, so the requested destination was not applied.`
+          : "That scheduled item is already up to date.",
+      data: {
+        subaction: "update",
+        task: existing,
+        unchanged: true,
+        ...(outputIgnored
+          ? { outputIgnored: true, boundOutput: existing.output }
+          : {}),
+      },
     };
   }
-  const existingBinding = readScheduledTaskChatDeliveryBinding(
-    existing.metadata,
-  );
   // Delivery identity is server-attested state, never model-editable state.
   // Preserve both the canonical output and binding while still allowing the
   // owner to reschedule or rewrite the reminder itself.
   const safePatch = existingBinding
     ? {
-        ...params.patch,
+        ...patch,
         output: existing.output,
         metadata: {
           ...(existing.metadata ?? {}),
-          ...(params.patch.metadata ?? {}),
+          ...(patch.metadata ?? {}),
           [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: existingBinding,
         },
       }
-    : params.patch;
-  const updated = await scope.runner.apply(taskId, "edit", safePatch);
+    : patch;
+  let updated: ScheduledTask;
+  try {
+    updated = await scope.runner.apply(taskId, "edit", safePatch);
+  } catch (error) {
+    // error-policy:J1 the runner rejects an invalid edit before it persists;
+    // the action boundary reports the issues so the planner can repair the patch.
+    if (error instanceof ScheduledTaskValidationError) {
+      return {
+        success: false,
+        text: "I could not update that scheduled item because the change is not valid.",
+        data: {
+          subaction: "update",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: error.issues,
+        },
+      };
+    }
+    if (error instanceof ChannelKeyError) {
+      return {
+        success: false,
+        text: PLAIN_DESTINATION_MISSING_TEXT,
+        data: {
+          subaction: "update",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: [error.message],
+        },
+      };
+    }
+    throw error;
+  }
+  if (outputIgnored && existingBinding) {
+    return {
+      success: true,
+      text: `Updated that scheduled item. It is always delivered to the ${existingBinding.source} chat it was created in, so the requested destination was not applied.`,
+      data: {
+        subaction: "update",
+        task: updated,
+        outputIgnored: true,
+        boundOutput: updated.output,
+      },
+    };
+  }
   return {
     success: true,
     text: "Updated that scheduled item.",
@@ -1414,13 +1642,37 @@ async function handleSnooze(
       : undefined;
   const untilIso =
     typeof params.untilIso === "string" && params.untilIso.trim().length > 0
-      ? params.untilIso.trim()
+      ? resolveScheduledAtIsoInTimeZone(params.untilIso.trim(), scope.timeZone)
       : undefined;
   if (minutes === undefined && untilIso === undefined) {
     return {
       success: false,
       text: "Tell me when to remind you again.",
       data: { subaction: "snooze", error: "MISSING_SNOOZE_TARGET" },
+    };
+  }
+  // The runner throws on a non-positive offset and on a timestamp Date cannot
+  // parse; both are planner-repairable, so they are refused here by name.
+  if (untilIso !== undefined && !Number.isFinite(Date.parse(untilIso))) {
+    return {
+      success: false,
+      text: "Tell me when to remind you again.",
+      data: {
+        subaction: "snooze",
+        error: "INVALID_SNOOZE_TARGET",
+        message: "untilIso must be an ISO-8601 timestamp.",
+      },
+    };
+  }
+  if (untilIso === undefined && minutes !== undefined && minutes <= 0) {
+    return {
+      success: false,
+      text: "Tell me when to remind you again.",
+      data: {
+        subaction: "snooze",
+        error: "INVALID_SNOOZE_TARGET",
+        message: "minutes must be greater than 0.",
+      },
     };
   }
   const existing = (await scope.runner.list()).find(
@@ -1605,11 +1857,33 @@ async function handleHistory(
     params.limit > 0
       ? Math.floor(params.limit)
       : 100;
+  // The log stores UTC ISO text and the repository compares bounds as text,
+  // so a bound must be a real timestamp in that same form.
+  const bounds: { sinceIso?: string; untilIso?: string } = {};
+  for (const [name, target] of [
+    ["sinceIso", "sinceIso"],
+    ["untilHistoryIso", "untilIso"],
+  ] as const) {
+    const raw = params[name];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const ms = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+    if (!Number.isFinite(ms)) {
+      return {
+        success: false,
+        text: "I need a valid date range for that history.",
+        data: {
+          subaction: "history",
+          error: "INVALID_HISTORY_RANGE",
+          message: `${name} must be an ISO-8601 timestamp.`,
+        },
+      };
+    }
+    bounds[target] = new Date(ms).toISOString();
+  }
   const entries: ScheduledTaskLogEntry[] = await repo.listScheduledTaskLog({
     agentId: scope.agentId,
     ...(taskId ? { taskId } : {}),
-    ...(params.sinceIso ? { sinceIso: params.sinceIso } : {}),
-    ...(params.untilHistoryIso ? { untilIso: params.untilHistoryIso } : {}),
+    ...bounds,
     excludeRollups: params.includeRollups !== true,
     limit,
   });
@@ -1711,7 +1985,6 @@ export const scheduledTaskAction: Action & {
     "SET_FOLLOWUP_THRESHOLD",
     // PRD action-catalog aliases. The PRD's NotificationIntent and
     // event-decision flows fold onto SCHEDULED_TASKS with escalation policy.
-    // See packages/docs/action-prd-map.md.
     "EVENT_SET_DECISION_DEADLINE",
     "EVENT_TRACK_ASSET_DEADLINES",
     "NOTIFICATION_CREATE_INTENT",
@@ -1765,23 +2038,27 @@ export const scheduledTaskAction: Action & {
       name: "kind",
       description:
         "ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_KINDS] },
     },
     {
       name: "status",
       description:
-        "List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
-      schema: { type: "string" as const } as ActionParameterSchema,
+        "List status filter, one status: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_STATUSES] },
     },
     {
       name: "subjectKind",
       description:
-        "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
-      schema: { type: "string" as const },
+        "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self. Supply together with subjectId; one without the other fails with SUBJECT_INCOMPLETE.",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULED_TASK_SUBJECT_KINDS],
+      },
     },
     {
       name: "subjectId",
-      description: "ScheduledTaskSubject.id paired with subjectKind.",
+      description:
+        "ScheduledTaskSubject.id. Supply together with subjectKind; one without the other fails with SUBJECT_INCOMPLETE.",
       schema: { type: "string" as const },
     },
     {
@@ -1827,7 +2104,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "output",
       description:
-        "create-only: output destination/target, e.g. channel -> in_app:<roomId>.",
+        "create-only: output destination/target, e.g. channel -> in_app:<roomId>. A task created from a connector direct chat is always delivered to that chat: a different output is not applied and the result carries outputIgnored.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -1869,8 +2146,8 @@ export const scheduledTaskAction: Action & {
     {
       name: "source",
       description:
-        "create-only: source default_pack|user_chat|first_run|plugin.",
-      schema: { type: "string" as const },
+        "create-only: source default_pack|user_chat|first_run|plugin; default user_chat.",
+      schema: { type: "string" as const, enum: [...SCHEDULED_TASK_SOURCES] },
     },
     {
       name: "minutes",
@@ -1884,23 +2161,24 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "reason",
-      description:
-        "skip/complete/acknowledge/dismiss/reopen: reason on state log.",
+      description: "skip/complete/dismiss/cancel/reopen: reason on state log.",
       schema: { type: "string" as const },
     },
     {
       name: "patch",
-      description: "update-only: shallow patch editable ScheduledTask fields.",
+      description: `update-only: shallow patch of ScheduledTask fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}. Reword with promptInstructions and retime with trigger (same shapes as create). Any other key fails with UNKNOWN_PATCH_FIELD. output cannot change for a task created from a connector direct chat: it is not applied (outputIgnored), and a patch with only that output fails with OUTPUT_BOUND_TO_CHAT.`,
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "sinceIso",
-      description: "history-only: occurredAtIso >= ISO-8601.",
+      description:
+        "history-only: occurredAtIso >= this ISO-8601 timestamp. Other text fails with INVALID_HISTORY_RANGE.",
       schema: { type: "string" as const },
     },
     {
       name: "untilHistoryIso",
-      description: "history-only: occurredAtIso <= ISO-8601.",
+      description:
+        "history-only: occurredAtIso < this ISO-8601 timestamp. Other text fails with INVALID_HISTORY_RANGE.",
       schema: { type: "string" as const },
     },
     {

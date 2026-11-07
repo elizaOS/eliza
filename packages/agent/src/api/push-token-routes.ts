@@ -11,18 +11,16 @@
  *
  *   POST   /api/notifications/push-tokens
  *     Register (upsert) a device token. Body: { platform: "ios"|"android",
- *     token: string }. Returns `{ ok: true }`.
+ *     token: string }. Returns `{ ok: true, deliveryEnabled: boolean }`.
  *
  *   DELETE /api/notifications/push-tokens
- *     Unregister a device token from `{ token }`. The legacy token path remains
- *     accepted for installed clients, but new clients keep identifiers out of
- *     request URLs and access logs.
+ *     Unregister a device token from `{ token }`.
  *
  *   GET    /api/notifications/push-tokens
  *     Diagnostics: `{ count, platforms: { ios, android } }`.
  */
 import type http from "node:http";
-import type { RouteHelpers } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,
@@ -38,9 +36,11 @@ export interface PushTokenRouteState {
   } | null;
 }
 const PUSH_TOKENS_PREFIX = "/api/notifications/push-tokens";
-function getRegistry(state: PushTokenRouteState): PushTokenRegistry | null {
+function getPushService(
+  state: PushTokenRouteState,
+): NotificationPushService | null {
   const svc = state.runtime?.getService(NOTIFICATION_PUSH_SERVICE_TYPE);
-  return svc instanceof NotificationPushService ? svc.getRegistry() : null;
+  return svc instanceof NotificationPushService ? svc : null;
 }
 function parsePlatform(value: unknown): PushPlatform | null {
   return value === "ios" || value === "android" ? value : null;
@@ -54,7 +54,8 @@ export async function handlePushTokenRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith(PUSH_TOKENS_PREFIX)) return false;
-  const registry = getRegistry(state);
+  const service = getPushService(state);
+  const registry = service?.getRegistry();
   if (!registry) {
     helpers.error(res, "push delivery service not ready", 503);
     return true;
@@ -91,7 +92,11 @@ export async function handlePushTokenRoute(
     // validation failure is a client error (400); a durable-write failure
     // propagates and the server boundary maps it to 500.
     try {
-      await registry.register(platform, token);
+      await registry.register(
+        platform,
+        token,
+        body.reminderDataNotifications as boolean | undefined,
+      );
     } catch (err) {
       // error-policy:J4 user-facing degrade — only the expected validation
       // shape becomes a 400; every other failure rethrows to the 500 boundary.
@@ -101,7 +106,14 @@ export async function handlePushTokenRoute(
       }
       throw err;
     }
-    helpers.json(res, { ok: true }, 201);
+    helpers.json(
+      res,
+      {
+        ok: true,
+        deliveryEnabled: service?.isDeliveryEnabled(platform) === true,
+      },
+      201,
+    );
     return true;
   }
   // ── DELETE /api/notifications/push-tokens ─────────────────────────
@@ -117,27 +129,12 @@ export async function handlePushTokenRoute(
     }
     return unregisterOrError(registry, token, res, helpers);
   }
-  // ── Legacy DELETE /api/notifications/push-tokens/:token ───────────
-  const tokenMatch = pathname.match(
-    /^\/api\/notifications\/push-tokens\/([^/]+)$/,
-  );
-  if (method === "DELETE" && tokenMatch) {
-    let token: string;
-    try {
-      token = decodeURIComponent(tokenMatch[1]);
-    } catch {
-      // error-policy:J3 untrusted-input sanitizing — malformed percent-encoding is invalid client input
-      helpers.error(res, "invalid push token", 400);
-      return true;
-    }
-    return unregisterOrError(registry, token, res, helpers);
-  }
   helpers.error(res, "push-token route not found", 404);
   return true;
 }
 /**
  * Run `registry.unregister`, applying the same byte-bound validation as the
- * register path across BOTH DELETE shapes. A typed validation failure maps to
+ * register path. A typed validation failure maps to
  * 400; a durable-write failure rethrows to the server's 500 boundary.
  */
 async function unregisterOrError(

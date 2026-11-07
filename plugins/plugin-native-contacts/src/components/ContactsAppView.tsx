@@ -22,11 +22,12 @@ import {
   Avatar as AvatarRoot,
   Button,
   Input,
+  isNative,
+  type OverlayAppContext,
+  PermissionRecoveryCallout,
+  useAgentElement,
 } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type OverlayAppContext } from "@elizaos/ui/apps/overlay-app-api";
-import { PermissionRecoveryCallout } from "@elizaos/ui/components";
-import { isNative } from "@elizaos/ui/platform";
+
 import {
   ArrowLeft,
   ChevronLeft,

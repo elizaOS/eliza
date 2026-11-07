@@ -25,6 +25,14 @@ export interface ModelRetryTelemetry {
 type OpenAIModelUsageEventPayload = ModelEventPayload & {
   source: "openai";
   prompt: string;
+  /** Presence evidence before normalization supplies default zeros. */
+  usageReported: {
+    prompt: boolean;
+    completion: boolean;
+    total: boolean;
+    cacheRead: boolean;
+    reasoning: boolean;
+  };
   retryCount?: number;
   lastRetryReason?: string;
 };
@@ -65,6 +73,9 @@ export function emitModelUsageEvent(
   provider = getUsageProvider(runtime)
 ): void {
   const normalized = normalizeProviderUsage(usage);
+  const raw = usage as unknown as Record<string, unknown>;
+  const reported = (value: unknown): boolean =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
   const model = modelName.trim();
   if (!model) {
     throw new Error("MODEL_USED requires the concrete provider model name");
@@ -79,6 +90,13 @@ export function emitModelUsageEvent(
     modelName: model,
     modelLabel: String(type),
     prompt,
+    usageReported: {
+      prompt: reported(raw.promptTokens) || reported(raw.inputTokens),
+      completion: reported(raw.completionTokens) || reported(raw.outputTokens),
+      total: reported(raw.totalTokens),
+      cacheRead: normalized.cacheReadInputTokens !== undefined,
+      reasoning: normalized.reasoningTokens !== undefined,
+    },
     ...(retry
       ? {
           retryCount: retry.retryCount,
@@ -104,5 +122,10 @@ export function emitModelUsageEvent(
     },
   };
 
-  runtime.emitEvent(EventType.MODEL_USED, payload);
+  void Promise.resolve(runtime.emitEvent(EventType.MODEL_USED, payload)).catch((error) => {
+    runtime.reportError("OpenAIModelUsage.emitEvent", error, {
+      model,
+      modelType: String(type),
+    });
+  });
 }

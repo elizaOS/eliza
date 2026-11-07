@@ -17,14 +17,18 @@ process.env.NODE_ENV = "test";
 setDefaultTimeout(60_000);
 
 const { closeDatabaseConnectionsForTests, getPgliteClientForTests, dbWrite } =
-  await import("@/db/client");
-const { organizations } = await import("@/db/schemas/organizations");
-const { users } = await import("@/db/schemas/users");
-const { creditTransactions } = await import("@/db/schemas/credit-transactions");
-const { organizationPaymentReversalHolds } = await import(
-  "@/db/schemas/organization-payment-reversal-holds"
+  await import("@elizaos/cloud-shared/db/client");
+const { organizations } = await import(
+  "@elizaos/cloud-shared/db/schemas/organizations"
 );
-const { invoices } = await import("@/db/schemas/invoices");
+const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
+const { creditTransactions } = await import(
+  "@elizaos/cloud-shared/db/schemas/credit-transactions"
+);
+const { organizationPaymentReversalHolds } = await import(
+  "@elizaos/cloud-shared/db/schemas/organization-payment-reversal-holds"
+);
+const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();

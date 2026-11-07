@@ -24,6 +24,7 @@ import {
   type MessageRef,
   type MessageSource,
   NotYetImplementedError,
+  type SearchMessagesFilters,
 } from "../types.ts";
 import { createFakeRuntime } from "./fake-runtime.ts";
 
@@ -225,4 +226,77 @@ describe("TriageService per-source failure isolation", () => {
       hasMore: false,
     });
   });
+});
+
+it("owner-scoped live sources remove old metadata and do not retain new list or search results", async () => {
+  const store = new MessageRefStore();
+  const service = new TriageService(store),
+    runtime = createFakeRuntime();
+  store.saveMessages(
+    [ref("gmail", "old-owner"), ref("discord", "kept")],
+    runtime.agentId,
+  );
+  class OwnerSource extends HealthyAdapter {
+    readonly cachePolicy = "none" as const;
+  }
+  service.register(new OwnerSource("gmail", [ref("gmail", "current-owner")]));
+  expect(store.listMessages(runtime.agentId).map((row) => row.id)).toEqual([
+    "discord:kept",
+  ]);
+  expect(
+    (await service.triage(runtime, { sources: ["gmail"] })).map(
+      (row) => row.id,
+    ),
+  ).toEqual(["gmail:current-owner"]);
+  expect(
+    (
+      await service.search(runtime, {
+        sources: ["gmail"],
+        content: "hello",
+        limit: 1,
+      })
+    ).map((row) => row.id),
+  ).toEqual(["gmail:current-owner"]);
+  expect(store.listMessages(runtime.agentId).map((row) => row.id)).toEqual([
+    "discord:kept",
+  ]);
+});
+
+it("does not double-probe array-only inbox searches, while receipt searches still detect overflow", async () => {
+  const limits: Array<number | undefined> = [];
+  class BoundedSource extends HealthyAdapter {
+    capabilities(): MessageAdapterCapabilities {
+      return { ...super.capabilities(), search: true };
+    }
+    protected async searchMessagesImpl(
+      _runtime: IAgentRuntime,
+      filters: SearchMessagesFilters,
+    ): Promise<MessageRef[]> {
+      limits.push(filters.limit);
+      if (filters.limit === undefined || filters.limit > 51)
+        throw new Error("Provider permits at most 50 messages plus one probe");
+      return Array.from({ length: filters.limit }, (_, index) =>
+        ref("gmail", String(index)),
+      );
+    }
+  }
+  const service = new TriageService(new MessageRefStore());
+  service.register(new BoundedSource("gmail", []));
+  const runtime = createFakeRuntime();
+  const inboxProbe = await service.search(
+    runtime,
+    {
+      sources: ["gmail"],
+      limit: 51,
+    },
+    { probeOverflow: false },
+  );
+  expect(inboxProbe).toHaveLength(51);
+  const result = await service.searchWithReceipt(runtime, {
+    sources: ["gmail"],
+    limit: 50,
+  });
+  expect(result.refs).toHaveLength(50);
+  expect(result.receipt.hasMore).toBe(true);
+  expect(limits).toEqual([51, 51]);
 });

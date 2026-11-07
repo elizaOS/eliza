@@ -3,8 +3,8 @@
  * `/v1/chat/completions` and Anthropic-compatible `/v1/messages` routes.
  */
 
+import type { AIUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import type { StepResult, ToolSet } from "ai";
-import type { AIUsage } from "@/lib/services/ai-billing";
 
 /**
  * The abort-settlement helpers only read `usage` off the SDK's finished steps.

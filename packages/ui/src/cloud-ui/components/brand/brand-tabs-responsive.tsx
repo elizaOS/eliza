@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "../../../components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 export interface TabItem {
   value: string;

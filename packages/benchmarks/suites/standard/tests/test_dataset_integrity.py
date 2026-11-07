@@ -8,7 +8,7 @@ from types import ModuleType
 
 import pytest
 
-from benchmarks.standard import gsm8k, humaneval, mmlu, mt_bench
+from benchmarks.suites.standard import gsm8k, humaneval, mmlu, mt_bench
 
 
 def _install_loader(

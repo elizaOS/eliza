@@ -1,5 +1,5 @@
 /** Local browser handoff preferences only; provider credentials never enter this store. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import { getStorageValue, setStorageValue } from "../bridge/storage-bridge";
 
 export type PasswordProvider = "bitwarden" | "1password";

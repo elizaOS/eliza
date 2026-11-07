@@ -89,6 +89,25 @@ describe("DiscordService.listConnectorRooms — cross-guild completeness", () =>
 		expect(targets).toEqual([]);
 	});
 
+	it("reports an unavailable selected account instead of no targets", async () => {
+		const service = serviceWithGuilds([]);
+		const context = {
+			runtime,
+			target: { source: "discord", accountId: "missing-account" },
+		} as MessageConnectorQueryContext;
+		const expected = {
+			code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+			context: { accountId: "missing-account" },
+		};
+
+		await expect(service.listConnectorRooms(context)).rejects.toMatchObject(
+			expected,
+		);
+		await expect(
+			service.resolveConnectorTargets("general", context),
+		).rejects.toMatchObject(expected);
+	});
+
 	it("still dedupes and drops non-text channels", async () => {
 		const guild = fakeGuild("300", "Guild C", 3, 3000);
 		guild.channels.cache.set("voice-1", {
@@ -107,5 +126,60 @@ describe("DiscordService.listConnectorRooms — cross-guild completeness", () =>
 
 		expect(targets).toHaveLength(3);
 		expect(targets.every((t) => t.target.channelId !== "voice-1")).toBe(true);
+	});
+});
+
+describe("DiscordService.leaveConnectorChannel", () => {
+	function serviceWithChannel(allowedChannelIds?: string[]) {
+		const guild: FakeGuild = {
+			id: "100",
+			name: "Guild A",
+			channels: { cache: new Map() },
+		};
+		const channel = {
+			...fakeTextChannel("C1", "general", guild),
+			messages: {},
+		};
+		guild.channels.cache.set("C1", channel);
+		const client = {
+			guilds: { cache: new Map([["100", guild]]) },
+			channels: { cache: guild.channels.cache, fetch: async () => channel },
+		};
+		return Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			client,
+			defaultAccountId: "default",
+			accountPool: { get: () => null, getDefault: () => null },
+			allowedChannelIds,
+			dynamicChannelIds: new Set<string>(),
+		}) as DiscordService;
+	}
+	const leave = (service: DiscordService) =>
+		service.leaveConnectorChannel(runtime, {
+			target: { source: "discord", channelId: "C1" },
+		} as never);
+
+	it("fails when no channel allowlist is set, because the bot keeps listening", async () => {
+		const service = serviceWithChannel();
+		await expect(leave(service)).rejects.toMatchObject({
+			code: "DISCORD_LEAVE_NO_CHANNEL_ALLOWLIST",
+		});
+		expect(service.isChannelAllowed("C1")).toBe(true);
+	});
+
+	it("fails for a channel listed in CHANNEL_IDS", async () => {
+		const service = serviceWithChannel(["C1"]);
+		await expect(leave(service)).rejects.toMatchObject({
+			code: "DISCORD_LEAVE_CONFIGURED_CHANNEL",
+		});
+		expect(service.isChannelAllowed("C1")).toBe(true);
+	});
+
+	it("stops listening in a channel the agent joined", async () => {
+		const service = serviceWithChannel(["C9"]);
+		service.addAllowedChannel("C1");
+		expect(service.isChannelAllowed("C1")).toBe(true);
+		await leave(service);
+		expect(service.isChannelAllowed("C1")).toBe(false);
 	});
 });

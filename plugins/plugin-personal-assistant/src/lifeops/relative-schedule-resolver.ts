@@ -7,10 +7,14 @@
 import {
   type LifeOpsRegularityClass,
   type LifeOpsWorkflowSchedule,
-} from "@elizaos/core/contracts/personal-assistant";
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
-import { type LifeOpsScheduleMergedStateRecord } from "./repository.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
+  parseIsoMs,
+} from "@elizaos/contracts";
+import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "./time.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   insufficient_data: 0,
@@ -58,16 +62,30 @@ function nextProjectedLocalInstant(args: {
    */
   offsetMinutes: number;
   allowedWeekdays?: number[];
+  /**
+   * Sleep-day (local noon) the concrete anchor already covers. The projection
+   * must not schedule a second occurrence for it or an earlier sleep-day.
+   */
+  coveredSleepDayMs?: number;
 }): number | null {
   const parts = getZonedDateParts(new Date(args.cursorMs), args.timezone);
   const totalMinutes = Math.round(args.localHour * 60);
+  // The local hour is canonical in [12, 36) for bedtime: whole days in it
+  // are the after-midnight carry into the next civil day. That carry must
+  // move the candidate date (as localHourInstantMs does for concrete
+  // anchors); wrapping it away attributes the occurrence to the wrong
+  // sleep-day.
+  const dayDelta = Math.floor(totalMinutes / (24 * 60));
   const minuteOfDay = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const offsetMs = args.offsetMinutes * 60000;
-  for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
+  // After midnight, the previous sleep-day can still have a future bedtime.
+  for (let dayOffset = -dayDelta; dayOffset < 14; dayOffset += 1) {
+    const sleepDay = addDaysToLocalDate(parts, dayOffset);
+    const date = addDaysToLocalDate(parts, dayOffset + dayDelta);
     const candidate = buildUtcDateFromLocalParts(args.timezone, {
-      year: parts.year,
-      month: parts.month,
-      day: parts.day + dayOffset,
+      year: date.year,
+      month: date.month,
+      day: date.day,
       hour: Math.floor(minuteOfDay / 60),
       minute: minuteOfDay % 60,
       second: 0,
@@ -76,8 +94,23 @@ function nextProjectedLocalInstant(args: {
       continue;
     }
     // Weekday restrictions apply to the anchor's local day (the sleep-day the
-    // occurrence belongs to), not the offsetted fire instant.
-    if (weekdayMatches(candidate, args.timezone, args.allowedWeekdays)) {
+    // occurrence belongs to), not the offsetted fire instant — and not the
+    // civil day the after-midnight carry lands on.
+    const sleepDayMs = buildUtcDateFromLocalParts(args.timezone, {
+      year: sleepDay.year,
+      month: sleepDay.month,
+      day: sleepDay.day,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    }).getTime();
+    if (
+      args.coveredSleepDayMs !== undefined &&
+      sleepDayMs <= args.coveredSleepDayMs
+    ) {
+      continue;
+    }
+    if (weekdayMatches(sleepDayMs, args.timezone, args.allowedWeekdays)) {
       return candidate;
     }
   }
@@ -151,6 +184,7 @@ export function resolveNextRelativeScheduleInstant(args: {
   ) {
     return null;
   }
+  let coveredSleepDayMs: number | undefined;
   if (anchorMs !== null) {
     const targetMs = anchorMs + offsetMinutes * 60000;
     // Weekday restrictions apply to the anchor's local day (the sleep-day the
@@ -159,12 +193,30 @@ export function resolveNextRelativeScheduleInstant(args: {
     // across local midnight onto the previous weekday; gating on `targetMs`
     // there fires on a day the owner did not request or silently drops a day
     // they did. This mirrors the anchor-day rule in `nextProjectedLocalInstant`.
+    // A bedtime is canonical in local hours [12, 36), so one before noon
+    // belongs to the previous civil day's sleep-day.
+    const local = getZonedDateParts(new Date(anchorMs), state.timezone);
+    const sleepDay = addDaysToLocalDate(
+      local,
+      !isAnchorKind(args.schedule) && local.hour < 12 ? -1 : 0,
+    );
+    const anchorDayMs = buildUtcDateFromLocalParts(state.timezone, {
+      ...sleepDay,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    }).getTime();
     if (
       targetMs > cursorMs &&
-      weekdayMatches(anchorMs, state.timezone, args.schedule.onDays)
+      weekdayMatches(anchorDayMs, state.timezone, args.schedule.onDays)
     ) {
       return new Date(targetMs).toISOString();
     }
+    // The real anchor owns its sleep-day: once its slot has fired (or is
+    // excluded by onDays), the baseline projection starts at the next one.
+    // Otherwise a wake earlier than the median fires again at the median's
+    // slot the same day.
+    coveredSleepDayMs = anchorDayMs;
   }
   const baseline = state.baseline;
   if (baseline === null) {
@@ -182,6 +234,7 @@ export function resolveNextRelativeScheduleInstant(args: {
     localHour: projectedHour,
     offsetMinutes,
     allowedWeekdays: args.schedule.onDays,
+    coveredSleepDayMs,
   });
   if (projectedAnchorMs === null) {
     return null;

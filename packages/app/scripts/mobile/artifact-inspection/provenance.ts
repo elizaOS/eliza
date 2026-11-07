@@ -30,8 +30,9 @@ export function preserveAndroidSmsGatewayArtifact(artifact) {
 export function findAndroidSystemApk() {
   // Release-only. Staging a debug APK ships without R8 shrinking and
   // bypasses the release signing config — both invariants the AOSP
-  // prebuilt path assumes hold. Soong re-signs with the platform key
-  // either way, so a debug fallback is never an acceptable substitute.
+  // image path assumes hold. The staged output is unsigned; it is signed
+  // and pinned (packages/os/scripts/android/image-launcher.ts) before an
+  // image installs it, so a debug fallback is never a substitute.
   const candidates = [
     path.join(
       androidDir,

@@ -154,11 +154,26 @@ export async function getCurrentUserFromRequest(
     // Check Redis cache first - avoids JWT AND DB calls
     const cachedUser = await redisCache.get<UserWithOrganization>(cacheKey);
     if (cachedUser) {
-      logger.debug("[AUTH] Cache hit for user session");
-      if (cachedUser.organization_id) {
-        void trackSessionActivity(cachedUser.id, cachedUser.organization_id, stewardToken);
+      // The session key is a token hash that usersService.invalidateCache
+      // cannot address. Confirm the cached projection against the Steward-id
+      // lookup it does evict, so a member removal, role change or
+      // deactivation is not served from this cache for its whole TTL.
+      const current = cachedUser.steward_user_id
+        ? await usersService.getByStewardId(cachedUser.steward_user_id)
+        : undefined;
+      if (
+        current?.is_active &&
+        current.id === cachedUser.id &&
+        current.organization_id === cachedUser.organization_id &&
+        current.role === cachedUser.role
+      ) {
+        logger.debug("[AUTH] Cache hit for user session");
+        if (current.organization_id) {
+          void trackSessionActivity(current.id, current.organization_id, stewardToken);
+        }
+        return current;
       }
-      return cachedUser;
+      await redisCache.del(cacheKey);
     }
 
     logger.debug("[AUTH] Verifying steward session cookie");

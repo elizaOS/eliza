@@ -1,0 +1,12 @@
+--- a/packages/SystemUI/src/com/android/systemui/assist/AssistManager.java
++++ b/packages/SystemUI/src/com/android/systemui/assist/AssistManager.java
+@@ -465,6 +465,9 @@
+             final ActivityOptions opts = ActivityOptions.makeCustomAnimation(context,
+                     R.anim.search_launch_enter, R.anim.search_launch_exit);
+             opts.setLaunchDisplayId(context.getDisplayId());
++            // Share SystemUI's identity so the assistant can tell this user assistant gesture
++            // from an app-sent ACTION_ASSIST (Activity#getLaunchedFromPackage). Grants nothing.
++            opts.setShareIdentityEnabled(true);
+ 
+             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+             AsyncTask.execute(new Runnable() {

@@ -48,7 +48,11 @@ export interface AppSessionAnalytics {
 
 type AppAnalyticsRepository = Pick<
   typeof appsRepository,
-  "findById" | "getRecentRequests" | "incrementUsage" | "trackAppUserActivity"
+  | "findById"
+  | "getRecentRequests"
+  | "getPageviewSessionSummary"
+  | "incrementUsage"
+  | "trackAppUserActivity"
 >;
 
 function metadataString(
@@ -191,8 +195,26 @@ export class AppAnalyticsService {
       offset: 0,
     });
     const analytics = this.buildSessionAnalytics(result.requests, options.funnelSteps);
+    // The session list and funnel come from the newest page views (bounded
+    // scan); the summary counts every page view in the range, so an app with
+    // more page views than the scan reports its real totals.
+    const totals = await this.repository.getPageviewSessionSummary(appId, {
+      startDate: options.startDate,
+      endDate: options.endDate,
+    });
     return {
       ...analytics,
+      summary: {
+        totalSessions: totals.totalSessions,
+        uniqueVisitors: totals.uniqueVisitors,
+        totalPageViews: totals.totalPageViews,
+        avgPagesPerSession:
+          totals.totalSessions > 0 ? totals.totalPageViews / totals.totalSessions : 0,
+        avgSessionDurationMs:
+          totals.totalSessions > 0 ? Math.round(totals.totalDurationMs / totals.totalSessions) : 0,
+        bounceRatePercent:
+          totals.totalSessions > 0 ? roundPercent(totals.bounces / totals.totalSessions) : 0,
+      },
       sessions: analytics.sessions.slice(0, sessionLimit),
     };
   }

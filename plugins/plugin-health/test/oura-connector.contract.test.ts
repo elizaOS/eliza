@@ -21,6 +21,7 @@ const recorded = JSON.parse(
   personalInfo: Record<string, unknown>;
   dailyActivity: unknown;
   dailyReadiness: unknown;
+  dailySleep: unknown;
   sleep: unknown;
   heartRate: unknown;
   workout: unknown;
@@ -62,6 +63,9 @@ beforeEach(() => {
     }
     if (url.includes("/usercollection/daily_readiness")) {
       return jsonResponse(recorded.dailyReadiness);
+    }
+    if (url.includes("/usercollection/daily_sleep")) {
+      return jsonResponse(recorded.dailySleep);
     }
     if (url.includes("/usercollection/sleep")) {
       return jsonResponse(recorded.sleep);
@@ -128,7 +132,8 @@ describe("Oura connector — recorded real API contract", () => {
     expect(ep.lightSleepSeconds).toBe(15120);
     expect(ep.deepSleepSeconds).toBe(6480);
     expect(ep.remSleepSeconds).toBe(5760);
-    // score -> sleepScore; readinessScore stays null (not on sleep records).
+    // The sleep record has no score. The long_sleep episode takes the
+    // daily_sleep score of its day; readinessScore stays null.
     expect(ep.sleepScore).toBe(86);
     expect(ep.readinessScore).toBeNull();
     // biometrics map across.
@@ -140,17 +145,24 @@ describe("Oura connector — recorded real API contract", () => {
     expect(ep.timezone).toBe("0");
     expect(ep.metadata.source).toBe("oura_sleep");
 
-    // sleep samples derived from the episode: sleep_hours + sleep_score.
+    // sleep sample derived from the episode: sleep_hours.
     const sleepHours = payload.samples.find(
       (s) => s.sourceExternalId === "slp-2026-05-01:sleep_hours",
     );
     expect(sleepHours?.value).toBe(27360 / 3600);
     expect(sleepHours?.unit).toBe("h");
+    // Overnight sleep starts on 2026-04-30 UTC; Oura's `day` (and the episode)
+    // is the wake date 2026-05-01. Daily summaries group by sample.localDate.
+    expect(sleepHours?.startAt).toBe("2026-04-30T22:48:00.000Z");
+    expect(sleepHours?.localDate).toBe("2026-05-01");
+    // daily_sleep -> sleep_score sample, dated by the daily document's day.
     const sleepScore = payload.samples.find(
-      (s) => s.sourceExternalId === "slp-2026-05-01:sleep_score",
+      (s) => s.sourceExternalId === "dsl-2026-05-01:sleep_score",
     );
     expect(sleepScore?.value).toBe(86);
     expect(sleepScore?.unit).toBe("score");
+    expect(sleepScore?.startAt).toBe("2026-05-01T12:00:00.000Z");
+    expect(sleepScore?.localDate).toBe("2026-05-01");
 
     // daily_activity -> steps/calories/distance samples.
     const steps = payload.samples.find((s) => s.metric === "steps");
@@ -202,7 +214,11 @@ describe("Oura connector — recorded real API contract", () => {
       expect(typeof s.value).toBe("number");
       expect(Number.isFinite(s.value)).toBe(true);
       expect(typeof s.startAt).toBe("string");
-      expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      if (s.metric === "sleep_hours" || s.metric === "sleep_score") {
+        expect(s.localDate).toBe("2026-05-01");
+      } else {
+        expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      }
     }
   });
 
@@ -286,5 +302,67 @@ describe("Oura connector — recorded real API contract", () => {
       }),
     ).rejects.toThrow("Oura pagination exceeded the sync deadline");
     expect(activityPages).toBeLessThanOrEqual(2);
+  });
+
+  it("places heart-rate readings on the owner's local day", async () => {
+    let heartRateUrl = "";
+    const recordedFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (!url.includes("/usercollection/heartrate")) {
+        return recordedFetch(input);
+      }
+      heartRateUrl = url;
+      return jsonResponse({
+        data: [
+          // 2026-04-30 18:00 in Los Angeles: the day before the window.
+          {
+            id: "hr-prev",
+            bpm: 61,
+            source: "awake",
+            timestamp: "2026-05-01T01:00:00+00:00",
+          },
+          // 2026-05-01 08:00 in Los Angeles.
+          {
+            id: "hr-morning",
+            bpm: 58,
+            source: "awake",
+            timestamp: "2026-05-01T15:00:00+00:00",
+          },
+          // 2026-05-01 20:00 in Los Angeles, already 2026-05-02 in UTC.
+          {
+            id: "hr-evening",
+            bpm: 64,
+            source: "awake",
+            timestamp: "2026-05-02T03:00:00+00:00",
+          },
+        ],
+        next_token: null,
+      });
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-oura",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+      timeZone: "America/Los_Angeles",
+    });
+
+    const heartRate = payload.samples.filter((s) => s.metric === "heart_rate");
+    expect(
+      heartRate.map((s) => [s.sourceExternalId, s.localDate]).sort(),
+    ).toEqual([
+      ["hr-evening:heart_rate", "2026-05-01"],
+      ["hr-morning:heart_rate", "2026-05-01"],
+    ]);
+    // The read spans the local day in any zone, not only the UTC day.
+    const query = new URL(heartRateUrl).searchParams;
+    expect(Date.parse(query.get("start_datetime") ?? "")).toBeLessThan(
+      Date.parse("2026-05-01T00:00:00Z"),
+    );
+    expect(Date.parse(query.get("end_datetime") ?? "")).toBeGreaterThan(
+      Date.parse("2026-05-02T03:00:00Z"),
+    );
   });
 });

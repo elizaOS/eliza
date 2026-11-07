@@ -1,7 +1,7 @@
-import { type DeploymentTargetConfig } from "@elizaos/core/contracts/service-routing";
-import { type LinkedAccountFlagsConfig } from "@elizaos/core/contracts/service-routing";
-import { type ServiceCapability } from "@elizaos/core/contracts/service-routing";
-import { type ServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
+import { type DeploymentTargetConfig } from "@elizaos/host/protocol";
+import { type LinkedAccountFlagsConfig } from "@elizaos/host/protocol";
+import { type ServiceCapability } from "@elizaos/host/protocol";
+import { type ServiceRoutingConfig } from "@elizaos/host/protocol";
 export interface CloudProxyConfigLike {
     cloud?: {
         apiKey?: string;

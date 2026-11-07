@@ -6,10 +6,11 @@
 import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
 import type * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { isRealtimeVoiceForceEnabled } from "../../voice/realtime-voice-build-flags";
 
-export type VoiceDeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
+export const VOICE_DEVICE_TIERS = ["MAX", "GOOD", "OKAY", "POOR"] as const;
+export type VoiceDeviceTier = (typeof VOICE_DEVICE_TIERS)[number];
 
 export interface VoiceTierBannerProps {
   tier: VoiceDeviceTier;

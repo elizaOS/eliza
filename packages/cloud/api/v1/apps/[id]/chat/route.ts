@@ -1,14 +1,14 @@
 /** Delegates app-scoped chat to the canonical cache-only inference pipeline. */
 
-import { Hono } from "hono";
-import { handleChatCompletionsPOST } from "@/api/v1/chat/completions/route";
-import { getGenerativeExecutionContext } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   addCorsHeaders,
   createPreflightResponse,
-} from "@/lib/middleware/cors-apps";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/cors-apps";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { handleChatCompletionsPOST } from "@/api/v1/chat/completions/route";
+import { getGenerativeExecutionContext } from "@/api-app/lib/generative-route-auth";
 
 const honoRouter = new Hono<AppEnv>();
 

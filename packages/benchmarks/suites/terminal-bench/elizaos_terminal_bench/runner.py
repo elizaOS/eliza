@@ -3,7 +3,7 @@ Terminal-Bench Runner
 
 Orchestrates the full Terminal-Bench evaluation pipeline. Every task is
 solved by the elizaOS TypeScript benchmark bridge
-(``suites/lifeops-bench/runner/src/server.ts``); the legacy Python
+(``harnesses/eliza/runner/src/server.ts``); the legacy Python
 ``AgentRuntime`` path has been removed.
 """
 
@@ -82,7 +82,9 @@ class BaselineTerminalAgent:
                 }
             )
 
-        success, test_output, test_exit_code = await self._environment.run_test(task.test_script)
+        success, test_output, test_exit_code = await self._environment.run_test(
+            task.test_script
+        )
         session.end_time = datetime.now()
         session.final_test_output = test_output
         session.final_test_exit_code = test_exit_code
@@ -147,7 +149,9 @@ class TerminalBenchRunner:
         output_path = Path(self.config.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        self._use_sample_tasks = bool(use_sample_tasks or self.dataset.loaded_sample_tasks)
+        self._use_sample_tasks = bool(
+            use_sample_tasks or self.dataset.loaded_sample_tasks
+        )
         self._setup_complete = True
         logger.info(f"Runner setup complete. Loaded {len(self.dataset)} tasks.")
 
@@ -248,16 +252,17 @@ class TerminalBenchRunner:
             },
             # Leaderboard numbers are only meaningful on the official dataset,
             # not on built-in sample tasks.
-            compare_leaderboard=self.config.compare_leaderboard and (not self._use_sample_tasks),
+            compare_leaderboard=self.config.compare_leaderboard
+            and (not self._use_sample_tasks),
         )
 
         # Save report
         await self._save_report(report)
 
         # Log summary
-        logger.info(f"\n{'='*50}")
+        logger.info(f"\n{'=' * 50}")
         logger.info(f"Terminal-Bench Evaluation Complete")
-        logger.info(f"{'='*50}")
+        logger.info(f"{'=' * 50}")
         logger.info(f"Accuracy: {report.accuracy:.1%}")
         logger.info(f"Passed: {report.passed_tasks}/{report.total_tasks}")
         logger.info(f"Total Time: {report.evaluation_time_seconds:.1f}s")
@@ -338,12 +343,16 @@ class TerminalBenchRunner:
                     }
                 )
 
-                success, test_output, test_exit_code = await env.run_test(task.test_script)
+                success, test_output, test_exit_code = await env.run_test(
+                    task.test_script
+                )
                 session.end_time = datetime.now()
                 session.final_test_output = test_output
                 session.final_test_exit_code = test_exit_code
 
-                total_execution_time = sum(c.execution_time_ms for c in session.commands)
+                total_execution_time = sum(
+                    c.execution_time_ms for c in session.commands
+                )
                 return TerminalBenchResult(
                     task_id=task.task_id,
                     success=success,
@@ -399,7 +408,9 @@ class TerminalBenchRunner:
                 task_id=task.task_id,
                 success=success,
                 commands_executed=len(session.commands),
-                total_execution_time_ms=sum(c.execution_time_ms for c in session.commands),
+                total_execution_time_ms=sum(
+                    c.execution_time_ms for c in session.commands
+                ),
                 test_output=test_output,
                 test_exit_code=test_exit_code,
                 tokens_used=0,
@@ -410,7 +421,9 @@ class TerminalBenchRunner:
         finally:
             await env.stop()
 
-    def _create_environment(self, task: TerminalTask) -> TerminalEnvironment | LocalTerminalEnvironment:
+    def _create_environment(
+        self, task: TerminalTask
+    ) -> TerminalEnvironment | LocalTerminalEnvironment:
         backend = (self.config.execution_backend or "tmux").lower()
         if self.config.local_sandbox or backend == "local":
             environment_cls: type = LocalTerminalEnvironment
@@ -418,6 +431,7 @@ class TerminalBenchRunner:
             environment_cls = TerminalEnvironment
         elif backend == "mock":
             from elizaos_terminal_bench.environment import MockTerminalEnvironment
+
             environment_cls = MockTerminalEnvironment
         else:
             # tmux is the default and faithful upstream path.
@@ -491,7 +505,11 @@ class TerminalBenchRunner:
     def _provider_model(self, *, default_provider: str) -> tuple[str, str]:
         """Resolve provider/model from config, env, and optional provider prefix."""
         provider = (
-            (self.config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER") or "")
+            (
+                self.config.model_provider
+                or os.environ.get("BENCHMARK_MODEL_PROVIDER")
+                or ""
+            )
             .strip()
             .lower()
         )
@@ -631,7 +649,9 @@ class TerminalBenchRunner:
                             "execution_time_ms": cmd.execution_time_ms,
                             "timestamp": cmd.timestamp,
                             "working_directory": cmd.working_directory,
-                            "status": cmd.status.value if hasattr(cmd.status, "value") else cmd.status,
+                            "status": cmd.status.value
+                            if hasattr(cmd.status, "value")
+                            else cmd.status,
                             "params": cmd.params,
                         }
                         for cmd in result.session.commands
@@ -651,13 +671,15 @@ class TerminalBenchRunner:
                         "session_id": result.session.session_id,
                         "task_id": result.task_id,
                         "success": result.success,
-                        "prompt": result.session.prompt or result.session.task.instruction,
+                        "prompt": result.session.prompt
+                        or result.session.task.instruction,
                         "model_responses": result.session.model_responses,
                         "tool_calls": tool_calls,
                         "commands": commands,
                         "test_output": result.test_output,
                         "test_exit_code": result.test_exit_code,
-                        "final_test_output": result.session.final_test_output or result.test_output,
+                        "final_test_output": result.session.final_test_output
+                        or result.test_output,
                         "final_test_exit_code": (
                             result.session.final_test_exit_code
                             if result.session.final_test_exit_code is not None

@@ -18,7 +18,6 @@ import {
   sign,
   verify,
 } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteControlEnvelope,
@@ -43,7 +42,8 @@ import {
   type SignedRemoteCommand,
   type SignedRemoteCommandResult,
   type SignedRemoteCommandStartReceipt,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 
 export type RemoteCommandRejection =
   | "malformed"

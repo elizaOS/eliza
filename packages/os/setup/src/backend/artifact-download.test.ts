@@ -23,7 +23,7 @@ const artifact = {
 };
 const urls = {
   "boot.img":
-    "https://github.com/elizaOS/os/releases/download/fixture/boot.img",
+    "https://github.com/elizaOS/eliza/releases/download/fixture/boot.img",
 };
 async function directory() {
   const root = await mkdtemp(join(tmpdir(), "eliza-download-test-"));

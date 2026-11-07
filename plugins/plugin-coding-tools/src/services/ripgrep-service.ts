@@ -121,13 +121,13 @@ function resolveExecutionPath(targetPath: string): {
   searchPath: string;
 } {
   try {
+    // Search the absolute path so ripgrep prints absolute file paths, as GLOB
+    // returns. A path relative to the searched directory would be resolved
+    // against the session cwd by the next READ/EDIT and name another file.
     const stat = statSync(targetPath);
-    if (stat.isDirectory()) {
-      return { cwd: targetPath, searchPath: "." };
-    }
     return {
-      cwd: path.dirname(targetPath),
-      searchPath: path.basename(targetPath),
+      cwd: stat.isDirectory() ? targetPath : path.dirname(targetPath),
+      searchPath: targetPath,
     };
   } catch {
     // error-policy:J3 existence probe on the search target; when stat fails the

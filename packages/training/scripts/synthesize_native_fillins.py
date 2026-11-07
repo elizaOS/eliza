@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from lib.generation_integrity import IncompleteGenerationError, require_complete_generation
+from eliza_training.lib.generation_integrity import IncompleteGenerationError, require_complete_generation
 
 
 SCRIPT_PATH = Path(__file__).resolve()

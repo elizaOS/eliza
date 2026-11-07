@@ -3,7 +3,7 @@
 		"customConditions": ["eliza-source"],
 		"paths": {
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
+			"@elizaos/core/protocol": ["../../packages/core/src/protocol"]
 		},
 		"ignoreDeprecations": "6.0",
 		"target": "ES2022",

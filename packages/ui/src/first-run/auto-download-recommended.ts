@@ -22,13 +22,13 @@
  *   - no published, activation-eligible tier fits → skip, no marker.
  */
 
-import type {
-  CatalogModel,
-  ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
-import { client } from "../api";
+import type { CatalogModel, ModelHubSnapshot } from "@elizaos/contracts";
+import {
+  selectRecommendedModelForSlot,
+  UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
+import { client } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";
@@ -75,6 +75,7 @@ function pickRecommendedModel(snapshot: ModelHubSnapshot): CatalogModel | null {
       "TEXT_LARGE",
       snapshot.hardware,
       snapshot.catalog,
+      { policy: UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY },
     ).alternatives.find((model) => !installedIds.has(model.id)) ?? null
   );
 }

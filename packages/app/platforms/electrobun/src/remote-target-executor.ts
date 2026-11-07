@@ -7,15 +7,13 @@
 import {
 	classifyRemoteAgentRequestPath,
 	parseRemoteAgentRequest,
+	parseRemoteBrowserCommandPayload,
 	REMOTE_AGENT_CHAT_TIMEOUT_MS,
 	REMOTE_AGENT_RESPONSE_LIMIT_BYTES,
 	type RemoteAgentRequest,
-} from "@elizaos/core/contracts/remote-agent-request";
-import {
-	parseRemoteBrowserCommandPayload,
 	type RemoteCommandAction,
 	type RemoteJsonValue,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import type {
 	RemoteTargetCommandExecutor,
 	RemoteTargetEffectResult,

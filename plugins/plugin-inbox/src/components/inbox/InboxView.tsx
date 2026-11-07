@@ -1,28 +1,6 @@
-/**
- * InboxView — the GUI data wrapper for the cross-channel inbox.
- *
- * It owns the live inbox data (the single read-only endpoint served by the
- * personal-assistant routes, the background poll, the channel-filter selection,
- * and the loading/error/empty/ready state machine) and renders the one
- * presentational {@link InboxSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` render the browser DOM
- * surface today while the retained modality contract stays available for future
- * adapters.
- *
- * Data source (PA owns the persistence + connector pulls; this plugin renders):
- *   GET {base}/api/lifeops/inbox?channels=
- *
- * The default fetcher builds its URL from `client.getBaseUrl()`; tests inject
- * the fetcher seam so they stay offline. The wire payload is a flat list of
- * messages plus per-channel counts; we map each message to a flat display item
- * at the fetch boundary so the rest of the view renders display-only.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTOs below are declared locally to match the JSON shape PA emits
- * (`LifeOpsInbox` / `LifeOpsInboxMessage` in @elizaos/core).
- */
+/** Inbox view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui/api";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -87,6 +65,8 @@ interface InboxWire {
   fetchedAt: string;
   /** Per-source connector health (`LifeOpsInboxSourceStatus` in shared). */
   sources: InboxSourceStatusWire[];
+  /** `false` only from the host fallback route, when no inbox backend is loaded. */
+  available?: boolean;
 }
 // ---------------------------------------------------------------------------
 // Fetcher seam — default to a real GET; tests inject an offline fake.
@@ -100,22 +80,6 @@ export interface InboxFetchers {
 }
 /** Maximum time allowed for one inbox request. */
 export const INBOX_VIEW_JSON_TIMEOUT_MS = 15000;
-export async function getInboxJsonWithFetch<T>(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number = INBOX_VIEW_JSON_TIMEOUT_MS,
-  callerSignal?: AbortSignal,
-): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(`Inbox request failed (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
 async function getInbox(
   channels: InboxChannel[],
   signal?: AbortSignal,
@@ -123,12 +87,10 @@ async function getInbox(
   const params = new URLSearchParams();
   if (channels.length > 0) params.set("channels", channels.join(","));
   const query = params.toString();
-  const path = `/api/lifeops/inbox${query ? `?${query}` : ""}`;
-  return getInboxJsonWithFetch<InboxWire>(
-    `${client.getBaseUrl()}${path}`,
-    globalThis.fetch,
-    INBOX_VIEW_JSON_TIMEOUT_MS,
-    signal,
+  return client.fetch<InboxWire>(
+    `/api/lifeops/inbox${query ? `?${query}` : ""}`,
+    { method: "GET", signal },
+    { timeoutMs: INBOX_VIEW_JSON_TIMEOUT_MS },
   );
 }
 const defaultFetchers: InboxFetchers = {
@@ -215,14 +177,7 @@ function unreadNudge(items: InboxItem[]): string | null {
 /** Single chat-handoff seam: search, reload, connect, and open all live in the
  * floating chat, so the view routes user intent there rather than computing. */
 function sendChatPrompt(prompt: string): void {
-  // `client` is the shared ElizaClient; its published type does not surface
-  // `sendChatMessage`, so read it through a narrow optional-method view (the
-  // floating chat injects it at runtime) rather than widening the client type.
-  (
-    client as {
-      sendChatMessage?: (text: string) => void;
-    }
-  ).sendChatMessage?.(prompt);
+  dispatchChatPrefill({ text: prompt });
 }
 function requestConnect(): void {
   sendChatPrompt("Connect a messaging channel so you can triage my inbox.");
@@ -285,6 +240,16 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       .fetchInbox(channels, controller.signal)
       .then((wire) => {
         if (controller.signal.aborted) return;
+        if (wire.available === false) {
+          // The host answers with an empty payload when no inbox backend is
+          // loaded. That is not an empty inbox, and connecting a channel
+          // cannot fix it, so show it as an error.
+          setState({
+            kind: "error",
+            message: "Inbox is not available on this agent.",
+          });
+          return;
+        }
         const items = wire.messages
           .map(mapMessage)
           .filter((item): item is InboxItem => item !== null);

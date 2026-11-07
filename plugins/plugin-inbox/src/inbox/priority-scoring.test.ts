@@ -1,92 +1,42 @@
-/** Verifies inbox priority scorer failure handling at the model boundary. */
+import type { LifeOpsInboxMessage } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import { type LifeOpsInboxMessage } from "@elizaos/core/contracts/personal-assistant";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  INBOX_PRIORITY_FLAGS_UNBOUNDED,
-  MAX_INBOX_PRIORITY_FLAGS_OUTPUT,
-} from "./priority-flags.ts";
+import { expect, it } from "vitest";
 import {
   __resetPriorityScoringCacheForTests,
   scoreInboxMessages,
-} from "./priority-scoring.ts";
+} from "./priority-scoring";
 
-function message(id: string): LifeOpsInboxMessage {
-  return {
-    id,
-    channel: "discord",
+it("keeps priority scores from json5-labelled model fences", async () => {
+  const message: LifeOpsInboxMessage = {
+    id: "gmail:message",
+    channel: "gmail",
     sender: {
-      id: `sender-${id}`,
-      displayName: "Ada",
+      id: "sender",
+      displayName: "Sender",
       email: null,
       avatarUrl: null,
     },
-    subject: null,
-    snippet: "Can you review this tomorrow at 3pm?",
-    receivedAt: "2026-01-01T12:00:00.000Z",
+    subject: "Meeting",
+    snippet: "Can we meet tomorrow?",
+    receivedAt: "2026-10-13T00:00:00Z",
     unread: true,
     deepLink: null,
-    sourceRef: { channel: "discord", externalId: id },
+    sourceRef: { channel: "gmail", externalId: "message" },
   };
-}
-
-describe("scoreInboxMessages", () => {
-  beforeEach(() => {
-    __resetPriorityScoringCacheForTests();
-  });
-
-  it("reports model failures and leaves priorities unscored", async () => {
-    const error = new Error("model unavailable");
-    const reportError = vi.fn();
-    const runtime = {
-      useModel: vi.fn(async () => {
-        throw error;
-      }),
-      reportError,
-    } as unknown as IAgentRuntime;
-
-    const result = await scoreInboxMessages(
-      runtime,
-      [message("one"), message("two")],
-      { model: "test-model", concurrency: 1 },
-    );
-
-    expect(result).toEqual([null, null]);
-    expect(reportError).toHaveBeenCalledWith(
-      "lifeops.priority-scoring",
-      error,
-      expect.objectContaining({
-        count: 2,
-        modelId: "test-model",
-      }),
-    );
-  });
-
-  it("fails closed at the reachable scorer boundary on delimiter output amplification", async () => {
-    const reportError = vi.fn();
-    const flags = Array.from(
-      { length: MAX_INBOX_PRIORITY_FLAGS_OUTPUT + 1 },
-      () => "urgent",
-    ).join("|");
-    const runtime = {
-      useModel: vi.fn(async () =>
-        JSON.stringify({
-          scores: [{ score: 80, category: "important", flags }],
-        }),
-      ),
-      reportError,
-    } as unknown as IAgentRuntime;
-
-    const result = await scoreInboxMessages(runtime, [message("amplified")], {
-      model: "test-model",
-      concurrency: 1,
-    });
-
-    expect(result).toEqual([null]);
-    expect(reportError).toHaveBeenCalledWith(
-      "lifeops.priority-scoring",
-      expect.objectContaining({ code: INBOX_PRIORITY_FLAGS_UNBOUNDED }),
-      expect.objectContaining({ count: 1, modelId: "test-model" }),
-    );
-  });
+  const score = { score: 82, category: "important", flags: ["question"] };
+  let response = "";
+  const errors: unknown[] = [];
+  const runtime = {
+    useModel: async () => response,
+    reportError: (_source: string, error: unknown) => errors.push(error),
+  } as unknown as IAgentRuntime;
+  for (const payload of [{ scores: [score] }, [score]]) {
+    for (const label of ["json5", "JSON5", "json", ""]) {
+      __resetPriorityScoringCacheForTests();
+      response = `\`\`\`${label}\n${JSON.stringify(payload)}\n\`\`\``;
+      expect(await scoreInboxMessages(runtime, [message])).toEqual([score]);
+    }
+  }
+  expect(errors).toEqual([]);
+  __resetPriorityScoringCacheForTests();
 });

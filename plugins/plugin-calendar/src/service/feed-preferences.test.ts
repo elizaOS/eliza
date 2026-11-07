@@ -287,6 +287,50 @@ describe("calendar feed preference SQL revisions", { timeout: 30_000 }, () => {
     expect(persisted.rows).toEqual([{ count: 0 }]);
   });
 
+  it("follows a host default only until the owner first changes the source", async () => {
+    const grantId = `alpha-google:${"a".repeat(64)}`;
+    const identity = source({ grantId, connectorAccountId: grantId });
+    const { runtime, pg } = await harness();
+    const read = async (initialIncluded: boolean) =>
+      (
+        await ensureCalendarFeedIncludes(runtime, [
+          { ...identity, initialIncluded, followInitialUntilChosen: true },
+        ])
+      ).calendarFeedIncludes[calendarFeedPreferenceKey(identity)];
+
+    // A row seeded under an earlier default (hidden) follows the host's
+    // current default, and back again, without spending the owner's version.
+    expect(await read(false)).toBe(false);
+    expect(await read(true)).toBe(true);
+    expect(await read(false)).toBe(false);
+    expect(await read(true)).toBe(true);
+    await expect(
+      getCalendarFeedPreference(runtime, identity),
+    ).resolves.toMatchObject({ included: true, version: 0 });
+
+    await setCalendarFeedIncluded(runtime, identity, false, 0);
+    expect(await read(true)).toBe(false);
+    const persisted = await pg.query<{ included: boolean; version: number }>(
+      "SELECT included, version FROM app_calendar.life_calendar_feed_preferences",
+    );
+    expect(persisted.rows).toEqual([{ included: false, version: 1 }]);
+  });
+
+  it("keeps an earlier seed for sources whose host declares no default", async () => {
+    const identity = source();
+    const { runtime } = await harness();
+    await ensureCalendarFeedIncludes(runtime, [
+      { ...identity, initialIncluded: false },
+    ]);
+    await expect(
+      ensureCalendarFeedIncludes(runtime, [
+        { ...identity, initialIncluded: true },
+      ]),
+    ).resolves.toMatchObject({
+      calendarFeedIncludes: { [calendarFeedPreferenceKey(identity)]: false },
+    });
+  });
+
   it("rejects a stale no-op instead of accepting an obsolete UI token", async () => {
     const identity = source();
     const { runtime } = await harness();

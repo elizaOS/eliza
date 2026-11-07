@@ -11,32 +11,32 @@ import { createHash, randomUUID } from "node:crypto";
 import type http from "node:http";
 import {
   applyCanonicalFirstRunConfig,
+  CLOUD_INFERENCE_NO_API_KEY_ERROR,
+  hasCloudApiKeyForInference,
   loadEffectiveElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
 import type { FirstRunDirectAccountAdoption } from "@elizaos/agent/api/first-run-direct-account";
-import { prepareFirstRunConnectors } from "@elizaos/agent/first-run-config";
 import { ElizaError, logger } from "@elizaos/core";
-import { readRequestBody } from "@elizaos/core/api/http-helpers";
-import {
-  getDirectAccountProviderForFirstRunProvider,
-  migrateLegacyRuntimeConfig,
-  normalizeFirstRunCredentialInputs,
-  normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+import { readRequestBody } from "@elizaos/host";
 import {
   type DeploymentTargetRuntime,
+  getDirectAccountProviderForFirstRunProvider,
   normalizeDeploymentTargetConfig,
+  normalizeFirstRunCredentialInputs,
+  normalizeFirstRunProviderId,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-} from "@elizaos/core/contracts/service-routing";
+  prepareFirstRunConnectors,
+  resolveLinkedAccountsInConfig,
+} from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { ensureRouteAuthorized } from "./auth.ts";
+import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,
   hasCompatPersistedFirstRunState,
@@ -51,6 +51,7 @@ import {
   deriveFirstRunReplayBody,
   extractAndPersistFirstRunApiKey,
   hasDeprecatedFirstRunRequestFields,
+  isCloudProvisioned,
   persistFirstRunDefaults,
 } from "./server-first-run-helpers";
 
@@ -162,6 +163,14 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
+      // An explicit disconnect retires this delayed setup write. Match the
+      // canonical guard used by the host's ordinary Cloud-key backfill.
+      if (
+        resolveLinkedAccountsInConfig(freshConfig)?.elizacloud?.status ===
+        "unlinked"
+      ) {
+        return;
+      }
       if (freshConfig.cloud?.apiKey) {
         return;
       }
@@ -169,7 +178,6 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
         (freshConfig as Record<string, unknown>).cloud = {};
       }
       (freshConfig.cloud as Record<string, unknown>).apiKey = apiKey;
-      migrateLegacyRuntimeConfig(freshConfig as Record<string, unknown>);
       saveElizaConfig(freshConfig);
       logger.info(
         "[api] Re-saved cloud.apiKey after upstream handler clobbered it",
@@ -276,6 +284,18 @@ export async function handleFirstRunRoute(
           ? "The selected provider could not activate. Retry setup or inspect runtime diagnostics."
           : null,
     });
+    return true;
+  }
+  // Once setup is complete, re-running first-run rewrites the owner's
+  // config and reboots the runtime, so the submit path must be
+  // owner-only. The session tier stays as-is pre-setup: no persisted
+  // state exists yet, and the local onboarding shell resolves to
+  // OWNER via trusted loopback. Activation lookups above are
+  // untouched by this check.
+  if (
+    hasCompatPersistedFirstRunState(loadElizaConfig()) &&
+    !(await ensureRouteMinRole(req, res, state, "OWNER"))
+  ) {
     return true;
   }
   let rawBody: string;
@@ -388,6 +408,35 @@ export async function handleFirstRunRoute(
             config as Record<string, unknown>,
             devCloudAuthority,
           );
+          if (
+            !resolvedCloudApiKey &&
+            devCloudAuthority &&
+            cloudInferenceSelected &&
+            replayDeploymentTarget?.runtime !== "cloud"
+          ) {
+            // The launcher owns the Cloud credential under a development
+            // authority and the plugin collector drops the Cloud plugin
+            // without one. Committing this route would report a finished
+            // setup whose first chat has no provider.
+            return {
+              ok: false,
+              status: 409,
+              error: `Eliza Cloud inference with a local agent is not available under the ${devCloudAuthority} development Cloud target: this launch has no Cloud API key, so the local agent does not load the Cloud plugin. Choose another provider, or run \`bun run dev\` for the Eliza Cloud runtime.`,
+            };
+          }
+          if (
+            !devCloudAuthority &&
+            cloudInferenceSelected &&
+            replayDeploymentTarget?.runtime !== "cloud" &&
+            !isCloudProvisioned() &&
+            !hasCloudApiKeyForInference(config)
+          ) {
+            return {
+              ok: false,
+              status: 409,
+              error: CLOUD_INFERENCE_NO_API_KEY_ERROR,
+            };
+          }
           if (!resolvedCloudApiKey) {
             logger.warn(
               devCloudAuthority

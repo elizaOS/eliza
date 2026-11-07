@@ -14,7 +14,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -92,7 +92,7 @@ describe("draftFollowupAction", () => {
     [
       "unsupported source",
       { source: "slack", to: ["alice"], body: "Hello" },
-      "source must be one of the supported message sources",
+      "source must be one of: gmail, discord, telegram, twitter, imessage, whatsapp, calendly, browser_bridge",
     ],
     ["missing body", { source: "telegram", to: ["alice"] }, "body is required"],
     [
@@ -145,6 +145,7 @@ describe("draftFollowupAction", () => {
         body: " Checking in ",
         subject: " Project status ",
         threadId: " thread-7 ",
+        channelId: " chat-42 ",
       }),
       callback,
     );
@@ -155,6 +156,7 @@ describe("draftFollowupAction", () => {
       subject: "Project status",
       body: "Checking in",
       threadId: "thread-7",
+      channelId: "chat-42",
     });
     expect(result).toEqual({
       success: true,
@@ -172,7 +174,9 @@ describe("draftFollowupAction", () => {
         action: "MESSAGE",
       },
     ]);
-    expect(service.getStore().getDraft("telegram-draft-1")).toMatchObject({
+    expect(
+      service.getStore().getDraft("telegram-draft-1", FAKE_AGENT_ID),
+    ).toMatchObject({
       draftId: "telegram-draft-1",
       source: "telegram",
       to: [{ identifier: "alice" }, { identifier: "bob", displayName: "Bob" }],

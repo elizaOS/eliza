@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
-sys.path.insert(0, str(SCRIPT_DIR.parent))
 
-from validate_corpus import run as validate_corpus_run  # noqa: E402
+from eliza_training.validate_corpus import run as validate_corpus_run  # noqa: E402
 
 
 def _attestation(*, passed: bool = True) -> dict[str, Any]:

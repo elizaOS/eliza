@@ -1,12 +1,13 @@
 /** Resolves operator-configured native product billing for a free signed-in purchaser before account creation. */
+
+import { requireUser } from "@elizaos/cloud-shared/auth";
+import { readAppBillingApplicationProduct } from "@elizaos/cloud-shared/db/repositories/app-billing-application-slots";
+import { AppDelegationError } from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { configuredAppBillingEnvironment } from "@elizaos/cloud-shared/lib/services/generic-billing-runtime-config";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 import { z } from "zod";
-import { readAppBillingApplicationProduct } from "@/db/repositories/app-billing-application-slots";
-import { requireUser } from "@/lib/auth/workers-hono-auth";
-import { AppDelegationError } from "@/lib/services/app-delegation";
-import { configuredAppBillingEnvironment } from "@/lib/services/generic-billing-runtime-config";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { appBillingErrorResponse } from "../../../apps/[id]/billing/_handlers";
 
 const route = new Hono<AppEnv>();

@@ -6,9 +6,9 @@
  * Cloud binding (`cloud:personal:<uuid>`) by running the same `runJoinFlow`
  * controller `/join` uses. It validates the identity against the current
  * Steward session token (never trusting localStorage alone) and persists the
- * authoritative binding. If an existing Dedicated target requires explicit
- * adoption consent, this headless entry attempt fails closed and routes to
- * `/join`, which owns the visible quote review and confirmation gesture.
+ * authoritative Shared or already-cut-over Dedicated binding. This generic
+ * entry never activates paid compute; explicit upgrades remain in agent
+ * management. A server refusal routes to `/join` for its visible retry UI.
  *
  * Callers gate on `enabled` so the request only fires for the rowless case;
  * resolution failure surfaces as a query error and the entry gate falls back
@@ -16,7 +16,7 @@
  */
 
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
@@ -50,11 +50,6 @@ function takePersonalEntryHandoff(authToken: string): JoinFlowResult | null {
   const pending = pendingPersonalEntryHandoff;
   pendingPersonalEntryHandoff = null;
   return pending?.authToken === authToken ? pending.result : null;
-}
-
-/** The persisted-active-server id a resolved personal Eliza binds under. */
-export function personalEntryBindingId(result: JoinFlowResult): string {
-  return `cloud:${result.agentId}`;
 }
 
 /**

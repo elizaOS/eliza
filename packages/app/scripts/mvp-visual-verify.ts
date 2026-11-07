@@ -39,6 +39,13 @@ import {
   resolveSpec,
 } from "@elizaos/testing/evidence/visual-primitives";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import {
+  loadBaselineManifest,
+  recordBaseline,
+  requiredBaselineStates,
+  resolveBaselinePath,
+  saveBaselineManifest,
+} from "./mvp-visual-verify/baselines.ts";
 import { renderContactSheet } from "./mvp-visual-verify/html-report.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -101,21 +108,7 @@ async function discoverViewportDirs(inputDir, only) {
 }
 
 export async function discoverBaselineRequiredStates(baselineRoot, only) {
-  const entries = await readdir(baselineRoot, { withFileTypes: true }).catch(
-    () => [],
-  );
-  const states = [];
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    if (only.length && !only.includes(e.name)) continue;
-    const pngs = (await readdir(path.join(baselineRoot, e.name))).filter((f) =>
-      f.endsWith(".png"),
-    );
-    for (const png of pngs) {
-      states.push(`${png.replace(/\.png$/, "")}@${e.name}`);
-    }
-  }
-  return states.sort();
+  return requiredBaselineStates(await loadBaselineManifest(baselineRoot), only);
 }
 
 async function loadReportIndex(inputDir) {
@@ -168,6 +161,7 @@ async function main() {
       process.env.ELIZA_MVP_VISUAL_BASELINE_DIR ??
       path.join(here, "mvp-visual-verify", "baseline"),
   );
+  const baselines = await loadBaselineManifest(baselineRoot);
   const diffRoot = path.join(outDir, "diffs");
   await mkdir(outDir, { recursive: true });
 
@@ -212,16 +206,22 @@ async function main() {
 
         const palette = await dominantColorsFromPng(currentPath);
         const ocr = await ocrImage(currentPath);
-        const baselinePath = path.join(baselineRoot, vp.name, png);
         const diffOutPath = path.join(diffRoot, vp.name, png);
-        // --update-baseline: overwrite the baseline with the current shot BEFORE
-        // diffing, so the refresh is deliberate and the diff self-reports 0%.
         if (args.updateBaseline) {
-          await mkdir(path.dirname(baselinePath), { recursive: true });
-          await (await import("sharp"))
-            .default(currentPath)
-            .toFile(baselinePath);
+          await recordBaseline(
+            baselineRoot,
+            baselines,
+            vp.name,
+            slug,
+            currentPath,
+          );
         }
+        const baselinePath = resolveBaselinePath(
+          baselineRoot,
+          baselines,
+          vp.name,
+          slug,
+        );
         const diff = await diffAgainstBaseline({
           currentPath,
           baselinePath,
@@ -282,6 +282,8 @@ async function main() {
   } finally {
     await closeOcrEngines();
   }
+
+  if (args.updateBaseline) await saveBaselineManifest(baselineRoot, baselines);
 
   results.sort((a, b) =>
     a.slug === b.slug

@@ -1,6 +1,9 @@
 /** Maps checkout conflicts and provider uncertainty to safe, actionable responses. */
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppContext } from "@/types/cloud-worker-env";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 /** Reasons a retry of the same request can never succeed; the client must refresh billing. */
 const NON_RETRYABLE_REASONS = new Set([

@@ -1,22 +1,11 @@
-"""Eliza-1 manifest generator + validator (Python side).
+"""Build and validate Eliza-1 bundles against the native inference manifest contract.
 
-Mirror of the TS module under
-``eliza/packages/app/src/services/local-inference/manifest/``. The
-publish flow (``publish_all_eliza1.sh`` and friends) calls
-``build_manifest`` after assembling files, running quantization, hardware
-verification, and evals. The function refuses to emit
-``defaultEligible: True`` if any required gate fails — the same rule the
-runtime validator enforces.
-
-Source of truth:
-- ``packages/inference/AGENTS.md`` §6 (manifest schema)
-- ``packages/inference/AGENTS.md`` §3 (mandatory kernels)
-- ``packages/inference/AGENTS.md`` §2 (tier matrix)
-- ``packages/training/AGENTS.md`` §6 (publishing flow / publish-blocking
-  conditions)
+Failed or missing release gates always prevent default eligibility.
 """
 
 from __future__ import annotations
+
+from eliza_training.lib.file_integrity import sha256_file as _sha256_path
 
 import hashlib
 import json
@@ -1923,12 +1912,6 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _sha256_path(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def compute_training_data_manifest_sha256(

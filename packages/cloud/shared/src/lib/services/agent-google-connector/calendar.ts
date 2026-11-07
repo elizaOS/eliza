@@ -3,7 +3,7 @@
  * handlers, including compatible IANA local-time normalization at the service
  * boundary.
  */
-import { applyTimeZone } from "../../utils/google-mcp-shared";
+import { applyTimeZone, getZonedDateParts } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
   fail,
@@ -25,6 +25,7 @@ type GoogleCalendarEventDate = {
 
 type GoogleCalendarApiEvent = {
   id?: string;
+  etag?: string;
   status?: string;
   summary?: string;
   description?: string;
@@ -83,34 +84,6 @@ type LocalDateTimeParts = {
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
-
-function getZonedDateParts(date: Date, timeZone: string): LocalDateTimeParts {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(date);
-  const read = (type: Intl.DateTimeFormatPartTypes) => {
-    const value = parts.find((part) => part.type === type)?.value;
-    if (!value) {
-      throw new Error(`missing zoned date part: ${type}`);
-    }
-    return Number(value);
-  };
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour"),
-    minute: read("minute"),
-    second: read("second"),
-  };
-}
 
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -290,6 +263,7 @@ function normalizeGoogleCalendarEvent(
     timezone: start.timeZone || end.timeZone,
     htmlLink: event.htmlLink?.trim() || null,
     conferenceLink: readConferenceLink(event),
+    etag: event.etag?.trim() || null,
     organizer: event.organizer
       ? {
           email: event.organizer.email?.trim() || null,
@@ -318,6 +292,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   calendarId: string;
   timeMin: string;
   timeMax: string;
@@ -335,7 +310,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
-      "nextPageToken,items(id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
+      "nextPageToken,items(id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri)))",
     timeZone: args.timeZone,
   });
 
@@ -352,6 +327,7 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       userId: args.userId,
       side: args.side,
       grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
       url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events?${params.toString()}`,
     });
     const parsed = (await response.json()) as {
@@ -391,27 +367,49 @@ export async function listManagedGoogleCalendars(args: {
   side: OAuthConnectionRole;
   grantId?: string;
 }): Promise<ManagedGoogleCalendarSummary[]> {
-  const params = new URLSearchParams({
+  const baseParams = new URLSearchParams({
     minAccessRole: "reader",
     showDeleted: "false",
     showHidden: "false",
+    maxResults: "250",
     fields:
-      "items(id,summary,summaryOverride,description,primary,accessRole,backgroundColor,foregroundColor,timeZone,selected,deleted,hidden)",
+      "nextPageToken,items(id,summary,summaryOverride,description,primary,accessRole,backgroundColor,foregroundColor,timeZone,selected,deleted,hidden)",
   });
 
-  const response = await googleFetch({
-    organizationId: args.organizationId,
-    userId: args.userId,
-    side: args.side,
-    grantId: args.grantId,
-    url: `${GOOGLE_CALENDAR_LIST_ENDPOINT}?${params.toString()}`,
-  });
-  const parsed = (await response.json()) as {
-    items?: GoogleCalendarListApiEntry[];
-  };
+  // Follow nextPageToken: the list is paged (100 by default), and a caller
+  // has no cursor to continue it.
+  const items: GoogleCalendarListApiEntry[] = [];
+  let pageToken: string | undefined;
+  const seenPageTokens = new Set<string>();
+  do {
+    const params = new URLSearchParams(baseParams);
+    if (pageToken) {
+      params.set("pageToken", pageToken);
+    }
+    const response = await googleFetch({
+      organizationId: args.organizationId,
+      userId: args.userId,
+      side: args.side,
+      grantId: args.grantId,
+      url: `${GOOGLE_CALENDAR_LIST_ENDPOINT}?${params.toString()}`,
+    });
+    const parsed = (await response.json()) as {
+      items?: GoogleCalendarListApiEntry[];
+      nextPageToken?: string;
+    };
+    items.push(...(parsed.items ?? []));
+    const nextPageToken = parsed.nextPageToken?.trim() || undefined;
+    if (nextPageToken && seenPageTokens.has(nextPageToken)) {
+      fail(502, "Google Calendar list pagination repeated a page token.");
+    }
+    if (nextPageToken) {
+      seenPageTokens.add(nextPageToken);
+    }
+    pageToken = nextPageToken;
+  } while (pageToken);
 
   const calendars: ManagedGoogleCalendarSummary[] = [];
-  for (const item of parsed.items ?? []) {
+  for (const item of items) {
     if (item.deleted || item.hidden) continue;
     const calendarId = item.id?.trim();
     if (!calendarId) continue;
@@ -536,7 +534,7 @@ async function fetchManagedGoogleCalendarEvent(args: {
 }): Promise<ManagedGoogleCalendarEvent | null> {
   const params = new URLSearchParams({
     fields:
-      "id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
+      "id,etag,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri))",
   });
   const response = await googleFetch({
     organizationId: args.organizationId,
@@ -567,6 +565,8 @@ export async function updateManagedGoogleCalendarEvent(args: {
     displayName?: string;
     optional?: boolean;
   }>;
+  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
+  ifMatch?: string;
 }): Promise<{ event: ManagedGoogleCalendarEvent }> {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const needsExistingEventContext =
@@ -621,7 +621,10 @@ export async function updateManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}?conferenceDataVersion=1`,
     options: {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(args.ifMatch ? { "If-Match": args.ifMatch } : {}),
+      },
       body: JSON.stringify({
         ...(args.title !== undefined ? { summary: args.title } : {}),
         ...(args.description !== undefined ? { description: args.description } : {}),
@@ -649,6 +652,8 @@ export async function deleteManagedGoogleCalendarEvent(args: {
   grantId?: string;
   calendarId: string;
   eventId: string;
+  /** The event `etag` the caller read; Google refuses a newer revision with 412. */
+  ifMatch?: string;
 }): Promise<{ ok: true }> {
   await googleFetch({
     organizationId: args.organizationId,
@@ -658,6 +663,7 @@ export async function deleteManagedGoogleCalendarEvent(args: {
     url: `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(args.eventId)}`,
     options: {
       method: "DELETE",
+      ...(args.ifMatch ? { headers: { "If-Match": args.ifMatch } } : {}),
     },
   });
   return { ok: true };

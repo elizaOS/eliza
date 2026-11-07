@@ -11,8 +11,8 @@ import {
   KmsAeadOperationKeyBundleProvider,
   type KmsClient,
 } from "@elizaos/auth/kms";
+import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/core/contracts/agent-backup-capture-v2";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";

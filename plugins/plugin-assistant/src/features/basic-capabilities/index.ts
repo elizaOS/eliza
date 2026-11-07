@@ -1,4 +1,5 @@
 import { proposeDeviceAction } from "../../services/device-actions/action.ts";
+import { deviceActionTools } from "../../services/device-actions/tools.ts";
 import { WorkflowDeviceBridgeService } from "../../services/device-actions/workflow-service.ts";
 /**
  * Basic Capabilities
@@ -13,6 +14,7 @@ import { WorkflowDeviceBridgeService } from "../../services/device-actions/workf
  */
 
 import {
+  type Action,
   type ActionEventPayload,
   type ActionLogBody,
   type BaseLogBody,
@@ -38,6 +40,7 @@ import {
   type EventPayload,
   EventType,
   fetchWithSsrfGuard,
+  formatDiagnosticError,
   getConfiguredOwnerEntityIds,
   getLocalServerUrl,
   type IAgentRuntime,
@@ -75,11 +78,10 @@ import {
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
-import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { composePromptFromState } from "../../text/template-rendering.js";
@@ -109,7 +111,6 @@ import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
-import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
 import { actionStateProvider } from "./providers/actionState.ts";
@@ -122,6 +123,7 @@ import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { currentTimeProvider } from "./providers/currentTime.ts";
 import { entitiesProvider } from "./providers/entities.ts";
+import { nativeAlarmContextProvider } from "./providers/native-alarm-context.ts";
 import {
   platformChatContextProvider,
   platformUserContextProvider,
@@ -133,51 +135,8 @@ import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts"
 import { uiContextProvider } from "./providers/uiContext.ts";
 import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
 import { worldProvider } from "./providers/world.ts";
+import { basicCapabilityRoutes } from "./routes.ts";
 
-// Re-export advanced capability modules
-export * from "../advanced-capabilities/actions/index.ts";
-// Re-export advanced capabilities
-export {
-  advancedActions,
-  advancedCapabilities,
-  advancedEvaluators,
-  advancedProviders,
-  advancedServices,
-} from "../advanced-capabilities/index.ts";
-export * from "../advanced-capabilities/providers/index.ts";
-// Re-export autonomy
-export * from "../autonomy/index.ts";
-// Re-export core capabilities (trust, secrets, plugin-manager)
-export {
-  coreCapabilities,
-  secretsCapability,
-  trustCapability,
-} from "../index.ts";
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
-// Re-export action and provider modules
-export * from "./actions/index.ts";
-export * from "./evaluators/index.ts";
-export * from "./providers/index.ts";
-// Import advanced capabilities
-// Import for local use.
-//
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
-export {
-  dedupeHygienicDialogueMessages,
-  isHygienicDialogueMessage,
-  recentMessagesProvider,
-} from "./providers/recentMessages.ts";
-
-// Re-export plugin-manager security helpers (used by other plugins like
-// plugin-app-control to gate owner/admin-only actions without taking a dep
-// on @elizaos/agent, which would create a layer cycle).
-// ============================================================================
-// Structured JSON response interfaces.
-// ============================================================================
 interface PostCreationJson {
   post?: string;
   thought?: string;
@@ -1205,7 +1164,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },
@@ -1237,7 +1199,10 @@ const events: PluginEvents = {
             startTime: payload.startTime,
             endTime: payload.endTime,
             duration: payload.duration,
-            error: payload.error,
+            error:
+              payload.error === undefined
+                ? undefined
+                : formatDiagnosticError(payload.error),
             source: payload.source || "unknown",
           } as BaseLogBody,
         },
@@ -1297,6 +1262,7 @@ export const basicProviders = [
   platformChatContextProvider,
   platformUserContextProvider,
   providersProvider,
+  nativeAlarmContextProvider,
   recentErrorsProvider,
   recentMessagesProvider,
   replyContextProvider,
@@ -1308,8 +1274,9 @@ export const basicProviders = [
 /**
  * Basic actions - fundamental response actions
  */
-export const basicActions = [
+export const basicActions: Action[] = [
   proposeDeviceAction,
+  ...deviceActionTools,
   choiceAction,
   generateMediaAction,
   readAttachmentAction,
@@ -1409,7 +1376,7 @@ export function createAssistantBehavior(): Plugin {
     providers: [...basicProviders, ...advancedProviders],
     evaluators: [...basicEvaluators, ...advancedEvaluators],
     services: [...basicServices, ...advancedServices],
-    routes: [...TURN_CONTROL_ROUTES, ...CHANNEL_TOPICS_ROUTES],
+    routes: basicCapabilityRoutes,
     events,
   };
 }

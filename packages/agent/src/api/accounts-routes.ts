@@ -29,68 +29,67 @@ import nodeCrypto from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
+  type AccountCredentialProvider,
   type AccountCredentialRecord,
   assertCanonicalAccountId,
-  createRuntimeAccountStoragePolicy,
-  deleteAccount,
-  listAccounts,
-  loadAccount,
-  saveAccount,
-  updateAccountMetadata,
-} from "@elizaos/auth/auth/account-storage";
-import { fetchCodexUsage } from "@elizaos/auth/auth/codex-usage";
-import { getAccessToken } from "@elizaos/auth/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/auth/auth/direct-api-probe";
-import {
-  cancelFlow,
-  getFlowState,
-  startAnthropicOAuthFlow,
-  startCodexOAuthFlow,
-  submitFlowCode,
-  subscribeFlow,
-} from "@elizaos/auth/auth/oauth-flow";
-import {
-  type AccountCredentialProvider,
   CODING_PLAN_PROVIDER_BASE_URL,
+  cancelFlow,
+  createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
+  deleteAccount,
+  getAccessToken,
+  getFlowState,
   isAccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,
   isDirectAccountProvider,
   isOAuthSubscriptionProvider,
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
+  listAccounts,
+  loadAccount,
   type SubscriptionProvider,
-} from "@elizaos/auth/auth/types";
+  saveAccount,
+  startAnthropicOAuthFlow,
+  startCodexOAuthFlow,
+  submitFlowCode,
+  subscribeFlow,
+  updateAccountMetadata,
+} from "@elizaos/auth/auth";
+import { fetchCodexUsage, probeDirectApiKey } from "@elizaos/auth/providers";
 import {
-  type AccountPoolBrokerSnapshot,
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
-  type ElizaConfig,
-  ElizaError,
-  type IAgentRuntime,
-  isLinkedAccountProviderId,
-  type LinkedAccountConfig,
-  type LinkedAccountProviderId,
-  logger,
   type ProviderRuntimeCapability,
   type ProviderRuntimeEligibility,
-  type RouteRequestContext,
-  resolveServiceRoutingInConfig,
+} from "@elizaos/contracts";
+import {
+  type AccountPoolBrokerSnapshot,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
   resolveStateDir,
-  type ServiceRouteAccountStrategy,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  type ElizaConfig,
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountProviderId,
+  type RouteRequestContext,
+  resolveServiceRoutingInConfig,
+  type ServiceRouteAccountStrategy,
+} from "@elizaos/host/protocol";
 
 import * as zod from "zod";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   runSubscriptionCliNpm,
   subscriptionCliCommandAvailable,
-} from "../internal/subscription-cli-process.ts";
-import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+} from "./subscription-cli-process.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -671,7 +670,7 @@ async function probeCodexUsage(
 }> {
   const start = Date.now();
   try {
-    // One canonical probe: `@elizaos/auth/auth/codex-usage` hits the ChatGPT/Codex
+    // One canonical probe: `@elizaos/auth/auth` hits the ChatGPT/Codex
     // backend the subscription token actually authenticates against (NOT
     // api.openai.com completions, which bills the API platform org and fails
     // healthy subscription accounts with billing errors), runtime-validates
@@ -849,7 +848,7 @@ export async function handleAccountsRoutes(
     }
     writeAccountStrategy(ctx.state.config, providerId, parsed.data.strategy);
     ctx.saveConfig(ctx.state.config);
-    await syncDirectProviderCredentials(ctx, providerId);
+    await applyAccountPoolToRuntime(ctx);
     json(res, { providerId, strategy: parsed.data.strategy });
     return true;
   }
@@ -1169,6 +1168,12 @@ export async function syncDirectProviderCredentials(
   providerId: string,
 ): Promise<void> {
   if (!isDirectAccountProvider(providerId)) return;
+  await applyAccountPoolToRuntime(ctx);
+}
+
+async function applyAccountPoolToRuntime(
+  ctx: Pick<AccountsRouteContext, "state">,
+): Promise<void> {
   const config = ctx.state.config as Record<string, unknown>;
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const accountStrategies = config.accountStrategies;

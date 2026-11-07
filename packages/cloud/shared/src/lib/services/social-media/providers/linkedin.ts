@@ -19,7 +19,13 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
 
@@ -74,6 +80,7 @@ async function linkedinApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${LINKEDIN_API_BASE}${endpoint}`;
 
@@ -95,10 +102,10 @@ async function linkedinApiRequest<T>(
       }
       const json = (await response.json()) as T & { message?: string; status?: number };
       if (json.message && json.status !== undefined && json.status >= 400)
-        throw new Error(json.message);
+        throw new SocialApiRejectionError(json.message);
       return json;
     },
-    { platform: "linkedin", maxRetries: 3 },
+    { platform: "linkedin", maxRetries: 3, ...retry },
   );
 
   return data as T;
@@ -285,10 +292,22 @@ export const linkedinProvider: SocialMediaProvider = {
           method: "POST",
           body: JSON.stringify(ugcPost),
         },
+        // A replay after a timeout or a 5xx publishes the share twice.
+        { replayUnknownOutcome: false },
       );
 
-      // Extract the share ID
-      const shareId = response.id || response.activity;
+      // Extract the share ID. A 201 without an id in the body or the
+      // x-restli-id header is not a publication receipt: LinkedIn may
+      // have published, so the outcome stays unknown and the credit is
+      // held instead of reporting a success at an undefined URL
+      // (the slack/telegram rule).
+      const shareId = response?.id || response?.activity;
+      if (typeof shareId !== "string" || !shareId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "linkedin",
+          new Error("LinkedIn response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "linkedin",
@@ -299,11 +318,7 @@ export const linkedinProvider: SocialMediaProvider = {
     } catch (error) {
       // error-policy:J1 outbound LinkedIn publish boundary — the failure surfaces as a typed `success: false` PostResult the caller must check, never a fabricated success.
       logger.error("[LinkedIn] Post failed", { error });
-      return {
-        platform: "linkedin",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("linkedin", error);
     }
   },
 
@@ -473,20 +488,31 @@ export const linkedinProvider: SocialMediaProvider = {
             message: { text: content.text },
           }),
         },
+        // A replay after a timeout or a 5xx publishes the comment twice
+        // (the create path in this file passes the same flag).
+        { replayUnknownOutcome: false },
       );
+
+      // A 2xx body without the created comment id is not a publication
+      // receipt: LinkedIn may have published the comment, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success with no post id (the slack/telegram rule).
+      const commentId = response?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "linkedin",
+          new Error("LinkedIn response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "linkedin",
         success: true,
-        postId: response.id,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 outbound LinkedIn comment boundary — failure surfaces as a typed `success: false` PostResult the caller must check.
-      return {
-        platform: "linkedin",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("linkedin", error);
     }
   },
 
@@ -507,6 +533,10 @@ export const linkedinProvider: SocialMediaProvider = {
             actor: authorUrn,
           }),
         },
+        // A like is a create: a replay after a lost response sends the
+        // create again, the same rule the create and comment calls in
+        // this file follow.
+        { replayUnknownOutcome: false },
       );
 
       return { success: true };

@@ -4,6 +4,10 @@
  * through one typed surface.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import type {
+  CameraAccessPermissionStatus,
+  CameraPermissionStatus as NativeCameraPermissionStatus,
+} from "@elizaos/capacitor-camera";
 
 type NativePlugin = Record<string, unknown>;
 type CapacitorPermissionState =
@@ -243,6 +247,51 @@ export interface PushActionPerformed {
  * absent on web/desktop bundles (the accessor returns `{}` there).
  */
 export interface PushNotificationsPluginLike extends NativePlugin {
+  /** Native-owned connection on Android systems without Google Play services. */
+  getNativeNotificationDeliveryStatus?: () => Promise<{
+    transport: "native" | "fcm";
+    owner: string | null;
+    activated: boolean;
+    enabled: boolean;
+    connected: boolean;
+    state: string;
+    batteryExempt: boolean;
+    backgroundReliable: boolean;
+    notificationsAllowed: boolean;
+    inbox: unknown;
+  }>;
+  presentNativeNotification?: (request: {
+    expectedOwner: string;
+    expectedBase: string;
+    notification: Record<string, unknown>;
+  }) => Promise<{
+    notificationId: string;
+    state: string;
+    retained: boolean;
+    presented: boolean;
+    duplicate: boolean;
+  }>;
+  /** Present only on builds with the app-owned cold reminder receiver. */
+  getReminderDataCapabilities?: () => Promise<{
+    reminderDataNotifications: boolean;
+    reminderChannelSelection?: boolean;
+    reminderPresentation?: boolean;
+  }>;
+  resolveReminderChannel?: (request: {
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+  }) => Promise<{ channelId: string; blocked: boolean }>;
+  presentReminderNotification?: (request: {
+    notificationId: string;
+    groupKey?: string;
+    title: string;
+    body: string;
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+    deepLink?: string;
+    conversationId?: string;
+    messageId?: string;
+  }) => Promise<{ accepted: boolean }>;
   checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
   register?: () => Promise<void>;
@@ -664,13 +713,11 @@ export interface TalkModePermissionStatus {
   speechRecognition?: "granted" | "denied" | "prompt" | "not_supported";
 }
 
-export interface CameraPermissionStatus {
-  camera: "granted" | "denied" | "prompt";
-  microphone: "granted" | "denied" | "prompt";
-  photos: "granted" | "denied" | "prompt" | "limited";
-}
+export type CameraPermissionStatus = NativeCameraPermissionStatus;
 
 export interface CameraPluginLike extends NativePlugin {
+  checkCameraPermission?: () => Promise<CameraAccessPermissionStatus>;
+  requestCameraPermission?: () => Promise<CameraAccessPermissionStatus>;
   checkPermissions?: () => Promise<CameraPermissionStatus>;
   requestPermissions?: () => Promise<CameraPermissionStatus>;
 }
@@ -1122,7 +1169,38 @@ export function getAppBlockerPlugin(): AppBlockerPluginLike {
 
 export function getCameraPlugin(): CameraPluginLike {
   const plugins = getCapacitorPlugins();
-  return (plugins.AppCamera ?? plugins.Camera ?? {}) as CameraPluginLike;
+  return (plugins.ElizaCamera ??
+    plugins.AppCamera ??
+    plugins.Camera ??
+    {}) as CameraPluginLike;
+}
+
+/** Native proxies expose unknown methods too; admit only the installed scoped API. */
+export function hasCameraPermissionMethods(
+  camera = getCameraPlugin(),
+): boolean {
+  if (
+    typeof camera.checkCameraPermission !== "function" ||
+    typeof camera.requestCameraPermission !== "function"
+  )
+    return false;
+  if (!Capacitor.isNativePlatform()) return true;
+  const plugins = getCapacitorPlugins();
+  const name = ["ElizaCamera", "AppCamera", "Camera"].find(
+    (name) => plugins[name] === camera,
+  );
+  const headers = (
+    Capacitor as typeof Capacitor & {
+      PluginHeaders?: readonly {
+        name: string;
+        methods: readonly { name: string }[];
+      }[];
+    }
+  ).PluginHeaders;
+  const methods = headers?.find((header) => header.name === name)?.methods;
+  return ["checkCameraPermission", "requestCameraPermission"].every(
+    (method) => methods?.some((entry) => entry.name === method) === true,
+  );
 }
 
 export function getLocationPlugin(): LocationPluginLike {

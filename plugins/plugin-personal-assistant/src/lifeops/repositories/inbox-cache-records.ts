@@ -3,7 +3,7 @@ import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   parseJsonArray,
   parseJsonRecord,

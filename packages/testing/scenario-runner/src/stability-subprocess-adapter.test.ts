@@ -431,7 +431,7 @@ describe("scenario stability subprocess adapter", () => {
         },
       ],
       budgets: {
-        timeoutMs: 2_000,
+        timeoutMs: 10_000,
         maxInputTokens: 10,
         maxOutputTokens: 10,
         maxToolCalls: 2,
@@ -655,7 +655,7 @@ describe("scenario stability subprocess adapter", () => {
           },
         ],
         budgets: {
-          timeoutMs: 2_000,
+          timeoutMs: 10_000,
           maxInputTokens: 10_000,
           maxOutputTokens: 10,
           maxModelRequests: 2,

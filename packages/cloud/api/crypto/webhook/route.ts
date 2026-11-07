@@ -8,23 +8,26 @@
  * HMAC verification uses WebCrypto (Workers-native) instead of node:crypto.
  */
 
-import { Hono } from "hono";
-import { webhookEventsRepository } from "@/db/repositories/webhook-events";
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import {
   extractWebhookTimestamp,
   normalizeWebhookPayload,
   type OxaPayWebhookPayload,
   validateWebhookTimestamp,
-} from "@/lib/config/crypto";
+} from "@elizaos/cloud-shared/lib/config/crypto";
 import {
   getRequestIp,
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
-import { isOxaPayConfigured } from "@/lib/services/oxapay";
-import { logger, redact } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { cryptoPaymentsService } from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { isOxaPayConfigured } from "@elizaos/cloud-shared/lib/services/oxapay";
+import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 function getWebhookAllowedIps(env: AppContext["env"]): string[] {
   const raw = env.OXAPAY_WEBHOOK_IPS;

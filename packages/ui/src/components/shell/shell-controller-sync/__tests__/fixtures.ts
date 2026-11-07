@@ -1,7 +1,7 @@
 /** Shared test fixtures for the shell-controller-sync suite: a full snapshot and
  *  a fully-stubbed `ShellController` whose methods are spies. */
 import { vi } from "vitest";
-import type { HomeModelStatus } from "../../../../services/local-inference/home-model-status";
+import type { HomeModelStatus } from "../../../local-inference/home-model-status";
 import type { ShellMessage } from "../../shell-state";
 import type { ShellController } from "../../useShellController";
 import type { ShellControllerSnapshot } from "../snapshot";

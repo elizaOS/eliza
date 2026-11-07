@@ -2,8 +2,8 @@
  * Bridges the advanced-memory providers to the trajectory recorder: forwards a
  * provider-access telemetry record (name, purpose, data, query) to the
  * "trajectories" service so a captured run shows what context each memory
- * provider injected. Resolves the trajectory step id from the message metadata
- * or the ambient trajectory context and no-ops when neither is present.
+ * provider injected. Resolves the trajectory step id from the ambient trajectory
+ * context or else the message metadata, and no-ops when neither is present.
  */
 
 import type {
@@ -15,18 +15,12 @@ import { getTrajectoryContext } from "@elizaos/core";
 
 type TrajectoryLogger = Partial<TrajectoryProviderAccessLogger>;
 
+/** The running step first: a stored message's step may have closed long ago. */
 function resolveTrajectoryStepId(message?: Memory): string | null {
-  const metadata = message?.metadata as
-    | { trajectoryStepId?: unknown }
-    | undefined;
-  if (
-    typeof metadata?.trajectoryStepId === "string" &&
-    metadata.trajectoryStepId.trim()
-  ) {
-    return metadata.trajectoryStepId.trim();
-  }
-
-  const stepId = getTrajectoryContext()?.trajectoryStepId;
+  const stepId =
+    getTrajectoryContext()?.trajectoryStepId ??
+    (message?.metadata as { trajectoryStepId?: unknown } | undefined)
+      ?.trajectoryStepId;
   return typeof stepId === "string" && stepId.trim() ? stepId.trim() : null;
 }
 

@@ -6,6 +6,7 @@
 import { registerPlugin } from "@capacitor/core";
 import type { AgentPlugin } from "./definitions.js";
 
+export * from "./agent-events.js";
 export * from "./definitions.js";
 
 export const Agent = registerPlugin<AgentPlugin>("Agent", {

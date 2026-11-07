@@ -20,27 +20,29 @@ import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-co
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
 import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
 import {
-  canonicalCloudPathForLegacyDashboard,
+  ELIZA_TRACE_ID_HEADER,
+  resolveElizaTraceId,
+  setHttpTelemetryHeaders,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { shouldDecorateHttpTelemetryStatus } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
-import {
-  cloneRequestWithScheduledCronMetadata,
-  makeCronHandler,
-} from "@/lib/cron/cloudflare-cron";
-import {
-  ELIZA_TRACE_ID_HEADER,
-  resolveElizaTraceId,
-  setHttpTelemetryHeaders,
-} from "@/lib/observability/http-telemetry";
-import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
 import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
+import { cloneRequestWithScheduledCronMetadata, makeCronHandler } from "./cron";
+import {
+  isInferenceEntryTimingEnabled,
+  prepareInferenceEntryRequest,
+  recordInferenceEntryPhase,
+  timeInferenceEntryPhase,
+} from "./inference-entry-timing";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
@@ -50,15 +52,21 @@ import { serveRegistryHostRequest } from "./registry-host";
 import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
+export { A2ATaskState } from "./a2a-task-state";
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { AuthenticationState } from "./authentication-state";
 export { isThinCliSessionPath } from "./cli-session-paths";
 export { DoorDashCheckoutGate } from "./doordash-checkout-gate";
+export { HfEgressState } from "./hf-egress-state";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
+export { InferenceRecoveryService } from "./inference-recovery-service";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
+export { RateLimitState } from "./rate-limit-state";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
+export { SpeechRelayCoordinator } from "./speech-relay-coordinator";
 export {
   isThinStewardEmailAuthPath,
   isThinStewardPasskeyLoginOptionsPath,
@@ -66,6 +74,7 @@ export {
   isThinStewardPublicPath,
 } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
+export { VoiceUsageState } from "./voice-usage-state";
 
 /**
  * Full-app promises memoised per route shard (issue #22550). Each entry is a
@@ -82,6 +91,8 @@ let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy provider-webhook shell that avoids the generated application router. */
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Personal message routes avoid unrelated application bootstrap. */
+let personalSharedAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
 let discordGatewayAppPromise: Promise<Hono<AppEnv>> | undefined;
 const CRYPTO_PAYMENT_CONFIRM_PATH_RE =
@@ -176,6 +187,15 @@ function exactInferenceRoute(
   };
 }
 const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  {
+    key: "/api/v1/voice/speech",
+    mountPath: "/api/v1/voice/speech",
+    matches: (path) =>
+      /^\/api\/v1\/voice\/speech\/(?:consent|session|ws|session\/[0-9a-f-]{36}\/revoke)$/.test(
+        path,
+      ),
+    load: () => import("../v1/voice/speech/route"),
+  },
   exactInferenceRoute(
     "/api/v1/chat/completions",
     () => import("../v1/chat/completions/route"),
@@ -581,21 +601,42 @@ async function dispatchThinSteward(
 }
 async function getInferenceApp(
   spec: InferenceRouteSpec,
+  timing?: { traceId: string | null; environment: "staging" },
 ): Promise<Hono<AppEnv>> {
   let promise = inferenceAppPromises.get(spec.key);
   if (!promise) {
-    promise = Promise.all([import("./inference-app"), spec.load()]).then(
-      ([shell, route]) =>
-        shell.createInferenceApp(spec.mountPath, route.default),
+    const shell = timing
+      ? timeInferenceEntryPhase(
+          timing.environment,
+          timing.traceId,
+          spec.key,
+          "shell_import",
+          () => import("./inference-app"),
+        )
+      : import("./inference-app");
+    const route = timing
+      ? timeInferenceEntryPhase(
+          timing.environment,
+          timing.traceId,
+          spec.key,
+          "route_import",
+          () => spec.load(),
+        )
+      : spec.load();
+    promise = Promise.all([shell, route]).then(([shell, route]) =>
+      timing
+        ? timeInferenceEntryPhase(
+            timing.environment,
+            timing.traceId,
+            spec.key,
+            "shell_create",
+            async () => shell.createInferenceApp(spec.mountPath, route.default),
+          )
+        : shell.createInferenceApp(spec.mountPath, route.default),
     );
     inferenceAppPromises.set(spec.key, promise);
   }
   return promise;
-}
-export function isThinInferenceEnabled(
-  env: Pick<AppEnv["Bindings"], "THIN_INFERENCE_ENTRY_ENABLED">,
-): boolean {
-  return env.THIN_INFERENCE_ENTRY_ENABLED === "true";
 }
 export function isCanonicalInferencePath(pathname: string): boolean {
   return INFERENCE_ROUTES.some((route) => route.matches(pathname));
@@ -605,9 +646,6 @@ async function dispatchInference(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  if (!isThinInferenceEnabled(env)) {
-    return null;
-  }
   const pathname = new URL(request.url).pathname;
   const route = INFERENCE_ROUTES.find((candidate) =>
     candidate.matches(pathname),
@@ -615,9 +653,47 @@ async function dispatchInference(
   if (!route) return null;
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = inferenceAppPromises.has(route.key);
-  const app = await getInferenceApp(route);
+  const timingEnabled = isInferenceEntryTimingEnabled(
+    env.ENVIRONMENT,
+    route.key,
+  );
+  const tracedRequest = timingEnabled
+    ? prepareInferenceEntryRequest(request, env.ENVIRONMENT)
+    : request;
+  const timing = timingEnabled
+    ? {
+        environment: "staging" as const,
+        traceId: tracedRequest.headers.get(ELIZA_TRACE_ID_HEADER),
+      }
+    : undefined;
+  if (timing)
+    recordInferenceEntryPhase({
+      ...timing,
+      path: route.key,
+      phase: "dispatch_enter",
+      durationMs: 0,
+      outcome: "entered",
+      appPromise: moduleWasInitialized ? "existing" : "created",
+    });
+  const app = timing
+    ? await timeInferenceEntryPhase(
+        timing.environment,
+        timing.traceId,
+        route.key,
+        "app_wait",
+        () => getInferenceApp(route, timing),
+      )
+    : await getInferenceApp(route);
   const moduleInitMs = performance.now() - dispatchStartedAt;
-  const response = await app.fetch(request, env, ctx);
+  if (timing)
+    recordInferenceEntryPhase({
+      ...timing,
+      path: route.key,
+      phase: "app_ready",
+      durationMs: moduleInitMs,
+      outcome: "returned",
+    });
+  const response = await app.fetch(tracedRequest, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
   response.headers.set("X-Eliza-Inference-Path", "thin");
   response.headers.append(
@@ -770,10 +846,6 @@ export function redirectFrontendHost(
     );
   }
   const classified = classifyElizaHostname(hostname);
-  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
-    url.pathname,
-    url.search,
-  );
   let canonicalHostname: string | null = null;
   if (hostname === "www.eliza.app") {
     canonicalHostname = new URL(
@@ -784,9 +856,6 @@ export function redirectFrontendHost(
       ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
     if (isFrontendAliasBackendPath(url)) {
       canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
-    } else if (canonicalDashboardPath) {
-      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
-      url.pathname = canonicalDashboardPath;
     } else {
       canonicalHostname = classified.canonicalHostname;
     }
@@ -808,13 +877,6 @@ export function redirectFrontendHost(
     }
   }
   if (!canonicalHostname || canonicalHostname === hostname) return null;
-  if (
-    canonicalDashboardPath &&
-    (classified.role === "legacy-marketing" ||
-      classified.role === "legacy-cloud-app")
-  ) {
-    url.pathname = canonicalDashboardPath;
-  }
   const targetUrl = new URL(url);
   targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);
@@ -891,7 +953,9 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     // every other well-known path on the alias hosts off the SPA, including
     // publishing the internal-service JWKS where it is not published today.
     url.pathname === "/.well-known/openid-configuration" ||
-    url.pathname === "/.well-known/oidc/jwks.json"
+    url.pathname === "/.well-known/oidc/jwks.json" ||
+    // Android App Link verification for native sign-in redirects on this host.
+    url.pathname === "/.well-known/assetlinks.json"
   );
 }
 export function getFrontendAliasApiProxyTarget(url: URL): URL | null {
@@ -989,6 +1053,52 @@ export function getHostedFrontendServeRewrite(
   rewritten.pathname = `/api/v1/hosted-frontend/serve${url.pathname === "/" ? "" : url.pathname}`;
   return rewritten;
 }
+/** Cost: no new I/O; reuse the original route and authorities in a smaller shell. */
+export function isPersonalSharedMessagePath(pathname: string): boolean {
+  return /^\/api\/internal\/eliza-app\/personal-shared\/messages\/?$/.test(
+    pathname,
+  );
+}
+
+async function dispatchPersonalShared(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (!isPersonalSharedMessagePath(new URL(request.url).pathname)) return null;
+  const startedAt = performance.now();
+  const cold = personalSharedAppPromise === undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  personalSharedAppPromise ??= import("./personal-shared-app")
+    .then((module) => module.createPersonalSharedApp())
+    .catch((error) => {
+      personalSharedAppPromise = undefined;
+      throw error;
+    });
+  const app = await personalSharedAppPromise;
+  const response = await app.fetch(new Request(request, { headers }), env, ctx);
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    {
+      name: "personal_shared_entry",
+      durationMs: performance.now() - startedAt,
+    },
+    {
+      name: "personal_shared_isolate",
+      durationMs: 0,
+      description: cold ? "cold" : "warm",
+    },
+  ]);
+  responseHeaders.set("X-Eliza-Personal-Shared-Path", "thin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
+
 const scheduled = makeCronHandler(async (request, env, ctx) =>
   dispatchFullApp(request, env, ctx),
 );
@@ -1002,6 +1112,17 @@ export default {
       nativeApplicationSelectionSurfaceError(request);
     if (nativeSelectionError) return nativeSelectionError;
     const url = new URL(request.url);
+    if (isInferenceEntryTimingEnabled(env.ENVIRONMENT, url.pathname)) {
+      request = prepareInferenceEntryRequest(request, env.ENVIRONMENT);
+      recordInferenceEntryPhase({
+        environment: env.ENVIRONMENT,
+        traceId: request.headers.get(ELIZA_TRACE_ID_HEADER),
+        path: url.pathname,
+        phase: "fetch_enter",
+        durationMs: 0,
+        outcome: "entered",
+      });
+    }
     // Capability tokens are bearer credentials. Reserve their opaque namespace
     // before any host redirect or proxy can forward it to another origin.
     if (isStorageReadCapabilityPath(url)) {
@@ -1044,6 +1165,12 @@ export default {
       if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
+      const personalSharedResponse = await dispatchPersonalShared(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (personalSharedResponse) return personalSharedResponse;
       return dispatchFullApp(apiRequest, env, ctx);
     }
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
@@ -1110,6 +1237,12 @@ export default {
       if (rewrittenInferenceResponse) return rewrittenInferenceResponse;
       return dispatchFullApp(rewrittenRequest, env, ctx);
     }
+    const personalSharedResponse = await dispatchPersonalShared(
+      request,
+      env,
+      ctx,
+    );
+    if (personalSharedResponse) return personalSharedResponse;
     return dispatchFullApp(request, env, ctx);
   },
   scheduled,

@@ -14,17 +14,14 @@
 import process from "node:process";
 import {
   type BootElizaRuntimeOptions,
-  CUSTOM_PLUGINS_DIRNAME,
+  closeRuntimeAdapter,
   ensureProtectedProfileAdmission,
-  resolvePackageEntry,
+  reopenRuntimeAdapter,
   type StartElizaOptions,
-  scanDropInPlugins,
-  applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  collectPluginNames as upstreamCollectPluginNames,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 import {
@@ -47,12 +44,6 @@ import {
 } from "./startup/pglite-recovery.js";
 import { startServerOnlyHost } from "./startup/server-only-host.js";
 
-export { prepareDevTrajectoryRecovery } from "@elizaos/agent";
-export {
-  drainBootHookContributors,
-  resolveBootHookContributors,
-} from "@elizaos/agent/runtime/boot-hooks";
-export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 export {
   __loadAppRoutePluginFromSpecifierForTest,
   drainRuntimeHookContributors,
@@ -67,18 +58,11 @@ export {
   runPostReadyBootTail,
   shutdownRuntime,
 } from "./startup/app-runtime-host.js";
-export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
-export function collectPluginNames(
-  ...args: Parameters<typeof upstreamCollectPluginNames>
-): ReturnType<typeof upstreamCollectPluginNames> {
-  return upstreamCollectPluginNames(...args);
-}
-export function applyCloudConfigToEnv(
-  ...args: Parameters<typeof upstreamApplyCloudConfigToEnv>
-): ReturnType<typeof upstreamApplyCloudConfigToEnv> {
-  return upstreamApplyCloudConfigToEnv(...args);
-}
-export { startDeferredLocalEmbeddingWarmup };
+export {
+  closeRuntimeAdapter,
+  reopenRuntimeAdapter,
+  startDeferredLocalEmbeddingWarmup,
+};
 export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
@@ -199,6 +183,8 @@ export async function startEliza(
         }
       },
       stopRuntime: shutdownRuntime,
+      closeRuntimeAdapter,
+      reopenRuntimeAdapter,
       stopWithoutRuntime: () => stopRuntimeBootResources(bootResources),
     });
   }

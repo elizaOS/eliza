@@ -1,3 +1,4 @@
+import { reconcileHistoricalProposalTerminals } from "./message/historical-proposal-terminals.ts";
 /** Incremental original-source retention through the existing post-turn worker.
  * No summaries, source writes, separate scheduler or independent checkpoint write. */
 
@@ -105,6 +106,15 @@ function retentionPromptSegments({
     .join("\n\n");
   return [
     { content: INSTRUCTIONS, stable: true },
+    ...prepared.context.events.flatMap((event) =>
+      event.id.startsWith("historical-proposal-terminal:") &&
+      event.type === "segment" &&
+      "segment" in event &&
+      isPlainObject(event.segment) &&
+      typeof event.segment.content === "string"
+        ? [{ content: event.segment.content, stable: false }]
+        : [],
+    ),
     {
       content: `sourceSetId: ${prepared.review.sourceSetId}\nPrevious reviewed source count: ${prepared.review.previous?.reviewedCount ?? 0}\nReview through h${prepared.review.prefix.length}. Classify all ${prepared.review.candidates.length} candidates:\n${index}`,
       stable: false,
@@ -193,6 +203,13 @@ export const historyRetentionEvaluator: Evaluator<
       orderDirection: "asc",
     });
     const context = historyRetentionContext(runtime, message, rows);
+    context.events = await reconcileHistoricalProposalTerminals(
+      runtime,
+      message,
+      context.events,
+      rows,
+      { background: true },
+    );
     const sources = completionContextSources(context).sources;
     const previous = validateHistoryRetention(
       context,

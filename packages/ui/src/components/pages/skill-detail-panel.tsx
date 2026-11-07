@@ -6,10 +6,10 @@
 
 import { Brain } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { SkillInfo } from "../../api";
-import { client } from "../../api";
-import { useAppSelector, useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { SkillInfo } from "../../api/client-types-config";
+import { useAppSelector, useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   AdminCodeEditor,

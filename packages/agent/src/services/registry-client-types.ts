@@ -47,7 +47,7 @@ export interface RegistryAppMeta {
    * enabled in Settings. The server exposes the flag here; the client
    * gates the render.
    */
-  developerOnly?: boolean;
+  viewKind?: import("@elizaos/core").ViewKind;
   /**
    * Controls whether the app appears in the user-facing app store/catalog.
    * Defaults to true. Set to false for apps that auto-install or are

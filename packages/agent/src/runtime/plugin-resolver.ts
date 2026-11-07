@@ -1,4 +1,5 @@
 import { resolveWorkspaceRootsForDiscovery } from "../config/workspace-discovery.ts";
+import { uniquePaths } from "../utils/paths.ts";
 /**
  * Plugin discovery and resolution logic.
  *
@@ -22,19 +23,21 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   ElizaError,
   formatError,
-  isMobilePlatform,
   logger,
   type Plugin,
-  type PluginInstallRecord,
+  resolveStateDir,
+  resolveUserPath,
 } from "@elizaos/core";
-
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  type ElizaConfig,
+  isMobilePlatform,
+  type PluginInstallRecord,
+} from "@elizaos/host/protocol";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   type AppManifestBlock,
   applyAppManifestDefaults,
@@ -61,11 +64,12 @@ import {
 } from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
+  collectConfiguredDeniedPluginNames,
   collectPluginNames,
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
-  resolvePluginPackageAlias,
+  readSkipPluginNames,
 } from "./plugin-collector.ts";
 import {
   collectStagedDirectoryLinks,
@@ -108,6 +112,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-native-phone",
+  "@elizaos/plugin-maps",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-knowledge",
   "@elizaos/plugin-native-wifi",
@@ -626,19 +631,6 @@ async function ensureStagedPackageDependencies(params: {
 // Workspace plugin overrides
 // ---------------------------------------------------------------------------
 
-function uniquePaths(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const candidate of paths) {
-    const resolved = path.resolve(candidate);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      ordered.push(resolved);
-    }
-  }
-  return ordered;
-}
-
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
@@ -665,16 +657,6 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
       path.join(workspaceRoot, "eliza", "plugins", packageSegment),
       path.join(workspaceRoot, "eliza", "packages", packageSegment),
     ];
-
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that have not moved
-      // app plugins from apps/app-* to plugins/app-* yet. The Eliza repo no
-      // longer depends on or scans top-level apps/* by default.
-      candidates.push(
-        path.join(workspaceRoot, "apps", packageSegment),
-        path.join(workspaceRoot, "eliza", "apps", packageSegment),
-      );
-    }
 
     for (const candidate of uniquePaths(candidates)) {
       if (existsSync(path.join(candidate, "package.json"))) {
@@ -1573,7 +1555,12 @@ const DEFAULT_PLUGIN_INSTANCE_KEEP = 3;
 function pluginInstanceKeepCount(): number {
   const raw = process.env.ELIZA_PLUGIN_INSTANCE_KEEP;
   if (!raw) return DEFAULT_PLUGIN_INSTANCE_KEEP;
-  const parsed = Number.parseInt(raw.trim(), 10);
+  // Number.parseInt stops at the first non-digit, so "5junk" parsed to a
+  // finite 5 and was accepted as a deliberate setting instead of falling
+  // back to the default. Require the whole trimmed value to be decimal,
+  // mirroring resolveGenerationTimeoutMs in the discord plugin.
+  const text = raw.trim();
+  const parsed = /^\+?\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) {
     return DEFAULT_PLUGIN_INSTANCE_KEEP;
   }
@@ -2488,11 +2475,9 @@ const blockingPhaseLoadedPluginNames = new Set<string>();
 let blockingPhaseFailedPlugins: readonly FailedPluginDetail[] = [];
 
 function appManifestPluginPackageName(pluginId: string): string {
-  return resolvePluginPackageAlias(
-    pluginId.includes("/")
-      ? pluginId
-      : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
-  );
+  return pluginId.includes("/")
+    ? pluginId
+    : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`;
 }
 
 function isPluginExplicitlyEnabled(
@@ -2527,6 +2512,22 @@ function projectRoutingOnlyPlugin(plugin: Plugin): Plugin {
     ...(plugin.packageName ? { packageName: plugin.packageName } : {}),
     init: plugin.init.bind(plugin),
   };
+}
+
+/**
+ * Save only the repaired install records. The boot config passed to
+ * resolvePlugins holds vault-resolved secrets in `env`, so saving it would
+ * write them to disk in plaintext; the on-disk copy keeps its vault refs.
+ * @internal Exported for testing.
+ */
+export function persistRepairedInstallRecords(
+  pluginNames: Iterable<string>,
+): void {
+  const durable = loadElizaConfig();
+  for (const pluginName of pluginNames) {
+    repairBrokenInstallRecord(durable, pluginName);
+  }
+  saveElizaConfig(durable);
 }
 
 export async function resolvePlugins(
@@ -2622,9 +2623,7 @@ export async function resolvePlugins(
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
-  const forceIncludePluginNames = new Set(
-    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
-  );
+  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
   // Forced providers enter the collector before its final topology precedence
@@ -2675,14 +2674,8 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const denyList = new Set<string>((config.plugins?.deny || []) as string[]);
-  const envSkipPlugins = (process.env.ELIZA_SKIP_PLUGINS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  for (const pluginName of envSkipPlugins) {
-    denyList.add(pluginName);
-  }
+  const envSkipPlugins = readSkipPluginNames();
+  const denyList = collectConfiguredDeniedPluginNames(config);
   if (envSkipPlugins.length > 0) {
     logger.info(
       `[eliza] Skipping ${envSkipPlugins.length} plugin(s) via ELIZA_SKIP_PLUGINS: ${envSkipPlugins.join(", ")}`,
@@ -2690,7 +2683,7 @@ export async function resolvePlugins(
   }
   for (const pluginName of denyList) {
     const routingOwnerPackageName = pluginName.includes("/")
-      ? resolvePluginPackageAlias(pluginName)
+      ? pluginName
       : appManifestPluginPackageName(pluginName);
     if (routingOwnershipPluginNames.has(routingOwnerPackageName)) {
       throw new ElizaError(
@@ -2705,10 +2698,6 @@ export async function resolvePlugins(
       );
     }
     pluginsToLoad.delete(pluginName);
-    const canonical = resolvePluginPackageAlias(pluginName);
-    if (canonical !== pluginName) {
-      pluginsToLoad.delete(canonical);
-    }
   }
 
   // ── Auto-discover ejected plugins ───────────────────────────────────────
@@ -3272,7 +3261,7 @@ export async function resolvePlugins(
       return plugins;
     }
     try {
-      saveElizaConfig(config);
+      persistRepairedInstallRecords(repairedInstallRecords);
       logger.info(
         `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );

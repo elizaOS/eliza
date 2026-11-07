@@ -13,7 +13,6 @@ import type {
   SchemaCheckConstraint,
   SchemaColumn,
   SchemaForeignKey,
-  SchemaIndex,
   SchemaPrimaryKey,
   SchemaSnapshot,
   SchemaTable,
@@ -851,11 +850,16 @@ function generateCreateIndexSQL(index: SchemaIndexWithTableRef): string {
 /**
  * Generate DROP INDEX SQL
  */
-function generateDropIndexSQL(index: SchemaIndex | string): string {
+function generateDropIndexSQL(index: SchemaIndexWithTableRef | string): string {
   // Extract just the index name without schema
   const indexNameFull = typeof index === "string" ? index : index.name;
   const indexName = indexNameFull.includes(".") ? indexNameFull.split(".")[1] : indexNameFull;
-  // Match Drizzle's format - no schema qualification
+  // An index lives in its table's schema. An unqualified name resolves through
+  // search_path, so the index of a plugin's pgSchema table would be missed.
+  const table = typeof index === "string" ? undefined : index.table;
+  if (table?.includes(".")) {
+    return `DROP INDEX IF EXISTS "${table.split(".")[0]}"."${indexName}";`;
+  }
   return `DROP INDEX IF EXISTS "${indexName}";`;
 }
 
@@ -870,10 +874,12 @@ function generateCreateForeignKeySQL(fk: SchemaForeignKey): string {
  * Generate DROP FOREIGN KEY SQL
  */
 function generateDropForeignKeySQL(fk: SchemaForeignKey): string {
+  // An altered key carries the previous snapshot's bare table name, with the
+  // schema in schemaFrom.
   const [schema, tableName] = fk.tableFrom
     ? fk.tableFrom.includes(".")
       ? fk.tableFrom.split(".")
-      : ["public", fk.tableFrom]
+      : [fk.schemaFrom || "public", fk.tableFrom]
     : ["public", ""];
   return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${fk.name}";`;
 }

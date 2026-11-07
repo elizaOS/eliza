@@ -20,6 +20,7 @@ import {
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   executePlannedToolCall,
+  validateToolArgs,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
@@ -161,6 +162,39 @@ describe("SCHEDULED_TASK action", () => {
       completed?.data as { task?: ScheduledTask } | undefined
     )?.task;
     expect(completedTask?.state.status).toBe("completed");
+  });
+
+  it("reads an offset-free once time in the message's time zone, not the host's", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    // CURRENT_TIME shows the user's zone, so "Monday 9am" arrives as 09:00
+    // with no offset. New York is on EST (-05:00) after 2026-11-01.
+    const message = autonomyMessage(runtime.agentId, "remind me monday 9am");
+    message.content.metadata = { uiTimeZone: "America/New_York" };
+
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "create",
+          kind: "reminder",
+          promptInstructions: "call the dentist",
+          trigger: { kind: "once", atIso: "2026-11-02T09:00:00" },
+          priority: "medium",
+        },
+      },
+      undefined,
+      [],
+    );
+
+    expect(created?.success).toBe(true);
+    const task = (created?.data as { task?: ScheduledTask } | undefined)?.task;
+    expect(task?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-11-02T14:00:00.000Z",
+    });
   });
 
   it("proves mutation preconditions, replay noops, and every ledger-backed transition", async () => {
@@ -389,6 +423,12 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(result.success, JSON.stringify(result)).toBe(true);
+    // The supplied Discord destination is not applied, and the result says so.
+    expect(result.data).toMatchObject({
+      outputIgnored: true,
+      boundOutput: { destination: "channel", target: "telegram:owner-chat-42" },
+    });
+    expect(result.text).toContain("telegram chat");
     const task = (result.data as { task?: ScheduledTask } | undefined)?.task;
     expect(task?.output).toEqual({
       destination: "channel",
@@ -428,6 +468,34 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(poisonedUpdate.success).toBe(true);
+    expect(poisonedUpdate.data).toMatchObject({ outputIgnored: true });
+    expect(poisonedUpdate.text).toContain("telegram chat");
+
+    // A patch whose only change is the pinned destination changes nothing.
+    for (const output of [
+      { destination: "channel", target: "discord:public-room" },
+      {},
+      null,
+    ]) {
+      const outputOnlyUpdate = await executePlannedToolCall(
+        runtime,
+        { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+        {
+          name: "SCHEDULED_TASKS",
+          params: {
+            action: "update",
+            taskId: task?.taskId,
+            patch: {
+              output,
+            },
+          },
+        },
+      );
+      expect(outputOnlyUpdate.success).toBe(false);
+      expect(outputOnlyUpdate.data).toMatchObject({
+        error: "OUTPUT_BOUND_TO_CHAT",
+      });
+    }
     const protectedTask = (await runner.list()).find(
       (candidate) => candidate.taskId === task?.taskId,
     );
@@ -680,6 +748,176 @@ describe("SCHEDULED_TASK action", () => {
     // First-run defaults seed check-in/watcher/recap/output tasks on a fresh
     // runtime; the rejected create must not have written its reminder row.
     expect(tasks.filter((task) => task.kind === "reminder")).toHaveLength(0);
+  });
+
+  it("refuses filter values outside the declared kind, status and subjectKind sets", () => {
+    for (const args of [
+      { action: "list", status: "pending" },
+      { action: "list", kind: "reminders" },
+      { action: "create", kind: "habit" },
+      { action: "list", subjectKind: "person", subjectId: "p1" },
+      { action: "create", source: "chat" },
+    ]) {
+      expect(validateToolArgs(scheduledTaskAction, args).valid).toBe(false);
+    }
+    expect(
+      validateToolArgs(scheduledTaskAction, {
+        action: "list",
+        kind: "reminder",
+        status: "scheduled",
+        subjectKind: "self",
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("update and snooze return a structured refusal for input the runner rejects", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const call = (parameters: Record<string, unknown>) =>
+      scheduledTaskAction.handler?.(
+        runtime,
+        ownerMessage(runtime.agentId, "change that scheduled item"),
+        undefined,
+        { parameters },
+        undefined,
+        [],
+      );
+    const errorOf = (result: ActionResult | undefined) =>
+      (result?.data as { error?: string } | undefined)?.error;
+
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "schedule a custom task"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "review the weekly numbers",
+          trigger: { kind: "manual" },
+        },
+      },
+      undefined,
+      [],
+    );
+    const taskId = (created?.data as { task?: ScheduledTask } | undefined)?.task
+      ?.taskId;
+    if (!taskId) throw new Error("create did not return a taskId");
+
+    // The trigger shape create accepts is accepted on update too.
+    const retimed = await call({
+      action: "update",
+      taskId,
+      patch: { trigger: { type: "cron", schedule: "0 8 * * *" } },
+    });
+    expect(retimed?.success).toBe(true);
+    expect(
+      (retimed?.data as { task?: ScheduledTask } | undefined)?.task?.trigger,
+    ).toMatchObject({ kind: "cron", expression: "0 8 * * *" });
+
+    const badTrigger = await call({
+      action: "update",
+      taskId,
+      patch: { trigger: { kind: "cron" } },
+    });
+    expect(badTrigger?.success).toBe(false);
+    expect(errorOf(badTrigger)).toBe("INVALID_TRIGGER");
+
+    const badGate = await call({
+      action: "update",
+      taskId,
+      patch: {
+        shouldFire: { gates: [{ kind: "not_registered", params: {} }] },
+      },
+    });
+    expect(badGate?.success).toBe(false);
+    expect(errorOf(badGate)).toBe("INVALID_SCHEDULED_TASK");
+
+    const readOnly = await call({
+      action: "update",
+      taskId,
+      patch: { state: { status: "completed" } },
+    });
+    expect(readOnly?.success).toBe(false);
+    expect(errorOf(readOnly)).toBe("READ_ONLY_FIELD");
+
+    // A key the task does not have changes nothing, so it is refused instead
+    // of being reported as an applied edit.
+    for (const patch of [
+      { atIso: "2027-01-13T09:00:00Z" },
+      { text: "Check on the vendor invoice" },
+      { dueAt: "2027-01-13T09:00:00Z" },
+    ]) {
+      const unknownField = await call({ action: "update", taskId, patch });
+      expect(unknownField?.success).toBe(false);
+      expect(errorOf(unknownField)).toBe("UNKNOWN_PATCH_FIELD");
+    }
+
+    // A subject is a kind and an id together; one half alone is refused
+    // instead of being dropped from the filter or the new task.
+    for (const half of [{ subjectKind: "thread" }, { subjectId: "wt-1" }]) {
+      const listed = await call({ action: "list", ...half });
+      expect(listed?.success).toBe(false);
+      expect(errorOf(listed)).toBe("SUBJECT_INCOMPLETE");
+    }
+    const halfSubjectCreate = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "schedule a follow-up"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "followup",
+          promptInstructions: "Check on the vendor reply",
+          trigger: { kind: "manual" },
+          subjectKind: "self",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(halfSubjectCreate?.success).toBe(false);
+    expect(errorOf(halfSubjectCreate)).toBe("SUBJECT_INCOMPLETE");
+
+    // A history bound that is not a timestamp is refused, not read as an
+    // empty log.
+    const badRange = await call({ action: "history", sinceIso: "yesterday" });
+    expect(badRange?.success).toBe(false);
+    expect(errorOf(badRange)).toBe("INVALID_HISTORY_RANGE");
+    // A bound with an offset is compared as an instant. One hour from now,
+    // written at -12:00, has wall-clock text 11 hours before now: as raw text
+    // it would sort before every stored UTC row and return nothing.
+    const allEntries = (
+      (await call({ action: "history", taskId }))?.data as
+        | { entries?: unknown[] }
+        | undefined
+    )?.entries;
+    if (!allEntries?.length) throw new Error("history returned no entries");
+    const inOneHourAtMinus12 = new Date(Date.now() - 11 * 60 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "-12:00");
+    const bounded = await call({
+      action: "history",
+      taskId,
+      untilHistoryIso: inOneHourAtMinus12,
+    });
+    expect(
+      (bounded?.data as { entries?: unknown[] } | undefined)?.entries,
+    ).toHaveLength(allEntries.length);
+
+    for (const target of [{ untilIso: "tomorrow 9am" }, { minutes: 0 }]) {
+      const snoozed = await call({ action: "snooze", taskId, ...target });
+      expect(snoozed?.success).toBe(false);
+      expect(errorOf(snoozed)).toBe("INVALID_SNOOZE_TARGET");
+    }
+
+    const stored = await getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    }).list();
+    expect(stored.find((task) => task.taskId === taskId)).toMatchObject({
+      trigger: { kind: "cron", expression: "0 8 * * *" },
+      state: { status: "scheduled" },
+    });
   });
 
   it("get returns NOT_FOUND for an unknown taskId", async () => {

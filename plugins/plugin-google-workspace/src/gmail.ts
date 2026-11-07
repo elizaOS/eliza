@@ -12,6 +12,7 @@ import { gmailThreadSourceLink } from "./gmail-source-link.js";
 
 import { Buffer } from "node:buffer";
 import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
+import { decodeBasicHtmlEntities } from "@elizaos/plugin-assistant/html-entities";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import {
@@ -21,7 +22,9 @@ import {
   MAX_GMAIL_ATTACHMENT_BYTES,
 } from "./gmail-attachments.js";
 import {
+  decodeGmailPartData,
   extractGmailMimeBody,
+  gmailPartCharset,
   snapshotGmailMimePart,
   walkGmailMimeParts,
 } from "./gmail-mime-parts.js";
@@ -47,7 +50,6 @@ import type {
   GoogleSendEmailInput,
 } from "./types.js";
 
-const MESSAGE_METADATA_HEADERS = ["Subject", "From", "To", "Date"];
 const GMAIL_METADATA_HEADERS = [
   "Subject",
   "From",
@@ -67,6 +69,8 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
   "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
+/** Gmail's documented id limit for messages.batchModify and batchDelete. */
+const GMAIL_BATCH_MAX_IDS = 1000;
 
 interface GmailPaginationState {
   seenPageTokens: Set<string>;
@@ -101,6 +105,17 @@ function nextGmailPageToken(
   }
   state.seenPageTokens.add(token);
   return token;
+}
+
+function requireGmailSendMessageId(value: string | null | undefined): string {
+  const messageId = value?.trim();
+  if (!messageId) {
+    throw new ElizaError("Gmail send returned no provider message id.", {
+      code: "GOOGLE_GMAIL_SEND_RECEIPT_MISSING",
+      severity: "fatal",
+    });
+  }
+  return messageId;
 }
 
 export class GoogleGmailClient {
@@ -217,7 +232,7 @@ export class GoogleGmailClient {
     });
 
     return {
-      id: response.data.id ?? "",
+      id: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? undefined,
     };
   }
@@ -239,6 +254,8 @@ export class GoogleGmailClient {
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      /** Gmail label IDs; the provider returns messages carrying all of them. */
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     const gmail = await this.clientFactory.gmail(
@@ -255,6 +272,7 @@ export class GoogleGmailClient {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: params.query,
+        ...(params.labelIds?.length ? { labelIds: params.labelIds } : {}),
         includeSpamTrash: params.includeSpamTrash === true,
         maxResults:
           maxResults === undefined
@@ -580,8 +598,16 @@ export class GoogleGmailClient {
     const labelIds = requireLabelIdsForOperation(params.operation, params.labelIds);
 
     if (params.operation === "trash") {
-      const outcomes = await Promise.allSettled(
-        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }))
+      // Bounded like the metadata reads: one request per id at once would
+      // exceed Gmail's per-user concurrency and fail with 429.
+      const outcomes = await mapWithConcurrency(
+        ids,
+        GMAIL_METADATA_CONCURRENCY,
+        (id): Promise<PromiseSettledResult<unknown>> =>
+          gmail.users.messages.trash({ userId: "me", id }).then(
+            (value) => ({ status: "fulfilled", value }),
+            (reason: unknown) => ({ status: "rejected", reason })
+          )
       );
       const succeededMessageIds: string[] = [];
       const failures: GoogleGmailMutationReceipt["failures"] = [];
@@ -605,33 +631,54 @@ export class GoogleGmailClient {
         failures,
       };
     }
-    if (params.operation === "delete") {
-      await gmail.users.messages.batchDelete({
-        userId: "me",
-        requestBody: { ids },
-      });
-      return {
-        operation: params.operation,
-        requestedMessageIds: ids,
-        succeededMessageIds: ids,
-        failures: [],
-      };
+    const labelPatch =
+      params.operation === "delete" ? null : labelsForOperation(params.operation, labelIds);
+    // batchDelete and batchModify accept at most 1000 ids per request; one
+    // request for a larger set is rejected whole and changes nothing.
+    const succeededMessageIds: string[] = [];
+    const failures: GoogleGmailMutationReceipt["failures"] = [];
+    let firstError: unknown = null;
+    for (let start = 0; start < ids.length; start += GMAIL_BATCH_MAX_IDS) {
+      const slice = ids.slice(start, start + GMAIL_BATCH_MAX_IDS);
+      try {
+        if (labelPatch === null) {
+          await gmail.users.messages.batchDelete({
+            userId: "me",
+            requestBody: { ids: slice },
+          });
+        } else {
+          await gmail.users.messages.batchModify({
+            userId: "me",
+            requestBody: {
+              ids: slice,
+              addLabelIds: labelPatch.addLabelIds,
+              removeLabelIds: labelPatch.removeLabelIds,
+            },
+          });
+        }
+        succeededMessageIds.push(...slice);
+      } catch (error) {
+        // error-policy:J1 earlier slices are already applied, so a later
+        // refusal is reported per id instead of as a failure of the whole set.
+        firstError ??= error;
+        const code = googleErrorStatus(error) ?? null;
+        for (const messageId of slice) {
+          failures.push({
+            messageId,
+            code,
+            retryable: code === null || code === 408 || code === 429 || code >= 500,
+          });
+        }
+      }
     }
-
-    const labelPatch = labelsForOperation(params.operation, labelIds);
-    await gmail.users.messages.batchModify({
-      userId: "me",
-      requestBody: {
-        ids,
-        addLabelIds: labelPatch.addLabelIds,
-        removeLabelIds: labelPatch.removeLabelIds,
-      },
-    });
+    if (succeededMessageIds.length === 0) {
+      throw firstError;
+    }
     return {
       operation: params.operation,
       requestedMessageIds: ids,
-      succeededMessageIds: ids,
-      failures: [],
+      succeededMessageIds,
+      failures,
     };
   }
 
@@ -641,10 +688,18 @@ export class GoogleGmailClient {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }
   ): Promise<GoogleGmailSendResult> {
+    const threadId = params.threadId.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply send requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
       ...(params.cc && params.cc.length > 0
@@ -658,7 +713,7 @@ export class GoogleGmailClient {
       "",
       params.bodyText.replace(/\r?\n/g, "\r\n"),
     ]);
-    return this.sendRawGmailMessage(params, raw, "gmail.sendGmailReply");
+    return this.sendRawGmailMessage({ ...params, threadId }, raw, "gmail.sendGmailReply");
   }
 
   async sendGmailMessage(
@@ -699,6 +754,14 @@ export class GoogleGmailClient {
       references?: string | null;
     }
   ): Promise<GoogleGmailDraftResult> {
+    const threadId = params.threadId?.trim();
+    const isReply = Boolean(params.inReplyTo?.trim() || params.references?.trim());
+    if (isReply && !threadId) {
+      throw new ElizaError("Gmail reply draft requires the original thread id.", {
+        code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED",
+        severity: "fatal",
+      });
+    }
     const gmail = await this.clientFactory.gmail(params, ["gmail.compose"], "gmail.createDraft");
     const raw = encodeRawGmailMessage([
       `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
@@ -714,7 +777,7 @@ export class GoogleGmailClient {
     ]);
     const response = await gmail.users.drafts.create({
       userId: "me",
-      requestBody: { message: { raw, threadId: params.threadId } },
+      requestBody: { message: threadId ? { raw, threadId } : { raw } },
     });
     const draftId = response.data.id?.trim();
     if (!draftId) {
@@ -803,12 +866,12 @@ export class GoogleGmailClient {
         criteria: { from: params.fromAddress },
         action: params.trash
           ? { removeLabelIds: ["INBOX"], addLabelIds: ["TRASH"] }
-          : { addLabelIds: ["TRASH"], removeLabelIds: ["INBOX", "UNREAD"] },
+          : { removeLabelIds: ["INBOX", "UNREAD"] },
       },
     });
     return {
       filterId: response.data.id ?? null,
-      trashed: true,
+      trashed: params.trash === true,
     };
   }
 
@@ -861,7 +924,7 @@ export class GoogleGmailClient {
       userId: "me",
       id: params.messageId,
       format: params.includeBody ? "full" : "metadata",
-      metadataHeaders: MESSAGE_METADATA_HEADERS,
+      metadataHeaders: [...GMAIL_METADATA_HEADERS],
     });
 
     return mapMessage(response.data, Boolean(params.includeBody));
@@ -888,17 +951,18 @@ export class GoogleGmailClient {
   }
 
   private async sendRawGmailMessage(
-    params: GoogleAccountRef,
+    params: GoogleAccountRef & { threadId?: string | null },
     raw: string,
     reason: string
   ): Promise<GoogleGmailSendResult> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.send"], reason);
+    const threadId = params.threadId?.trim();
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw },
+      requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
-      messageId: response.data.id ?? null,
+      messageId: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? null,
       labelIds: response.data.labelIds ?? [],
     };
@@ -964,6 +1028,24 @@ function mapGmailHistoryChange(history: gmail_v1.Schema$History): GoogleGmailHis
   };
 }
 
+function receivedAtFromGmailMessage(
+  message: gmail_v1.Schema$Message,
+  dateHeader: string | undefined
+): string | undefined {
+  // Mailbox time is `internalDate` (epoch ms). The sender Date header is
+  // untrusted; an unparsable value used to throw and abort inbox search.
+  const fromInternal = message.internalDate ? Number(message.internalDate) : Number.NaN;
+  const internalDate = new Date(fromInternal);
+  if (Number.isFinite(internalDate.getTime())) {
+    return internalDate.toISOString();
+  }
+  if (!dateHeader) {
+    return undefined;
+  }
+  const parsed = Date.parse(dateHeader);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
 function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): GoogleMessageSummary {
   const headers = message.payload?.headers ?? [];
   const dateHeader = headerValue(headers, "Date");
@@ -983,7 +1065,7 @@ function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): Goo
     to: parseEmailAddresses(headerValue(headers, "To")),
     cc: parseEmailAddresses(headerValue(headers, "Cc")),
     snippet: message.snippet ?? undefined,
-    receivedAt: dateHeader ? new Date(dateHeader).toISOString() : undefined,
+    receivedAt: receivedAtFromGmailMessage(message, dateHeader),
     labelIds: message.labelIds ?? undefined,
     headers: headerMap,
     ...body,
@@ -1000,7 +1082,7 @@ function mapRichMessage(
     return null;
   }
   const headers = message.payload?.headers ?? [];
-  const subject = decodeHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
+  const subject = decodeBasicHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
   const fromMailbox = parseEmailAddresses(headerValue(headers, "From"))[0] ?? null;
   const replyTo = headerValue(headers, "Reply-To");
   const replyToMailbox = parseEmailAddresses(replyTo)[0] ?? null;
@@ -1486,7 +1568,9 @@ function collectMessagePart(
   body: Pick<GoogleMessageSummary, "bodyHtml" | "bodyText">
 ): void {
   walkGmailMimeParts(part, (node) => {
-    const data = node.body?.data ? decodeBase64Url(node.body.data) : undefined;
+    const data = node.body?.data
+      ? decodeGmailPartData(node.body.data, gmailPartCharset(node))
+      : undefined;
 
     if (data && node.mimeType === "text/plain" && !body.bodyText) {
       body.bodyText = data;
@@ -1518,10 +1602,6 @@ function formatEmailAddresses(addresses: readonly GoogleEmailAddress[]): string 
   return addresses
     .map((address) => (address.name ? `"${address.name}" <${address.email}>` : address.email))
     .join(", ");
-}
-
-function decodeBase64Url(value: string): string {
-  return Buffer.from(value, "base64url").toString("utf8");
 }
 
 function normalizedLimit(value: number | undefined, fallback: number, max: number): number {
@@ -1636,19 +1716,9 @@ function formatAddressValue(address: GoogleEmailAddress): string {
 }
 
 function normalizeSnippet(value: string | null | undefined): string {
-  return decodeHtmlEntities(value ?? "")
+  return decodeBasicHtmlEntities(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&amp;/gi, "&");
 }
 
 function internalDateToIso(value: string | null | undefined): string {
@@ -1829,7 +1899,7 @@ function extractGoogleGmailBody(payload: gmail_v1.Schema$MessagePart | undefined
   const snapshot = snapshotGmailMimePart(payload);
   const directBody = snapshot.body?.data;
   if (typeof directBody === "string") {
-    const decoded = decodeBase64Url(directBody);
+    const decoded = decodeGmailPartData(directBody, gmailPartCharset(snapshot));
     return snapshot.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   }
   return "";
@@ -1842,17 +1912,17 @@ function extractGoogleGmailBodyByMime(
   return extractGmailMimeBody(payload, mimeType, (node) => {
     const directBody = node.body?.data;
     if (typeof directBody !== "string") return "";
-    const decoded = decodeBase64Url(directBody);
+    const decoded = decodeGmailPartData(directBody, gmailPartCharset(node));
     return mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   });
 }
 
 function htmlToPlainText(value: string): string {
-  return decodeHtmlEntities(
+  return decodeBasicHtmlEntities(
     stripHtmlRawTextElements(value)
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
-      .replace(/<(?:li)[^>]*>/gi, "- ")
+      .replace(/<li(?=[\s/>])[^>]*>/gi, "- ")
       .replace(/<[^>]+>/g, " ")
   )
     .replace(/\r/g, "")

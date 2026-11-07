@@ -9,16 +9,16 @@
  * Lives under `apps/api/src` so Wrangler can resolve `hono` from the API package graph.
  */
 
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { forwardMcpUpstreamRequest } from "@elizaos/cloud-shared/lib/mcp/mcp-upstream-forward";
 import {
   callManagedDoorDashTool,
   DOORDASH_MANAGED_TOOLS,
-} from "@/lib/services/doordash-managed";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/doordash-managed";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
+import { Hono } from "hono";
+import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
 
 const BUILTIN = new Set<string>(["time", "weather", "crypto"]);
 const COINGECKO = "https://api.coingecko.com/api/v3";
@@ -404,7 +404,11 @@ async function callCryptoTool(
     });
     if (!res.ok) return errorResult({ error: "CoinGecko request failed" });
     const data = (await res.json()) as Record<string, Record<string, number>>;
-    return textResult(data[coin] ?? {});
+    const price = data[coin];
+    if (price === undefined) {
+      return errorResult({ error: `Unknown coin: ${coin}` });
+    }
+    return textResult(price);
   }
 
   if (name === "get_market_data") {
@@ -501,7 +505,14 @@ async function handleBuiltinJsonRpc(
     if (!name) {
       return jsonRpcError(id, -32602, "Missing tool name");
     }
-    const result = await callBuiltinTool(provider, name, args);
+    let result: ToolResult;
+    try {
+      result = await callBuiltinTool(provider, name, args);
+    } catch (error) {
+      result = errorResult({
+        error: error instanceof Error ? error.message : "Tool call failed",
+      });
+    }
     return jsonRpcResult(id, result);
   }
 

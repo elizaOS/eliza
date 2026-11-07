@@ -1059,7 +1059,7 @@ test("a paid-window stop is scheduled once and an explicit user stop makes it im
     expect(pending[0]!.scheduled_for).toEqual(pending[0]!.next_attempt_at);
     await enqueueAgentUnfundedStopForRun(input);
     expect((await readStop()).rows).toEqual(pending);
-    const { ProvisioningJobService } = await import("./provisioning-jobs");
+    const { ProvisioningJobService } = await import("@elizaos/cloud-shared/node");
     const promoted = await new ProvisioningJobService().enqueueAgentSuspendOnce({
       agentId,
       organizationId: org,
@@ -2472,7 +2472,7 @@ describe.skipIf(!sshFixturePath)("isolated SSH/Docker funding", () => {
     const { DockerSSHClient } = await import("./docker-ssh");
     const { shellQuote } = await import("./docker-sandbox-utils");
     const guard = await import("./docker-compute-lease");
-    const { ProvisioningJobService } = await import("./provisioning-jobs");
+    const { ProvisioningJobService } = await import("@elizaos/cloud-shared/node");
     const { JOB_TYPES } = await import("./provisioning-job-types");
     const ssh = new DockerSSHClient(target);
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);

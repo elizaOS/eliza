@@ -1,4 +1,4 @@
-"""Tests for the shared adapter base (``benchmarks.standard._base``)."""
+"""Tests for the shared adapter base (``benchmarks.suites.standard._base``)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from benchmarks.standard._base import (
+from benchmarks.suites.standard._base import (
     ENDPOINT_ENV_CHAIN,
     PROVIDER_BASE_URLS,
     BenchmarkResult,
@@ -162,6 +162,7 @@ def test_harness_client_assigns_unique_standard_task_ids() -> None:
 
     fake = FakeClient()
     client = object.__new__(HarnessClient)
+    client._model = "m"
     client._harness = "eliza"  # type: ignore[attr-defined]
     client._turn_index = 0  # type: ignore[attr-defined]
     client._server_manager = None  # type: ignore[attr-defined]
@@ -211,12 +212,13 @@ def test_harness_client_uses_native_hermes_campaign_configuration(
     monkeypatch.delenv("CEREBRAS_REASONING_EFFORT", raising=False)
     monkeypatch.delenv("HERMES_TIMEOUT_S", raising=False)
 
-    client = HarnessClient(harness="hermes", endpoint="ignored", api_key="ignored")
+    client = HarnessClient(harness="hermes", endpoint="http://127.0.0.1:43123/v1", api_key="key", model="requested-model")
 
     assert isinstance(client._client, FakeHermesClient)
     assert captured == {
         "provider": "claude-subscription",
-        "model": "claude-opus-4-6",
+        "model": "requested-model",
+        "api_key": "key",
         "base_url": "http://127.0.0.1:43123/v1",
         "timeout_s": 120.0,
         "reasoning_effort": None,
@@ -250,12 +252,13 @@ def test_harness_client_uses_native_openclaw_campaign_configuration(
     monkeypatch.delenv("CEREBRAS_REASONING_EFFORT", raising=False)
     monkeypatch.delenv("OPENCLAW_TIMEOUT_S", raising=False)
 
-    client = HarnessClient(harness="openclaw", endpoint="ignored", api_key="ignored")
+    client = HarnessClient(harness="openclaw", endpoint="http://127.0.0.1:43123/v1", api_key="key", model="requested-model")
 
     assert isinstance(client._client, FakeOpenClawClient)
     assert captured == {
         "provider": "claude-subscription",
-        "model": "claude-opus-4-6",
+        "model": "requested-model",
+        "api_key": "key",
         "base_url": "http://127.0.0.1:43123/v1",
         "timeout_s": 120.0,
         "reasoning_effort": None,
@@ -290,5 +293,5 @@ def test_unknown_harness_cannot_silently_become_direct_or_eliza(monkeypatch, har
         make_client(endpoint="http://invalid.invalid", api_key="unused")
     with pytest.raises(ValueError, match="Unsupported benchmark harness"):
         HarnessClient(
-            harness=harness, endpoint="http://invalid.invalid", api_key="unused"
+            harness=harness, endpoint="http://invalid.invalid", api_key="unused", model="model"
         )

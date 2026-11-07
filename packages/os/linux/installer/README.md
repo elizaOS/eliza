@@ -37,7 +37,7 @@ GRUB menu layout. EFI binaries, kernels, and the complete initrd sequence are
 hash-checked after copying; the generated menu selects installed filesystem UUIDs.
 RISC-V embedded menus and modification of a reused ESP are not implemented.
 Signed factory metadata binds the image hashes and boot layout to a version,
-architecture, expiry, and release sequence. Verification reuses the USB writer's
+architecture, expiry, and release sequence. Verification uses the shared OS
 pinned/revoked Ed25519 key policy; the caller supplies the durable sequence floor.
 `produceFactoryManifest` inspects a completed regular GPT image and emits signed
 sidecars with exact ESP/recovery hashes. It rejects damaged GPT copies and missing
@@ -51,8 +51,8 @@ existing store objects are never overwritten.
 `DirectoryInstallationSourceSelector` opens `factory-manifest.json`,
 `factory-manifest.json.sig`, `factory-esp.img`, and `factory-recovery.img` from a
 service-owned 0700 staging directory. Inputs must be regular 0600 files with one
-link. It authenticates metadata, persists the release sequence through the USB
-writer's existing store, and retains source handles until preparation settles.
+link. It authenticates metadata, persists the release sequence through the shared OS
+sequence store, and retains source handles until preparation settles.
 The service supplies trusted storage inventory, channel, and release policy;
 native storage qualification and complete payload hashing remain mandatory.
 `prepareInstallationFilesystems` authenticates and stages the factory sources,

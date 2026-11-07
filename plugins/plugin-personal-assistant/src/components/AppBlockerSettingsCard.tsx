@@ -1,15 +1,5 @@
-/**
- * Owner-facing settings card for the app blocker: shows current app-block status
- * and lets the owner configure and start/stop app blocking. Rendered in the
- * assistant settings surface; exported via the plugin's ui module.
- */
-// Leaf @elizaos/ui subpaths, not the root barrel: this card rides the PA
-// renderer facade, and a barrel import would drag router/marketplace chunks
-// into every shell that boots the facade.
-
-import { Button, Checkbox, Input } from "@elizaos/ui";
-import { client } from "@elizaos/ui/api";
-import { useAppSelector } from "@elizaos/ui/state";
+/** Owner controls for app-blocking permissions, selection, and sessions. */
+import { Button, Checkbox, Input, useAppSelector } from "@elizaos/ui";
 import {
   CheckCircle2,
   Clock3,
@@ -30,6 +20,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { appBlockerClient as client } from "../client.js";
 import type { AppBlockerSettingsCardProps } from "../types/app-blocker-settings-card";
 
 type AppBlockerPermission = Awaited<

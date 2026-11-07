@@ -10,7 +10,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { getProjectById, ModelType } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { getProjectById } from "@elizaos/host";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
 import {
   type SessionInfo,

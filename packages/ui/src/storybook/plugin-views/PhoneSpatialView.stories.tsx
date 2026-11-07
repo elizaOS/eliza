@@ -5,7 +5,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { PhoneSpatialView } from "../../../../../plugins/plugin-native-phone/src/components/PhoneSpatialView";
-import { SpatialSurface } from "../../spatial";
+import { SpatialSurface } from "../../spatial/dom";
 
 const meta = {
   title: "Plugin views/Phone",

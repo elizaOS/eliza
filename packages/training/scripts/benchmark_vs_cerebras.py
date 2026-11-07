@@ -45,8 +45,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -206,7 +204,7 @@ def write_matrix_artifact(
     output_dir: Path,
     cerebras_model: str,
 ) -> Path:
-    import build_eliza1_benchmark_matrix as matrix
+    import eliza_training.build_eliza1_benchmark_matrix as matrix
 
     rows = matrix_rows_from_results(results, cerebras_model)
     artifact = matrix.build_artifact(
@@ -322,7 +320,7 @@ def _call_cerebras_on_prompts(
     cerebras_model: str,
 ) -> list[dict[str, Any]]:
     """Call Cerebras on a list of prompts. Returns a list of result dicts."""
-    from cerebras_client import CerebrasClient, CerebrasError
+    from eliza_training.cerebras_client import CerebrasClient, CerebrasError
 
     client = CerebrasClient(model=cerebras_model)
     results: list[dict[str, Any]] = []
@@ -663,7 +661,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    from training.model_registry import REGISTRY, get as registry_get
+    from eliza_training.training.model_registry import REGISTRY, get as registry_get
 
     if args.tiers == "all":
         selected_tiers = ALL_TIERS

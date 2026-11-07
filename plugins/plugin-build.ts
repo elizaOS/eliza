@@ -18,6 +18,8 @@ export interface BuildTarget {
   label: string;
   /** Entrypoint(s) relative to the package root. */
   entry: string | string[];
+  /** Explicit source root for stable entry paths when code splitting is enabled. */
+  root?: string;
   /** Output subdirectory under `dist/` (e.g. "node", "browser", "cjs"). */
   outSubdir: string;
   target: "node" | "browser" | "bun";
@@ -183,11 +185,13 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     console.log(`🔨 Building ${config.name} (${t.label})…`);
     const result = await Bun.build({
       entrypoints: Array.isArray(t.entry) ? t.entry : [t.entry],
+      ...(t.root ? { root: t.root } : {}),
       outdir: join(distDir, t.outSubdir),
       target: t.target,
       format: t.format,
       sourcemap: t.sourcemap ?? "external",
       minify: t.minify ?? false,
+      jsx: { development: false },
       splitting: t.splitting ?? false,
       external,
       ...(t.format === "cjs" && t.runtimeImportMetaUrl

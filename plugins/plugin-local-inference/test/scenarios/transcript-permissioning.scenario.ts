@@ -31,7 +31,7 @@ import {
   type TranscriptStoreRuntime,
 } from "@elizaos/plugin-local-inference/services/voice/transcript-store";
 import { scenario } from "@elizaos/testing";
-import { type Transcript } from "@elizaos/core/transcripts";
+import { type Transcript } from "@elizaos/core/protocol";
 
 const SHARE_TRANSCRIPT = "SHARE_TRANSCRIPT";
 

@@ -354,6 +354,21 @@ function nullSeparatedPaths(raw: string): string[] {
   return raw.split("\0").filter(Boolean);
 }
 
+/**
+ * Paths whose worktree differs from the index in `status --porcelain=v1 -z
+ * --no-renames` output. Status compares stat-dirty entries by content, so a
+ * command that only refreshes Git's stat cache (`git status`, `git diff`) or
+ * rewrites identical bytes does not read as a change.
+ */
+function worktreeChangedPaths(raw: string): string[] {
+  const paths: string[] = [];
+  for (const record of raw.split("\0")) {
+    if (record.length < 4 || record[2] !== " ") continue;
+    if (record[1] !== " ") paths.push(record.slice(3));
+  }
+  return paths;
+}
+
 function trackedSpecialPaths(raw: string): {
   contentPaths: string[];
   submodulePaths: string[];
@@ -585,10 +600,20 @@ async function captureAtRoot(
         ["ls-files", "--stage", "-v", "-z"],
         indexBudget,
       ),
+      // Optional locks stay off so observing never rewrites the index.
       budgetedGit(
         runGit,
         canonicalRoot,
-        ["diff-files", "--name-only", "-z", "--ignore-submodules=none", "--"],
+        [
+          "--no-optional-locks",
+          "status",
+          "--porcelain=v1",
+          "-z",
+          "--untracked-files=no",
+          "--no-renames",
+          "--ignore-submodules=none",
+          "--",
+        ],
         trackedBudget,
       ),
       budgetedGit(
@@ -602,9 +627,10 @@ async function captureAtRoot(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
     if (rejectedProbe) throw rejectedProbe.reason;
-    const [head, index, trackedChanges, untracked] = probeResults.map(
+    const [head, index, trackedStatus, untracked] = probeResults.map(
       (result) => (result as PromiseFulfilledResult<string>).value,
     );
+    const trackedChanges = worktreeChangedPaths(trackedStatus);
     budget.remainingGitOutputBytes -=
       headCap -
       headBudget.remainingGitOutputBytes +
@@ -617,12 +643,12 @@ async function captureAtRoot(
     hash.update("\0index\0");
     hash.update(index);
     hash.update("\0tracked-worktree-changes\0");
-    hash.update(trackedChanges);
+    hash.update(trackedChanges.join("\0"));
     hash.update("\0untracked\0");
     hash.update(untracked);
     const special = trackedSpecialPaths(index);
     const contentPaths = new Set([
-      ...nullSeparatedPaths(trackedChanges),
+      ...trackedChanges,
       ...nullSeparatedPaths(untracked),
       ...special.contentPaths,
     ]);

@@ -1,3 +1,4 @@
+import { createKpiReporter } from "../../lib/kpi-reporting.mjs";
 /**
  * Shared utilities for the Mobile Resource Workbench (issue #8800).
  *
@@ -24,7 +25,6 @@ export function elizaRepoDir() {
   const dir = (process.env.ELIZA_REPO_DIR ?? "").trim();
   return dir || null;
 }
-export const RESULTS_ROOT = join(HERE, "results");
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -101,53 +101,11 @@ export function hasTool(cmd, versionArgs = ["--version"]) {
 // Result recording + git context
 // ---------------------------------------------------------------------------
 
-export function gitInfo() {
-  const repo = elizaRepoDir();
-  if (!repo) return null;
-  const run = (args) => {
-    try {
-      return execFileSync("git", args, {
-        cwd: repo,
-        encoding: "utf8",
-      }).trim();
-    } catch {
-      return null;
-    }
-  };
-  return {
-    branch: run(["rev-parse", "--abbrev-ref", "HEAD"]),
-    commit: run(["rev-parse", "--short", "HEAD"]),
-    dirty: run(["status", "--porcelain"]) ? true : false,
-  };
-}
-
-/**
- * Persist a workload result as timestamped JSON under results/<workload>/ and
- * update results/<workload>/latest.json. `nowIso` is supplied by the caller
- * (keeps this module clock-free).
- */
-export function recordResult(workload, payload, nowIso) {
-  const dir = join(RESULTS_ROOT, workload);
-  mkdirSync(dir, { recursive: true });
-  const stamp = nowIso.replace(/[:.]/g, "-");
-  const record = { workload, recordedAt: nowIso, git: gitInfo(), ...payload };
-  writeFileSync(join(dir, `${stamp}.json`), JSON.stringify(record, null, 2));
-  writeFileSync(join(dir, "latest.json"), JSON.stringify(record, null, 2));
-  return { file: join(dir, "latest.json"), record };
-}
-
-export function readLatest(workload) {
-  const f = join(RESULTS_ROOT, workload, "latest.json");
-  if (!existsSync(f)) return null;
-  try {
-    return JSON.parse(readFileSync(f, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-export function loadBudgets() {
-  return JSON.parse(readFileSync(join(HERE, "budgets.json"), "utf8"));
-}
+export const { RESULTS_ROOT, gitInfo, recordResult, readLatest, loadBudgets } =
+  createKpiReporter("mobile-resource", HERE, {
+    repoRoot: elizaRepoDir(),
+    recordKey: "workload",
+    returnLatest: true,
+  });
 
 export { existsSync, join, mkdirSync, readFileSync, writeFileSync };

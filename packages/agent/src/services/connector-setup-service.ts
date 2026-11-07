@@ -11,6 +11,8 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+import { replaceConfigInPlace } from "../api/config-state.ts";
 import {
   type OwnerContactUpdate,
   setOwnerContact,
@@ -58,6 +60,7 @@ export interface ConnectorSetupServiceInstance extends Service {
   broadcastWs(data: object): void;
   /** Set the WebSocket broadcast function (called by the server during startup). */
   setBroadcastWs(fn: ((data: object) => void) | null): void;
+  setLiveConfig(read: (() => ElizaConfig) | null): void;
 }
 
 export class ConnectorSetupService extends Service {
@@ -65,6 +68,7 @@ export class ConnectorSetupService extends Service {
   capabilityDescription = "Shared connector setup utilities for plugins";
 
   private broadcastWsFn: ((data: object) => void) | null = null;
+  private readLiveConfig: (() => ElizaConfig) | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const instance = new ConnectorSetupService(runtime);
@@ -74,14 +78,22 @@ export class ConnectorSetupService extends Service {
 
   async stop(): Promise<void> {
     this.broadcastWsFn = null;
+    this.readLiveConfig = null;
   }
 
   getConfig(): Record<string, unknown> {
-    return loadElizaConfig() as Record<string, unknown>;
+    const live = this.readLiveConfig?.();
+    return (live ? structuredClone(live) : loadElizaConfig()) as Record<
+      string,
+      unknown
+    >;
   }
 
   persistConfig(config: Record<string, unknown>): void {
-    saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+    const next = config as ElizaConfig;
+    saveElizaConfig(next);
+    const live = this.readLiveConfig?.();
+    if (live) replaceConfigInPlace(live, next);
   }
 
   updateConfig(updater: (config: Record<string, unknown>) => void): void {
@@ -166,5 +178,9 @@ export class ConnectorSetupService extends Service {
 
   setBroadcastWs(fn: ((data: object) => void) | null): void {
     this.broadcastWsFn = fn;
+  }
+
+  setLiveConfig(read: (() => ElizaConfig) | null): void {
+    this.readLiveConfig = read;
   }
 }

@@ -1,7 +1,7 @@
 /**
- * Exercises Qwen response-schema serialization through the real AI SDK and
- * provider client against a loopback HTTP endpoint. No live provider is used;
- * schema enforcement is asserted on the request, not simulated model behavior.
+ * Exercises response schemas and generation controls through the real AI SDK
+ * and provider client against a loopback HTTP endpoint. No live provider is
+ * used; request serialization is asserted, not simulated model behavior.
  */
 import { createServer, type Server } from "node:http";
 import type {
@@ -11,15 +11,32 @@ import type {
   PlannerTrajectory,
   ToolDefinition,
 } from "@elizaos/core";
+import {
+  buildPlannerToolsFromActions,
+  completionContextSources,
+  createHandleResponseTool,
+  ModelType,
+  parseAndValidate,
+  ResponseHandlerFieldRegistry,
+  withRequiredCompletionSourceIdentity,
+} from "@elizaos/core";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
-import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
 import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
 import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { runEvaluator } from "../../plugin-assistant/src/runtime/evaluator.ts";
 import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  createContextReadTool,
+  withAvailableContextRequests,
+} from "../../plugin-assistant/src/services/message/context-discovery.ts";
+import { withReviewedHistorySelection } from "../../plugin-assistant/src/services/message/history-discovery.ts";
+import { assertNativeContextReadToolBudget } from "../../plugin-assistant/src/services/message/native-context-read.ts";
+import { createSourceSelectionBinding } from "../../plugin-assistant/src/services/message/source-selection-binding.ts";
+import { openaiPlugin } from "../index";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
@@ -27,6 +44,10 @@ interface WireRequest {
   stream?: boolean;
   temperature?: number;
   top_p?: number;
+  stop?: string[];
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  seed?: number;
   reasoning_effort?: string;
   messages: Array<{ role: string; content: string }>;
   tools?: unknown[];
@@ -69,7 +90,12 @@ beforeAll(async () => {
         );
         return;
       }
-      const text = JSON.stringify(reply);
+      const properties = body.response_format?.json_schema?.schema.properties as
+        | Record<string, unknown>
+        | undefined;
+      const text = JSON.stringify(
+        properties?.__eliza_response ? { __eliza_response: reply } : reply
+      );
       const base = { id: "chatcmpl-qwen-fixture", created: 0, model: body.model };
       if (body.stream) {
         response.writeHead(200, { "content-type": "text/event-stream" });
@@ -128,6 +154,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   requests.length = 0;
+  reasoningEffortSetting = undefined;
   reply = verdict;
   replyToolCall = undefined;
   rejectSchema = false;
@@ -143,9 +170,12 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
+let reasoningEffortSetting: string | undefined;
+
 function runtime(): IAgentRuntime {
   return {
-    getSetting: () => undefined,
+    getSetting: (key: string) =>
+      key === "OPENAI_REASONING_EFFORT" ? reasoningEffortSetting : undefined,
     character: { name: "Ada", system: "Preserve the complete caller context." },
     emitEvent: vi.fn(),
     getService: () => null,
@@ -167,6 +197,10 @@ async function invoke(options: {
   };
   temperature?: number;
   topP?: number;
+  stopSequences?: string[];
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  seed?: number;
 }) {
   const chunks: string[] = [];
   const handler = options.actionPlanner
@@ -188,6 +222,12 @@ async function invoke(options: {
     stream: options.stream ?? false,
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options.stopSequences !== undefined ? { stopSequences: options.stopSequences } : {}),
+    ...(options.frequencyPenalty !== undefined
+      ? { frequencyPenalty: options.frequencyPenalty }
+      : {}),
+    ...(options.presencePenalty !== undefined ? { presencePenalty: options.presencePenalty } : {}),
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
     ...(options.providerOptions ? { providerOptions: options.providerOptions } : {}),
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   } as never);
@@ -257,7 +297,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
   it.each([false, true])(
     "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
     async (stream) => {
-      vi.stubEnv("OPENAI_REASONING_EFFORT", "none");
+      reasoningEffortSetting = "none";
       const cases = [
         { options: {}, effort: "none" },
         { options: { eliza: { thinking: "on" } }, effort: "low" },
@@ -288,7 +328,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
   it.each([false, true])(
     "transmits preferred native-tool reasoning with explicit override=%s",
     async (override) => {
-      vi.stubEnv("OPENAI_REASONING_EFFORT", "");
+      reasoningEffortSetting = undefined;
       const body = "Keep  two spaces and Mira’s 'literal' quotes.";
       replyToolCall = {
         id: "literal-1",
@@ -322,7 +362,7 @@ describe("Qwen3.8 response-schema wire contract", () => {
       } as never);
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({ tool_choice: "required" });
-      expect(requests[0].reasoning_effort).toBe(override ? "none" : "low");
+      expect(requests[0].reasoning_effort).toBe(override ? "none" : "high");
       expect(result).toMatchObject({ toolCalls: [{ name: "SAVE_LITERAL", arguments: { body } }] });
     }
   );
@@ -625,14 +665,148 @@ describe("Qwen3.8 response-schema wire contract", () => {
   );
 
   it.each([false, true])(
+    "preserves generation controls through registered runtime dispatch (stream=%s)",
+    async (stream) => {
+      vi.stubEnv("ELIZA_PROVIDER", "openai");
+      const agent = createSQLiteTestRuntime({
+        character: {
+          name: "generation-controls",
+          bio: "Keep caller output boundaries and sampling settings",
+          settings: {
+            ELIZA_PROVIDER: "openai",
+            OPENAI_API_KEY: "loopback-only-key",
+            OPENAI_BASE_URL: baseUrl,
+            OPENAI_SMALL_MODEL: "gpt-4o-mini",
+            OPENAI_LARGE_MODEL: "gpt-4o-mini",
+          },
+        },
+        plugins: [openaiPlugin],
+        logLevel: "fatal",
+      });
+      const stopSequences = ["END", "结束🛑"];
+      try {
+        await agent.initialize();
+        for (const modelType of [ModelType.TEXT_SMALL, ModelType.TEXT_LARGE]) {
+          const result = await agent.useModel(modelType, {
+            prompt: "Return the navigation verdict.",
+            stream,
+            stopSequences,
+            frequencyPenalty: 0,
+            presencePenalty: -0.4,
+            seed: 0,
+          });
+          if (typeof result === "string") expect(JSON.parse(result)).toEqual(verdict);
+          else if (result.textStream) {
+            let text = "";
+            for await (const chunk of result.textStream) text += chunk;
+            expect(JSON.parse(text)).toEqual(verdict);
+          } else expect(JSON.parse(await result.text)).toEqual(verdict);
+          expect(requests.at(-1)).toMatchObject({
+            model: "gpt-4o-mini",
+            stop: stopSequences,
+            frequency_penalty: 0,
+            presence_penalty: -0.4,
+            seed: 0,
+          });
+        }
+        expect(requests).toHaveLength(2);
+        expect(stopSequences).toEqual(["END", "结束🛑"]);
+      } finally {
+        await agent.stop();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    "preserves independent controls and omission across calls (stream=%s)",
+    async (stream) => {
+      const samples = [
+        {},
+        { stopSequences: ["END", "结束"] },
+        { frequencyPenalty: 0 },
+        { presencePenalty: 0 },
+        { seed: 0 },
+        { frequencyPenalty: -0.5, presencePenalty: 0.7, seed: 42 },
+        { stopSequences: [] },
+        {},
+      ];
+      for (const sample of samples) {
+        expect(await invoke({ stream, ...sample })).toEqual(verdict);
+        const sent = requests.at(-1);
+        if (!sent) throw new Error("Expected outbound SDK request");
+        for (const [input, wire] of [
+          ["stopSequences", "stop"],
+          ["frequencyPenalty", "frequency_penalty"],
+          ["presencePenalty", "presence_penalty"],
+          ["seed", "seed"],
+        ] as const) {
+          const value = sample[input];
+          if (value === undefined || (Array.isArray(value) && value.length === 0)) {
+            expect(sent).not.toHaveProperty(wire);
+          } else expect(sent[wire]).toEqual(value);
+        }
+      }
+      expect(requests).toHaveLength(samples.length);
+    }
+  );
+
+  it.each([false, true])(
+    "sanitizes stop text without changing caller data (stream=%s)",
+    async (stream) => {
+      const stopSequences = ["结束🛑", "broken\ud800"];
+      expect(await invoke({ stream, stopSequences })).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].stop).toEqual(["结束🛑", "broken\ufffd"]);
+      expect(stopSequences).toEqual(["结束🛑", "broken\ud800"]);
+    }
+  );
+
+  it.each([{ actionPlanner: true }, { responseHandler: true }])(
+    "preserves controls for the agent model slot %j",
+    async (slot) => {
+      expect(
+        await invoke({
+          ...slot,
+          stopSequences: ["END"],
+          frequencyPenalty: 0.4,
+          presencePenalty: 0,
+          seed: 42,
+        })
+      ).toEqual(verdict);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        stop: ["END"],
+        frequency_penalty: 0.4,
+        presence_penalty: 0,
+        seed: 42,
+      });
+    }
+  );
+
+  it.each([false, true])(
     "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
     async (stream) => {
       vi.stubEnv("ELIZA_PROVIDER", "openai");
-      expect(await invoke({ stream, model: "o3", temperature: 0, topP: 0.7 })).toEqual(verdict);
+      expect(
+        await invoke({
+          stream,
+          model: "o3",
+          stopSequences: [],
+          temperature: 0,
+          topP: 0.7,
+          frequencyPenalty: 0.5,
+          presencePenalty: 0.5,
+          seed: 0,
+        })
+      ).toEqual(verdict);
       expect(requests).toHaveLength(1);
       expect(requests[0].model).toBe("o3");
+      expect(requests[0]).not.toHaveProperty("stop");
+      expect(requests[0].seed).toBe(0);
       expect(requests[0]).not.toHaveProperty("temperature");
       expect(requests[0]).not.toHaveProperty("top_p");
+      expect(requests[0]).not.toHaveProperty("frequency_penalty");
+      expect(requests[0]).not.toHaveProperty("presence_penalty");
     }
   );
 
@@ -834,6 +1008,15 @@ describe("Qwen3.8 response-schema wire contract", () => {
     "preserves the complete %s schema across success and provider rejection",
     async (_name, schema, result) => {
       const original = structuredClone(schema);
+      const expectedWire =
+        _name === "root union"
+          ? {
+              type: "object",
+              properties: { __eliza_response: original },
+              required: ["__eliza_response"],
+              additionalProperties: false,
+            }
+          : original;
       reply = result;
       // The fixture accepts arbitrary JSON to verify transport preservation,
       // not to claim that a live provider supports every schema feature.
@@ -841,15 +1024,16 @@ describe("Qwen3.8 response-schema wire contract", () => {
       expect(requests).toHaveLength(1);
       expect(requests[0].response_format).toEqual({
         type: "json_schema",
-        json_schema: { name: "response", strict: true, schema: original },
+        json_schema: { name: "response", strict: true, schema: expectedWire },
       });
       requests.length = 0;
+      reasoningEffortSetting = undefined;
       rejectSchema = true;
       await expect(invoke({ schema })).rejects.toThrow(/Unsupported response schema fixture/);
       expect(requests).toHaveLength(1);
       expect(requests[0].response_format).toEqual({
         type: "json_schema",
-        json_schema: { name: "response", strict: true, schema: original },
+        json_schema: { name: "response", strict: true, schema: expectedWire },
       });
       expect(schema).toEqual(original);
     }
@@ -948,4 +1132,180 @@ describe("Qwen3.8 response-schema wire contract", () => {
     expect(parseAndValidate(JSON.stringify(result), schema).valid).toBe(true);
     expect(schema).toEqual(original);
   });
+});
+
+it("serializes the structural READ_CONTEXT contract with supported Cerebras keywords and no pattern or allOf", async () => {
+  vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+  const schema = {
+    type: "object",
+    properties: { contextRequests: { type: "array", items: { type: "string" } } },
+    required: ["contextRequests"],
+  };
+  const tool = createContextReadTool(schema, true, {
+    providers: new Set(["VISIBLE"]),
+    history: {
+      sourceSetId: "a".repeat(64),
+      sources: new Map([
+        [1, "history:h1"],
+        [3, "history:h3"],
+        [551, "history:h551"],
+      ]),
+      all: "history:all",
+      assertCurrent() {},
+      search(_scope, query) {
+        return "history:search:" + query;
+      },
+    },
+  })!;
+  assertNativeContextReadToolBudget([tool]);
+  replyToolCall = {
+    id: "native-read-fixture",
+    type: "function",
+    function: {
+      name: "READ_CONTEXT",
+      arguments: JSON.stringify({
+        reads: [{ kind: "provider", references: ["VISIBLE"] }],
+        acknowledgment: "",
+      }),
+    },
+  };
+  await invoke({ tools: [tool], responseHandler: true });
+  expect(requests).toHaveLength(1);
+  expect(requests[0].tools).toEqual([
+    expect.objectContaining({
+      type: "function",
+      function: expect.objectContaining({
+        name: "READ_CONTEXT",
+        strict: true,
+        parameters: tool.parameters,
+      }),
+    }),
+  ]);
+  expect(JSON.stringify(requests[0].tools)).not.toContain('"pattern"');
+  expect(JSON.stringify(requests[0].tools)).not.toContain('"allOf"');
+});
+
+function actualBuiltinReadTools(count: number) {
+  const fields = new ResponseHandlerFieldRegistry();
+  for (const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) fields.register(field);
+  const canonical = fields.composeSchema();
+  const context = {
+    id: "wire-turn",
+    metadata: { roomId: "wire-room", messageId: "wire-turn" },
+    events: Array.from({ length: count }, (_, index) => ({
+      id: `prior-${index + 1}`,
+      type: "segment" as const,
+      source: "prior-dialogue",
+      segment: {
+        id: `prior-${index + 1}`,
+        label: "prior_message:user",
+        content: `Synthetic original ${index + 1}.`,
+        stable: false,
+      },
+    })),
+  };
+  const snapshot = completionContextSources(context);
+  const contract = {
+    providers: new Set(["VISIBLE"]),
+    history: {
+      sourceSetId: snapshot.sourceSetId,
+      sources: new Map(
+        snapshot.sources.map((source, index) => [index + 1, `history:${source.id}`])
+      ),
+      all: "history:all",
+      assertCurrent() {},
+      search(_scope: "all" | "user" | "assistant", query: string) {
+        return "history:search:" + query;
+      },
+    },
+  };
+  // Use the same production selection/identity/binding transforms as Stage 1;
+  // raw canonical completion schemas intentionally retain legacy regexes.
+  const restricted = withReviewedHistorySelection(
+    withAvailableContextRequests(canonical, contract.providers),
+    true
+  );
+  const parameters = withRequiredCompletionSourceIdentity(restricted, context);
+  const bound = createSourceSelectionBinding(parameters, context, {
+    sourceOrdinals: true,
+    assertCurrent() {},
+  })!;
+  return {
+    contract,
+    tools: [
+      createHandleResponseTool({ directMessage: true, parameters: bound.parameters }),
+      createContextReadTool(canonical, true, contract)!,
+    ],
+  };
+}
+
+it.each([12, 551] as const)(
+  "serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for %s originals through the provider serializer",
+  async (count) => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    const { contract, tools } = actualBuiltinReadTools(count);
+    assertNativeContextReadToolBudget(tools);
+    const sourceSetId = contract.history.sourceSetId;
+    const selector = { kind: "history-all", sourceSetId };
+    const argumentsValue = { reads: [selector], acknowledgment: "" };
+    replyToolCall = {
+      id: "paired-native-read",
+      type: "function",
+      function: { name: "READ_CONTEXT", arguments: JSON.stringify(argumentsValue) },
+    };
+    await invoke({ tools, responseHandler: true });
+    expect(requests).toHaveLength(1);
+    const wire = requests[0].tools as Array<{
+      type: string;
+      function: {
+        name: string;
+        strict: boolean;
+        parameters: NonNullable<ToolDefinition["parameters"]>;
+      };
+    }>;
+    expect(wire.map((tool) => tool.function.name)).toEqual(["HANDLE_RESPONSE", "READ_CONTEXT"]);
+    expect(wire.every((tool) => tool.function.strict === true)).toBe(true);
+    expect(
+      wire.every(
+        (tool) =>
+          tool.function.parameters !== null &&
+          typeof tool.function.parameters === "object" &&
+          !Array.isArray(tool.function.parameters)
+      )
+    ).toBe(true);
+    // Audit the complete payload captured by the loopback server AFTER the real
+    // adapter and AI SDK serialize it; pre-wire budgets do not prove wire budgets.
+    assertNativeContextReadToolBudget(
+      wire.map((tool) => ({
+        name: tool.function.name,
+        description: "",
+        parameters: tool.function.parameters,
+      }))
+    );
+    const read = wire.find((tool) => tool.function.name === "READ_CONTEXT")!;
+    expect(parseAndValidate(JSON.stringify(argumentsValue), read.function.parameters).valid).toBe(
+      true
+    );
+    expect(JSON.stringify(wire)).not.toContain('"pattern"');
+    expect(JSON.stringify(wire)).not.toContain('"allOf"');
+  }
+);
+
+it("offers every one of551 completion ordinals within the complete pair budget without string enums", () => {
+  const { contract, tools } = actualBuiltinReadTools(551);
+  expect(contract.history.sources.size).toBe(551);
+  expect(() => assertNativeContextReadToolBudget(tools)).not.toThrow();
+  const handler = tools.find((tool) => tool.name === "HANDLE_RESPONSE")!;
+  const selection = handler.parameters!.properties!.completionContext!;
+  for (const name of [
+    "relevantSourceIds",
+    "constraintSourceIds",
+    "referentSourceIds",
+    "pendingIntentSourceIds",
+  ]) {
+    const items = selection.properties![name]!.items;
+    expect(items).toMatchObject({ type: "integer", minimum: 1, maximum: 551 });
+    expect(items).not.toHaveProperty("anyOf");
+  }
+  expect(requests).toHaveLength(0);
 });

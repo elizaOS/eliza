@@ -59,9 +59,14 @@ function observeHttpDiagnostic<T>(observe: () => T): T | undefined {
 export function createOpenAIClient(
   runtime: IAgentRuntime,
   endpoint?: { baseURL: string; apiKey: string; provider: "openrouter" },
-  reasoningReplay?: CerebrasReasoningReplay
+  reasoningReplay?: CerebrasReasoningReplay,
+  dispatchGuard?: {
+    /** Captured by the trusted text caller; never model parameters. */
+    baseURL: string;
+    beforeDispatch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): void;
+  }
 ): OpenAIProvider {
-  const baseURL = endpoint?.baseURL ?? getBaseURL(runtime);
+  const baseURL = dispatchGuard?.baseURL ?? endpoint?.baseURL ?? getBaseURL(runtime);
   const apiKey = endpoint?.apiKey ?? getApiKey(runtime);
 
   if (!apiKey) {
@@ -116,7 +121,11 @@ export function createOpenAIClient(
           const reasoning = body.reasoning_effort;
           delete body.reasoning_effort;
           delete body.prompt_cache_retention;
-          body.provider = { require_parameters: true, data_collection: "deny", sort: "latency" };
+          body.provider = {
+            require_parameters: true,
+            data_collection: "deny",
+            sort: "latency",
+          };
           if (typeof reasoning === "string") {
             body.reasoning = reasoning === "none" ? { enabled: false } : { effort: reasoning };
           }
@@ -126,6 +135,12 @@ export function createOpenAIClient(
           const body = JSON.parse(init.body) as Record<string, unknown>;
           applyCerebrasReasoningReplay(body, reasoningReplay);
           init = { ...init, body: JSON.stringify(body) };
+        }
+        if (dispatchGuard) {
+          // Rewrites above are complete. No await may separate this debit from
+          // transport; redirects cannot leave the quoted provider route.
+          dispatchGuard.beforeDispatch(input, init);
+          init = { ...init, redirect: "error" };
         }
         const attempt = ++httpAttempt;
         const startedAt = Date.now();

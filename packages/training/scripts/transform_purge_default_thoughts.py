@@ -26,17 +26,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.adapters import (  # noqa: E402
-    _picked_thought,
-    _REPLY_THOUGHT_POOL,
-    _TOOL_THOUGHT_POOL,
-    _SHELL_THOUGHT_POOL,
-    _IGNORE_THOUGHT_POOL,
-    _AGENT_TRACE_THOUGHT_POOL,
-)
-from lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+from eliza_training.lib.adapters.common import _picked_thought, _REPLY_THOUGHT_POOL, _TOOL_THOUGHT_POOL, _SHELL_THOUGHT_POOL, _IGNORE_THOUGHT_POOL, _AGENT_TRACE_THOUGHT_POOL
+from eliza_training.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
 
 assert "Reply to the user." in DEFAULT_THOUGHT_LEAKS, (
     "DEFAULT_THOUGHT_LEAKS lost its canonical entry — see lib/eliza_record.py"

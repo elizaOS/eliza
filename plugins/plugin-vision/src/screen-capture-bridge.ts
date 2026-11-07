@@ -6,11 +6,11 @@
  * posts PNG frames back to resolve matching promises.
  */
 
+import type {
+  ScreenCaptureImageFormat,
+  ScreenCaptureRequestContract,
+} from "@elizaos/contracts";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  type ScreenCaptureImageFormat,
-  type ScreenCaptureRequestContract,
-} from "@elizaos/core/contracts/screen-capture";
 
 /** Service type used to resolve the bridge off the runtime. */
 export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE =
@@ -90,6 +90,15 @@ export class ScreenCaptureBridgeService extends Service {
     return new Promise<ScreenCaptureFrame | null>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
+        // A request that timed out can never be delivered. Drop it from the
+        // drain queue too, or the renderer captures the screen (and may
+        // re-prompt for MediaProjection consent) for a request this agent
+        // already abandoned, then POSTs a frame the route rejects as
+        // `unknown_request`.
+        const queued = this.queue.findIndex(
+          (queuedRequest) => queuedRequest.requestId === requestId,
+        );
+        if (queued >= 0) this.queue.splice(queued, 1);
         logger.debug(
           `[ScreenCaptureBridgeService] capture request ${requestId} timed out after ${this.timeoutMs}ms`,
         );

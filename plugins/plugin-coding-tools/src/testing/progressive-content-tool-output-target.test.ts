@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runProgressiveContentTargetConformance } from "@elizaos/testing";
+import { runProgressiveContentTargetConformance } from "@elizaos/testing/progressive-content";
 import { afterEach, describe, expect, it } from "vitest";
 import { createProgressiveToolOutputTargetFactory } from "./progressive-content-tool-output-target.js";
 

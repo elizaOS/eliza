@@ -7,16 +7,16 @@
  * Requires super_admin role.
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { userMetricsService } from "@/lib/services/user-metrics";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { userMetricsService } from "@elizaos/cloud-shared/lib/services/user-metrics";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const TIME_RANGE_MS: Record<string, number> = {
   "7d": 7 * 86_400_000,
@@ -67,7 +67,15 @@ app.get("/", async (c) => {
     const rangeMs = TIME_RANGE_MS[timeRange];
     const rangeDays = Math.round(rangeMs / 86_400_000);
     const now = new Date();
-    const startDate = new Date(now.getTime() - rangeMs);
+    // Daily rows are dated at UTC midnight: start at a midnight, as the
+    // overview does, so "7d" covers 7 daily rows and both views share the
+    // same cached range.
+    const todayStart = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const startDate = new Date(todayStart - rangeDays * 86_400_000);
 
     switch (view) {
       case "overview":

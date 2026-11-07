@@ -1,3 +1,4 @@
+import { resetDefaultAccountPoolAfterCredentialReset } from "@elizaos/auth/accounts";
 import { handleCloudGoogleDelegationRoute } from "./cloud-google-delegation-routes";
 /**
  * app wrapper around `@elizaos/agent`'s dashboard HTTP API. Every request
@@ -15,7 +16,6 @@ import { handleCloudGoogleDelegationRoute } from "./cloud-google-delegation-rout
 import fs from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
-import path from "node:path";
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -24,7 +24,6 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
-  type ElizaConfig,
   ensureProtectedProfileAdmission,
   extractAuthToken,
   fetchWithTimeoutGuard,
@@ -39,10 +38,12 @@ import {
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
+  type RuntimeRestartOptions,
+  removeResetCredentialsFromVault,
   resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
-  resolveUserPath,
+  resolveResetPgliteDataDir,
   routeAutonomyTextToUser,
   saveElizaConfig,
   streamResponseBodyWithByteLimit,
@@ -51,22 +52,28 @@ import {
 import { isRegisteredTokenRoleAuthorized } from "@elizaos/agent/api/boundary-role-resolver";
 import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
-import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/auth/types";
-// Override the wallet export rejection function with the hardened version
-// that adds rate limiting, audit logging, and a forced confirmation delay.
+import {
+  createRuntimeAccountStoragePolicy,
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+} from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
+  ElizaError,
+  logger,
+  resolveStateDir,
+} from "@elizaos/core";
+// Override the wallet export rejection function with the hardened version
+// that adds rate limiting, audit logging, and a forced confirmation delay.
+
+import {
+  type ElizaConfig,
   getHttpRuntime,
   isElizaSettingsDebugEnabled,
-  logger,
   resolveLinkedAccountsInConfig,
-  resolveStateDir,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
-
-import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
-import { authStoreForRuntime } from "../services/auth-store";
+} from "@elizaos/host/protocol";
+import { authStoreForHost } from "../services/auth-store";
+import { sharedVault } from "../services/vault-mirror";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
   getProvidedApiToken,
@@ -78,6 +85,7 @@ import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
+  ensureRouteMinRole,
 } from "./auth.ts";
 import {
   type CompatRouteChainEntry,
@@ -90,6 +98,13 @@ import {
 import { sendJson as sendJsonResponse } from "./response";
 import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
+import { createSelfHostedVoice } from "./self-hosted-voice";
+import {
+  closeStandaloneSpeech,
+  handleStandaloneSpeechRoute,
+  stopStandaloneSpeech,
+  warmStandaloneSpeech,
+} from "./standalone-speech-routes";
 import { handleStandaloneWhisperRoute } from "./standalone-whisper-routes";
 
 export {
@@ -212,7 +227,7 @@ import {
 } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
-import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
+import { deleteWalletSecrets } from "../security/wallet-secrets";
 
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
@@ -262,22 +277,6 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
 
 const RUNTIME_STOP_RESET_TIMEOUT_MS = 20_000;
 
-function resolveCompatPgliteDataDir(config: ElizaConfig): string {
-  const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  if (explicitDataDir) {
-    return resolveUserPath(explicitDataDir);
-  }
-
-  const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) {
-    return resolveUserPath(configuredDataDir);
-  }
-
-  const workspaceDir =
-    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".elizadb");
-}
-
 /**
  * Reset hop for `POST /api/agent/reset`. Deliberately operates entirely
  * in-process: stops the runtime then removes the PGlite data dir.
@@ -293,6 +292,11 @@ async function clearCompatPgliteDataDir(
   runtime: AgentRuntime | null,
   config: ElizaConfig,
 ): Promise<void> {
+  // Throws before the runtime stops when Reset cannot erase the active store.
+  const dataDir = resolveResetPgliteDataDir(
+    config,
+    resolveDefaultAgentWorkspaceDir(),
+  );
   if (typeof runtime?.stop === "function") {
     // `runtime.stop()` releases plugins/services to drop the PGlite write lock
     // before we delete the data dir. On mobile CPU with many plugins loaded it
@@ -318,11 +322,6 @@ async function clearCompatPgliteDataDir(
         clearTimeout(timeoutHandle);
       }
     }
-  }
-
-  const dataDir = resolveCompatPgliteDataDir(config);
-  if (path.basename(dataDir) !== ".elizadb") {
-    throw new Error(`Refusing to delete unexpected PGlite dir: ${dataDir}`);
   }
 
   if (fs.existsSync(dataDir)) {
@@ -364,104 +363,30 @@ function mergeEmbeddingIntoStatusPayload(
   payload.startup = { ...base, ...aug };
 }
 
-function rewriteCompatStatusBody(
-  bodyText: string,
+function composeAppStatus(
+  payload: Record<string, unknown>,
   state: CompatRuntimeState,
-): string {
+): Record<string, unknown> {
+  const result = { ...payload };
+  mergeEmbeddingIntoStatusPayload(result);
+  const upstreamReasons = Array.isArray(payload.pendingRestartReasons)
+    ? payload.pendingRestartReasons.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : [];
+  const pendingRestartReasons = [
+    ...new Set([...upstreamReasons, ...state.pendingRestartReasons]),
+  ];
+  if (
+    pendingRestartReasons.length > 0 ||
+    typeof payload.pendingRestart === "boolean"
+  ) {
+    result.pendingRestart = pendingRestartReasons.length > 0;
+    result.pendingRestartReasons = pendingRestartReasons;
+  }
   const agentName = resolveCompatStatusAgentName(state);
-
-  try {
-    const parsed = JSON.parse(bodyText) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return bodyText;
-    }
-
-    const payload = parsed as Record<string, unknown>;
-    mergeEmbeddingIntoStatusPayload(payload);
-
-    const upstreamPendingRestartReasons = Array.isArray(
-      payload.pendingRestartReasons,
-    )
-      ? payload.pendingRestartReasons.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
-    const pendingRestartReasons = Array.from(
-      new Set([
-        ...upstreamPendingRestartReasons,
-        ...state.pendingRestartReasons,
-      ]),
-    );
-    if (
-      pendingRestartReasons.length > 0 ||
-      typeof payload.pendingRestart === "boolean"
-    ) {
-      payload.pendingRestart = pendingRestartReasons.length > 0;
-      payload.pendingRestartReasons = pendingRestartReasons;
-    }
-
-    if (!agentName) {
-      return JSON.stringify(payload);
-    }
-
-    if (payload.agentName === agentName) {
-      return JSON.stringify(payload);
-    }
-
-    return JSON.stringify({
-      ...payload,
-      agentName,
-    });
-  } catch {
-    // error-policy:J3 upstream status is untrusted boundary data; preserve the
-    // original body when it cannot be parsed instead of fabricating a status.
-    return bodyText;
-  }
-}
-
-function patchCompatStatusResponse(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): void {
-  const method = (req.method ?? "GET").toUpperCase();
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  if (method !== "GET" || pathname !== "/api/status") {
-    return;
-  }
-
-  const originalEnd = res.end.bind(res);
-
-  res.end = ((
-    chunk?: string | Uint8Array,
-    encoding?: unknown,
-    cb?: unknown,
-  ) => {
-    let resolvedEncoding: BufferEncoding | undefined;
-    let resolvedCallback: (() => void) | undefined;
-
-    if (typeof encoding === "function") {
-      resolvedCallback = encoding as () => void;
-    } else {
-      resolvedEncoding = encoding as BufferEncoding | undefined;
-      resolvedCallback = cb as (() => void) | undefined;
-    }
-
-    if (chunk == null) {
-      return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
-    }
-
-    const bodyText =
-      typeof chunk === "string"
-        ? chunk
-        : Buffer.from(chunk).toString(resolvedEncoding ?? "utf8");
-
-    return originalEnd(
-      rewriteCompatStatusBody(bodyText, state),
-      "utf8",
-      resolvedCallback,
-    );
-  }) as typeof res.end;
+  if (agentName) result.agentName = agentName;
+  return result;
 }
 
 /**
@@ -764,6 +689,11 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // (app must not statically import plugin packages). This replaces the
     // former inline hardwired block that enumerated the four plugin handlers
     // directly in the dispatcher body (#12089 item 5).
+    id: "standalone-speech",
+    handler: ({ req, res, state }) =>
+      handleStandaloneSpeechRoute(req, res, state),
+  },
+  {
     id: "standalone-whisper",
     handler: ({ req, res, state }) =>
       handleStandaloneWhisperRoute(req, res, state),
@@ -776,8 +706,19 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         handleLocalInferenceAsrRoute,
         handleLocalInferenceCompatRoutes,
         handleLocalInferenceTtsRoute,
+        handleVoiceModelsRoutes,
       } = await getLocalInferenceRoutes();
       if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+      // Served here, not by the upstream agent listener, so the owner-only
+      // voice-update toggles are decided by the app's role resolver.
+      if (
+        await handleVoiceModelsRoutes(req, res, {
+          authorizeOwnerRequest: (request, response) =>
+            ensureRouteMinRole(request, response, state, "OWNER"),
+        })
+      ) {
+        return true;
+      }
       // Voice routes share the app AuthStore/CSRF resolver. Configuration and
       // sensitive model-management routes retain their existing token policy.
       const voiceState = {
@@ -864,7 +805,8 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         }
         saveElizaConfig(config);
         clearCloudSecrets();
-        await deleteWalletSecretsFromOsStore();
+        await removeResetCredentialsFromVault(sharedVault());
+        await deleteWalletSecrets();
         logger.info(
           "[eliza][reset] POST /api/agent/reset: eliza.json saved; renderer should restart API process if embedded/third-party dev",
         );
@@ -875,9 +817,14 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         logger.warn(
           `[eliza][reset] POST /api/agent/reset failed: ${err instanceof Error ? err.message : String(err)}`,
         );
-        sendJsonResponse(res, 500, {
-          error: err instanceof Error ? err.message : "Reset failed",
-        });
+        sendJsonResponse(
+          res,
+          err instanceof ElizaError &&
+            err.code === "AGENT_RESET_DATABASE_UNSUPPORTED"
+            ? 409
+            : 500,
+          { error: err instanceof Error ? err.message : "Reset failed" },
+        );
       }
       return true;
     },
@@ -960,7 +907,6 @@ async function runCompatRequestPipeline(
   // is picked up without a restart.
   ensureCloudTtsApiKeyAlias();
   mirrorCompatHeaders(req);
-  patchCompatStatusResponse(req, res, state);
 
   // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
   // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
@@ -1023,7 +969,7 @@ async function runCompatRequestPipeline(
       (getProvidedApiToken(req) || readCookie(req, SESSION_COOKIE_NAME)) &&
       !isAuthorized(req) &&
       !isRegisteredTokenRoleAuthorized(req, "GET", pathname) &&
-      !authStoreForRuntime(state.current)
+      !authStoreForHost(state)
     ) {
       res.setHeader("Retry-After", "1");
       sendJsonResponse(res, 503, { error: "db_unavailable" });
@@ -1106,16 +1052,83 @@ export async function startApiServer(
   }
 
   const callerOptions = args[0];
+  const callerStop = callerOptions?.onStop;
+  const callerRestart = callerOptions?.onRestart;
+  const voiceHost = createSelfHostedVoice(compatState, {
+    protectedHost: Boolean(callerOptions?.hostAdmission),
+  });
+  let speechHostStarted = false;
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    getAuthenticationRuntime: () =>
+      compatState.current ?? compatState.stoppedAuthRuntime ?? null,
+    composeStatus: (payload) =>
+      composeAppStatus(
+        callerOptions?.composeStatus
+          ? callerOptions.composeStatus(payload)
+          : payload,
+        compatState,
+      ),
     onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      if (compatState.current !== activeRuntime) {
+        stopStandaloneSpeech(compatState);
+        voiceHost.reset();
+      }
       compatState.current = activeRuntime;
+      compatState.stoppedAuthRuntime = null;
+      if (speechHostStarted) warmStandaloneSpeech(compatState);
       clearCompatRuntimeRestart(compatState);
       await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
     },
+    ...(callerStop
+      ? {
+          onStop: async (runtime: AgentRuntime) => {
+            if (compatState.current === runtime) {
+              stopStandaloneSpeech(compatState);
+              voiceHost.reset();
+              compatState.current = null;
+            }
+            try {
+              await callerStop(runtime);
+            } finally {
+              if (compatState.current === runtime) {
+                stopStandaloneSpeech(compatState);
+                voiceHost.reset();
+                compatState.current = null;
+              }
+              // The host keeps the stopped runtime's database open until the
+              // next start or shutdown, so sessions stay verifiable meanwhile.
+              compatState.stoppedAuthRuntime = runtime;
+            }
+          },
+        }
+      : {}),
+    ...(callerRestart
+      ? {
+          onRestart: async (restartOptions?: RuntimeRestartOptions) => {
+            // The host closes the stopped runtime's database before it boots
+            // the replacement; stop reading sessions from it first.
+            const stoppedRuntime = compatState.stoppedAuthRuntime;
+            compatState.stoppedAuthRuntime = null;
+            try {
+              const restarted = await callerRestart(restartOptions);
+              if (!restarted && stoppedRuntime) {
+                compatState.stoppedAuthRuntime = stoppedRuntime;
+              }
+              return restarted;
+            } catch (error) {
+              if (stoppedRuntime) {
+                compatState.stoppedAuthRuntime = stoppedRuntime;
+              }
+              throw error;
+            }
+          },
+        }
+      : {}),
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
+        if (await voiceHost.handleRequest(req, res)) return;
         if (callerOptions?.requestMiddleware) {
           await callerOptions.requestMiddleware(req, res, next);
           return;
@@ -1132,9 +1145,7 @@ export async function startApiServer(
         identityId: string;
       }): Promise<boolean> => {
         bindSessionSocket(binding, request.socket);
-        const store = compatState.current
-          ? authStoreForRuntime(compatState.current)
-          : null;
+        const store = authStoreForHost(compatState);
         const stillActive = store
           ? await findActiveSession(store, binding.sessionId).catch(
               (error: unknown) => {
@@ -1183,9 +1194,12 @@ export async function startApiServer(
         extractAuthToken(request)?.trim() ||
         null;
       if (sessionToken) {
-        if (compatState.current?.adapter) {
+        if (
+          compatState.current?.adapter ||
+          compatState.stoppedAuthRuntime?.adapter
+        ) {
           try {
-            const store = authStoreForRuntime(compatState.current);
+            const store = authStoreForHost(compatState);
             const session = store
               ? await findActiveSession(store, sessionToken)
               : null;
@@ -1217,9 +1231,16 @@ export async function startApiServer(
       }
       return (await callerOptions?.authorizeWebSocket?.(request, url)) === true;
     },
+    handleProtocolUpgrade: async (request, socket, head) =>
+      (await voiceHost.handleUpgrade(request, socket, head)) ||
+      (await callerOptions?.handleProtocolUpgrade?.(request, socket, head)) ===
+        true,
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
     },
+  }).catch(async (error: unknown) => {
+    await voiceHost.close();
+    throw error;
   });
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
@@ -1228,16 +1249,24 @@ export async function startApiServer(
   compatState.runtimeOperations = server.runtimeOperations;
   compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
+  speechHostStarted = true;
+  warmStandaloneSpeech(compatState);
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
 
   server.updateRuntime = (runtime: AgentRuntime) => {
+    if (compatState.current !== runtime) {
+      stopStandaloneSpeech(compatState);
+      voiceHost.reset();
+    }
     compatState.current = runtime;
     clearCompatRuntimeRestart(compatState);
     // Make the runtime immediately visible to upstream routes so hot swaps do
     // not briefly return 503s while compat setup finishes in the background.
     originalUpdateRuntime(runtime);
+    warmStandaloneSpeech(compatState);
 
     // Continue repairing SQL compatibility asynchronously without blocking
     // the runtime from becoming available to unrelated routes.
@@ -1259,5 +1288,28 @@ export async function startApiServer(
     })();
   };
 
+  const originalClose = server.close.bind(server);
+  server.close = async () => {
+    compatState.stoppedAuthRuntime = null;
+    closeStandaloneSpeech(compatState);
+    let retirementFailure: { error: unknown } | undefined;
+    try {
+      await voiceHost.close();
+    } catch (error) {
+      retirementFailure = { error };
+    }
+    try {
+      await originalClose();
+    } catch (error) {
+      if (retirementFailure) {
+        throw new AggregateError(
+          [retirementFailure.error, error],
+          "Server closed with unconfirmed voice retirement",
+        );
+      }
+      throw error;
+    }
+    if (retirementFailure) throw retirementFailure.error;
+  };
   return server;
 }

@@ -1,19 +1,22 @@
 // Handles v1 cloud API v1 documents submit route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { deletePendingDocumentBlob } from "../_pending-blob-cleanup";
 import {
   createDocumentRecord,
+  DOCUMENT_SNIFF_BYTES,
+  isReadableTextDocument,
   type PendingDocumentFile,
   r2KeyFromBlobUrl,
   resolveDocumentScope,
+  UNREADABLE_DOCUMENT_ERROR,
 } from "../_worker-documents";
 
 interface SubmitDocumentsBody {
@@ -70,11 +73,32 @@ app.post("/", async (c) => {
         continue;
       }
 
+      // Native R2 objects always have arrayBuffer; only narrow shims lack it.
+      const bytes = object.arrayBuffer
+        ? new Uint8Array(await object.arrayBuffer())
+        : new TextEncoder().encode(await object.text());
+      if (
+        !isReadableTextDocument(
+          file.filename,
+          file.contentType,
+          bytes.subarray(0, DOCUMENT_SNIFF_BYTES),
+        )
+      ) {
+        // The refused upload is never stored, so its pending blob goes too.
+        await deletePendingDocumentBlob(c.env.BLOB, key);
+        results.push({
+          blobUrl: file.blobUrl,
+          status: "error",
+          error: `"${file.filename}" ${UNREADABLE_DOCUMENT_ERROR}`,
+        });
+        continue;
+      }
+
       const document = await createDocumentRecord(user, scope, {
         filename: file.filename,
         contentType: file.contentType,
         size: file.size,
-        text: await object.text(),
+        text: new TextDecoder().decode(bytes),
       });
       await deletePendingDocumentBlob(c.env.BLOB, key);
       results.push({ blobUrl: file.blobUrl, status: "success", document });

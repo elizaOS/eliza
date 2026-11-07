@@ -24,6 +24,7 @@ import {
   createReleaseState,
   deriveReleaseCandidateTag,
   deriveReleaseCohortIntegrity,
+  publishedWorkspaceRange,
   RELEASE_PLAN_SCHEMA_VERSION,
   resolveReleaseCohort,
   sha512Hex,
@@ -87,6 +88,17 @@ function assertManifestsUnchanged(snapshots) {
       );
     }
   }
+}
+
+function publishedManifest(sourceBytes, packageRecord) {
+  const manifest = JSON.parse(sourceBytes.toString("utf8"));
+  for (const dependency of packageRecord.internalDependencies) {
+    manifest[dependency.section][dependency.name] = publishedWorkspaceRange(
+      dependency.range,
+      dependency.targetVersion,
+    );
+  }
+  return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
 function runBuildOnce(repoRoot, build) {
@@ -304,12 +316,23 @@ export function buildAndPackReleaseCandidate({
     const filenames = new Set();
     for (const packageRecord of cohort.packages) {
       const snapshot = snapshots.get(packageRecord.name);
-      const tarball = packOnce({
-        repoRoot: root,
-        stagingDirectory,
-        packageRecord,
-        npmCommand,
-      });
+      // Source manifests keep workspace ranges; only the packed manifest pins
+      // them, and the source bytes are restored before the next check.
+      writeFileSync(
+        snapshot.manifestPath,
+        publishedManifest(snapshot.bytes, packageRecord),
+      );
+      let tarball;
+      try {
+        tarball = packOnce({
+          repoRoot: root,
+          stagingDirectory,
+          packageRecord,
+          npmCommand,
+        });
+      } finally {
+        writeFileSync(snapshot.manifestPath, snapshot.bytes);
+      }
       if (filenames.has(tarball.filename))
         throw new Error(`Duplicate tarball filename ${tarball.filename}`);
       filenames.add(tarball.filename);

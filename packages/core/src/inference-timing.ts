@@ -33,17 +33,15 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ElizaError } from "./errors";
-import { logger } from "./logger";
+import { logger, RUNTIME_DEBUG_LOG_ENABLED } from "./logger";
 
-// ---------------------------------------------------------------------------
 // Span / mark shapes
-// ---------------------------------------------------------------------------
 
 export type InferenceTimingMeta = Record<string, string | number | boolean>;
 
 export interface InferenceSpan {
 	/** Stage name, e.g. `composeState`, `model:RESPONSE_HANDLER`,
-	 *  `cloud.http:/chat/completions`, `cloud.semaphore-wait`, `evaluators`. */
+	 * `cloud.http:/chat/completions`, `cloud.semaphore-wait`, `evaluators`. */
 	name: string;
 	/** Wall-clock ms since the turn's `t0` when the span opened. */
 	startMs: number;
@@ -75,11 +73,8 @@ export const INFERENCE_MARKS = {
 export interface InferenceTurnSummary {
 	turnId: string;
 	/**
-	 * Gateway-compatible correlation id (32 lowercase hex, #16079). Sent as
-	 * `X-Eliza-Trace-Id` on elizaOS Cloud calls so one id joins the turn's
-	 * local spans with the gateway's structured events and Server-Timing.
-	 * Null only for summaries rehydrated from logs persisted before trace
-	 * correlation existed — never fabricated for such turns.
+	 * Gateway correlation ID, sent as X-Eliza-Trace-Id. Null denotes a stored summary without
+	 * correlation evidence; never invent an ID.
 	 */
 	traceId: string | null;
 	label: string;
@@ -146,6 +141,7 @@ export interface InferenceFlowBreakdown {
 	stages: InferenceFlowStageBreakdown[];
 }
 
+/** Stage attributed to a segment covered by several stages: earliest wins. */
 const FLOW_STAGE_PRIORITY: readonly InferenceFlowStage[] = [
 	"embedding",
 	"model-queue",
@@ -164,6 +160,10 @@ const FLOW_STAGE_PRIORITY: readonly InferenceFlowStage[] = [
 	"planner-overhead",
 	"message-service-overhead",
 ];
+
+const FLOW_STAGE_RANK: ReadonlyMap<InferenceFlowStage, number> = new Map(
+	FLOW_STAGE_PRIORITY.map((stage, rank) => [stage, rank]),
+);
 
 function classifyInferenceSpan(name: string): InferenceFlowStage | null {
 	const normalized = name.toLowerCase();
@@ -253,16 +253,15 @@ export function buildInferenceFlowBreakdown(
 		};
 	}
 
-	const spans = summary.spans
-		.map((span) => ({
-			startMs: Math.max(0, Math.min(totalMs, span.startMs)),
-			endMs: Math.max(0, Math.min(totalMs, span.endMs)),
-			stage: classifyInferenceSpan(span.name),
-		}))
-		.filter(
-			(span): span is typeof span & { stage: InferenceFlowStage } =>
-				span.stage !== null && span.endMs > span.startMs,
-		);
+	const spans: { startMs: number; endMs: number; rank: number }[] = [];
+	for (const span of summary.spans) {
+		const stage = classifyInferenceSpan(span.name);
+		const startMs = Math.max(0, Math.min(totalMs, span.startMs));
+		const endMs = Math.max(0, Math.min(totalMs, span.endMs));
+		if (stage === null || endMs <= startMs) continue;
+		// Every classified stage except "unattributed" is ranked.
+		spans.push({ startMs, endMs, rank: FLOW_STAGE_RANK.get(stage) as number });
+	}
 	const boundaries = new Set<number>([0, totalMs]);
 	for (const span of spans) {
 		boundaries.add(span.startMs);
@@ -281,14 +280,17 @@ export function buildInferenceFlowBreakdown(
 		const endMs = ordered[index + 1] as number;
 		if (endMs <= startMs) continue;
 		const midpoint = startMs + (endMs - startMs) / 2;
-		const active = new Set(
-			spans
-				.filter((span) => span.startMs <= midpoint && midpoint < span.endMs)
-				.map((span) => span.stage),
-		);
-		const stage =
-			FLOW_STAGE_PRIORITY.find((candidate) => active.has(candidate)) ??
-			"unattributed";
+		let bestRank = FLOW_STAGE_PRIORITY.length;
+		for (const span of spans) {
+			if (
+				span.rank < bestRank &&
+				span.startMs <= midpoint &&
+				midpoint < span.endMs
+			) {
+				bestRank = span.rank;
+			}
+		}
+		const stage = FLOW_STAGE_PRIORITY[bestRank] ?? "unattributed";
 		const duration = endMs - startMs;
 		addMeasuredDuration(totals, stage, duration);
 		if (firstVisible !== null && startMs < firstVisible) {
@@ -328,9 +330,7 @@ export function buildInferenceFlowBreakdown(
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Turn timer
-// ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_SPANS = 512;
 
@@ -362,7 +362,7 @@ export class InferenceTurnTimer {
 	constructor(args: {
 		turnId: string;
 		/** Caller-propagated id (e.g. from an upstream hop); minted when absent.
-		 *  Must match {@link INFERENCE_TRACE_ID_PATTERN}. */
+		 * Must match {@link INFERENCE_TRACE_ID_PATTERN}. */
 		traceId?: string;
 		label: string;
 		roomId?: string | null;
@@ -400,7 +400,7 @@ export class InferenceTurnTimer {
 	}
 
 	/** Open a span; returns a function that closes it. Safe to call the closer
-	 *  more than once (subsequent calls are ignored). */
+	 * more than once (subsequent calls are ignored). */
 	openSpan(name: string, meta?: InferenceTimingMeta): () => void {
 		const startEpoch = Date.now();
 		let closed = false;
@@ -429,7 +429,7 @@ export class InferenceTurnTimer {
 		meta?: InferenceTimingMeta,
 	): void {
 		if (this.spans.length >= this.maxSpans) {
-			if (this.anomalies.length === 0 || !this.anomalies.includes("span-cap")) {
+			if (!this.anomalies.includes("span-cap")) {
 				this.anomalies.push("span-cap");
 			}
 			return;
@@ -504,9 +504,7 @@ export class InferenceTurnTimer {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // AsyncLocalStorage context (mirrors streaming-context.ts)
-// ---------------------------------------------------------------------------
 
 interface IInferenceTimingContextManager {
 	run<T>(timer: InferenceTurnTimer | undefined, fn: () => T): T;
@@ -544,9 +542,7 @@ export function getInferenceTimer(): InferenceTurnTimer | undefined {
 	return getManager().active();
 }
 
-// ---------------------------------------------------------------------------
 // Context-free helpers — no-ops when no timer is active
-// ---------------------------------------------------------------------------
 
 /** Time `fn` as a span on the active timer (no-op-times when none active). */
 export async function timeInferenceSpan<T>(
@@ -585,9 +581,7 @@ export function setInferenceModelProvider(
 	getInferenceTimer()?.setModelProvider(provider);
 }
 
-// ---------------------------------------------------------------------------
 // Process-wide registry (bounded ring + per-span histograms) for a dev endpoint
-// ---------------------------------------------------------------------------
 
 export interface InferenceHistogramSummary {
 	count: number;
@@ -830,49 +824,39 @@ export function buildInferenceTimingDevPayload(
 		);
 		const durableRegistry = new InferenceTimingRegistry();
 		for (const summary of combined) durableRegistry.record(summary);
-		return {
-			generatedAtEpochMs: Date.now(),
-			turns:
-				limit >= combined.length
-					? combined
-					: combined.slice(combined.length - limit),
-			flows: (limit >= combined.length
-				? combined
-				: combined.slice(combined.length - limit)
-			).map(buildInferenceFlowBreakdown),
-			spanHistograms: durableRegistry.spanSummaries(),
-			derivedHistograms: durableRegistry.derivedSummaries(),
-			providers: summarizeProviderInference(combined),
-		};
+		return devPayload(combined, limit, durableRegistry);
 	}
-	const recentTurns = inferenceTimingRegistry.recentTurns(
-		REGISTRY_RING_CAPACITY,
+	return devPayload(
+		inferenceTimingRegistry.recentTurns(REGISTRY_RING_CAPACITY),
+		limit,
+		inferenceTimingRegistry,
 	);
+}
+
+function devPayload(
+	turns: InferenceTurnSummary[],
+	limit: number,
+	registry: InferenceTimingRegistry,
+): InferenceTimingDevPayload {
+	const latest =
+		limit >= turns.length ? turns : turns.slice(turns.length - limit);
 	return {
 		generatedAtEpochMs: Date.now(),
-		turns:
-			limit >= recentTurns.length
-				? recentTurns
-				: recentTurns.slice(recentTurns.length - limit),
-		flows: (limit >= recentTurns.length
-			? recentTurns
-			: recentTurns.slice(recentTurns.length - limit)
-		).map(buildInferenceFlowBreakdown),
-		spanHistograms: inferenceTimingRegistry.spanSummaries(),
-		derivedHistograms: inferenceTimingRegistry.derivedSummaries(),
-		providers: summarizeProviderInference(recentTurns),
+		turns: latest,
+		flows: latest.map(buildInferenceFlowBreakdown),
+		spanHistograms: registry.spanSummaries(),
+		derivedHistograms: registry.derivedSummaries(),
+		providers: summarizeProviderInference(turns),
 	};
 }
 
-// ---------------------------------------------------------------------------
 // Emission — one structured breakdown per turn
-// ---------------------------------------------------------------------------
 
 /**
  * `ELIZA_INFERENCE_TIMING` controls log verbosity:
- *   - unset / "0" / "false": still records into the registry; logs at `debug`.
- *   - truthy: logs the compact breakdown at `info` (the on-by-default debug mode
- *     the operator opts into when chasing latency).
+ * - unset / "0" / "false": still records into the registry; logs at `debug`.
+ * - truthy: logs the compact breakdown at `info` (the on-by-default debug mode
+ * the operator opts into when chasing latency).
  */
 function timingLogEnabled(): boolean {
 	const raw = process.env.ELIZA_INFERENCE_TIMING;
@@ -919,11 +903,16 @@ export function emitInferenceTiming(
 	try {
 		const summary = timer.close();
 		inferenceTimingRegistry.record(summary);
-		const line = formatInferenceTimingSummary(summary);
 		if (timingLogEnabled()) {
-			logger.info({ inferenceTiming: summary }, line);
-		} else {
-			logger.debug({ inferenceTiming: summary }, line);
+			logger.info(
+				{ inferenceTiming: summary },
+				formatInferenceTimingSummary(summary),
+			);
+		} else if (RUNTIME_DEBUG_LOG_ENABLED) {
+			logger.debug(
+				{ inferenceTiming: summary },
+				formatInferenceTimingSummary(summary),
+			);
 		}
 		return summary;
 	} catch (err) {

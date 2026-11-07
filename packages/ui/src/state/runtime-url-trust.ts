@@ -12,10 +12,11 @@
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
 import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import {
+  currentOwnedElizaPagesOrigin,
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
@@ -169,7 +170,9 @@ export function isTrustedRestoreApiBaseUrl(
   // IPv6 ULA (fc00::/7) / link-local (fe80::/10).
   if (
     host.includes(":") &&
-    (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:"))
+    (host.startsWith("fc") ||
+      host.startsWith("fd") ||
+      /^fe[89ab][0-9a-f]:/.test(host))
   ) {
     return true;
   }
@@ -253,6 +256,18 @@ export function isTrustedCloudApiBaseUrl(
     return candidate !== null && agentIdMatches(candidate, expected);
   }
   if (url.protocol !== "https:" || url.port) return false;
+  if (url.origin === currentOwnedElizaPagesOrigin()) {
+    const match = /^\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge|\/api)?$/.exec(
+      normalizedPath,
+    );
+    if (!match) return false;
+    const candidate = decodedPathAgentId(match[1]);
+    return (
+      candidate !== null &&
+      isPersonalSharedElizaId(candidate) &&
+      agentIdMatches(candidate, expected)
+    );
+  }
   const host = url.hostname.toLowerCase();
   if (ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)) {
     if (normalizedPath === "" || normalizedPath === "/api/v1/eliza/agents") {

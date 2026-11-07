@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     PromptExceedsContextError,
     UnknownModelOutputLimitError,
     anthropic_max_output_tokens,
 )
-from rl.tokenization_utils import (
+from eliza_training.rl.tokenization_utils import (
     MaskAlignmentError,
     create_masks_from_response_start,
     remaining_context_tokens,
@@ -104,7 +104,7 @@ def test_known_training_context_slices_do_not_return() -> None:
             '(current_turn.get("text") or "")[:2000]',
         ),
         "synthesize_native_fillins.py": ("sanitize_task_text(content[:600])",),
-        "lib/adapters.py": (
+        "lib/adapters": (
             "_strip_surrogates(prompt)[:4000]",
             "_LIGHT_MEMORY_WINDOW",
             '(t.get("text") or "")[:2000]',
@@ -124,7 +124,7 @@ def test_known_training_context_slices_do_not_return() -> None:
         "rl/run_team_rl.py": ("self.markets[:3]",),
         "rl/fast_simulator.py": ('"news": news[:5]', '"social_feed": posts[:10]'),
         "rl/multi_turn.py": ("self.action_text[:200]", "t.action_text[:100]"),
-        "benchmark/native_tool_call_bench.py": ('"predicted": predicted[:2000]',),
+        "eval/native_tool_call_bench.py": ('"predicted": predicted[:2000]',),
         "rl/quality_scorer.py": ('"issues": self.issues[:5]',),
         "rl/schemas.py": ("max_tokens: int = 1000", 'data.get("max_tokens", 1000)'),
         "quantization/test_polarquant.py": ("max_tokens=2048",),
@@ -135,7 +135,8 @@ def test_known_training_context_slices_do_not_return() -> None:
     }
     found = []
     for relative, markers in forbidden.items():
-        source = (SCRIPTS_ROOT / relative).read_text(encoding="utf-8")
+        path = SCRIPTS_ROOT / relative
+        source = "\n".join(p.read_text(encoding="utf-8") for p in sorted(path.glob("*.py"))) if path.is_dir() else path.read_text(encoding="utf-8")
         found.extend(f"{relative}: {marker}" for marker in markers if marker in source)
 
     assert found == []
@@ -162,7 +163,8 @@ def test_anthropic_calls_use_documented_provider_maxima() -> None:
         anthropic_max_output_tokens("unknown-model")
 
     for relative in ("synthesize_targets.py", "eliza_reward_fn.py"):
-        source = (SCRIPTS_ROOT / relative).read_text(encoding="utf-8")
+        path = SCRIPTS_ROOT / relative
+        source = "\n".join(p.read_text(encoding="utf-8") for p in sorted(path.glob("*.py"))) if path.is_dir() else path.read_text(encoding="utf-8")
         assert "max_tokens=anthropic_max_output_tokens(" in source
 
 

@@ -5,6 +5,7 @@
 
 import {
 	fetchWithSsrfGuard,
+	type GuardedFetchResult,
 	type PinnedLookupFetchLike,
 } from "../network/fetch-guard.js";
 import type { LookupFn, SsrfPolicy } from "../network/ssrf.js";
@@ -79,9 +80,16 @@ function parseContentDispositionFileName(
 	if (!header) {
 		return undefined;
 	}
-	const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(header);
-	if (starMatch?.[1]) {
-		const cleaned = stripQuotes(starMatch[1].trim());
+	const parameters = Array.from(
+		header.matchAll(
+			/(?:^|;)\s*([^=;\s]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]*))/g,
+		),
+	);
+	const starMatch = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename*",
+	);
+	if (starMatch) {
+		const cleaned = stripQuotes((starMatch[2] ?? starMatch[3]).trim());
 		// RFC 5987 ext-value is `charset'language'value` where the language
 		// tag is optional but both single quotes are mandatory, e.g.
 		// `UTF-8''na%C3%AFve.txt` or `UTF-8'en'na%C3%AFve.txt`. Strip the
@@ -91,16 +99,28 @@ function parseContentDispositionFileName(
 		const extValueMatch = /^([^']*)'([^']*)'([\s\S]*)$/.exec(cleaned);
 		const encoded = extValueMatch ? extValueMatch[3] : cleaned;
 		try {
-			return getBasename(decodeURIComponent(encoded));
+			const decoded =
+				extValueMatch?.[1].toLowerCase() === "iso-8859-1"
+					? encoded.replace(/%([0-9a-f]{2})/gi, (_match, hex: string) =>
+							String.fromCharCode(Number.parseInt(hex, 16)),
+						)
+					: decodeURIComponent(encoded);
+			return getBasename(decoded);
 		} catch {
 			// error-policy:J3 Malformed RFC 5987 encoding is untrusted header
 			// input; retain only its basename as the sanitized invalid fallback.
 			return getBasename(encoded);
 		}
 	}
-	const match = /filename\s*=\s*([^;]+)/i.exec(header);
-	if (match?.[1]) {
-		return getBasename(stripQuotes(match[1].trim()));
+	const match = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename",
+	);
+	if (match) {
+		const value =
+			match[2] === undefined
+				? stripQuotes(match[3].trim())
+				: match[2].replace(/\\(.)/g, "$1");
+		return getBasename(value);
 	}
 	return undefined;
 }
@@ -111,8 +131,16 @@ export async function readErrorBodySnippet(
 ): Promise<string | undefined> {
 	try {
 		// Bound diagnostics too: an error response is still an untrusted body and
-		// must not bypass the caller's successful-response byte limit.
-		const text = (await readResponseWithLimit(res, maxChars)).toString("utf8");
+		// must not bypass the caller's successful-response byte limit. Read only a
+		// prefix (4 UTF-8 bytes per char covers maxChars) and cancel the rest, so
+		// a long body keeps its leading text instead of losing the whole snippet.
+		const { buffer, truncated } = await readBoundedBody(
+			res,
+			maxChars * 4,
+			"truncate",
+		);
+		// A streamed decode drops a multi-byte character cut at the prefix end.
+		const text = new TextDecoder().decode(buffer, { stream: truncated });
 		if (!text) {
 			return undefined;
 		}
@@ -121,7 +149,7 @@ export async function readErrorBodySnippet(
 			return undefined;
 		}
 		const wellFormed = toWellFormedUnicode(collapsed);
-		if (wellFormed.length <= maxChars) {
+		if (!truncated && wellFormed.length <= maxChars) {
 			return wellFormed;
 		}
 		const budget = Math.max(0, maxChars - 1);
@@ -162,11 +190,9 @@ function enforceResponsePolicy(
 	}
 }
 
-async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
-	response: Response;
-	finalUrl: string;
-	release: () => Promise<void>;
-}> {
+async function fetchGuardedMedia(
+	options: FetchMediaOptions,
+): Promise<GuardedFetchResult> {
 	const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_FETCH_TIMEOUT_MS;
 	const timeoutSignal = AbortSignal.timeout(timeoutMs);
 	const compositeSignal = options.signal
@@ -181,7 +207,6 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 					: { headers: { "User-Agent": options.userAgent } },
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
-			timeoutMs: undefined,
 			signal: compositeSignal,
 			policy: options.ssrfPolicy,
 			lookupFn: options.lookupFn,
@@ -245,7 +270,13 @@ function enforceContentLengthLimit(
 function fileNameFromUrl(url: string): string | undefined {
 	try {
 		const parsed = new URL(url);
-		const base = getBasename(parsed.pathname);
+		let pathname = parsed.pathname;
+		try {
+			pathname = decodeURIComponent(pathname);
+		} catch {
+			// error-policy:J3 Keep malformed URL escapes as a literal filename.
+		}
+		const base = getBasename(pathname);
 		return base || undefined;
 	} catch {
 		// error-policy:J3 Redirect-derived URL text is untrusted; absence of a
@@ -347,21 +378,37 @@ export async function readResponseWithLimit(
 	res: Response,
 	maxBytes: number,
 ): Promise<Buffer> {
+	return (await readBoundedBody(res, maxBytes, "throw")).buffer;
+}
+
+function exceedsMaxBytes(res: Response, maxBytes: number): MediaFetchError {
+	return new MediaFetchError(
+		"max_bytes",
+		`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
+	);
+}
+
+async function readBoundedBody(
+	res: Response,
+	maxBytes: number,
+	onOverflow: "throw" | "truncate",
+): Promise<{ buffer: Buffer; truncated: boolean }> {
 	const body = res.body;
 	if (!body) {
 		const fallback = Buffer.from(await res.arrayBuffer());
-		if (fallback.length > maxBytes) {
-			throw new MediaFetchError(
-				"max_bytes",
-				`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
-			);
+		if (fallback.length <= maxBytes) {
+			return { buffer: fallback, truncated: false };
 		}
-		return fallback;
+		if (onOverflow === "throw") {
+			throw exceedsMaxBytes(res, maxBytes);
+		}
+		return { buffer: fallback.subarray(0, maxBytes), truncated: true };
 	}
 
 	const reader = body.getReader();
 	const chunks: Uint8Array[] = [];
 	let total = 0;
+	let truncated = false;
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
@@ -369,20 +416,22 @@ export async function readResponseWithLimit(
 				break;
 			}
 			if (value.length) {
-				total += value.length;
-				if (total > maxBytes) {
+				if (total + value.length > maxBytes) {
 					try {
 						await reader.cancel();
 					} catch {
 						// error-policy:J6 Cancellation is best-effort after the
-						// byte-limit failure has already been established.
-						// ignore cancel errors
+						// byte limit has already been reached.
 					}
-					throw new MediaFetchError(
-						"max_bytes",
-						`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
-					);
+					if (onOverflow === "throw") {
+						throw exceedsMaxBytes(res, maxBytes);
+					}
+					chunks.push(value.subarray(0, maxBytes - total));
+					total = maxBytes;
+					truncated = true;
+					break;
 				}
+				total += value.length;
 				chunks.push(value);
 			}
 		}
@@ -391,12 +440,11 @@ export async function readResponseWithLimit(
 			reader.releaseLock();
 		} catch {
 			// error-policy:J6 Stream lock release is best-effort teardown.
-			// ignore release errors
 		}
 	}
 
-	return Buffer.concat(
-		chunks.map((chunk) => Buffer.from(chunk)),
-		total,
-	);
+	return {
+		buffer: Buffer.concat(chunks, total),
+		truncated,
+	};
 }

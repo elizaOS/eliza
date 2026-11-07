@@ -1,9 +1,8 @@
 /**
  * Runtime navigation shim for cloud-ui backed by react-router (location, navigate, params).
  */
-import { type ReactNode, useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import {
-  useLocation,
   useNavigate,
   useParams as useReactRouterParams,
   useSearchParams as useReactRouterSearchParams,
@@ -19,7 +18,6 @@ type ClientRouter = {
   refresh: () => void;
   back: () => void;
   forward: () => void;
-  prefetch: (_href: string) => Promise<void>;
 };
 
 function isExternalHref(href: string): boolean {
@@ -83,14 +81,9 @@ export function useRouter(): ClientRouter {
       forward: () => {
         window.history.forward();
       },
-      prefetch: async () => {},
     }),
     [navigate],
   );
-}
-
-export function usePathname(): string {
-  return useLocation().pathname;
 }
 
 export function useSearchParams(): URLSearchParams {
@@ -98,35 +91,13 @@ export function useSearchParams(): URLSearchParams {
   return searchParams;
 }
 
-export function notFound(): never {
-  throw new Error("notFound() is not supported in the SPA runtime");
-}
-
 export function redirect(href: string): never {
   window.location.assign(href);
   throw new Error(`redirected to ${href}`);
-}
-
-export function useSelectedLayoutSegment(): string | null {
-  const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
-  return segments.at(-1) ?? null;
-}
-
-export function useSelectedLayoutSegments(): string[] {
-  const pathname = usePathname();
-  return pathname.split("/").filter(Boolean);
 }
 
 export function useParams<
   T extends Record<string, string | string[]> = Record<string, string>,
 >() {
   return useReactRouterParams() as T;
-}
-
-export function useServerInsertedHTML(_callback: () => ReactNode): void {}
-
-export function useCallbackRouterPush(href: string, options?: NavigateOptions) {
-  const router = useRouter();
-  return useCallback(() => router.push(href, options), [href, options, router]);
 }

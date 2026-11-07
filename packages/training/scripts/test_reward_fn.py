@@ -7,13 +7,11 @@ flag is explicitly enabled.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from eliza_reward_fn import compute_reward, compute_reward_components  # noqa: E402
+from eliza_training.eliza_reward_fn import compute_reward, compute_reward_components  # noqa: E402
 
 
 def _tool_call(name: str, arguments: dict) -> str:

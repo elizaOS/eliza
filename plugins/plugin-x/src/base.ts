@@ -57,8 +57,11 @@ import { getEpochMs } from "./utils/time";
  * @returns {string} The extracted answer
  */
 export function extractAnswer(text: string): string {
-  const startIndex = text.indexOf("Answer: ") + 8;
-  const endIndex = text.indexOf("<|endoftext|>", 11);
+  const markerIndex = text.indexOf("Answer: ");
+  if (markerIndex === -1) return "";
+  const startIndex = markerIndex + "Answer: ".length;
+  const endIndex = text.indexOf("<|endoftext|>", startIndex);
+  if (endIndex === -1) return "";
   return text.slice(startIndex, endIndex);
 }
 

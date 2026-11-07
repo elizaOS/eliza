@@ -14,7 +14,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFakeRuntime } from "../__tests__/fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "../__tests__/fake-runtime.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
 import { __resetDefaultMessageRefStoreForTests } from "../message-ref-store.ts";
 import {
@@ -145,7 +145,7 @@ describe("draftReplyAction", () => {
     const adapter = new RecordingReplyAdapter();
     const service = getDefaultTriageService();
     service.register(adapter);
-    service.getStore().saveMessage(original);
+    service.getStore().saveMessage(original, FAKE_AGENT_ID);
     const delivered: Content[] = [];
     const callback: HandlerCallback = async (content) => {
       delivered.push(content);
@@ -186,7 +186,9 @@ describe("draftReplyAction", () => {
         action: "MESSAGE",
       },
     ]);
-    expect(service.getStore().getDraft("gmail-draft-1")).toMatchObject({
+    expect(
+      service.getStore().getDraft("gmail-draft-1", FAKE_AGENT_ID),
+    ).toMatchObject({
       draftId: "gmail-draft-1",
       inReplyToId: original.id,
       body: "Thanks, Alice.",
@@ -230,6 +232,58 @@ describe("draftReplyAction", () => {
     expect(result.success).toBe(true);
     expect(result.data?.inReplyToId).toBe("newer-match");
     expect(adapter.lastDraft?.inReplyToId).toBe("newer-match");
+  });
+
+  it("keeps a dictated body and rejects only a bracketed placeholder", async () => {
+    const adapter = new RecordingReplyAdapter([messageRef()]);
+    getDefaultTriageService().register(adapter);
+
+    const dictated = await draftReplyAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({
+        sender: "Alice",
+        body: "Please provide the message logs from Tuesday so I can check.",
+      }),
+    );
+    expect(dictated.success).toBe(true);
+    expect(adapter.lastDraft?.body).toBe(
+      "Please provide the message logs from Tuesday so I can check.",
+    );
+
+    const placeholder = await draftReplyAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({ sender: "Alice", body: "[Insert reply here]" }),
+    );
+    expect(placeholder).toEqual({
+      success: false,
+      text: "body is a placeholder, not reply text; pass the exact reply text in body",
+      error:
+        "body is a placeholder, not reply text; pass the exact reply text in body",
+    });
+    expect(adapter.createCount).toBe(1);
+  });
+
+  it("rejects a draft with no message id and no sender or content hint", async () => {
+    const adapter = new RecordingReplyAdapter([messageRef()]);
+    getDefaultTriageService().register(adapter);
+
+    const result = await draftReplyAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({ body: "Sounds good" }),
+    );
+
+    expect(result).toEqual({
+      success: false,
+      text: "messageId or a sender/content hint is required",
+      error: "messageId or a sender/content hint is required",
+    });
+    expect(adapter.createCount).toBe(0);
   });
 
   it("returns a distinct failure when lookup finds no matching message", async () => {

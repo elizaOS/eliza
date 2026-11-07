@@ -53,7 +53,7 @@ def expand_env(value: str) -> str:
     def _sub(match: re.Match[str]) -> str:
         name = match.group("name")
         default = match.group("default") or ""
-        return os.environ.get(name, default)
+        return os.environ.get(name) or default
 
     expanded = _ENV_VAR_RE.sub(_sub, value)
     return os.path.expanduser(expanded)

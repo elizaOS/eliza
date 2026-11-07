@@ -377,6 +377,11 @@ export class FfiStreamingRunner {
 
 			let tokenIndex = 0;
 			while (true) {
+				// llmStreamNext is a synchronous FFI call on the main thread. Yield
+				// to the event loop between steps so an abort (Stop, a turn
+				// timeout, barge-in, an unload) can run and end the generation;
+				// without this the loop holds the thread until the reply is done.
+				await new Promise<void>((resolve) => setImmediate(resolve));
 				if (args.signal?.aborted) {
 					this.ffi.llmStreamCancel?.(stream);
 					throw new Error("[ffi-streaming-runner] aborted");

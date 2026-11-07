@@ -1,6 +1,7 @@
 /** Adapts LifeOps inbox cache persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
+
+import type { LifeOpsInboxChannel } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsInboxChannel } from "../../contracts/index.js";
 import {
   deriveConnectorAccountId,
   grantScopedConnectorAccountId,
@@ -191,6 +192,20 @@ export class InboxCacheRepository {
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseCachedInboxMessage);
+  }
+
+  /** Removes the cached inbox copies of one Gmail account (grant). */
+  async deleteCachedInboxMessagesForGmailAccount(
+    agentId: string,
+    gmailAccountId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_inbox_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND channel = ${sqlQuote("gmail")}
+          AND gmail_account_id = ${sqlQuote(gmailAccountId)}`,
+    );
   }
 
   async markCachedInboxMessageRead(

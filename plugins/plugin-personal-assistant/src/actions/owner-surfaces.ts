@@ -18,11 +18,17 @@ import type {
 } from "@elizaos/core";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
+import {
+  enqueueSignatureRequest,
+  unschedulableDeadlineText,
+} from "./document.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
-import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
+import {
+  runSchedulingNegotiationHandler,
+  SCHEDULING_SUBACTIONS,
+} from "./lib/scheduling-handler.js";
 import { TASK_CREATE_PLAN_PARAMETER } from "./lib/task-create-plan-parameter.js";
 import {
   OWNER_OPERATION_CONTEXTS,
@@ -48,7 +54,10 @@ const OWNER_LIFE_ACTIONS = [
   "review",
 ] as const;
 
-type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number] | "reopen";
+type OwnerLifeAction =
+  | (typeof OWNER_LIFE_ACTIONS)[number]
+  | "reopen"
+  | "cancel";
 const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
@@ -144,7 +153,7 @@ function makeOwnerLifeAction(args: {
       {
         name: "action",
         description: `Owner item op: ${allowedActions.join("|")}.`,
-        required: false,
+        required: true,
         schema: { type: "string" as const, enum: [...allowedActions] },
       },
       {
@@ -167,27 +176,18 @@ function makeOwnerLifeAction(args: {
         name: "intent",
         description: "Free-form owner request.",
         required: false,
-        // Planners naturally phrase a change as `when`/`time`/`reschedule`;
-        // funnel those into the free-form intent instead of rejecting the
-        // whole call with "Unexpected argument" (observed live: an
-        // OWNER_REMINDERS update with `reschedule:"today 18:00"` burned a
-        // planner round on arg errors, #16935).
-        aliases: ["request", "reschedule", "when", "time"],
         schema: { type: "string" as const },
       },
       {
         name: "title",
         description: "Item title when known.",
         required: false,
-        aliases: ["name", "subject"],
         schema: { type: "string" as const },
       },
       {
         name: "target",
-        description:
-          "Existing item id/title for update/delete/complete/skip/snooze or a single-item review. For review of all items, omit target or use an empty string; do not send the literal string null.",
+        description: `Supply the existing item ID or exact title for update/${allowedActions.includes("cancel") ? "cancel/" : ""}delete/complete/skip/snooze or a single-item review. Copy the title named in the current request; do not omit it for snooze or guess an unnamed item. For create or review of all items, omit target or use an empty string; do not send the literal string null.`,
         required: false,
-        aliases: ["query", "item", "task", "reminder", "id", "which"],
         schema: { type: "string" as const },
       },
       {
@@ -195,9 +195,29 @@ function makeOwnerLifeAction(args: {
         subactions: ["snooze"],
         description: "Snooze minutes when action=snooze.",
         required: false,
-        aliases: ["snoozeMinutes", "durationMinutes"],
         schema: { type: "number" as const },
       },
+      // Relative moves for a one-off, read as TRIGGER_UPDATE reads them.
+      ...(args.defaultKind === "definition"
+        ? [
+            {
+              name: "delayMinutes",
+              subactions: ["update"],
+              description:
+                "Move a one-off to fire this many minutes from now ('actually make that 30 minutes' -> 30).",
+              required: false,
+              schema: { type: "number" as const, minimum: 1 },
+            },
+            {
+              name: "delaySeconds",
+              subactions: ["update"],
+              description:
+                "Move a one-off to fire this many seconds from now; wins over delayMinutes.",
+              required: false,
+              schema: { type: "number" as const, minimum: 1 },
+            },
+          ]
+        : []),
       {
         name: "idempotencyKey",
         subactions: ["create"],
@@ -211,7 +231,7 @@ function makeOwnerLifeAction(args: {
         name: "confirmed",
         subactions: ["create"],
         description:
-          'create-only: set true ONLY when the owner is confirming a save the assistant previously previewed ("yes, save that") — it saves immediately instead of previewing. Never set on the first request.',
+          "create-only: does not authorize a save. A previewed item is saved only when the owner's own current message confirms it; this flag alone leaves the item as a preview.",
         required: false,
         schema: { type: "boolean" as const },
       },
@@ -249,14 +269,28 @@ function makeOwnerLifeAction(args: {
           turnComplete: true,
         };
       }
-      const merged = {
-        ...params,
-        // Pinned, not defaulted: a planner-supplied kind must not flip the
-        // umbrella onto the other backing store (see the kind parameter note).
-        kind: args.defaultKind,
-        ...(action ? { action, subaction: action } : {}),
-        ownerSurface: args.name,
-      };
+      const target =
+        readStringParam(options, "target")?.trim() ||
+        readStringParam(options, "title")?.trim();
+      const merged: ActionParameters =
+        args.name === "OWNER_REMINDERS" && action === "cancel"
+          ? {
+              action: "cancel",
+              subaction: "update",
+              kind: "definition",
+              ownerSurface: args.name,
+              ...(target ? { target } : {}),
+              // Cancellation only archives. Other changes require their own operation.
+              details: { status: "archived" },
+            }
+          : {
+              ...params,
+              // Pinned, not defaulted: a planner-supplied kind must not flip the
+              // umbrella onto the other backing store (see the kind parameter note).
+              kind: args.defaultKind,
+              ...(action ? { action, subaction: action } : {}),
+              ownerSurface: args.name,
+            };
       return runLifeOperationHandler(
         runtime,
         message,
@@ -276,6 +310,7 @@ export const ownerRemindersAction: Action = {
       "REMINDERS",
       "SET_REMINDER",
       "UPDATE_REMINDER",
+      "CANCEL_REMINDER",
       "MODIFY_REMINDER",
       "SEARCH_REMINDERS",
       "REMIND_ME",
@@ -285,30 +320,24 @@ export const ownerRemindersAction: Action = {
       "RECURRING_REMINDER",
     ],
     description:
-      'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
+      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder in place, including one just created here: target its id or exact title. A relative move ("actually make that 30 minutes") is update with delayMinutes or delaySeconds, and the reminder then fires that long from now. These records are separate from the TODO checklist.',
     descriptionCompressed:
-      "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
+      "owner reminders/deadlines: review=read/list saved reminders; update=edit existing (delayMinutes moves a one-off); create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
+    actions: [...OWNER_LIFE_ACTIONS, "cancel"],
     defaultKind: "definition",
   }),
-  name: "OWNER_REMINDERS",
-  tags: [...OWNER_OPERATION_TAGS, FOLLOW_UP_CAPABLE_ACTION_TAG],
-  similes: [
-    "REMINDER",
-    "REMINDERS",
-    "SET_REMINDER",
-    "UPDATE_REMINDER",
-    "MODIFY_REMINDER",
-    "SEARCH_REMINDERS",
-    "REMIND_ME",
-    "REMIND_ME_TO",
-    "CREATE_REMINDER",
-    "DAILY_REMINDER",
-    "RECURRING_REMINDER",
+  // This surface pins definitions; review lists/reads them without mutation.
+  historicalObservationOperations: ["lifeops.owner.review"],
+  // Live tj-b020ae0157c06c: with TRIGGER exposed beside this surface, "actually
+  // make that 30 minutes" after an OWNER_REMINDERS create first went to
+  // TRIGGER_UPDATE with this surface's id and failed TRIGGER_NOT_FOUND.
+  routingHint:
+    "saved owner reminders/deadlines: review reads by title or lists; update edits existing. A reminder OWNER_REMINDERS created (its id is in an OWNER_REMINDERS receipt) is changed, cancelled or deleted here, never with TRIGGER: 'actually make that 30 minutes' -> OWNER_REMINDERS_UPDATE with delayMinutes. Search under tasks or calendar. TODO is a separate checklist, not this reminder store.",
+  tags: [
+    ...OWNER_OPERATION_TAGS,
+    "resource:reminders-records",
+    FOLLOW_UP_CAPABLE_ACTION_TAG,
   ],
-  description:
-    'Owner reminders: create/update/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders.',
-  descriptionCompressed:
-    "owner reminders/deadlines: action=create|update|delete|complete|skip|snooze|review",
 };
 
 export const ownerAlarmsAction: Action = {
@@ -547,7 +576,7 @@ export const ownerRoutinesAction: Action = {
       name: "action",
       description:
         "Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
-      required: false,
+      required: true,
       schema: { type: "string" as const, enum: [...OWNER_ROUTINE_ACTIONS] },
     },
     ...(
@@ -655,45 +684,53 @@ async function enqueueDocumentSignatureApproval(args: {
   const text = getMessageText(args.message);
   const documentName =
     readStringParam(args.options, "documentName") ??
-    readStringParam(args.options, "document_name") ??
     (/nda/i.test(text) ? "NDA" : "Document for signature");
-  const documentId =
-    readStringParam(args.options, "documentId") ??
-    readStringParam(args.options, "document_id") ??
-    `signature-${String(args.message.id ?? Date.now())}`;
   const signatureUrl =
     readStringParam(args.options, "signatureUrl") ??
-    readStringParam(args.options, "signature_url") ??
     firstUrl(text) ??
-    "pending-signature-url";
-  const deadline =
-    readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
-  const subjectUserId =
-    typeof args.message.entityId === "string"
-      ? args.message.entityId
-      : String(args.runtime.agentId);
-
-  const queue = createApprovalQueue(args.runtime, {
-    agentId: args.runtime.agentId,
-  });
-  const request = await queue.enqueue({
-    requestedBy: "PERSONAL_ASSISTANT",
-    subjectUserId,
-    action: "sign_document",
-    payload: {
-      action: "sign_document",
-      documentId,
-      documentName,
-      signatureUrl,
+    undefined;
+  const requestedDeadline = readStringParam(args.options, "deadline");
+  // The deadline becomes the watcher's `once` trigger. The scheduler refuses an
+  // unparseable one only after the approval row is queued, so refuse it here,
+  // before any write.
+  const deadlineRefusal = requestedDeadline
+    ? unschedulableDeadlineText(requestedDeadline)
+    : null;
+  if (deadlineRefusal) {
+    await args.callback?.({
+      text: deadlineRefusal,
+      source: "action",
+      action: "PERSONAL_ASSISTANT",
+    });
+    return {
+      success: false,
+      text: deadlineRefusal,
+      data: {
+        actionName: "PERSONAL_ASSISTANT",
+        action: "sign_document",
+        error: "INVALID_DEADLINE",
+      },
+    };
+  }
+  const deadline = requestedDeadline ?? defaultSignatureDeadline(text);
+  // The OWNER_DOCUMENTS signature path creates the DocumentRequest that
+  // RESOLVE_REQUEST dispatches on approval; an approval row without it could
+  // only fail with DOCUMENT_REQUEST_NOT_FOUND once the owner approved. This
+  // surface does not resolve the counterparty, so the request names none.
+  const { documentRequest, approvalRequestId } = await enqueueSignatureRequest(
+    args.runtime,
+    args.message,
+    {
+      documentTitle: documentName,
       deadline,
+      signatureUrl,
+      requestedBy: "PERSONAL_ASSISTANT",
+      reason:
+        typeof params.reason === "string" && params.reason.trim().length > 0
+          ? params.reason.trim()
+          : `Initiate signing flow for ${documentName}`,
     },
-    channel: "internal",
-    reason:
-      typeof params.reason === "string" && params.reason.trim().length > 0
-        ? params.reason.trim()
-        : `Initiate signing flow for ${documentName}`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
+  );
 
   const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
   await args.callback?.({
@@ -707,7 +744,8 @@ async function enqueueDocumentSignatureApproval(args: {
     data: {
       actionName: "PERSONAL_ASSISTANT",
       action: "sign_document",
-      approvalRequestId: request.id,
+      approvalRequestId,
+      documentRequestId: documentRequest.id,
     },
   };
 }
@@ -721,7 +759,6 @@ export const personalAssistantAction: Action = {
     "DOCUSIGN",
     // PRD action-catalog aliases. Travel workflows resolve to action=book_travel
     // on PERSONAL_ASSISTANT.
-    // See packages/docs/action-prd-map.md.
     "TRAVEL_CAPTURE_PREFERENCES",
     "TRAVEL_BOOK_FLIGHT",
     "TRAVEL_BOOK_HOTEL",
@@ -745,6 +782,139 @@ export const personalAssistantAction: Action = {
         type: "string" as const,
         enum: [...PERSONAL_ASSISTANT_ACTIONS],
       },
+    },
+    // The fields below are the ones the scheduling and sign_document handlers
+    // read. Undeclared, the tool-argument validator rejected them, so only the
+    // field-less scheduling operations (start, list_active) were reachable.
+    {
+      // Named apart from the `subaction` key: the promoted virtual
+      // PERSONAL_ASSISTANT_SCHEDULING writes its own pin ("scheduling") there.
+      name: "schedulingOp",
+      subactions: ["scheduling"],
+      description:
+        "Scheduling-negotiation operation: start a negotiation, propose a time, respond to a proposal, finalize, cancel, list_active negotiations, or list_proposals of one negotiation.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_SUBACTIONS],
+      },
+    },
+    {
+      name: "intent",
+      subactions: ["scheduling"],
+      description: "Free-form owner scheduling request.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "negotiationId",
+      subactions: ["scheduling"],
+      description:
+        "Existing negotiation ID. Needed for propose, finalize, cancel, and list_proposals.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "proposalId",
+      subactions: ["scheduling"],
+      description: "Existing proposal ID. Needed for respond and finalize.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "subject",
+      subactions: ["scheduling"],
+      description: "What the meeting is about, for start.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "startAt",
+      subactions: ["scheduling"],
+      description:
+        "Proposed start time (ISO-8601), for propose. Without a UTC offset it is a local time in the negotiation's timezone.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "endAt",
+      subactions: ["scheduling"],
+      description:
+        "Proposed end time (ISO-8601), for propose. Without a UTC offset it is a local time in the negotiation's timezone.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "durationMinutes",
+      subactions: ["scheduling"],
+      description: "Meeting length in minutes, for start.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "response",
+      subactions: ["scheduling"],
+      description: "New proposal status, for respond.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["accepted", "declined", "expired"],
+      },
+    },
+    {
+      name: "relationshipId",
+      subactions: ["scheduling"],
+      description: "Relationship ID of the counterparty, for start.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "timezone",
+      subactions: ["scheduling"],
+      description:
+        "IANA time zone of the negotiation, for start. An unknown zone name is refused.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "proposedBy",
+      subactions: ["scheduling"],
+      description: "Who proposed the time, for propose.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["agent", "owner", "counterparty"],
+      },
+    },
+    {
+      name: "reason",
+      subactions: ["scheduling", "sign_document"],
+      description:
+        "Reason for a scheduling cancel, or the reason shown on the signature approval request.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "documentName",
+      subactions: ["sign_document"],
+      description: "Title of the document to sign.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "signatureUrl",
+      subactions: ["sign_document"],
+      description: "Signing link for the document.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "deadline",
+      subactions: ["sign_document"],
+      description:
+        "Signature deadline as an ISO-8601 timestamp, e.g. 2026-11-06T17:00:00Z. A relative phrase such as 'next Friday' fails with INVALID_DEADLINE.",
+      required: false,
+      schema: { type: "string" as const },
     },
   ],
   handler: async (runtime, message, state, options, callback) => {

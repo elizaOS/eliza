@@ -21,7 +21,7 @@ import {
   type MeetingJoinRequest,
   type MeetingSession,
   parseMeetingUrl,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
 import { CalendarRepository } from "../service/CalendarRepository.js";
 import { readMeetingAutoJoinSettings } from "./auto-join-settings.js";

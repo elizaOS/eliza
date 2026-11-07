@@ -379,8 +379,7 @@ function matchesFilter(
   searchText: string,
 ): boolean {
   if (!filter.includeArchived && task.archived) return false;
-  if (filter.status && filter.status !== "all" && task.status !== filter.status)
-    return false;
+  if (filter.statuses && !filter.statuses.includes(task.status)) return false;
   const projectId = filter.projectId?.trim();
   if (projectId && task.projectId !== projectId) return false;
   if (filter.search) {
@@ -1272,9 +1271,10 @@ export class RuntimeDbTaskStore {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (!filter.includeArchived) clauses.push("archived = 0");
-    if (filter.status && filter.status !== "all") {
-      clauses.push("status = ?");
-      params.push(filter.status);
+    if (filter.statuses) {
+      if (filter.statuses.length === 0) return [];
+      clauses.push(`status IN (${filter.statuses.map(() => "?").join(", ")})`);
+      params.push(...filter.statuses);
     }
     const projectId = filter.projectId?.trim();
     if (projectId) {

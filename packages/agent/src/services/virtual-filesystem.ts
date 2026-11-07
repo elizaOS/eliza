@@ -20,9 +20,9 @@ import {
   ElizaError,
   type ElizaErrorOptions,
   logger,
+  resolveStateDir,
   writeJsonAtomic,
 } from "@elizaos/core";
-import { resolveStateDir } from "../config/paths.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -921,9 +921,12 @@ function normalizeSnapshotId(id: string): string {
 
 function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  // A child named "..notes" is inside the root. Only the segment ".." escapes.
   return (
     relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 

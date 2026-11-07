@@ -20,6 +20,8 @@ the full message list (used by the LLM judge).
 
 from __future__ import annotations
 
+from benchmarks.lib import CostAccumulator
+
 import abc
 import json
 import logging
@@ -43,7 +45,7 @@ class AgentRunResult:
     actions_taken: list[Action] = field(default_factory=list)
     num_tool_calls: int = 0
     num_turns: int = 0
-    agent_cost: float = 0.0
+    agent_cost: float | None = None
     error: str | None = None
 
 
@@ -127,7 +129,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
         obs = reset.observation
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        costs = CostAccumulator()
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
@@ -151,8 +153,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
                     if hasattr(res, "_hidden_params")
                     else None
                 )
-                if step_cost:
-                    total_cost += step_cost
+                costs.add(step_cost)
 
                 action = _message_to_action(next_message)
                 actions_taken.append(action)
@@ -196,22 +197,22 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
             return AgentRunResult(
                 reward=reward,
                 messages=messages,
-                info=info,
+                info={**info, **costs.metadata()},
                 actions_taken=actions_taken,
                 num_tool_calls=num_tool_calls,
                 num_turns=len(messages),
-                agent_cost=total_cost,
+                agent_cost=costs.total,
                 error=str(e),
             )
 
         return AgentRunResult(
             reward=reward,
             messages=messages,
-            info=info,
+            info={**info, **costs.metadata()},
             actions_taken=actions_taken,
             num_tool_calls=num_tool_calls,
             num_turns=len(messages),
-            agent_cost=total_cost,
+            agent_cost=costs.total,
         )
 
 

@@ -1,13 +1,4 @@
-/**
- * Converts an Action's `parameters` contract (the `ActionParameter[]` /
- * `ActionParameterSchema` shape) into JSON Schema. Emits a local `JsonSchema`
- * type for tool-calling and normalizes it to the core `JSONSchema` from
- * `types/model.ts` that the runtime's grammar / structured-output plumbing
- * (GBNF, planner grammar) speaks. Tolerates legacy parameter shapes (`enum` /
- * `enumValues` / `options`, `required` as a boolean or a name list,
- * `defaultValue`). Consumed by `to-tool.ts` (planner / tool definitions) and
- * `validate-tool-args.ts`.
- */
+/** Converts action parameters into tool JSON Schema. Accepts declared enum, enumValues, options, required, and defaultValue representations. */
 import { ElizaError } from "../errors";
 import type {
 	Action,
@@ -152,13 +143,6 @@ function isSchemaRequired(schema: ActionParameterSchema): boolean {
 	return (schema as LegacyActionParameterSchema).required === true;
 }
 
-function getSchemaDescription(
-	schema: ActionParameterSchema,
-	fallback?: string,
-): string | undefined {
-	return schema.description ?? fallback;
-}
-
 function getSchemaDefault(schema: ActionParameterSchema): unknown {
 	if ("default" in schema) {
 		return schema.default;
@@ -186,10 +170,7 @@ export function actionParameterSchemaToJsonSchema(
 	options: { path?: string; description?: string; enumValues?: unknown[] } = {},
 ): JsonSchema {
 	const path = options.path ?? "<anonymous>";
-	const descriptionFromSchema = getSchemaDescription(
-		schema,
-		options.description,
-	);
+	const description = schema.description ?? options.description;
 
 	const unionSchema: JsonSchema = {};
 	for (const keyword of ["anyOf", "oneOf"] as const) {
@@ -220,7 +201,7 @@ export function actionParameterSchemaToJsonSchema(
 			);
 		return {
 			...unionSchema,
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+			...(description ? { description } : {}),
 		};
 	}
 	assertSupportedSchemaType(schemaType, path);
@@ -230,7 +211,6 @@ export function actionParameterSchemaToJsonSchema(
 		...unionSchema,
 		type: schemaType,
 	};
-	const description = descriptionFromSchema;
 	if (description) {
 		jsonSchema.description = description;
 	}
@@ -306,12 +286,6 @@ export function actionParameterSchemaToJsonSchema(
 	return jsonSchema;
 }
 
-function preferCompleteParamDescription(
-	parameter: ActionParameter,
-): string | undefined {
-	return parameter.description;
-}
-
 function appendParameterExamples(
 	description: string | undefined,
 	examples: ActionParameter["examples"],
@@ -343,18 +317,15 @@ export function actionParametersToJsonSchema(
 	const required: string[] = [];
 
 	for (const parameter of parameters) {
-		const enumValues = readEnumValues(parameter);
-		const baseDescription = preferCompleteParamDescription(parameter);
-		const description = appendParameterExamples(
-			baseDescription,
-			parameter.examples,
-		);
 		properties[parameter.name] = actionParameterSchemaToJsonSchema(
 			parameter.schema,
 			{
 				path: parameter.name,
-				description,
-				enumValues,
+				description: appendParameterExamples(
+					parameter.description,
+					parameter.examples,
+				),
+				enumValues: readEnumValues(parameter),
 			},
 		);
 		if (parameter.required) {
@@ -370,16 +341,14 @@ export function actionParametersToJsonSchema(
 	};
 }
 
-export function actionToJsonSchema(action: Action): ActionParametersJsonSchema {
+export function actionToJsonSchema(
+	action: Pick<Action, "parameters" | "allowAdditionalParameters">,
+): ActionParametersJsonSchema {
 	return actionParametersToJsonSchema(action.parameters ?? [], {
 		allowAdditionalProperties: action.allowAdditionalParameters === true,
 	});
 }
 
-// ---------------------------------------------------------------------------
-// Normalization to the core `JSONSchema` shape
-// ---------------------------------------------------------------------------
-//
 // `actionToJsonSchema` emits the LOCAL `JsonSchema` type (defined above). The
 // runtime's grammar / structured-output plumbing speaks the core `JSONSchema`
 // type from `types/model.ts` — a structurally-broader index-signature type
@@ -433,9 +402,5 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
 export function normalizeActionJsonSchema(
 	action: Pick<Action, "parameters" | "allowAdditionalParameters">,
 ): JSONSchema {
-	return jsonSchemaFromLocal(
-		actionParametersToJsonSchema(action.parameters ?? [], {
-			allowAdditionalProperties: action.allowAdditionalParameters === true,
-		}),
-	);
+	return jsonSchemaFromLocal(actionToJsonSchema(action));
 }

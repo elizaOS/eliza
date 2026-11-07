@@ -9,7 +9,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
+import { captureHostExecutionBaseline } from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
 

@@ -129,6 +129,8 @@ function walletRuntime(): {
   vi.mocked(runtime.getService).mockImplementation((name: string) =>
     name === WalletBackendService.serviceType ? service : null,
   );
+  // Every case bridges to arbitrum, and the destination must be a registered chain.
+  service.registerChainHandler(evmHandler("arbitrum", "Arbitrum One", "42161"));
   return { runtime, service };
 }
 
@@ -260,6 +262,32 @@ describe("wallet bridge recipient guard", () => {
     );
   });
 
+  it("refuses a malformed bridge recipient before the spend confirmation", async () => {
+    const { runtime, service } = walletRuntime();
+    const base = evmHandler("base", "Base", "8453");
+    service.registerChainHandler(base);
+
+    for (const recipient of [
+      "0x123",
+      "vitalik.eth",
+      "0x742d35Cc6634C0532925a3b844Bc454e4438f44e00",
+    ]) {
+      const rejected = await walletRouterAction.handler(
+        runtime,
+        message("bridge 0.5 ETH from base to arbitrum"),
+        undefined,
+        {
+          parameters: { ...bridgeParams, recipient },
+        } as HandlerOptions,
+      );
+      expect(rejected?.success).toBe(false);
+      expect(rejected?.data?.error).toBe("INVALID_PARAMS");
+      expect(rejected?.data?.requiresConfirmation).toBeUndefined();
+      expect(rejected?.text).toBe("recipient must be a valid EVM address.");
+    }
+    expect(base.execute).not.toHaveBeenCalled();
+  });
+
   it("omits the destination clause from the bridge preview when no recipient is set", async () => {
     const { runtime, service } = walletRuntime();
     const base = evmHandler("base", "Base", "8453");
@@ -344,7 +372,7 @@ describe("wallet bridge recipient guard", () => {
     expect(base.execute).not.toHaveBeenCalled();
   });
 
-  it("accepts a content-driven bridge whose Solana-format recipient appears in the user message", async () => {
+  it("refuses a content-driven bridge to a Solana-format recipient the user stated, before the spend confirmation", async () => {
     const { runtime, service } = walletRuntime();
     const base = evmHandler("base", "Base", "8453");
     service.registerChainHandler(base);
@@ -367,7 +395,10 @@ describe("wallet bridge recipient guard", () => {
       undefined,
     );
 
-    expect(first?.data?.requiresConfirmation).toBe(true);
+    expect(first?.success).toBe(false);
+    expect(first?.data?.error).toBe("INVALID_PARAMS");
+    expect(first?.data?.requiresConfirmation).toBeUndefined();
+    expect(first?.text).toBe("recipient must be a valid EVM address.");
     expect(base.execute).not.toHaveBeenCalled();
   });
 });

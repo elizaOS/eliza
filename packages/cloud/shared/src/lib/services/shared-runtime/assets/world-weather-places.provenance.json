@@ -1,0 +1,62 @@
+{
+  "scope": "OFFICIAL_PUBLIC_GEOGRAPHIC_DATA_NOT_PROVIDER_WEATHER_OR_DEPENDENCY_INSTALL",
+  "license": "CC-BY4.0; commercial allowed; GeoNames attribution required",
+  "sourceDocs": "https://download.geonames.org/export/dump/readme.txt",
+  "attribution": "https://www.geonames.org/",
+  "retrievedUTC": "2026-10-10T09:16:28.877317+00:00",
+  "sources": [
+    {
+      "url": "https://download.geonames.org/export/dump/cities15000.zip",
+      "bytes": 3360949,
+      "sha256": "9339ac426943c265eb7fdfd5350ae351a5584b4d4271ed58f071ddc432982aeb",
+      "headers": {
+        "Date": "Sat, 10 Oct 2026 09:16:29 GMT",
+        "Last-Modified": "Sat, 10 Oct 2026 01:58:39 GMT",
+        "Content-Type": "application/zip"
+      }
+    },
+    {
+      "url": "https://download.geonames.org/export/dump/countryInfo.txt",
+      "bytes": 31680,
+      "sha256": "c5997ea659df5bcf42509eb937064d172b2a998bb873608603e8421d714a9974",
+      "headers": {
+        "Date": "Sat, 10 Oct 2026 09:16:31 GMT",
+        "Last-Modified": "Sat, 10 Oct 2026 02:04:04 GMT",
+        "Content-Type": "text/plain; charset=utf-8"
+      }
+    },
+    {
+      "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+      "bytes": 151583,
+      "sha256": "1da92a6323a5fec3176f3f743bf4cf4040fd56a876da55e46fbca23c863aa60a",
+      "headers": {
+        "Date": "Sat, 10 Oct 2026 09:16:32 GMT",
+        "Last-Modified": "Sat, 10 Oct 2026 01:58:39 GMT",
+        "Content-Type": "text/plain; charset=utf-8"
+      }
+    }
+  ],
+  "records": 34156,
+  "projectionBytes": 2117303,
+  "projectionSHA256": "e29f1c8ed543e47ac88c48c5f11a465b2a570a1c3e4dbef68e61da54edfdf0de",
+  "extractedSourceSHA256": "b62c45b071a37da4ba4e551978e386288818deb03047523a8661eb28f91e74b5",
+  "columns": [
+    "id",
+    "name",
+    "asciiName",
+    "countryCode",
+    "countryName",
+    "countryCode3",
+    "regionCode",
+    "regionName",
+    "asciiRegionName",
+    "latitude",
+    "longitude",
+    "ianaTimeZone"
+  ],
+  "noCoordinatesGuessed": true,
+  "noLiveGeocoderCalls": true,
+  "projectionNotice": "Reduced to identity, administrative labels, WGS84 point and source IANA timezone; no coordinates or zones inferred. Cite GeoNames when displaying weather.",
+  "projectionFormat": "elizaos.public-world-place-catalog.v1",
+  "packing": "Exact source labels, coordinates and IANA zones factored into immutable tables; null asciiName means exact equality to name. No records removed."
+}

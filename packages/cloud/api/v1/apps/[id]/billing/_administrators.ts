@@ -1,10 +1,11 @@
 /** Routes purchaser-authenticated administrator changes through the account membership authority. */
-import { z } from "zod";
+
 import {
   changeAppBillingAdministratorInput,
   genericBillingAdministratorsService,
-} from "@/lib/services/generic-billing-administrators";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-administrators";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { z } from "zod";
 import { buyerBillingActor } from "./_handlers";
 
 async function identity(c: AppContext, mutation = false) {

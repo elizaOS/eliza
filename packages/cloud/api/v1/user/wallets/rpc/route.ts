@@ -3,17 +3,17 @@
  * Wallet-signature auth via X-Wallet-Address / X-Timestamp / X-Wallet-Signature.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { verifyWalletSignature } from "@/lib/auth/wallet-auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { verifyWalletSignature } from "@elizaos/cloud-shared/lib/auth/wallet-auth";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { executeServerWalletRpc } from "@/lib/services/server-wallets";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { executeServerWalletRpc } from "@elizaos/cloud-shared/lib/services/server-wallets";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const rpcPayloadSchema = z.object({
   clientAddress: z.string().min(10),

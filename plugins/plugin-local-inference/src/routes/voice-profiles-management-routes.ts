@@ -20,7 +20,7 @@
  *   POST   /api/voice/profiles/:id/split       { utteranceIds }
  *   POST   /api/voice/profiles/:id/bind        { entityId, label? }
  *   POST   /api/voice/profiles/:id/unbind
- *   POST   /api/voice/profiles/export          → { downloadUrl }
+ *   POST   /api/voice/profiles/export          → export document (JSON)
  *   GET    /api/voice/profiles/:id/sample      → audio/wav (consent-gated; 404 if absent)
  *
  * Route handlers in this plugin do not hold an `IAgentRuntime`, so bind here
@@ -33,15 +33,12 @@ import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-	type VoiceProfileRecord,
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
+import type {
+	VoiceProfileRecord,
 	VoiceProfileStore,
 } from "../services/voice/profile-store.js";
+import { getSharedVoiceProfileStore } from "../services/voice/speaker/profile-store-factory.js";
 
 // ---------------------------------------------------------------------------
 // Store wiring (injectable for tests)
@@ -57,9 +54,9 @@ function voiceProfilesRoot(): string {
 }
 async function getStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
-	const store = new VoiceProfileStore({ rootDir: voiceProfilesRoot() });
-	await store.init();
-	return store;
+	// The live voice pipelines hold this store; a separate instance would
+	// leave their cached index and records in place after an edit or delete.
+	return getSharedVoiceProfileStore(voiceProfilesRoot());
 }
 function ownerEntityId(): string | null {
 	const raw = process.env.ELIZA_ADMIN_ENTITY_ID;
@@ -505,10 +502,7 @@ async function exportAll(res: http.ServerResponse): Promise<true> {
 		ownerEntityId: owner,
 		profiles: records.map((r) => toDto(r, owner, root)),
 	};
-	// Self-contained data URL — no temp files, no extra serving route.
-	const json = JSON.stringify(payload, null, 2);
-	const downloadUrl = `data:application/json;base64,${Buffer.from(json, "utf8").toString("base64")}`;
-	sendJson(res, { downloadUrl });
+	sendJson(res, payload);
 	return true;
 }
 async function serveSample(

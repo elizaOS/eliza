@@ -9,7 +9,7 @@ import {
   System,
   type SystemStatus,
 } from "@elizaos/capacitor-system";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { SmsMessageSummary } from "@elizaos/plugin-native-messages/bridge";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
 
@@ -22,6 +22,12 @@ export type ThreadSummary = {
 };
 
 const INBOUND_SMS_TYPE = 1;
+
+// Numeric collation orders provider row IDs without losing 64-bit precision.
+// It also gives mixed numeric/text IDs a consistent ordering.
+function compareIds(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true });
+}
 
 export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
   const byThread = new Map<string, SmsMessageSummary[]>();
@@ -38,7 +44,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
           typeof a.date === "number" && Number.isFinite(a.date) ? a.date : 0;
         const bDate =
           typeof b.date === "number" && Number.isFinite(b.date) ? b.date : 0;
-        return aDate - bDate || a.id.localeCompare(b.id);
+        return aDate - bDate || compareIds(a.id, b.id);
       });
       const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
       return {
@@ -63,7 +69,7 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
         Number.isFinite(a.lastMessage.date)
           ? a.lastMessage.date
           : 0;
-      return bDate - aDate || a.id.localeCompare(b.id);
+      return bDate - aDate || compareIds(a.id, b.id);
     });
 }
 
@@ -78,9 +84,12 @@ export function normalizeMessagesLimit(value: unknown, fallback = 200): number {
   return Math.min(500, Math.max(1, Math.trunc(value)));
 }
 
-export async function loadMessagesState(limit = 200) {
+/** Read the message list plus the SMS role state. Omit `limit` to read every message. */
+export async function loadMessagesState(limit?: number) {
   const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
+    Messages.listMessages(
+      limit === undefined ? {} : { limit: normalizeMessagesLimit(limit) },
+    ),
     System.getStatus().catch((cause) => {
       // error-policy:J2 role status is part of the complete read contract; a
       // failed native status call cannot be represented as an unheld role.

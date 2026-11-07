@@ -52,6 +52,10 @@ export async function getStatus(
       untracked.push(filename);
     } else if (indexStatus !== " " && indexStatus !== "?") {
       staged.push(filename);
+      // A partially staged file (MM) has both index and working-tree edits.
+      if (workTreeStatus !== " ") {
+        modified.push(filename);
+      }
     } else if (workTreeStatus !== " ") {
       modified.push(filename);
     }

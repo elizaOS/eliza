@@ -8,7 +8,7 @@
  * (`CRYPTO_REFUND_X402_PAYER_UNBOUND`).
  *
  * Usage:
- *   bun packages/cloud/scripts/admin/refund-crypto-payment.ts \
+ *   bun --conditions=eliza-source packages/cloud/scripts/admin/refund-crypto-payment.ts \
  *     <payment-id> <organization-id> <amount-usd> <refund-key> <operator-user-id> <reason...>
  */
 
@@ -35,13 +35,13 @@ if (
   !reason
 ) {
   console.error(
-    "Usage: bun packages/cloud/scripts/admin/refund-crypto-payment.ts <payment-id> <organization-id> <amount-usd> <refund-key> <operator-user-id> <reason...>",
+    "Usage: bun --conditions=eliza-source packages/cloud/scripts/admin/refund-crypto-payment.ts <payment-id> <organization-id> <amount-usd> <refund-key> <operator-user-id> <reason...>",
   );
   process.exit(1);
 }
 
 const { cryptoPaymentRefundsService } = await import(
-  "@/lib/services/crypto-payment-refunds"
+  "@elizaos/cloud-shared/lib/services/crypto-payment-refunds"
 );
 const refund = await cryptoPaymentRefundsService.refundAsCloudCredits({
   paymentId,

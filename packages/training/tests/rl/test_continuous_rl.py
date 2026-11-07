@@ -7,17 +7,17 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from src.training.continuous_rl import (
+from eliza_training.rl.continuous_rl import (
     ContinuousRLAgent,
     ContinuousRLConfig,
     RewardTracker,
     _compute_reward,
 )
-from src.training.multi_agent_orchestrator import (
+from eliza_training.rl.multi_agent_orchestrator import (
     MultiAgentOrchestrator,
     OrchestratorConfig,
 )
-from src.training.simulation_bridge import (
+from eliza_training.rl.simulation_bridge import (
     ActionOutcome,
     MarketState,
     Scenario,
@@ -294,25 +294,25 @@ class TestSetupTrainingComponents:
 
 class TestTurboQuantCacheBuild:
     def test_build_generation_cache_dynamic_returns_none(self) -> None:
-        from src.training.turboquant import build_generation_cache
+        from eliza_training.rl.turboquant import build_generation_cache
 
         result = build_generation_cache(MagicMock(), cache_implementation="dynamic")
         assert result is None
 
     def test_build_generation_cache_rejects_unknown_impl(self) -> None:
-        from src.training.turboquant import build_generation_cache
+        from eliza_training.rl.turboquant import build_generation_cache
 
         with pytest.raises(ValueError, match="Unsupported"):
             build_generation_cache(MagicMock(), cache_implementation="unknown")
 
     def test_turboquant_settings_validates_bits(self) -> None:
-        from src.training.turboquant import TurboQuantSettings
+        from eliza_training.rl.turboquant import TurboQuantSettings
 
         settings = TurboQuantSettings(key_bits=3.5, value_bits=2.0, residual_length=64)
         settings.validate()  # Should not raise
 
     def test_turboquant_settings_rejects_invalid_bits(self) -> None:
-        from src.training.turboquant import TurboQuantSettings
+        from eliza_training.rl.turboquant import TurboQuantSettings
 
         settings = TurboQuantSettings(key_bits=5.0, value_bits=2.0, residual_length=64)
         with pytest.raises(ValueError, match="must be one of"):
@@ -324,7 +324,7 @@ class TestTurboQuantCacheBuild:
 
 class TestAtroposTrainerKondoIntegration:
     def test_config_kondo_and_apollo_together(self) -> None:
-        from src.training.atropos_trainer import AtroposTrainingConfig
+        from eliza_training.rl.atropos_trainer import AtroposTrainingConfig
 
         config = AtroposTrainingConfig(
             optimizer="apollo",
@@ -338,7 +338,7 @@ class TestAtroposTrainerKondoIntegration:
         assert config.use_turboquant is True
 
     def test_config_kondo_price_overrides_gate_rate(self) -> None:
-        from src.training.atropos_trainer import AtroposTrainingConfig
+        from eliza_training.rl.atropos_trainer import AtroposTrainingConfig
 
         config = AtroposTrainingConfig(
             use_kondo=True,
@@ -386,18 +386,18 @@ class TestRewardEdgeCases:
 
 class TestModuleExports:
     def test_continuous_rl_importable_from_package(self) -> None:
-        from src.training import ContinuousRLAgent, ContinuousRLConfig
+        from eliza_training.rl import ContinuousRLAgent, ContinuousRLConfig
 
         assert ContinuousRLAgent is not None
         assert ContinuousRLConfig is not None
 
     def test_orchestrator_importable_from_package(self) -> None:
-        from src.training import MultiAgentOrchestrator, OrchestratorConfig
+        from eliza_training.rl import MultiAgentOrchestrator, OrchestratorConfig
 
         assert MultiAgentOrchestrator is not None
         assert OrchestratorConfig is not None
 
     def test_reward_tracker_importable_from_package(self) -> None:
-        from src.training import RewardTracker
+        from eliza_training.rl import RewardTracker
 
         assert RewardTracker is not None

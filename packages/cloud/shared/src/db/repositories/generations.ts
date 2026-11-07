@@ -1,7 +1,10 @@
 // Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, isNotNull, ne, sql, sum } from "drizzle-orm";
-import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
+import { and, asc, count, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import {
+  VIDEO_PENDING_SETTLEMENT_MARKER,
+  VIDEO_RECONCILE_ATTEMPTED_AT_KEY,
+} from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -346,8 +349,9 @@ export class GenerationsRepository {
   /**
    * Lists video generations still awaiting upstream settlement (#11862):
    * rows the generate-video route persisted after a poll timeout, carrying a
-   * live credit hold that the reconcile sweep settles or refunds. Oldest
-   * first so long-pending holds are resolved before fresh ones.
+   * live credit hold that the reconcile sweep settles or refunds. Rows the
+   * sweep has not tried yet come first, oldest first; rows it tried and left
+   * pending follow by their last attempt, so they cannot hold every batch.
    */
   async listPendingVideoSettlements(limit = 50): Promise<Generation[]> {
     const boundedLimit = Math.min(Math.max(limit, 1), 200);
@@ -357,7 +361,11 @@ export class GenerationsRepository {
         eq(generations.status, "pending"),
         sql`${generations.metadata}->>'settlement_marker' = ${VIDEO_PENDING_SETTLEMENT_MARKER}`,
       ),
-      orderBy: asc(generations.created_at),
+      orderBy: [
+        sql`${generations.metadata}->>${VIDEO_RECONCILE_ATTEMPTED_AT_KEY} ASC NULLS FIRST`,
+        asc(generations.created_at),
+        asc(generations.id),
+      ],
       limit: boundedLimit,
     });
     return await Promise.all(rows.map(hydrateGeneration));
@@ -424,13 +432,15 @@ export class GenerationsRepository {
       conditions.push(sql`${generations.created_at} <= ${endDate}`);
     }
 
+    const chargedCredits = sql`coalesce(${generations.metadata}->>'settlement_state', '') not in ('refunded', 'refunded_expired')`;
+
     const [totalResult] = await dbRead
       .select({
         total: count(),
         completed: sql<number>`count(*) filter (where ${generations.status} = 'completed')::int`,
         failed: sql<number>`count(*) filter (where ${generations.status} = 'failed')::int`,
         pending: sql<number>`count(*) filter (where ${generations.status} = 'pending')::int`,
-        totalCredits: sum(generations.credits),
+        totalCredits: sql<number>`sum(${generations.credits}) filter (where ${chargedCredits})`,
       })
       .from(generations)
       .where(and(...conditions));
@@ -439,7 +449,7 @@ export class GenerationsRepository {
       .select({
         type: generations.type,
         count: sql<number>`count(*)::int`,
-        totalCredits: sql<number>`sum(${generations.credits})::numeric`,
+        totalCredits: sql<number>`sum(${generations.credits}) filter (where ${chargedCredits})`,
       })
       .from(generations)
       .where(and(...conditions))

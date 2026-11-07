@@ -454,6 +454,60 @@ describe("deferred subscriber inference funding", () => {
     expect(await payoutsFor(shortSource)).toEqual([]);
   });
 
+  test("a synchronous reservation collects actual usage beyond its estimate up to capacity", async () => {
+    const now = await databaseNow();
+    const window = {
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+    };
+    const reserveEstimate = (org: string, id: string) =>
+      allowanceFirst.reserveSubscriptionFundedCredits({
+        organizationId: org,
+        operation: "ai_inference",
+        logicalOperationId: `a2a:${id}`,
+        amount: "0.050000",
+        description: "A2A chat: estimate",
+      });
+
+    // Capacity covers the excess: allowance first, then purchased credit.
+    const funded = await seedSubscriber({ ...window, allowance: "0.300000", credits: "1.000000" });
+    const covered = await reserveEstimate(funded.org, "subscriber-estimate-covered-0001");
+    const result = await covered.reconcile(0.8);
+    expect(result).toMatchObject({
+      reservedAmount: 0.05,
+      actualCost: 0.8,
+      collectedAmount: 0.8,
+      adjustmentType: "overage",
+    });
+    expect(result.settlementTransactionIds).toHaveLength(2);
+    expect(await covered.reconcile(0.8)).toEqual(result);
+    const afterCovered = await readState(funded.org);
+    expect(afterCovered.balance).toBe("0.500000");
+    expect(afterCovered.periods[0]).toMatchObject({
+      available_amount: "0.000000",
+      reserved_amount: "0.000000",
+      settled_amount: "0.300000",
+    });
+    expect(afterCovered.reservations.map((row) => row.status)).toEqual(["finalized", "finalized"]);
+
+    // Capacity runs out: collect what exists and record only the rest.
+    const short = await seedSubscriber({ ...window, allowance: "0.100000", credits: "0.200000" });
+    const capped = await reserveEstimate(short.org, "subscriber-estimate-capped-0001");
+    expect(await capped.reconcile(1)).toMatchObject({
+      collectedAmount: 0.3,
+      adjustmentType: "uncollected_overage",
+    });
+    const afterCapped = await readState(short.org);
+    expect(afterCapped.balance).toBe("0.000000");
+    expect(afterCapped.periods[0]).toMatchObject({ available_amount: "0.000000" });
+    const { rows } = await fixture.query<{ uncollected: string }>(
+      `SELECT uncollected_overage_amount::text AS uncollected FROM billing_funding_reservations
+       WHERE organization_id = $1 AND logical_operation_id = $2`,
+      [short.org, "a2a:subscriber-estimate-capped-0001"],
+    );
+    expect(rows[0]?.uncollected).toBe("0.700000");
+  });
+
   test("the synchronous subscriber reservation enqueues its pinned affiliate payout on settlement", async () => {
     const now = await databaseNow();
     const { org } = await seedSubscriber({

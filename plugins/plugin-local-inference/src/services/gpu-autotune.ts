@@ -493,8 +493,13 @@ export function flagsToLlamaServerArgv(flags: LlamaServerFlags): string[] {
 	if (flags.flash_attn) argv.push("-fa", "on");
 	argv.push("--split-mode", flags.split_mode);
 	argv.push("--main-gpu", String(flags.main_gpu));
-	if (flags.mlock) argv.push("--mlock");
-	if (flags.no_mmap) argv.push("--no-mmap");
+	// llama.cpp folds mmap and mlock into one --load-mode value.
+	if (flags.mlock || flags.no_mmap) {
+		argv.push(
+			"--load-mode",
+			flags.no_mmap ? (flags.mlock ? "mlock" : "none") : "mmap+mlock",
+		);
+	}
 	if (flags.no_kv_offload) argv.push("--no-kv-offload");
 	argv.push("--spec-draft-n-min", String(flags.draft_min));
 	argv.push("--spec-draft-n-max", String(flags.draft_max));

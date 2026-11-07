@@ -9,9 +9,9 @@ import { build } from "esbuild";
 it("runs published browser contracts without Node globals or runtime shims", async () => {
   const result = await build({
     stdin: {
-      contents: `import { replaceNameTokens } from '@elizaos/core/name-tokens';
-        import { resolveEnvAlias } from '@elizaos/core/utils/env-alias';
-        import { ElizaError } from '@elizaos/core/errors';
+      contents: `import { replaceNameTokens } from '@elizaos/core/protocol';
+        import { resolveEnvAlias } from '@elizaos/core/protocol';
+        import { ElizaError } from '@elizaos/core/protocol';
         globalThis.result = {
           text: replaceNameTokens('{{name}} and {{ agentName }}', 'M$&M'),
           alias: resolveEnvAlias('ELIZA_KEY', [['ELIZA_KEY', 'HOST_KEY']], {HOST_KEY: 'configured'}),
@@ -36,7 +36,7 @@ it("preserves runtime error classification through protocol leaves in Node", () 
   const probe = `
     import assert from 'node:assert/strict';
     import { ElizaError, isElizaError } from '@elizaos/core';
-    import { ElizaError as ProtocolError } from '@elizaos/core/errors';
+    import { ElizaError as ProtocolError } from '@elizaos/core/protocol';
     const cause = new Error('host failed');
     const error = new ProtocolError('configuration unavailable', {code: 'CONFIG_UNAVAILABLE', cause});
     assert.ok(error instanceof ElizaError);
@@ -59,8 +59,8 @@ it("loads complete template helpers from the owning distributions in native Node
   const probe = `
     import assert from 'node:assert/strict';
     import { composePrompt } from '@elizaos/plugin-assistant/text/template-rendering';
-    import { parseJSONObjectFromText } from '@elizaos/core/text/model-output';
-    import { textIncludesKeywordTerm } from '@elizaos/core/i18n/keyword-matching-core';
+    import { parseJSONObjectFromText } from '@elizaos/core/protocol';
+    import { textIncludesKeywordTerm } from '@elizaos/core/protocol';
     const value = '<tag>\\n{{opaque}}'.repeat(16384) + 'END';
     assert.equal(composePrompt({state: {value}, template: '{{value}}'}), value);
     assert.deepEqual(parseJSONObjectFromText('{answer:42,}'), {answer:42});

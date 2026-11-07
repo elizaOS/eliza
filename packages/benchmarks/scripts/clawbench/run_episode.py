@@ -14,7 +14,6 @@ Usage:
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 from collections import Counter
@@ -25,6 +24,7 @@ import yaml
 
 # Allow imports from the clawbench package
 sys.path.insert(0, str((Path(__file__).resolve().parents[2] / "suites" / "clawbench")))
+from clawbench import SandboxClient, SandboxError, setup_workspace
 from clawbench.scoring import score_episode
 
 # ---------------------------------------------------------------------------
@@ -42,6 +42,8 @@ OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://localhost:18790")
 OPENCLAW_TOKEN = os.getenv("OPENCLAW_GATEWAY_TOKEN", "sandbox-token-12345")
 MOCK_TOOLS_URL = os.getenv("MOCK_TOOLS_URL", "http://localhost:3001")
 CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
+CLIENT = SandboxClient(agent_url=OPENCLAW_URL, token=OPENCLAW_TOKEN, tools_url=MOCK_TOOLS_URL, model=CLAWBENCH_MODEL)
+
 
 
 def load_scenario(name: str) -> dict | None:
@@ -101,113 +103,19 @@ def wait_for_services(timeout: int = 60) -> bool:
     return False
 
 
-def send_message(message: str) -> dict:
-    """Send a message to OpenClaw via OpenAI-compatible API."""
-    url = f"{OPENCLAW_URL}/v1/chat/completions"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENCLAW_TOKEN}",
-    }
-
-    payload = {
-        "model": CLAWBENCH_MODEL,
-        "messages": [{"role": "user", "content": message}],
-        "stream": False,
-    }
-
-    print(f"\nSending message to OpenClaw:")
-    print(f"  URL: {url}")
-    print(f"  Message: {message[:100]}...")
-
-    try:
-        response = httpx.post(url, headers=headers, json=payload, timeout=120)
-
-        if response.status_code != 200:
-            print(f"  Error: {response.status_code}")
-            print(f"  Body: {response.text[:500]}")
-            return {"error": response.text, "status": response.status_code}
-
-        return response.json()
-
-    except httpx.RequestError as e:
-        print(f"  Request error: {e}")
-        return {"error": str(e)}
-
-
-def get_tool_calls() -> list:
-    """Get successful tool calls from mock-tools server."""
-    try:
-        response = httpx.get(f"{MOCK_TOOLS_URL}/tool_calls", timeout=5)
-        if response.status_code == 200:
-            return response.json().get("calls", [])
-    except httpx.RequestError:
-        pass
-    return []
-
-
-def get_all_requests() -> dict:
-    """Get ALL requests (including failures) from mock-tools server."""
-    try:
-        response = httpx.get(f"{MOCK_TOOLS_URL}/all_requests", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except httpx.RequestError:
-        pass
-    return {"requests": [], "summary": {"total": 0, "success": 0, "failed": 0}}
-
-
-def reset_scenario(scenario: str) -> bool:
-    """Reset mock-tools to a specific scenario."""
-    try:
-        response = httpx.post(f"{MOCK_TOOLS_URL}/set_scenario/{scenario}", timeout=5)
-        return response.status_code == 200
-    except httpx.RequestError:
-        return False
-
-
-def setup_workspace(scenario_config: dict, variant: str) -> bool:
-    """Copy AGENTS.md variant and workspace files for the scenario."""
-    scenario_name = scenario_config["name"]
-    fixture_dir = FIXTURES_DIR / scenario_name
-
-    variants = scenario_config.get("variants", {})
-    if variant not in variants:
-        print(f"  WARNING: Unknown variant '{variant}', available: {list(variants.keys())}")
-        return False
-
-    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-
-    agents_src = fixture_dir / variants[variant]
-    if agents_src.exists():
-        shutil.copy2(agents_src, WORKSPACE_DIR / "AGENTS.md")
-        print(f"  Copied {agents_src.name} -> workspace/AGENTS.md")
-    else:
-        print(f"  WARNING: {agents_src} not found")
-        return False
-
-    for dest_name, src_name in scenario_config.get("workspace", {}).items():
-        src = fixture_dir / src_name
-        if src.exists():
-            shutil.copy2(src, WORKSPACE_DIR / dest_name)
-
-    return True
-
-
 def run_episode(message: str, scenario: str = "inbox_triage") -> dict:
     """Run a complete episode and return results."""
 
     # Reset scenario
     print(f"\nResetting to scenario: {scenario}")
-    if not reset_scenario(scenario):
-        print("  Warning: Could not reset scenario")
+    CLIENT.reset_scenario(scenario)
 
     # Send message
-    response = send_message(message)
+    response = CLIENT.send_message(message)
 
     # Get tool calls
-    tool_calls = get_tool_calls()
-    all_reqs = get_all_requests()
+    tool_calls = CLIENT.get_tool_calls()
+    all_reqs = CLIENT.get_all_requests()
 
     # Extract assistant response
     assistant_message = ""
@@ -293,20 +201,32 @@ def main():
     # If --workspace is given, the caller already prepared the workspace (e.g.,
     # validator wrote the pack's AGENTS.md there), so we skip the default setup
     # but still point WORKSPACE_DIR at it.
-    if args.workspace:
-        global WORKSPACE_DIR
-        WORKSPACE_DIR = Path(args.workspace)
-        WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    elif scenario_config:
-        setup_workspace(scenario_config, args.variant)
+    try:
+        if args.workspace:
+            global WORKSPACE_DIR
+            WORKSPACE_DIR = Path(args.workspace)
+            WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+        elif scenario_config:
+            setup_workspace(scenario_config, args.variant, FIXTURES_DIR, WORKSPACE_DIR)
 
-    if args.wait:
-        if not wait_for_services():
-            print("ERROR: Services not ready")
-            sys.exit(1)
+        if args.wait:
+            if not wait_for_services():
+                print("ERROR: Services not ready")
+                sys.exit(1)
 
-    # Run episode
-    result = run_episode(message, args.scenario)
+        # Run episode
+        result = run_episode(message, args.scenario)
+
+    except SandboxError as error:
+        receipt = {"scenario": args.scenario, "variant": args.variant, "status": "error", "error": str(error), "evidence": error.evidence}
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+        if args.json:
+            sys.stdout = _real_stdout
+        print(json.dumps(receipt))
+        raise SystemExit(1) from error
 
     # Restore stdout for JSON output
     if args.json:

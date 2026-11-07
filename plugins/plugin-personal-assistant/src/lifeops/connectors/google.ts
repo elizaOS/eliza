@@ -21,10 +21,10 @@ import {
   missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
-import {
-  type ConnectorContribution,
-  type ConnectorStatus,
-  type DispatchResult,
+import type {
+  ConnectorContribution,
+  ConnectorStatus,
+  DispatchResult,
 } from "./contract.js";
 export interface GoogleSendPayload {
   /** Comma-separated or array of recipients. */

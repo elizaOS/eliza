@@ -17,10 +17,12 @@ import {
   type EventPayload,
   type IAgentRuntime,
   logger,
+  MediaFetchError,
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  readResponseWithLimit,
   Service,
   type TargetInfo,
   toWellFormedUnicode,
@@ -64,6 +66,28 @@ export const GOOGLE_CHAT_API_TIMEOUT_MS = 30_000;
 
 function normalizeGoogleChatQuery(query: string): string {
   return query.trim().toLowerCase();
+}
+
+/**
+ * Emits a Google Chat observer event. A listener that rejects must not turn an
+ * already-accepted provider call into an unhandled rejection, so the rejection
+ * is reported as a diagnostic instead.
+ */
+function emitObservedEvent(
+  runtime: IAgentRuntime | undefined,
+  event: string,
+  payload: EventPayload,
+  context: Record<string, unknown>
+): void {
+  if (!runtime) {
+    return;
+  }
+  // error-policy:J7 diagnostics-must-not-kill-the-loop — the Google Chat API
+  // call already succeeded. Listeners are observers, so a rejected listener
+  // must not make the accepted message look retryable.
+  void Promise.resolve(runtime.emitEvent(event, payload)).catch((error) =>
+    runtime.reportError("GoogleChatService.emitEvent", error, { event, ...context })
+  );
 }
 
 function scoreGoogleChatSpace(space: GoogleChatSpace, query: string): number {
@@ -296,11 +320,16 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       service.states.set(state.accountId, state);
       GoogleChatService.registerSendHandlers(runtime, service, state.accountId);
 
-      runtime.emitEvent(GoogleChatEventTypes.CONNECTION_READY, {
+      emitObservedEvent(
         runtime,
-        service,
-        accountId: state.accountId,
-      } as EventPayload);
+        GoogleChatEventTypes.CONNECTION_READY,
+        {
+          runtime,
+          service,
+          accountId: state.accountId,
+        } as EventPayload,
+        { accountId: state.accountId }
+      );
     }
 
     logger.info(
@@ -648,9 +677,29 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   async getSpaces(accountId?: string): Promise<GoogleChatSpace[]> {
     const state = this.getState(accountId);
-    const url = `${CHAT_API_BASE}/spaces`;
-    const response = await this.fetchApi<{ spaces?: GoogleChatSpace[] }>(url, {}, state.accountId);
-    state.cachedSpaces = response.spaces || [];
+    // spaces.list returns one page (100 spaces by default) plus nextPageToken;
+    // read every page so target resolution sees the complete membership.
+    const spaces: GoogleChatSpace[] = [];
+    let pageToken: string | undefined;
+    const seenPageTokens = new Set<string>();
+    do {
+      const url = new URL(`${CHAT_API_BASE}/spaces`);
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const response = await this.fetchApi<{
+        spaces?: GoogleChatSpace[];
+        nextPageToken?: string;
+      }>(url.toString(), {}, state.accountId);
+      spaces.push(...(response.spaces ?? []));
+      const nextToken = response.nextPageToken || undefined;
+      if (nextToken) {
+        if (seenPageTokens.has(nextToken)) {
+          throw new GoogleChatApiError("Google Chat repeated a spaces page token.", 500);
+        }
+        seenPageTokens.add(nextToken);
+      }
+      pageToken = nextToken;
+    } while (pageToken);
+    state.cachedSpaces = spaces;
     return state.cachedSpaces;
   }
 
@@ -706,7 +755,11 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       }));
     }
 
-    const url = `${CHAT_API_BASE}/${options.space}/messages`;
+    // Without messageReplyOption, Chat ignores thread.name and starts a new
+    // thread (MESSAGE_REPLY_OPTION_UNSPECIFIED).
+    const url = options.thread
+      ? `${CHAT_API_BASE}/${options.space}/messages?messageReplyOption=REPLY_MESSAGE_OR_FAIL`
+      : `${CHAT_API_BASE}/${options.space}/messages`;
 
     const result = await this.fetchApi<{ name?: string }>(
       url,
@@ -717,20 +770,28 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       state.accountId
     );
 
-    logger.debug(`Message sent to ${options.space}: ${result.name}`);
+    const messageName = result.name?.trim();
+    if (!messageName) {
+      throw new GoogleChatApiError("Google Chat send returned no provider message name.", 502);
+    }
 
-    if (this.runtime) {
-      this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_SENT, {
+    logger.debug(`Message sent to ${options.space}: ${messageName}`);
+
+    emitObservedEvent(
+      this.runtime,
+      GoogleChatEventTypes.MESSAGE_SENT,
+      {
         runtime: this.runtime,
         accountId: state.accountId,
-        messageName: result.name,
+        messageName,
         space: options.space,
-      } as EventPayload);
-    }
+      } as EventPayload,
+      { accountId: state.accountId, space: options.space }
+    );
 
     return {
       success: true,
-      messageName: result.name,
+      messageName,
       space: options.space,
     };
   }
@@ -799,15 +860,18 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       state.accountId
     );
 
-    if (this.runtime) {
-      this.runtime.emitEvent(GoogleChatEventTypes.REACTION_SENT, {
+    emitObservedEvent(
+      this.runtime,
+      GoogleChatEventTypes.REACTION_SENT,
+      {
         runtime: this.runtime,
         accountId: state.accountId,
         messageName,
         emoji,
         reactionName: result.name,
-      } as EventPayload);
-    }
+      } as EventPayload,
+      { accountId: state.accountId, messageName }
+    );
 
     return {
       success: true,
@@ -946,8 +1010,21 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       }
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let buffer: Buffer;
+    if (maxBytes) {
+      // Content-Length can be absent (chunked) or wrong, so the body read
+      // itself must stop at the cap instead of buffering the payload first.
+      try {
+        buffer = await readResponseWithLimit(response, maxBytes);
+      } catch (error) {
+        if (error instanceof MediaFetchError && error.code === "max_bytes") {
+          throw new GoogleChatApiError(`Media exceeds max bytes (${maxBytes})`, 413, error);
+        }
+        throw error;
+      }
+    } else {
+      buffer = Buffer.from(await response.arrayBuffer());
+    }
     const contentType = response.headers.get("content-type") || undefined;
 
     return { buffer, contentType };
@@ -1042,12 +1119,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   private async listConnectorSpaces(accountId?: string): Promise<GoogleChatSpace[]> {
-    const state = this.getState(accountId);
-    try {
-      return await this.getSpaces(state.accountId);
-    } catch {
-      return [...state.cachedSpaces];
-    }
+    return this.getSpaces(accountId);
   }
 
   async processWebhookEvent(event: GoogleChatEvent, accountId?: string): Promise<void> {
@@ -1060,28 +1132,43 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     if (!this.runtime) return;
 
     if (eventType === "MESSAGE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_RECEIVED, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        event,
-        message: event.message,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.MESSAGE_RECEIVED,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          event,
+          message: event.message,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     } else if (eventType === "ADDED_TO_SPACE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.SPACE_JOINED, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.SPACE_JOINED,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     } else if (eventType === "REMOVED_FROM_SPACE") {
-      this.runtime.emitEvent(GoogleChatEventTypes.SPACE_LEFT, {
-        runtime: this.runtime,
-        accountId: resolvedAccountId,
-        space: event.space,
-        user: event.user,
-      } as EventPayload);
+      emitObservedEvent(
+        this.runtime,
+        GoogleChatEventTypes.SPACE_LEFT,
+        {
+          runtime: this.runtime,
+          accountId: resolvedAccountId,
+          space: event.space,
+          user: event.user,
+        } as EventPayload,
+        { accountId: resolvedAccountId }
+      );
     }
   }
 

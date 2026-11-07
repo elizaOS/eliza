@@ -8,19 +8,22 @@
  */
 
 import {
-  type CloudPairExchangeResponse,
-  isCloudPairAgentId,
-} from "@elizaos/core/contracts/cloud-pair";
-import { Hono } from "hono";
-import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+  AuthenticationError,
+  errorToResponse,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getPairingTokenService } from "@/lib/services/pairing-token";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { getPairingTokenService } from "@elizaos/cloud-shared/lib/services/pairing-token";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
+  type CloudPairExchangeResponse,
+  isCloudPairAgentId,
+} from "@elizaos/contracts";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));

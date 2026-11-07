@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop desktop deep link events ts behavior for app shell integration. */
 export function readOpenUrlEventUrl(event: unknown): string | null {
 	if (typeof event === "string") {
 		const url = event.trim();

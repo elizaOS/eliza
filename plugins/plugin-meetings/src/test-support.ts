@@ -6,21 +6,21 @@
  * exported from the package root.
  */
 
-import {
-  type Action,
-  type IAgentRuntime,
-  type Memory,
-  type Plugin,
-  type UUID,
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  Plugin,
+  UUID,
 } from "@elizaos/core";
-import {
-  type MeetingBillingState,
-  type MeetingEndReason,
-  type MeetingParticipant,
-  type MeetingPlatform,
-  type MeetingSessionStatus,
-} from "@elizaos/core/meetings";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type {
+  MeetingBillingState,
+  MeetingEndReason,
+  MeetingParticipant,
+  MeetingPlatform,
+  MeetingSessionStatus,
+  TranscriptSegment,
+} from "@elizaos/core/protocol";
 import {
   type MeetingPipelineInstance,
   MeetingService,

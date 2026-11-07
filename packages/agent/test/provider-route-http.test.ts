@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createTestRuntime } from "@elizaos/testing";
+import {
+  type ElizaConfig,
+  isLocalOnlyInferenceInConfig,
+} from "@elizaos/host/protocol";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
 import {
@@ -11,7 +15,8 @@ import {
   getBaseURL,
 } from "../../../plugins/plugin-openai/utils/config.ts";
 import { startApiServer } from "../src/api/server.ts";
-import type { ElizaConfig } from "../src/config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
+import { collectPluginNames } from "../src/runtime/plugin-collector.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
 
 let directory: string;
@@ -22,6 +27,12 @@ const token = randomUUID();
 const openaiKey = "synthetic-openai-routing-credential";
 const cerebrasKey = "synthetic-cerebras-routing-credential";
 const config: ElizaConfig = {
+  deploymentTarget: { runtime: "local" },
+  cloud: {
+    enabled: false,
+    inferenceMode: "local",
+    services: { inference: false },
+  },
   serviceRouting: {
     llmText: {
       backend: "cerebras",
@@ -60,9 +71,71 @@ beforeAll(async () => {
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))
     vi.stubEnv(key, value);
+  const localOnlyInputs: ElizaConfig[] = [
+    { cloud: { enabled: false }, serviceRouting: {} },
+    { cloud: { inferenceMode: "local" } },
+    { cloud: { services: { inference: false } } },
+  ];
+  for (const input of localOnlyInputs) {
+    await writeFile(configPath, JSON.stringify({ ...input, env: config.env }));
+    const selected = loadElizaConfig();
+    expect(isLocalOnlyInferenceInConfig(selected)).toBe(true);
+    expect(selected.serviceRouting).toEqual({});
+    expect(selected.cloud?.inferenceMode).toBeUndefined();
+    expect(selected.cloud?.services?.inference).toBeUndefined();
+    for (const name of ["openai", "anthropic", "elizacloud"]) {
+      expect(collectPluginNames(selected).has(`@elizaos/plugin-${name}`)).toBe(
+        false,
+      );
+    }
+    saveElizaConfig(selected);
+    const reloaded = loadElizaConfig();
+    expect(isLocalOnlyInferenceInConfig(reloaded)).toBe(true);
+    expect(reloaded.serviceRouting).toEqual({});
+    expect(reloaded.env?.vars).toMatchObject(config.env?.vars ?? {});
+  }
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "https://remote.example",
+      },
+      cloud: { inferenceMode: "local" },
+      env: config.env,
+    }),
+  );
+  const remote = loadElizaConfig();
+  expect(isLocalOnlyInferenceInConfig(remote)).toBe(false);
+  expect(remote.serviceRouting?.llmText).toMatchObject({
+    transport: "remote",
+    remoteApiBase: "https://remote.example",
+  });
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      cloud: { inferenceMode: "byok" },
+      env: config.env,
+    }),
+  );
+  const direct = loadElizaConfig();
+  expect(isLocalOnlyInferenceInConfig(direct)).toBe(false);
+  expect(direct.serviceRouting?.llmText?.transport).toBe("direct");
+  expect(collectPluginNames(direct).has("@elizaos/plugin-openai")).toBe(true);
+  await writeFile(configPath, JSON.stringify(config));
+  const loaded = loadElizaConfig();
+  expect(loaded.cloud?.inferenceMode).toBeUndefined();
+  expect(loaded.cloud?.services?.inference).toBeUndefined();
+  expect(loaded.serviceRouting).toEqual(config.serviceRouting);
+  for (const candidate of [config, loaded]) {
+    const selected = collectPluginNames(candidate);
+    expect(selected.has("@elizaos/plugin-openai")).toBe(true);
+    expect(selected.has("@elizaos/plugin-elizacloud")).toBe(false);
+  }
   fixture = await createTestRuntime({
     characterName: "ProviderRouteAcceptance",
-    settings: buildRuntimeSettingsProjection(config),
+    settings: buildRuntimeSettingsProjection(loaded),
     plugins: [openaiPlugin],
   });
   server = await startApiServer({
@@ -157,18 +230,12 @@ it("retires a persisted ChatGPT/Codex subscription chat route while keeping the 
 
   const models = await request("/api/models/config");
   expect(models.status).toBe(200);
-  // The dead Codex route no longer claims chat; the stored OpenAI API key
-  // signal is what can serve it now.
   expect((await models.json()).activeChat?.provider).not.toBe("openai-codex");
 
   const configResponse = await request("/api/config");
   expect(configResponse.status).toBe(200);
   const migrated = await configResponse.json();
-  // The retired route is gone; only a provider the user configured directly
-  // (here the stored OpenAI API key) may be derived in its place.
-  expect(migrated.serviceRouting?.llmText?.backend).not.toBe(
-    "openai-subscription",
-  );
+  expect(migrated.serviceRouting).toEqual({});
   expect(migrated.agents?.defaults?.model?.primary).toBeUndefined();
   expect(migrated.agents?.defaults?.subscriptionProvider).toBe("openai-codex");
 
@@ -178,5 +245,39 @@ it("retires a persisted ChatGPT/Codex subscription chat route while keeping the 
   expect(rejected.status).toBe(400);
   expect(JSON.stringify(await rejected.json())).toContain(
     "ChatGPT/Codex subscription cannot power chat",
+  );
+});
+
+it("rejects a first-run that selects Eliza Cloud inference on a local agent with no Cloud API key, and accepts it once the key is supplied", async () => {
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", undefined);
+  const before = await readFile(configPath, "utf8");
+  const firstRun = {
+    name: "CloudRouteAcceptance",
+    deploymentTarget: { runtime: "local" },
+    linkedAccounts: { elizacloud: { status: "linked", source: "oauth" } },
+    serviceRouting: {
+      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+    },
+  };
+
+  const rejected = await request("/api/first-run", "POST", firstRun);
+  expect(rejected.status).toBe(409);
+  expect(JSON.stringify(await rejected.json())).toContain(
+    "no Eliza Cloud API key",
+  );
+  expect(await readFile(configPath, "utf8")).toBe(before);
+  expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+
+  const cloudKey = "synthetic-cloud-inference-credential";
+  const accepted = await request("/api/first-run", "POST", {
+    ...firstRun,
+    credentialInputs: { cloudApiKey: cloudKey },
+  });
+  expect(accepted.status).toBe(200);
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  expect(saved.meta.firstRunComplete).toBe(true);
+  expect(saved.cloud.apiKey).toBe(cloudKey);
+  expect(saved.serviceRouting.llmText).toMatchObject(
+    firstRun.serviceRouting.llmText,
   );
 });

@@ -1,13 +1,13 @@
 /** Storybook stories for ModelCard — default, won't-fit, downloading, failed, installed, active, and download-unavailable states. */
 
-import type { Meta, StoryObj } from "@storybook/react";
 import type {
   ActiveModelState,
   CatalogModel,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
-} from "../../api/client-local-inference";
+} from "@elizaos/contracts";
+import type { Meta, StoryObj } from "@storybook/react";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { ModelCard } from "./ModelCard";
 

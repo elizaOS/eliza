@@ -9,7 +9,8 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
@@ -256,12 +257,6 @@ const VALID_APPROVAL_MODES: ComputerUseApprovalMode[] = [
   "off",
 ];
 
-const EMPTY_APPROVAL_SNAPSHOT: ComputerUseApprovalSnapshot = {
-  mode: "full_control",
-  pendingCount: 0,
-  pendingApprovals: [],
-};
-
 function isApprovalMode(value: string): value is ComputerUseApprovalMode {
   return VALID_APPROVAL_MODES.includes(value as ComputerUseApprovalMode);
 }
@@ -388,9 +383,18 @@ function isStreamAuthorized(
   res: http.ServerResponse,
   url: URL,
 ): boolean {
+  // Match ensureRouteAuthorized: trusted loopback passes, otherwise a
+  // token must be configured and presented. The previous shape returned
+  // true for anyone when no token was configured, so an unauthenticated
+  // remote caller could stream the approval snapshot. EventSource
+  // cannot set headers, so the query token is still accepted here.
+  if (isTrustedComputerUseLocalRequest(req)) return true;
+
   const expectedToken = getCompatApiToken();
   if (!expectedToken) {
-    return true;
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
+    return false;
   }
 
   const headerToken = getProvidedApiToken(req);
@@ -864,17 +868,7 @@ export async function handleComputerUseCompatRoutes(
 
     const service = getComputerUseService(state);
     if (!service) {
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      });
-      writeSseEvent(res, {
-        type: "snapshot",
-        snapshot: EMPTY_APPROVAL_SNAPSHOT,
-      });
-      res.end();
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
       return true;
     }
 
@@ -921,7 +915,7 @@ export async function handleComputerUseCompatRoutes(
 
     const service = getComputerUseService(state);
     if (!service) {
-      sendJsonResponse(res, 200, EMPTY_APPROVAL_SNAPSHOT);
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
       return true;
     }
 

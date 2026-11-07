@@ -1,8 +1,8 @@
 /** Adapts LifeOps browser sessions persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
 
+import type { LifeOpsBrowserSession } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { BrowserBridgeCompanionStatus } from "@elizaos/plugin-browser";
-import type { LifeOpsBrowserSession } from "../../contracts/index.js";
 import {
   executeRawSql,
   sqlInteger,

@@ -1,0 +1,6 @@
+{
+  "runId": 39362671367,
+  "sourceHead": "9e0f0f47910ef74884bf912998a00ca898f35859",
+  "serializedTemplate": "27fa18f6a5cc99b98ec163ffcc824a92b0b3eefd3c9ae6d3e3981d9ccc6e357d",
+  "algorithm": "sha256(JSON.stringify(parsed templateConfig))"
+}

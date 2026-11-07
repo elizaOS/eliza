@@ -31,8 +31,15 @@ import {
 const TICKETMASTER_DISCOVERY_ORIGIN =
   "https://app.ticketmaster.com/discovery/v2/";
 const TICKETMASTER_DEFAULT_TTL_MS = 10 * 60 * 1_000;
-const MAX_PAGE_SIZE = 100;
-const MAX_PAGES_PER_QUERY = 5;
+/**
+ * Query bounds of the Ticketmaster source. The LOCAL_CONDITIONS action declares
+ * and enforces the same bounds, because this is the only registered activity
+ * source and a query it refuses must not be reported as a source outage.
+ */
+export const MAX_PAGE_SIZE = 100;
+export const MAX_PAGES_PER_QUERY = 5;
+export const MAX_KEYWORD_LENGTH = 100;
+export const MAX_SEARCH_RADIUS = 500;
 const MIN_REQUEST_INTERVAL_MS = 200;
 
 export interface TicketmasterDiscoveryAdapterOptions {
@@ -225,7 +232,8 @@ function validateActivityQuery(query: LocalActivityOracleQuery): void {
   }
   if (
     query.keywords.some(
-      (keyword) => keyword.trim().length === 0 || keyword.length > 100,
+      (keyword) =>
+        keyword.trim().length === 0 || keyword.length > MAX_KEYWORD_LENGTH,
     )
   ) {
     throw oracleError(
@@ -255,7 +263,7 @@ function validateActivityQuery(query: LocalActivityOracleQuery): void {
     query.location.longitude > 180 ||
     !Number.isFinite(query.location.radius) ||
     query.location.radius <= 0 ||
-    query.location.radius > 500
+    query.location.radius > MAX_SEARCH_RADIUS
   ) {
     throw oracleError(
       "Activity coordinate location is invalid.",

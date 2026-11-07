@@ -139,7 +139,7 @@ export class BinaryResolver {
   private resolvedYtDlpSource: YtDlpSource | null = null;
   private cachedRunner: YtDlpRunner | null = null;
   private resolvedFfmpegPath: string | null | undefined = undefined;
-  private updateInFlight: Promise<void> | null = null;
+  private updateInFlight: Promise<boolean> | null = null;
 
   constructor(opts: BinaryResolverOptions = {}) {
     this.binariesDir = opts.binariesDir ?? defaultBinariesDir();
@@ -330,12 +330,18 @@ export class BinaryResolver {
    * Run a yt-dlp update attempt, throttled to once per `updateThrottleMs`.
    * Returns true iff a fresh binary was successfully installed.
    */
-  private async tryUpdate(): Promise<boolean> {
-    if (this.updateInFlight) {
-      await this.updateInFlight;
-      return true;
+  private tryUpdate(): Promise<boolean> {
+    // Claim the slot before the first await so concurrent extractor failures
+    // share one attempt, and each caller keeps its own extractor error.
+    if (!this.updateInFlight) {
+      this.updateInFlight = this.runUpdate().finally(() => {
+        this.updateInFlight = null;
+      });
     }
+    return this.updateInFlight;
+  }
 
+  private async runUpdate(): Promise<boolean> {
     const meta = await this.readMeta();
     // No metadata yet means we have never attempted an update; first failure
     // should always be allowed to try.
@@ -349,22 +355,16 @@ export class BinaryResolver {
       }
     }
 
-    const job = (async () => {
+    try {
       await this.touchUpdateAttempt(meta);
       await this.downloadYtDlp();
       this.resetRunnerCache();
-    })();
-    this.updateInFlight = job;
-    try {
-      await job;
       return true;
     } catch (err) {
       elizaLogger.error(
         `[plugin-video] yt-dlp update failed: ${describeError(err)}`,
       );
       return false;
-    } finally {
-      this.updateInFlight = null;
     }
   }
 

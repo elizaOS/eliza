@@ -12,7 +12,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import {
   executeInboxQueueOperation,
   type InboxQueueOperationResult,

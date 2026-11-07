@@ -1,5 +1,5 @@
 /** Formats account-switch event dates without shifting all-day civil dates through the viewer's zone. */
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 
 type EventDates = Pick<
   LifeOpsCalendarEvent,

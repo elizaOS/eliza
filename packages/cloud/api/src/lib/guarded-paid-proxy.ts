@@ -3,19 +3,21 @@
  * as generative inference before any provider-specific work can run.
  */
 
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { isInferenceAuthCacheEnabled } from "@/lib/services/inference-hot-path-caches";
-import type { EndpointType } from "@/lib/services/org-rate-limits";
-import type { ProxyCombinedAdmission } from "@/lib/services/proxy/engine";
-import { createHandler, executeWithBody } from "@/lib/services/proxy/engine";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
+import type { ProxyCombinedAdmission } from "@elizaos/cloud-shared/lib/services/proxy/engine";
+import {
+  createHandler,
+  executeWithBody,
+} from "@elizaos/cloud-shared/lib/services/proxy/engine";
 import type {
   ProxyRequestBody,
   ServiceConfig,
   ServiceHandler,
-} from "@/lib/services/proxy/types";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
@@ -89,34 +91,20 @@ export async function withGuardedPaidProxyAdmission(
       ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
     };
 
-    if (!executionCtx || !caller.admissionSnapshot) {
-      if (executionCtx && isInferenceAuthCacheEnabled(c.env)) {
-        logger.error(
-          "[PaidProxyAdmission] Combined admission snapshot missing",
-          {
-            requestId,
-            route: new URL(c.req.url).pathname,
-            organizationId: caller.user.organization_id,
-            authSource: caller.authSource,
-          },
-        );
-        return paidProxyApiErrorResponse(
-          new ApiError(
-            503,
-            "service_unavailable",
-            "Provider admission is unavailable; retry shortly",
-            { retryable: true, retryAfterSeconds: 1 },
-          ),
-        );
-      }
+    if (!executionCtx)
       return dispatch({ mode: "compatibility", auth, requestId });
-    }
 
+    // A Worker caller authorized authoritatively (the combined auth cache is
+    // not qualified) carries no admission snapshot. Durable admission then
+    // takes the authoritative hold, policy and balance path itself, as the
+    // inference and speech routes do, instead of refusing the request.
     return dispatch({
       mode: "combined",
       auth,
       requestId,
-      admissionSnapshot: caller.admissionSnapshot,
+      ...(caller.admissionSnapshot
+        ? { admissionSnapshot: caller.admissionSnapshot }
+        : {}),
       ...(caller.credential ? { credential: caller.credential } : {}),
       credentialForAdmission: () => credentialGuard.credentialForAdmission(),
       executionCtx,

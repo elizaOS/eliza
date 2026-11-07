@@ -2,7 +2,7 @@
 
 import { getAgentBaseDomain, getConfiguredElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { resolveOidcConfig } from "../oidc/config";
-import { getOidcSigner } from "../oidc/keys";
+import { getOidcSigner, isOidcSigningConfigured } from "../oidc/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 export const MANAGED_CLOUD_OWNER_KEYS = [
@@ -115,12 +115,13 @@ export async function prepareManagedCloudOwnerEnvironment(
     env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? getAgentBaseDomain(),
   );
   if (!audience || new URL(audience).protocol !== "https:") return {};
-  let algorithm: string;
-  try {
-    algorithm = (await getOidcSigner()).alg;
-  } catch {
-    return {};
-  }
+  // A deployment without a signing ring deliberately has no owner proof (the
+  // same degradation as an unconfigured issuer above), so an empty result is
+  // right. Once a ring IS configured, failing to load it — invalid JSON, a
+  // public-only key, a bad alg — is a misconfiguration: let it propagate
+  // instead of provisioning a managed agent with no owner binding.
+  if (!isOidcSigningConfigured()) return {};
+  const algorithm = (await getOidcSigner()).alg;
   if (!["ES256", "RS256"].includes(algorithm)) return {};
   return {
     ELIZA_CLOUD_OWNER_ISSUER: config.issuer,

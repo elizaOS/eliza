@@ -4,8 +4,8 @@
  * It never treats a generated link as a cart, checkout, order, or delivery.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -13,11 +13,11 @@ import {
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
 import { createApprovalQueue } from "../approval-queue.js";
-import {
-  type ApprovalExecutionClaim,
-  type ApprovalExecutionMutation,
-  type ApprovalQueue,
-  type ApprovalRequest,
+import type {
+  ApprovalExecutionClaim,
+  ApprovalExecutionMutation,
+  ApprovalQueue,
+  ApprovalRequest,
 } from "../approval-queue.types.js";
 import { InstacartProductsLinkClient } from "./instacart.js";
 import {

@@ -1,4 +1,3 @@
-/** Exercises experience extraction live e2e behavior with deterministic app test fixtures. */
 import crypto from "node:crypto";
 import {
   type AgentRuntime,

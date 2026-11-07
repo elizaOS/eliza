@@ -5,7 +5,7 @@
  * that the section body reads to filter connectors and their setup modes.
  */
 
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { SegmentedControl } from "../ui/segmented-control";
 import {
   type ConnectorChannelMode,

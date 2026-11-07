@@ -1,13 +1,20 @@
 // Handles v1 cloud API v1 eliza agents agentid restore route traffic with route-local auth expectations.
+
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -139,33 +146,16 @@ async function __hono_POST(
     );
 
     if (!result.success) {
-      // A backupId that exists but belongs to a different agent must be
-      // indistinguishable from one that does not exist (same 404 + message):
-      // the service's ownership check is not a server fault (was a 500), and
-      // a distinct response would make backup ids a cross-agent/cross-org
-      // existence oracle (gated ≠ owned).
-      if (result.error === "Backup does not belong to this agent") {
-        return applyCorsHeaders(
-          Response.json(
-            { success: false, error: "No backup found" },
-            { status: 404 },
-          ),
-          CORS_METHODS,
-        );
-      }
-
+      // The service classifies its own refusals. A foreign backup id is
+      // reported as "No backup found" (not-found) so backup ids are not a
+      // cross-agent/cross-org existence oracle. An unclassified failure is a
+      // server fault.
       const status =
-        result.error === "Agent not found"
+        result.refusal === "not-found"
           ? 404
-          : result.error === "No backup found"
-            ? 404
-            : result.error ===
-                  "Stopped agents can only restore the latest backup" ||
-                result.error ===
-                  "Backup is not in a restorable catalogue state" ||
-                result.error === "Another restore of this backup is in progress"
-              ? 409
-              : 500;
+          : result.refusal === "conflict"
+            ? 409
+            : 500;
 
       return applyCorsHeaders(
         Response.json({ success: false, error: result.error }, { status }),

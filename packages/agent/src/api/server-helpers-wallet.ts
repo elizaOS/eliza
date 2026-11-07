@@ -3,11 +3,11 @@
  */
 
 import type http from "node:http";
-import {
-  readAliasedEnv,
-  type WalletExportRejection,
-  type WalletExportRequestBody,
-} from "@elizaos/core";
+import type {
+  WalletExportRejection,
+  WalletExportRequestBody,
+} from "@elizaos/contracts";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { tokenMatches } from "./server-helpers-auth.ts";
 
 export type { WalletExportRejection };

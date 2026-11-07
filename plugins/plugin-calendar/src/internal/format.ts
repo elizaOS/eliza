@@ -7,7 +7,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
 import {
   addDaysToLocalDate,
   getTimeZoneOffsetMinutes,
@@ -34,7 +34,9 @@ function getCalendarYearForDisplay(date: Date, timeZone?: string): number {
 }
 
 export function formatCalendarEventDateTime(
-  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone">,
+  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone"> & {
+    isAllDay?: boolean;
+  },
   options?: {
     includeYear?: boolean;
     includeTimeZoneName?: boolean;
@@ -49,6 +51,23 @@ export function formatCalendarEventDateTime(
     timeZone?: string;
   },
 ): string {
+  if (event.isAllDay) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(event.startAt);
+    if (match) {
+      const year = Number(match[1]);
+      const civil = new Date(
+        Date.UTC(year, Number(match[2]) - 1, Number(match[3])),
+      );
+      const currentYear = getCalendarYearForDisplay(new Date(), "UTC");
+      const includeYear = options?.includeYear ?? year !== currentYear;
+      const month = options?.numericDate ? "numeric" : "short";
+      return formatCalendarDatePart(civil, "UTC", {
+        month,
+        day: "numeric",
+        ...(includeYear ? { year: "numeric" } : {}),
+      });
+    }
+  }
   const start = new Date(event.startAt);
   const timeZone = options?.timeZone || event.timezone || undefined;
   const currentYear = getCalendarYearForDisplay(new Date(), timeZone);
@@ -68,7 +87,7 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
-function formatEventTime(
+export function formatCalendarEventTimeRange(
   event: LifeOpsCalendarEvent,
   reference?: { asOf: Date; timeZone: string },
 ): string {
@@ -146,7 +165,7 @@ export function formatCalendarFeed(
   }
   const lines: string[] = [`Events ${label}:`];
   for (const event of feed.events) {
-    const time = formatEventTime(event);
+    const time = formatCalendarEventTimeRange(event);
     const parts = [`- **${event.title}** (${time})`];
     if (event.location) {
       parts.push(`  Location: ${event.location}`);
@@ -173,9 +192,57 @@ export function formatCalendarFeed(
 export function formatNextEventContext(
   context: LifeOpsNextCalendarEventContext,
 ): string {
+  return !context.event && context.readScope?.exhaustive === false
+    ? `No upcoming event was found in the checked connected calendar window from ${context.readScope.timeMin} to ${context.readScope.timeMax}. Its end is exclusive. Checked connected sources: ${context.calendarSources ? JSON.stringify(context.calendarSources.map((source) => source.summary)) : "(not reported)"}. This bounded, non-exhaustive search does not establish that the calendar is clear. Report absence only in these checked sources and this window; do not generalize to other calendars or events outside these bounds.`
+    : formatNextEventContextForUser(context);
+}
+
+/** Human-facing snapshot copy, kept separate from model grounding instructions. */
+export function formatNextEventContextForUser(
+  context: LifeOpsNextCalendarEventContext,
+): string {
   if (!context.event) {
     if (context.readScope?.exhaustive === false) {
-      return "No upcoming event was found in the checked calendar window. Its end is exclusive. This bounded search does not establish that the calendar is clear.";
+      const start = new Date(context.readScope.timeMin);
+      const end = new Date(context.readScope.timeMax);
+      const sources =
+        context.calendarSources
+          ?.map((source) => source.summary)
+          .filter(Boolean)
+          .join(", ") || "the checked Calendar sources";
+      if (
+        Number.isFinite(start.getTime()) &&
+        Number.isFinite(end.getTime()) &&
+        start < end
+      ) {
+        const zone = context.timeReference?.timeZone ?? "UTC";
+        const midnight = (value: Date) => {
+          const parts = getZonedDateParts(value, zone);
+          return (
+            parts.hour === 0 &&
+            parts.minute === 0 &&
+            parts.second === 0 &&
+            value.getUTCMilliseconds() === 0
+          );
+        };
+        const timed = !midnight(start) || !midnight(end);
+        const date: Intl.DateTimeFormatOptions = {
+          weekday: "long",
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        };
+        if (timed) {
+          date.hour = "numeric";
+          date.minute = "2-digit";
+          date.second = "2-digit";
+          date.timeZoneName = "short";
+        }
+        if (timed && (start.getUTCMilliseconds() || end.getUTCMilliseconds()))
+          date.fractionalSecondDigits = 3;
+        return `No upcoming event was found in ${sources} from ${formatCalendarDatePart(start, zone, date)} to before ${formatCalendarDatePart(end, zone, date)}. This read covers only those sources and dates; it does not establish that the whole calendar is clear.`;
+      }
+      return `No upcoming event was found in ${sources} within the checked dates.`;
     }
     return "No upcoming event was found in the checked calendar window.";
   }
@@ -221,7 +288,7 @@ export function formatNextEventContext(
     }
   }
   const lines = [
-    `**Next event: ${context.event.title}** (${formatEventTime(context.event, reference)}${relativeDay ? `; ${relativeDay}` : ""})`,
+    `**Next event: ${context.event.title}** (${formatCalendarEventTimeRange(context.event, reference)}${relativeDay ? `; ${relativeDay}` : ""})`,
   ];
   if (context.startsInMinutes !== null) {
     lines[0] += ` — ${formatRelativeMinutes(context.startsInMinutes)}`;

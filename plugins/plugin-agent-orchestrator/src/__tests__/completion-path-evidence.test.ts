@@ -11,8 +11,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { completionHasFailureMarkerWithoutPositiveEvidence } from "../evaluators/sub-agent-completion.js";
 import { AcpService } from "../services/acp-service.js";
-import { renderChangeSetBody } from "../services/completion-evidence.js";
+import { deriveBuiltApp } from "../services/built-apps-registry.js";
+import {
+  buildCompletionEvidenceString,
+  isLoopbackUrl,
+  renderChangeSetBody,
+} from "../services/completion-evidence.js";
 import {
   captureChangeSet,
   subtractChangeSetBaseline,
@@ -302,5 +308,63 @@ describe("complete path evidence", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("loopback URL classification is shared across completion paths", () => {
+  const PUBLIC = "https://workouts.apps.elizacloud.example/";
+
+  it("classifies all of 127.0.0.0/8 and bracketed ::1 as loopback", () => {
+    expect(isLoopbackUrl("http://127.0.0.2:3000/")).toBe(true);
+    expect(isLoopbackUrl("http://[::1]:3000/")).toBe(true);
+    expect(isLoopbackUrl("http://localhost:3000/")).toBe(true);
+    expect(isLoopbackUrl(PUBLIC)).toBe(false);
+    expect(isLoopbackUrl("not a url")).toBe(false);
+  });
+
+  it("labels 127.0.0.2 and [::1] claimed URLs as LOOPBACK, public URL unlabeled", () => {
+    const rendered = buildCompletionEvidenceString({
+      summary: "done",
+      // A probe-verified URL makes the bundle "rich", so sections render.
+      verifiedUrls: ["https://verified.example/"],
+      screenshots: [],
+      mentionedUrls: ["http://127.0.0.2:3000/", "http://[::1]:3000/", PUBLIC],
+    });
+    expect(rendered).toContain(
+      "- http://127.0.0.2:3000/ (LOOPBACK — not publicly reachable)",
+    );
+    expect(rendered).toContain(
+      "- http://[::1]:3000/ (LOOPBACK — not publicly reachable)",
+    );
+    expect(rendered).toContain(`- ${PUBLIC}`);
+    expect(rendered).not.toContain(`${PUBLIC} (LOOPBACK`);
+  });
+
+  it("does not count a 127.0.0.2 URL as a user-facing URL; a public URL still counts", () => {
+    expect(
+      completionHasFailureMarkerWithoutPositiveEvidence(
+        "build failed: exit code 1 while serving http://127.0.0.2:3000/",
+      ),
+    ).toBe(true);
+    expect(
+      completionHasFailureMarkerWithoutPositiveEvidence(
+        `build failed: exit code 1 while serving ${PUBLIC}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("skips a [::1] probe URL when deriving the built app", () => {
+    expect(
+      deriveBuiltApp(
+        ["http://[::1]:3000/", "http://127.0.0.2:3000/", PUBLIC],
+        { target: "eliza-cloud" },
+        "build a website for tracking my workouts and deploy it",
+      ),
+    ).toEqual({
+      slug: "workouts",
+      name: "Workouts",
+      url: PUBLIC,
+      target: "eliza-cloud",
+    });
   });
 });

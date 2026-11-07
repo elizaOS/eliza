@@ -45,13 +45,20 @@ export type StewardPhoneOwnershipErrorCode =
 
 export class StewardPhoneOwnershipError extends Error {
   override readonly name = "StewardPhoneOwnershipError";
+  readonly upstreamStatus?: number;
 
   constructor(
     readonly code: StewardPhoneOwnershipErrorCode,
     message: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { upstreamStatus?: number },
   ) {
     super(message, options);
+    if (
+      Number.isInteger(options?.upstreamStatus) &&
+      (options?.upstreamStatus ?? 0) >= 100 &&
+      (options?.upstreamStatus ?? 0) <= 599
+    )
+      this.upstreamStatus = options?.upstreamStatus;
   }
 }
 
@@ -143,6 +150,8 @@ export async function verifyStewardBearerPhone(params: {
   }
 
   let accounts: unknown;
+  let primaryLoginMethods: unknown;
+  let upstreamStatus: number | undefined;
   try {
     const headers = new Headers({
       Accept: "application/json",
@@ -158,10 +167,21 @@ export async function verifyStewardBearerPhone(params: {
         signal: AbortSignal.timeout(25_000),
       },
     );
+    upstreamStatus = response.status;
     if (!response.ok) {
-      throw new Error(`Steward account lookup returned ${response.status}`);
+      throw new StewardPhoneOwnershipError(
+        "upstream_unavailable",
+        "Steward linked-account verification failed",
+        { upstreamStatus },
+      );
     }
     const payload: unknown = await response.json();
+    if (!payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true)
+      throw new StewardPhoneOwnershipError(
+        "invalid_upstream_response",
+        "Steward linked-account response is malformed",
+        { upstreamStatus },
+      );
     const data =
       payload && typeof payload === "object" && "data" in payload
         ? (payload as { data?: unknown }).data
@@ -170,40 +190,63 @@ export async function verifyStewardBearerPhone(params: {
       data && typeof data === "object" && "accounts" in data
         ? (data as { accounts?: unknown }).accounts
         : undefined;
+    primaryLoginMethods =
+      data && typeof data === "object" && "primaryLoginMethods" in data
+        ? (data as { primaryLoginMethods?: unknown }).primaryLoginMethods
+        : undefined;
   } catch (error) {
     if (error instanceof StewardPhoneOwnershipError) throw error;
     throw new StewardPhoneOwnershipError(
       "upstream_unavailable",
       "Steward linked-account verification failed",
-      { cause: error },
+      { cause: error, ...(upstreamStatus === undefined ? {} : { upstreamStatus }) },
     );
   }
 
-  if (!Array.isArray(accounts)) {
+  if (
+    !Array.isArray(accounts) ||
+    (primaryLoginMethods !== undefined && !Array.isArray(primaryLoginMethods))
+  ) {
     throw new StewardPhoneOwnershipError(
       "invalid_upstream_response",
       "Steward linked-account response is malformed",
+      upstreamStatus === undefined ? undefined : { upstreamStatus },
     );
   }
 
-  const ownsPhone = accounts.some((account) => {
-    if (!account || typeof account !== "object") return false;
-    const record = account as Record<string, unknown>;
-    const provider =
-      typeof record.provider === "string" ? record.provider.trim().toLowerCase() : "";
-    const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
-    const isPhoneAccount =
-      provider === "phone" ||
-      provider === "sms" ||
-      provider.startsWith("phone:") ||
-      type === "phone" ||
-      type === "sms";
-    if (!isPhoneAccount || typeof record.providerAccountId !== "string") {
-      return false;
-    }
-    const accountPhone = normalizePhoneNumber(record.providerAccountId);
-    return isValidE164(accountPhone) && accountPhone === normalizedPhone;
-  });
+  const phoneDigest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalizedPhone),
+  );
+  const phoneSubject = `phone:${Array.from(new Uint8Array(phoneDigest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  const ownsPrimaryPhone =
+    Array.isArray(primaryLoginMethods) &&
+    primaryLoginMethods.some((method) => {
+      if (!method || typeof method !== "object") return false;
+      const record = method as Record<string, unknown>;
+      return record.provider === "wallet" && record.providerAccountId === phoneSubject;
+    });
+  const ownsPhone =
+    ownsPrimaryPhone ||
+    accounts.some((account) => {
+      if (!account || typeof account !== "object") return false;
+      const record = account as Record<string, unknown>;
+      const provider =
+        typeof record.provider === "string" ? record.provider.trim().toLowerCase() : "";
+      const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
+      const isPhoneAccount =
+        provider === "phone" ||
+        provider === "sms" ||
+        provider.startsWith("phone:") ||
+        type === "phone" ||
+        type === "sms";
+      if (!isPhoneAccount || typeof record.providerAccountId !== "string") {
+        return false;
+      }
+      if (record.providerAccountId === phoneSubject) return true;
+      const accountPhone = normalizePhoneNumber(record.providerAccountId);
+      return isValidE164(accountPhone) && accountPhone === normalizedPhone;
+    });
 
   return ownsPhone
     ? { status: "verified", phoneNumber: normalizedPhone }

@@ -99,12 +99,15 @@ export function orderQueue(
       : 0;
     const bandDelta = bBand - aBand;
     if (bandDelta !== 0) return bandDelta;
+    // An unparseable enqueue time counts as just-arrived (zero wait),
+    // matching effectiveBand. Falling back to 0 would rank the entry as
+    // the oldest in its band and dispatch it ahead of waiting tasks.
     const aTime = Number.isFinite(Date.parse(a.enqueuedAt))
       ? Date.parse(a.enqueuedAt)
-      : 0;
+      : now;
     const bTime = Number.isFinite(Date.parse(b.enqueuedAt))
       ? Date.parse(b.enqueuedAt)
-      : 0;
+      : now;
     const timeDelta = aTime - bTime;
     if (timeDelta !== 0) return timeDelta;
     return a.taskId.localeCompare(b.taskId);

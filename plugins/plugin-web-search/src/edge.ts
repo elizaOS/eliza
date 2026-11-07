@@ -14,7 +14,23 @@ import type {
     State,
 } from "@elizaos/core";
 import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
-import { isKeylessWebSearchUnavailableError, searchKeylessWeb } from "./keyless-web-search";
+import {
+    fetchKeylessWeb as fetchKeylessWebTransport,
+    isKeylessWebSearchUnavailableError,
+    type KeylessWebFetchOptions,
+    searchKeylessWeb,
+} from "./keyless-web-search";
+
+/** Validates public destinations before asking the anonymous provider to read article URLs. */
+export async function fetchKeylessWeb(
+    urls: readonly string[],
+    options: KeylessWebFetchOptions = {}
+) {
+    for (const url of urls) {
+        if (publicHttpUrl(url) !== url) throw new Error("Canonical public article URL is required");
+    }
+    return fetchKeylessWebTransport(urls, options);
+}
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",
@@ -52,10 +68,29 @@ const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
+// Keep balanced URL parentheses and remove only excess closing prose marks.
+function stripTrailingProsePunctuation(value: string): string {
+    let excessClosing = 0;
+    for (const char of value) {
+        if (char === ")") excessClosing += 1;
+        else if (char === "(") excessClosing -= 1;
+    }
+    let end = value.length;
+    while (end > 0) {
+        const char = value[end - 1];
+        if (char === "," || char === "." || char === ";") end -= 1;
+        else if (char === ")" && excessClosing > 0) {
+            end -= 1;
+            excessClosing -= 1;
+        } else break;
+    }
+    return value.slice(0, end);
+}
+
 function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
     try {
-        const parsed = new URL(value.replace(/[),.;]+$/u, ""));
+        const parsed = new URL(value);
         if (
             (parsed.protocol === "https:" || parsed.protocol === "http:") &&
             !parsed.username &&
@@ -74,7 +109,7 @@ function publicHttpUrl(value: unknown): string | undefined {
 function containsUnsafeHttpUrl(value: string): boolean {
     HTTP_URL.lastIndex = 0;
     for (const match of value.matchAll(HTTP_URL)) {
-        if (!publicHttpUrl(match[0])) return true;
+        if (!publicHttpUrl(stripTrailingProsePunctuation(match[0]))) return true;
     }
     return false;
 }
@@ -150,17 +185,42 @@ export function webSearchSourceEvidence(text: string): {
         // error-policy:J3 non-JSON providers retain URL inventory but cannot
         // claim source-bound evidence for current factual assertions.
     }
-    for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
-        const parsed = publicHttpUrl(match[0]);
-        if (parsed) sourceUrls.add(parsed);
+    for (const prose of decodedStrings(text)) {
+        for (const match of prose.matchAll(/https?:\/\/[^\s<>"']+/gu)) {
+            const exact = publicHttpUrl(match[0]);
+            if (exact && sourceUrls.has(exact)) continue;
+            const parsed = publicHttpUrl(stripTrailingProsePunctuation(match[0]));
+            if (parsed) sourceUrls.add(parsed);
+        }
     }
     return {
         sources: overflowed
             ? []
-            : [...sourceTextByUrl].map(([url, sourceText]) => ({ url, text: sourceText })),
+            : [...sourceTextByUrl].map(([url, sourceText]) => ({
+                  url,
+                  text: sourceText,
+              })),
         sourceUrls: [...sourceUrls],
         overflowed,
     };
+}
+
+/**
+ * The string values of JSON provider text, decoded: in the raw text `\n` and
+ * `\"` escapes would read as URL characters (`/guide\nNext`).
+ */
+function decodedStrings(text: string): string[] {
+    const strings: string[] = [];
+    try {
+        JSON.parse(text, (_key, value) => {
+            if (typeof value === "string") strings.push(value);
+            return value;
+        });
+        return strings;
+    } catch {
+        // error-policy:J3 non-JSON provider text is scanned as prose.
+        return [text];
+    }
 }
 
 /** Extracts traceable public HTTP sources without interpreting provider prose. */
@@ -173,7 +233,9 @@ async function fail(
     callback?: HandlerCallback,
     query?: string
 ): Promise<ActionResult> {
-    await callback?.({ text });
+    // Failed search callbacks stay internal (#37206): the failure is already
+    // the action result, so a visible callback would add a separate error reply.
+    await callback?.({ text, transcriptVisibility: "internal" });
     return {
         success: false,
         text,
@@ -183,8 +245,18 @@ async function fail(
 }
 
 /** Runs the same public-read implementation used by the registered action. */
-export async function runWebSearchEdge(query: string): Promise<ActionResult> {
-    return runWebSearchWith(query, searchKeylessWeb);
+export async function runWebSearchEdge(
+    query: string,
+    options: { numResults?: number; signal?: AbortSignal; provider?: "default" | "fallback" } = {}
+): Promise<ActionResult> {
+    options.signal?.throwIfAborted();
+    if (options.provider !== undefined && options.provider !== "default")
+        return await fail("The alternate search provider requires a host-authorized runner.");
+    return runWebSearchWith(
+        query,
+        (value) => searchKeylessWeb(value, { signal: options.signal }),
+        options
+    );
 }
 
 /** Common receipt handling; the host supplies its authorized browser-first transport. */
@@ -192,7 +264,8 @@ export async function runWebSearchWith(
     query: string,
     search: (
         query: string
-    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>
+    ) => Promise<{ provider: string; text: string; truncated: boolean } | null | undefined>,
+    options: { signal?: AbortSignal } = {}
 ): Promise<ActionResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return await fail("A web search query is required.");
@@ -204,10 +277,12 @@ export async function runWebSearchWith(
         );
     }
     const observedAt = Date.now();
+    options.signal?.throwIfAborted();
     let result: Awaited<ReturnType<typeof search>>;
     try {
         result = await search(normalizedQuery);
     } catch (error) {
+        options.signal?.throwIfAborted();
         if (!isKeylessWebSearchUnavailableError(error)) throw error;
         // error-policy:J1 a provider outage is a typed action failure, never "no results".
         return {
@@ -225,6 +300,7 @@ export async function runWebSearchWith(
             error: error.message,
         };
     }
+    options.signal?.throwIfAborted();
     if (!result) {
         return await fail("Web search returned no results.", undefined, normalizedQuery);
     }
@@ -248,9 +324,12 @@ export async function runWebSearchWith(
     };
 }
 
-export type WebSearchEdgeRunner = (query: string) => Promise<ActionResult>;
+export type WebSearchEdgeRunner = (
+    query: string,
+    options?: { numResults?: number; signal?: AbortSignal; provider?: "default" | "fallback" }
+) => Promise<ActionResult>;
 
-function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
+function createWebSearchEdgeAction(runner: WebSearchEdgeRunner, fallbackEnabled = false): Action {
     return {
         name: "WEB_SEARCH",
         similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE", "SEARCH_INTERNET"],
@@ -266,6 +345,17 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
                 required: true,
                 schema: { type: "string" },
             },
+            ...(fallbackEnabled
+                ? [
+                      {
+                          name: "provider",
+                          description:
+                              "Use default free search first. Choose fallback only for the host-authorized alternate search. The host owns query scope and spending limits; do not repeat a denied fallback.",
+                          required: false,
+                          schema: { type: "string", enum: ["default", "fallback"] },
+                      },
+                  ]
+                : []),
         ],
         validate: async () => true,
         handler: async (
@@ -279,9 +369,30 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
             const query = readQuery(parameters);
             if (!query) return await fail("A web search query is required.", callback);
 
-            const result = await runner(query);
+            const candidateSignal =
+                options && typeof options === "object"
+                    ? (options as { abortSignal?: unknown }).abortSignal
+                    : undefined;
+            const signal = candidateSignal instanceof AbortSignal ? candidateSignal : undefined;
+            signal?.throwIfAborted();
+            const provider = parameters.provider;
+            if (provider !== undefined && provider !== "default" && provider !== "fallback")
+                return await fail("The requested search provider is not supported.", callback);
+            if (provider === "fallback" && !fallbackEnabled)
+                return await fail(
+                    "The alternate search provider is not available for this turn.",
+                    callback
+                );
+            const result = await runner(query, {
+                signal,
+                ...(provider === "fallback" ? { provider } : {}),
+            });
+            signal?.throwIfAborted();
             if (result.success !== true && result.text) {
-                await callback?.({ text: result.text });
+                await callback?.({
+                    text: result.text,
+                    transcriptVisibility: "internal",
+                });
             }
             return result;
         },
@@ -291,11 +402,18 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner): Action {
 export const webSearchEdgeAction: Action = createWebSearchEdgeAction(runWebSearchEdge);
 
 /** Creates an edge plugin whose runner may reuse a server-owned read receipt. */
-export function createWebSearchEdgePlugin(runner: WebSearchEdgeRunner = runWebSearchEdge): Plugin {
+export function createWebSearchEdgePlugin(
+    runner: WebSearchEdgeRunner = runWebSearchEdge,
+    options: { fallbackEnabled?: boolean } = {}
+): Plugin {
+    const fallbackEnabled = options.fallbackEnabled === true;
+    // The default runner always refuses fallback, so advertising it would offer a dead capability.
+    if (fallbackEnabled && runner === runWebSearchEdge)
+        throw new Error("Fallback search requires a host-authorized runner.");
     return {
         name: "web-search-edge",
         description: "Credential-free, public, read-only web search for edge runtimes.",
-        actions: [createWebSearchEdgeAction(runner)],
+        actions: [createWebSearchEdgeAction(runner, fallbackEnabled)],
     };
 }
 

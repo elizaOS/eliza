@@ -14,7 +14,7 @@
  * drawer. Barrel-exported and mounted inside the chat panel layout.
  */
 
-import { errorMessage } from "@elizaos/core/utils/errors";
+import { errorMessage } from "@elizaos/core/protocol";
 import {
   Bell,
   BellOff,
@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   Conversation,
   ConversationMessageSearchResult,
@@ -35,21 +35,23 @@ import {
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
 import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
+import { emitViewEvent } from "../../events/view-events";
 import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import { emitViewEvent } from "../../views/view-event-bus";
-import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
+import { MessageSearchPanel } from "../chat/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { Button } from "../ui/button";
@@ -380,29 +382,6 @@ export function ConversationsSidebar({
       setConfirmDeleteId((current) => (current === id ? null : current));
     }
   };
-  const spawnShellBusyRef = useRef(false);
-  const spawnShell = useCallback(async () => {
-    if (spawnShellBusyRef.current) return;
-    spawnShellBusyRef.current = true;
-    try {
-      const { sessionId } = await client.spawnShellSession();
-      setState("activeInboxChat", null);
-      setState("activeTerminalSessionId", sessionId);
-      setTab("chat");
-    } catch (err) {
-      // error-policy:J4 failure surfaces as an action notice
-      setActionNotice(
-        t("conversations.newTerminalFailed", {
-          defaultValue: "Failed to start terminal: {{message}}",
-          message: errorMessage(err),
-        }),
-        "error",
-        4800,
-      );
-    } finally {
-      spawnShellBusyRef.current = false;
-    }
-  }, [setActionNotice, setState, setTab, t]);
   const selectTerminalSession = useCallback(
     (sessionId: string) => {
       setState("activeInboxChat", null);
@@ -795,7 +774,6 @@ export function ConversationsSidebar({
     [messagesSection.rows, terminalSection.rows, connectorSections],
   );
   const showNewChatAction = tab === "chat";
-  const showNewTerminalAction = tab === "chat";
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
       <ConversationRenameDialog
@@ -887,8 +865,7 @@ export function ConversationsSidebar({
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         collapsedRailAction={
           // Chat-first: the single collapsed-rail "+" always starts a new
-          // CHAT. New terminal stays reachable from the expanded terminal
-          // section header — a shell session is never the primary affordance.
+          // CHAT.
           showNewChatAction ? (
             <SidebarCollapsedActionButton
               aria-label={t("conversations.newChat")}
@@ -1008,12 +985,6 @@ export function ConversationsSidebar({
                 rows={terminalSection.rows}
                 collapsed={collapsedSections.has(terminalSection.key)}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={
-                  showNewTerminalAction ? () => void spawnShell() : undefined
-                }
-                addLabel={t("conversations.newTerminal", {
-                  defaultValue: "New terminal",
-                })}
                 activeListId={activeListId}
                 rowListId={rowListId}
                 isTerminalRow={isTerminalRow}

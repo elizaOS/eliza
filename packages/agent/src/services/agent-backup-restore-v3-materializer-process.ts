@@ -12,7 +12,7 @@ import {
   AgentBackupRestoreV3ComponentReceiptSchema,
   type AgentBackupRestoreV3OperationControl,
   parseAgentBackupRestoreV3CandidateReceipt,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFs,
   isAgentBackupRestoreV3CandidateFs,

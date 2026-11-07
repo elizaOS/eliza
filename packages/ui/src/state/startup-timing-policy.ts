@@ -8,7 +8,6 @@ export const STARTUP_TIMING_POLICY = Object.freeze({
   recoveryMaxAttempts: 8,
   desktopRestoreRpcTimeoutMs: 5_000,
   stewardRestoreRefreshTimeoutMs: 4_000,
-  cloudAgentTierProbeTimeoutMs: 12_000,
   nativeConsecutiveFailureBudgetMs: 90_000,
   remoteNativeConsecutiveFailureBudgetMs: 7_000,
   agentUnreachableFailureBudgetMs: 45_000,

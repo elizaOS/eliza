@@ -5,12 +5,13 @@
  * travel state, planner parameter, or another child's record cannot select
  * safety resources.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+
 import {
-  type Entity,
-  type EntityAttribute,
+  type KnowledgeGraphEntity as Entity,
+  type LifeOpsEntityAttribute as EntityAttribute,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import {
   createHouseholdCoordinationService,

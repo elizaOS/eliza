@@ -12,6 +12,10 @@ import {
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
+import {
+  assertNotNativeAppPublisher,
+  isNativeAppPublisher,
+} from "../../db/repositories/native-app-publishers";
 import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -30,6 +34,7 @@ import {
   setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
+import { withInferenceUserPolicyMutation } from "./inference-policy-fence";
 import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 type PersonalDeliveryIdentitySource = Partial<
@@ -37,6 +42,9 @@ type PersonalDeliveryIdentitySource = Partial<
 >;
 
 const PERSONAL_DELIVERY_ROUTING_FIELDS = [
+  // The sender projection also carries the canonical owner display preference.
+  "name",
+  "nickname",
   "organization_id",
   "is_active",
   "telegram_id",
@@ -88,7 +96,10 @@ function personalDeliveryRoutingIdentities(
   for (const source of sources) {
     if (!source) continue;
     const candidates: PersonalDeliveryProjectionIdentity[] = [
-      { platform: "telegram", platformUserId: source.telegram_id?.trim() ?? "" },
+      {
+        platform: "telegram",
+        platformUserId: source.telegram_id?.trim() ?? "",
+      },
       { platform: "discord", platformUserId: source.discord_id?.trim() ?? "" },
       { platform: "phone", platformUserId: source.phone_number?.trim() ?? "" },
     ];
@@ -443,7 +454,11 @@ export class UsersService {
             sessionRevocationCutoff,
           );
         }
-        const result = await usersRepository.update(id, data);
+        const result = await withInferenceUserPolicyMutation(
+          id,
+          typeof data.organization_id === "string" ? [data.organization_id] : [],
+          (tx) => usersRepository.update(id, data, tx),
+        );
         if (result?.organization_id && typeof data.steward_user_id === "string") {
           // Repeat the activation even when the row already has this binding. A
           // prior attempt can commit the database update and then fail while
@@ -516,7 +531,9 @@ export class UsersService {
       );
     }
 
-    await usersRepository.upsertStewardIdentity(userId, stewardUserId);
+    await withInferenceUserPolicyMutation(userId, [], (tx) =>
+      usersRepository.upsertStewardIdentity(userId, stewardUserId, tx),
+    );
     if (user?.organization_id) {
       await setInferenceSessionBindingActive(user.organization_id, userId, stewardUserId, true);
     }
@@ -568,8 +585,14 @@ export class UsersService {
       });
     }
 
-    await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
-    await activateFreshStewardBinding({ organizationId, userId: user.id, stewardUserId });
+    await withInferenceUserPolicyMutation(user.id, [], (tx) =>
+      usersRepository.upsertStewardIdentity(user.id, stewardUserId, tx),
+    );
+    await activateFreshStewardBinding({
+      organizationId,
+      userId: user.id,
+      stewardUserId,
+    });
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
@@ -705,7 +728,7 @@ export class UsersService {
         const remainingUsers = await usersRepository.listByOrganization(organizationId);
 
         // If no users remain, delete the organization
-        if (remainingUsers.length === 0) {
+        if (remainingUsers.length === 0 && !(await isNativeAppPublisher(organizationId))) {
           await organizationsRepository.delete(organizationId);
         }
       }
@@ -720,6 +743,7 @@ export class UsersService {
       throw new Error("Account deletion organization does not match the user");
     }
 
+    await assertNotNativeAppPublisher(organizationId);
     await setInferenceSubjectActive(organizationId, id, false, "account");
     await this.invalidateCache(user);
     await this.invalidateInferenceAuthForUser(id);

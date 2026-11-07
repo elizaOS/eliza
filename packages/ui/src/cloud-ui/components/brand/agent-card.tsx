@@ -3,8 +3,8 @@
  */
 import type * as React from "react";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
-import { CornerBrackets } from "./corner-brackets";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { cn } from "../../../utils/cn";
 
 interface AgentCardProps {
   title: string;

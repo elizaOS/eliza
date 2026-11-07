@@ -33,14 +33,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from quantization._kernel_manifest import (  # noqa: E402
+from eliza_training.quantization._kernel_manifest import (  # noqa: E402
     KERNEL_BLOCK_LAYOUT_VERSIONS,
     KERNEL_CODEBOOK_HASHES,
     KERNEL_PER_BLOCK_TOLERANCE,

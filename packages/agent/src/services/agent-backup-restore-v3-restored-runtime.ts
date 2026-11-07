@@ -8,12 +8,12 @@
  */
 
 import type { Buffer } from "node:buffer";
+import { agentBackupRestoreV3ContainerRoots } from "@elizaos/contracts/node";
+import { logger } from "@elizaos/core";
 import {
   captureHostExecutionBaseline,
   installProcessCrashGuards,
-  logger,
-} from "@elizaos/core";
-import { agentBackupRestoreV3ContainerRoots } from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/host";
 import {
   type AgentBackupRestoreV3ProbeServer,
   type AgentBackupRestoreV3RuntimeLock,

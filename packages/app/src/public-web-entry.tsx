@@ -1,3 +1,9 @@
+import {
+  CloudRouterShell,
+  ErrorBoundary,
+  loadManagedCloudPage,
+} from "@elizaos/ui";
+import { registerPublicCloudSurfaces } from "./renderer/cloud-registration";
 /**
  * Mounts the Cloud public, account-management, and marketing shell for a cold hosted
  * public URL. The full application graph stays out of anonymous `/login`, then
@@ -8,19 +14,20 @@
 import "@elizaos/ui/styles";
 import "./renderer-build-stamp";
 
-import { ErrorBoundary } from "@elizaos/ui";
-import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
-import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { APP_BRANDING_BASE } from "./app-config";
 import { renderBootFailure } from "./boot-failure";
+import { NETWORK_HOME_ENABLED } from "./network-home/network-home-flag";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
-const ManagedCloudPage = lazy(
-  () => import("@elizaos/ui/cloud/shell/ManagedCloudPage"),
-);
+const ManagedCloudPage = lazy(() => loadManagedCloudPage());
+// The Network home page (founder-approved copy); only in builds with VITE_NETWORK_HOME=1.
+const NetworkHomePage = NETWORK_HOME_ENABLED
+  ? lazy(() => import("./network-home/NetworkHomePage"))
+  : null;
 
 let publicRoot: Root | null = null;
 let fullAppHandoffStarted = false;
@@ -55,7 +62,7 @@ function FullAppHandoff(): React.JSX.Element {
       aria-live="polite"
       className="flex min-h-dvh items-center justify-center bg-black text-sm text-white/60"
     >
-      Loading Eliza…
+      Loading {APP_BRANDING_BASE.appName}…
     </main>
   );
 }
@@ -73,8 +80,12 @@ function mountPublicWebEntry(): void {
       <React.StrictMode>
         <Suspense fallback={null}>
           <CloudRouterShell
+            branding={APP_BRANDING_BASE}
             appElement={<FullAppHandoff />}
             cloudManagementElement={<ManagedCloudPage />}
+            marketingHomeElement={
+              NetworkHomePage ? <NetworkHomePage /> : undefined
+            }
           />
         </Suspense>
       </React.StrictMode>

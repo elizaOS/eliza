@@ -11,7 +11,7 @@
  * whole panel is drivable from chat.
  */
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Skeleton } from "../ui/skeleton";
 import {
   SettingsActionButton,

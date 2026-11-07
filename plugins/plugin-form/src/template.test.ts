@@ -1,110 +1,70 @@
 /**
- * Unit tests for form template resolution, asserting that filled session fields
- * take precedence over initial session context, and template strings interpolate
- * placeholders across controls and subfields.
+ * A sensitive control value must never reach a template. Labels, descriptions,
+ * ask prompts and examples are rendered into the model context and into
+ * replies, so a `{{placeholder}}` for a sensitive key would echo the secret.
  */
-import type { UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  buildTemplateValues,
-  renderTemplate,
-  resolveControlTemplates,
-} from "./template";
+import { buildTemplateValues, renderTemplate } from "./template";
 import type { FormControl, FormSession } from "./types";
 
-function makeSession(overrides: Partial<FormSession> = {}): FormSession {
-  const now = Date.now();
-  return {
+const SECRET = "hunter123";
+
+const controls: FormControl[] = [
+  {
+    key: "pin",
+    label: "PIN",
+    type: "text",
+    required: true,
+    sensitive: true,
+  },
+  {
+    key: "confirm",
+    label: "Confirm PIN",
+    type: "text",
+    required: true,
+    askPrompt: "Re-enter the PIN you chose ({{pin}})",
+  },
+  {
+    key: "nickname",
+    label: "Nickname",
+    type: "text",
+    required: true,
+    askPrompt: "Your nickname ({{nickname}})",
+  },
+];
+
+const session = (): FormSession =>
+  ({
     id: "session-1",
-    formId: "test_form",
+    formId: "pin-reset",
     formVersion: 1,
-    entityId: "00000000-0000-4000-8000-000000000001" as UUID,
-    roomId: "00000000-0000-4000-8000-000000000002" as UUID,
+    entityId: "entity-1",
+    roomId: "room-1",
     status: "active",
+    context: {},
     fields: {
-      name: {
-        status: "filled",
-        value: "Alice",
-        source: "manual",
-        updatedAt: now,
-      },
-      count: { status: "filled", value: 3, source: "manual", updatedAt: now },
-      active: {
-        status: "filled",
-        value: true,
-        source: "manual",
-        updatedAt: now,
-      },
-      missing: { status: "empty" },
+      pin: { status: "filled", value: SECRET },
+      nickname: { status: "filled", value: "ada" },
     },
-    context: {
-      tier: "pro",
-      name: "DefaultUser",
-    },
-    history: [],
-    effort: {
-      interactionCount: 1,
-      timeSpentMs: 1000,
-      firstInteractionAt: now,
-      lastInteractionAt: now,
-    },
-    expiresAt: now + 86_400_000,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
+    effort: { startedAt: 0, lastInteractionAt: 0, timeSpentMs: 0 },
+    nudgeCount: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    expiresAt: 0,
+  }) as FormSession;
 
-describe("buildTemplateValues", () => {
-  it("gives filled session fields precedence over initial session context on key collision", () => {
-    const session = makeSession();
-    const values = buildTemplateValues(session);
-
-    expect(values.tier).toBe("pro");
-    expect(values.name).toBe("Alice");
-    expect(values.count).toBe("3");
-    expect(values.active).toBe("true");
-    expect(values.missing).toBeUndefined();
-  });
-});
-
-describe("renderTemplate and resolveControlTemplates", () => {
-  it("interpolates template placeholders and preserves unmatched keys", () => {
-    const values = { name: "Alice", count: "3" };
-    expect(
-      renderTemplate(
-        "Hello {{name}}, you have {{count}} items ({{other}})",
-        values,
-      ),
-    ).toBe("Hello Alice, you have 3 items ({{other}})");
-    expect(renderTemplate(undefined, values)).toBeUndefined();
+describe("sensitive values in form templates", () => {
+  it("masks a sensitive value instead of rendering it", () => {
+    const values = buildTemplateValues(session(), controls);
+    const prompt = renderTemplate(controls[1]?.askPrompt, values);
+    expect(prompt).toBe("Re-enter the PIN you chose (****)");
+    expect(prompt).not.toContain(SECRET);
   });
 
-  it("resolves placeholders across control labels, askPrompts, and subfields", () => {
-    const control: FormControl = {
-      key: "delivery",
-      label: "Delivery for {{name}}",
-      type: "text",
-      askPrompt: "Where should we send your {{count}} items, {{name}}?",
-      options: [{ value: "standard", label: "Standard for {{name}}" }],
-      fields: [
-        {
-          key: "sub",
-          label: "Sub field for {{name}}",
-          type: "text",
-        },
-      ],
-    };
-
-    const resolved = resolveControlTemplates(control, {
-      name: "Alice",
-      count: "3",
-    });
-    expect(resolved.label).toBe("Delivery for Alice");
-    expect(resolved.askPrompt).toBe(
-      "Where should we send your 3 items, Alice?",
+  it("still renders an ordinary value", () => {
+    const values = buildTemplateValues(session(), controls);
+    expect(renderTemplate(controls[2]?.askPrompt, values)).toBe(
+      "Your nickname (ada)",
     );
-    expect(resolved.options?.[0].label).toBe("Standard for Alice");
-    expect(resolved.fields?.[0].label).toBe("Sub field for Alice");
   });
 });

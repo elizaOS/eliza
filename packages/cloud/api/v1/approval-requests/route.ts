@@ -5,21 +5,21 @@
  * GET   /api/v1/approval-requests   List approval requests for the caller's org.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { approvalRequestsRepository } from "@elizaos/cloud-shared/db/repositories/approval-requests";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
-} from "@/lib/services/approval-requests";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/approval-requests";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const ChallengeKindSchema = z.enum(["login", "signature", "generic"]);
 const StatusSchema = z.enum([

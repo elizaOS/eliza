@@ -8,6 +8,14 @@ export interface SharedRuntimeAgent {
   user_id: string;
   character_id: string | null;
   agent_name: string | null;
+  /** Server-only canonical owner preference, distinct from agent name/config/RPC params. */
+  owner_name?: string;
   agent_config: Record<string, unknown> | null;
   execution_tier: AgentExecutionTier;
+  /**
+   * Server-resolved product capabilities for this Personal turn (today only
+   * `"network"`). Independent of the account identity and room. Never read
+   * from untrusted transport input.
+   */
+  project?: string;
 }

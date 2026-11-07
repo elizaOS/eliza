@@ -15,7 +15,7 @@ import re
 from typing import Optional
 from xml.etree import ElementTree
 
-from suites.bfcl.types import ArgumentValue, FunctionCall
+from benchmarks.suites.bfcl.types import ArgumentValue, FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,11 @@ class FunctionCallParser:
         re.DOTALL,
     )
     FUNCTION_CALL_PATTERN = re.compile(
-        r'(\w+)\s*\(\s*([^)]*)\s*\)',
+        r"(\w+)\s*\(\s*([^)]*)\s*\)",
         re.DOTALL,
     )
     XML_FUNCTION_PATTERN = re.compile(
-        r'<function_call>(.*?)</function_call>',
+        r"<function_call>(.*?)</function_call>",
         re.DOTALL | re.IGNORECASE,
     )
 
@@ -108,7 +108,7 @@ class FunctionCallParser:
         try:
             # Look for JSON blocks in code fences
             json_blocks = re.findall(
-                r'```(?:json)?\s*([\s\S]*?)```',
+                r"```(?:json)?\s*([\s\S]*?)```",
                 response,
             )
             for block in json_blocks:
@@ -122,15 +122,15 @@ class FunctionCallParser:
         # Try to find JSON objects directly
         try:
             # Find all potential JSON objects
-            start = response.find('{')
+            start = response.find("{")
             while start != -1:
                 # Try to find matching closing brace
                 depth = 0
                 end = start
                 for i, char in enumerate(response[start:], start):
-                    if char == '{':
+                    if char == "{":
                         depth += 1
-                    elif char == '}':
+                    elif char == "}":
                         depth -= 1
                         if depth == 0:
                             end = i + 1
@@ -144,7 +144,7 @@ class FunctionCallParser:
                     except json.JSONDecodeError:
                         pass
 
-                start = response.find('{', end)
+                start = response.find("{", end)
 
         except Exception:
             pass
@@ -227,12 +227,12 @@ class FunctionCallParser:
                 return int(value)
             try:
                 # Check for float-like strings
-                if '.' in value or 'e' in value.lower():
+                if "." in value or "e" in value.lower():
                     return float(value)
             except ValueError:
                 pass
             # Try negative numbers
-            if value.startswith('-') and value[1:].isdigit():
+            if value.startswith("-") and value[1:].isdigit():
                 return int(value)
         elif isinstance(value, list):
             return [self._coerce_types(v) for v in value]
@@ -305,7 +305,7 @@ class FunctionCallParser:
 
         # Find params blocks
         params_pattern = re.compile(
-            r'<params>(.*?)</params>',
+            r"<params>(.*?)</params>",
             re.DOTALL | re.IGNORECASE,
         )
         matches = params_pattern.findall(response)
@@ -324,7 +324,9 @@ class FunctionCallParser:
                     # Each child of action is a parameter
                     for param_elem in action_elem:
                         if param_elem.text:
-                            arguments[param_elem.tag] = self._parse_value(param_elem.text)
+                            arguments[param_elem.tag] = self._parse_value(
+                                param_elem.text
+                            )
 
                     if name.lower() != "root":
                         calls.append(FunctionCall(name=name, arguments=arguments))
@@ -334,7 +336,9 @@ class FunctionCallParser:
 
         return calls
 
-    def _parse_function_call_xml_fallback(self, xml_body: str) -> Optional[FunctionCall]:
+    def _parse_function_call_xml_fallback(
+        self, xml_body: str
+    ) -> Optional[FunctionCall]:
         """Parse the simple BFCL XML shape without ElementTree/pyexpat.
 
         Some CI and local Python builds have a broken pyexpat extension. BFCL
@@ -412,8 +416,18 @@ class FunctionCallParser:
         for name, args_str in matches:
             # Skip common non-function words
             if name.lower() in (
-                "if", "for", "while", "with", "def", "class",
-                "return", "print", "input", "len", "str", "int",
+                "if",
+                "for",
+                "while",
+                "with",
+                "def",
+                "class",
+                "return",
+                "print",
+                "input",
+                "len",
+                "str",
+                "int",
             ):
                 continue
 
@@ -423,7 +437,9 @@ class FunctionCallParser:
 
         return calls
 
-    def _parse_arguments_string(self, args_str: str) -> Optional[dict[str, ArgumentValue]]:
+    def _parse_arguments_string(
+        self, args_str: str
+    ) -> Optional[dict[str, ArgumentValue]]:
         """Parse a comma-separated arguments string."""
         if not args_str.strip():
             return {}
@@ -473,8 +489,9 @@ class FunctionCallParser:
         value = value.strip()
 
         # Remove quotes
-        if (value.startswith('"') and value.endswith('"')) or \
-           (value.startswith("'") and value.endswith("'")):
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
             return value[1:-1]
 
         # Try boolean

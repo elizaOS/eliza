@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Optional
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmarks.realm.types import (
+    from benchmarks.suites.realm.types import (
         ExecutionModel,
         PlanningTrajectory,
         REALMTask,
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 
 def _realm_types():
-    """Lazy import of benchmarks.realm.types to avoid requiring benchmarks/ on sys.path at module load."""
-    from benchmarks.realm.types import (
+    """Lazy import of benchmarks.suites.realm.types to avoid requiring benchmarks/ on sys.path at module load."""
+    from benchmarks.suites.realm.types import (
         ExecutionModel,
         PlanningAction,
         PlanningStep,
@@ -115,7 +115,7 @@ def _extract_action(text: str) -> str | None:
 def _parse_plan_json(text: str, available_tools: list[str]) -> list[dict[str, object]]:
     """Parse a JSON array plan from the LLM response.
 
-    Mirrors ``benchmarks.realm.plugin.actions._parse_plan_json`` so the
+    Mirrors ``benchmarks.suites.realm.plugin.actions._parse_plan_json`` so the
     eliza-adapter mode produces the same plan shape as the canonical
     Python runtime path.
     """
@@ -186,7 +186,7 @@ def _measured_tokens(usage: object) -> int | None:
 class ElizaREALMAgent:
     """REALM benchmark agent that delegates planning to the eliza TS server.
 
-    Drop-in replacement for ``benchmarks.realm.agent.REALMAgent`` — same
+    Drop-in replacement for ``benchmarks.suites.realm.agent.REALMAgent`` — same
     ``solve_task`` interface returning a ``PlanningTrajectory``, but each
     LLM call is forwarded to the eliza benchmark HTTP server via
     ``ElizaClient.send_message``.

@@ -13,6 +13,7 @@
  * behaviour is composable at runtime without source-code edits.
  */
 
+import { isLoopbackRemoteAddress } from "@elizaos/core";
 import type { ScheduledTaskRunnerHandle } from "@elizaos/plugin-scheduling";
 import { getChannelRegistry } from "../lifeops/channels/registry.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
@@ -31,13 +32,7 @@ import type { LifeOpsRouteContext } from "./lifeops-routes.js";
  * arrives on a loopback interface.
  */
 function isLoopback(ctx: LifeOpsRouteContext): boolean {
-  const remote = ctx.req.socket.remoteAddress ?? "";
-  return (
-    remote === "127.0.0.1" ||
-    remote === "::1" ||
-    remote === "::ffff:127.0.0.1" ||
-    remote === ""
-  );
+  return isLoopbackRemoteAddress(ctx.req.socket.remoteAddress);
 }
 
 interface ScheduledTaskRouteDeps {

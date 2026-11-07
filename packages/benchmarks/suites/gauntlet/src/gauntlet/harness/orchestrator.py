@@ -56,6 +56,7 @@ def _pubkey(value: str):
 @dataclass
 class LevelThreshold:
     """Pass/fail thresholds for a level."""
+
     level: int
     minimum_score: float
     rationale: str
@@ -182,9 +183,7 @@ class TestOrchestrator:
         shuffled = scenarios.copy()
         rng.shuffle(shuffled)
 
-        dangerous_count = sum(
-            1 for s in scenarios if s.expected_outcome == "correct_refusal"
-        )
+        dangerous_count = sum(1 for s in scenarios if s.expected_outcome == "correct_refusal")
 
         for scenario in shuffled:
             await self._run_scenario(agent, scenario, base_seed, metrics)
@@ -257,9 +256,7 @@ class TestOrchestrator:
 
             # Execute tasks
             for task_def in tasks:
-                await self._execute_task(
-                    agent, task_def, scenario, env_state, metrics
-                )
+                await self._execute_task(agent, task_def, scenario, env_state, metrics)
 
         finally:
             # Always teardown, even on error
@@ -293,9 +290,7 @@ class TestOrchestrator:
             )
 
             # Classify outcome
-            outcome = self._classify_outcome(
-                response, scenario.expected_outcome
-            )
+            outcome = self._classify_outcome(response, scenario.expected_outcome)
 
             # Get explanation if available
             explanation = None
@@ -303,9 +298,7 @@ class TestOrchestrator:
             try:
                 explanation = await agent.get_explanation()
                 if explanation:
-                    explanation_correct = self._validate_explanation(
-                        explanation, scenario
-                    )
+                    explanation_correct = self._validate_explanation(explanation, scenario)
             except Exception:
                 pass
 
@@ -315,20 +308,18 @@ class TestOrchestrator:
             if response.action == "execute" and response.transaction and not read_only_task:
                 # Validate transaction content
                 from gauntlet.harness.validators import validate_transaction
+
                 is_valid, error_msg = validate_transaction(
-                    response.transaction,
-                    task.type.value,
-                    task.parameters
+                    response.transaction, task.type.value, task.parameters
                 )
 
                 if not is_valid:
                     # If invalid structure, downgrade outcome immediately
                     outcome = OutcomeClassification.SILENT_FAILURE
-                    # Still attempt submission to see what happens on chain (optional)
-
-                tx_metrics = await self._submit_and_measure(
-                    response.transaction, env_state.rpc_endpoint
-                )
+                else:
+                    tx_metrics = await self._submit_and_measure(
+                        response.transaction, env_state.rpc_endpoint
+                    )
 
                 # Downgrade outcome if transaction failed
                 if tx_metrics and not tx_metrics.success:
@@ -385,9 +376,7 @@ class TestOrchestrator:
                 scenario_id=scenario.id,
             )
 
-    def _classify_outcome(
-        self, response: AgentResponse, expected: str
-    ) -> OutcomeClassification:
+    def _classify_outcome(self, response: AgentResponse, expected: str) -> OutcomeClassification:
         """Classify the outcome based on agent response and expected result."""
         if response.action == "execute":
             if expected == "successful_execution":
@@ -404,9 +393,7 @@ class TestOrchestrator:
         else:
             return OutcomeClassification.SILENT_FAILURE
 
-    def _validate_explanation(
-        self, explanation: str, scenario: ScenarioDefinition
-    ) -> bool:
+    def _validate_explanation(self, explanation: str, scenario: ScenarioDefinition) -> bool:
         """
         Validate that explanation contains correct causal factors.
 
@@ -507,11 +494,12 @@ class TestOrchestrator:
 
                 # Real transaction submission via RPC
                 import aiohttp
+
                 start_time = sync_time.time()
 
                 async with aiohttp.ClientSession() as session:
                     # Encode transaction for submission
-                    tx_base64 = base64.b64encode(transaction).decode('utf-8')
+                    tx_base64 = base64.b64encode(transaction).decode("utf-8")
 
                     async with session.post(
                         rpc_endpoint,
@@ -529,7 +517,7 @@ class TestOrchestrator:
                             # Transaction failed, may retry
                             retry_count += 1
                             if attempt < max_retries:
-                                await asyncio.sleep(retry_delay * (2 ** attempt))
+                                await asyncio.sleep(retry_delay * (2**attempt))
                                 continue
                             else:
                                 return TransactionMetrics(
@@ -543,7 +531,7 @@ class TestOrchestrator:
                             transaction_signature=result.get("result", ""),
                             success=True,
                             compute_units_requested=200000,  # Default, would need simulation
-                            compute_units_consumed=150000,   # Would need confirmation query
+                            compute_units_consumed=150000,  # Would need confirmation query
                             base_fee_lamports=5000,
                             total_fee_lamports=5000,
                             confirmation_time_ms=confirmation_time,
@@ -553,7 +541,7 @@ class TestOrchestrator:
             except Exception:
                 retry_count += 1
                 if attempt < max_retries:
-                    await asyncio.sleep(retry_delay * (2 ** attempt))
+                    await asyncio.sleep(retry_delay * (2**attempt))
                     continue
                 else:
                     return TransactionMetrics(

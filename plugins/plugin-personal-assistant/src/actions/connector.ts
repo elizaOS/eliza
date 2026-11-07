@@ -7,6 +7,10 @@
  * projects and toggles their normalized status through the ConnectorRegistry.
  */
 
+import {
+  LIFEOPS_GOOGLE_CAPABILITIES,
+  type LifeOpsGoogleCapability,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -18,10 +22,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { extractActionParamsViaLlm } from "@elizaos/plugin-assistant";
-import {
-  LIFEOPS_GOOGLE_CAPABILITIES,
-  type LifeOpsGoogleCapability,
-} from "../contracts/index.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -47,6 +47,30 @@ const VERBOSE_DISPATCHER_KINDS = [
   "wechat",
   "health",
 ] as const;
+
+/**
+ * Verbose connectors whose dispatcher refuses `disconnect`: the grant is owned
+ * by the connector plugin's own setup controls, or no disconnect exists.
+ */
+const DISCONNECT_UNSUPPORTED_KINDS: ReadonlySet<string> = new Set([
+  "x",
+  "telegram",
+  "discord",
+  "imessage",
+  "whatsapp",
+  "wechat",
+  "health",
+] satisfies (typeof VERBOSE_DISPATCHER_KINDS)[number][]);
+
+/**
+ * Registry connectors whose credentials are environment settings (for example
+ * TWILIO_* / DUFFEL_*). LifeOps cannot revoke them, so `disconnect` is refused
+ * instead of reporting a disconnect that leaves the credentials working.
+ */
+const ENV_MANAGED_CONNECTOR_KINDS: ReadonlySet<string> = new Set([
+  "twilio",
+  "duffel",
+]);
 
 const VALID_SUBACTIONS = [
   "connect",
@@ -781,13 +805,13 @@ async function dispatchHealth(
       return unsupportedOperation(
         "health",
         subaction,
-        "Use LifeOps Settings to choose Strava, Fitbit, Withings, or Oura before starting OAuth.",
+        "Strava, Fitbit, Withings, and Oura OAuth cannot be started from this build: no route, setting, or action starts it.",
       );
     case "disconnect":
       return unsupportedOperation(
         "health",
         subaction,
-        "Disconnect a specific Strava, Fitbit, Withings, or Oura provider from LifeOps Settings.",
+        "Strava, Fitbit, Withings, and Oura grants cannot be removed from this build: no route, setting, or action disconnects them.",
       );
     case "verify": {
       const [bridge, connectors] = await Promise.all([
@@ -1274,6 +1298,13 @@ async function dispatchGenericRegistry(
       };
     }
     case "disconnect": {
+      if (ENV_MANAGED_CONNECTOR_KINDS.has(connectorKind)) {
+        return unsupportedOperation(
+          connectorKind,
+          subaction,
+          `${contribution.describe.label} uses credentials from the agent's environment settings; remove them there to disconnect it.`,
+        );
+      }
       await contribution.disconnect();
       return {
         success: true,
@@ -1339,7 +1370,6 @@ export const connectorAction: Action & {
     "SERVICE_STATUS",
     // PRD action-catalog alias. NotificationIntent endpoint resolution maps
     // to CONNECTOR.list + CONNECTOR.status (the registered endpoints).
-    // See packages/docs/action-prd-map.md.
     "NOTIFICATION_RESOLVE_ENDPOINTS",
   ],
   tags: [
@@ -1354,7 +1384,8 @@ export const connectorAction: Action & {
   description:
     "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, Slack, etc. " +
+    "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, etc. " +
+    "disconnect works for google and registry-only connectors; x, telegram, discord, imessage, whatsapp, wechat, health cannot be disconnected here, and twilio, duffel use environment settings that must be removed there. " +
     "Do NOT use this for 'connect Google Calendar' / calendar feed authorization — use CALENDAR_SOURCES. " +
     "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
     "Plugin install/uninstall/configure -> use PLUGIN.",
@@ -1432,29 +1463,6 @@ export const connectorAction: Action & {
         },
       };
     }
-    // F33: `disconnect` revokes a live grant — destructive and not instantly
-    // reversible (re-auth may need the owner's device). It previously executed
-    // on the FIRST ask with no gate (live matrix F33). Require an explicit
-    // confirmation cue in the owner's own message: the bare ask gets a
-    // question back; the follow-up ("yes" / "yes, disconnect it") re-invokes
-    // with the cue present and executes.
-    if (
-      subaction === "disconnect" &&
-      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
-    ) {
-      const connectorLabel = params.connector ?? "that connector";
-      return {
-        success: false,
-        text: `Disconnecting ${connectorLabel} revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: params.connector,
-          subaction,
-          requiresConfirmation: true,
-          awaitingUserInput: true,
-        },
-      };
-    }
     const legacyVerifySend = params as ConnectorActionParams & {
       sendTarget?: unknown;
       sendMessage?: unknown;
@@ -1522,6 +1530,54 @@ export const connectorAction: Action & {
       };
     }
 
+    // The Google domain refuses every non-local mode (assertLocalMode). Name
+    // the argument here, before the disconnect confirmation, so connect does
+    // not collapse it into a generic failure and the owner is not asked to
+    // confirm a call that can only be refused.
+    if (
+      connector === "google" &&
+      params.mode !== undefined &&
+      params.mode !== "local"
+    ) {
+      return {
+        success: false,
+        text: `[${ACTION_NAME}] google does not support mode "${params.mode}"; omit mode or set it to "local".`,
+        data: {
+          actionName: ACTION_NAME,
+          connector,
+          subaction,
+          error: "GOOGLE_MODE_UNSUPPORTED",
+          mode: params.mode,
+        },
+      };
+    }
+
+    // F33: `disconnect` revokes a live grant — destructive and not instantly
+    // reversible (re-auth may need the owner's device). Require an explicit
+    // confirmation cue in the owner's own message: the bare ask gets a
+    // question back; the follow-up ("yes" / "yes, disconnect it") re-invokes
+    // with the cue present and executes. The gate sits after the connector is
+    // resolved, and skips connectors that cannot be disconnected here, so the
+    // owner is never asked to confirm a call that can only be refused.
+    if (
+      subaction === "disconnect" &&
+      !DISCONNECT_UNSUPPORTED_KINDS.has(connector) &&
+      !ENV_MANAGED_CONNECTOR_KINDS.has(connector) &&
+      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
+    ) {
+      return {
+        success: false,
+        text: `Disconnecting ${connector} revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector,
+          subaction,
+          requiresConfirmation: true,
+          awaitingUserInput: true,
+        },
+      };
+    }
+
     try {
       const verboseDispatcher = (
         VERBOSE_DISPATCHERS as Record<string, ConnectorDispatcher | undefined>
@@ -1563,7 +1619,7 @@ export const connectorAction: Action & {
     {
       name: "action",
       description:
-        "connect auth/pairing; disconnect revoke+clear grant; verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+        "connect auth/pairing; disconnect revoke+clear grant (google and registry-only connectors; not x, telegram, discord, imessage, whatsapp, wechat, health); verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -1576,7 +1632,7 @@ export const connectorAction: Action & {
     {
       name: "mode",
       description:
-        "local | cloud_managed | remote. Default connector-specific.",
+        "local | cloud_managed | remote. Default connector-specific. google accepts only local: omit it for google.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1592,7 +1648,7 @@ export const connectorAction: Action & {
     {
       name: "query",
       description:
-        "Discord verify only: search text for browser-message reads.",
+        "Discord and X verify only: search text for the read-only search (Discord browser messages, X posts).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1605,7 +1661,7 @@ export const connectorAction: Action & {
     },
     {
       name: "redirectUrl",
-      description: "google/x connect only: OAuth redirect URL override.",
+      description: "google connect only: OAuth redirect URL override.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1652,12 +1708,12 @@ export const connectorAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Disconnect Telegram." },
+        content: { text: "Disconnect my Google account." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll disconnect the Telegram grant and clear local session state.",
+          text: "Disconnecting google revokes its access grant, and restoring it may require re-authenticating from your device. Confirm and I'll disconnect it.",
         },
       },
     ],
@@ -1665,13 +1721,13 @@ export const connectorAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Verify Telegram by sending a self-test to my saved messages.",
+          text: "Verify that my Telegram connector is working.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll probe the Telegram connector with a read + send check and report the results.",
+          text: "I'll run a read-only probe of the Telegram connector and report the result. Verify does not send anything; to test delivery I can draft a message for your approval.",
         },
       },
     ],

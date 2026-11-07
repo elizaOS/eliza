@@ -7,11 +7,11 @@
  */
 
 import type { Vault } from "@elizaos/auth/vault";
+import { ElizaError } from "@elizaos/core";
 import {
-  ElizaError,
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { vaultKeyForProviderApiKey } from "./operations/vault-bridge.ts";
 

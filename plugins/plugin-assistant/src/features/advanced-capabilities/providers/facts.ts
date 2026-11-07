@@ -401,7 +401,6 @@ const factsProvider: Provider = {
         runtime.getMemories({
           tableName: "facts",
           roomId: message.roomId,
-          worldId: message.worldId,
           unique: false,
         }),
         // `entityId` is only the RLS principal; the author filter is what

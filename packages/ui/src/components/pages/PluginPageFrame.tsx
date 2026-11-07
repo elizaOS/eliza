@@ -5,7 +5,6 @@
 
 import type { ReactNode } from "react";
 import { FramedPage } from "../../layouts/framed-page";
-import { ViewHeader } from "../shared/ViewHeader";
 import { ScrollArea } from "../ui/scroll-area";
 
 export interface PluginPageFrameProps {
@@ -29,7 +28,6 @@ export function PluginPageFrame({
         safeAreaTop ? " pt-[var(--safe-area-top,0px)]" : ""
       }`}
     >
-      <ViewHeader title={title} />
       {contentOverflow === "auto" ? (
         <section aria-label={title} className="min-h-0 min-w-0 flex-1">
           {/* Vertical pages must wrap their content instead of inheriting Radix's intrinsic table width. */}

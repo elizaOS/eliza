@@ -1,5 +1,6 @@
 /** Reserves Dedicated runtime funds under lifecycle authority before provider work, and binds them to one exact container. */
 
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
@@ -15,7 +16,6 @@ import {
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { billingFundingReservations } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
-import { AGENT_PRICING } from "../constants/agent-pricing";
 import {
   AGENT_COMPUTE_FUNDING_WINDOW_MS,
   AGENT_COMPUTE_STOP_MARGIN_MS,
@@ -265,9 +265,10 @@ export class AgentComputeFundingService {
       amount,
       description: "Dedicated runtime funding reservation",
       expiresAt,
-      // An allowance period ending inside this window funds only its share;
-      // purchased credits fund the remainder so the window is never clipped
-      // to the period boundary.
+      // A paid period whose renewal is pending funds compute through the
+      // payment grace. Other allowance funds only the share of this window
+      // before its deadline, and purchased credits fund the remainder, so the
+      // window is never clipped to the period boundary.
       timeMeteredFrom: periodStart,
       metadata: { agent_id: identity.agentId, compute_funding_id: id },
     });

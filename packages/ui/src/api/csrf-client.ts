@@ -1,3 +1,5 @@
+import { getHostRequestTransport, hostRequestOwnerId } from "./host-transport";
+
 /**
  * Authenticated fetch helper for dashboard API requests.
  *
@@ -13,19 +15,14 @@
  * omitted at the client before the Worker enforces the same boundary.
  */
 
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import { getBootConfig } from "../config/boot-config";
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getBootConfig } from "../config/boot-config-store";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url.js";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "./auth/sessions";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
-import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
@@ -47,6 +44,12 @@ export async function fetchWithCsrf(
   if (url.startsWith("/") && !url.startsWith("//")) {
     url = resolveApiUrl(url);
   }
+  const capturedContext = {
+    ...context,
+    ownerId: Object.hasOwn(context, "ownerId")
+      ? context.ownerId
+      : hostRequestOwnerId(url),
+  };
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
@@ -57,7 +60,14 @@ export async function fetchWithCsrf(
     }
   }
   if (!isDedicatedAgentRequest && !headers.has(LAST_ACTIVITY_HEADER_NAME)) {
-    for (const [name, value] of Object.entries(lastActivityHeadersForUrl(url)))
+    // Pass the configured API base like ElizaClient does: without it the
+    // helper can only match the page origin, so on setups where the agent
+    // API lives on another origin (Capacitor/desktop remote mode) these
+    // requests never carry the activity header and the agent's idle
+    // logoff does not slide on real user activity through this client.
+    for (const [name, value] of Object.entries(
+      lastActivityHeadersForUrl(url, getBootConfig().apiBase),
+    ))
       headers.set(name, value);
   }
   if (!headers.has("Authorization")) {
@@ -74,7 +84,7 @@ export async function fetchWithCsrf(
     credentials: isDedicatedAgentRequest ? "omit" : "include",
     headers,
   };
-  return requestViaAgentTransport(url, requestInit, context);
+  return requestViaAgentTransport(url, requestInit, capturedContext);
 }
 /**
  * Route a caller-authenticated request through the canonical platform
@@ -85,15 +95,14 @@ export async function requestViaAgentTransport(
   init: RequestInit = {},
   context: AgentRequestContext = {},
 ): Promise<Response> {
+  const ownerId = Object.hasOwn(context, "ownerId")
+    ? context.ownerId
+    : hostRequestOwnerId(url);
   const transport =
-    (await androidNativeAgentTransportForUrl(url)) ??
-    (await iosInProcessAgentTransportForUrl(url)) ??
-    (await desktopLocalAgentTransportForUrl(url)) ??
-    desktopHttpTransportForUrl(url) ??
-    nativeCloudHttpTransportForUrl(url) ??
-    fetchAgentTransport;
+    (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
   return transport.request(url, init, {
     timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
+    ownerId,
     ...(context.responseType ? { responseType: context.responseType } : {}),
   });
 }

@@ -10,11 +10,11 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";
+import type {
+  WalletExportRejection as CompatWalletExportRejection,
+  WalletExportRequestBody,
+} from "@elizaos/contracts";
 import { logger } from "@elizaos/core";
-import {
-  type WalletExportRejection as CompatWalletExportRejection,
-  type WalletExportRequestBody,
-} from "@elizaos/core/contracts/wallet-types";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,
@@ -163,6 +163,10 @@ function validateExportNonce(
       valid: false,
       reason: `Export confirmation delay not met. Wait ${remaining} more seconds.`,
     };
+  }
+  if (elapsed > NONCE_TTL_MS) {
+    pendingExportNonces.delete(nonce);
+    return { valid: false, reason: "Export nonce expired." };
   }
   pendingExportNonces.delete(nonce);
   return { valid: true };

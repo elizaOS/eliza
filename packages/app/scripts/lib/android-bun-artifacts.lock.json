@@ -34,5 +34,20 @@
         }
       }
     }
+  },
+  "targets": {
+    "android": {
+      "stable": {
+        "version": "1.4.2",
+        "revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+        "artifacts": {
+          "aarch64": {
+            "assetId": 545308128,
+            "archiveSha256": "a1c7e2983f1bb65146beb256a4d72449f23042412bc2cf278aa6397ba27e0274",
+            "binarySha256": "f2970336bfccf36e4e8a408b25c627122f210e941672f184198c31f4dbd377a0"
+          }
+        }
+      }
+    }
   }
 }

@@ -141,7 +141,7 @@ export class NodeAutoscaler {
     private readonly nowFn: () => number = () => Date.now(),
     // Compute provider seam: defaults (lazily, per-call) to `getComputeProvider()`
     // — which resolves to the Hetzner client in production, so behavior is
-    // unchanged. Injecting `InMemoryComputeProvider` here lets tests drive the
+    // unchanged. Injecting a compute provider here lets tests drive the
     // provision/drain path without monkey-patching the module. #8919
     private readonly provider?: ComputeProvider,
     private readonly settlementSleep: (delayMs: number) => Promise<void> = (delayMs) =>

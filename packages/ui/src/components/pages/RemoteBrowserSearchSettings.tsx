@@ -1,7 +1,8 @@
 /** Owner admission of a registered device browser for the currently selected hosted agent. */
+
+import type { RemoteHostSummary } from "@elizaos/plugin-browser/remote-control/cloud-client";
 import { useCallback, useEffect, useId, useState } from "react";
-import { client } from "../../api";
-import type { RemoteHostSummary } from "../../api/remote-control-cloud-client";
+import { client } from "../../api/client";
 import {
   createDefaultRemoteControlCloudClient,
   getDefaultRemoteControlCloudConnection,

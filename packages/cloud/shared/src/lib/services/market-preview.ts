@@ -4,7 +4,7 @@ import {
   type WalletMarketOverviewResponse,
   type WalletMarketOverviewSource,
   type WalletMarketPrediction,
-} from "@elizaos/core/contracts/wallet-types";
+} from "@elizaos/contracts";
 import {
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,
@@ -16,11 +16,8 @@ import {
 } from "@elizaos/plugin-wallet/lib/market-overview";
 import { getCookieValueFromRequest } from "../http/cookie-header";
 import { logger } from "../utils/logger";
-import { isValidAddress, isValidChain } from "./proxy/services/address-validation";
-import {
-  executeMarketDataProviderRequest,
-  type MarketDataMethod,
-} from "./proxy/services/market-data";
+import { isValidAddress, isValidChain } from "./proxy/address-validation";
+import { executeMarketDataProviderRequest, type MarketDataMethod } from "./proxy/market-data";
 
 const PREVIEW_FETCH_TIMEOUT_MS = 8_000;
 const WALLET_OVERVIEW_CACHE_TTL_MS = 120_000;
@@ -37,7 +34,7 @@ interface PolymarketMarketRecord {
   slug: string | null;
   question: string;
   outcomeLabels: string[];
-  outcomeProbabilities: number[];
+  outcomeProbabilities: (number | null)[];
   volume24hUsd: number;
   totalVolumeUsd: number | null;
   endsAt: string | null;
@@ -79,20 +76,16 @@ function stringFromUnknown(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function parseStringArray(value: unknown): string[] {
+function parseArray(value: unknown): unknown[] {
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
+    return value;
   }
 
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return [];
-  }
+  if (typeof value !== "string" || value.trim().length === 0) return [];
 
   try {
     const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -212,10 +205,10 @@ function mapPolymarketMarket(input: unknown): PolymarketMarketRecord | null {
   const question = stringFromUnknown(record.question);
   if (!question) return null;
 
-  const outcomeLabels = parseStringArray(record.outcomes);
-  const outcomeProbabilities = parseStringArray(record.outcomePrices)
-    .map((value) => clampProbability(numberFromUnknown(value)))
-    .filter((value): value is number => value !== null);
+  const outcomeLabels = parseArray(record.outcomes).map((value) => stringFromUnknown(value) ?? "");
+  const outcomeProbabilities = parseArray(record.outcomePrices).map((value) =>
+    clampProbability(numberFromUnknown(value)),
+  );
   const volume24hUsd = numberFromUnknown(record.volume24hr);
 
   if (volume24hUsd === null) return null;
@@ -270,7 +263,7 @@ function highlightedPredictionOutcome(market: PolymarketMarketRecord): {
   let highestIndex = -1;
   let highestProbability = -1;
   for (const [index, probability] of market.outcomeProbabilities.entries()) {
-    if (probability > highestProbability) {
+    if (probability !== null && probability > highestProbability) {
       highestIndex = index;
       highestProbability = probability;
     }
@@ -278,7 +271,10 @@ function highlightedPredictionOutcome(market: PolymarketMarketRecord): {
 
   if (highestIndex >= 0) {
     return {
-      label: market.outcomeLabels[highestIndex] ?? "Top",
+      // An outcome whose label was invalid keeps its index with an empty
+      // label (see mapPolymarketMarket); name it with the same placeholder
+      // as a missing label instead of publishing an empty label.
+      label: market.outcomeLabels[highestIndex] || "Top",
       probability: market.outcomeProbabilities[highestIndex] ?? null,
     };
   }

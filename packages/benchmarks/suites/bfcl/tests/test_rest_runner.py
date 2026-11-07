@@ -11,6 +11,7 @@ Covers:
     expected by the upstream eval.
   * ``ExecutionEvaluator.evaluate_rest`` enforces the same gating.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,8 @@ import pytest
 
 httpx = pytest.importorskip("httpx")
 
-from suites.bfcl.evaluators import ExecutionEvaluator
-from suites.bfcl.executable_runtime import (
+from benchmarks.suites.bfcl.evaluators import ExecutionEvaluator
+from benchmarks.suites.bfcl.executable_runtime import (
     RESTCallSpec,
     RESTExecutionError,
     RESTRateLimited,

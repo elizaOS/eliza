@@ -351,7 +351,7 @@ export class SharedRuntimeTimingCollector {
   prepareModelCall(): {
     select: (selection: SharedModelCallSelection) => void;
     begin: () => void;
-    finish: () => void;
+    finish: () => SharedModelCallTiming | undefined;
   } {
     let selection: SharedModelCallSelection | null = null;
     let startedAt: number | null = null;
@@ -372,7 +372,11 @@ export class SharedRuntimeTimingCollector {
         this.#modelCallCount += 1;
         const call: SharedModelCallTiming = selection
           ? { ...selection, durationMs: measured.value }
-          : { provider: "unobserved", fallback: false, durationMs: measured.value };
+          : {
+              provider: "unobserved",
+              fallback: false,
+              durationMs: measured.value,
+            };
         if (call.fallback) {
           this.#modelFallbackCount += 1;
         }
@@ -381,6 +385,7 @@ export class SharedRuntimeTimingCollector {
         this.#modelDurationMs = Math.min(total, MAX_SHARED_PROVIDER_TIMING_MS);
         if (call.provider !== "unobserved") this.#modelProviders.add(call.provider);
         this.#modelCalls.push(call);
+        return { ...call };
       },
     };
   }

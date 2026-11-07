@@ -1,14 +1,18 @@
 /** Handles character associations for an authenticated cloud application. */
 
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appsService } from "@/lib/services/apps";
-import { charactersService } from "@/lib/services/characters/characters";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const LinkCharactersBody = z.object({
   character_ids: z.array(z.string()),
@@ -31,28 +35,21 @@ async function __hono_GET(
     // Allow both authenticated users and API key access
     let organizationId: string;
 
-    try {
-      const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
 
-      // If using API key, verify it belongs to this app
-      if (apiKey) {
-        const { id } = await params;
-        const app = await appsService.getById(id);
-        if (!app || app.api_key_id !== apiKey.id) {
-          return Response.json(
-            { success: false, error: "Invalid API key for this app" },
-            { status: 403 },
-          );
-        }
-        organizationId = app.organization_id;
-      } else {
-        organizationId = user.organization_id;
+    // If using API key, verify it belongs to this app
+    if (apiKey) {
+      const { id } = await params;
+      const app = await appsService.getById(id);
+      if (!app || app.api_key_id !== apiKey.id) {
+        return Response.json(
+          { success: false, error: "Invalid API key for this app" },
+          { status: 403 },
+        );
       }
-    } catch {
-      return Response.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 },
-      );
+      organizationId = app.organization_id;
+    } else {
+      organizationId = user.organization_id;
     }
 
     const { id } = await params;
@@ -84,11 +81,20 @@ async function __hono_GET(
       });
     }
 
-    // Fetch the character details
+    // Fetch the character details. A linked character is listed only while
+    // the app's organization may still see it: a character that left the
+    // public catalog is not disclosed through a link made while it was public.
     const characters = await Promise.all(
       linkedCharacterIds.map(async (characterId) => {
-        const character = await charactersService.getById(characterId);
-        if (!character) return null;
+        const character =
+          await charactersService.getByIdForAccessCheck(characterId);
+        if (
+          !character ||
+          !charactersService.isLinkedCharacterVisible(character, {
+            organizationId: app.organization_id,
+          })
+        )
+          return null;
 
         return {
           id: character.id,
@@ -114,12 +120,14 @@ async function __hono_GET(
       characters: validCharacters,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to get app characters:", error);
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get characters",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -192,7 +200,8 @@ async function __hono_PUT(
 
     // Verify all characters exist and belong to the user
     for (const characterId of character_ids) {
-      const character = await charactersService.getById(characterId);
+      const character =
+        await charactersService.getByIdForAccessCheck(characterId);
       if (!character) {
         return Response.json(
           { success: false, error: `Character not found: ${characterId}` },
@@ -200,7 +209,12 @@ async function __hono_PUT(
         );
       }
       // Only allow linking characters owned by the user or public characters
-      if (character.user_id !== user.id && !character.is_public) {
+      if (
+        !charactersService.isLinkedCharacterVisible(character, {
+          userId: user.id,
+          organizationId: user.organization_id,
+        })
+      ) {
         return Response.json(
           {
             success: false,
@@ -227,14 +241,14 @@ async function __hono_PUT(
       linked_character_ids: character_ids,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     logger.error("Failed to update app characters:", error);
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update characters",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

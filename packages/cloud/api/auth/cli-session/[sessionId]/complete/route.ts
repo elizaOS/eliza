@@ -15,22 +15,22 @@
  * fails for user-content origins.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
-} from "@/lib/auth/browser-origin-policy";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   cliAuthSessionsService,
   looksLikeCliAuthSessionId,
-} from "@/lib/services/cli-auth-sessions";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

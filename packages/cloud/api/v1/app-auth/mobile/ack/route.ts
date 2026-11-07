@@ -1,10 +1,11 @@
 /** Activates a mobile credential only after the client proves durable receipt. */
-import { Hono } from "hono";
+
 import {
   acknowledgeMobileAppAuthCredential,
   MobileAppAuthProtocolError,
-} from "@/lib/services/mobile-app-auth";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import {
   MOBILE_APP_AUTH_ACK_RATE_LIMIT,
   mobileAppAuthRateLimitMiddleware,
@@ -35,7 +36,10 @@ app.post("/", async (c) => {
         "Invalid mobile credential acknowledgement",
       );
     }
-    const { registration } = await requireRegisteredMobileApp(c);
+    const { registration } = await requireRegisteredMobileApp(
+      c,
+      parsed.data.clientId,
+    );
     const result = await acknowledgeMobileAppAuthCredential({
       registration,
       binding: {

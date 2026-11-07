@@ -1,8 +1,11 @@
+import { emitNavigationDiagnostic } from "./navigation-diagnostic.ts";
 /** Enforces effect-grounded replies and trusted audience admission at every message egress boundary. */
 
+import { isValidTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
+  AgentContext,
   Content,
   ContextObject,
   IAgentRuntime,
@@ -22,8 +25,8 @@ import {
   getTrustedDeliveryAudience,
   getUserMessageText,
   hashString,
+  isPlainObject,
   isObjectRecord as isRecord,
-  isValidTimeZone,
   mergeEffectReceipts,
   ownerExclusiveDisclosureWasUsed,
   PRIVACY_DENIED_TEXT,
@@ -36,19 +39,24 @@ import {
   segmentBlock,
   selectCompletionContext,
   stripEffectDeliveryBinding,
+  validateUuid,
 } from "@elizaos/core";
 import type { EvaluatorOutput } from "../../runtime/evaluator";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
 import { resolveCallbackActionName } from "./action-identifiers.js";
-import { rewriteActionCallbackInCharacter } from "./delivery.js";
+import { renderActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import { financialCompletionIsUngrounded } from "./financial-completion.ts";
 import {
   financialHoldingIsUngrounded,
   financialObservationProviders,
 } from "./financial-observations.ts";
+import { projectBackgroundHistory } from "./history-discovery.ts";
 import { referenceRepeatedHistory } from "./history-wire.ts";
-import { reviewRecoveredReply } from "./recovery-grounding.ts";
+import {
+  type RecoveredReplyClaim,
+  reviewRecoveredReply,
+} from "./recovery-grounding.ts";
 import {
   emptyTrackedStateClaimScopes,
   replyClaimsCompletedSideEffect,
@@ -59,6 +67,7 @@ import {
   sourceReplyAssertionText,
 } from "./source-reply.ts";
 import {
+  calendarMutationTimeIsUngrounded,
   groundedCurrentTimeReply,
   requestAsksCurrentTime,
   statedTimeIsUngrounded,
@@ -69,6 +78,7 @@ export type PlannedReplyClaimKind =
   | "financial_completion"
   | "financial_holding"
   | "stated_time"
+  | "calendar_time"
   | "view_navigation"
   | "empty_tracked_state";
 
@@ -146,7 +156,7 @@ export function capturePlannerReplyRecovery(
   const fullContext = render(context);
   // Source hashes were formed before redaction. A planner restoration clears
   // the model-base selector even if the original trajectory still retains it.
-  const selected = selectCompletionContext({
+  const original: ContextObject = {
     ...trajectory.context,
     metadata: {
       ...trajectory.context.metadata,
@@ -155,7 +165,19 @@ export function capturePlannerReplyRecovery(
         : (trajectory.modelBaseContext ?? trajectory.context).metadata
             ?.completionContext,
     },
-  });
+  };
+  const foreground = selectCompletionContext(original);
+  // Match the planner's validated history view. Reply-only recovery retains
+  // all originals below and can explicitly request them; it must not silently
+  // expand a background selection just because no foreground review ran.
+  const selected =
+    !trajectory.codingMode &&
+    original.metadata?.plannerQueryTokensRestored !== true &&
+    (trajectory.modelBaseContext ?? trajectory.context).metadata
+      ?.plannerQueryTokensRestored !== true &&
+    !foreground.applied
+      ? projectBackgroundHistory(original)
+      : foreground;
   const selectedContext = selected.applied
     ? render(
         projectCompleteToolValueForModel(
@@ -286,6 +308,8 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
   results: readonly ActionResult[];
   actions: readonly Action[];
   evaluator?: EvaluatorOutput;
+  currentScope?: Pick<IAgentRuntime, "agentId"> &
+    Pick<Memory, "entityId" | "id">;
 }): boolean {
   if (args.kind === "completed_side_effect") {
     return (
@@ -313,6 +337,61 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
       const action = actionsByName.get(normalizeActionIdentifier(name));
       const tags = new Set(action?.tags ?? []);
       const scopes = emptyTrackedStateClaimScopes(args.reply);
+      if (
+        observation?.resource === "todos" &&
+        observation.count === 0 &&
+        args.currentScope !== undefined &&
+        typeof args.currentScope.agentId === "string" &&
+        typeof args.currentScope.entityId === "string" &&
+        args.currentScope.agentId.length > 0 &&
+        args.currentScope.entityId.length > 0 &&
+        observation.agentId === args.currentScope.agentId &&
+        observation.entityId === args.currentScope.entityId &&
+        observation.messageId === args.currentScope.id &&
+        typeof args.currentScope.id === "string" &&
+        args.currentScope.id.length > 0 &&
+        result.data?.agentId === observation.agentId &&
+        result.data?.entityId === observation.entityId &&
+        result.data?.op === "list" &&
+        Array.isArray(result.data?.todos) &&
+        result.data.todos.length === 0 &&
+        ((observation.scope === "active_current_inventory" &&
+          result.data?.includeCompleted === false) ||
+          (observation.scope === "entire_current_inventory" &&
+            result.data?.includeCompleted === true)) &&
+        typeof observation.observedAt === "string" &&
+        Number.isFinite(Date.parse(observation.observedAt)) &&
+        tags.has("resource:tracked-work") &&
+        tags.has("resource:todos") &&
+        tags.has("capability:read") &&
+        scopes.length > 0 &&
+        scopes.every(
+          (scope) =>
+            scope === "todos_active" ||
+            (scope === "todos_all" &&
+              observation.scope === "entire_current_inventory"),
+        ) &&
+        !args.results.slice(resultIndex + 1).some((later) => {
+          const laterName = later.data?.actionName;
+          const laterAction =
+            typeof laterName === "string"
+              ? actionsByName.get(normalizeActionIdentifier(laterName))
+              : undefined;
+          if (!laterAction?.tags?.includes("resource:todos")) return false;
+          // A later read can supersede emptiness just as a mutation can.
+          // Only a fully valid, distinct scope proves it unrelated.
+          // Null, empty and malformed identity values are unknown, not distinct.
+          const laterAgentId = validateUuid(later.data?.agentId);
+          const laterEntityId = validateUuid(later.data?.entityId);
+          return (
+            !laterAgentId ||
+            !laterEntityId ||
+            (laterAgentId === observation.agentId &&
+              laterEntityId === observation.entityId)
+          );
+        })
+      )
+        return true;
       if (
         observation?.resource === "notes" &&
         observation.scope === "entire_current_inventory" &&
@@ -395,18 +474,26 @@ function navigationClaimIsUngrounded(args: {
   const evidence = args.providers?.VIEW_NAVIGATION?.data;
   if (!Array.isArray(evidence?.views)) return false;
   const views = evidence.views.filter(
-    (view): view is { id: string; label: string } =>
+    (view): view is { id: string; label: string; aliases?: string[] } =>
       isRecord(view) &&
       typeof view.id === "string" &&
       typeof view.label === "string",
   );
   const claimed = views.find((view) =>
-    [view.id, view.label].some((name) => {
+    [
+      view.id,
+      view.label,
+      ...(Array.isArray(view.aliases)
+        ? view.aliases.filter(
+            (alias: unknown): alias is string => typeof alias === "string",
+          )
+        : []),
+    ].some((name) => {
       if (!name.trim()) return false;
       const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const target = `(?:the\\s+)?${escaped}(?:\\s+(?:view|screen|app))?`;
       return new RegExp(
-        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:(?:is|are)\\s+)?(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target})(?:[.!]+(?=\\s|$)|$)`,
+        `^(?:Done[.!]?\\s*[-—:]?\\s*)?(?:${target}\\s+(?:(?:is|are)\\s+)?(?:now\\s+)?open|(?:I(?:['’]ve| have)?\\s+)?opened\\s+${target}|you(?:['’]re| are)\\s+(?:now\\s+)?on\\s+${target}|back\\s+on\\s+${target})(?:[.!]+(?=\\s|$)|$)`,
         "iu",
       ).test(args.reply.trim());
     }),
@@ -453,6 +540,10 @@ function withoutObservedTimestampLabels(
       (result) =>
         result.success !== true ||
         result.data?.awaitingUserInput === true ||
+        result.data?.awaitingDeviceExecution === true ||
+        result.values?.awaitingDeviceExecution === true ||
+        (isPlainObject(result.data?.values) &&
+          result.data.values.awaitingDeviceExecution === true) ||
         result.data?.requiresInput === true,
     )
   )
@@ -601,15 +692,52 @@ function withoutObservedTimestampLabels(
  * this boundary; it never starts a second planner trajectory, which would lose
  * the first trajectory's results and could replay a partially-applied effect.
  */
+/** Same completed-effect barrier for visible delivery and planner FINISH.
+ * Pure receipt validation; it never executes, retries or repairs an action.
+ */
+export function completedSideEffectClaimIsUngrounded(args: {
+  reply: string;
+  pendingWork?: boolean;
+  actionResults: readonly ActionResult[];
+  evaluator?: EvaluatorOutput;
+}): boolean {
+  const reply = args.reply.trim();
+  const assertionText =
+    !args.pendingWork &&
+    (!args.evaluator ||
+      (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
+      ? withoutObservedTimestampLabels(reply, args.actionResults)
+      : reply;
+  return (
+    replyClaimsCompletedSideEffect(assertionText, {
+      pendingWork: args.pendingWork,
+    }) &&
+    !plannedReplyHasClaimGroundingReceipt({
+      kind: "completed_side_effect",
+      reply,
+      results: args.actionResults,
+      // This claim kind uses exact text and active committed receipts, not
+      // action-name/tag hints. Other egress kinds retain their action surface.
+      actions: [],
+      evaluator: args.evaluator,
+    })
+  );
+}
+
 export function evaluatePlannedReplyEgress(args: {
   reply: string;
   /** Early progress for a turn whose work has not settled. */
   pendingWork?: boolean;
   request?: string;
+  /** Stage 1's selected contexts for this turn. */
+  contexts?: readonly AgentContext[];
   providers?: StateData["providers"];
   actionResults: readonly ActionResult[];
   actions: readonly Action[];
   evaluator?: EvaluatorOutput;
+  /** Trusted current turn identity, supplied by runtime/message, never tool data. */
+  currentScope?: Pick<IAgentRuntime, "agentId"> &
+    Pick<Memory, "entityId" | "id">;
 }): PlannedReplyEgressDecision {
   const reply = args.reply.trim();
   if (!reply) return { verdict: "allow" };
@@ -625,6 +753,15 @@ export function evaluatePlannedReplyEgress(args: {
     return { verdict: "reject", kind: "financial_holding" };
   }
   if (
+    !requestAsksCurrentTime(args.request) &&
+    calendarMutationTimeIsUngrounded({
+      reply,
+      actionResults: args.actionResults,
+      agentId: args.currentScope?.agentId,
+    })
+  )
+    return { verdict: "reject", kind: "calendar_time" };
+  if (
     statedTimeIsUngrounded({
       reply,
       request: args.request,
@@ -633,32 +770,8 @@ export function evaluatePlannedReplyEgress(args: {
   ) {
     return { verdict: "reject", kind: "stated_time" };
   }
-  const assertionText =
-    !args.pendingWork &&
-    (!args.evaluator ||
-      (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
-      ? withoutObservedTimestampLabels(reply, args.actionResults)
-      : reply;
-  if (
-    replyClaimsCompletedSideEffect(assertionText, {
-      pendingWork: args.pendingWork,
-    })
-  ) {
-    if (
-      plannedReplyHasClaimGroundingReceipt({
-        kind: "completed_side_effect",
-        reply,
-        results: args.actionResults,
-        actions: args.actions,
-        evaluator: args.evaluator,
-      })
-    ) {
-      return { verdict: "allow" };
-    }
-    return {
-      verdict: "reject",
-      kind: "completed_side_effect",
-    };
+  if (completedSideEffectClaimIsUngrounded(args)) {
+    return { verdict: "reject", kind: "completed_side_effect" };
   }
   if (replyClaimsEmptyTrackedWorkState(reply)) {
     if (
@@ -667,6 +780,7 @@ export function evaluatePlannedReplyEgress(args: {
         reply,
         results: args.actionResults,
         actions: args.actions,
+        currentScope: args.currentScope,
       })
     ) {
       return { verdict: "allow" };
@@ -688,6 +802,8 @@ export async function resolvePlannedReplyEgress(args: {
   runtime: IAgentRuntime;
   message: Memory;
   reply: string;
+  /** Stage 1's selected contexts for this turn. */
+  contexts?: readonly AgentContext[];
   providers?: StateData["providers"];
   actionResults: readonly ActionResult[];
   evaluator?: EvaluatorOutput;
@@ -698,8 +814,14 @@ export async function resolvePlannedReplyEgress(args: {
   beforeContextRestore?: () => Promise<void>;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
   const decision = evaluatePlannedReplyEgress({
+    currentScope: {
+      agentId: args.runtime.agentId,
+      entityId: args.message.entityId,
+      id: args.message.id,
+    },
     reply: args.reply,
     request: getUserMessageText(args.message),
+    contexts: args.contexts,
     providers: args.providers,
     actionResults: args.actionResults,
     actions: args.runtime.actions,
@@ -758,8 +880,14 @@ export async function resolvePlannedReplyEgress(args: {
     withoutObservedTimestampLabels(args.reply, actionResults()) !==
       args.reply &&
     evaluatePlannedReplyEgress({
+      currentScope: {
+        agentId: args.runtime.agentId,
+        entityId: args.message.entityId,
+        id: args.message.id,
+      },
       reply: args.reply,
       request: getUserMessageText(args.message),
+      contexts: args.contexts,
       providers: args.providers,
       actionResults: actionResults(),
       actions: args.runtime.actions,
@@ -780,7 +908,8 @@ export async function resolvePlannedReplyEgress(args: {
         recovery.context,
       )
     : undefined;
-  const payload = (selected: boolean) => ({
+  let selected = historySelection !== undefined;
+  const payload = () => ({
     request: args.message.content,
     rejectedReply: args.reply,
     reason,
@@ -811,6 +940,11 @@ export async function resolvePlannedReplyEgress(args: {
     // applied).
     providers: {
       ...financialObservationProviders(args.providers),
+      // A current, request-selected note read is evidence for its quoted body.
+      // Keep this narrow provider; the general provider store can contain room history.
+      ...(args.providers?.NAMED_NOTES
+        ? { NAMED_NOTES: args.providers.NAMED_NOTES }
+        : {}),
       ...(reason === "stated_time" && args.providers?.CURRENT_TIME
         ? { CURRENT_TIME: args.providers.CURRENT_TIME }
         : {}),
@@ -819,121 +953,193 @@ export async function resolvePlannedReplyEgress(args: {
         : {}),
     },
   });
-  const rewrite = (selected: boolean) => {
-    getStreamingContext()?.abortSignal?.throwIfAborted();
-    const jsonPayload = payload(selected);
-    const text = JSON.stringify(jsonPayload);
-    return rewriteActionCallbackInCharacter({
-      runtime: args.runtime,
-      message: args.message,
-      response: { text },
-      text,
-      jsonPayload: JSON.parse(text) as JsonValue,
-      allowFullContextRequest: selected && historySelection !== undefined,
-      groundingFailure: reason,
+  const abortSignal = getStreamingContext()?.abortSignal;
+  const fail = (message: string, cause?: unknown): never => {
+    const error = new ElizaError(message, {
+      code: "REPLY_GROUNDING_FAILED",
+      cause,
+      context: { roomId: args.message.roomId, messageId: args.message.id },
     });
-  };
-  let selected = historySelection !== undefined;
-  let rewritten = await rewrite(selected);
-  // A read cannot deliver its accompanying draft or trigger any action. The
-  // second call receives complete saved originals under the same recovery gate.
-  if (rewritten?.contextRequest === "full") {
-    await args.beforeContextRestore?.();
-    selected = false;
-    rewritten = await rewrite(false);
-  }
-  const reply = rewritten?.text;
-  // The renderer selects proof for its own prose, not an action's canned
-  // wording. Resolve every selected ID against this turn's authoritative
-  // receipts; invented IDs, previews and rolled-back effects stay rejected.
-  const resolveProof = () =>
-    rewritten?.effectReceiptIds.length
-      ? resolveAppliedUserFacingEffectReceipts(
-          {
-            verifiedUserFacing: true,
-            userFacingText: reply,
-            userFacingEffectReceiptIds: rewritten.effectReceiptIds,
-          },
-          mergeEffectReceipts(
-            ...actionResults().map((result) => result.effectReceipts),
-          ),
-        )
-      : null;
-  const proof = resolveProof();
-  const rewrittenDecision = reply
-    ? evaluatePlannedReplyEgress({
-        reply,
-        request: getUserMessageText(args.message),
-        providers: args.providers,
-        actionResults: actionResults(),
-        actions: args.runtime.actions,
-      })
-    : undefined;
-  if (
-    !reply ||
-    (rewritten?.effectReceiptIds.length && !proof) ||
-    (rewrittenDecision?.verdict !== "allow" &&
-      !(rewrittenDecision?.kind === "completed_side_effect" && proof))
-  ) {
-    const error = new ElizaError(
-      "A grounded conversational reply could not be generated",
-      {
-        code: "REPLY_GROUNDING_FAILED",
-        context: { roomId: args.message.roomId, messageId: args.message.id },
-      },
-    );
     args.runtime.reportError("MessageService.replyRecovery", error);
     throw error;
-  }
-  const review = async (useSelection: boolean) => {
-    const evidenceJson = JSON.stringify(payload(useSelection));
-    const verdict = await reviewRecoveredReply({
-      runtime: args.runtime,
-      reply,
-      evidenceJson,
-      effectReceiptIds: rewritten?.effectReceiptIds ?? [],
-      allowFullContextRequest: useSelection,
-    });
-    if (evidenceJson !== JSON.stringify(payload(useSelection))) {
-      throw new ElizaError(
-        "Recovery evidence changed during grounding review",
-        {
-          code: "REPLY_GROUNDING_REVIEW_STALE",
-        },
-      );
+  };
+  // Renders and checks one recovered draft. A degrade attempt rewrites the
+  // previous draft without its unsupported claims; the grounding review still
+  // judges against the original payload.
+  const attempt = async (degrade?: {
+    recoveredDraft: string;
+    unsupportedClaims: readonly Pick<
+      RecoveredReplyClaim,
+      "quote" | "actor" | "evidence"
+    >[];
+  }) => {
+    const rewrite = async () => {
+      abortSignal?.throwIfAborted();
+      const text = JSON.stringify({ ...payload(), ...degrade });
+      try {
+        return await renderActionCallbackInCharacter({
+          runtime: args.runtime,
+          message: args.message,
+          response: { text },
+          text,
+          jsonPayload: JSON.parse(text) as JsonValue,
+          allowFullContextRequest: selected,
+          groundingFailure: degrade ? "unsupported_claim" : reason,
+        });
+      } catch (error) {
+        if (abortSignal?.aborted) throw error;
+        // error-policy:J2 required recovery cannot expose the rejected draft.
+        // Preserve the provider failure at the recovery boundary.
+        emitNavigationDiagnostic(
+          args.runtime,
+          args.message,
+          "recovery",
+          () => ({
+            validation: "other",
+            replyPresent: false,
+            errorCode:
+              error && typeof error === "object" && "code" in error
+                ? error.code
+                : "PROVIDER_ERROR",
+          }),
+        );
+        return fail(
+          "A grounded conversational reply could not be generated",
+          error,
+        );
+      }
+    };
+    let rewritten = await rewrite();
+    // A read cannot deliver its accompanying draft or trigger any action. The
+    // second call receives complete saved originals under the same recovery gate.
+    if (rewritten?.contextRequest === "full") {
+      await args.beforeContextRestore?.();
+      selected = false;
+      rewritten = await rewrite();
     }
-    return verdict;
-  };
-  let grounding = await review(selected);
-  if ("contextRequest" in grounding) {
-    await args.beforeContextRestore?.();
-    grounding = await review(false);
-  }
-  // Context restoration and review can revoke receipts; revalidate immediately
-  // before delivery. Invalid supplied IDs fail even for an uncertainty reply.
-  const finalProof = resolveProof();
-  if (
-    "contextRequest" in grounding ||
-    (rewritten?.effectReceiptIds.length && !finalProof) ||
-    !grounding.grounded ||
-    (grounding.completedChangeClaim && !finalProof)
-  ) {
-    const error = new ElizaError(
-      "Recovered reply asserts an unsupported outcome",
-      {
-        code: "REPLY_GROUNDING_FAILED",
-        context: { roomId: args.message.roomId, messageId: args.message.id },
-      },
+    const reply = rewritten?.text;
+    // The renderer selects proof for its own prose, not an action's canned
+    // wording. Resolve every selected ID against this turn's authoritative
+    // receipts; invented IDs, previews and rolled-back effects stay rejected.
+    const resolveProof = () =>
+      rewritten?.effectReceiptIds.length
+        ? resolveAppliedUserFacingEffectReceipts(
+            {
+              verifiedUserFacing: true,
+              userFacingText: reply,
+              userFacingEffectReceiptIds: rewritten.effectReceiptIds,
+            },
+            mergeEffectReceipts(
+              ...actionResults().map((result) => result.effectReceipts),
+            ),
+          )
+        : null;
+    const proof = resolveProof();
+    const rewrittenDecision = reply
+      ? evaluatePlannedReplyEgress({
+          currentScope: {
+            agentId: args.runtime.agentId,
+            entityId: args.message.entityId,
+            id: args.message.id,
+          },
+          reply,
+          request: getUserMessageText(args.message),
+          contexts: args.contexts,
+          providers: args.providers,
+          actionResults: actionResults(),
+          actions: args.runtime.actions,
+        })
+      : undefined;
+    emitNavigationDiagnostic(args.runtime, args.message, "recovery", () => ({
+      verdict: rewrittenDecision?.verdict,
+      validation: !reply
+        ? "missing_reply"
+        : rewritten?.effectReceiptIds.length && !proof
+          ? "unresolved_proof"
+          : rewrittenDecision?.verdict === "reject"
+            ? rewrittenDecision.kind
+            : undefined,
+      replyPresent: !!reply,
+    }));
+    if (
+      !reply ||
+      (rewritten?.effectReceiptIds.length && !proof) ||
+      (rewrittenDecision?.verdict !== "allow" &&
+        !(rewrittenDecision?.kind === "completed_side_effect" && proof))
+    )
+      return fail("A grounded conversational reply could not be generated");
+    const review = async () => {
+      const evidenceJson = JSON.stringify(payload());
+      const verdict = await reviewRecoveredReply({
+        runtime: args.runtime,
+        reply,
+        evidenceJson,
+        effectReceiptIds: rewritten?.effectReceiptIds ?? [],
+        allowFullContextRequest: selected,
+      });
+      if (evidenceJson !== JSON.stringify(payload())) {
+        throw new ElizaError(
+          "Recovery evidence changed during grounding review",
+          {
+            code: "REPLY_GROUNDING_REVIEW_STALE",
+          },
+        );
+      }
+      return verdict;
+    };
+    let grounding = await review();
+    if ("contextRequest" in grounding) {
+      await args.beforeContextRestore?.();
+      // A degrade rewrite and its review keep the restored originals.
+      selected = false;
+      grounding = await review();
+    }
+    // Context restoration and review can revoke receipts; revalidate immediately
+    // before delivery. Invalid supplied IDs fail even for an uncertainty reply.
+    const finalProof = resolveProof();
+    if (
+      "contextRequest" in grounding ||
+      (rewritten?.effectReceiptIds.length && !finalProof)
+    )
+      return fail("Recovered reply asserts an unsupported outcome");
+    // The judge attributes each claim; only the assistant's own changes need
+    // this turn's receipt, and that proof stays in code.
+    const unsupportedClaims = grounding.claims.filter(
+      (claim) =>
+        !claim.supported ||
+        (claim.change && claim.actor === "assistant" && !finalProof),
     );
-    args.runtime.reportError("MessageService.replyRecovery", error);
-    throw error;
-  }
-  return {
-    text: reply,
-    effectReceiptIds:
-      finalProof?.map((receipt) => receipt.receiptId) ??
-      appliedEffectReceiptIdsForReply(reply, actionResults()),
+    return unsupportedClaims.length === 0
+      ? {
+          text: reply,
+          effectReceiptIds:
+            finalProof?.map((receipt) => receipt.receiptId) ??
+            appliedEffectReceiptIdsForReply(reply, actionResults()),
+        }
+      : {
+          recoveredDraft: reply,
+          unsupportedClaims: unsupportedClaims.map(
+            ({ quote, actor, evidence }) => ({ quote, actor, evidence }),
+          ),
+        };
   };
+  const first = await attempt();
+  if (!first.unsupportedClaims) return first;
+  // A recovered draft whose only defect is unsupported claims gets one
+  // rewrite that removes just those claims, then the same checks again.
+  args.runtime.logger.warn(
+    {
+      src: "service:message",
+      messageId: args.message.id,
+      roomId: args.message.roomId,
+      kind: reason,
+      unsupportedClaims: first.unsupportedClaims,
+    },
+    "Recovered reply has unsupported claims; degrading it once",
+  );
+  const degraded = await attempt(first);
+  if (!degraded.unsupportedClaims) return degraded;
+  return fail("Recovered reply asserts an unsupported outcome");
 }
 
 export async function enforceEffectGroundedVisibleContent(

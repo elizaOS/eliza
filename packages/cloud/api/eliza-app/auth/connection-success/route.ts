@@ -1,8 +1,9 @@
 // Handles cloud API eliza app auth connection success route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import { normalizePostMessageTargetOrigin } from "@/lib/services/agent-github-return";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { normalizePostMessageTargetOrigin } from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import { serializeInlineScriptValue } from "@elizaos/cloud-shared/lib/utils/html";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 function escapeForJsString(value: string): string {
   return value
@@ -97,7 +98,7 @@ function buildElizaAppHtml(
   targetOrigin: string | null,
 ): string {
   const providerLabel = PROVIDER_LABELS[provider] ?? "Your account";
-  const payload = JSON.stringify({
+  const payload = serializeInlineScriptValue({
     type: "eliza-app-oauth-complete",
     provider,
     connectionId,

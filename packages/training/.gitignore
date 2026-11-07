@@ -8,7 +8,7 @@ data/*
 !data/final-eliza1-smoke/**
 # Voice training data — carve out manifest + docs for voice corpora
 # (e.g. same). Raw + normalized audio stays ignored (regenerable from
-# upstream via scripts/voice/build_same_manifest.py). Manifests,
+# upstream via scripts/voice/build_sam_manifest.py). Manifests,
 # READMEs, source.json, LJSpeech metadata.csv, and per-corpus .gitignore
 # anchors are tracked so the corpus contract is durable in git.
 !data/voice/
@@ -22,23 +22,11 @@ data/voice/**/*.mp3
 data/voice/**/*.ogg
 data/voice/**/*.opus
 checkpoints/
-# Generated benchmark outputs (parquet datasets, ablation dumps) are
-# ignored, but the checked-in gate definition + engine + tests are tracked —
-# the publish orchestrator reads `benchmarks/eliza1_gates.yaml` (Eliza-1
-# publish-blocking eval gates) and `benchmarks/eliza1_gates.py` (the gate
-# engine that turns measured eval blobs into a publish-blocking verdict).
-benchmarks/*
-!benchmarks/eliza1_gates.yaml
-!benchmarks/eliza1_gates.py
-!benchmarks/__init__.py
-!benchmarks/test_eliza1_gates.py
-!benchmarks/THROUGHPUT.md
-!benchmarks/OPTIMIZATIONS_ROLLUP.md
-!benchmarks/OPTIMIZATION_INVENTORY.md
-!benchmarks/APOLLO_TUNING.md
-!benchmarks/CUDA_KERNEL_PUNCHLIST.md
-!benchmarks/MODELS_STATUS.md
-!benchmarks/INFERENCE_OPTIMIZATION_PLAN.md
+# Generated local benchmark and Python packaging outputs.
+benchmarks/
+build/
+dist/
+*.egg-info/
 previews/
 local-corpora/
 wandb/

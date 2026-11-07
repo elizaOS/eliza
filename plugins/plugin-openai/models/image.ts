@@ -112,10 +112,19 @@ export async function handleImageGeneration(
     throw new Error("OpenAI API returned no images");
   }
 
-  return data.data.map((item) => ({
-    url: item.url,
-    revisedPrompt: item.revised_prompt,
-  }));
+  const mimeType = `image/${data.output_format ?? "png"}`;
+  return data.data.map((item) => {
+    if (item.url) {
+      return { url: item.url, revisedPrompt: item.revised_prompt };
+    }
+    if (item.b64_json) {
+      return {
+        url: `data:${mimeType};base64,${item.b64_json}`,
+        revisedPrompt: item.revised_prompt,
+      };
+    }
+    throw new Error("OpenAI API returned an image without a URL or b64_json data");
+  });
 }
 
 const DEFAULT_IMAGE_TITLE = "Image Analysis";
@@ -234,20 +243,22 @@ export async function handleImageDescription(
     }
 
     const responseData = (await response.json()) as OpenAIChatCompletionResponse;
-    if (responseData.choices[0]?.finish_reason === "length") {
-      throw new ElizaError(
-        "OpenAI reached its output boundary; refusing partial image description",
-        {
-          code: "MODEL_INCOMPLETE_OUTPUT",
-          context: { provider: "openai", finishReason: "length" },
-        }
-      );
-    }
     const responseContent = responseData.choices[0]?.message.content;
-    if (!responseContent) {
+    // An incomplete ("length") reply is rejected after the usage event below,
+    // not here: the provider already billed those tokens, and throwing inside
+    // this recorder callback would drop them from MODEL_USED entirely. Only a
+    // complete reply with no content is an empty-result failure at this point.
+    if (!responseContent && responseData.choices[0]?.finish_reason !== "length") {
       throw new Error("OpenAI API returned empty image description");
     }
-    details.response = responseContent;
+    if (responseContent) {
+      details.response = responseContent;
+    }
+    // Record why the provider stopped, as models/text.ts does: without it a
+    // truncated ("length") reply is stored with no finish reason and reads
+    // as a complete, successful description. (On develop the throw inside
+    // this callback made the recorder store finishReason "error" instead.)
+    details.finishReason = responseData.choices[0]?.finish_reason;
     if (responseData.usage) {
       details.promptTokens = responseData.usage.prompt_tokens;
       details.completionTokens = responseData.usage.completion_tokens;
@@ -267,6 +278,29 @@ export async function handleImageDescription(
       },
       modelName
     );
+  }
+
+  // Reject the incomplete reply only after its billed usage is reported
+  // above — the same order the merged text fix (#34886) and the Eliza Cloud
+  // image handler use. The error keeps the usage in its context either way.
+  if (data.choices[0]?.finish_reason === "length") {
+    throw new ElizaError("OpenAI reached its output boundary; refusing partial image description", {
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      context: {
+        provider: "openai",
+        model: modelName,
+        finishReason: "length",
+        ...(data.usage
+          ? {
+              usage: {
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              },
+            }
+          : {}),
+      },
+    });
   }
 
   const firstChoice = data.choices[0];

@@ -21,7 +21,6 @@ import { users } from "./users";
  * public marketplace items, or private user characters.
  *
  * When is_public=true, the character can be:
- * - Registered on ERC-8004 for discovery (erc8004_registered=true)
  * - Monetized with inference markup (monetization_enabled=true)
  * - Accessible via A2A and MCP protocols
  */
@@ -87,17 +86,6 @@ export const userCharacters = pgTable(
     token_ticker: text("token_ticker"),
 
     // =========================================================================
-    // ERC-8004 On-Chain Registration
-    // When public agents are registered, they become discoverable by other agents
-    // =========================================================================
-    erc8004_registered: boolean("erc8004_registered").default(false).notNull(),
-    erc8004_network: text("erc8004_network"), // e.g., "base-sepolia", "base"
-    erc8004_agent_id: integer("erc8004_agent_id"), // Token ID on the registry
-    erc8004_agent_uri: text("erc8004_agent_uri"), // IPFS or HTTP URI
-    erc8004_tx_hash: text("erc8004_tx_hash"), // Registration transaction
-    erc8004_registered_at: timestamp("erc8004_registered_at"),
-
-    // =========================================================================
     // Monetization Settings (similar to apps)
     // Creators can add markup on top of base inference costs
     // =========================================================================
@@ -151,12 +139,6 @@ export const userCharacters = pgTable(
     public_idx: index("user_characters_is_public_idx").on(table.is_public),
     popularity_idx: index("user_characters_popularity_idx").on(table.popularity_score),
     source_idx: index("user_characters_source_idx").on(table.source),
-    // New indexes for ERC-8004 and monetization
-    erc8004_idx: index("user_characters_erc8004_idx").on(table.erc8004_registered),
-    erc8004_agent_idx: index("user_characters_erc8004_agent_idx").on(
-      table.erc8004_network,
-      table.erc8004_agent_id,
-    ),
     monetization_idx: index("user_characters_monetization_idx").on(table.monetization_enabled),
     // Keep this plain Drizzle index in sync with db/migrations/0047_add_token_agent_linkage.sql.
     // The partial unique (token_address, token_chain) index is hand-managed in SQL because

@@ -10,38 +10,38 @@
  * `?sync=true` falls back to the legacy blocking behaviour and returns 201.
  */
 
-import { Hono } from "hono";
-import { isAddress } from "viem";
-import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import {
   failureResponse,
   jsonError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { toCompatStatus } from "@/lib/api/compat-envelope";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { charactersService } from "@/lib/services/characters/characters";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { toCompatStatus } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import {
   AgentImageNotAllowedError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { getAgentTier } from "@/lib/services/shared-runtime/agent-tier";
-import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
-import { SIGNUP_CREDIT_POLICY } from "@/lib/signup-credits";
-import { isUniqueConstraintError } from "@/lib/utils/db-errors";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { normalizeTokenAddress } from "@/lib/utils/token-address";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import { getAgentTier } from "@elizaos/cloud-shared/lib/services/shared-runtime/agent-tier";
+import { findOrCreateUserByWalletAddress } from "@elizaos/cloud-shared/lib/services/wallet-signup";
+import { SIGNUP_CREDIT_POLICY } from "@elizaos/cloud-shared/lib/signup-credits";
+import { isUniqueConstraintError } from "@elizaos/cloud-shared/lib/utils/db-errors";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { normalizeTokenAddress } from "@elizaos/cloud-shared/lib/utils/token-address";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { isAddress } from "viem";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 const WAIFU_GUEST_TOKEN_THRESHOLD = 1_000;

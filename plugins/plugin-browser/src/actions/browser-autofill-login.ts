@@ -136,38 +136,68 @@ function buildAutofillScript(args: {
   if (username) setNativeInputValue(username, USERNAME);
   setNativeInputValue(password, PASSWORD);
 
+  // The DOM reports the same outcome the page gets: interactive validation
+  // runs before a submit, and a blocked form leaves the page unchanged.
+  let submitted = false;
+  let invalid = null;
   if (SUBMIT) {
-    if (form && typeof form.requestSubmit === "function") {
+    if (form && typeof form.reportValidity === "function" && !form.reportValidity()) {
+      const control = Array.from(form.elements).find(
+        (element) => element.validity && element.validity.valid === false
+      );
+      invalid = control
+        ? {
+            name: control.name || control.id || control.tagName.toLowerCase(),
+            message: control.validationMessage || "This field is invalid.",
+          }
+        : { name: "form", message: "The form is invalid." };
+    } else if (form && typeof form.requestSubmit === "function") {
       form.requestSubmit();
+      submitted = true;
     } else if (form && typeof form.submit === "function") {
       form.submit();
+      submitted = true;
     } else {
       const button =
         (form && form.querySelector('button[type="submit"], input[type="submit"]')) ||
         document.querySelector('button[type="submit"], input[type="submit"]');
-      if (button) (button).click();
+      if (button) {
+        (button).click();
+        submitted = true;
+      }
     }
   }
 
   return {
     ok: true,
     filled: { username: !!username, password: true },
-    submitted: SUBMIT,
+    submitted: SUBMIT ? submitted : false,
+    ...(invalid ? { invalid } : {}),
   };
 })();
 `;
 }
 
+/** The control the page rejected, so the agent can fix it before retrying. */
+interface BrowserAutofillInvalidControl {
+  name: string;
+  message: string;
+}
+
 function narrowSnippetResult(raw: unknown): {
   filled: boolean;
   fillReason: string | null;
+  submitted: boolean;
+  invalid: BrowserAutofillInvalidControl | null;
 } {
   if (!raw || typeof raw !== "object") {
-    return { filled: false, fillReason: null };
+    return { filled: false, fillReason: null, submitted: false, invalid: null };
   }
   const obj = raw as {
     ok?: unknown;
     filled?: { username?: boolean; password?: boolean };
+    submitted?: unknown;
+    invalid?: unknown;
   };
   const filled = obj.ok === true && obj.filled?.password === true;
   let fillReason: string | null = null;
@@ -175,7 +205,19 @@ function narrowSnippetResult(raw: unknown): {
   if (typeof reasonVal === "string") {
     fillReason = reasonVal;
   }
-  return { filled, fillReason };
+  let invalid: BrowserAutofillInvalidControl | null = null;
+  const invalidVal = obj.invalid;
+  if (invalidVal && typeof invalidVal === "object") {
+    const { name, message } = invalidVal as {
+      name?: unknown;
+      message?: unknown;
+    };
+    if (typeof name === "string" && typeof message === "string") {
+      invalid = { name, message };
+    }
+  }
+  // An older build reports the requested flag; only a real submit counts.
+  return { filled, fillReason, submitted: obj.submitted === true, invalid };
 }
 
 /**
@@ -332,10 +374,11 @@ export async function executeBrowserAutofillLogin(
     id: matchingTab.id,
     script,
   });
-  const { filled, fillReason } = narrowSnippetResult(rawResult);
+  const { filled, fillReason, submitted, invalid } =
+    narrowSnippetResult(rawResult);
 
   logger.info(
-    `[browser-autofill-login] domain=${domain} tabId=${matchingTab.id} submit=${submit} filled=${filled}`,
+    `[browser-autofill-login] domain=${domain} tabId=${matchingTab.id} submit=${submit} submitted=${submitted} filled=${filled}`,
   );
 
   if (!filled) {
@@ -363,8 +406,39 @@ export async function executeBrowserAutofillLogin(
     };
   }
 
+  if (submit && !submitted) {
+    const blocked = invalid
+      ? `${invalid.name}: ${invalid.message}`
+      : "the page has no submit control";
+    return {
+      text: `Filled login on ${domain} (tab ${matchingTab.id}), but the page did not submit it (${blocked}). Nothing was submitted.`,
+      success: false,
+      values: {
+        success: false,
+        error: "AGENT_AUTOFILL_NOT_SUBMITTED",
+        domain,
+        tabId: matchingTab.id,
+        submitted: false,
+        filled,
+        subaction: AUTOFILL_SUBACTION,
+        ...(invalid ? { invalid } : {}),
+        ...(fillReason ? { fillReason } : {}),
+      },
+      data: {
+        actionName: "BROWSER",
+        subaction: AUTOFILL_SUBACTION,
+        domain,
+        tabId: matchingTab.id,
+        filled,
+        submitted: false,
+        ...(invalid ? { invalid } : {}),
+        ...(fillReason ? { fillReason } : {}),
+      },
+    };
+  }
+
   return {
-    text: submit
+    text: submitted
       ? `Filled and submitted login on ${domain} (tab ${matchingTab.id}).`
       : `Filled login on ${domain} (tab ${matchingTab.id}). User must click submit.`,
     success: true,
@@ -372,7 +446,7 @@ export async function executeBrowserAutofillLogin(
       success: true,
       domain,
       tabId: matchingTab.id,
-      submitted: submit,
+      submitted,
       filled,
       subaction: AUTOFILL_SUBACTION,
       ...(fillReason ? { fillReason } : {}),
@@ -383,6 +457,7 @@ export async function executeBrowserAutofillLogin(
       domain,
       tabId: matchingTab.id,
       filled,
+      submitted,
       ...(fillReason ? { fillReason } : {}),
     },
   };

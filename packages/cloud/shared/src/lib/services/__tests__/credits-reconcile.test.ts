@@ -12,6 +12,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -1218,6 +1219,74 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
+    "sweep leaves holds it cannot settle out of later batches so newer holds still settle",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      // Three native-storage holds sort first. The reconcile claim refuses rows
+      // that carry `storage_operation_id` (a strong R2 HEAD settles them), so
+      // the generic lane can never settle them.
+      const stuck: string[] = [];
+      for (const hoursAgo of [27, 26, 25]) {
+        stuck.push(
+          await insertReservation(1.0, hoursAgo * 60 * 60 * 1000, true, {
+            storage_operation_id: crypto.randomUUID(),
+            reserved_amount: 1.0,
+          }),
+        );
+      }
+      // One newer hold behind them that the sweep can settle.
+      const fresh = await insertReservation(1.0, 25 * 60 * 1000, true, { estimated_cost: 0.4 });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 3,
+        maxBatches: 5,
+      });
+
+      expect(stats.capHit).toBe(false);
+      expect(stats.settled).toBe(1);
+      expect(stats.refunds).toBe(1);
+      expect(await getReservationSettledAt(fresh)).toBeTruthy();
+      for (const id of stuck) expect(await getReservationSettledAt(id)).toBeNull();
+      expect(await getBalance()).toBeCloseTo(20.6, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "sweep leaves app-chat holds it skips out of later batches so a newer hold still settles",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      // Two app-chat holds without a usable base pair sort first; the sweep
+      // skips them on every pass and no static predicate removes them.
+      const skippedHolds: string[] = [];
+      for (const hoursAgo of [27, 26]) {
+        skippedHolds.push(
+          await insertAppChatReservation(1.8, hoursAgo * 60 * 60 * 1000, {
+            estimated_cost: null,
+            reserved_amount: null,
+          }),
+        );
+      }
+      const fresh = await insertReservation(1.0, 25 * 60 * 1000, true, { estimated_cost: 0.4 });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 2,
+        maxBatches: 4,
+      });
+
+      expect(stats.capHit).toBe(false);
+      expect(stats.settled).toBe(1);
+      expect(await getReservationSettledAt(fresh)).toBeTruthy();
+      for (const id of skippedHolds) expect(await getReservationSettledAt(id)).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "sweep skips an app-chat hold without a usable base pair instead of guessing",
     async () => {
       if (!pgliteReady) return;
@@ -1566,6 +1635,71 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
       // flows imply (grant refunded in full, only $4 was ever reinstated).
       expect(await getBalance()).toBeCloseTo(90, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("direct inference debit settlement (#30806)", () => {
+  test(
+    "returns the committed balance revision and republishes without reading the cache",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const migration = await readFile(
+        new URL("../../../db/migrations/0177_organization_balance_revision.sql", import.meta.url),
+        "utf8",
+      );
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim()) await dbWrite.execute(statement);
+      }
+      await seedOrg("1");
+      const { debitInferenceCost } = await import("../inference-billing-fast-path");
+      const { cache } = await import("../../cache/client");
+      const { CacheKeys } = await import("../../cache/keys");
+      const cacheRead = spyOn(cache, "get");
+      const snapshotRead = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async (_balance: number, _revision: string) => undefined),
+        publishAuthoritativeBalance: mock(async (_balance: number, _revision: string) => undefined),
+      };
+      const context = {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        requestId: "req-direct-readback-30806",
+        model: "test-model",
+        provider: "test-provider",
+        billingSource: "test",
+      };
+      try {
+        const result = await debitInferenceCost(context, 0.9, "deferred", {
+          preserveBalanceHintDuringFencedHandoff: true,
+          inferenceBalanceFence,
+        });
+        expect(result).toMatchObject({ status: "collected", collectedAmountUsd: 0.9 });
+        expect(result.newBalanceUsd).toBeCloseTo(0.1, 6);
+        expect(BigInt(result.balanceRevision)).toBeGreaterThan(0n);
+        expect(snapshotRead).not.toHaveBeenCalled();
+        expect(
+          cacheRead.mock.calls.filter(([key]) => key === CacheKeys.inference.orgBalance(ORG_ID)),
+        ).toHaveLength(0);
+        const authoritative = await creditsService.getOrganizationBalanceSnapshot(ORG_ID);
+        expect(result.balanceRevision).toBe(authoritative.revision);
+        expect(inferenceBalanceFence.publishAuthoritativeBalance.mock.calls).toEqual([
+          [result.newBalanceUsd, result.balanceRevision],
+        ]);
+
+        // A lost settlement acknowledgement may replay the debit. It retains
+        // the original charge and returns a current, authoritative observation.
+        const replay = await debitInferenceCost(context, 0.9, "deferred", {
+          preserveBalanceHintDuringFencedHandoff: true,
+          inferenceBalanceFence,
+        });
+        expect(replay).toEqual(result);
+        expect(await countByType("debit")).toBe(1);
+      } finally {
+        cacheRead.mockRestore();
+        snapshotRead.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );

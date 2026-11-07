@@ -1,6 +1,6 @@
 /**
  * Global auth middleware — Hono auth gate. Steward cookie/session resolution
- * lives in `getCurrentUser` (`packages/lib/auth/workers-hono-auth.ts`).
+ * lives in `getCurrentUser` (`packages/cloud/shared/src/lib/auth/workers-hono-auth.ts`).
  *
  * Behavior:
  *   - Public paths pass through with no auth.
@@ -17,13 +17,12 @@
  * This middleware is mounted globally before the router in src/index.ts.
  */
 
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { jsonError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-
-import { jsonError } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
@@ -152,6 +151,9 @@ const publicPathPrefixes = [
   // (POST /session/:id/revoke) siblings still require the Eliza bearer. The
   // `=== p || startsWith(p+"/")` match keeps this scoped to the ws path.
   "/api/v1/voice/session/ws",
+  // Each speech-only route authenticates itself. The WS capability is checked
+  // in its first hello; bootstrap and revoke use combined caller admission.
+  "/api/v1/voice/speech",
   // Twilio cannot present an Eliza session. Both telephony entrypoints instead
   // fail closed on the provider's HMAC signature before accepting call data or
   // opening paid Cartesia streams.
@@ -224,6 +226,11 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
 }
 
 export function isPublicPath(pathname: string, method = "GET"): boolean {
+  // This leaf proves the exact presented secret against primary storage,
+  // including a tombstone after a lost response. Global active-key auth would
+  // prevent that retry. No neighboring method or key-management route bypasses it.
+  if (method === "DELETE" && /^\/api\/v1\/api-keys\/current\/?$/.test(pathname))
+    return true;
   // Local Docker's loopback browser relay is public because its one-time token
   // and loopback Origin are both checked by the route. Remote managed pairing
   // terminates on the agent-subdomain edge. Native pairing is a distinct
@@ -236,6 +243,22 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
     (method === "GET" || method === "HEAD") &&
     (pathname === "/api/v1/subscriptions/plans" ||
       pathname === "/api/v1/subscriptions/plans/")
+  ) {
+    return true;
+  }
+  // Public ES256 verification keys for subscription entitlements; no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscription/entitlement-keys" ||
+      pathname === "/api/v1/subscription/entitlement-keys/")
+  ) {
+    return true;
+  }
+  // Fixed-copy return page for shared subscription checkout links; it reads no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscriptions/checkout/payer" ||
+      pathname === "/api/v1/subscriptions/checkout/payer/")
   ) {
     return true;
   }

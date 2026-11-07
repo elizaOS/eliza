@@ -7,7 +7,7 @@
  *
  * The React type references below are erased at compile time — this module
  * carries no runtime dependency on the React package, which is why it lives in
- * `@elizaos/core/contracts/apps` (consumed by both the React `@elizaos/ui` package and Node
+ * `@elizaos/core/protocol` (consumed by both the React `@elizaos/ui` package and Node
  * app-registration code).
  */
 import type { ComponentType, ReactElement } from "react";

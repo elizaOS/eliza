@@ -40,6 +40,33 @@ function writeLockFile(
 	fs.writeFileSync(lockPath, body, "utf8");
 }
 
+/**
+ * Replaces `process.kill` for one probe, so the liveness answer the kernel gives
+ * for a pid owned by another user (EPERM) can be exercised for real. Records the
+ * signal-0 calls made while installed.
+ */
+function withProcessKill(thrown: () => Error): {
+	probes: Array<[number, unknown]>;
+	restore(): void;
+} {
+	const probes: Array<[number, unknown]> = [];
+	const original = process.kill;
+	process.kill = ((pid: number, signal?: number | NodeJS.Signals) => {
+		probes.push([pid, signal]);
+		throw thrown();
+	}) as unknown as typeof process.kill;
+	return {
+		probes,
+		restore() {
+			process.kill = original;
+		},
+	};
+}
+
+function errnoError(code: string): Error {
+	return Object.assign(new Error(`kill ${code}`), { code });
+}
+
 afterEach(() => {
 	while (tempDirs.length > 0) {
 		const dir = tempDirs.pop();
@@ -192,6 +219,27 @@ describe("inspectDatabaseStartupLock", () => {
 		});
 	});
 
+	it("treats EPERM from the liveness probe as a live owner, not a dead one", () => {
+		const lockPath = databaseStartupLockPath(dataDir("eperm"));
+		const createdAt = new Date().toISOString();
+		writeLockFile(lockPath, { pid: 4242, createdAt });
+
+		// Signal 0 answers EPERM for a pid owned by another user: the process
+		// exists, only its delivery was denied. Reading that as "dead" made a
+		// live lock look stale.
+		const probe = withProcessKill(() => errnoError("EPERM"));
+		try {
+			expect(
+				inspectDatabaseStartupLock(lockPath, {
+					now: () => new Date(new Date(createdAt).getTime() + 1000),
+				}),
+			).toEqual({ held: true, stale: false, ownerPid: 4242 });
+		} finally {
+			probe.restore();
+		}
+		expect(probe.probes).toEqual([[4242, 0]]);
+	});
+
 	it("does not treat an unparseable createdAt as age-stale while the owner lives", () => {
 		const lockPath = databaseStartupLockPath(dataDir("baddate"));
 		writeLockFile(lockPath, { pid: 5, createdAt: "not-a-date" });
@@ -271,6 +319,36 @@ describe("acquireDatabaseStartupLock", () => {
 			pid: number;
 		};
 		expect(recorded.pid).toBe(process.pid);
+	});
+
+	it("refuses to steal a lock whose owner answers EPERM", () => {
+		const dir = dataDir("steal-eperm");
+		const lockPath = databaseStartupLockPath(dir);
+		const createdAt = new Date().toISOString();
+		writeLockFile(lockPath, { pid: 4242, createdAt });
+
+		// The owner exists under another user, so this process must not delete its
+		// lock and open a second writer on the same PGlite directory.
+		const probe = withProcessKill(() => errnoError("EPERM"));
+		try {
+			const result = acquireDatabaseStartupLock(dir, {
+				now: () => new Date(new Date(createdAt).getTime() + 1000),
+			});
+			expect(result.ok).toBe(false);
+			if (result.ok) throw new Error("expected held lock");
+			expect(result.error).toBe(`PGlite startup lock is held at ${lockPath}.`);
+			expect(result.snapshot).toEqual({
+				held: true,
+				stale: false,
+				ownerPid: 4242,
+			});
+		} finally {
+			probe.restore();
+		}
+		const recorded = JSON.parse(fs.readFileSync(lockPath, "utf8")) as {
+			pid: number;
+		};
+		expect(recorded.pid).toBe(4242);
 	});
 
 	it("steals a lock that is older than the stale window even if the owner is live", () => {

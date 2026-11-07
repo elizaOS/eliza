@@ -25,7 +25,7 @@ import {
   type SetupState,
   type SetupStatusResponse,
 } from "@elizaos/core";
-import type { Route, RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 
 const IMESSAGE_SERVICE_NAME = "imessage";
 /**

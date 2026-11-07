@@ -10,8 +10,8 @@ Tests cover:
 - Tick quality score calculation
 """
 
-from src.models import Action, LLMCall
-from src.training.quality_utils import (
+from eliza_training.rl.models import Action, LLMCall
+from eliza_training.rl.quality_utils import (
     ARCHETYPE_WEIGHTS,
     calculate_detailed_tick_quality,
     calculate_tick_quality_score,

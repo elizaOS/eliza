@@ -7,6 +7,7 @@
  * 3. User is added to the allowlist and can now send DMs
  */
 
+import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
 import {
 	type ApprovePairingParams,
@@ -26,7 +27,7 @@ import {
 } from "../types/pairing";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 /**
  * Fill `bytes` from the platform CSPRNG, failing closed when none exists.
@@ -139,8 +140,7 @@ export class PairingService extends Service {
 	/**
 	 * Generate a unique code that doesn't conflict with existing codes.
 	 */
-	private async generateUniqueCode(channel: PairingChannel): Promise<string> {
-		const existingRequests = await this.listPendingRequests(channel);
+	private generateUniqueCode(existingRequests: PairingRequest[]): string {
 		const existingCodes = new Set(
 			existingRequests.map((r) => r.code.toUpperCase()),
 		);
@@ -154,13 +154,6 @@ export class PairingService extends Service {
 		throw new Error(
 			"Failed to generate unique pairing code after 500 attempts",
 		);
-	}
-
-	/**
-	 * Check if a pairing request is expired.
-	 */
-	private isExpired(request: PairingRequest): boolean {
-		return this.isExpiredAt(request, Date.now());
 	}
 
 	private isExpiredAt(request: PairingRequest, now: number): boolean {
@@ -178,9 +171,10 @@ export class PairingService extends Service {
 	private cleanupExpiredRequests(requests: PairingRequest[]): PairingRequest[] {
 		const validRequests: PairingRequest[] = [];
 		const expiredIds: PairingRequest["id"][] = [];
+		const now = Date.now();
 
 		for (const request of requests) {
-			if (this.isExpired(request)) {
+			if (this.isExpiredAt(request, now)) {
 				expiredIds.push(request.id);
 			} else {
 				validRequests.push(request);
@@ -215,9 +209,7 @@ export class PairingService extends Service {
 			if (timeDifference !== 0) {
 				return timeDifference;
 			}
-			const aId = String(a.id);
-			const bId = String(b.id);
-			return aId === bId ? 0 : aId < bId ? 1 : -1;
+			return compareMemoryIds(b.id, a.id);
 		});
 	}
 
@@ -252,13 +244,7 @@ export class PairingService extends Service {
 		);
 	}
 
-	/**
-	 * List one bounded page of pending pairing requests, newest first.
-	 *
-	 * Existing {@link listPendingRequests} callers keep the legacy complete-array
-	 * contract. This page API is intended for operator surfaces and carries the
-	 * bounds into database adapters that support the extended batch query.
-	 */
+	/** Lists pending pairing requests newest first, carrying page bounds into supporting adapters. */
 	async listPendingRequestsPage(
 		channel: PairingChannel,
 		options: PairingPageOptions = {},
@@ -410,8 +396,9 @@ export class PairingService extends Service {
 			return { code: "", created: false, request: undefined };
 		}
 
-		// Generate a new unique code
-		const code = await this.generateUniqueCode(channel);
+		// Generate a code unique among this channel's pending requests (read above,
+		// inside the admission queue).
+		const code = this.generateUniqueCode(existingRequests);
 
 		// Create new request
 		const newRequest: PairingRequest = {

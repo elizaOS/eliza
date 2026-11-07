@@ -18,7 +18,7 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { WindowActionParams, WindowActionType } from "../types.js";
-import { resolveActionParams } from "./helpers.js";
+import { approvalOwnerIdFromMemory, resolveActionParams } from "./helpers.js";
 import { handleWindowOp } from "./window-handlers.js";
 
 const WINDOW_ACTIONS = [
@@ -70,15 +70,6 @@ function resolveWindowAction(
   );
 }
 
-function approvalOwnerIdFromMemory(message: Memory): string | undefined {
-  const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object") return undefined;
-  const telegramUserId = (metadata as Record<string, unknown>).telegramUserId;
-  return typeof telegramUserId === "string" && telegramUserId.length > 0
-    ? telegramUserId
-    : undefined;
-}
-
 export const windowAction: Action = {
   name: "WINDOW",
   contexts: ["screen_time", "automation"],
@@ -123,9 +114,12 @@ export const windowAction: Action = {
     },
     {
       name: "arrangement",
-      description: "For arrange: tile, cascade, vertical, horizontal.",
+      description: "For arrange: layout to apply. Default tile.",
       required: false,
-      schema: { type: "string" },
+      schema: {
+        type: "string",
+        enum: ["tile", "cascade", "vertical", "horizontal"],
+      },
     },
     {
       name: "x",
@@ -141,13 +135,15 @@ export const windowAction: Action = {
     },
     {
       name: "width",
-      description: "Window width for set_bounds.",
+      description:
+        "Window width for set_bounds. Give it together with height; omit both to move without resizing.",
       required: false,
       schema: { type: "number", minimum: 1 },
     },
     {
       name: "height",
-      description: "Window height for set_bounds.",
+      description:
+        "Window height for set_bounds. Give it together with width; omit both to move without resizing.",
       required: false,
       schema: { type: "number", minimum: 1 },
     },
@@ -183,6 +179,7 @@ export const windowAction: Action = {
       { ...params, action } as WindowActionParams,
       callback,
       { ownerId: approvalOwnerIdFromMemory(message) },
+      options?.abortSignal,
     );
   },
 

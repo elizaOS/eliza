@@ -5,16 +5,18 @@
  * tier and public registrations from the local-inference API.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
 import type {
   AgentModelSlot,
-  DeviceTierResult,
-  PublicRegistration,
+  LocalInferenceRegistration,
+} from "@elizaos/contracts";
+import type {
   RoutingPolicy,
   RoutingPreferences,
-} from "../../api/client-local-inference";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { DeviceTierResult } from "../../api/client-local-inference";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -95,7 +97,9 @@ const POLICIES: Array<{
 export function RoutingMatrix() {
   useRenderGuard("RoutingMatrix");
   const { t } = useTranslation();
-  const [registrations, setRegistrations] = useState<PublicRegistration[]>([]);
+  const [registrations, setRegistrations] = useState<
+    LocalInferenceRegistration[]
+  >([]);
   const [preferences, setPreferences] = useState<RoutingPreferences>({
     preferredProvider: {},
     policy: {},
@@ -340,7 +344,7 @@ export function RoutingMatrix() {
 interface RoutingSlotRowProps {
   slot: AgentModelSlot;
   label: string;
-  candidates: PublicRegistration[];
+  candidates: LocalInferenceRegistration[];
   policy: RoutingPolicy;
   preferred: string;
   disabled: boolean;

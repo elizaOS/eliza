@@ -10,10 +10,11 @@
  * To create a new app, copy this file and change the values below.
  */
 
-import type { AppConfig } from "@elizaos/core/config/app-config";
-import { EXTERNAL_URLS } from "@elizaos/core/config/public-endpoints";
+import type { AppConfig } from "@elizaos/host/protocol";
+import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 
 interface AppWebConfig {
+  startupLogoPath?: string;
   shortName: string;
   themeColor: string;
   backgroundColor: string;
@@ -64,6 +65,7 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       urlScheme: identity.urlScheme,
     },
     web: {
+      startupLogoPath: "/brand/logos/logo_white_nobg.svg",
       shortName: identity.appName,
       ...(vpsSidecar ? { iconBackgroundColor: "#202124" } : {}),
       // Launch/loading surface used by manifest theme_color + background_color,
@@ -82,7 +84,10 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       shareImagePath: "/brand/ogembeds/eliza_ogembed.png",
     },
     branding: {
+      supportEmail: "support@eliza.cloud",
       appName: identity.appName,
+      cloudName: "Eliza Cloud",
+      logoUrl: "/brand/logos/eliza_logotext.svg",
       orgName: "elizaos",
       repoName: "eliza",
       docsUrl: EXTERNAL_URLS.docs,

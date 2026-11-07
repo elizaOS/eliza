@@ -9,21 +9,21 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { Hono } from "hono";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
-import { requireRecentSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireRecentSessionUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   getRequestIp,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AccountDeletionExportError,
   collectPortableAccountDeletionExport,
-} from "@/lib/services/account-deletion-export";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/account-deletion-export";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 interface DataExportDependencies {
   collect: typeof collectPortableAccountDeletionExport;

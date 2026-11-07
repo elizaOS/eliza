@@ -171,14 +171,29 @@ function buildDirectConversationRoomIdFromIds(
   return hashToUuid(`room:${agentId}:${platform}:${normalized}`);
 }
 
+type MediaAttachmentType = "image" | "audio" | "video" | "document";
+
+/**
+ * The attachment type for a provider-reported MIME type. An unknown type stays
+ * "image", the type every inbound media URL had before providers reported one.
+ */
+function mediaAttachmentType(mimeType?: string): MediaAttachmentType {
+  const mime = mimeType?.split(";")[0]?.trim().toLowerCase();
+  if (!mime || mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return "document";
+}
+
 function buildMediaAttachments(
   mediaUrls?: string[],
-): Array<{ type: "image"; url: string }> | undefined {
+  mediaTypes?: string[],
+): Array<{ type: MediaAttachmentType; url: string }> | undefined {
   if (!mediaUrls?.length) {
     return undefined;
   }
-  return mediaUrls.map((url) => ({
-    type: "image" as const,
+  return mediaUrls.map((url, index) => ({
+    type: mediaAttachmentType(mediaTypes?.[index]),
     url,
   }));
 }
@@ -866,6 +881,8 @@ export class AgentGatewayRouterService {
     body: string;
     providerMessageId?: string;
     mediaUrls?: string[];
+    /** MIME type of each entry in `mediaUrls`, when the provider reports it. */
+    mediaTypes?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<AgentGatewayRouteResult> {
     let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolvePhoneTarget"]>>;
@@ -978,7 +995,7 @@ export class AgentGatewayRouterService {
         : (resolved.target.sandbox?.id ?? "unknown-agent");
     const normalizedFrom = normalizePhoneNumber(args.from);
     const normalizedTo = normalizePhoneNumber(args.to);
-    const attachments = buildMediaAttachments(args.mediaUrls);
+    const attachments = buildMediaAttachments(args.mediaUrls, args.mediaTypes);
     const rpcRequest: BridgeRequest = {
       jsonrpc: "2.0",
       id: randomUUID(),

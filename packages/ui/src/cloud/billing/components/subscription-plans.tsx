@@ -77,7 +77,9 @@ function dropReturnedSessionId() {
   }
 }
 
-function assertStripeCheckoutUrl(value: string): string {
+function assertStripeCheckoutUrl(value: string | null): string {
+  if (typeof value !== "string")
+    throw new Error("Checkout returned an invalid destination.");
   const url = new URL(value);
   if (
     url.protocol !== "https:" ||

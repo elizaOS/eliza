@@ -1,13 +1,10 @@
-# mobilefacenet.cpp — Phase 3 planned port
+# mobilefacenet.cpp — planned ggml port
 
 ggml port of MobileFaceNet for 128-d face embeddings.
 
-**Status: planned.** See `plugins/plugin-vision/VISION_RUNTIME_MIGRATION.md`
-("Phase 3 plan" / "MobileFaceNet (face embedding)") for the conversion strategy.
-
-Replaces `face-api.js::faceRecognitionNet` (Inception/ResNet variant).
+**Status: planned.** The runtime embedding path today is
+`src/face-recognition-ggml.ts`. It makes 128-d L2-normalized embeddings and
+has no face-api.js fallback. Its `euclideanDistance` compare logic is reusable
+as-is; only the model load and forward pass differ.
 
 Reference checkpoint: `deepinsight/insightface` MobileFaceNet weights, MIT.
-
-The embedding-compare logic in `src/face-recognition.ts::euclideanDistance`
-is reusable as-is; only the model load + forward pass need replacing.

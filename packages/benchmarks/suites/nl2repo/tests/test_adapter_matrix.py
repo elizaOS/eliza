@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-from benchmarks.nl2repo.adapter_matrix import (
+from benchmarks.suites.nl2repo.adapter_matrix import (
     NL2RepoTask,
     count_tasks,
     expand_tasks,
@@ -13,7 +12,7 @@ from benchmarks.nl2repo.adapter_matrix import (
     token_metrics_from_usage,
     validate_tasks,
 )
-from benchmarks.orchestrator.code_agent_matrix import collect_token_metrics
+from benchmarks.orchestrator.code_agent_execution import collect_token_metrics
 
 
 def test_load_tasks_reads_canonical_metadata() -> None:
@@ -31,7 +30,11 @@ def test_expand_tasks_adds_ten_edge_variants_per_base_task() -> None:
 
     expanded = expand_tasks(tasks, expand_scenarios=True)
 
-    assert count_tasks(tasks, expand_scenarios=True) == {"base": 1, "edge": 10, "total": 11}
+    assert count_tasks(tasks, expand_scenarios=True) == {
+        "base": 1,
+        "edge": 10,
+        "total": 11,
+    }
     assert len(expanded) == 11
     assert expanded[0].name == tasks[0].name
     assert expanded[1].name.endswith("__edge_01")

@@ -62,6 +62,7 @@ import {
   makeComputerInterface,
 } from "../actor/computer-interface.js";
 import { dispatch } from "../actor/dispatch.js";
+import type { BrainActionKind } from "../actor/types.js";
 import {
   captureAllDisplays,
   type DisplayCapture,
@@ -73,10 +74,11 @@ import {
   assertComputerUseTrajectoryText,
   buildComputerUseAgentStepTrajectoryPayload,
 } from "../trajectory-text.js";
-import { resolveActionParams } from "./helpers.js";
+import { approvalOwnerIdFromMemory, resolveActionParams } from "./helpers.js";
 import {
   buildStepProgressContent,
   isStreamProgressEnabled,
+  withApprovalRelay,
 } from "./progress.js";
 
 const DEFAULT_MAX_STEPS = 5;
@@ -187,6 +189,24 @@ export function formatComputerUseAgentProgress(
     ? ""
     : ` (failed: ${normalizeForStatus(progress.result.error ?? "unknown")})`;
   return `Step ${progress.step}/${progress.maxSteps}: ${progress.actionKind} - ${rationale}${failure}`;
+}
+
+/**
+ * Approval command for a proposed step: the same name USE_COMPUTER gates the
+ * identical input under. `wait` and `finish` touch nothing and need no approval.
+ */
+function agentApprovalCommand(kind: BrainActionKind): string | null {
+  switch (kind) {
+    case "wait":
+    case "finish":
+      return null;
+    case "key":
+      return "key_press";
+    case "hotkey":
+      return "key_combo";
+    default:
+      return kind;
+  }
 }
 
 function getService(runtime: IAgentRuntime): ComputerUseService | null {
@@ -375,6 +395,19 @@ export async function runComputerUseAgentLoop(
       report.error =
         "repeated action on an unchanged screen was blocked; fresh owner intent is required";
       return finalize();
+    }
+    const approvalCommand = agentApprovalCommand(proposed.proposed.kind);
+    if (approvalCommand) {
+      const approvalError = await service.awaitApproval(
+        approvalCommand,
+        { ...proposed.proposed },
+        params.signal,
+      );
+      if (approvalError) {
+        report.reason = params.signal?.aborted ? "cancelled" : "error";
+        report.error = approvalError;
+        return finalize();
+      }
     }
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
@@ -628,13 +661,28 @@ export const computerUseAgentAction: Action = {
         error: "ComputerUseService not available",
       };
     }
-    const report = await runComputerUseAgentLoop(runtime, params, service, {
-      onCompactStepProgress: callback
-        ? async (content) => {
-            await callback(content, "COMPUTER_USE_AGENT");
-          }
-        : undefined,
-    });
+    // The host signal is spread last so a model-supplied `signal` key cannot
+    // replace the turn's cancellation.
+    // The relay stays subscribed for the whole loop, so each step's pending
+    // approval reaches the chat with Approve/Deny controls.
+    const report = await withApprovalRelay(
+      service,
+      callback,
+      () =>
+        runComputerUseAgentLoop(
+          runtime,
+          { ...params, signal: options?.abortSignal },
+          service,
+          {
+            onCompactStepProgress: callback
+              ? async (content) => {
+                  await callback(content, "COMPUTER_USE_AGENT");
+                }
+              : undefined,
+          },
+        ),
+      { ownerId: approvalOwnerIdFromMemory(message) },
+    );
     const text =
       report.reason === "finish"
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`

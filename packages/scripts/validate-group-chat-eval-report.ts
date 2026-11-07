@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
-/** Validates complete, independently judged group-chat scenario evidence. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+/** Validates complete, independently judged group-chat scenario evidence. */
+import { listScenarioMetadata } from "@elizaos/testing/scenarios";
 
 interface ValidationOptions {
   report: string;
@@ -78,16 +79,6 @@ function parseAggregate(value: unknown): AggregateReport {
   };
 }
 
-function scenarioFiles(directory: string): string[] {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) return scenarioFiles(target);
-    return entry.isFile() && entry.name.endsWith(".scenario.ts")
-      ? [target]
-      : [];
-  });
-}
-
 function artifactReports(directory: string): string[] {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -97,16 +88,20 @@ function artifactReports(directory: string): string[] {
   });
 }
 
-export function validateGroupChatEvalReport(options: ValidationOptions): {
+export async function validateGroupChatEvalReport(
+  options: ValidationOptions,
+): Promise<{
   provider: string;
   total: number;
   passed: number;
   failed: number;
-} {
+}> {
   const aggregate = parseAggregate(
     JSON.parse(fs.readFileSync(options.report, "utf8")),
   );
-  const expectedTotal = scenarioFiles(options.scenarioDir).length;
+  const expected = await listScenarioMetadata(options.scenarioDir);
+  const expectedIds = new Set(expected.map(({ id }) => id));
+  const expectedTotal = expected.length;
   const retainedReports = artifactReports(options.artifactsDir);
   const ids = new Set(aggregate.scenarios.map(({ id }) => id));
   const summedTotal = aggregate.totals.passed + aggregate.totals.failed;
@@ -123,6 +118,8 @@ export function validateGroupChatEvalReport(options: ValidationOptions): {
     aggregate.scenarios.length !== expectedTotal ||
     retainedReports.length !== expectedTotal ||
     ids.size !== expectedTotal ||
+    expectedIds.size !== expectedTotal ||
+    [...ids].some((id) => !expectedIds.has(id)) ||
     aggregate.totals.skipped !== 0 ||
     summedTotal !== expectedTotal
   ) {
@@ -162,6 +159,6 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     );
   }
   process.stdout.write(
-    `${JSON.stringify(validateGroupChatEvalReport({ report, artifactsDir, scenarioDir, provider }))}\n`,
+    `${JSON.stringify(await validateGroupChatEvalReport({ report, artifactsDir, scenarioDir, provider }))}\n`,
   );
 }

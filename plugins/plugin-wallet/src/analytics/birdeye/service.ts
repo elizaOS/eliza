@@ -300,7 +300,7 @@ export class BirdeyeService extends Service {
     const BATCH_SIZE = 20; // max birdeye allows
     const TOTAL = options?.total ?? 100;
     const OFFSETS = Array.from(
-      { length: TOTAL / BATCH_SIZE },
+      { length: Math.ceil(TOTAL / BATCH_SIZE) },
       (_, i) => i * BATCH_SIZE,
     );
 
@@ -311,6 +311,13 @@ export class BirdeyeService extends Service {
           `${this.birdeyeUrl("defi/token_trending")}?sort_by=rank&sort_type=asc&offset=${offset}&limit=${BATCH_SIZE}`,
           birdeyeFetchOptions,
         );
+        // A rejected page is an outage, not an empty ranking. Losing the status
+        // here made every page failure collapse into "no trending tokens".
+        if (!res.ok) {
+          throw new Error(
+            `Birdeye trending request failed with HTTP ${res.status}`,
+          );
+        }
         const resp = await res.json();
         const data = resp?.data;
 
@@ -349,6 +356,15 @@ export class BirdeyeService extends Service {
       }),
     );
 
+    const failures = settled.filter(
+      (r): r is PromiseRejectedResult => r.status === "rejected",
+    );
+    // Every page failed: report the outage. Caching an empty list here would
+    // serve "no trending tokens" for the rest of the TTL and hide the failure.
+    if (failures.length === settled.length) {
+      const reason = failures[0]?.reason;
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    }
     const fetched = settled
       .filter(
         (r): r is PromiseFulfilledResult<IToken[]> => r.status === "fulfilled",
@@ -362,10 +378,18 @@ export class BirdeyeService extends Service {
         byKey.set(key, t);
       }
     }
-    const merged = Array.from(byKey.values());
+    const merged = Array.from(byKey.values()).slice(0, TOTAL);
 
-    // Save to cache (ignore cache errors; don’t block the return path)
     const output = { data: merged, setAt: Date.now() };
+    // A partial page set is a truncated ranking: return it, but do not store it
+    // as the authoritative list for the whole TTL.
+    if (failures.length > 0) {
+      this.runtime.logger.warn(
+        `birdeye:getTrendingTokensForChain(${validatedChain}) - ${failures.length}/${settled.length} pages failed; not caching`,
+      );
+      return output;
+    }
+    // Save to cache (ignore cache errors; don’t block the return path)
     try {
       await this.runtime.setCache<CacheWrapper<IToken[]>>(cacheKey, output);
     } catch (e) {
@@ -474,7 +498,7 @@ export class BirdeyeService extends Service {
     options: GetCacheTimedOptions = {},
   ): Promise<TokenTradeDataSingleResponse | false> {
     const key = `birdeye_tokenTradeData_${chain}_${tokenAddress}_${frames}`;
-    const tsInMs = options.tsInMs ?? CACHE_DEFAULTS.TOKEN_TRADE_DATA_TTL;
+    const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_TRADE_DATA_TTL;
 
@@ -668,7 +692,7 @@ export class BirdeyeService extends Service {
     options: GetCacheTimedOptions = {},
   ): Promise<TokenSecurityResponse | false> {
     const key = `birdeye_tokenSecurityData_${chain}_${tokenAddress}`;
-    const tsInMs = options.tsInMs ?? CACHE_DEFAULTS.TOKEN_SECURITY_DATA_TTL;
+    const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_SECURITY_DATA_TTL;
 

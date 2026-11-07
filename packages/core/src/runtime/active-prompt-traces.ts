@@ -1,10 +1,8 @@
 /** Owns in-flight prompt optimization traces and their run-indexed enrichment lifecycle.
  * Each runtime has its own store; persistence remains with registered optimization hooks. */
-import { ScoreCard } from "../types/prompt-optimization-score-card";
-import type {
-	ExecutionTrace,
-	ScoreSignal,
-} from "../types/prompt-optimization-trace";
+
+import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization";
+import { ScoreCard } from "../prompt-optimization";
 export class ActivePromptTraces {
 	private activeTraces = new Map<string, ExecutionTrace>();
 	private runToTraces = new Map<string, Set<string>>();
@@ -12,7 +10,7 @@ export class ActivePromptTraces {
 		const traceIds = this.runToTraces.get(runId);
 		if (!traceIds) return;
 
-		const targetTraceId = (signal as { traceId?: string }).traceId;
+		const targetTraceId = signal.traceId;
 
 		for (const tid of traceIds) {
 			if (targetTraceId && tid !== targetTraceId) continue;
@@ -85,10 +83,9 @@ export class ActivePromptTraces {
 		const runId = trace.runId;
 		if (runId) {
 			this.activeTraces.set(trace.id, trace);
-			if (!this.runToTraces.has(runId)) {
-				this.runToTraces.set(runId, new Set());
-			}
-			this.runToTraces.get(runId)?.add(trace.id);
+			const traceIds = this.runToTraces.get(runId);
+			if (traceIds) traceIds.add(trace.id);
+			else this.runToTraces.set(runId, new Set([trace.id]));
 		}
 	}
 }

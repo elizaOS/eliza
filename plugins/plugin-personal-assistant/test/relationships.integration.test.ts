@@ -10,6 +10,7 @@ import type {
   IAgentRuntime,
   Plugin,
 } from "@elizaos/core";
+import { RelationshipsService } from "@elizaos/plugin-assistant";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
@@ -37,7 +38,8 @@ const knowledgeGraphPlugin: Plugin = {
   name: "eliza",
   description: "Test-only knowledge-graph schema + service registration.",
   schema: knowledgeGraphSchema,
-  services: [KnowledgeGraphService],
+  // The identity-merge fixtures resolve the "relationships" service.
+  services: [KnowledgeGraphService, RelationshipsService],
   actions: [entityAction],
 };
 
@@ -55,11 +57,14 @@ function handler() {
   return entityAction.handler;
 }
 
+// This runtime has no reply model, so the action keeps its receipt but
+// publishes no user-facing text or user-facing receipt ids.
 function receipt(result: ActionResult | undefined): EffectReceipt {
   expect(result?.effectReceipts).toHaveLength(1);
   const value = result?.effectReceipts?.[0];
   if (!value) throw new Error("Expected one entity effect receipt");
-  expect(result?.userFacingEffectReceiptIds).toEqual([value.receiptId]);
+  expect(result?.transcriptVisibility).toBe("internal");
+  expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   return value;
 }
 
@@ -110,6 +115,37 @@ describe("relationships handler — real PGLite", () => {
       ),
     ).toBeTruthy();
     expect(await service.getDaysSinceContact(relationship.id)).toBe(0);
+  });
+
+  it("updates the existing edge when ENTITY set_relationship restates it", async () => {
+    const toEntityId = `ent_${crypto.randomUUID()}`;
+    const restate = (evidence: string) =>
+      handler()(
+        runtime,
+        makeMessage(runtime, "Pat is my manager") as never,
+        undefined,
+        {
+          parameters: {
+            subaction: "set_relationship",
+            toEntityId,
+            relationshipType: "manages",
+            evidence,
+          },
+        } as never,
+        async () => {},
+      );
+
+    const first = await restate("first chat");
+    const second = await restate("second chat");
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    const relationships = await new LifeOpsRepository(
+      runtime,
+    ).relationshipStore(runtime.agentId);
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
   });
 
   it("keeps supported ENTITY writes receipt-backed", async () => {

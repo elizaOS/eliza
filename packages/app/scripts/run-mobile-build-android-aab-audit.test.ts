@@ -8,10 +8,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { ElizaError as CoreElizaError } from "@elizaos/core/protocol";
 import { unzipSync, zipSync } from "fflate";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { ElizaError as CoreElizaError } from "../../core/src/errors.ts";
 
 import {
   ANDROID_AAB_AUDIT_TIMEOUT_MS,

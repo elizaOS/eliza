@@ -1,0 +1,9 @@
+import ts from "typescript";
+import {expect,test}from "vitest";import{readFileSync}from'node:fs';
+const source=readFileSync(new URL('../models/text.ts',import.meta.url),'utf8');
+const snippet=(first:string,next:string)=>source.slice(source.indexOf(first),source.indexOf(next,source.indexOf(first)));
+const helpers=snippet('function isRecord(','function firstNumber(')+snippet('function resolvePromptCacheKey(','function resolveNativeProviderOptions(');
+const select=new Function(ts.transpileModule(helpers, {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText+';return resolvePromptCacheKey;')();
+test('verified Cerebras target selects scoped workflow key before generic hints',()=>{const input={promptCacheKey:'top',eliza:{promptCacheKey:'generic'},cerebras:{promptCacheKey:'workflow-scoped',prompt_cache_key:'snake'}};expect(select(input,'qwen-3.8-27b')).toBe('workflow-scoped');expect(input.cerebras.prompt_cache_key).toBe('snake');});
+test('Cerebras snake key fallback and no valid scoped key keep existing generic fallback',()=>{expect(select({eliza:{promptCacheKey:'generic'},cerebras:{prompt_cache_key:'snake'}},'qwen-3.8-27b')).toBe('snake');expect(select({promptCacheKey:'top',eliza:{promptCacheKey:'generic'},cerebras:{promptCacheKey:0,prompt_cache_key:' '}},'qwen-3.8-27b')).toBe('top');expect(select({eliza:{promptCacheKey:'generic'}},'qwen-3.8-27b')).toBe('generic');});
+test('all other models retain preexisting candidate precedence and provider fallback',()=>{for(const model of ['openai/gpt-4o','gemma-4-31b',undefined]){expect(select({promptCacheKey:'top',eliza:{promptCacheKey:'generic'},cerebras:{promptCacheKey:'scoped'}},model)).toBe('top');expect(select({eliza:{promptCacheKey:'generic'},cerebras:{promptCacheKey:'scoped'}},model)).toBe('generic');expect(select({cerebras:{promptCacheKey:'scoped'}},model)).toBe('scoped');}});

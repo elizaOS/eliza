@@ -3,7 +3,12 @@
  * Discord bot before they can enter the ordinary agent message path.
  */
 
-const LINK_CODE_PATTERN = /\bLINK-([A-HJ-NP-Z2-9]{8})\b/i;
+// The class must match the canonical recognizer in the shared gateway
+// common module and the generator's alphabet: L is excluded by design
+// (confusable with 1), so no minted code can contain it. A single J-N
+// range here would include L and intercept messages the webhook path
+// correctly leaves alone.
+const LINK_CODE_PATTERN = /\bLINK-([A-HJ-KM-NP-Z2-9]{8})\b/i;
 const CONFIRM_TIMEOUT_MS = 15_000;
 
 export interface DiscordIdentityLinkDeps {

@@ -1,4 +1,4 @@
-import { splitMessageLosslessly } from "./message-chunking";
+import { chunkMarkdownText } from "@elizaos/core";
 
 /**
  * Discord Utility Functions
@@ -80,10 +80,11 @@ export function isTextChannel(type: number): boolean {
 }
 
 /**
- * Split long messages for Discord's 2000 char limit
+ * Split long messages for Discord's 2000 char limit. A code block cut between
+ * messages is closed and reopened so each message renders.
  */
 export function splitMessage(text: string, maxLength = 2000): string[] {
-  return splitMessageLosslessly(text, maxLength);
+  return chunkMarkdownText(text, maxLength);
 }
 
 /**

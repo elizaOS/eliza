@@ -21,7 +21,7 @@ const APP_CORE_ROOT = path.join(REPO_ROOT, "packages", "app");
 const SCRIPT = path.join(
 	APP_CORE_ROOT,
 	"scripts",
-	"voice-preset",
+	"voice",
 	"build-default-voice-preset.ts",
 );
 const MAX_PLACEHOLDER_DIM = 1_073_741_817;

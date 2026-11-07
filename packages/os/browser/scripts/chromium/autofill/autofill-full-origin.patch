@@ -1,0 +1,65 @@
+--- a/components/android_autofill/browser/java/src/org/chromium/components/autofill/FormData.java
++++ b/components/android_autofill/browser/java/src/org/chromium/components/autofill/FormData.java
+@@ -33,6 +33,7 @@
+     public final int mSessionId;
+     public final String mName;
+     public final String mHost;
++    public final String mMainFrameOrigin;
+     public final List<FormFieldData> mFields;
+ 
+     @VisibleForTesting
+@@ -41,14 +42,21 @@
+             int sessionId,
+             @JniType("std::u16string") String name,
+             @JniType("std::string") String origin,
++            @JniType("std::string") String mainFrameOrigin,
+             @JniType("std::vector") List<FormFieldData> fields) {
+-        return new FormData(sessionId, name, origin, fields);
++        return new FormData(sessionId, name, origin, fields, mainFrameOrigin);
+     }
+ 
+     public FormData(int sessionId, String name, String host, List<FormFieldData> fields) {
++        this(sessionId, name, host, fields, "");
++    }
++
++    public FormData(int sessionId, String name, String host, List<FormFieldData> fields,
++            String mainFrameOrigin) {
+         mSessionId = sessionId;
+         mName = name;
+         mHost = host;
++        mMainFrameOrigin = mainFrameOrigin;
+         mFields = fields;
+     }
+ 
+@@ -60,6 +68,11 @@
+      */
+     public void fillViewStructure(ViewStructure structure, short focusFieldIndex) {
+         structure.setWebDomain(mHost);
++        // Browser-process origins survive Android's scheme/host-only setWebDomain.
++        // Never derive these values from DOM attributes or the form action URL.
++        structure.getExtras().putInt("ai.elizaresearch.autofill.version", 1);
++        structure.getExtras().putString("ai.elizaresearch.autofill.origin", mHost);
++        structure.getExtras().putString("ai.elizaresearch.autofill.topOrigin", mMainFrameOrigin);
+         structure.setHtmlInfo(
+                 structure.newHtmlInfoBuilder("form").addAttribute("name", mName).build());
+         int index = structure.addChildCount(mFields.size());
+@@ -77,6 +90,7 @@
+             }
+             child.setHint(field.mPlaceholder);
+             child.setWebDomain(field.mOrigin);
++            child.getExtras().putString("ai.elizaresearch.autofill.fieldOrigin", field.mOrigin);
+ 
+             RectF bounds = field.getBoundsInContainerViewCoordinates();
+             // Field has no scroll.
+--- a/components/android_autofill/browser/form_data_android_bridge_impl.cc
++++ b/components/android_autofill/browser/form_data_android_bridge_impl.cc
+@@ -46,7 +46,8 @@
+   ScopedJavaLocalRef<jobject> obj = Java_FormData_createFormData(
+       env, session_id.value(), form.name(),
+       /*origin=*/
+-      form.url().DeprecatedGetOriginAsURL().spec(), android_objects);
++      form.url().DeprecatedGetOriginAsURL().spec(),
++      form.main_frame_origin().Serialize(), android_objects);
+   java_ref_ = JavaObjectWeakGlobalRef(env, obj);
+   return obj;
+ }

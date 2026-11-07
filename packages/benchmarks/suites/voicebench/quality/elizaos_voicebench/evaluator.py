@@ -31,24 +31,7 @@ log = logging.getLogger("elizaos_voicebench.evaluator")
 
 # --- MCQ ---
 
-_LETTER_OPTIONS = ("A", "B", "C", "D")
-_LETTER_RE = re.compile(r"\b([A-D])\b")
-
-
-def extract_letter(text: str) -> str | None:
-    """Pull the first A/B/C/D letter out of a candidate response.
-
-    Mirrors the MMLU adapter's extraction so the two MCQ-style scorers
-    agree on edge cases (e.g. "B." / "B)" / "the answer is C").
-    """
-
-    if not text:
-        return None
-    stripped = text.strip().upper()
-    if stripped[:1] in _LETTER_OPTIONS:
-        return stripped[:1]
-    match = _LETTER_RE.search(stripped)
-    return match.group(1) if match else None
+from benchmarks.lib import extract_choice_letter as extract_letter
 
 
 def score_mcq(sample: Sample, candidate: str) -> SampleScore:

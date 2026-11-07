@@ -1,151 +1,13 @@
 import MarkdownIt from "markdown-it";
+import { looksLikeStageDirection } from "./stage-directions.js";
 
 /**
  * Cleans assistant text for display by detecting and stripping roleplay stage
- * directions (`*beams*`, `*blushes*`, etc.). The leading-word set gates which
- * asterisk-wrapped spans are treated as stage directions rather than emphasis,
- * while Markdown code is preserved byte-for-byte.
+ * directions (`*beams*`, `*blushes*`, `*smiles warmly*`). A leading verb is not
+ * enough: `*look at the stack trace*` and `*looks correct*` are instructions
+ * and must stay. Only a bare action, plus a light modifier, is removed.
+ * Markdown code is preserved byte-for-byte.
  */
-const STAGE_DIRECTION_FIRST_WORDS = new Set([
-	"beam",
-	"beams",
-	"beaming",
-	"blink",
-	"blinks",
-	"blinking",
-	"blush",
-	"blushes",
-	"blushing",
-	"bow",
-	"bows",
-	"bowing",
-	"breathe",
-	"breathes",
-	"breathing",
-	"cheer",
-	"cheers",
-	"cheering",
-	"chuckle",
-	"chuckles",
-	"chuckling",
-	"clap",
-	"claps",
-	"clapping",
-	"cry",
-	"cries",
-	"crying",
-	"curtsy",
-	"curtsies",
-	"curtsying",
-	"dance",
-	"dances",
-	"dancing",
-	"frown",
-	"frowns",
-	"frowning",
-	"gasp",
-	"gasps",
-	"gasping",
-	"gesture",
-	"gestures",
-	"gesturing",
-	"giggle",
-	"giggles",
-	"giggling",
-	"glance",
-	"glances",
-	"glancing",
-	"grin",
-	"grins",
-	"grinning",
-	"laugh",
-	"laughs",
-	"laughing",
-	"lean",
-	"leans",
-	"leaning",
-	"look",
-	"looks",
-	"looking",
-	"nod",
-	"nods",
-	"nodding",
-	"pause",
-	"pauses",
-	"pausing",
-	"point",
-	"points",
-	"pointing",
-	"pose",
-	"poses",
-	"posing",
-	"pout",
-	"pouts",
-	"pouting",
-	"raise",
-	"raises",
-	"raising",
-	"shrug",
-	"shrugs",
-	"shrugging",
-	"sigh",
-	"sighs",
-	"sighing",
-	"smile",
-	"smiles",
-	"smiling",
-	"smirk",
-	"smirks",
-	"smirking",
-	"spin",
-	"spins",
-	"spinning",
-	"stare",
-	"stares",
-	"staring",
-	"stretch",
-	"stretches",
-	"stretching",
-	"sway",
-	"sways",
-	"swaying",
-	"tilt",
-	"tilts",
-	"tilting",
-	"wave",
-	"waves",
-	"waving",
-	"whisper",
-	"whispers",
-	"whispering",
-	"wink",
-	"winks",
-	"winking",
-	"yawn",
-	"yawns",
-	"yawning",
-]);
-
-function collapseInlineWhitespace(input: string): string {
-	return input.replace(/[ \t]+/g, " ").trim();
-}
-
-function looksLikeStageDirection(input: string): boolean {
-	const normalized = collapseInlineWhitespace(input).trim();
-	if (!normalized || normalized.length > 100) return false;
-
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ASCII-range check to reject non-ASCII input
-	if (/[^\x00-\x7F]/.test(normalized)) {
-		return false;
-	}
-
-	const wordMatch = normalized.match(/^[^\w]*([A-Za-z]+)/);
-	if (!wordMatch) return false;
-
-	const firstWord = wordMatch[1].toLowerCase();
-	return STAGE_DIRECTION_FIRST_WORDS.has(firstWord);
-}
-
 function stripWrappedStageDirections(input: string, pattern: RegExp): string {
 	return input.replace(
 		pattern,
@@ -237,6 +99,30 @@ function normalizeInlineParagraph(input: string): string {
 	return output;
 }
 
+// Indentation and quote markers that open each line place a paragraph in its
+// list item or blockquote. Chat bubbles render this text with `white-space:
+// pre-wrap`, so normalize only the prose after them and keep them byte-for-byte.
+function normalizeContainedParagraph(source: string): string {
+	const lines = source.split(/(\r\n|\r|\n)/);
+	const prefixes: string[] = [];
+	for (let index = 0; index < lines.length; index += 2) {
+		const prefix = /^(?:[ \t]*>)*[ \t]*/.exec(lines[index])?.[0] ?? "";
+		prefixes.push(prefix);
+		lines[index] = lines[index].slice(prefix.length);
+	}
+	const prose = lines.join("");
+	const normalized = normalizeInlineParagraph(prose);
+	if (normalized === prose) return source;
+	const output = normalized.split(/(\r\n|\r|\n)/);
+	// Parenthesis cleanup can join lines. Later prefixes then have no line to
+	// return to, but the first line still opens the paragraph.
+	if (output.length !== lines.length) return prefixes[0] + normalized;
+	for (let index = 0; index < output.length; index += 2) {
+		output[index] = prefixes[index / 2] + output[index];
+	}
+	return output.join("");
+}
+
 function tryParseObject(input: string): Record<string, unknown> | null {
 	try {
 		const parsed = JSON.parse(input);
@@ -319,7 +205,7 @@ function getSimpleReplyValue(value: Record<string, unknown>): string | null {
  * plain text. Local models can emit tool arguments as text when function-call
  * transport is unavailable, for example:
  *
- *   "RESPOND", "contexts": ["simple"], "replyText": "Hello"
+ * "RESPOND", "contexts": ["simple"], "replyText": "Hello"
  *
  * That string is valid object content once the first value is named
  * `shouldRespond`, so parse that shape without touching ordinary chat text.
@@ -390,7 +276,7 @@ export function stripAssistantStageDirections(input: string): string {
 		// intervening block syntax rather than pairing backticks across blocks.
 		output += input.slice(offset, start);
 		const source = input.slice(start, end);
-		output += isCode ? source : normalizeInlineParagraph(source);
+		output += isCode ? source : normalizeContainedParagraph(source);
 		offset = end;
 	}
 	output += input.slice(offset);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import { test } from "node:test";
 import { probeAndroidHealth } from "../android/runtime-health.ts";
-import { androidSocketFetch } from "../aosp/lib/android-socket-fetch.ts";
+import { androidSocketFetch } from "../android/android-socket-fetch.ts";
 
 test("health probe uses the authenticated NDJSON bridge and removes only its own serial-bound forward", async (t) => {
   const server = net.createServer((socket) => {

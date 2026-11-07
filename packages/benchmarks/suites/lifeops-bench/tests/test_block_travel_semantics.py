@@ -14,7 +14,7 @@ import pytest
 from eliza_lifeops_bench.corpus_audit import build_corpus_audit
 from eliza_lifeops_bench.lifeworld.entities import FocusBlock, TravelHold
 from eliza_lifeops_bench.lifeworld.world import LifeWorld
-from eliza_lifeops_bench.runner import _execute_action
+from eliza_lifeops_bench.lifeworld.executor import _execute_action
 from eliza_lifeops_bench.types import Action
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]

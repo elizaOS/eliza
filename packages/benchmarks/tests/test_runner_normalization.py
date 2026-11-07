@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))  # so `benchmarks.orchestrator...` resolves
 
-from orchestrator.trajectory_normalize_hook import normalize_outcome_trajectories  # noqa: E402
+from benchmarks.orchestrator.trajectory_normalize_hook import (
+    normalize_outcome_trajectories,
+)  # noqa: E402
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -59,7 +61,9 @@ def test_normalize_eliza_writes_canonical(tmp_path: Path) -> None:
     assert path is not None
     assert path.name == "trajectory.canonical.jsonl"
 
-    raw_lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    raw_lines = [
+        ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()
+    ]
     parsed = [json.loads(ln) for ln in raw_lines]
     assert all(row["agent_id"] == "eliza" for row in parsed)
     assert all(row["benchmark_id"] == "bfcl" for row in parsed)
@@ -116,7 +120,12 @@ def test_normalize_hermes_samples_jsonl(tmp_path: Path) -> None:
                         "from": "gpt",
                         "value": "",
                         "tool_calls": [
-                            {"function": {"name": "x", "arguments": json.dumps({"a": 1})}}
+                            {
+                                "function": {
+                                    "name": "x",
+                                    "arguments": json.dumps({"a": 1}),
+                                }
+                            }
                         ],
                     },
                 ],
@@ -153,7 +162,9 @@ def test_normalize_hermes_samples_jsonl(tmp_path: Path) -> None:
     assert parsed[1]["response"]["text"] == "done"
 
 
-def test_normalize_no_matching_artifacts_leaves_output_unchanged(tmp_path: Path) -> None:
+def test_normalize_no_matching_artifacts_leaves_output_unchanged(
+    tmp_path: Path,
+) -> None:
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     # Drop an unrelated file in.

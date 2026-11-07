@@ -10,27 +10,25 @@
  * contract surface the client + task-coordinator depend on.
  */
 
-import {
-  type CreateLifeOpsCalendarEventRequest,
-  type CreateLifeOpsIcsCalendarSourceRequest,
-  type CreateLifeOpsLinkedCalendarLinkRequest,
-  type DisconnectLifeOpsLinkedCalendarRequest,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEventUpdate,
-  type LifeOpsCalendarRecurrenceScope,
-  type ListLifeOpsCalendarsRequest,
-  type PurgeLifeOpsCalendarImportedDataRequest,
-  type RebindLifeOpsLinkedCalendarRequest,
-  type ResolveLifeOpsLinkedCalendarConflictRequest,
-  type RunLifeOpsLinkedCalendarReconciliationRequest,
-  type SeedLifeOpsCalendarRequest,
-  type SetLifeOpsCalendarIncludedRequest,
-  type UpdateLifeOpsIcsCalendarSourceRequest,
-} from "@elizaos/core/contracts/calendar";
-import {
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsIcsCalendarSourceRequest,
+  CreateLifeOpsLinkedCalendarLinkRequest,
+  DisconnectLifeOpsLinkedCalendarRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEventUpdate,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
+  ResolveLifeOpsLinkedCalendarConflictRequest,
+  RunLifeOpsLinkedCalendarReconciliationRequest,
+  SeedLifeOpsCalendarRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  UpdateLifeOpsIcsCalendarSourceRequest,
+} from "@elizaos/contracts";
+import { ownerCalendarFeedWithReadDiagnostics } from "../service/managed-calendar-read.js";
 import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
 export type CalendarRouteRateLimitKey =
@@ -51,6 +49,8 @@ export interface CalendarRouteService {
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+    signal?: AbortSignal,
   ): Promise<unknown>;
   listCalendars(
     requestUrl: URL,
@@ -105,16 +105,18 @@ export interface CalendarRouteService {
   ): Promise<unknown>;
   listLinkedCalendarEvents(): Promise<unknown>;
   listLinkedCalendarEventViews(): Promise<
-    import("@elizaos/core/contracts/calendar").LifeOpsLinkedCalendarEventView[]
+    import("@elizaos/contracts").LifeOpsLinkedCalendarEventView[]
   >;
   getLinkedCalendarControl(): Promise<
-    import("@elizaos/core/contracts/calendar").LifeOpsLinkedCalendarControl
+    import("@elizaos/contracts").LifeOpsLinkedCalendarControl
   >;
   getLinkedCalendarEvent(linkId: string): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
 export interface CalendarRouteDeps {
+  /** The calling transport owns cancellation. */
+  signal?: AbortSignal;
   method: string;
   pathname: string;
   url: URL;
@@ -140,6 +142,44 @@ export interface CalendarRouteDeps {
   mutationGateway: CalendarOwnerMutationGateway;
 }
 
+type CalendarQueryParsers = Pick<
+  CalendarRouteDeps,
+  "parseConnectorMode" | "parseConnectorSide" | "parseBoolean"
+>;
+
+/** Query of `GET /api/lifeops/calendar/feed`. */
+export function parseCalendarFeedQuery(
+  q: URLSearchParams,
+  parsers: CalendarQueryParsers,
+): GetLifeOpsCalendarFeedRequest {
+  return {
+    mode: parsers.parseConnectorMode(q.get("mode")),
+    side: parsers.parseConnectorSide(q.get("side")),
+    calendarId: q.get("calendarId") ?? undefined,
+    includeHiddenCalendars: parsers.parseBoolean(
+      q.get("includeHiddenCalendars"),
+      "includeHiddenCalendars",
+    ),
+    timeMin: q.get("timeMin") ?? undefined,
+    timeMax: q.get("timeMax") ?? undefined,
+    timeZone: q.get("timeZone") ?? undefined,
+    forceSync: parsers.parseBoolean(q.get("forceSync"), "forceSync"),
+    grantId: q.get("grantId") ?? undefined,
+  };
+}
+
+/** Query of `GET /api/lifeops/calendar/calendars`. */
+export function parseCalendarListQuery(
+  q: URLSearchParams,
+  parsers: CalendarQueryParsers,
+): ListLifeOpsCalendarsRequest {
+  return {
+    mode: parsers.parseConnectorMode(q.get("mode")),
+    side: parsers.parseConnectorSide(q.get("side")),
+    grantId: q.get("grantId") ?? undefined,
+  };
+}
+
 /**
  * Handle a calendar route. Resolves to `true` when the request matched a
  * calendar path (and was served/short-circuited), or `false` when no calendar
@@ -162,7 +202,7 @@ export async function handleCalendarRoutes(
       if (deps.rateLimit("calendar_link_write")) return true;
       const body =
         await deps.readJsonBody<
-          import("@elizaos/core/contracts/calendar").UpdateLifeOpsLinkedCalendarControlRequest
+          import("@elizaos/contracts").UpdateLifeOpsLinkedCalendarControlRequest
         >();
       if (!body) return true;
       return deps.runRoute(async () => {
@@ -196,7 +236,7 @@ export async function handleCalendarRoutes(
   }
 
   const linkedActionMatch = pathname.match(
-    /^\/api\/lifeops\/calendar\/links\/([^/]+)(?:\/(reconcile|resolve|disconnect|rebind))?$/,
+    /^\/api\/lifeops\/calendar\/links\/([^/]+)(?:\/(reconcile|resolve|disconnect))?$/,
   );
   if (linkedActionMatch) {
     const linkId = deps.decodePathComponent(linkedActionMatch[1], "link id");
@@ -238,16 +278,6 @@ export async function handleCalendarRoutes(
           );
         });
       }
-      if (action === "rebind") {
-        const body =
-          await deps.readJsonBody<RebindLifeOpsLinkedCalendarRequest>();
-        if (!body) return true;
-        return deps.runRoute(async () => {
-          deps.json(
-            await deps.mutationGateway.rebindLinkedCalendar(url, linkId, body),
-          );
-        });
-      }
       const body =
         await deps.readJsonBody<DisconnectLifeOpsLinkedCalendarRequest>();
       if (!body) return true;
@@ -286,21 +316,16 @@ export async function handleCalendarRoutes(
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (deps.rateLimit("google_api_read")) return true;
     return deps.runRoute(async (service) => {
-      const request: GetLifeOpsCalendarFeedRequest = {
-        mode: deps.parseConnectorMode(q.get("mode")),
-        side: deps.parseConnectorSide(q.get("side")),
-        calendarId: q.get("calendarId") ?? undefined,
-        includeHiddenCalendars: deps.parseBoolean(
-          q.get("includeHiddenCalendars"),
-          "includeHiddenCalendars",
+      deps.json(
+        ownerCalendarFeedWithReadDiagnostics(
+          await service.getCalendarFeed(
+            url,
+            parseCalendarFeedQuery(q, deps),
+            undefined,
+            deps.signal,
+          ),
         ),
-        timeMin: q.get("timeMin") ?? undefined,
-        timeMax: q.get("timeMax") ?? undefined,
-        timeZone: q.get("timeZone") ?? undefined,
-        forceSync: deps.parseBoolean(q.get("forceSync"), "forceSync"),
-        grantId: q.get("grantId") ?? undefined,
-      };
-      deps.json(await service.getCalendarFeed(url, request));
+      );
     });
   }
 
@@ -391,12 +416,10 @@ export async function handleCalendarRoutes(
   if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
     if (deps.rateLimit("google_api_read")) return true;
     return deps.runRoute(async (service) => {
-      const request: ListLifeOpsCalendarsRequest = {
-        mode: deps.parseConnectorMode(q.get("mode")),
-        side: deps.parseConnectorSide(q.get("side")),
-        grantId: q.get("grantId") ?? undefined,
-      };
-      const calendars = await service.listCalendars(url, request);
+      const calendars = await service.listCalendars(
+        url,
+        parseCalendarListQuery(q, deps),
+      );
       deps.json({ calendars });
     });
   }

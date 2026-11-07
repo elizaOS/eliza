@@ -9,7 +9,7 @@ import type { ViewCapability } from "@elizaos/core";
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
 
-import { surfaceGrants } from "@elizaos/core/views/surface-manifest";
+import { surfaceGrants } from "@elizaos/core/protocol";
 
 /**
  * Interact capabilities that only READ view state. Always permitted — inspecting

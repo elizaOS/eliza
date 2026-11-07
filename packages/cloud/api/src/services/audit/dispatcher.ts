@@ -2,7 +2,7 @@
  * Audit dispatcher for validating privileged-action events and fanning them out to sinks.
  */
 
-import { logger } from "@/lib/utils/logger";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {

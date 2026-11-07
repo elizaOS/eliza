@@ -36,8 +36,9 @@ Exit codes:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256
+
 import argparse
-import hashlib
 import json
 import logging
 import os
@@ -55,12 +56,6 @@ TRAINING_ROOT = HERE.parent.parent.parent
 KOKORO_EXTRACT = TRAINING_ROOT / "scripts" / "kokoro" / "extract_voice_embedding.py"
 
 
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _load_train_manifest(run_dir: Path) -> dict:

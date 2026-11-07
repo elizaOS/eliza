@@ -4,15 +4,19 @@
  * extraction trajectories belong to the scenario lane once credentials are
  * available.
  */
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { ownerDocumentsAction } from "../src/actions/document.ts";
 import {
   buildCommitmentRegretAudit,
+  commitmentExtractionEvaluator,
   createDocumentObligationLedgerRecord,
   createLifeOpsCommitmentLedgerRecord,
   extractCommitmentLedgerRecords,
   LifeOpsRepository,
   trackDocumentObligationArtifact,
 } from "../src/lifeops/index.js";
+import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -43,6 +47,63 @@ describe("commitment ledger extraction and audit", () => {
       scheduledTaskId: null,
     });
     expect(rows[0]?.summary).toContain("send the deck Friday");
+  });
+
+  it("uses the deadline weekday after an earlier weekday in the sentence", () => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: "gmail:msg-deadline",
+      observedAt: OBSERVED_AT,
+      text: "I'll send the Monday report by Friday.",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
+  });
+
+  it("uses the deadline weekday over tomorrow's in the sentence", () => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: "gmail:msg-tomorrows-by",
+      observedAt: OBSERVED_AT,
+      text: "I'll send tomorrow's agenda by Friday.",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
+  });
+
+  it.each([
+    "I'll call you tomorrow about the report due by Friday.",
+    "I'll finish it tomorrow, before Friday's meeting.",
+    "I'll send the report by Friday and call tomorrow.",
+    "I'll send tomorrow's agenda.",
+  ])("keeps tomorrow as the due day: %s", (text) => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: `gmail:msg-plain-tomorrow:${text}`,
+      observedAt: OBSERVED_AT,
+      text,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-07T17:00:00.000Z");
+  });
+
+  it("keeps a by-deadline when a later on-weekday is only a discussion day", () => {
+    const rows = extractCommitmentLedgerRecords({
+      agentId: AGENT_ID,
+      source: "sent_mail",
+      sourceKey: "gmail:msg-by-before-on",
+      observedAt: OBSERVED_AT,
+      text: "I'll send it by Friday and we can discuss on Monday.",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dueAt).toBe("2026-07-10T17:00:00.000Z");
   });
 
   it("ignores purpose clauses while retaining a separate promise", () => {
@@ -171,6 +232,39 @@ describe("commitment ledger extraction and audit", () => {
       status: "open",
       scheduledTaskId: null,
     });
+  });
+});
+
+describe("commitment extraction evaluator prompt", () => {
+  it("grounds named days in the owner's local date, with the UTC offset", async () => {
+    // 03:00 UTC on Sunday is still Saturday evening in Los Angeles.
+    const message = {
+      createdAt: Date.parse("2026-10-11T03:00:00.000Z"),
+      content: { text: "I'll call Mom on Sunday." },
+    } as Memory;
+    const runtime = {
+      agentId: AGENT_ID,
+      getCache: async () => null,
+      setCache: async () => true,
+      deleteCache: async () => true,
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "America/Los_Angeles" : undefined,
+    } as unknown as IAgentRuntime;
+    const context = { runtime, message, state: {} as State };
+
+    const prepared = await commitmentExtractionEvaluator.prepare?.(context);
+    expect(prepared).toEqual({ timeZone: "America/Los_Angeles" });
+    const prompt = commitmentExtractionEvaluator.prompt({
+      ...context,
+      prepared: prepared as { timeZone: string },
+    });
+
+    expect(prompt).toContain(
+      "Source message timestamp: 2026-10-11T03:00:00.000Z",
+    );
+    expect(prompt).toContain(
+      "Owner local time of the message: Saturday 2026-10-10 20:00 (America/Los_Angeles), ISO 2026-10-10T20:00:00-07:00",
+    );
   });
 });
 
@@ -303,6 +397,125 @@ describe("commitment ledger repository", () => {
         commitmentLedgerId: first.record.id,
         standingGuarantee: true,
       },
+    });
+  });
+
+  it("moves an installed class warning when the owner changes a deadline", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const message: Memory = {
+      id: crypto.randomUUID() as Memory["id"],
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: { text: "Track the contract deadline", source: "test" },
+      createdAt: Date.now(),
+    } as Memory;
+
+    const installed = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "guarantee_class",
+          obligationClass: "renewal",
+          warnDaysBefore: 10,
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(installed?.success).toBe(true);
+
+    const created = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Vendor contract",
+          deadline: "2026-12-01T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(created?.success).toBe(true);
+    const documentRequestId = (
+      created?.data as { documentRequestId?: string } | undefined
+    )?.documentRequestId;
+    if (!documentRequestId) {
+      throw new Error("document action returned no document request");
+    }
+
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const warnWatches = async () =>
+      (await runner.list({ status: "scheduled" })).filter(
+        (task) => task.metadata?.documentId === documentRequestId,
+      );
+
+    const before = await warnWatches();
+    expect(before).toHaveLength(1);
+    expect(before[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-11-21T17:00:00.000Z",
+    });
+
+    const updated = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "track_deadline",
+          documentRequestId,
+          deadline: "2026-12-15T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(updated?.success).toBe(true);
+
+    const after = await warnWatches();
+    expect(after).toHaveLength(1);
+    expect(after[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-12-05T17:00:00.000Z",
+    });
+
+    const second = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Second vendor contract",
+          deadline: "2027-01-10T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(second?.success).toBe(true);
+    const secondDocumentId = (
+      second?.data as { documentRequestId?: string } | undefined
+    )?.documentRequestId;
+    if (!secondDocumentId) {
+      throw new Error("document action returned no second document request");
+    }
+    const secondWarnings = (await runner.list({ status: "scheduled" })).filter(
+      (task) => task.metadata?.documentId === secondDocumentId,
+    );
+    expect(secondWarnings).toHaveLength(1);
+    expect(secondWarnings[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-12-31T17:00:00.000Z",
     });
   });
 });

@@ -183,7 +183,7 @@ export async function formatInboundEnvelope(
 		// The machine-readable reference block carries the complete quoted text;
 		// the human label only identifies the reply relationship so the content is
 		// not duplicated in the same prompt.
-		const humanReplyContext = `(in reply to @${refContext.authorName})`;
+		const humanReplyContext = `(in reply to @${sanitizeReplyReferenceText(refContext.authorName)})`;
 		replyContextText = `\n${formatReplyReferenceBlock(refContext)}\n${humanReplyContext}`;
 	}
 

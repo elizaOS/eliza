@@ -2,9 +2,9 @@
  * Live smoke test that `handleTextSmall` reaches a real endpoint and returns text
  * plus usage. Post-merge lane only.
  */
-import { expect, it } from "vitest";
 
-import { describeLive } from "../../../packages/app/test/helpers/live-agent-test";
+import { describeLive } from "@elizaos/testing/live";
+import { expect, it } from "vitest";
 import { handleTextSmall } from "../models/text";
 
 interface TextResult {

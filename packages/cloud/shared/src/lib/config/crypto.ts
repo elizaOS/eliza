@@ -1,8 +1,9 @@
 /**
  * Crypto payment configuration and constants.
  */
+
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import Decimal from "decimal.js";
-import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "../../billing/organization-credits";
 
 /**
  * OxaPay merchant fee percentage (1.5%).

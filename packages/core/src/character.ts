@@ -1,17 +1,8 @@
-/**
- * Character-config normalization and validation. Turns a loose `CharacterInput`
- * (the shapes accepted from JSON, the CLI, and callers) into a canonical
- * `Character`: coerces `bio` to an array, folds legacy `knowledge` entries into
- * `documents`, normalizes message examples to `MessageExampleGroup[]`, and maps
- * document entries onto the `DocumentSourceItem` oneof shape. `parseCharacter`
- * and `validateCharacterConfig` run the result through `validateCharacter`
- * (schemas/character) and surface issue paths as readable errors.
- *
- * Deliberately owns no plugin auto-enable rules — it hardcodes no concrete
- * plugin package names (enforced by character.test.ts); provider/plugin
- * resolution lives elsewhere.
- */
-import { validateCharacter } from "./schemas/character";
+/** Normalizes character input, message examples, knowledge/documents, and content before validation. */
+import {
+	type CharacterValidationResult,
+	validateCharacter,
+} from "./character-schema";
 import type {
 	Character,
 	CharacterSettings,
@@ -176,6 +167,14 @@ export function createCharacter(
 	return normalizeCharacterInput(input) as Character;
 }
 
+function formatValidationErrors(
+	error: CharacterValidationResult["error"],
+): string[] {
+	return error?.issues
+		? error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+		: [error?.message || "Unknown validation error"];
+}
+
 export function parseCharacter(
 	input: string | object | Character | CharacterInput,
 ): Character {
@@ -193,13 +192,9 @@ export function parseCharacter(
 		const validationResult = validateCharacter(normalized);
 
 		if (!validationResult.success) {
-			const validationError = validationResult.error;
-			const errorDetails = validationError?.issues
-				? validationError.issues
-						.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-						.join("; ")
-				: validationError?.message || "Unknown validation error";
-			throw new Error(`Character validation failed: ${errorDetails}`);
+			throw new Error(
+				`Character validation failed: ${formatValidationErrors(validationResult.error).join("; ")}`,
+			);
 		}
 
 		return validationResult.data as Character;
@@ -221,16 +216,9 @@ export function validateCharacterConfig(character: Character): {
 		};
 	}
 
-	const validationError = validationResult.error;
-	const errors = validationError?.issues
-		? validationError.issues.map(
-				(issue) => `${issue.path.join(".")}: ${issue.message}`,
-			)
-		: [validationError?.message || "Unknown validation error"];
-
 	return {
 		isValid: false,
-		errors,
+		errors: formatValidationErrors(validationResult.error),
 	};
 }
 

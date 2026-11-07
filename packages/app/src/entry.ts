@@ -8,8 +8,8 @@
  */
 import process from "node:process";
 import { captureProtectedProfile } from "@elizaos/agent/security/protected-profile-state";
-import { formatErrorWithStack } from "@elizaos/core/utils/format-error";
-import { getLogPrefix } from "@elizaos/core/utils/log-prefix";
+import { getLogPrefix } from "@elizaos/core";
+import { formatErrorWithStack } from "@elizaos/core/protocol";
 import { bootLap } from "./boot-profile";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";

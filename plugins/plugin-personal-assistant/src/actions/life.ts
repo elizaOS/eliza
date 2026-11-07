@@ -1,3 +1,5 @@
+import { ownerReminderQuotedSpans } from "../lifeops/reminders/direct-routing.ts";
+
 /**
  * Shared create/update/query engine for owner "life" items — reminder/todo/
  * routine definitions and goals — that backs the OWNER_* surfaces built in
@@ -13,6 +15,23 @@ import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
 } from "@elizaos/agent";
+import type {
+  CreateLifeOpsDefinitionRequest,
+  CreateLifeOpsGoalRequest,
+  LifeOpsCadence,
+  LifeOpsDailySlot,
+  LifeOpsDefinitionRecord,
+  LifeOpsDomain,
+  LifeOpsGoalRecord,
+  LifeOpsWindowPolicy,
+  UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGoalRequest,
+} from "@elizaos/contracts";
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   ActionResult,
   AgentContext,
@@ -31,23 +50,13 @@ import {
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
+  readTaskExtractionRequestIntents,
   resolveActionArgs,
   type SubactionsMap,
   validateUuid,
 } from "@elizaos/core";
+import { findInteractionRegions } from "@elizaos/core/protocol";
 import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
-import type {
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGoalRequest,
-  LifeOpsCadence,
-  LifeOpsDailySlot,
-  LifeOpsDefinitionRecord,
-  LifeOpsDomain,
-  LifeOpsGoalRecord,
-  LifeOpsWindowPolicy,
-  UpdateLifeOpsDefinitionRequest,
-  UpdateLifeOpsGoalRequest,
-} from "../contracts/index.js";
 import {
   calendarReadUnavailableMessage,
   getGoogleCapabilityStatus,
@@ -78,6 +87,10 @@ import {
   resolveOwnerDefinitionSurface,
 } from "../lifeops/definition-owner-surface.js";
 import {
+  getCallerDefinition,
+  getCallerOccurrenceView,
+} from "../lifeops/domains/definition-authorization.js";
+import {
   dayRange,
   detailArray,
   detailBoolean,
@@ -92,7 +105,10 @@ import {
 } from "../lifeops/google/format-helpers.js";
 import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
+import {
+  extractExplicitTimeZoneFromText,
+  normalizeExplicitTimeZoneToken,
+} from "../lifeops/time/timezone.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -118,6 +134,7 @@ import {
   type ExtractedUpdateFields,
   extractUpdateFieldsWithLlm,
 } from "./lib/extract-update-fields.js";
+import { containsInvariantPhrase } from "./lib/invariant-phrase.js";
 import {
   clearDeferredLifeDraftCache,
   clearRecentLifeSaveCache,
@@ -183,13 +200,13 @@ type LifeParams = {
   title?: string;
   target?: string;
   minutes?: number;
+  /** update: move a one-off to this long after the request. */
+  delayMinutes?: unknown;
+  delaySeconds?: unknown;
   preset?: string;
   /**
-   * Planner-signalled owner confirmation of a previously previewed save.
-   * The preview -> confirm handshake has no structured cross-turn draft
-   * transport on the planner path, so the confirm turn ("yes, save that")
-   * must re-call create with `confirmed: true`; the handler then saves the
-   * re-extracted plan instead of previewing again.
+   * Declared on the owner surfaces but not read: consent to save a previewed
+   * item comes only from the owner's current message text.
    */
   confirmed?: boolean;
   createPlan?: unknown;
@@ -916,35 +933,50 @@ function buildSavedGoalReply(goal: {
   return parts.join(" ");
 }
 
-function matchByTitle<
-  T extends { definition?: { title: string }; goal?: { title: string } },
->(entries: T[], targetTitle: string): T | null {
-  const normalized = normalizeTitle(targetTitle);
-  return (
-    entries.find(
-      (e) =>
-        normalizeTitle(e.definition?.title ?? e.goal?.title ?? "") ===
-        normalized,
-    ) ??
-    entries.find((e) =>
-      normalizeTitle(e.definition?.title ?? e.goal?.title ?? "").includes(
-        normalized,
-      ),
-    ) ??
-    null
-  );
+/** Exact title, then whole word/phrase, then substring: the first tier with
+ * any hit wins, so "read" never lands on "ready" while CJK titles that abut a
+ * particle still resolve through the substring tier. */
+function matchByTitle<T>(
+  entries: T[],
+  target: string,
+  titleOf: (entry: T) => string,
+): T[] {
+  const normalized = normalizeTitle(target);
+  if (!normalized) return [];
+  const titled = entries.map((entry) => ({
+    entry,
+    title: normalizeTitle(titleOf(entry)),
+  }));
+  for (const inTier of [
+    (title: string) => title === normalized,
+    (title: string) => containsInvariantPhrase(title, normalized),
+    (title: string) => title.includes(normalized),
+  ]) {
+    const hits = titled.filter(({ title }) => inTier(title));
+    if (hits.length > 0) return hits.map(({ entry }) => entry);
+  }
+  return [];
 }
 
 async function resolveGoal(
   service: LifeOpsService,
   target: string | undefined,
   domain?: LifeOpsDomain,
-): Promise<LifeOpsGoalRecord | null> {
-  if (!target) return null;
+): Promise<{ match: LifeOpsGoalRecord | null; ambiguousCandidates: string[] }> {
+  if (!target) return { match: null, ambiguousCandidates: [] };
   const goals = (await service.listGoals()).filter((e) =>
     domain ? e.goal.domain === domain : true,
   );
-  return goals.find((e) => e.goal.id === target) ?? matchByTitle(goals, target);
+  const byId = goals.find((e) => e.goal.id === target);
+  if (byId) return { match: byId, ambiguousCandidates: [] };
+  const matches = matchByTitle(goals, target, (e) => e.goal.title);
+  return matches.length === 1
+    ? { match: matches[0], ambiguousCandidates: [] }
+    : { match: null, ambiguousCandidates: matches.map((e) => e.goal.title) };
+}
+
+function goalAmbiguityReply(candidates: string[]): string {
+  return `Multiple items match — which one?\n${candidates.map((title) => `  - ${title}`).join("\n")}`;
 }
 
 type DefinitionResult = {
@@ -1000,8 +1032,10 @@ function resolveDefinitionInRecords(
       ambiguousCandidates: exactMatches.map(definitionDisambiguationLabel),
     };
   }
-  const substringMatches = defs.filter((entry) =>
-    normalizeTitle(entry.definition.title).includes(normalized),
+  const substringMatches = matchByTitle(
+    defs,
+    target,
+    (entry) => entry.definition.title,
   );
   if (substringMatches.length === 1) {
     return {
@@ -1066,7 +1100,10 @@ async function resolveDefinition(
  * ficus" reminders rendered as two identical lines with no times — an
  * unanswerable question). */
 function definitionDisambiguationLabel(entry: LifeOpsDefinitionRecord): string {
-  const when = summarizeCadence(entry.definition.cadence)?.trim();
+  const when = summarizeCadence(
+    entry.definition.cadence,
+    entry.definition.timezone,
+  )?.trim();
   return when && when.length > 0
     ? `${entry.definition.title} — ${when}`
     : entry.definition.title;
@@ -1083,7 +1120,9 @@ function resolveDuplicateByTimeHint(
 ): LifeOpsDefinitionRecord | null {
   const normalizedOwner = ownerText.toLowerCase().replace(/\s+/g, " ");
   const hits = candidates.filter((entry) => {
-    const summary = summarizeCadence(entry.definition.cadence) ?? "";
+    const summary =
+      summarizeCadence(entry.definition.cadence, entry.definition.timezone) ??
+      "";
     const clockTokens =
       summary.toLowerCase().match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/g) ?? [];
     return clockTokens.some((token) => {
@@ -1145,12 +1184,220 @@ async function resolveEnumeratedDeleteTargets(
   return targets.length > 1 ? targets : [];
 }
 
+/** The new value an edit's params carry: a one-off's new time, or a relative
+ * delay. Null when they carry a value no clock or number can state. */
+type RequestedValue = { dueAt: string } | { delayMs: number } | null;
+
+/** How update_definition names one definition: a cancel, or an edit that may
+ * follow the item this conversation just saved. `requested` is undefined when
+ * the edit's params carry no new value. */
+type NamesakeOp = {
+  cancel: boolean;
+  recentSaveId?: string;
+  requested?: RequestedValue;
+};
+
+const RETIME_VERB =
+  "(?:make|change|move|push|set|switch|bump|shift|reschedule|put)";
+const DEICTIC_REF = String.raw`(?:(?:that|this)(?:\s+one)?|it)`;
+const FOLLOW_UP_LEAD = String.raw`^(?:(?:actually|ok|okay|oh|no|nah|wait|hmm|sorry|so|um|uh|yeah|yes|and|then|hey|oops)[,.!]?\s+)*(?:please\s+)?`;
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  fifteen: 15,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  "forty five": 45,
+  "forty-five": 45,
+  sixty: 60,
+  ninety: 90,
+  "half a": 0.5,
+  "half an": 0.5,
+};
+const NEW_DELAY = String.raw`(?:in\s+)?(?:(?<digits>\d+(?:\.\d+)?)\s*|(?<words>${Object.keys(NUMBER_WORDS).join("|")})\s+)(?<unit>s|m|h|secs?|seconds?|mins?|minutes?|hrs?|hours?)(?:\s+(?:from now|later))?`;
+/** A clock: "4:36am", "4.36 a.m.", "436am", "5 pm", "17:40", "noon". */
+const CLOCK = String.raw`(?:\d{1,2}(?:[:. ]\d{2})?\s*[ap]\.?m\b\.?|\d{3,4}\s*[ap]\.?m\b\.?|\d{1,2}[:.]\d{2}|noon|midnight)`;
+const CLOCK_RE = new RegExp(String.raw`\b${CLOCK}`, "g");
+const NEW_CLOCK = String.raw`(?:(?:today|tomorrow)\s+(?:at\s+)?)?(?<clock>${CLOCK})(?:\s+(?:today|tomorrow))?`;
+
+/** An edit that says only its new time or delay, of "that", "it", "this one"
+ * or nothing named: "actually make that 7 minutes", "make it 10 minutes",
+ * "change it to 9pm", "move it to 4:36am tomorrow". Any other word may pick a
+ * copy ("the one that fired", "the 4:36 one"). */
+const FOLLOW_UP_RETIME_RE = new RegExp(
+  String.raw`${FOLLOW_UP_LEAD}(?:${RETIME_VERB}(?:\s+${DEICTIC_REF})?\s+)?(?:(?:to|for|at|until)\s+)?(?:${NEW_DELAY}|${NEW_CLOCK})(?:\s+(?:instead|please))*$`,
+);
+
+/** The minutes past midnight a clock names, both halves of the day when it
+ * says no am or pm and none when it names no clock time. */
+function clockMinutes(clock: string): number[] {
+  if (clock === "noon") return [720];
+  if (clock === "midnight") return [0];
+  const parts = clock.match(/^(\d{1,2}?)[:. ]?(\d{2})?\s*(?:([ap])\.?m\.?)?$/);
+  if (!parts) return [];
+  const hour = Number(parts[1]);
+  const minute = Number(parts[2] ?? 0);
+  if (hour > 23 || minute > 59) return [];
+  if (parts[3])
+    return hour >= 1 && hour <= 12
+      ? [((hour % 12) + (parts[3] === "p" ? 12 : 0)) * 60 + minute]
+      : [];
+  return hour >= 1 && hour <= 12
+    ? [(hour % 12) * 60 + minute, ((hour % 12) + 12) * 60 + minute]
+    : [hour * 60 + minute];
+}
+
+/** The minutes past midnight a one-off's new time falls at in `timeZone`. */
+function requestedClockMinutes(dueAt: string, timeZone: string): number {
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) return Number.NaN;
+  const { hour, minute } = getZonedDateParts(due, timeZone);
+  return (hour % 24) * 60 + minute;
+}
+
+/** Whether `text` says only a new time or delay of "that", "it" or nothing
+ * named, and that value is the one the edit's params carry, a clock read in
+ * the reminder's `timeZone`. Any other clock or number picks a copy (a reply
+ * of "4:36am" to "which one?"), as does any value when the params carry none
+ * to check it against. */
+function saysOnlyRequestedValue(
+  text: string,
+  requested: RequestedValue | undefined,
+  timeZone: string,
+): boolean {
+  const said = FOLLOW_UP_RETIME_RE.exec(text)?.groups;
+  if (!said || !requested) return false;
+  if (said.clock !== undefined)
+    return (
+      "dueAt" in requested &&
+      clockMinutes(said.clock).includes(
+        requestedClockMinutes(requested.dueAt, timeZone),
+      )
+    );
+  const unitMs = { s: 1000, m: 60_000, h: 3_600_000 }[
+    said.unit.charAt(0) as "s" | "m" | "h"
+  ];
+  const amount =
+    said.digits !== undefined
+      ? Number(said.digits)
+      : (NUMBER_WORDS[said.words] ?? Number.NaN);
+  return (
+    "delayMs" in requested && Math.round(amount * unitMs) === requested.delayMs
+  );
+}
+
+/** A cancel of "that" or "it", or of the title alone ("cancel the call mom
+ * reminder" reads "cancel it"). */
+const PLAIN_CANCEL_RE = new RegExp(
+  String.raw`${FOLLOW_UP_LEAD}(?:cancel|stop|remove|delete|disable|turn off|clear)\s+${DEICTIC_REF}(?:\s+please)?$`,
+);
+
+/** The clock an edit's words ask for, after "to" or after "make that": "move
+ * it to 4:36am tomorrow", "make that 5:40am". */
+const REQUESTED_CLOCK_RE = new RegExp(
+  String.raw`(?:\b(?:to|until|till)|\b${RETIME_VERB}\s+${DEICTIC_REF}(?:\s+(?:to|for|at))?)\s+(?:(?:today|tomorrow|tonight)\s+(?:at\s+)?)?\d{1,2}(?:[:. ]?\d{2})?\s*[ap]m\b`,
+  "g",
+);
+
+/** The owner's words without the new time an edit asks for, so it cannot
+ * pick the copy already at that time. A clock goes, in any phrasing, when it
+ * equals the new time the params carry, read in `timeZone`. With no new value
+ * in the params, the clock the words mark as new goes. */
+function withoutRequestedClock(
+  ownerText: string,
+  requested: RequestedValue | undefined,
+  timeZone: string,
+): string {
+  const text = ownerText.toLowerCase().replace(/\s+/g, " ");
+  if (requested === undefined) return text.replace(REQUESTED_CLOCK_RE, " ");
+  if (!requested || !("dueAt" in requested)) return text;
+  const minutes = requestedClockMinutes(requested.dueAt, timeZone);
+  return text.replace(CLOCK_RE, (clock) =>
+    clockMinutes(clock).includes(minutes) ? " " : clock,
+  );
+}
+
+/** The one copy of the `title` group `namesakes` that an edit or cancel
+ * means where the owner's words cannot pick a copy, or undefined to keep the
+ * group whole for the base "Multiple items match" ask. A cancelled (archived)
+ * or completed reminder is no candidate for an edit or cancel that names the
+ * title or says "that" or "it", so when one live reminder is left it is the
+ * target. An edit, never a cancel, that says only its new time of "that" or
+ * "it" targets the reminder this conversation just saved. An edit's clock or
+ * number must equal the new value its params carry, or it may pick a copy.
+ * Live tj-82a28eec7f2481: "actually make that 10 minutes" asked which "Grab
+ * the deck" because a rehearsal copy had fired 25 minutes earlier. */
+function supersedingNamesake(
+  namesakes: LifeOpsDefinitionRecord[],
+  title: string,
+  ownerText: string,
+  op: NamesakeOp,
+): LifeOpsDefinitionRecord | undefined {
+  const text = normalizeTitle(ownerText).replace(/[.!?]+$/, "");
+  const isReminder = ({ definition }: LifeOpsDefinitionRecord) =>
+    resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS";
+  const candidates = namesakes.filter(
+    (entry) =>
+      !isReminder(entry) ||
+      (entry.definition.status !== "archived" &&
+        entry.definition.status !== "completed"),
+  );
+  const saved = op.cancel
+    ? undefined
+    : namesakes.find((entry) => entry.definition.id === op.recentSaveId);
+  if (saved && FOLLOW_UP_RETIME_RE.test(text))
+    // "That" is the saved reminder, so when it is no candidate, or the value
+    // may pick another copy, the group stays whole and asks.
+    return isReminder(saved) &&
+      candidates.includes(saved) &&
+      saysOnlyRequestedValue(text, op.requested, saved.definition.timezone)
+      ? saved
+      : undefined;
+  // The title names every copy, so it reads as "it".
+  const plain = text
+    .split(title)
+    .join(" it ")
+    .replace(/\s+/g, " ")
+    .replace(/\b(?:the|my)\s+it\b/g, "it")
+    .replace(/\bit\s+(?:reminder|alarm)s?\b/g, "it")
+    .trim();
+  // A cancelled reminder steps aside only for a live reminder, never for a
+  // plain definition of the same title.
+  const [survivor] = candidates;
+  return candidates.length === 1 &&
+    isReminder(survivor) &&
+    (op.cancel
+      ? PLAIN_CANCEL_RE.test(plain)
+      : saysOnlyRequestedValue(
+          plain,
+          op.requested,
+          survivor.definition.timezone,
+        ))
+    ? survivor
+    : undefined;
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
   ownerText: string,
   domain?: LifeOpsDomain,
   destructive = false,
+  title?: string,
+  namesakeOp?: NamesakeOp,
 ): Promise<DefinitionResult> {
   const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
@@ -1218,25 +1465,109 @@ async function resolveDefinitionForMutation(
           ),
         };
   }
+  // An edit or cancel narrows only the title group its target, or else its
+  // title, names exactly, and only a candidate list of that group alone. Any
+  // other group stays whole for the base resolution and its ask: "actually
+  // make that 30 minutes" about "Grab the deck" asks which "Make dinner" the
+  // word "make" means, and never moves the live one because the other copy
+  // was cancelled.
+  const namedTitle = [target, title]
+    .map((name) => normalizeTitle(name ?? ""))
+    .find(
+      (name) =>
+        name.length > 0 &&
+        defs.some((entry) => normalizeTitle(entry.definition.title) === name),
+    );
+  const namedGroup = defs.filter(
+    (entry) => normalizeTitle(entry.definition.title) === namedTitle,
+  );
+  const chosen =
+    namesakeOp && namedTitle && namedGroup.length > 1
+      ? supersedingNamesake(namedGroup, namedTitle, ownerText, namesakeOp)
+      : undefined;
+  const ofNamedGroup = (candidates: LifeOpsDefinitionRecord[]) =>
+    candidates.length > 0 &&
+    candidates.every((entry) => namedGroup.includes(entry));
+  const settle = (candidates: LifeOpsDefinitionRecord[]) =>
+    chosen && ofNamedGroup(candidates) ? [chosen] : candidates;
+  // The new time an edit asks for never picks a copy of that group: a time
+  // hint stands only if it still picks that copy without it, and otherwise
+  // asks.
+  const pickByTimeHint = (candidates: LifeOpsDefinitionRecord[]) => {
+    const match = resolveDuplicateByTimeHint(candidates, ownerText);
+    if (!match || !namesakeOp || namesakeOp.cancel || !ofNamedGroup(candidates))
+      return match;
+    const selectorText = withoutRequestedClock(
+      ownerText,
+      namesakeOp.requested,
+      match.definition.timezone,
+    );
+    return resolveDuplicateByTimeHint(candidates, selectorText) === match
+      ? match
+      : null;
+  };
+  // A planner can pair an invented handle with the item's real title (live:
+  // target "stretch-20min-2026-10-30T13-01z", title "Stretch"). When the
+  // target names nothing, the title may resolve the one item it matches;
+  // ambiguity asks and zero matches refuse.
+  const resolveTarget = (handle: string): DefinitionResult => {
+    const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
+    // A handle that asks among the named group alone takes the chosen copy:
+    // with the group's other copies set aside, the same match finds only it.
+    if (
+      chosen &&
+      byTarget.ambiguousCandidates.length > 0 &&
+      resolveDefinitionInRecords(
+        defs.filter((entry) => entry === chosen || !namedGroup.includes(entry)),
+        handle,
+        destructive,
+      ).match === chosen
+    )
+      return { match: chosen, ambiguousCandidates: [] };
+    if (byTarget.match || byTarget.ambiguousCandidates.length > 0 || !title)
+      return byTarget;
+    // The title inherits the target's guards: it may not alias an item a keep
+    // cue protects, nor replace an item the owner's words name.
+    const keptTitle = allDefinitions.some(
+      (entry) =>
+        normalizeTitle(entry.definition.title) === normalizeTitle(title) &&
+        !defs.includes(entry),
+    );
+    const byTitle = keptTitle
+      ? []
+      : settle(matchByTitle(defs, title, (entry) => entry.definition.title));
+    if (
+      byTitle.length === 1 &&
+      explicitlyNamed.length > 0 &&
+      !explicitlyNamed.includes(byTitle[0])
+    )
+      return { match: null, ambiguousCandidates: [] };
+    return byTitle.length === 1
+      ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
+      : {
+          match: null,
+          ambiguousCandidates: byTitle.map(definitionDisambiguationLabel),
+        };
+  };
   // A destructive target that failed exact matching must not be replaced by
   // a different title elsewhere in the request. Retain the existing narrow
   // target alias/substring contract, including its refusal to guess by tokens.
-  if (destructive && target?.trim())
-    return resolveDefinitionInRecords(defs, target, true);
-  if (explicitlyNamed.length === 1) {
+  if (destructive && target?.trim()) return resolveTarget(target);
+  const named = settle(explicitlyNamed);
+  if (named.length === 1) {
     return {
-      match: explicitlyNamed.at(0) ?? null,
+      match: named.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (explicitlyNamed.length > 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(explicitlyNamed, ownerText);
+  if (named.length > 1) {
+    const byTimeHint = pickByTimeHint(named);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
     }
     return {
       match: null,
-      ambiguousCandidates: explicitlyNamed.map(definitionDisambiguationLabel),
+      ambiguousCandidates: named.map(definitionDisambiguationLabel),
     };
   }
 
@@ -1250,9 +1581,9 @@ async function resolveDefinitionForMutation(
     }))
     .filter(({ score }) => score > 0);
   const bestScore = Math.max(0, ...scored.map(({ score }) => score));
-  const bestMatches = scored
-    .filter(({ score }) => score === bestScore)
-    .map(({ entry }) => entry);
+  const bestMatches = settle(
+    scored.filter(({ score }) => score === bestScore).map(({ entry }) => entry),
+  );
   // Same destructive guard as resolveDefinitionInRecords: a token-overlap
   // "best match" is a guess, and guesses may not delete records. The explicit
   // containment branch above already resolved anything whose stored title
@@ -1264,7 +1595,7 @@ async function resolveDefinitionForMutation(
     };
   }
   if (bestMatches.length >= 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(bestMatches, ownerText);
+    const byTimeHint = pickByTimeHint(bestMatches);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
     }
@@ -1274,7 +1605,7 @@ async function resolveDefinitionForMutation(
     };
   }
   return target
-    ? resolveDefinitionInRecords(defs, target, destructive)
+    ? resolveTarget(target)
     : { match: null, ambiguousCandidates: [] };
 }
 
@@ -1295,15 +1626,24 @@ export async function resolveDefinitionFromIntent(
     return direct.match;
   }
   const defs = await listCallerDefinitions(service, domain);
+  const normalizedIntent = normalizeTitle(intent);
+  const titled = defs
+    .map((entry) => ({ entry, title: normalizeTitle(entry.definition.title) }))
+    .filter(({ title }) => title.length > 0);
+  for (const inTier of [
+    (title: string) => title === normalizedIntent,
+    (title: string) => containsInvariantPhrase(normalizedIntent, title),
+    (title: string) => normalizedIntent.includes(title),
+  ]) {
+    const named = titled.filter(({ title }) => inTier(title));
+    if (named.length === 1) return named[0].entry;
+    if (named.length > 1) return null;
+  }
   const intentTokens = new Set(tokenizeTitle(intent));
   let best: LifeOpsDefinitionRecord | null = null;
   let bestScore = 0;
   let tied = false;
   for (const entry of defs) {
-    const title = normalizeTitle(entry.definition.title);
-    if (title.length > 0 && normalizeTitle(intent).includes(title)) {
-      return entry;
-    }
     const overlap = tokenizeTitle(entry.definition.title).filter((token) =>
       intentTokens.has(token),
     ).length;
@@ -1354,6 +1694,9 @@ function formatOccurrenceDisambiguationLabel(
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
+          // The item's own zone: the host's zone (UTC on a cloud host) would
+          // show a 07:00 dose as 2:00 PM.
+          timeZone: explicitCadenceTimeZone(occurrence.timezone),
         }),
       );
     }
@@ -1381,6 +1724,52 @@ async function resolveOccurrence(
   domain?: LifeOpsDomain,
 ): Promise<OccurrenceResult> {
   if (!target) return { match: null, ambiguousCandidates: [] };
+  if (validateUuid(target)) {
+    const occurrence = await getCallerOccurrenceView(
+      service.repository,
+      service,
+      target,
+    );
+    if (occurrence && (!domain || occurrence.domain === domain)) {
+      return { match: occurrence, ambiguousCandidates: [] };
+    }
+    const definition = await getCallerDefinition(
+      service.repository,
+      service,
+      target,
+    );
+    // A definition names one occurrence only for a one-shot reminder. A stale
+    // recurring choice must supply its occurrence ID instead of completing a
+    // newer date. These scoped reads also avoid the overview's display limit.
+    if (
+      definition?.status !== "active" ||
+      definition.cadence.kind !== "once" ||
+      (domain && definition.domain !== domain)
+    ) {
+      return { match: null, ambiguousCandidates: [] };
+    }
+    const occurrences = await service.repository.listOccurrencesForDefinition(
+      service.agentId(),
+      definition.id,
+    );
+    const candidates = await Promise.all(
+      occurrences
+        .filter((candidate) =>
+          ["pending", "visible", "snoozed"].includes(candidate.state),
+        )
+        .map((candidate) =>
+          getCallerOccurrenceView(service.repository, service, candidate.id),
+        ),
+    );
+    const matches = candidates.filter((candidate) => candidate !== null);
+    return {
+      match: matches.length === 1 ? matches[0] : null,
+      ambiguousCandidates:
+        matches.length > 1
+          ? matches.map(formatOccurrenceDisambiguationLabel)
+          : [],
+    };
+  }
   const overview = await service.getOverview();
   const all = [
     ...overview.owner.occurrences,
@@ -1413,9 +1802,7 @@ async function resolveOccurrence(
   }
 
   // Substring matches — disambiguate when multiple
-  const substringMatches = all.filter((o) =>
-    normalizeTitle(o.title).includes(normalized),
-  );
+  const substringMatches = matchByTitle(all, target, (o) => o.title);
   if (substringMatches.length === 1) {
     return { match: substringMatches.at(0) ?? null, ambiguousCandidates: [] };
   }
@@ -1559,7 +1946,21 @@ async function resolveOccurrenceWithIntentFallback(args: {
   return resolveOccurrence(args.service, fallbackTarget, args.domain);
 }
 
-function summarizeCadence(cadence: LifeOpsCadence): string {
+function explicitCadenceTimeZone(
+  timeZone: string | undefined,
+): string | undefined {
+  if (typeof timeZone !== "string") return undefined;
+  const trimmed = timeZone.trim();
+  if (!trimmed) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(0);
+    return trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
+function summarizeCadence(cadence: LifeOpsCadence, timeZone?: string): string {
   const cadenceWindows = Array.isArray(
     (cadence as { windows?: unknown }).windows,
   )
@@ -1574,15 +1975,18 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
       return "no due date";
     case "once": {
       const dueAt = new Date(cadence.dueAt);
-      if (Number.isNaN(dueAt.getTime())) {
+      const zone = explicitCadenceTimeZone(timeZone);
+      if (Number.isNaN(dueAt.getTime()) || !zone) {
         return "once";
       }
-      return `once on ${dueAt.toLocaleString(undefined, {
+      // English prose whose am/pm clock tokens resolveDuplicateByTimeHint
+      // reads back, so it must not follow a 24-hour host locale.
+      return `once on ${dueAt.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
-        timeZone: resolveDefaultTimeZone(),
+        timeZone: zone,
       })}`;
     }
     case "daily":
@@ -1679,6 +2083,9 @@ function buildRuleBasedLifeReply(args: {
 
   switch (args.scenario) {
     case "updated_definition":
+      if (title && typeof updated?.firesAtLocal === "string") {
+        return `Moved ${title} to ${updated.firesAtLocal}.`;
+      }
       if (title) {
         return `${title} is updated.`;
       }
@@ -1723,8 +2130,9 @@ async function renderLifeActionReply(args: {
   scenario: LifeReplyScenario;
   fallback: string;
   context?: Record<string, unknown>;
-}): Promise<GroundedActionReply> {
+}): Promise<string | GroundedActionReply> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
+
   const naturalFallback = buildRuleBasedLifeReply({
     scenario,
     intent,
@@ -1745,6 +2153,12 @@ async function renderLifeActionReply(args: {
       "Mirror the user's phrasing for time and date when possible.",
       "Prefer phrases like tomorrow morning, every night, 7 am, or the user's own wording over robotic schedule language.",
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
+      "When confirming a saved reminder, use one short natural sentence with the saved message, timing, and notification destination. Use 'at' for an exact saved time, not 'around'; format that time in created.timezone without seconds or field labels. Do not invent a new reminder message.",
+      "In ordinary reminder confirmations, describe in_app as 'here' or 'in this app' and sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.",
+      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless the saved created/updated record's nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
+      "If created.notificationsEnabled is false, no alert is scheduled. If true, never say no alert merely because the owner requested it; report the persisted notification state. A due time alone does not imply an alert.",
+      "The in_app channel is this app's unified notification rail; it can also fan out OS notifications to registered devices through the host's configured push providers. nativeProjection=in_app_only excludes Apple Reminders record projection, not this app's Android or iOS notifications. Native record projection and Clock handoff capabilities do not establish push delivery availability.",
+      "A saved channel is not an observed push delivery status. Report an Android or iOS push limitation only from explicit platform delivery status or error evidence in the supplied context; unassessed readiness is unknown, not unavailable. Before a reminder is due, a missing delivery receipt is expected: confirm the saved schedule without adding a warning about unconfirmed push, asking the owner to check delivery, or treating the in_app rail as excluding Android notifications. Do not promise future OS delivery or infer its absence from in_app, nativeProjection, or a missing native record ID.",
       "If this is a preview, make clear it is not saved yet and the user can confirm or change it naturally.",
       "If this is reply-only, do not pretend you saved or changed anything.",
       // Live receipts behind the two rules below: a review turn reported
@@ -1753,6 +2167,7 @@ async function renderLifeActionReply(args: {
       // "don't know your favorite color" from this renderer even though the
       // assistant's own context knew it (the fact lives outside lifeops).
       "Ground every factual claim — counts, progress numbers, item names, schedules, states — in the structured context provided for THIS reply. Never carry numbers or outcomes in from the conversation that the records here do not show; if the records show nothing, say the records show nothing.",
+      "Compare requested reminder text against the persisted created or updated description and current effect record, not attempted tool arguments. Extraction can correct a proposed value before saving. An already matching saved field does not need another write.",
       "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
@@ -1944,9 +2359,14 @@ async function runLifeConnectedQueryInner(args: {
         data: toActionData(next),
       };
     }
+    // "Today" is the owner's calendar day, resolved by the shared fail-closed
+    // calendar zone owner so an unreadable or invalid zone is never replaced
+    // by the host's.
+    const now = new Date();
+    const { timeZone } = await resolveCalendarTimeZone(runtime, now);
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
-      ...dayRange(0),
-      timeZone: resolveDefaultTimeZone(),
+      ...dayRange(0, timeZone, now),
+      timeZone,
     });
     const fallback =
       feed.events.length === 0
@@ -1977,6 +2397,20 @@ async function runLifeConnectedQueryInner(args: {
       data: toActionData(feed),
     };
   } catch (err) {
+    if (err instanceof CalendarTimeZoneError) {
+      // error-policy:J4 the owner's zone is unreadable or invalid; answering
+      // for another zone's day would be a wrong answer reported as success.
+      return {
+        success: false,
+        text:
+          err.code !== CALENDAR_TIME_ZONE_INVALID
+            ? "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly."
+            : err.context?.source === "owner"
+              ? "I can't tell what day it is for you: your saved time zone isn't valid. Tell me your time zone and I'll check your calendar."
+              : "I can't tell what day it is for you: the agent's configured time zone isn't valid. Ask the operator to fix the TIMEZONE setting, or tell me your time zone.",
+        data: { actionName, operation: queryOperation, error: err.code },
+      };
+    }
     if (err instanceof LifeOpsServiceError) {
       return {
         success: false,
@@ -2145,6 +2579,28 @@ function parseTimeOfDayToken(token: string): number | null {
     }
   }
   return parseClockToken(normalized);
+}
+
+/** Keep original record literals inert; only an explicitly introduced exact clock/zone
+ * literal contributes to scheduling. Clock and zone recognition stay canonical. */
+function reminderSchedulingText(intent: string): string {
+  let result = intent;
+  for (const span of ownerReminderQuotedSpans(intent)) {
+    const prefix = intent.slice(0, span.start);
+    const directed =
+      /\b(?:at|by|before|after|around|timezone|time\s+zone|time(?:\s+is)?|in)\s*$/iu.test(
+        prefix,
+      );
+    const recognized =
+      parseTimeOfDayToken(span.content) !== null ||
+      normalizeLifeTimeZoneToken(span.content) !== null;
+    if (directed && recognized) continue;
+    result =
+      result.slice(0, span.start) +
+      " ".repeat(span.end - span.start) +
+      result.slice(span.end);
+  }
+  return result;
 }
 
 function buildOneOffDueAtFromMinuteOfDay(args: {
@@ -2363,10 +2819,14 @@ const PHRASE_SLOT_MINUTES: ReadonlyArray<[RegExp, number]> = [
   [/\bbefore\s+bed(?:time)?\b/gi, 21 * 60 + 30],
 ];
 
-function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
+function extractExplicitDailySlots(
+  intent: string,
+  includeDeadlines = false,
+): LifeOpsDailySlot[] {
+  intent = reminderSchedulingText(intent);
   const tokens: Array<{ label: string; minuteOfDay: number }> = [];
   for (const match of intent.matchAll(
-    /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi,
+    /\b(\d{1,2}:\d{2}(?:\s*(?:am|pm))?|\d{1,2}\s*(?:am|pm)|noon|midnight)\b/gi,
   )) {
     const token = match[1];
     if (typeof token !== "string" || token.length === 0) {
@@ -2374,11 +2834,11 @@ function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
     }
     if (
       clockTokenIsNegated(intent, match.index) ||
-      clockTokenIsDeadline(intent, match.index)
+      (!includeDeadlines && clockTokenIsDeadline(intent, match.index))
     ) {
       continue;
     }
-    const minuteOfDay = parseClockToken(token);
+    const minuteOfDay = parseTimeOfDayToken(token);
     if (minuteOfDay !== null) {
       tokens.push({ label: token.trim(), minuteOfDay });
     }
@@ -2387,7 +2847,7 @@ function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
     for (const match of intent.matchAll(phraseRe)) {
       if (
         clockTokenIsNegated(intent, match.index) ||
-        clockTokenIsDeadline(intent, match.index)
+        (!includeDeadlines && clockTokenIsDeadline(intent, match.index))
       ) {
         continue;
       }
@@ -2673,14 +3133,20 @@ export function buildCadenceFromLlmParams(
       ? { cadence: { kind: "unscheduled" } }
       : null;
   }
-  const effectiveTimeZone = context?.timeZone;
+  const effectiveTimeZone =
+    context?.timeZone ??
+    params.timeZone ??
+    extractExplicitTimeZoneFromText(
+      context?.intent ? reminderSchedulingText(context.intent) : undefined,
+    ) ??
+    undefined;
   const timeOfDayMinute =
     typeof params.timeOfDay === "string"
       ? parseTimeOfDayToken(params.timeOfDay)
       : null;
   const explicitSlots =
     typeof context?.intent === "string"
-      ? extractExplicitDailySlots(context.intent)
+      ? extractExplicitDailySlots(context.intent, kind === "once")
       : [];
   const slotDuration =
     typeof params.durationMinutes === "number" && params.durationMinutes > 0
@@ -2699,12 +3165,18 @@ export function buildCadenceFromLlmParams(
         : ["morning" as const];
 
   if (kind === "once") {
+    // Reuse the canonical readable-clock parser before the date-only 9am default.
+    // More than one requested clock cannot certify one missing-clock occurrence.
+    if (timeOfDayMinute === null && explicitSlots.length > 1) return null;
+    const onceTimeOfDayMinute =
+      timeOfDayMinute ??
+      (explicitSlots.length === 1 ? explicitSlots[0].minuteOfDay : null);
     const dueAt = resolveOnceDueAt({
       dueDate: params.dueDate,
       dueInDays: params.dueInDays,
       dueWeekday: params.dueWeekday,
       dueInMinutes: params.dueInMinutes,
-      timeOfDayMinute,
+      timeOfDayMinute: onceTimeOfDayMinute,
       now: context?.now,
       timeZone: effectiveTimeZone,
     });
@@ -3086,6 +3558,77 @@ export function buildCadenceFromUpdateFields(args: {
     }
   }
   return null;
+}
+
+// Same cap as TRIGGER: a far-future one-off takes a date, not a delay.
+const MAX_RELATIVE_UPDATE_DELAY_MS = 366 * 24 * 60 * 60 * 1000;
+
+function positiveWholeNumber(raw: unknown): number | undefined {
+  const value =
+    typeof raw === "number" && Number.isInteger(raw)
+      ? raw
+      : typeof raw === "string" && /^\d+$/.test(raw.trim())
+        ? Number(raw.trim())
+        : undefined;
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+/**
+ * The relative move an update carries ("actually make that 30 minutes"),
+ * read as TRIGGER_UPDATE reads it: delaySeconds wins over delayMinutes, each a
+ * positive whole number. The tool parameter outranks the same key in
+ * details, where the planner also puts it. Null when neither was sent; ms null
+ * when one was sent but is unusable.
+ */
+export function readRelativeUpdateDelay(
+  params: { delayMinutes?: unknown; delaySeconds?: unknown },
+  details: Record<string, unknown> | undefined,
+): { ms: number | null } | null {
+  const rawSeconds = params.delaySeconds ?? details?.delaySeconds;
+  const rawMinutes = params.delayMinutes ?? details?.delayMinutes;
+  if (rawSeconds === undefined && rawMinutes === undefined) return null;
+  const seconds = positiveWholeNumber(rawSeconds);
+  const minutes = positiveWholeNumber(rawMinutes);
+  // Reject a supplied fractional winning value instead of silently flooring it
+  // or falling back to a lower-priority unit. Valid seconds still outrank minutes.
+  if (
+    (typeof rawSeconds === "number" &&
+      Number.isFinite(rawSeconds) &&
+      !Number.isInteger(rawSeconds)) ||
+    (seconds === undefined &&
+      typeof rawMinutes === "number" &&
+      Number.isFinite(rawMinutes) &&
+      !Number.isInteger(rawMinutes))
+  )
+    return { ms: null };
+  const ms =
+    seconds !== undefined
+      ? seconds * 1000
+      : minutes !== undefined
+        ? minutes * 60_000
+        : null;
+  return { ms: ms !== null && ms <= MAX_RELATIVE_UPDATE_DELAY_MS ? ms : null };
+}
+
+/** "5:31 AM" today, "Oct 31, 5:31 AM" on another local day. */
+function formatLocalFireTime(dueAt: string, timeZone: string): string | null {
+  const zone = explicitCadenceTimeZone(timeZone);
+  const due = new Date(dueAt);
+  if (!zone || Number.isNaN(due.getTime())) return null;
+  const dueDay = getZonedDateParts(due, zone);
+  const today = getZonedDateParts(new Date(), zone);
+  const sameDay =
+    dueDay.year === today.year &&
+    dueDay.month === today.month &&
+    dueDay.day === today.day;
+  return due.toLocaleString("en-US", {
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: zone,
+  });
 }
 
 function hasDefinitionUpdateChanges(
@@ -3640,7 +4183,11 @@ function lifeEffectRequestId(message: Memory): string {
 const lifeEffectObservedAtFallbacks = new WeakMap<object, string>();
 
 function lifeEffectObservedAt(message: Memory): string {
-  if (message.createdAt !== undefined) {
+  if (
+    typeof message.createdAt === "number" &&
+    Number.isFinite(message.createdAt) &&
+    Number.isFinite(new Date(message.createdAt).getTime())
+  ) {
     return new Date(message.createdAt).toISOString();
   }
   const existing = lifeEffectObservedAtFallbacks.get(message);
@@ -4217,6 +4764,10 @@ async function runLifeOperationHandlerInner(
   options: HandlerOptions | undefined,
 ): Promise<PendingLifeActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
+  const currentRequestIntents = readTaskExtractionRequestIntents(
+    state,
+    message,
+  );
   // Defense-in-depth: validate() excludes owner-operation candidates on
   // foreign page-* scopes, and this handler keeps direct tool execution a
   // no-op if a stale or malformed plan still reaches it.
@@ -4234,10 +4785,92 @@ async function runLifeOperationHandlerInner(
   const rawParams = (options as HandlerOptions | undefined)?.parameters as
     | LifeParams
     | undefined;
-  const params = rawParams ?? ({} as LifeParams);
+  let params = rawParams ?? ({} as LifeParams);
   const authoredText = extractPrimaryLifeInputText(messageText(message));
   const currentText = normalizeLifeInputText(authoredText);
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: message.entityId,
+  });
+  const choiceMetadata = detailObject(message.content, "metadata");
+  if (choiceMetadata?.reminderChoiceId !== undefined) {
+    const choiceValue = extractUserText(currentText);
+    const sourceId = validateUuid(message.content.inReplyTo);
+    const source = sourceId ? await runtime.getMemoryById(sourceId) : null;
+    const reference = source
+      ? detailObject(source.content, "metadata")
+      : undefined;
+    const ownerId = validateUuid(reference?.ownerId);
+    const occurrence = ownerId
+      ? await getCallerOccurrenceView(service.repository, service, ownerId)
+      : null;
+    const chosen =
+      source && typeof source.content.text === "string"
+        ? findInteractionRegions(source.content.text).find(
+            ({ block }) =>
+              block.kind === "choice" &&
+              block.scope === "lifeops-reminder" &&
+              block.id === choiceMetadata.reminderChoiceId &&
+              block.options.some((option) => option.value === choiceValue),
+          )
+        : null;
+    if (
+      ownerSurfaceActionName !== "OWNER_REMINDERS" ||
+      !source ||
+      source.entityId !== runtime.agentId ||
+      source.agentId !== runtime.agentId ||
+      source.roomId !== message.roomId ||
+      source.content.source !== "reminder" ||
+      !chosen ||
+      reference?.ownerType !== "occurrence" ||
+      reference.subjectType !== "owner" ||
+      typeof reference.scheduledFor !== "string" ||
+      !Number.isFinite(Date.parse(reference.scheduledFor)) ||
+      !occurrence ||
+      occurrence.subjectType !== "owner" ||
+      reference.dueAt !== occurrence.dueAt ||
+      !["pending", "visible", "snoozed", "completed"].includes(
+        occurrence.state,
+      ) ||
+      !["done", "skip", "10 minutes"].includes(choiceValue)
+    ) {
+      return {
+        success: false,
+        text: "I couldn't verify which reminder that choice belongs to. Open the current reminder and try again.",
+        data: {
+          actionName: ownerSurfaceActionName,
+          reason: "reminder_choice_source_invalid",
+        },
+      };
+    }
+    const action =
+      choiceValue === "done"
+        ? "complete"
+        : choiceValue === "skip"
+          ? "skip"
+          : "snooze";
+    // The authenticated click owns this operation and exact occurrence;
+    // unrelated planner targets or edit fields cannot redirect its effect.
+    params = {
+      action,
+      subaction: action,
+      kind: "definition",
+      ownerSurface: "OWNER_REMINDERS",
+      target: occurrence.id,
+      details: {
+        occurrenceId: occurrence.id,
+        domain: occurrence.domain,
+        ...(action === "snooze" ? { minutes: 10 } : {}),
+      },
+    };
+  }
   const details = params.details;
+  // The owner surface preserves this canonical selector while stripping edit
+  // fields. An ordinary update's details.status grants no archive authority.
+  const archiveOnlyReminder =
+    ownerSurfaceActionName === "OWNER_REMINDERS" &&
+    params.action === "cancel" &&
+    params.subaction === "update" &&
+    params.kind === "definition";
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
     runtime,
@@ -4272,18 +4905,19 @@ async function runLifeOperationHandlerInner(
   // plan kept the draft's slots and lost the after-dinner citations session).
   // The classifier abstaining never cancels an explicit yes, though — that
   // falls back to confirm instead of dropping consent.
-  const deferredDraftFollowupMode = deferredDraft
-    ? explicitCreateConfirmation &&
-      isBareLifeCreateConfirmationMessage(currentText)
-      ? "confirm"
-      : ((await extractDeferredLifeDraftFollowupWithLlm({
-          runtime,
-          message,
-          state,
-          currentText,
-          draft: deferredDraft,
-        })) ?? (explicitCreateConfirmation ? "confirm" : null))
-    : null;
+  const deferredDraftFollowupMode =
+    deferredDraft && !archiveOnlyReminder
+      ? explicitCreateConfirmation &&
+        isBareLifeCreateConfirmationMessage(currentText)
+        ? "confirm"
+        : ((await extractDeferredLifeDraftFollowupWithLlm({
+            runtime,
+            message,
+            state,
+            currentText,
+            draft: deferredDraft,
+          })) ?? (explicitCreateConfirmation ? "confirm" : null))
+      : null;
   const draftExpiryReason = deferredLifeDraftExpiryReason({
     draft: deferredDraft,
     turnsSinceDraft,
@@ -4346,7 +4980,9 @@ async function runLifeOperationHandlerInner(
       },
     };
   }
-  const explicitAction = normalizeExplicitLifeAction(params.action);
+  const explicitAction = archiveOnlyReminder
+    ? { operation: "update" as const, kind: "definition" as const }
+    : normalizeExplicitLifeAction(params.action);
   // Retraction of an un-previewed save: the crisp-ask fast path persists with
   // no draft to cancel, and the planner cannot be trusted to translate
   // "actually don't save that one" into action=delete — observed live
@@ -4354,7 +4990,11 @@ async function runLifeOperationHandlerInner(
   // it", and left the definition active. This runs before extraction so no
   // classifier verdict can strand the stale row; a same-message create
   // (retract + replace in one utterance) still runs after the deletion.
-  if (deferredDraft === null && isLifeSaveRetraction(messageText(message))) {
+  if (
+    !archiveOnlyReminder &&
+    deferredDraft === null &&
+    isLifeSaveRetraction(messageText(message))
+  ) {
     const recentSave = await readRecentLifeSaveCache(runtime, message);
     const retractionMessageId =
       message.id !== undefined && message.id !== null ? String(message.id) : "";
@@ -4500,9 +5140,11 @@ async function runLifeOperationHandlerInner(
   const forceGoalKind =
     looksLikeGoalTrackingFollowup(currentText) ||
     looksLikeGoalTrackingFollowup(intent);
-  const resolvedKind: LifeKind | undefined = forceGoalKind
-    ? "goal"
-    : (operationPlan.kind ?? explicitKind);
+  const resolvedKind: LifeKind | undefined = archiveOnlyReminder
+    ? "definition"
+    : forceGoalKind
+      ? "goal"
+      : (operationPlan.kind ?? explicitKind);
   const forceCreateExecution = shouldForceLifeCreateExecution({
     intent,
     missing: operationPlan.missing,
@@ -4560,9 +5202,6 @@ async function runLifeOperationHandlerInner(
     : !isLifeOwnedOperation(operationPlan.operation)
       ? operationPlan.operation
       : null;
-  const service = new LifeOpsService(runtime, {
-    ownerEntityId: message.entityId,
-  });
   if (
     queryOperation === "query_calendar_today" ||
     queryOperation === "query_calendar_next" ||
@@ -4656,6 +5295,9 @@ async function runLifeOperationHandlerInner(
   ].find(
     (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
   );
+  const targetTitle = [params.title, routedParams?.title].find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
   // Consent must come from the owner's current text. A pending draft proves
   // only that a preview exists; neither a planner `confirmed:true` field nor a
   // Stage-1 applied-effect claim can authorize the consequential write.
@@ -4677,7 +5319,20 @@ async function runLifeOperationHandlerInner(
       const hasCompleteNativeDefinitionCreatePlan = Boolean(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
-      const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
+      const explicitNoAlert = detailBoolean(details, "noAlert");
+      const suppliedCreatePlan =
+        params.createPlan &&
+        typeof params.createPlan === "object" &&
+        !Array.isArray(params.createPlan) &&
+        (params.createPlan as Record<string, unknown>).notificationMode ==
+          null &&
+        explicitNoAlert !== undefined
+          ? {
+              ...params.createPlan,
+              notificationMode: explicitNoAlert ? "none" : "default",
+            }
+          : params.createPlan;
+      const nativeCreatePlan = parseNativeTaskCreatePlan(suppliedCreatePlan);
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -4769,7 +5424,11 @@ async function runLifeOperationHandlerInner(
       let llmRequestKind: NativeAppleReminderLikeKind | null = null;
       if (
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-        (nativeCreatePlan || !hasCompleteNativeDefinitionCreatePlan)
+        (nativeCreatePlan ||
+          !hasCompleteNativeDefinitionCreatePlan ||
+          (ownerSurfaceActionName === "OWNER_REMINDERS" &&
+            explicitNoAlert === undefined &&
+            detailObject(details, "reminderPlan") === undefined))
       ) {
         try {
           llmPlan =
@@ -4784,7 +5443,7 @@ async function runLifeOperationHandlerInner(
                   detailString(details, "timeZone") ??
                     deferredDefinitionDraft?.request.timezone ??
                     windowPolicy?.timezone,
-                ) ?? undefined,
+                ) ?? ownerFactTimeZone,
             }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
@@ -4843,12 +5502,23 @@ async function runLifeOperationHandlerInner(
               normalizeLifeTimeZoneToken(
                 detailString(details, "timeZone") ??
                   llmPlan.timeZone ??
+                  extractExplicitTimeZoneFromText(
+                    reminderSchedulingText(currentText),
+                  ) ??
                   deferredDefinitionDraft?.request.timezone ??
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
+            const relativeReminder =
+              ownerSurfaceActionName === "OWNER_REMINDERS" &&
+              llmPlan.cadenceKind === "once" &&
+              typeof llmPlan.dueInMinutes === "number" &&
+              llmPlan.dueInMinutes > 0;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
               allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
-              intent,
+              intent: currentText,
+              ...(relativeReminder
+                ? { now: new Date(lifeEffectObservedAt(message)) }
+                : {}),
               timeZone: llmCadenceTimeZone ?? undefined,
             });
             if (
@@ -4874,6 +5544,9 @@ async function runLifeOperationHandlerInner(
         normalizeLifeTimeZoneToken(
           detailString(details, "timeZone") ??
             llmPlan?.timeZone ??
+            extractExplicitTimeZoneFromText(
+              reminderSchedulingText(currentText),
+            ) ??
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
         ) ?? ownerFactTimeZone;
@@ -4918,10 +5591,32 @@ async function runLifeOperationHandlerInner(
           await invalidateDeferredLifeDraftCache(runtime, message);
         }
       }
+      if (
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        llmPlan?.notificationMode == null &&
+        detailBoolean(details, "noAlert") === undefined &&
+        detailObject(details, "reminderPlan") === undefined &&
+        !deferredDefinitionDraft
+      ) {
+        return {
+          success: false as const,
+          text: "Should this reminder alert you, or only keep the due time without an alert?",
+          data: {
+            actionName: ownerSurfaceActionName,
+            error: "REMINDER_ALERT_PREFERENCE_UNRESOLVED",
+            awaitingUserInput: true,
+          },
+        };
+      }
       const timedRequestKind = llmRequestKind;
       // A one-shot reminder fires at its requested time, not the generic
       // task visibility window. Preserve explicitly configured lead time.
-      if (timedRequestKind === "reminder" && cadence?.kind === "once") {
+      if (
+        cadence?.kind === "once" &&
+        (timedRequestKind === "reminder" ||
+          timedRequestKind === "alarm" ||
+          ownerSurfaceActionName === "OWNER_REMINDERS")
+      ) {
         cadence = {
           ...cadence,
           visibilityLeadMinutes: cadence.visibilityLeadMinutes ?? 0,
@@ -4937,7 +5632,7 @@ async function runLifeOperationHandlerInner(
           ? draftProjection
           : undefined);
       const nativeAppleMetadata =
-        nativeProjection !== "in_app_only" &&
+        nativeProjection === "apple_reminders" &&
         timedRequestKind &&
         cadence?.kind === "once"
           ? buildNativeAppleReminderMetadata({
@@ -5099,7 +5794,11 @@ async function runLifeOperationHandlerInner(
         // offset-0 step would fire at local midnight (the occurrence's day
         // start). Check-in nudges for quotas are policy work, not a default
         // due-time reminder.
-        cadence.kind === "unscheduled" || cadence.kind === "count_per_day"
+        cadence.kind === "unscheduled" ||
+        cadence.kind === "count_per_day" ||
+        (ownerSurfaceActionName === "OWNER_REMINDERS" &&
+          (llmPlan?.notificationMode === "none" ||
+            detailBoolean(details, "noAlert") === true))
           ? { cadence, plan: null }
           : applyLeadUpReminderShape({
               cadence,
@@ -5146,9 +5845,20 @@ async function runLifeOperationHandlerInner(
           stopWhenComplete: true as const,
         };
       })();
+      const relativeDeadline =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        leadShaped.cadence.kind === "once" &&
+        ((llmPlan?.cadenceKind === "once" &&
+          typeof llmPlan.dueInMinutes === "number" &&
+          llmPlan.dueInMinutes > 0) ||
+          deferredDefinitionDraft?.relativeDeadline ===
+            leadShaped.cadence.dueAt)
+          ? leadShaped.cadence.dueAt
+          : undefined;
       const definitionDraft = {
         intent,
         operation: "create_definition",
+        ...(relativeDeadline !== undefined ? { relativeDeadline } : {}),
         createdAt: editingDeferredDefinitionDraft
           ? Date.now()
           : (deferredDefinitionDraft?.createdAt ?? Date.now()),
@@ -5164,11 +5874,16 @@ async function runLifeOperationHandlerInner(
               : deferredDefinitionDraft?.request.idempotencyKey,
           cadence: leadShaped.cadence,
           description:
-            explicitDescription ??
-            llmDescription ??
-            (editingDeferredDefinitionDraft
-              ? deferredDefinitionDraft.request.description
-              : undefined),
+            ownerSurfaceActionName === "OWNER_REMINDERS" &&
+            leadShaped.cadence.kind === "once" &&
+            typeof details?.description === "string" &&
+            details.description.trim().length > 0
+              ? details.description
+              : (explicitDescription ??
+                llmDescription ??
+                (editingDeferredDefinitionDraft
+                  ? deferredDefinitionDraft.request.description
+                  : undefined)),
           goalRef:
             detailString(details, "goalId") ??
             detailString(details, "goalTitle") ??
@@ -5249,7 +5964,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence, definitionDraft.request.timezone)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -5289,7 +6004,8 @@ async function runLifeOperationHandlerInner(
         };
       }
       const resolvedGoal = definitionDraft.request.goalRef
-        ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
+        ? (await resolveGoal(service, definitionDraft.request.goalRef, domain))
+            .match
         : null;
 
       // Preserve legacy content-based confirmation replay when the caller has no
@@ -5312,7 +6028,7 @@ async function runLifeOperationHandlerInner(
           : undefined;
       if (duplicateOf) {
         await clearDeferredLifeDraftCache(runtime, message);
-        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
+        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence, duplicateOf.definition.timezone)} — nothing new was created.`;
         return {
           success: true as const,
           text: alreadyText,
@@ -5326,6 +6042,10 @@ async function runLifeOperationHandlerInner(
         };
       }
 
+      const relativeReminderDeadline =
+        definitionDraft.relativeDeadline !== undefined
+          ? Date.parse(definitionDraft.relativeDeadline)
+          : undefined;
       const created = await service.createDefinition(
         {
           idempotencyKey: definitionDraft.request.idempotencyKey,
@@ -5354,6 +6074,19 @@ async function runLifeOperationHandlerInner(
             typeof params.intent === "string" && params.intent.trim().length > 0
               ? "argument"
               : "message",
+          ...(relativeReminderDeadline !== undefined
+            ? {
+                assertNewCreation: () => {
+                  if (relativeReminderDeadline <= Date.now()) {
+                    throw new LifeOpsServiceError(
+                      400,
+                      "That reminder time has already passed. When should I remind you?",
+                      "REMINDER_TIME_PASSED",
+                    );
+                  }
+                },
+              }
+            : {}),
         },
       );
       await clearDeferredLifeDraftCache(runtime, message);
@@ -5400,7 +6133,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}`
             : "";
-      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence, created.definition.timezone)}${leadPhrase}.`;
       const savedText = await renderLifeActionReply({
         runtime,
         message,
@@ -5411,7 +6144,23 @@ async function runLifeOperationHandlerInner(
         context: {
           created: {
             title: created.definition.title,
+            description: created.definition.description,
             cadence: created.definition.cadence,
+            timezone: created.definition.timezone,
+            notificationsEnabled: (created.reminderPlan?.steps.length ?? 0) > 0,
+            notificationChannels:
+              created.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(created.definition.metadata, "nativeProjection") ??
+              null,
+            nativeAppleReminderId:
+              detailString(
+                detailObject(
+                  created.definition.metadata ?? undefined,
+                  "nativeAppleReminder",
+                ),
+                "reminderId",
+              ) ?? null,
             ...(savedLeadSteps.length > 0
               ? {
                   earlyNudges: savedLeadSteps.map(
@@ -5428,12 +6177,44 @@ async function runLifeOperationHandlerInner(
       // exactly the state the evaluator must not paraphrase — observed live
       // (#16941): the synthesized reply told the owner "nothing is saved yet"
       // after this branch had already persisted the definition.
+      const ownedCreatePlan =
+        nativeCreatePlan ??
+        (typeof params.createPlan === "object" &&
+        params.createPlan !== null &&
+        !Array.isArray(params.createPlan) &&
+        "nativeProjection" in params.createPlan &&
+        params.createPlan.nativeProjection === null &&
+        llmPlan?.mode === "create" &&
+        llmPlan.multiStep === false
+          ? parseNativeTaskCreatePlan({
+              ...params.createPlan,
+              nativeProjection: llmPlan.nativeProjection,
+            })
+          : null);
+      const ownsSingleCreateRequest =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        ownedCreatePlan?.mode === "create" &&
+        ownedCreatePlan.multiStep === false &&
+        !reuseDeferredDraft &&
+        validateUuid(currentMessageId) !== null &&
+        currentRequestIntents?.length === 1;
       return {
         success: true as const,
         text: savedText,
         userFacingText: savedText,
         verifiedUserFacing: true,
         data: toActionData(created),
+        ...(ownsSingleCreateRequest
+          ? {
+              values: {
+                ownerRequestHandling: {
+                  kind: "single_create",
+                  sourceMessageId: currentMessageId,
+                  definitionId: created.definition.id,
+                },
+              },
+            }
+          : {}),
       };
     };
 
@@ -5790,12 +6571,45 @@ async function runLifeOperationHandlerInner(
       const requestedTimeZone = normalizeLifeTimeZoneToken(
         detailString(details, "timezone"),
       );
+      const explicitCadence = normalizeCadenceDetail(
+        detailObject(details, "cadence"),
+      );
+      // A relative delay moves a one-off to that long after the request, the
+      // way create anchors "in N minutes". Ignored before this, "actually make
+      // that 30 minutes" fell through to the free-text extractor, which spent
+      // 11 s reasoning over the bare message and then changed nothing (live
+      // tj-b020ae0157c06c). An explicit cadence outranks it, as scheduledAtIso
+      // outranks a delay on TRIGGER_UPDATE.
+      const relativeDelay = explicitCadence
+        ? null
+        : readRelativeUpdateDelay(params, details);
+      let requested: RequestedValue | undefined;
+      if (explicitCadence)
+        requested =
+          explicitCadence.kind === "once"
+            ? { dueAt: explicitCadence.dueAt }
+            : null;
+      else if (relativeDelay)
+        requested =
+          relativeDelay.ms === null ? null : { delayMs: relativeDelay.ms };
       const { match: target, ambiguousCandidates } =
         await resolveDefinitionForMutation(
           service,
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
+          // Only an edit follows the item just saved: a cancel by name still
+          // asks between live namesakes.
+          archiveOnlyReminder
+            ? { cancel: true }
+            : {
+                cancel: false,
+                recentSaveId: (await readRecentLifeSaveCache(runtime, message))
+                  ?.definitionId,
+                requested,
+              },
         );
       if (!target)
         return {
@@ -5813,6 +6627,20 @@ async function runLifeOperationHandlerInner(
                 : `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to update.",
         };
+      if (archiveOnlyReminder) {
+        const updated = await service.updateDefinition(target.definition.id, {
+          ownership,
+          status: "archived",
+        });
+        const text = `Cancelled "${updated.definition.title}".`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData(updated),
+        };
+      }
       if (
         requestedTime !== undefined &&
         requestedTimeZone === null &&
@@ -5825,13 +6653,53 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
+      let delayedCadence: LifeOpsCadence | undefined;
+      if (relativeDelay) {
+        const currentCadence = target.definition.cadence;
+        const title = target.definition.title;
+        const dueAtMs =
+          relativeDelay.ms === null
+            ? null
+            : Date.parse(lifeEffectObservedAt(message)) + relativeDelay.ms;
+        if (
+          dueAtMs === null ||
+          currentCadence.kind !== "once" ||
+          dueAtMs <= Date.now()
+        )
+          return {
+            success: false,
+            text:
+              dueAtMs === null
+                ? `Nothing changed on "${title}". How many minutes from now should it go off?`
+                : currentCadence.kind !== "once"
+                  ? `"${title}" repeats, so a delay can't move it and nothing changed. Tell me its new schedule, or snooze the next one.`
+                  : `That time has already passed, so nothing changed on "${title}". When should it go off?`,
+            data: {
+              actionName: ownerSurfaceActionName,
+              definitionId: target.definition.id,
+              reason: "relative_delay_unusable",
+            },
+          };
+        // Keeps the stored lead, so the reminder still fires at dueAt.
+        delayedCadence = {
+          ...currentCadence,
+          dueAt: new Date(dueAtMs).toISOString(),
+        };
+      }
+      const cadence = explicitCadence ?? delayedCadence;
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
           params.title !== target.definition.title ? params.title : undefined,
         timezone: requestedTimeZone ?? undefined,
-        description: detailString(details, "description"),
-        cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
+        description:
+          target.definition.metadata.ownerSurface === "OWNER_REMINDERS" &&
+          (cadence ?? target.definition.cadence).kind === "once" &&
+          typeof details?.description === "string" &&
+          details.description.trim().length > 0
+            ? details.description
+            : detailString(details, "description"),
+        cadence,
         priority: detailNumber(details, "priority"),
         // detailObject returns Record<string,unknown>; cast at validated boundary.
         windowPolicy: detailObject(
@@ -5848,8 +6716,14 @@ async function runLifeOperationHandlerInner(
         ) as UpdateLifeOpsDefinitionRequest["checkInPolicy"],
       };
 
-      // If no explicit changes from structured details, try LLM extraction
-      if (request.cadence == null && intent) {
+      const descriptionOnlyUpdate =
+        request.description !== undefined &&
+        requestedTime === undefined &&
+        !hasDefinitionUpdateChanges({ ...request, description: undefined }) &&
+        details !== undefined &&
+        Object.keys(details).every((key) => key === "description");
+      // A complete body-only patch must not reinterpret its original creation time.
+      if (!descriptionOnlyUpdate && request.cadence == null && intent) {
         const llmFields = await extractUpdateFieldsWithLlm({
           runtime,
           intent,
@@ -5858,6 +6732,7 @@ async function runLifeOperationHandlerInner(
           currentWindows: target.definition.windowPolicy.windows.map(
             (w) => w.name,
           ),
+          timeZone: requestedTimeZone ?? target.definition.timezone,
         });
         if (llmFields) {
           if (llmFields.title) request.title = llmFields.title;
@@ -5941,6 +6816,15 @@ async function runLifeOperationHandlerInner(
         target.definition.id,
         request,
       );
+      // A moved one-off is confirmed by its new clock time in the owner's zone.
+      const firesAtLocal =
+        request.cadence?.kind === "once" &&
+        updated.definition.cadence.kind === "once"
+          ? formatLocalFireTime(
+              updated.definition.cadence.dueAt,
+              updated.definition.timezone,
+            )
+          : null;
       const fallback = `Updated "${updated.definition.title}".`;
       const text = await renderLifeActionReply({
         runtime,
@@ -5953,6 +6837,23 @@ async function runLifeOperationHandlerInner(
           previousTitle: target.definition.title,
           updated: {
             title: updated.definition.title,
+            description: updated.definition.description,
+            cadence: updated.definition.cadence,
+            ...(firesAtLocal ? { firesAtLocal } : {}),
+            timezone: updated.definition.timezone,
+            notificationChannels:
+              updated.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(updated.definition.metadata, "nativeProjection") ??
+              null,
+            nativeAppleReminderId:
+              detailString(
+                detailObject(
+                  updated.definition.metadata ?? undefined,
+                  "nativeAppleReminder",
+                ),
+                "reminderId",
+              ) ?? null,
           },
         },
       });
@@ -5966,11 +6867,18 @@ async function runLifeOperationHandlerInner(
     }
 
     if (internalOp === "update_goal") {
-      const target = await resolveGoal(service, targetName, domain);
+      const { match: target, ambiguousCandidates } = await resolveGoal(
+        service,
+        targetName,
+        domain,
+      );
       if (!target)
         return {
           success: false,
-          text: "I could not find that goal to update.",
+          text:
+            ambiguousCandidates.length > 0
+              ? goalAmbiguityReply(ambiguousCandidates)
+              : "I could not find that goal to update.",
         };
       const request: UpdateLifeOpsGoalRequest = {
         ownership,
@@ -6158,6 +7066,7 @@ async function runLifeOperationHandlerInner(
           // Destructive: a fuzzy near-miss must ask, never delete (the
           // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
           true,
+          targetTitle,
         );
       if (!target) {
         // Users call scheduled triggers "reminders" too: "delete the landlord
@@ -6239,11 +7148,18 @@ async function runLifeOperationHandlerInner(
           },
         };
       }
-      const target = await resolveGoal(service, targetName, domain);
+      const { match: target, ambiguousCandidates } = await resolveGoal(
+        service,
+        targetName,
+        domain,
+      );
       if (!target)
         return {
           success: false,
-          text: "I could not find that goal to delete.",
+          text:
+            ambiguousCandidates.length > 0
+              ? goalAmbiguityReply(ambiguousCandidates)
+              : "I could not find that goal to delete.",
         };
       await service.deleteGoal(target.goal.id);
       const fallback = `Deleted goal "${target.goal.title}".`;
@@ -6290,6 +7206,8 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
         );
       if (ambiguousCandidates.length > 0)
         return {
@@ -6550,10 +7468,6 @@ async function runLifeOperationHandlerInner(
       const reviewDomain = domain ?? "user_lifeops";
       const scoped = (await listCallerDefinitions(service)).filter(
         (record) =>
-          (record.definition.status === "active" ||
-            (surface === "OWNER_TODOS" &&
-              record.definition.status === "completed" &&
-              record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
           resolveOwnerDefinitionSurface(record.definition) === surface,
       );
@@ -6583,9 +7497,24 @@ async function runLifeOperationHandlerInner(
                   record.definition.status === "completed",
               )
             : undefined;
+        // Cancellation retains the saved reminder. An explicit id or exact
+        // title may read that history; lists and fuzzy matches stay active-only.
+        const exactArchivedReminders =
+          surface === "OWNER_REMINDERS"
+            ? scoped.filter(
+                (record) =>
+                  record.definition.status === "archived" &&
+                  (record.definition.id === targetName ||
+                    normalizeTitle(record.definition.title) ===
+                      normalizeTitle(targetName)),
+              )
+            : [];
         const resolved = completedTodo
           ? { match: completedTodo, ambiguousCandidates: [] }
-          : resolveDefinitionInRecords(active, targetName);
+          : resolveDefinitionInRecords(
+              [...active, ...exactArchivedReminders],
+              targetName,
+            );
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
           return {
@@ -6603,7 +7532,7 @@ async function runLifeOperationHandlerInner(
           // A genuine miss stays a pure not-found: disclosing other items
           // here is a deliberate no-leak contract (see
           // life.review-definitions.test.ts isolation coverage).
-          const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
+          const fallback = `I couldn't find ${surface === "OWNER_REMINDERS" ? "a saved" : "an active"} ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
           return {
             success: false,
             text: fallback,
@@ -6640,11 +7569,20 @@ async function runLifeOperationHandlerInner(
         id: record.definition.id,
         title: record.definition.title,
         status: record.definition.status,
-        cadence: summarizeCadence(record.definition.cadence),
+        cadence: summarizeCadence(
+          record.definition.cadence,
+          record.definition.timezone,
+        ),
         kind: record.definition.kind,
+        ...(targetName && !isListVerbiageTarget
+          ? {
+              description: record.definition.description,
+              timezone: record.definition.timezone,
+            }
+          : {}),
       }));
       const fallback = [
-        `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
+        `${selected.some((record) => record.definition.status === "archived") ? "Saved history:" : "You're tracking"} ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
         ...listed.map(
           (item) =>
             `- ${item.title} (${item.status}; ${item.cadence}; ID: ${item.id})`,
@@ -6672,7 +7610,16 @@ async function runLifeOperationHandlerInner(
     }
 
     if (internalOp === "review_goal") {
-      const target = await resolveGoal(service, targetName, domain);
+      const { match: target, ambiguousCandidates } = await resolveGoal(
+        service,
+        targetName,
+        domain,
+      );
+      if (ambiguousCandidates.length > 0)
+        return {
+          success: false,
+          text: goalAmbiguityReply(ambiguousCandidates),
+        };
       if (!target) {
         const weeklyReview = await service.reviewGoalsForWeek();
         if (weeklyReview.summary.totalGoals === 0) {
@@ -6779,6 +7726,17 @@ async function runLifeOperationHandlerInner(
   } catch (err) {
     // error-policy:J1 The action boundary translates typed domain failures into a rejected user-visible operation.
     if (err instanceof LifeOpsServiceError) {
+      if (err.code === "REMINDER_TIME_PASSED") {
+        return {
+          success: false as const,
+          text: err.message,
+          data: {
+            actionName: ownerSurfaceActionName,
+            error: err.code,
+            awaitingUserInput: true,
+          },
+        };
+      }
       logger.error(
         {
           boundary: "lifeops-owner-action",
@@ -6821,6 +7779,9 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  // Capture the existing receipt clock before extraction or other awaits.
+  // Legacy messages without a valid timestamp keep this instant on retries.
+  lifeEffectObservedAt(message);
   const result = settleLifeActionReply(
     await runLifeOperationHandlerInner(runtime, message, state, options),
   );

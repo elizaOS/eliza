@@ -12,9 +12,13 @@
  * visible runs without copying the remaining stream suffix at every index.
  */
 
+import type { StreamingContext } from "../streaming-context";
 import type { StreamChunkCallback } from "../types/components";
+import type { ResponseSkeleton, StructuredStreamGate } from "../types/model";
+import type { SchemaRow, StreamEvent } from "../types/state";
 import type {
 	IStreamExtractor,
+	IStreamingRetryState,
 	StructuredFieldEventCallbacks,
 } from "../types/streaming";
 import { REASONING_TAG_NAMES } from "./reasoning-tags";
@@ -29,9 +33,7 @@ function isHighSurrogate(code: number): boolean {
 	return code >= 0xd800 && code <= 0xdbff;
 }
 
-// ============================================================================
 // StreamError - Standardized error handling for streaming
-// ============================================================================
 
 /** Error codes for streaming operations */
 export type StreamErrorCode =
@@ -66,9 +68,7 @@ export class StreamError extends Error {
 	}
 }
 
-// ============================================================================
 // Shared constants and utilities
-// ============================================================================
 
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
@@ -93,9 +93,7 @@ function validateChunkSize(chunk: string): void {
 	}
 }
 
-// ============================================================================
 // PassthroughExtractor - Simplest implementation
-// ============================================================================
 
 /**
  * Streams all content as-is without any filtering.
@@ -120,35 +118,9 @@ export class PassthroughExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
 // MarkableExtractor - Passthrough with external completion control
-// ============================================================================
 
-/**
- * Passthrough extractor that can be marked complete externally.
- *
- * WHY: When using StructuredFieldStreamExtractor inside dynamicPromptExecFromState,
- * extraction/completion is handled internally. But the outer streaming context
- * still needs to know when streaming is complete for retry/fallback logic.
- *
- * This extractor passes through all content and provides a markComplete() method
- * that the caller can invoke when the underlying operation completes successfully.
- *
- * @example
- * ```ts
- * const extractor = new MarkableExtractor();
- * const ctx = createStreamingContext(extractor, callback);
- *
- * const result = await dynamicPromptExecFromState({ ... });
- * if (result) {
- *   extractor.markComplete(); // Signal success
- * }
- *
- * if (ctx.isComplete()) {
- *   // Now returns true after markComplete()
- * }
- * ```
- */
+/** Passes through streaming text while allowing the owning structured extractor to mark completion for retry and fallback handling. */
 export class MarkableExtractor implements IStreamExtractor {
 	private _done = false;
 
@@ -178,10 +150,6 @@ export class MarkableExtractor implements IStreamExtractor {
 		this._done = true;
 	}
 }
-
-import type { ResponseSkeleton } from "../types/model";
-import type { SchemaRow, StreamEvent } from "../types/state";
-import type { IStreamingRetryState } from "../types/streaming";
 
 /**
  * Extractor state machine for validation-aware streaming.
@@ -252,9 +220,7 @@ export interface ValidationDiagnosis {
 	incompleteFields: string[];
 }
 
-// ============================================================================
 // StructuredFieldStreamExtractor - top-level field extraction
-// ============================================================================
 
 const STRUCTURED_TOP_LEVEL_FIELD_RE =
 	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
@@ -324,6 +290,9 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	flush(): string {
 		if (this.state === "failed") {
 			return "";
+		}
+		if (this.config.abortSignal?.aborted) {
+			return this.push("");
 		}
 
 		this.processAvailableLines(true);
@@ -472,15 +441,12 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			return;
 		}
 
+		// Streamed fields emit their diff on completeCurrentField (level <= 1).
 		if (this.currentTrackedField) {
 			this.appendFieldContent(
 				this.currentTrackedField,
 				this.normalizeContinuationLine(line),
 			);
-			if (this.currentField && this.streamFieldSet.has(this.currentField)) {
-				// emitFieldContent diffing happens on completeCurrentField for
-				// level <= 1; nothing additional needed per continuation line.
-			}
 		}
 	}
 
@@ -596,15 +562,11 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 
 	private emitEvent(event: StreamEvent): void {
-		if (this.config.onEvent) {
-			this.config.onEvent(event);
-		}
+		this.config.onEvent?.(event);
 	}
 }
 
-// ============================================================================
 // ResponseSkeletonStreamExtractor - JSON skeleton field extraction
-// ============================================================================
 
 /**
  * Extracts selected free-string fields from a streamed JSON response skeleton.
@@ -632,7 +594,18 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private passthroughEmitted = "";
 	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
+	/** `[field, JSON-encoded key]` for each streamed field, in declaration order. */
+	private readonly streamFieldKeys: ReadonlyArray<readonly [string, string]>;
 	private readonly maxKeyPatternLength: number;
+	/** Everything pushed this attempt, kept only until the gate decides. */
+	private gateHead = "";
+	private gateDecided = false;
+	/** A denied gate or an unstreamable shape: nothing more emits this attempt. */
+	private held = false;
+	/** Field whose parts array is being walked, with the walker's position. */
+	private partsField: string | null = null;
+	private partsState: "element" | "key" = "element";
+	private partKind: string | undefined;
 
 	constructor(
 		private readonly config: {
@@ -647,12 +620,36 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			onEvent?: (event: StreamEvent) => void;
 			abortSignal?: AbortSignal;
 			unordered?: boolean;
+			/**
+			 * Fields whose value may be an ordered `[{kind, value}]` parts array
+			 * instead of a string, mapped to the part kinds whose `value` streams.
+			 * The first part of any other kind (or any other shape) ends this
+			 * attempt's stream; the caller's final result stays authoritative.
+			 */
+			streamParts?: Readonly<Record<string, readonly string[]>>;
+			/**
+			 * Decides once per attempt, when the first stream field starts, whether
+			 * it may stream. Receives the complete top-level envelope fields that
+			 * precede it, or `null` for unstructured prose. A denied (or
+			 * undecidable) attempt emits nothing; an allowed one streams only
+			 * that top-level value. Requires `unordered`.
+			 */
+			gate?: StructuredStreamGate;
 		},
 	) {
+		if (config.gate && !config.unordered) {
+			throw new TypeError(
+				"ResponseSkeletonStreamExtractor gate requires unordered extraction",
+			);
+		}
 		this.streamFieldSet = new Set(config.streamFields);
+		this.streamFieldKeys = Array.from(
+			this.streamFieldSet,
+			(field) => [field, JSON.stringify(field)] as const,
+		);
 		this.maxKeyPatternLength = Math.max(
 			0,
-			...config.streamFields.map((field) => JSON.stringify(field).length),
+			...this.streamFieldKeys.map(([, key]) => key.length),
 		);
 	}
 
@@ -669,7 +666,17 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			return "";
 		}
 		validateChunkSize(chunk);
+		if (this.held) {
+			return "";
+		}
 		this.buffer += chunk;
+		if (this.config.gate && !this.gateDecided) {
+			this.gateHead += chunk;
+			if (this.gateHead.length > MAX_STREAM_GATE_HEAD) {
+				this.hold();
+				return "";
+			}
+		}
 		if (!this.formatDecided) {
 			this.decideFormat();
 		}
@@ -685,18 +692,23 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		if (this.state === "failed") {
 			return "";
 		}
+		if (this.config.abortSignal?.aborted) {
+			return this.push("");
+		}
 		if (!this.formatDecided) {
 			this.decideFormat();
 		}
 		if (this.passthrough) {
-			this.drainPassthrough(true);
+			if (!this.held) this.drainPassthrough(true);
 			this.buffer = "";
 			this.state = "complete";
 			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 			return "";
 		}
-		this.config.unordered ? this.drainUnordered(true) : this.drain(true);
-		for (const field of this.streamFieldSet) {
+		if (!this.held) {
+			this.config.unordered ? this.drainUnordered(true) : this.drain(true);
+		}
+		for (const field of this.held ? [] : this.streamFieldSet) {
 			const flushed = this.flushReasoningFilter(field);
 			if (flushed) {
 				this.appendVisibleAndEmit(field, flushed);
@@ -723,7 +735,52 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.formatDecided = false;
 		this.passthrough = false;
 		this.passthroughEmitted = "";
+		this.gateHead = "";
+		this.gateDecided = false;
+		this.held = false;
+		this.partsField = null;
+		this.partsState = "element";
+		this.partKind = undefined;
 		this.state = "streaming";
+	}
+
+	/** Ends this attempt's stream without emitting anything further. */
+	private hold(): void {
+		this.held = true;
+		this.buffer = "";
+		this.gateHead = "";
+		this.activeStringField = null;
+		this.partsField = null;
+	}
+
+	/**
+	 * Runs the caller's gate once per attempt. `head` is the raw text pushed
+	 * before the first stream field's key: a JSON object prefix whose complete
+	 * top-level members are decoded for the gate. Anything that is not such a
+	 * prefix (a nested key, an array or XML envelope) is undecidable and holds.
+	 */
+	private passesGate(head: string | null): boolean {
+		const gate = this.config.gate;
+		if (!gate || this.gateDecided) return !this.held;
+		this.gateDecided = true;
+		this.gateHead = "";
+		let preceding: Record<string, unknown> | null = null;
+		if (head !== null) {
+			preceding = decodeEnvelopePrefix(head);
+			if (!preceding) {
+				this.hold();
+				return false;
+			}
+		}
+		let allowed = false;
+		try {
+			allowed = gate(preceding) === true;
+		} catch {
+			// error-policy:J3 a failing gate cannot authorize visible text.
+			allowed = false;
+		}
+		if (!allowed) this.hold();
+		return allowed;
 	}
 
 	/**
@@ -746,6 +803,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		const looksStructured = first === "{" || first === "[" || first === "<";
 		this.formatDecided = true;
 		this.passthrough = !looksStructured;
+		if (this.passthrough) this.passesGate(null);
 	}
 
 	/**
@@ -866,34 +924,174 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	private drainUnordered(final: boolean): void {
-		while (this.state === "streaming") {
+		while (this.state === "streaming" && !this.held) {
 			if (this.activeStringField) {
 				if (!this.processActiveString(final, false)) {
 					return;
 				}
 				continue;
 			}
+			if (this.partsField) {
+				if (!this.drainParts(final)) {
+					return;
+				}
+				continue;
+			}
+			// A gated attempt streams only the top-level value its gate
+			// approved. Once that value closes, the rest of the envelope (where
+			// a nested key can repeat the field name) never streams.
+			if (this.config.gate && this.gateDecided) {
+				this.hold();
+				return;
+			}
 
 			const match = this.findNextStreamFieldStart(final);
 			if (!match) {
 				return;
 			}
+			if (
+				this.config.gate &&
+				!this.gateDecided &&
+				!this.passesGate(
+					this.gateHead.slice(
+						0,
+						this.gateHead.length - this.buffer.length + match.keyStart,
+					),
+				)
+			) {
+				return;
+			}
 
 			this.buffer = this.buffer.slice(match.valueStart);
-			this.activeStringField = match.field;
+			if (match.parts) {
+				this.partsField = match.field;
+				this.partsState = "element";
+			} else {
+				this.activeStringField = match.field;
+			}
 		}
 	}
 
-	private findNextStreamFieldStart(
-		final: boolean,
-	): { field: string; valueStart: number } | null {
+	/**
+	 * Walks one `[{kind, value}, ...]` parts array, streaming the `value` of
+	 * each part whose `kind` (which must come first) is streamable. Returns
+	 * false when more input is needed. Any other shape holds the attempt.
+	 */
+	private drainParts(final: boolean): boolean {
+		const field = this.partsField;
+		if (!field) return true;
+		const kinds = this.config.streamParts?.[field] ?? [];
+		this.buffer = this.buffer.replace(/^\s+/, "");
+		if (this.buffer.length === 0) {
+			if (final) this.partsField = null;
+			return final;
+		}
+		const char = this.buffer[0];
+		if (this.partsState === "element") {
+			if (char === "]") {
+				this.buffer = this.buffer.slice(1);
+				this.partsField = null;
+				return true;
+			}
+			if (char === ",") {
+				this.buffer = this.buffer.slice(1);
+				return true;
+			}
+			if (char === "{") {
+				this.buffer = this.buffer.slice(1);
+				this.partsState = "key";
+				this.partKind = undefined;
+				return true;
+			}
+			this.hold();
+			return false;
+		}
+		if (char === "}") {
+			this.buffer = this.buffer.slice(1);
+			this.partsState = "element";
+			return true;
+		}
+		if (char === ",") {
+			this.buffer = this.buffer.slice(1);
+			return true;
+		}
+		if (char !== '"') {
+			this.hold();
+			return false;
+		}
+		const keyEnd = findJsonStringEnd(this.buffer);
+		let cursor = keyEnd ?? this.buffer.length;
+		while (
+			cursor < this.buffer.length &&
+			/\s/.test(this.buffer[cursor] ?? "")
+		) {
+			cursor++;
+		}
+		if (cursor < this.buffer.length && this.buffer[cursor] !== ":") {
+			this.hold();
+			return false;
+		}
+		cursor++;
+		while (
+			cursor < this.buffer.length &&
+			/\s/.test(this.buffer[cursor] ?? "")
+		) {
+			cursor++;
+		}
+		if (keyEnd === null || cursor >= this.buffer.length) {
+			if (final) this.partsField = null;
+			return final;
+		}
+		let key: unknown;
+		try {
+			key = JSON.parse(this.buffer.slice(0, keyEnd));
+		} catch {
+			// error-policy:J3 malformed model output cannot stream.
+			key = undefined;
+		}
+		if (this.buffer[cursor] === '"' && key === "kind") {
+			const end = findJsonStringEnd(this.buffer.slice(cursor));
+			if (end === null) {
+				if (final) this.partsField = null;
+				return final;
+			}
+			let kind: unknown;
+			try {
+				kind = JSON.parse(this.buffer.slice(cursor, cursor + end));
+			} catch {
+				// error-policy:J3 malformed model output cannot stream.
+				kind = undefined;
+			}
+			this.partKind = typeof kind === "string" ? kind : undefined;
+			this.buffer = this.buffer.slice(cursor + end);
+			return true;
+		}
+		if (
+			this.buffer[cursor] === '"' &&
+			key === "value" &&
+			this.partKind !== undefined &&
+			kinds.includes(this.partKind)
+		) {
+			this.buffer = this.buffer.slice(cursor + 1);
+			this.activeStringField = field;
+			return true;
+		}
+		this.hold();
+		return false;
+	}
+
+	private findNextStreamFieldStart(final: boolean): {
+		field: string;
+		keyStart: number;
+		valueStart: number;
+		parts: boolean;
+	} | null {
 		while (this.buffer.length > 0) {
 			let earliest:
 				| { field: string; keyStart: number; keyEnd: number }
 				| undefined;
 
-			for (const field of this.streamFieldSet) {
-				const key = JSON.stringify(field);
+			for (const [field, key] of this.streamFieldKeys) {
 				const keyStart = this.buffer.indexOf(key);
 				if (keyStart >= 0 && (!earliest || keyStart < earliest.keyStart)) {
 					earliest = { field, keyStart, keyEnd: keyStart + key.length };
@@ -949,12 +1147,29 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				}
 				return null;
 			}
-			if (this.buffer[cursor] !== '"') {
+			// A parts field streams only its array form; a string there is a
+			// serialized or off-contract value the caller must validate first.
+			const partsField =
+				this.config.streamParts?.[earliest.field] !== undefined;
+			if (this.buffer[cursor] === "[" && partsField) {
+				return {
+					field: earliest.field,
+					keyStart: earliest.keyStart,
+					valueStart: cursor + 1,
+					parts: true,
+				};
+			}
+			if (this.buffer[cursor] !== '"' || partsField) {
 				this.buffer = this.buffer.slice(cursor);
 				continue;
 			}
 
-			return { field: earliest.field, valueStart: cursor + 1 };
+			return {
+				field: earliest.field,
+				keyStart: earliest.keyStart,
+				valueStart: cursor + 1,
+				parts: false,
+			};
 		}
 
 		if (final) {
@@ -1022,12 +1237,29 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				plain = "";
 			}
 		};
+		const closeTruncated = () => {
+			// The stream ended mid-string with no closing quote. Emit what
+			// arrived and close the string implicitly so drain() can finish
+			// instead of looping forever on the same span.
+			this.activeStringField = null;
+			if (advanceSpan) {
+				this.spanIndex++;
+			}
+		};
 
 		while (this.buffer.length > 0) {
 			if (this.pendingEscape) {
+				if (this.pendingEscape === "\\" && this.buffer[0] === "u") {
+					this.pendingEscape = "\\u";
+					this.buffer = this.buffer.slice(1);
+					continue;
+				}
 				const needed = this.pendingEscape === "\\u" ? 4 : 1;
 				if (this.buffer.length < needed) {
 					flushPlain();
+					if (final) {
+						closeTruncated();
+					}
 					return final;
 				}
 				const raw = this.pendingEscape + this.buffer.slice(0, needed);
@@ -1035,6 +1267,20 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				this.pendingEscape = "";
 				flushPlain();
 				this.appendAndEmit(field, decodeJsonEscape(raw));
+				continue;
+			}
+
+			// Copy the plain run up to the next quote or escape in one slice
+			// instead of re-slicing the buffer for every character.
+			let runEnd = 0;
+			while (runEnd < this.buffer.length) {
+				const code = this.buffer.charCodeAt(runEnd);
+				if (code === 0x22 || code === 0x5c) break;
+				runEnd += 1;
+			}
+			if (runEnd > 0) {
+				plain += this.buffer.slice(0, runEnd);
+				this.buffer = this.buffer.slice(runEnd);
 				continue;
 			}
 
@@ -1056,6 +1302,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				if (this.buffer.length === 0) {
 					this.pendingEscape = "\\";
 					flushPlain();
+					if (final) {
+						closeTruncated();
+					}
 					return final;
 				}
 				const next = this.buffer[0];
@@ -1067,12 +1316,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				}
 				flushPlain();
 				this.appendAndEmit(field, decodeJsonEscape(`\\${next}`));
-				continue;
 			}
-			plain += char;
 		}
 
 		flushPlain();
+		if (final) {
+			closeTruncated();
+		}
 		return final;
 	}
 
@@ -1240,7 +1490,7 @@ function decodeJsonEscape(raw: string): string {
 }
 
 /**
- * Match any canonical reasoning open tag (`<think>`, `<thinking>`, ...) at
+ * Match any canonical reasoning open tag (`<think>`, `<thinking>`,...) at
  * `index`. `partial` means the source ends inside a prefix of at least one
  * tag, so the caller must hold the remainder until more input arrives.
  */
@@ -1272,9 +1522,15 @@ function matchTagAt(
 	}
 	const compareLen = remainingLen < tag.length ? remainingLen : tag.length;
 	for (let offset = 0; offset < compareLen; offset++) {
-		const sourceCh = source[index + offset] ?? "";
-		const tagCh = tag[offset] ?? "";
-		if (sourceCh.toLowerCase() !== tagCh.toLowerCase()) {
+		// Tags are lowercase ASCII. Fold ASCII without allocating; only non-ASCII
+		// source characters (e.g. U+212A KELVIN SIGN lowercases to "k") need the
+		// full Unicode lowercase mapping.
+		const code = source.charCodeAt(index + offset);
+		const folded = code >= 0x41 && code <= 0x5a ? code + 0x20 : code;
+		if (
+			folded !== tag.charCodeAt(offset) &&
+			(code < 0x80 || source[index + offset].toLowerCase() !== tag[offset])
+		) {
 			return "none";
 		}
 	}
@@ -1282,6 +1538,30 @@ function matchTagAt(
 		return "full";
 	}
 	return "partial";
+}
+
+/** Bounds the envelope text a gated extractor keeps before deciding. */
+const MAX_STREAM_GATE_HEAD = 64 * 1024;
+
+/**
+ * Decodes the complete members of a JSON object prefix that ends just before
+ * a member key, e.g. `{"a":1,"b":[],` -> `{a: 1, b: []}`. Returns null when the
+ * text is not such a prefix.
+ */
+function decodeEnvelopePrefix(head: string): Record<string, unknown> | null {
+	const trimmed = head.trim().replace(/,\s*$/, "");
+	if (!trimmed.startsWith("{")) return null;
+	try {
+		const decoded: unknown = JSON.parse(`${trimmed}}`);
+		return decoded !== null &&
+			typeof decoded === "object" &&
+			!Array.isArray(decoded)
+			? (decoded as Record<string, unknown>)
+			: null;
+	} catch {
+		// error-policy:J3 an undecodable prefix cannot authorize visible text.
+		return null;
+	}
 }
 
 function findJsonStringEnd(value: string): number | null {
@@ -1391,11 +1671,7 @@ function findBalancedJsonEnd(value: string): number | null {
 	return null;
 }
 
-// ============================================================================
 // Streaming Context Helpers
-// ============================================================================
-
-import type { StreamingContext } from "../streaming-context";
 
 /**
  * Creates a streaming retry state from an extractor.

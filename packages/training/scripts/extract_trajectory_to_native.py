@@ -43,9 +43,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.native_record import (  # noqa: E402
+from eliza_training.lib.native_record import (  # noqa: E402
     BOUNDARY_GENERATE_TEXT,
     FORMAT,
     SCHEMA_VERSION,

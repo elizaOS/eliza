@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Test double for AOSP sign_target_files_apks (never a signer).
+
+Records its arguments in calls.jsonl and writes a target-files shaped like the real
+tool's output: apkcerts.txt rows point at the mapped release keys, nested APK/APEX
+entries carry a CERT entry holding the digest of the certificate the mapped release
+key would sign with, re-signed APEXes carry the release payload key, and IMAGES/
+holds minimal AVB vbmeta structs (header and chain-partition descriptors only, no
+signature) with the configured rollback index. mock.json can skip a package, keep an
+APEX's test payload key or set the rollback index.
+"""
+import base64
+import hashlib
+import io
+import json
+import os
+import re
+import struct
+import sys
+import zipfile
+
+here = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(here, 'calls.jsonl'), 'a') as log:
+    log.write(json.dumps([os.path.basename(__file__)] + sys.argv[1:]) + '\n')
+src, dst = sys.argv[-2], sys.argv[-1]
+args = sys.argv[1:-2]
+config_file = os.path.join(here, 'mock.json')
+cfg = json.load(open(config_file)) if os.path.exists(config_file) else {}
+keys = args[args.index('-d') + 1]
+
+
+def pairs(flag):
+    return dict(args[i + 1].split('=', 1) for i in range(len(args)) if args[i] == flag)
+
+
+kmap = {source: os.path.basename(dest) for source, dest in pairs('-k').items()}
+payload, containers = pairs('--extra_apex_payload_key'), pairs('--extra_apks')
+DEV = 'build/make/target/product/security'
+DEFAULT = {'testkey': 'releasekey', 'devkey': 'releasekey', 'platform': 'platform', 'shared': 'shared',
+           'media': 'media', 'networkstack': 'networkstack', 'sdk_sandbox': 'sdk_sandbox'}
+
+
+def digest(name):
+    pem = open(os.path.join(keys, name + '.x509.pem')).read()
+    der = base64.b64decode(''.join(line for line in pem.splitlines() if not line.startswith('-----')))
+    return hashlib.sha256(der).hexdigest()
+
+
+def key_for(cert):
+    source = cert[:-len('.x509.pem')]
+    return kmap.get(source) or (DEFAULT.get(os.path.basename(source)) if os.path.dirname(source) == DEV else None)
+
+
+def rows(text):
+    return [dict(re.findall(r'(\w+)="([^"]*)"', line)) for line in text.splitlines() if line.strip()]
+
+
+def repack(data, changes):
+    source = zipfile.ZipFile(io.BytesIO(data))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as target:
+        for name in source.namelist():
+            target.writestr(name, changes.get(name, source.read(name)))
+    return out.getvalue()
+
+
+def vbmeta(index, location=0, chains=()):
+    """AvbVBMetaImageHeader plus chain-partition descriptors in the auxiliary block."""
+    descriptors = b''
+    for name, chain_location in chains:
+        encoded, key = name.encode(), b'release-avb-public-key'
+        body = struct.pack('>IIII', chain_location, len(encoded), len(key), 0) + b'\0' * 60 + encoded + key
+        body += b'\0' * ((-len(body)) % 8)
+        descriptors += struct.pack('>QQ', 4, len(body)) + body
+    header = b'AVB0' + struct.pack('>II', 1, 0) + struct.pack('>QQ', 0, len(descriptors)) + struct.pack('>I', 1)
+    header += struct.pack('>8Q', *([0] * 8)) + struct.pack('>QQ', 0, len(descriptors))
+    header += struct.pack('>QII', index, 0, location)
+    return header + b'\0' * (256 - len(header)) + descriptors
+
+
+with zipfile.ZipFile(src) as source, zipfile.ZipFile(dst, 'w') as target:
+    certs = {row['name']: row for row in rows(source.read('META/apkcerts.txt').decode())}
+    misc = dict(line.split('=', 1) for line in source.read('META/misc_info.txt').decode().splitlines() if '=' in line)
+    for name in source.namelist():
+        data, base = source.read(name), os.path.basename(name)
+        if name == 'META/apkcerts.txt':
+            out = []
+            for row in rows(data.decode()):
+                key = key_for(row['certificate']) if row['certificate'] not in ('PRESIGNED', 'EXTERNAL') else None
+                if key:
+                    row['certificate'] = os.path.join(keys, key + '.x509.pem')
+                    row['private_key'] = os.path.join(keys, key + '.pk8')
+                out.append(' '.join('%s="%s"' % item for item in row.items()))
+            data = ('\n'.join(out) + '\n').encode()
+        elif name.endswith('.apk') and base not in cfg.get('skip', []) and base in certs and key_for(certs[base]['certificate']):
+            data = repack(data, {'CERT': digest(key_for(certs[base]['certificate']))})
+        elif name.endswith('.apex') and base in containers and base not in cfg.get('skip', []):
+            changes = {'CERT': digest(os.path.basename(containers[base]))}
+            if not cfg.get('keepApexKey'):
+                changes['apex_pubkey'] = open(payload[base][:-4] + '.avbpubkey', 'rb').read()
+            data = repack(data, changes)
+        target.writestr(name, data)
+    chained = sorted(key[4:-9] for key, value in misc.items()
+                     if key.startswith('avb_') and key.endswith('_key_path') and key != 'avb_vbmeta_key_path' and value)
+    locations = {partition: int(misc.get('avb_%s_rollback_index_location' % partition, number + 1))
+                 for number, partition in enumerate(chained)}
+    index = int(cfg.get('rollbackIndex', 1))
+    target.writestr('IMAGES/vbmeta.img', vbmeta(index, 0, [(partition, locations[partition]) for partition in chained]))
+    for partition in chained:
+        target.writestr('IMAGES/%s.img' % partition, vbmeta(index))

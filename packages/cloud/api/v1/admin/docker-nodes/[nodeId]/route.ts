@@ -1,8 +1,8 @@
 // Handles admin cloud API v1 admin docker nodes nodeid route traffic with privileged auth expectations.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin Docker Node Detail API
@@ -14,13 +14,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Requires admin role.
  */
 
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { countRetainedWorkloadsOnNode } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
-import { dbRead } from "@/db/helpers";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { requireAdmin } from "@/lib/auth";
-import { logger } from "@/lib/utils/logger";
 
 // ---------------------------------------------------------------------------
 // GET — Get single node details
@@ -302,6 +303,17 @@ async function __hono_DELETE(
         {
           success: false,
           error: `Cannot remove node '${nodeId}': ${activeContainers.length} active container(s) still running. Stop or migrate them first.`,
+        },
+        { status: 409 },
+      );
+    }
+
+    const retainedWorkloads = await countRetainedWorkloadsOnNode(nodeId);
+    if (retainedWorkloads > 0) {
+      return Response.json(
+        {
+          success: false,
+          error: `Cannot remove node '${nodeId}': ${retainedWorkloads} retained workload(s) still hold state on it. Stop, migrate, or delete them first.`,
         },
         { status: 409 },
       );

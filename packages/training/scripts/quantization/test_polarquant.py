@@ -32,7 +32,6 @@ import argparse
 import gc
 import json
 import logging
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,15 +40,11 @@ from typing import Optional
 import torch
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
-if str(_HERE.parent) not in sys.path:
-    sys.path.insert(0, str(_HERE.parent))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import model_context_tokens  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import model_context_tokens  # noqa: E402
 
-from polarquant_apply import (  # type: ignore  # noqa: E402
+from eliza_training.quantization.polarquant_apply import (  # type: ignore  # noqa: E402
     PolarQuantRecipe,
     quantize_checkpoint,
 )
@@ -107,8 +102,7 @@ def _build_messages(record: dict) -> list[dict]:
 
     # Local import so this script doesn't need format_for_training in the
     # path during unit-style tests.
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    from format_for_training import format_record  # type: ignore
+    from eliza_training.format_for_training import format_record  # type: ignore
 
     formatted = format_record(record)
     if not formatted:

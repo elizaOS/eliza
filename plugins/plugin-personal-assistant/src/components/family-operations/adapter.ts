@@ -1,6 +1,6 @@
 /** Production Family Operations adapter over owner-authorized local APIs. */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import type {
   MonthlyFamilyDraft,
   MonthlyFamilyPacket,

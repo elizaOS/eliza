@@ -14,8 +14,8 @@ import json
 
 import pytest
 
-from benchmarks.realm.runner import REALMRunner
-from benchmarks.realm.types import REALMConfig, RealmProblem
+from benchmarks.suites.realm.runner import REALMRunner
+from benchmarks.suites.realm.types import REALMConfig, RealmProblem
 
 
 def test_runner_requires_agent_unless_mock_enabled() -> None:

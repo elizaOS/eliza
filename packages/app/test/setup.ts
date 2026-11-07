@@ -7,6 +7,7 @@
 import {
   createMemoryStorage,
   hasStorageApi,
+  installIdleResizeObserver,
   suppressReactTestConsoleErrors,
 } from "@elizaos/testing/browser-mocks";
 import React from "react";
@@ -22,6 +23,8 @@ const JSDOM_NAVIGATION_ERROR = [
   "Not",
   "implemented: navigation to another Document",
 ].join(" ");
+
+installIdleResizeObserver();
 
 globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -209,12 +212,11 @@ vi.mock("@elizaos/app", () =>
   }),
 );
 
-vi.mock("@elizaos/app/desktop-shell", () => ({
+vi.mock("../src/runtime/desktop", () => ({
   buildLocalizedTrayMenu: vi.fn(() => []),
   DesktopSurfaceNavigationRuntime: class {},
   DesktopTrayRuntime: class {},
   DetachedShellRoot: vi.fn(),
-  runIosFullBunSmokeIfRequested: vi.fn(async () => false),
 }));
 
 // ---------------------------------------------------------------------------

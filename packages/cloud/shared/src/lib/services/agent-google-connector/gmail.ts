@@ -5,9 +5,18 @@ import {
   MAX_GMAIL_ATTACHMENT_BYTES,
 } from "@elizaos/plugin-google-workspace/gmail-attachments";
 import { gmailThreadSourceLink } from "@elizaos/plugin-google-workspace/gmail-source-link";
+import { readGmailMetadataBatch } from "../../utils/gmail-metadata-batch";
+import {
+  decodeEntities,
+  extractGmailHtmlLinks,
+  extractGmailHtmlView,
+  gmailHasAttachmentsHint,
+  gmailSearchIncludesTrash,
+} from "../../utils/gmail-mime-text";
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
+  AgentGoogleConnectorError,
   fail,
   getManagedGoogleConnectorStatus,
   googleFetch,
@@ -20,6 +29,7 @@ import {
 
 const GOOGLE_GMAIL_MESSAGES_ENDPOINT = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
 const GOOGLE_GMAIL_SEND_ENDPOINT = `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/send`;
+const GOOGLE_GMAIL_PROFILE_ENDPOINT = "https://gmail.googleapis.com/gmail/v1/users/me/profile";
 const GMAIL_METADATA_HEADERS = [
   "Subject",
   "From",
@@ -168,30 +178,29 @@ function readHeaderValue(
   return value && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Every Authentication-Results value exactly as Gmail returned it, in Gmail's header order. A
+ * sender can write this header, so a reader must decide which value to trust by position.
+ */
+function readAuthenticationResults(headers: GoogleGmailMetadataHeader[] | undefined): string[] {
+  return (headers ?? []).flatMap((header) =>
+    header.name?.trim().toLowerCase() === "authentication-results" &&
+    typeof header.value === "string"
+      ? [header.value]
+      : [],
+  );
+}
+
 function normalizeSnippet(value: string | undefined): string {
   return value?.replace(/\s+/g, " ").trim() || "";
 }
 
-function decodeHtmlEntities(value: string): string {
-  const namedEntities: Record<string, string> = {
-    amp: "&",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-    "#39": "'",
-  };
-  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (entity, name: string) => {
-    return namedEntities[name.toLowerCase()] ?? entity;
-  });
-}
-
 function htmlToPlainText(value: string): string {
-  return decodeHtmlEntities(
+  return decodeEntities(
     stripHtmlRawTextElements(value)
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
-      .replace(/<(?:li)[^>]*>/gi, "- ")
+      .replace(/<li(?=[\s/>])[^>]*>/gi, "- ")
       .replace(/<[^>]+>/g, " "),
   )
     .replace(/\r/g, "")
@@ -206,7 +215,7 @@ export function normalizeManagedGmailBodyText(value: string): string {
   if (!trimmed) {
     return "";
   }
-  if (/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
+  if (/<\/?[a-z][a-z0-9:-]*(?:\s[^<>]*|\/?)>/i.test(trimmed)) {
     return htmlToPlainText(trimmed);
   }
   return trimmed.replace(/\r\n/g, "\n").trim();
@@ -332,6 +341,7 @@ export function normalizeGoogleGmailMessage(
     snippet: normalizeSnippet(message.snippet),
     receivedAt,
     isUnread: labels.includes("UNREAD"),
+    hasAttachments: gmailHasAttachmentsHint(message.payload),
     isImportant: triage.isImportant,
     likelyReplyNeeded: triage.likelyReplyNeeded,
     triageScore: triage.triageScore,
@@ -402,6 +412,7 @@ async function fetchManagedGoogleGmailMessages(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   maxResults: number;
   selfEmail: string | null;
   query?: string;
@@ -415,7 +426,7 @@ async function fetchManagedGoogleGmailMessages(args: {
     fail(400, "Invalid Gmail page token.");
   const listParams = new URLSearchParams({
     maxResults: String(Math.min(Math.max(args.maxResults, 1), 50)),
-    includeSpamTrash: "false",
+    includeSpamTrash: gmailSearchIncludesTrash(args.query) ? "true" : "false",
   });
   if (args.pageToken) listParams.set("pageToken", args.pageToken);
   for (const labelId of args.labelIds ?? []) {
@@ -430,6 +441,7 @@ async function fetchManagedGoogleGmailMessages(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
   });
   const listed = (await listResponse.json()) as GoogleGmailListResponse;
@@ -447,28 +459,53 @@ async function fetchManagedGoogleGmailMessages(args: {
   )
     fail(502, "Invalid Gmail continuation token.");
 
-  const messages = await Promise.all(
-    (listed.messages ?? []).map(async (messageRef) => {
-      const messageId = messageRef.id?.trim();
-      if (!messageId) fail(502, "Google Gmail returned a missing message identity.");
-      const params = new URLSearchParams({ format: "metadata" });
-      for (const header of GMAIL_METADATA_HEADERS) {
-        params.append("metadataHeaders", header);
-      }
-      const response = await googleFetch({
-        organizationId: args.organizationId,
-        userId: args.userId,
-        side: args.side,
-        grantId: args.grantId,
-        url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
-      });
-      const parsed = (await response.json()) as GoogleGmailMetadataResponse;
-      const normalized = normalizeGoogleGmailMessage(parsed, args.selfEmail);
-      if (!normalized || normalized.externalId !== messageId)
-        fail(502, "Google Gmail returned a partial message payload.");
-      return normalized;
-    }),
-  );
+  const ids = (listed.messages ?? []).map((row) => {
+    const id = row.id?.trim();
+    if (!id) fail(502, "Google Gmail returned a missing message identity.");
+    return id;
+  });
+  // Cost: list + one bounded metadata HTTP batch; quota remains per inner read.
+  // Each exchange retains the existing scoped grant/token authorization.
+  let raw: Record<string, unknown>[] = [];
+  try {
+    if (ids.length)
+      raw = await readGmailMetadataBatch(ids, GMAIL_METADATA_HEADERS, (url, options) =>
+        googleFetch({
+          organizationId: args.organizationId,
+          userId: args.userId,
+          side: args.side,
+          grantId: args.grantId,
+          personalContextRead: args.personalContextRead,
+          url,
+          options,
+        }),
+      );
+  } catch (error) {
+    if (
+      error instanceof AgentGoogleConnectorError ||
+      (error instanceof Error && error.name === "AbortError")
+    )
+      throw error;
+    // error-policy:J1 provider framing, failed parts and payload errors remain typed 502s.
+    fail(502, "Google Gmail returned an invalid metadata batch.");
+  }
+  const messages = raw.map((value, index) => {
+    const normalized = normalizeGoogleGmailMessage(
+      value as GoogleGmailMetadataResponse,
+      args.selfEmail,
+    );
+    if (!normalized || normalized.externalId !== ids[index])
+      fail(502, "Google Gmail returned a mismatched batch message.");
+    return normalized;
+  });
+  const current = await getManagedGoogleConnectorStatus({
+    organizationId: args.organizationId,
+    userId: args.userId,
+    side: args.side,
+    grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
+  });
+  if (!current.connected) fail(409, "Google connection changed during the mailbox read.");
 
   return { messages, nextPageToken: listed.nextPageToken ?? null };
 }
@@ -513,6 +550,7 @@ export async function fetchManagedGoogleGmailTriage(args: {
       return bSafe - aSafe;
     }),
     syncedAt: new Date().toISOString(),
+    supportsSpamTrash: true,
   };
 }
 
@@ -521,10 +559,21 @@ export async function fetchManagedGoogleGmailSearch(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   query: string;
   maxResults: number;
   pageToken?: string;
-}): Promise<ManagedGoogleGmailSearchResult> {
+  labelId?: string;
+  includeLabels?: boolean;
+}): Promise<
+  ManagedGoogleGmailSearchResult & {
+    labels?: { id: string; name: string; type: "system" | "user" }[];
+  }
+> {
+  if (args.labelId !== undefined && !/^[A-Za-z0-9_-]{1,256}$/.test(args.labelId))
+    fail(400, "Invalid Gmail label ID.");
+  if (args.includeLabels && args.side !== "owner")
+    fail(403, "Gmail label discovery is owner-only.");
   const maxResults = Math.min(Math.max(args.maxResults, 1), 50);
   const query = args.query.trim();
   if (query.length === 0) {
@@ -536,6 +585,7 @@ export async function fetchManagedGoogleGmailSearch(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -548,18 +598,94 @@ export async function fetchManagedGoogleGmailSearch(args: {
       ? connectorStatus.identity.email
       : null;
 
-  return {
-    ...(await fetchManagedGoogleGmailMessages({
+  // Read the mailbox revision before the page. A later page that reports a
+  // different revision was listed from a changed mailbox, so the client knows
+  // that a row can be missing between the two pages.
+  const profileResponse = await googleFetch({
+    organizationId: args.organizationId,
+    userId: args.userId,
+    side: args.side,
+    grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
+    url: `${GOOGLE_GMAIL_PROFILE_ENDPOINT}?fields=historyId`,
+  });
+  const { historyId: mailboxHistoryId } = (await profileResponse.json()) as {
+    historyId?: unknown;
+  };
+  if (typeof mailboxHistoryId !== "string" || !/^\d{1,20}$/.test(mailboxHistoryId))
+    fail(502, "Invalid Gmail mailbox revision.");
+
+  // One catalog read only when the client requests it, overlapping the page read.
+  // No persistent cache of private label names or tokens.
+  const [page, labels] = await Promise.all([
+    fetchManagedGoogleGmailMessages({
       organizationId: args.organizationId,
       userId: args.userId,
       side: args.side,
       grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
       maxResults,
       selfEmail,
       query,
       pageToken: args.pageToken,
-    })),
+      labelIds: args.labelId ? [args.labelId] : undefined,
+    }),
+    args.includeLabels
+      ? (async () => {
+          const response = await googleFetch({
+            organizationId: args.organizationId,
+            userId: args.userId,
+            side: args.side,
+            grantId: args.grantId,
+            personalContextRead: args.personalContextRead,
+            url: "https://gmail.googleapis.com/gmail/v1/users/me/labels?fields=labels(id,name,type)",
+            maxResponseBytes: 2 * 1024 * 1024,
+          });
+          const payload = (await response.json()) as { labels?: unknown };
+          if (!payload || !Array.isArray(payload.labels) || payload.labels.length > 10000)
+            fail(502, "Invalid Gmail label catalog.");
+          const seen = new Set<string>();
+          const result = payload.labels.map((value: unknown) => {
+            if (!value || typeof value !== "object") fail(502, "Invalid Gmail label.");
+            const row = value as Record<string, unknown>;
+            if (
+              typeof row.id !== "string" ||
+              !/^[A-Za-z0-9_-]{1,256}$/.test(row.id) ||
+              typeof row.name !== "string" ||
+              !row.name ||
+              row.name.length > 1024 ||
+              (row.type !== "user" && row.type !== "system") ||
+              seen.has(row.id)
+            )
+              fail(502, "Invalid Gmail label.");
+            seen.add(row.id);
+            return { id: row.id, name: row.name, type: row.type as "user" | "system" };
+          });
+          return result;
+        })()
+      : undefined,
+  ]);
+  if (args.includeLabels || args.labelId) {
+    const current = await getManagedGoogleConnectorStatus({
+      organizationId: args.organizationId,
+      userId: args.userId,
+      side: args.side,
+      grantId: args.grantId,
+      personalContextRead: args.personalContextRead,
+    });
+    if (
+      !current.connected ||
+      current.connectionId !== connectorStatus.connectionId ||
+      !hasGmailBodyReadScope(current.grantedScopes)
+    )
+      fail(409, "Google connection changed during label discovery.");
+  }
+  return {
+    ...page,
+    ...(labels ? { labels } : {}),
+    mailboxHistoryId,
     syncedAt: new Date().toISOString(),
+    supportsSpamTrash: true,
   };
 }
 
@@ -639,13 +765,15 @@ export async function readManagedGoogleGmailMessage(args: {
   userId: string;
   side: OAuthConnectionRole;
   grantId?: string;
+  personalContextRead?: true;
   messageId: string;
-}): Promise<ManagedGoogleGmailReadResult> {
+}): Promise<ManagedGoogleGmailReadResult & { authenticationResults: string[] }> {
   const connectorStatus = await getManagedGoogleConnectorStatus({
     organizationId: args.organizationId,
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
   });
   if (!hasGmailBodyReadScope(connectorStatus.grantedScopes)) {
     fail(
@@ -662,6 +790,7 @@ export async function readManagedGoogleGmailMessage(args: {
     userId: args.userId,
     side: args.side,
     grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
     url: `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?format=full`,
     maxResponseBytes: Math.ceil(MAX_GMAIL_ATTACHMENT_BYTES / 3) * 4 + 65536,
   });
@@ -670,10 +799,31 @@ export async function readManagedGoogleGmailMessage(args: {
   if (!message || message.externalId !== args.messageId) {
     fail(502, "Google Gmail returned a partial message payload.");
   }
+  const current = await getManagedGoogleConnectorStatus({
+    organizationId: args.organizationId,
+    userId: args.userId,
+    side: args.side,
+    grantId: args.grantId,
+    personalContextRead: args.personalContextRead,
+  });
+  if (
+    !current.connected ||
+    current.connectionId !== connectorStatus.connectionId ||
+    !hasGmailBodyReadScope(current.grantedScopes)
+  )
+    fail(409, "Google connection changed during the message read.");
   const rawBody = parsed.payload ? extractBody(parsed.payload) : "";
+  const htmlView =
+    args.side === "owner"
+      ? extractGmailHtmlView(parsed.payload)
+      : { html: null, status: "owner-only" as const };
   return {
     message,
     bodyText: normalizeManagedGmailBodyText(rawBody) || message.snippet,
+    bodyHtml: htmlView.html,
+    bodyHtmlStatus: htmlView.status,
+    links: parsed.payload ? extractGmailHtmlLinks(parsed.payload) : [],
+    authenticationResults: readAuthenticationResults(parsed.payload?.headers),
     attachments: gmailAttachmentParts(parsed.payload).map((part) => part.descriptor),
   };
 }

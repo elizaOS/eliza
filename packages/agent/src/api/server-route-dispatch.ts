@@ -289,7 +289,7 @@ export async function handleDatabaseRouteGroup({
     return false;
   }
 
-  return handleDatabaseRoute(req, res, state.runtime, pathname);
+  return handleDatabaseRoute(req, res, state.runtime, pathname, state.config);
 }
 
 export async function handleConversationRouteGroup({

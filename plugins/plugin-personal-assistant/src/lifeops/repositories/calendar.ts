@@ -1,11 +1,13 @@
 /** Adapts host connector identity defaults to the canonical calendar repository. Calendar SQL, parsing, and sync-state ownership remain in plugin-calendar. */
-import type { IAgentRuntime } from "@elizaos/core";
-import { CalendarRepository } from "@elizaos/plugin-calendar";
+
 import type {
   LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { CalendarRepository } from "@elizaos/plugin-calendar";
 import { deriveConnectorAccountId } from "../privacy-egress.js";
 import type { LifeOpsCalendarSyncState } from "./calendar-records.js";
 export class LifeOpsCalendarRepository {
@@ -40,12 +42,14 @@ export class LifeOpsCalendarRepository {
     provider: LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     return this.calendar.deleteCalendarEventsForProvider(
       agentId,
       provider,
       calendarId,
       side,
+      grantId,
     );
   }
 
@@ -87,7 +91,7 @@ export class LifeOpsCalendarRepository {
 
   async listCalendarEvents(
     agentId: string,
-    provider: LifeOpsConnectorGrant["provider"],
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     timeMin?: string,
     timeMax?: string,
     side?: LifeOpsConnectorSide,

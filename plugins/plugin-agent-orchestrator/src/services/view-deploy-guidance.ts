@@ -25,7 +25,7 @@ export function buildViewPluginDeployPrompt(
     "- Build the view bundle (`bun run build:views`, package `build`, or the repo-local equivalent) and verify the exported component named by `Plugin.views.componentExport` loads.",
     "- Publish the built bundle/assets to the Cloud app/container artifact flow so the view receives a Cloud CDN URL.",
     "- Call `apps.create` to register the installable Cloud app; keep the returned `appId`/slug and use follow-up app update APIs for manifest, domain, and monetization metadata.",
-    "- Set an explicit `viewKind` (`release`, `preview`, `developer`, or `system`) in the published manifest for every view. Do not rely on legacy `developerOnly` or an implicit default.",
+    "- Set an explicit `viewKind` (`release`, `preview`, `developer`, or `system`) in the published manifest for every view.",
     "- Update `Plugin.views` so each Cloud-published view keeps the correct `id`, `path`, `viewType`, `componentExport`, and Cloud CDN `bundleUrl`.",
     "- If the view calls monetized Cloud APIs or chat endpoints, forward the user's affiliate value with `X-Affiliate-Code` when one is provided. Never hardcode an owner API key in frontend code.",
     "- Cloud app sandboxes are isolated and ephemeral: local agent-workspace files, `localhost`, and unuploaded build outputs will not exist after deploy. Upload/publish every runtime asset the view needs.",

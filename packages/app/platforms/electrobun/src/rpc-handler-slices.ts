@@ -1,5 +1,3 @@
-/** Implements Electrobun desktop rpc handler slices ts behavior for app shell integration. */
-
 import { showBackgroundNoticeOnce } from "./background-notice";
 import type { DynamicViewRegistry } from "./dynamic-views/registry";
 import type { DynamicViewSessionManager } from "./dynamic-views/session-manager";
@@ -14,21 +12,12 @@ import type {
 	DesktopManagedWindowSnapshot,
 	NotificationOptions,
 } from "./rpc-schema";
-import { isDetachedSurface } from "./surface-windows";
-
-type DetachedWindowSurface =
-	| "chat"
-	| "browser"
-	| "release"
-	| "triggers"
-	| "plugins"
-	| "connectors"
-	| "cloud";
+import { type DetachedSurface, isDetachedSurface } from "./surface-windows";
 
 interface WindowRpcDesktop {
 	openSettings(tabHint?: string): void;
 	openSurfaceWindow(
-		surface: DetachedWindowSurface,
+		surface: DetachedSurface,
 		browse?: string,
 		alwaysOnTop?: boolean,
 	): Promise<DesktopManagedWindowSnapshot | null>;
@@ -74,7 +63,7 @@ export function buildWindowRpcHandlers({
 			desktop.openSettings(params?.tabHint);
 		},
 		desktopOpenSurfaceWindow: async (params: {
-			surface: DetachedWindowSurface;
+			surface: DetachedSurface;
 			browse?: string;
 			alwaysOnTop?: boolean;
 		}) => {

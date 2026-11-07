@@ -1,4 +1,5 @@
 /** Implements Slack publishing, file upload, and reactions for cloud social-media callers. */
+import { ElizaError } from "@elizaos/core";
 import type {
   MediaAttachment,
   PlatformPostOptions,
@@ -14,7 +15,12 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  withRetry,
+} from "../rate-limit";
 
 const SLACK_API_BASE = "https://slack.com/api";
 
@@ -82,6 +88,7 @@ async function slackApiRequest<T>(
   method: string,
   botToken: string,
   body?: Record<string, unknown>,
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const { data } = await withRetry<SlackResponse<T>>(
     () =>
@@ -95,12 +102,33 @@ async function slackApiRequest<T>(
       }),
     async (response) => {
       const json = (await response.json()) as SlackResponse<T>;
-      if (!json.ok) {
-        throw new Error(json.error ?? "Slack API error");
+      if (json.ok === false) {
+        throw new SocialApiRejectionError(json.error ?? "Slack API error");
+      }
+      if (json.ok !== true) {
+        throw new ElizaError("Slack response lacks a valid acknowledgement", {
+          code: "SOCIAL_API_INVALID_RESPONSE",
+          severity: "ephemeral",
+        });
+      }
+      if (method === "chat.postMessage") {
+        const receipt = json as SlackResponse & { message?: SlackMessage; channel?: unknown };
+        const ts = receipt.message?.ts ?? receipt.ts;
+        if (
+          typeof ts !== "string" ||
+          !ts ||
+          typeof receipt.channel !== "string" ||
+          !receipt.channel
+        ) {
+          throw new ElizaError("Slack response lacks a publication receipt", {
+            code: "SOCIAL_API_INVALID_RESPONSE",
+            severity: "ephemeral",
+          });
+        }
       }
       return json;
     },
-    { platform: "slack", maxRetries: 3 },
+    { platform: "slack", maxRetries: 3, ...retry },
   );
 
   return data as T;
@@ -260,7 +288,7 @@ export const slackProvider: SocialMediaProvider = {
 
       const response = await slackApiRequest<
         SlackResponse & { message: SlackMessage; channel: string }
-      >("chat.postMessage", credentials.botToken, payload);
+      >("chat.postMessage", credentials.botToken, payload, { replayUnknownOutcome: false });
 
       return {
         platform: "slack",
@@ -272,11 +300,7 @@ export const slackProvider: SocialMediaProvider = {
     } catch (error) {
       // error-policy:J1 outbound Slack post boundary — translate any send failure into a structured PostResult failure (success:false) the caller renders; the message is not fabricated as sent.
       logger.error("[Slack] Post failed", { error });
-      return {
-        platform: "slack",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("slack", error);
     }
   },
 

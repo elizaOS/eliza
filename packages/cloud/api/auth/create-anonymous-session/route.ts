@@ -5,6 +5,16 @@
  * cookie, and 302-redirects to the requested return URL.
  */
 
+import {
+  getIpKey,
+  getRequestIp,
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { isSafeRelativeRedirectPath } from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { createAnonymousUserAndSession } from "@elizaos/cloud-shared/lib/services/anonymous-session-creator";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
@@ -13,21 +23,8 @@ import {
   MAX_ANONYMOUS_MESSAGE_LIMIT,
   parseAnonymousPositiveIntEnv,
 } from "@/api/auth/anonymous-session-config";
-import {
-  getIpKey,
-  getRequestIp,
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { createAnonymousUserAndSession } from "@/lib/services/anonymous-session-creator";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
-
-function isValidReturnUrl(url: string): boolean {
-  return url.startsWith("/") && !url.startsWith("//");
-}
 
 const app = new Hono<AppEnv>();
 
@@ -66,7 +63,9 @@ app.get("/", async (c) => {
     );
 
     const rawReturnUrl = c.req.query("returnUrl") || "/";
-    const returnUrl = isValidReturnUrl(rawReturnUrl) ? rawReturnUrl : "/";
+    const returnUrl = isSafeRelativeRedirectPath(rawReturnUrl)
+      ? rawReturnUrl
+      : "/";
 
     const newSessionToken = nanoid(32);
     const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);

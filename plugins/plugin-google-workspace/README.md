@@ -9,6 +9,16 @@ Node-only integration. Enable the relevant Google APIs and configure `GOOGLE_CLI
 can be injected without starting OAuth. Keep account scopes and token isolation intact;
 Google Chat uses its separate service-account transport.
 
+## OAuth callback setup
+
+The connector callback path is `/api/connectors/google/oauth/callback`. Set
+`GOOGLE_REDIRECT_URI` to the exact URL served by the Eliza API at that path, then
+add that same URL to the Google OAuth client's authorized redirect URIs. The
+scheme, hostname, port, and path must match; for a public host, use HTTPS and
+route the callback path to the connector API. Plain HTTP callbacks are accepted
+only on loopback addresses. A mismatch in host, port, or path prevents account
+authorization from completing.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -38,3 +48,8 @@ caller limit up to 25 MiB, and returns complete bytes with their SHA-256 hash.
 Filenames are untrusted metadata, never output paths. Hosts still own task
 reauthorization, content-type policy and document extraction; this method does
 not register a model action, parse documents or persist attachment contents.
+
+Hosts can supply `GoogleWorkspaceServiceOptions.apiRootUrl` (or a runtime-local
+`ELIZA_MOCK_GOOGLE_BASE`) for an isolated API world. `GoogleApiClientFactory`
+also accepts an explicit endpoint. Credential resolution remains account-scoped;
+independent clients do not require changing process environment variables.

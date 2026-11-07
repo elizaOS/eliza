@@ -9,17 +9,16 @@
  * authenticated account even when new external work is fenced.
  */
 
-import { Hono } from "hono";
-
-import { ApiError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   credentialBroker,
   internalErrorResponse,
   OAuthError,
-} from "@/lib/services/oauth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 async function __hono_POST(
   request: Request,

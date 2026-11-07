@@ -12,7 +12,11 @@ import type {
   LifeOpsHealthSleepStage,
   LifeOpsHealthWorkout,
 } from "../contracts/health.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../util/time.js";
 import type { StoredHealthConnectorToken } from "./health-oauth.js";
 import { requireHealthProviderSpec } from "./health-provider-registry.js";
 import {
@@ -23,6 +27,11 @@ import {
 
 const HEALTH_CONNECTOR_TIMEOUT_MS = 15_000;
 const HEALTH_CONNECTOR_SYNC_TIMEOUT_MS = 60_000;
+// Strava filters activities by UTC timestamps, but callers select owner-local
+// calendar days. Cover every UTC offset and the API's exclusive time bounds.
+const STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS = 14 * 60 * 60 + 1;
+// Strava returns at most 200 rows per activity page and accepts no larger value.
+const STRAVA_ACTIVITIES_PAGE_SIZE = 200;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -48,6 +57,11 @@ interface SyncArgs {
   grantId: string;
   startDate: string;
   endDate: string;
+  /**
+   * The owner's IANA zone. Providers that return only UTC instants (Oura
+   * heart rate) need it to place a sample on the owner's day.
+   */
+  timeZone?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -272,6 +286,7 @@ function sample(args: {
   unit: string;
   startAt: string | null;
   endAt?: string | null;
+  localDate?: string;
   sourceExternalId: string;
   metadata?: Record<string, unknown>;
 }): LifeOpsHealthMetricSample | null {
@@ -287,7 +302,7 @@ function sample(args: {
     unit: args.unit,
     startAt: args.startAt,
     endAt: args.endAt ?? args.startAt,
-    localDate: localDateFromIso(args.startAt),
+    localDate: args.localDate ?? localDateFromIso(args.startAt),
     sourceExternalId: args.sourceExternalId,
     metadata: args.metadata ?? {},
   });
@@ -301,28 +316,72 @@ function compactSamples(
   );
 }
 
-async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
-  const after = Math.floor(
-    Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000,
-  );
-  const before = Math.floor(
-    Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
-  );
-  const [athlete, activitiesJson] = await Promise.all([
-    fetchHealthJson({ token: args.token, path: "/athlete" }),
-    fetchHealthValue({
+/**
+ * Read every page of the activity list. Strava returns at most `per_page` rows
+ * per request, so a full page means the window holds more rows. Reading page one
+ * only would store a partial window and still report a successful sync.
+ * The deadline mirrors `fetchOuraCollection`.
+ */
+async function fetchStravaActivities(args: {
+  token: StoredHealthConnectorToken;
+  after: number;
+  before: number;
+  deadlineAt: number;
+}): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  for (let page = 1; ; page += 1) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Strava pagination exceeded the sync deadline",
+      );
+    }
+    const json = await fetchHealthValue({
       token: args.token,
       path: "/athlete/activities",
-      query: { after, before, per_page: 200 },
-    }),
+      query: {
+        after: args.after,
+        before: args.before,
+        page,
+        per_page: STRAVA_ACTIVITIES_PAGE_SIZE,
+      },
+    });
+    const batch = asRecordArray(json);
+    items.push(...batch);
+    if (batch.length < STRAVA_ACTIVITIES_PAGE_SIZE) {
+      return items;
+    }
+  }
+}
+
+async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
+  const after =
+    Math.floor(Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000) -
+    STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
+  const before =
+    Math.floor(Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000) +
+    STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
+  const [athlete, activities] = await Promise.all([
+    fetchHealthJson({ token: args.token, path: "/athlete" }),
+    fetchStravaActivities({ token: args.token, after, before, deadlineAt }),
   ]);
-  const activities = asRecordArray(activitiesJson);
   const workouts: LifeOpsHealthWorkout[] = [];
   const samples: LifeOpsHealthMetricSample[] = [];
   for (const activity of activities) {
     const id = getText(activity, "id");
     const startAt = normalizeIso(getText(activity, "start_date"));
     if (!id || !startAt) {
+      continue;
+    }
+    // start_date is UTC; start_date_local is the athlete's wall clock (Strava
+    // writes it with a literal "Z"), so its date is the owner's day.
+    const localDate =
+      /^\d{4}-\d{2}-\d{2}/.exec(
+        getText(activity, "start_date_local") ?? "",
+      )?.[0] ?? localDateFromIso(startAt);
+    if (localDate < args.startDate || localDate > args.endDate) {
       continue;
     }
     const elapsedSeconds = getNumber(activity, "elapsed_time");
@@ -374,6 +433,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:distance_meters`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -384,6 +444,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:active_minutes`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -394,6 +455,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:calories`,
+          localDate,
         }),
         sample({
           token: args.token,
@@ -404,6 +466,7 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           startAt,
           endAt,
           sourceExternalId: `${id}:heart_rate`,
+          localDate,
         }),
       ]),
     );
@@ -417,40 +480,12 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   };
 }
 
-// Fitbit reports distance/weight in the unit system tied to the account's
-// locale, surfaced on the profile as `distanceUnit` / `weightUnit` with the
-// values `en_US` (US: miles, pounds), `en_GB` (UK: miles, stone), or `METRIC`
-// (km, kg). Because we send no `Accept-Language` override, the wire values are
-// exactly those profile-configured units, so the profile is the source of
-// truth for how to read them. See
+// Fitbit selects the response unit system from the `Accept-Language` request
+// header, not from the profile. We send no such header, so distance is in
+// kilometers and weight is in kilograms for every account. The profile's
+// `distanceUnit` / `weightUnit` only show what the owner sees in the Fitbit
+// app. See
 // https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization
-const METERS_PER_MILE = 1_609.344;
-const KG_PER_POUND = 0.45359237;
-const KG_PER_STONE = 6.35029318;
-
-function fitbitUsesImperialDistance(distanceUnit: string | null): boolean {
-  return distanceUnit === "en_US" || distanceUnit === "en_GB";
-}
-
-function fitbitDistanceMeters(
-  distance: number,
-  distanceUnit: string | null,
-): number {
-  return fitbitUsesImperialDistance(distanceUnit)
-    ? distance * METERS_PER_MILE
-    : distance * 1_000;
-}
-
-function fitbitWeightKg(weight: number, weightUnit: string | null): number {
-  if (weightUnit === "en_US") {
-    return weight * KG_PER_POUND;
-  }
-  if (weightUnit === "en_GB") {
-    return weight * KG_PER_STONE;
-  }
-  return weight;
-}
-
 const FITBIT_WALL_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
 
@@ -521,10 +556,6 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     path: "/1/user/-/profile.json",
   });
   const profileUser = getRecord(identityJson, "user");
-  const distanceUnit = profileUser
-    ? getText(profileUser, "distanceUnit")
-    : null;
-  const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
   const timeZone = resolveFitbitTimeZone(profileUser, args.token.agentId);
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
@@ -599,14 +630,10 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           token: args.token,
           grantId: args.grantId,
           metric: "distance_meters",
-          value:
-            totalDistance > 0
-              ? fitbitDistanceMeters(totalDistance, distanceUnit)
-              : null,
+          value: totalDistance > 0 ? totalDistance * 1_000 : null,
           unit: "m",
           startAt: dayAt,
           sourceExternalId: `${date}:fitbit:distance_meters`,
-          metadata: { providerUnit: distanceUnit },
         }),
       ]),
     );
@@ -709,25 +736,21 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
         `${getText(log, "date") ?? date}T${getText(log, "time") ?? "12:00:00"}`,
         timeZone,
       );
-      const rawWeight = getNumber(log, "weight");
       samples.push(
         ...compactSamples([
           sample({
             token: args.token,
             grantId: args.grantId,
             metric: "weight_kg",
-            value:
-              rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
+            value: getNumber(log, "weight"),
             unit: "kg",
             startAt: loggedAt,
+            // The log's own date is the profile-zone day; loggedAt is UTC.
+            localDate: getText(log, "date") ?? date,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
-            // providerUnit is the unit label Fitbit attached to THIS weight log;
-            // the value is converted to kg using the account locale (weightUnit).
-            metadata: {
-              providerUnit: getText(log, "weightUnit"),
-              providerLocaleUnit: weightUnit,
-            },
+            // providerUnit is the unit label Fitbit attached to THIS weight log.
+            metadata: { providerUnit: getText(log, "weightUnit") },
           }),
         ]),
       );
@@ -821,12 +844,22 @@ async function fetchOuraCollection(args: {
 
 async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
-  const startDatetime = `${args.startDate}T00:00:00Z`;
-  const endDatetime = `${args.endDate}T23:59:59Z`;
+  // Heart-rate timestamps are UTC instants. Read the widest span any zone's
+  // local days can cover, then keep the samples on the owner's local days.
+  const heartRateTimeZone = validTimeZone(args.timeZone ?? null);
+  const startDatetime = new Date(
+    Date.parse(`${args.startDate}T00:00:00.000Z`) -
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
+  const endDatetime = new Date(
+    Date.parse(`${args.endDate}T23:59:59.999Z`) +
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
   const [
     personal,
     dailyActivity,
     dailyReadiness,
+    dailySleep,
     sleep,
     heartRate,
     workoutsRaw,
@@ -844,6 +877,12 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     fetchOuraCollection({
       token: args.token,
       path: "/v2/usercollection/daily_readiness",
+      query: { start_date: args.startDate, end_date: args.endDate },
+      deadlineAt,
+    }),
+    fetchOuraCollection({
+      token: args.token,
+      path: "/v2/usercollection/daily_sleep",
       query: { start_date: args.startDate, end_date: args.endDate },
       deadlineAt,
     }),
@@ -924,6 +963,29 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       ]),
     );
   }
+  // Oura puts the sleep score on the daily_sleep document of the day. The
+  // sleep (period) document has no score field.
+  const sleepScoreByDay = new Map<string, number>();
+  for (const day of dailySleep) {
+    const date = getText(day, "day");
+    const score = getNumber(day, "score");
+    if (date && score !== null) {
+      sleepScoreByDay.set(date, score);
+    }
+    samples.push(
+      ...compactSamples([
+        sample({
+          token: args.token,
+          grantId: args.grantId,
+          metric: "sleep_score",
+          value: score,
+          unit: "score",
+          startAt: date ? `${date}T12:00:00.000Z` : null,
+          sourceExternalId: `${getText(day, "id") ?? date}:sleep_score`,
+        }),
+      ]),
+    );
+  }
   for (const entry of sleep) {
     const id = getText(entry, "id");
     const startAt = normalizeIso(getText(entry, "bedtime_start"));
@@ -932,7 +994,6 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       continue;
     }
     const date = getText(entry, "day") ?? localDateFromIso(startAt);
-    const sleepScore = getNumber(entry, "score");
     samples.push(
       ...compactSamples([
         sample({
@@ -946,17 +1007,8 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${id}:sleep_hours`,
-        }),
-        sample({
-          token: args.token,
-          grantId: args.grantId,
-          metric: "sleep_score",
-          value: sleepScore,
-          unit: "score",
-          startAt,
-          endAt,
-          sourceExternalId: `${id}:sleep_score`,
         }),
       ]),
     );
@@ -986,7 +1038,11 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           Math.trunc(getNumber(entry, "deep_sleep_duration") ?? 0) || null,
         remSleepSeconds:
           Math.trunc(getNumber(entry, "rem_sleep_duration") ?? 0) || null,
-        sleepScore,
+        // The daily score rates the main sleep period of that day.
+        sleepScore:
+          getText(entry, "type") === "long_sleep"
+            ? (sleepScoreByDay.get(date) ?? null)
+            : null,
         readinessScore: null,
         averageHeartRate: getNumber(entry, "average_heart_rate"),
         lowestHeartRate: getNumber(entry, "lowest_heart_rate"),
@@ -1001,6 +1057,17 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   for (const entry of heartRate) {
     const timestamp = normalizeIso(getText(entry, "timestamp"));
     const id = getText(entry, "id") ?? getText(entry, "timestamp") ?? "heart";
+    const localDate =
+      timestamp && heartRateTimeZone
+        ? getLocalDateKey(
+            getZonedDateParts(new Date(timestamp), heartRateTimeZone),
+          )
+        : timestamp
+          ? localDateFromIso(timestamp)
+          : null;
+    if (!localDate || localDate < args.startDate || localDate > args.endDate) {
+      continue;
+    }
     samples.push(
       ...compactSamples([
         sample({
@@ -1010,6 +1077,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           value: getNumber(entry, "bpm"),
           unit: "bpm",
           startAt: timestamp,
+          localDate,
           sourceExternalId: `${id}:heart_rate`,
           metadata: { source: getText(entry, "source") },
         }),
@@ -1071,39 +1139,116 @@ async function withingsPost(
   return fetchHealthJson({ token, path, method: "POST", form });
 }
 
+// Withings lists answer `more` with the next `offset`; a list that holds more
+// rows than one page sets `more` and reading page one only would store a
+// partial window and still report a successful sync.
+function withingsHasMore(body: Record<string, unknown>): boolean {
+  const more = body.more;
+  return more === true || more === 1 || more === "1";
+}
+
+/**
+ * Read every page of a Withings list. `more` marks a further page and the
+ * response `offset` is the cursor. The returned `body` is the first page, which
+ * carries the page-level metadata such as the getmeas timezone.
+ */
+async function fetchWithingsPages(args: {
+  token: StoredHealthConnectorToken;
+  path: string;
+  formValues: Record<string, string | number | null | undefined>;
+  listKey: string;
+  deadlineAt: number;
+}): Promise<{
+  items: Record<string, unknown>[];
+  body: Record<string, unknown>;
+}> {
+  const items: Record<string, unknown>[] = [];
+  const seenOffsets = new Set<number>();
+  let body: Record<string, unknown> = {};
+  let offset: number | null = null;
+  for (;;) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Withings pagination exceeded the sync deadline",
+      );
+    }
+    const json = await withingsPost(args.token, args.path, {
+      ...args.formValues,
+      offset,
+    });
+    const pageBody = getRecord(json, "body") ?? {};
+    if (offset === null) body = pageBody;
+    items.push(...getArray(pageBody, args.listKey));
+    if (!withingsHasMore(pageBody)) return { items, body };
+    const nextOffset = getNumber(pageBody, "offset");
+    if (nextOffset === null || seenOffsets.has(nextOffset)) {
+      throw new HealthConnectorApiError(
+        502,
+        args.token.provider,
+        "Withings pagination did not advance",
+      );
+    }
+    seenOffsets.add(nextOffset);
+    offset = nextOffset;
+  }
+}
+
 async function syncWithings(
   args: SyncArgs,
 ): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const startUnix = Math.floor(
     Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000,
   );
   const endUnix = Math.floor(
     Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
   );
-  const [activityJson, sleepJson, measuresJson] = await Promise.all([
-    withingsPost(args.token, "/v2/measure", {
-      action: "getactivity",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
+  const [activity, sleep, measures] = await Promise.all([
+    fetchWithingsPages({
+      token: args.token,
+      path: "/v2/measure",
+      formValues: {
+        action: "getactivity",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      listKey: "activities",
+      deadlineAt,
     }),
-    withingsPost(args.token, "/v2/sleep", {
-      action: "getsummary",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
+    fetchWithingsPages({
+      token: args.token,
+      path: "/v2/sleep",
+      formValues: {
+        action: "getsummary",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      listKey: "series",
+      deadlineAt,
     }),
-    withingsPost(args.token, "/measure", {
-      action: "getmeas",
-      startdate: startUnix,
-      enddate: endUnix,
-      meastype: "1,9,10,11,54,71,73",
+    fetchWithingsPages({
+      token: args.token,
+      path: "/measure",
+      formValues: {
+        action: "getmeas",
+        startdate: startUnix,
+        enddate: endUnix,
+        meastype: "1,9,10,11,54,71",
+      },
+      listKey: "measuregrps",
+      deadlineAt,
     }),
   ]);
   const samples: LifeOpsHealthMetricSample[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
-  const activityBody = getRecord(activityJson, "body") ?? {};
-  for (const entry of getArray(activityBody, "activities")) {
+  for (const entry of activity.items) {
     const date = getText(entry, "date");
+    // getactivity `active` is a duration in seconds (Withings OpenAPI:
+    // "Sum of intense and moderate activity durations (in seconds)").
+    const activeSeconds = getNumber(entry, "active");
     const startAt = date ? `${date}T12:00:00.000Z` : null;
     const id = date ?? "activity";
     samples.push(
@@ -1121,7 +1266,7 @@ async function syncWithings(
           token: args.token,
           grantId: args.grantId,
           metric: "active_minutes",
-          value: getNumber(entry, "active"),
+          value: activeSeconds === null ? null : activeSeconds / 60,
           unit: "min",
           startAt,
           sourceExternalId: `${id}:withings:active_minutes`,
@@ -1166,8 +1311,7 @@ async function syncWithings(
       ]),
     );
   }
-  const sleepBody = getRecord(sleepJson, "body") ?? {};
-  for (const entry of getArray(sleepBody, "series")) {
+  for (const entry of sleep.items) {
     const startAt = isoFromUnixSeconds(getNumber(entry, "startdate"));
     const endAt = isoFromUnixSeconds(getNumber(entry, "enddate"));
     if (!startAt || !endAt) {
@@ -1193,6 +1337,7 @@ async function syncWithings(
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${externalId}:sleep_hours`,
         }),
       ]),
@@ -1215,9 +1360,11 @@ async function syncWithings(
         efficiency: null,
         latencySeconds: getNumber(data, "durationtosleep"),
         awakeSeconds: getNumber(data, "wakeupduration"),
-        lightSleepSeconds: getNumber(data, "lightduration"),
-        deepSleepSeconds: getNumber(data, "deepduration"),
-        remSleepSeconds: getNumber(data, "remduration"),
+        // getsummary names the stage durations `*sleepduration` (Withings
+        // OpenAPI: "lightsleepduration: Duration in state light sleep").
+        lightSleepSeconds: getNumber(data, "lightsleepduration"),
+        deepSleepSeconds: getNumber(data, "deepsleepduration"),
+        remSleepSeconds: getNumber(data, "remsleepduration"),
         sleepScore: null,
         readinessScore: null,
         averageHeartRate: getNumber(data, "hr_average"),
@@ -1230,9 +1377,19 @@ async function syncWithings(
       }),
     );
   }
-  const measuresBody = getRecord(measuresJson, "body") ?? {};
-  for (const group of getArray(measuresBody, "measuregrps")) {
+  const measuresBody = measures.body;
+  // getmeas dates are epoch seconds; the body's timezone is the user's zone.
+  // Daily summaries group by localDate, so a 07:00 weigh-in in Tokyo belongs
+  // to that Tokyo day, not to the previous UTC day.
+  const measuresTimeZone = validTimeZone(getText(measuresBody, "timezone"));
+  for (const group of measures.items) {
     const measuredAt = isoFromUnixSeconds(getNumber(group, "date"));
+    const measuredLocalDate =
+      measuresTimeZone && measuredAt
+        ? getLocalDateKey(
+            getZonedDateParts(new Date(measuredAt), measuresTimeZone),
+          )
+        : undefined;
     const groupId =
       getText(group, "grpid") ?? getText(group, "date") ?? "measure";
     for (const measure of getArray(group, "measures")) {
@@ -1249,6 +1406,7 @@ async function syncWithings(
             value: mapped.value,
             unit: mapped.unit,
             startAt: measuredAt,
+            localDate: measuredLocalDate,
             sourceExternalId: `${groupId}:withings:${mapped.metric}`,
             metadata: { withingsType: getNumber(measure, "type") },
           }),
@@ -1263,6 +1421,18 @@ async function syncWithings(
     identity: args.token.identity,
     cursor: null,
   };
+}
+
+/** An IANA zone the runtime can format in, or null. */
+function validTimeZone(timeZone: string | null): string | null {
+  if (!timeZone) return null;
+  try {
+    getZonedDateParts(new Date(), timeZone);
+    return timeZone;
+  } catch {
+    // error-policy:J3 an unknown zone falls back to the UTC date, as before.
+    return null;
+  }
 }
 
 function mapWithingsMeasure(
@@ -1303,12 +1473,6 @@ function mapWithingsMeasure(
         metric: "body_temperature_celsius",
         value: normalizedValue,
         unit: "C",
-      };
-    case 73:
-      return {
-        metric: "heart_rate_variability",
-        value: normalizedValue,
-        unit: "ms",
       };
     default:
       return null;

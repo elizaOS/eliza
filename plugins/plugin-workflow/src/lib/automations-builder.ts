@@ -12,11 +12,23 @@
  * because plugin-workflow cannot depend on @elizaos/agent.
  */
 
-import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
-import { ElizaError, stringToUuid } from '@elizaos/core';
+import type { ConversationMetadata, ConversationScope, WorkbenchTask } from '@elizaos/contracts';
+import {
+  type AgentRuntime,
+  ElizaError,
+  getClientChatRooms,
+  type Room,
+  type Task,
+} from '@elizaos/core';
+
+import { toWorkbenchTask } from '@elizaos/host/protocol';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
-import type { WorkflowStatusResponse } from '../routes/workflow-routes';
+import {
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  notRunOccurrence,
+} from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { workflowRuntimeStatus } from '../services/workflow-status';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -28,13 +40,9 @@ import {
   type AutomationListResponse,
   type AutomationRoomBinding,
   type AutomationSummary,
-  type ConversationMetadata,
-  type ConversationScope,
   isAutomationConversationMetadata,
   type TriggerSummary,
   taskToTriggerSummary,
-  toWorkbenchTaskView,
-  type WorkbenchTaskView,
 } from './automations-types';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './trigger-ownership';
 
@@ -94,11 +102,7 @@ function normalizeDateValue(value: unknown): string | null {
   return null;
 }
 
-function resolveAgentName(runtime: AgentRuntime): string {
-  return runtime.character.name?.trim() || 'Eliza';
-}
-
-function isSystemTask(task: WorkbenchTaskView): boolean {
+function isSystemTask(task: WorkbenchTask): boolean {
   if (SYSTEM_TASK_NAMES.has(task.name)) {
     return true;
   }
@@ -128,9 +132,9 @@ function isTaskVisibleToOwner(task: Task, runtime: AgentRuntime, ownerEntityId: 
 }
 
 function choosePreferredSystemTask(
-  current: WorkbenchTaskView,
-  candidate: WorkbenchTaskView
-): WorkbenchTaskView {
+  current: WorkbenchTask,
+  candidate: WorkbenchTask
+): WorkbenchTask {
   const currentHasDescription = current.description.trim().length > 0;
   const candidateHasDescription = candidate.description.trim().length > 0;
   if (candidateHasDescription && !currentHasDescription) {
@@ -142,9 +146,9 @@ function choosePreferredSystemTask(
   return (candidate.updatedAt ?? 0) > (current.updatedAt ?? 0) ? candidate : current;
 }
 
-function deduplicateSystemTasks(tasks: WorkbenchTaskView[]): WorkbenchTaskView[] {
-  const systemTasksByName = new Map<string, WorkbenchTaskView>();
-  const userTasks: WorkbenchTaskView[] = [];
+function deduplicateSystemTasks(tasks: WorkbenchTask[]): WorkbenchTask[] {
+  const systemTasksByName = new Map<string, WorkbenchTask>();
+  const userTasks: WorkbenchTask[] = [];
 
   for (const task of tasks) {
     if (!isSystemTask(task)) {
@@ -254,11 +258,9 @@ function readAutomationRoomRecord(
 
 async function listAutomationRooms(
   runtime: AgentRuntime,
-  agentName: string,
   ownerEntityId: string
 ): Promise<AutomationRoomRecord[]> {
-  const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
-  const rooms = await runtime.getRooms(worldId);
+  const rooms = await getClientChatRooms(runtime);
   return rooms
     .map((room) => readAutomationRoomRecord(room))
     .filter(
@@ -289,7 +291,7 @@ async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
 }
 
 function buildCoordinatorTaskItem(
-  task: WorkbenchTaskView,
+  task: WorkbenchTask,
   room: AutomationRoomRecord | undefined
 ): AutomationItem {
   const system = isSystemTask(task);
@@ -455,8 +457,16 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
     'waiting-approval': 'waiting',
     'waiting-event': 'waiting',
     'waiting-timer': 'waiting',
+    'waiting-quota': 'waiting',
+    paused: 'waiting',
   };
-  const status = STATUS_MAP[rawStatus] ?? 'unknown';
+  // A scheduled occurrence settled without running is a finished record, not a successful run.
+  const notRun = notRunOccurrence(raw)?.status;
+  const status = notRun
+    ? notRun === 'missed'
+      ? 'missed'
+      : 'skipped'
+    : (STATUS_MAP[rawStatus] ?? 'unknown');
   const startedAt = typeof raw.startedAt === 'string' ? raw.startedAt : null;
   if (!startedAt) return null;
   const stoppedAt = typeof raw.stoppedAt === 'string' ? raw.stoppedAt : null;
@@ -472,20 +482,6 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
 function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
   const candidate = runtime.getService(WORKFLOW_SERVICE_TYPE);
   return (candidate as WorkflowService | null) ?? null;
-}
-
-function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusResponse {
-  return {
-    mode: service ? 'cloud' : 'disabled',
-    host: service ? 'eliza-cloud' : null,
-    status: service ? 'ready' : 'error',
-    cloudConnected: Boolean(service),
-    localEnabled: false,
-    platform: 'cloud',
-    cloudHealth: service ? 'healthy' : 'unknown',
-    engine: 'smthrs',
-    errorMessage: service ? null : 'Workflow service is not registered',
-  };
 }
 
 async function loadWorkflowList(
@@ -558,8 +554,7 @@ export async function buildAutomationListResponse(
   runtime: AgentRuntime,
   ownerEntityId = getRouteOwnerEntityId(runtime)
 ): Promise<AutomationListResponse> {
-  const agentName = resolveAgentName(runtime);
-  const rooms = await listAutomationRooms(runtime, agentName, ownerEntityId);
+  const rooms = await listAutomationRooms(runtime, ownerEntityId);
   const taskRooms = new Map(
     rooms
       .filter((room) => room.metadata.taskId)
@@ -588,8 +583,8 @@ export async function buildAutomationListResponse(
   const tasks = deduplicateSystemTasks(
     allTasks
       .filter((task) => isTaskVisibleToOwner(task, runtime, ownerEntityId))
-      .map((task) => toWorkbenchTaskView(task))
-      .filter((task): task is WorkbenchTaskView => task !== null)
+      .map((task) => toWorkbenchTask(task))
+      .filter((task): task is WorkbenchTask => task !== null)
   );
 
   const triggerTaskRecords = await listTriggerTasks(runtime);
@@ -611,7 +606,10 @@ export async function buildAutomationListResponse(
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
   const service = getWorkflowService(runtime);
-  const workflowStatus = buildWorkflowStatus(service);
+  const workflowStatus = workflowRuntimeStatus(
+    Boolean(service),
+    Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+  );
   const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
     service,
     ownerEntityId
@@ -628,10 +626,26 @@ export async function buildAutomationListResponse(
     );
   }
 
+  const workflowOffline = workflowFetchError !== null;
   for (const trigger of triggerItems) {
     if (trigger.kind === 'workflow' && trigger.workflowId) {
       const existing = workflowItemsById.get(trigger.workflowId);
-      if (!existing) continue;
+      if (!existing) {
+        // With the workflow runtime offline the trigger task is the ground
+        // truth for its scheduled workflow; online, a missing workflow means
+        // the trigger is orphaned and stays hidden.
+        if (workflowOffline) {
+          workflowItemsById.set(
+            trigger.workflowId,
+            buildWorkflowItem(undefined, workflowRooms.get(trigger.workflowId), {
+              workflowId: trigger.workflowId,
+              workflowName: trigger.workflowName,
+              trigger,
+            })
+          );
+        }
+        continue;
+      }
       existing.schedules = [...existing.schedules, trigger];
       existing.updatedAt =
         existing.updatedAt ??
@@ -648,7 +662,6 @@ export async function buildAutomationListResponse(
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
   // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
   // also deletes the conversation, so future deletions do not leak rooms.
-  const workflowOffline = workflowFetchError !== null;
   if (workflowOffline) {
     for (const [workflowId, room] of workflowRooms.entries()) {
       if (!workflowItemsById.has(workflowId)) {

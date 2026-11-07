@@ -3,14 +3,18 @@
  * It validates the requested chart window before any app or earnings lookup.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appEarningsService } from "@elizaos/cloud-shared/lib/services/app-earnings";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appEarningsService } from "@/lib/services/app-earnings";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
 
 const DEFAULT_DAYS = 30;
 const MAX_DAYS = 90;
@@ -75,10 +79,8 @@ async function __hono_GET(
     }
     const summary = await appEarningsService.getEarningsSummary(id);
     const breakdown = await appEarningsService.getEarningsBreakdown(id);
-    const recentTransactions = await appEarningsService.getTransactionHistory(
-      id,
-      { limit: 10 },
-    );
+    const { transactions: recentTransactions } =
+      await appEarningsService.getTransactionHistory(id, { limit: 10 });
     const chartData = await appEarningsService.getDailyEarningsChart(id, days);
     return Response.json({
       success: true,
@@ -93,13 +95,15 @@ async function __hono_GET(
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
+    }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app earnings:", error);
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get app earnings",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

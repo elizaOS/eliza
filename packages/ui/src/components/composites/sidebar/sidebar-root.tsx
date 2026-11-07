@@ -6,11 +6,13 @@
  * sidebar-auto-rail). Body content is composed from the sidebar-content
  * primitives; layout tokens live in sidebar-types.
  */
+
 import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";
-import { cn } from "../../../lib/utils";
+import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { shellLocalStorage } from "../../../surface-realm-channel";
+import { cn } from "../../../utils/cn";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import { Separator } from "../../ui/separator";
@@ -19,7 +21,7 @@ import {
   buildSidebarAutoRailItemsFromDom,
   type SidebarAutoRailItem,
 } from "./sidebar-auto-rail";
-import { SidebarBody } from "./sidebar-body";
+import { SidebarBody } from "./sidebar-layout";
 import type { SidebarProps, SidebarVariant } from "./sidebar-types";
 
 const sidebarRootVariants = cva(
@@ -304,42 +306,6 @@ function useDefaultSidebarDesktopRailEnabled(variant: SidebarVariant) {
   return isDesktop;
 }
 
-function usePrefersReducedMotion() {
-  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return false;
-    }
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  });
-
-  React.useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(mediaQuery.matches);
-
-    update();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", update);
-      return () => mediaQuery.removeEventListener("change", update);
-    }
-
-    mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
 function areSidebarAutoRailItemsEqual(
   left: SidebarAutoRailItem[],
   right: SidebarAutoRailItem[],
@@ -470,7 +436,9 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       syncId: effectiveSyncId,
     });
     const desktopRailEnabled = useDefaultSidebarDesktopRailEnabled(variant);
-    const prefersReducedMotion = usePrefersReducedMotion();
+    const prefersReducedMotion = useMediaQuery(
+      "(prefers-reduced-motion: reduce)",
+    );
     const supportsCollapsedRail =
       variant === "default" && collapsible && desktopRailEnabled;
     const showsCollapsedState = supportsCollapsedRail && isCollapsed;

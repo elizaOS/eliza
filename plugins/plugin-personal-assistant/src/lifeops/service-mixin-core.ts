@@ -10,6 +10,15 @@
  */
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
+import type {
+  LifeOpsAuditEvent,
+  LifeOpsAuditEventType,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsOwnership,
+  LifeOpsOwnershipInput,
+  LifeOpsWorkflowDefinition,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -26,15 +35,6 @@ import {
   type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
 import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
-import type {
-  LifeOpsAuditEvent,
-  LifeOpsAuditEventType,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsOwnership,
-  LifeOpsOwnershipInput,
-  LifeOpsWorkflowDefinition,
-} from "../contracts/index.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,

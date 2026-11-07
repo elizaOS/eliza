@@ -169,17 +169,31 @@ const searchCommand: SlashCommand = {
 	cooldown: 10,
 	async execute(interaction, runtime) {
 		const query = interaction.options.getString("query", true);
-		const limit = interaction.options.getNumber("limit") || 5;
+		const rawLimit = interaction.options.getNumber("limit");
+		// A negative limit is truthy, so `|| 5` keeps it. slice(0, -1) then
+		// drops the last match instead of applying the default maximum.
+		const limit =
+			typeof rawLimit === "number" && Number.isInteger(rawLimit) && rawLimit > 0
+				? rawLimit
+				: 5;
 		await interaction.deferReply({ ephemeral: true });
 
 		try {
+			const normalizedQuery = query.trim().toLowerCase();
+			// " ".includes is true for every message, so a blank query listed
+			// the room history as search results.
+			if (!normalizedQuery) {
+				await interaction.editReply({
+					content: "Enter a search query.",
+				});
+				return;
+			}
 			const roomId = createUniqueUuid(runtime, interaction.channelId);
 			const memories = await runtime.getMemories({
 				tableName: "messages",
 				roomId,
 				count: 100,
 			});
-			const normalizedQuery = query.trim().toLowerCase();
 			const filteredMemories = memories.filter((memory) =>
 				(memory.content?.text ?? "").toLowerCase().includes(normalizedQuery),
 			);
@@ -413,10 +427,12 @@ const appCommand: SlashCommand = {
 	ephemeral: true,
 	requiredRole: "ADMIN",
 	requiredPermissions: PermissionFlagsBits.ManageGuild,
-	async execute(interaction, runtime) {
+	async execute(interaction, runtime, context) {
 		const memory: Memory = {
 			id: createUniqueUuid(runtime, `${interaction.id}-app`) as UUID,
-			entityId: createUniqueUuid(runtime, interaction.user.id) as UUID,
+			entityId: context?.entityId
+				? (context.entityId as UUID)
+				: (createUniqueUuid(runtime, interaction.user.id) as UUID),
 			agentId: runtime.agentId,
 			roomId: createUniqueUuid(
 				runtime,
@@ -742,7 +758,12 @@ const askCommand: SlashCommand = {
 		await interaction.deferReply();
 
 		const channelId = interaction.channelId ?? interaction.user.id;
-		const entityId = createUniqueUuid(runtime, interaction.user.id);
+		// The service resolved the caller before dispatch (an owner's Discord
+		// id maps to the canonical owner entity); a fresh entity from the raw
+		// id would answer the owner as a stranger and split their history.
+		const entityId = context?.entityId
+			? (context.entityId as UUID)
+			: createUniqueUuid(runtime, interaction.user.id);
 		const roomId = createUniqueUuid(runtime, channelId);
 		// core's ChannelType has no guild-text variant; DiscordService.getChannelType
 		// (service.ts) maps every guild text/news/thread/forum channel to GROUP, so

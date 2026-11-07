@@ -5,15 +5,19 @@
  * CRON_SECRET.
  */
 
-import { and, eq, lt } from "drizzle-orm";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { dbRead, dbWrite } from "@elizaos/cloud-shared/db/client";
+import {
+  anonymousSessions,
+  conversations,
+  users,
+} from "@elizaos/cloud-shared/db/schemas";
+import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbRead, dbWrite } from "@/db/client";
-import { anonymousSessions, conversations, users } from "@/db/schemas";
-import { userIdentities } from "@/db/schemas/user-identities";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -48,7 +52,7 @@ app.get("/", async (c) => {
       const conversationsToDelete = await dbRead
         .select()
         .from(conversations)
-        .where(eq(conversations.user_id, userIds[0]));
+        .where(inArray(conversations.user_id, userIds));
 
       deletedConversations = conversationsToDelete.length;
 
@@ -79,6 +83,7 @@ app.get("/", async (c) => {
         createdAt: users.created_at,
       })
       .from(users)
+      .innerJoin(userIdentities, eq(users.id, userIdentities.user_id))
       .leftJoin(anonymousSessions, eq(anonymousSessions.user_id, users.id))
       .where(
         and(

@@ -32,6 +32,8 @@ import type { StewardTokenClaims } from "../auth/steward-client";
 
 export const SSO_BRIDGE_CODE_TTL_SECONDS = 60;
 const SSO_BRIDGE_CODE_PREFIX = "esso_";
+// Older generic bridge deployments reject this namespace before any lookup.
+export const NETWORK_SSO_BRIDGE_CODE_PREFIX = "enso_";
 
 /** Matches the Steward access-token TTL (steward-client.ts): once every
  * pre-logout token has expired, the marker has nothing left to block. */
@@ -47,6 +49,9 @@ export interface SsoBridgeCodeRecord {
   tokenIssuedAt: number;
   /** exp (unix seconds) of the original token — re-mint cap. */
   tokenExpiresAt: number;
+  /** Only the confidential Network exchange may consume this destination. */
+  destination?: string;
+  phoneAccount?: { userId: string; organizationId: string; e164: string };
 }
 
 function createOpaqueHex(): string {
@@ -65,11 +70,16 @@ async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
-export function looksLikeSsoBridgeCode(value: string | null | undefined): value is string {
+export function looksLikeSsoBridgeCode(
+  value: string | null | undefined,
+  expectedDestination?: string,
+): value is string {
+  const prefix =
+    expectedDestination === undefined ? SSO_BRIDGE_CODE_PREFIX : NETWORK_SSO_BRIDGE_CODE_PREFIX;
   return (
     typeof value === "string" &&
-    value.startsWith(SSO_BRIDGE_CODE_PREFIX) &&
-    HEX_64_RE.test(value.slice(SSO_BRIDGE_CODE_PREFIX.length))
+    value.startsWith(prefix) &&
+    HEX_64_RE.test(value.slice(prefix.length))
   );
 }
 
@@ -81,21 +91,38 @@ export function looksLikeSsoBridgeChallenge(value: string | null | undefined): v
 export async function issueSsoBridgeCode(input: {
   claims: StewardTokenClaims;
   codeChallenge: string;
+  destination?: string;
+  phoneAccount?: { userId: string; organizationId: string; e164: string };
 }): Promise<{ code: string; expiresIn: number }> {
   if (!looksLikeSsoBridgeChallenge(input.codeChallenge)) {
     throw new Error("SSO bridge mint requires a well-formed code challenge");
+  }
+  if (
+    input.destination !== undefined &&
+    (!input.destination ||
+      !input.phoneAccount ||
+      input.claims.stagingSessionBinding ||
+      input.claims.authMethod !== "sms")
+  ) {
+    throw new Error("Network bridge requires an ordinary SMS session and destination");
   }
 
   const now = new Date();
   // Opportunistic hygiene on the hot row set; both tables stay tiny.
   await ssoBridgeRepository.purgeExpiredCodes(now);
 
-  const code = `${SSO_BRIDGE_CODE_PREFIX}${createOpaqueHex()}`;
+  const prefix =
+    input.destination === undefined ? SSO_BRIDGE_CODE_PREFIX : NETWORK_SSO_BRIDGE_CODE_PREFIX;
+  const code = `${prefix}${createOpaqueHex()}`;
   await ssoBridgeRepository.insertCode({
     code_hash: await sha256Hex(code),
     steward_user_id: input.claims.userId,
     code_challenge: input.codeChallenge,
-    claims: input.claims as unknown as Record<string, unknown>,
+    claims: {
+      ...input.claims,
+      ...(input.destination === undefined ? {} : { ssoBridgeDestination: input.destination }),
+      ...(input.destination === undefined ? {} : { ssoBridgePhoneAccount: input.phoneAccount }),
+    } as unknown as Record<string, unknown>,
     token_issued_at: new Date(input.claims.issuedAt * 1000),
     token_expires_at: new Date(input.claims.expiration * 1000),
     expires_at: new Date(now.getTime() + SSO_BRIDGE_CODE_TTL_SECONDS * 1000),
@@ -116,8 +143,9 @@ export async function issueSsoBridgeCode(input: {
 export async function consumeSsoBridgeCode(
   code: string,
   codeVerifier: string | null,
+  expectedDestination?: string,
 ): Promise<SsoBridgeCodeRecord | null> {
-  if (!looksLikeSsoBridgeCode(code)) return null;
+  if (!looksLikeSsoBridgeCode(code, expectedDestination) || expectedDestination === "") return null;
 
   const row = await ssoBridgeRepository.claimCode(await sha256Hex(code));
   if (!row) return null;
@@ -125,12 +153,37 @@ export async function consumeSsoBridgeCode(
   if (!looksLikeSsoBridgeChallenge(codeVerifier)) return null;
   if ((await sha256Hex(codeVerifier)) !== row.code_challenge) return null;
 
-  const claims = row.claims as unknown as StewardTokenClaims;
+  const { ssoBridgeDestination, ssoBridgePhoneAccount, ...verifiedClaims } = row.claims;
+  if (ssoBridgeDestination !== expectedDestination) return null;
+  const phoneAccount = ssoBridgePhoneAccount as SsoBridgeCodeRecord["phoneAccount"];
+  if (
+    expectedDestination === undefined
+      ? phoneAccount !== undefined
+      : !phoneAccount ||
+        typeof phoneAccount.userId !== "string" ||
+        typeof phoneAccount.organizationId !== "string" ||
+        typeof phoneAccount.e164 !== "string"
+  )
+    return null;
+  const claims = verifiedClaims as unknown as StewardTokenClaims;
+  if (
+    expectedDestination !== undefined &&
+    (claims.stagingSessionBinding || claims.authMethod !== "sms")
+  )
+    return null;
   const tokenIssuedAt = Math.floor(row.token_issued_at.getTime() / 1000);
   const tokenExpiresAt = Math.floor(row.token_expires_at.getTime() / 1000);
   if (tokenExpiresAt * 1000 <= Date.now()) return null;
 
-  return { stewardUserId: row.steward_user_id, claims, tokenIssuedAt, tokenExpiresAt };
+  return {
+    stewardUserId: row.steward_user_id,
+    claims,
+    tokenIssuedAt,
+    tokenExpiresAt,
+    ...(expectedDestination === undefined
+      ? {}
+      : { destination: expectedDestination, phoneAccount }),
+  };
 }
 
 /** Stamp "this user explicitly logged out now" for the bridge to honor. */
@@ -153,7 +206,7 @@ export async function isBlockedBySsoBridgeLogout(
   stewardUserId: string,
   tokenIssuedAtSeconds: number,
 ): Promise<boolean> {
-  const marker = await ssoBridgeRepository.getLogoutMarker(stewardUserId);
+  const marker = await ssoBridgeRepository.getLogoutMarkerForWrite(stewardUserId);
   if (!marker) return false;
   return tokenIssuedAtSeconds * 1000 <= marker.logged_out_at.getTime();
 }

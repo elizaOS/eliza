@@ -35,7 +35,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-SAMPLE_CORPUS_DIR = _repo_root() / "corpus-tools" / "fixtures" / "synthetic"
+SAMPLE_CORPUS_DIR = Path(__file__).resolve().parent / "fixtures" / "synthetic"
 DEFAULT_HF_REPO_ID = "elizaos/private-lifeops-corpus"
 
 
@@ -67,7 +67,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
             try:
                 row = json.loads(text)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"invalid JSONL row {path}:{line_number}: {exc}") from exc
+                raise ValueError(
+                    f"invalid JSONL row {path}:{line_number}: {exc}"
+                ) from exc
             if not isinstance(row, dict):
                 raise ValueError(f"corpus row {path}:{line_number} must be an object")
             rows.append(row)
@@ -112,29 +114,39 @@ def _selected(row: dict[str, Any], selector: CorpusSelector) -> bool:
     return True
 
 
-def load_corpus_rows(options: CorpusLoadOptions = CorpusLoadOptions()) -> list[dict[str, Any]]:
+def load_corpus_rows(
+    options: CorpusLoadOptions = CorpusLoadOptions(),
+) -> list[dict[str, Any]]:
     """Load selected canonical corpus rows from sample, local, or HF mode."""
 
     root = _corpus_dir(options)
     rows: list[dict[str, Any]] = []
     for path in sorted(root.rglob("*.jsonl")):
-        rows.extend(row for row in _read_jsonl(path) if _selected(row, options.selector))
+        rows.extend(
+            row for row in _read_jsonl(path) if _selected(row, options.selector)
+        )
     rows.sort(key=lambda row: (int(row["ts"]), str(row["id"])))
     return rows
 
 
 def _iso_from_ms(value: int) -> str:
-    return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat().replace(
-        "+00:00", "Z"
+    return (
+        datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
     )
 
 
 def _recipient_address(recipient: dict[str, Any]) -> str:
-    return str(recipient.get("address") or recipient.get("id") or "unknown@example.test")
+    return str(
+        recipient.get("address") or recipient.get("id") or "unknown@example.test"
+    )
 
 
 def _contact_id(handle: str) -> str:
-    return "corpus-contact-" + "".join(ch if ch.isalnum() else "-" for ch in handle.lower()).strip("-")
+    return "corpus-contact-" + "".join(
+        ch if ch.isalnum() else "-" for ch in handle.lower()
+    ).strip("-")
 
 
 def _name_parts(display: str) -> tuple[str, str]:
@@ -187,7 +199,8 @@ def _email_message(row: dict[str, Any], owner_email: str) -> EmailMessage:
         sent_at=sent_at,
         received_at=None if direction == "out" else sent_at,
         is_read="UNREAD" not in [str(label).upper() for label in row.get("labels", [])],
-        is_starred="IMPORTANT" in [str(label).upper() for label in row.get("labels", [])],
+        is_starred="IMPORTANT"
+        in [str(label).upper() for label in row.get("labels", [])],
         labels=[str(label) for label in row.get("labels", [])],
         attachments=[
             str(attachment.get("filename"))
@@ -272,13 +285,17 @@ def generate_corpus_world(
     conversations: dict[str, list[ChatMessage]] = {}
     for row in rows:
         sender = str(row["senderId"])
-        _add_contact(world, handle=sender, display=str(row.get("senderDisplay") or sender))
+        _add_contact(
+            world, handle=sender, display=str(row.get("senderDisplay") or sender)
+        )
         for recipient in row.get("recipients", []):
             if isinstance(recipient, dict):
                 _add_contact(
                     world,
                     handle=_recipient_address(recipient),
-                    display=str(recipient.get("display") or recipient.get("id") or "Unknown"),
+                    display=str(
+                        recipient.get("display") or recipient.get("id") or "Unknown"
+                    ),
                 )
 
         if row.get("platform") == "gmail":

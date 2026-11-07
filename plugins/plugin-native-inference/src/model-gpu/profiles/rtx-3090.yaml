@@ -75,6 +75,6 @@ verify_recipe:
     - polarquant
     - mtp
   unavailable_kernels:
-    - turbo3_tcq                 # tensor-core Q kernel requires sm_89+
-  smoke_bundle: eliza-1-9b       # best-fit smoke bundle used by `verify_3090.sh`
+    - turbo3_tcq # tensor-core Q kernel requires sm_89+
+  smoke_bundle: eliza-1-9b # best-fit smoke bundle used by `verify_3090.sh`
   tolerance_pct: 10

@@ -4,6 +4,8 @@
  * Telegram, X) and forwards read/send calls, so LifeOps holds no
  * connector transport of its own and never depends on connector internals.
  */
+
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type Content,
   type IAgentRuntime,
@@ -12,7 +14,6 @@ import {
   type SendHandlerResult,
   type TargetInfo,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {
   assertConnectorSenderIdentity,
   dispatchWithDeliveryEvidence,
@@ -1018,6 +1019,8 @@ type IMessageRuntimeServiceLike = ConnectorMessageRuntimeServiceLike & {
   ) => Promise<{
     success: boolean;
     messageId?: string;
+    messageIds?: string[];
+    localEffectIds?: string[];
     chatId?: string;
     error?: string;
   }>;
@@ -1041,7 +1044,10 @@ export async function sendIMessageWithRuntimeService(args: {
   RuntimeServiceDelegationResult<{
     success: boolean;
     messageId?: string;
+    messageIds?: string[];
+    localEffectIds?: string[];
     chatId?: string;
+    error?: string;
   }>
 > {
   const service = getRuntimeService<IMessageRuntimeServiceLike>(args.runtime, [
@@ -1059,11 +1065,6 @@ export async function sendIMessageWithRuntimeService(args: {
       mediaUrl: args.mediaUrl,
       maxBytes: args.maxBytes,
     });
-    if (!sent.success) {
-      return unavailable(
-        sent.error ?? "iMessage runtime service sendMessage failed.",
-      );
-    }
     return { status: "handled", accountId, value: sent };
   } catch (error) {
     return unavailable("iMessage runtime service sendMessage failed.", error);

@@ -412,7 +412,7 @@ class CryptoPaymentsService {
       throw new Error("Payment not found");
     }
 
-    if (payment.status === "expired" || payment.status === "failed") {
+    if (payment.status === "failed") {
       return {
         confirmed: false,
         payment: this.formatPaymentStatus(payment),
@@ -576,14 +576,6 @@ class CryptoPaymentsService {
           "RETIRED_MINIAPP_PAYMENT",
           "Mini-app payments are retired; this payment requires operator reconciliation",
         );
-      }
-
-      if (payment.expires_at < new Date()) {
-        logger.error("[Crypto Payments] Cannot confirm expired payment", {
-          paymentId: redact.paymentId(paymentId),
-          expiresAt: payment.expires_at,
-        });
-        throw new Error("Payment has expired");
       }
 
       const existingTx = await tx
@@ -750,9 +742,6 @@ class CryptoPaymentsService {
           message: "Payment confirmation replay does not match the committed settlement",
         };
       }
-      if (payment.status === "expired") {
-        return { success: false, message: "Payment has expired" };
-      }
       if (payment.status === "failed") {
         return { success: false, message: "Payment has failed" };
       }
@@ -892,7 +881,9 @@ class CryptoPaymentsService {
       return { success: false, message: "Payment not found" };
     }
 
-    if (payment.status !== "pending" && payment.status !== "confirmed") {
+    const settlesLapsedPayment =
+      payment.status === "expired" && oxaPayService.isPaymentConfirmed(status);
+    if (payment.status !== "pending" && payment.status !== "confirmed" && !settlesLapsedPayment) {
       logger.info("[Crypto Payments] Payment already processed", {
         track_id: redact.trackId(track_id),
         status: payment.status,

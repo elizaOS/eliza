@@ -1,0 +1,44 @@
+[
+  {
+    "Source": "gnis",
+    "Type": "Cities & Populated Places",
+    "Name": "Springfield",
+    "County": "Greene County",
+    "State": "MO",
+    "Latitude": 37.215326,
+    "Longitude": -93.2982436,
+    "LatitudeMin": null,
+    "LatitudeMax": null,
+    "LongitudeMin": null,
+    "LongitudeMax": null,
+    "GnisId": 735864
+  },
+  {
+    "Source": "gnis",
+    "Type": "Area",
+    "Name": "Springfield Plain",
+    "County": "Saint Clair County",
+    "State": "MO",
+    "Latitude": 36.7497919,
+    "Longitude": -94.6249468,
+    "LatitudeMin": null,
+    "LatitudeMax": null,
+    "LongitudeMin": null,
+    "LongitudeMax": null,
+    "GnisId": 758114
+  },
+  {
+    "Source": "gnis",
+    "Type": "Valley",
+    "Name": "Springfield Hollow",
+    "County": "Carter County",
+    "State": "MO",
+    "Latitude": 36.953416,
+    "Longitude": -91.1722869,
+    "LatitudeMin": null,
+    "LatitudeMax": null,
+    "LongitudeMin": null,
+    "LongitudeMax": null,
+    "GnisId": 752327
+  }
+]

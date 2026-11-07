@@ -21,6 +21,7 @@
 import {
   type AgentContext,
   type IAgentRuntime,
+  isLoopbackHost,
   MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
   type MessageHandlerResult,
@@ -41,7 +42,7 @@ const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const TOOL_FAILURE_MARKER_RE =
-  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
+  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code(?!\s+0\b)|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
 const NO_RESULT_MARKER_RE =
   /\b(?:no files? found|no matching files?|no matches? found|found no files?|nothing found)\b/i;
 const POSITIVE_QUANTITATIVE_EVIDENCE_RE =
@@ -227,11 +228,6 @@ function parseUrl(value: string): URL | undefined {
     // error-policy:J3 untrusted string probed as a URL; a parse failure returns the explicit "not a URL" signal (undefined).
     return undefined;
   }
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
 function looksLikeCapturedToolOutput(text: string): boolean {

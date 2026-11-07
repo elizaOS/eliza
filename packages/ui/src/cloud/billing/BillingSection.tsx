@@ -19,7 +19,7 @@
  */
 
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { ContentState } from "../../components/composites/page-panel/content-state";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";

@@ -194,36 +194,13 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 [[ -f package.json ]] || fail "Run from the repo root"
-if [[ -d packages/app ]]; then
-  # Inside the eliza repo (canonical layout): app at packages/,
-  # the app entry point at packages/app/.
-  APP_CORE_DIR="packages/app"
-  PACKAGES_DIR="packages"
-  APP_DIR="packages/app"
-elif [[ -d eliza/packages/app ]]; then
-  # Inside the eliza outer repo where eliza is a submodule: app
-  # is nested under eliza/, while the host app can live in apps/app.
-  APP_CORE_DIR="eliza/packages/app"
-  PACKAGES_DIR="eliza/packages"
-  if [[ -d apps/app ]]; then
-    APP_DIR="apps/app"
-  else
-    APP_DIR="eliza/packages/app"
-  fi
-else
-  fail "packages/app not found"
-fi
+APP_CORE_DIR="packages/app"
+PACKAGES_DIR="packages"
+APP_DIR="packages/app"
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
 RM_PATH_RECURSIVE=(node "$PACKAGES_DIR/scripts/rm-path-recursive.ts")
-# @elizaos/core source lives under packages/core (current) or packages/typescript
-# (legacy). Prefer the current name; fall back to the legacy path so older branches
-# still work.
-if [[ -f "$PACKAGES_DIR/core/package.json" ]]; then
-  TYPESCRIPT_DIR="$PACKAGES_DIR/core"
-else
-  TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
-fi
+CORE_DIR="$PACKAGES_DIR/core"
 
 [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
@@ -629,10 +606,9 @@ if [[ "$BOOT_VERIFY_ONLY" == "true" ]]; then
 fi
 
 log "Installing dependencies"
-node "$APP_CORE_SCRIPTS_DIR/init-submodules.ts"
-ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.ts"
+git submodule update --init --recursive
 for attempt in 1 2 3; do
-  if ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile; then
+  if "$BUN_BIN" install --ignore-scripts --frozen-lockfile; then
     break
   fi
   if [[ "$attempt" -eq 3 ]]; then
@@ -646,27 +622,8 @@ done
 # install, but build tools still need their platform binaries materialized.
 node node_modules/esbuild/install.js 2>/dev/null || true
 node node_modules/bun/install.js 2>/dev/null || true
-if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
-  log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
-  mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
-fi
-export ELIZA_SKIP_LOCAL_UPSTREAMS=1
-export ELIZA_SKIP_LOCAL_UPSTREAMS=1
-
-log "Installing published-workspace fallback dependencies"
-if [[ -f "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh" ]]; then
-  bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
-else
-  log "No published-workspace fallback dependency script found; skipping"
-fi
-
 log "Running repository postinstall"
-if [[ -f packages/scripts/setup-upstreams.ts ]]; then
-  SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.ts"
-else
-  node "$APP_CORE_SCRIPTS_DIR/patch-deps.ts" || true
-  node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.ts" || true
-fi
+"$BUN_BIN" run postinstall
 # The app dependency graph includes the agent's runtime plugins and their
 # transitive build inputs. Turbo orders these from workspace manifests; a
 # second hand-maintained build sequence misses moved dependencies.
@@ -681,51 +638,20 @@ pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
 popd >/dev/null
 
-if [[ -f tsdown.config.ts || -f tsdown.config.mts || -f tsdown.config.js || -f tsdown.config.mjs ]]; then
-  log "Building runtime dist"
-  npx tsdown
-  echo '{"type":"module"}' > dist/package.json
-  node --import tsx scripts/write-build-info.ts 2>/dev/null || true
-else
-  log "No root tsdown config found; using built agent entrypoint"
-fi
-
 log "Building app UI"
 pushd "$APP_DIR" >/dev/null
 NODE_ENV=production "$BUN_BIN" run build:web
 popd >/dev/null
 
-if [[ -n "${CORE_NODE_MODULE:-}" && -f "$TYPESCRIPT_DIR/dist/package.json" ]]; then
+if [[ -n "${CORE_NODE_MODULE:-}" && -f "$CORE_DIR/dist/package.json" ]]; then
   log "Relinking @elizaos/core to built dist for Docker runtime"
   "${RM_PATH_RECURSIVE[@]}" "$CORE_NODE_MODULE"
   mkdir -p "$(dirname "$CORE_NODE_MODULE")"
-  ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+  ln -s "../../$CORE_DIR/dist" "$CORE_NODE_MODULE"
 fi
 
 log "Preparing CI dockerignore"
 cp "$APP_CORE_DIR/deploy/.dockerignore.ci" .dockerignore
-
-log "Ensuring $AGENT_DIR is present in workspaces for Docker relink"
-AGENT_DIR="$AGENT_DIR" node -e "
-const fs = require('fs');
-const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-const agentDir = process.env.AGENT_DIR;
-if (!pkg.workspaces) pkg.workspaces = [];
-const coversAgentDir = (workspace) => {
-  const target = agentDir.replace(/\/+$/, '');
-  const pattern = String(workspace).replace(/\/+$/, '');
-  if (pattern === target) return true;
-  if (!pattern.endsWith('/*')) return false;
-  const base = pattern.slice(0, -2);
-  if (!target.startsWith(base + '/')) return false;
-  return !target.slice(base.length + 1).includes('/');
-};
-if (!pkg.workspaces.some(coversAgentDir)) {
-  pkg.workspaces.push(agentDir);
-}
-fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-console.log('Ensured ' + agentDir + ' is present in workspaces');
-"
 
 log "Building Docker image"
 log "Docker build disk usage"

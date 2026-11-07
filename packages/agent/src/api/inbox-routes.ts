@@ -39,6 +39,7 @@
  *     account policy validation.
  */
 import type http from "node:http";
+import { PostInboxMessageRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   type ConnectorAccount,
@@ -48,10 +49,8 @@ import {
   getConnectorAccountManager,
   type Memory,
   normalizeConnectorSource,
-  PostInboxMessageRequestSchema,
   type RoleGateRole,
   type Room,
-  type RouteHelpers,
   requireConfirmedSendHandlerDelivery,
   roleRank,
   toWellFormedUnicode,
@@ -59,6 +58,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 
 import {
   resolveEffectiveMuteState,
@@ -492,6 +492,43 @@ async function findAccountSourceByExactId(
     }
   }
   return null;
+}
+/** The connector account a room was created on, as connectors store it. */
+function readRoomConnectorAccountId(
+  room: { metadata?: unknown },
+  source: string,
+): string | undefined {
+  const metadata =
+    room.metadata && typeof room.metadata === "object"
+      ? (room.metadata as Record<string, unknown>)
+      : undefined;
+  const scoped = metadata?.[source];
+  const candidate =
+    metadata?.accountId ??
+    (scoped && typeof scoped === "object"
+      ? (scoped as Record<string, unknown>).accountId
+      : undefined);
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim()
+    : undefined;
+}
+/** Keep a managed room binding even when its account has been removed. */
+async function resolveRoomAccountId(
+  runtime: AgentRuntime,
+  source: string,
+  storedAccountId: string | undefined,
+): Promise<string | undefined> {
+  if (!storedAccountId) return undefined;
+  const provider = normalizeAccountProvider(source);
+  const manager = getConnectorAccountManager(runtime);
+  const managed =
+    manager.listProviders().some((entry) => entry.provider === provider) ||
+    runtimeHasAccountScopedSendHandler(runtime, provider) ||
+    (await manager.listAccounts(provider)).length > 0;
+  // Pass the binding to the existing account validator. A missing account
+  // must not turn a reply into a send from another identity. Legacy sources
+  // without managed accounts keep their existing unscoped handler contract.
+  return managed ? storedAccountId : undefined;
 }
 async function resolveInboxAccountRouting(
   runtime: AgentRuntime,
@@ -1316,14 +1353,12 @@ async function resolveStoredDiscordEntityProfile(
   if (typeof runtimeWithEntityLookup.getEntityById !== "function") {
     return null;
   }
-  try {
-    const entity = await runtimeWithEntityLookup.getEntityById(
-      entityId as UUID,
-    );
-    return readStoredDiscordEntityProfile(entity);
-  } catch {
-    return null;
-  }
+  // A null return from getEntityById means "no stored entity", which the
+  // inbox legitimately renders without a stored profile. A rejected read is
+  // a storage fault and must not be flattened into that same "no profile"
+  // shape, or the sender silently loses their name and avatar.
+  const entity = await runtimeWithEntityLookup.getEntityById(entityId as UUID);
+  return readStoredDiscordEntityProfile(entity);
 }
 async function cacheInboxDiscordAvatar(
   runtime: AgentRuntime,
@@ -1720,38 +1755,33 @@ async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<Memory | null> {
-  try {
-    const memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: 10,
-      unique: false,
-    });
-    if (!Array.isArray(memories) || memories.length === 0) {
-      return null;
-    }
-    const candidates = memories
-      .filter((memory) => !extractDiscordReactionEvent(memory))
-      .filter((memory) => extractText(memory).trim().length > 0)
-      .sort((left, right) => {
-        const rightCreated =
-          typeof right.createdAt === "number" &&
-          Number.isFinite(right.createdAt)
-            ? right.createdAt
-            : 0;
-        const leftCreated =
-          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-            ? left.createdAt
-            : 0;
-        return (
-          rightCreated - leftCreated ||
-          (left.id ?? "").localeCompare(right.id ?? "")
-        );
-      });
-    return candidates[0] ?? null;
-  } catch {
+  const memories = await runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit: 10,
+    unique: false,
+  });
+  if (!Array.isArray(memories) || memories.length === 0) {
     return null;
   }
+  const candidates = memories
+    .filter((memory) => !extractDiscordReactionEvent(memory))
+    .filter((memory) => extractText(memory).trim().length > 0)
+    .sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+          ? left.createdAt
+          : 0;
+      return (
+        rightCreated - leftCreated ||
+        (left.id ?? "").localeCompare(right.id ?? "")
+      );
+    });
+  return candidates[0] ?? null;
 }
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
@@ -1814,42 +1844,21 @@ async function loadInboxMessages(
   roomSourceHint: string | null,
 ): Promise<InboxMessage[]> {
   const roomById = await loadRelevantRooms(runtime, roomId);
-  let memories: Memory[];
-  if (roomId) {
-    memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-      unique: false,
-    });
-  } else {
-    const roomIds = await collectAgentRoomIds(runtime);
-    if (roomIds.length === 0) return [];
-    memories = await runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-    });
-  }
   const agentId = runtime.agentId;
-  const reactionsByMessageId = buildMessageReactionMap(memories);
   const roomSourceById = new Map<string, string>();
   for (const [knownRoomId, room] of roomById) {
     const roomSource = readRoomSource(room);
     if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) continue;
     roomSourceById.set(knownRoomId, roomSource);
   }
-  for (const memory of memories) {
-    const source = extractSource(memory);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
-    const memoryRoomId = memory.roomId;
-    if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
-    roomSourceById.set(memoryRoomId, source);
-  }
   const out: InboxMessageRecord[] = [];
-  for (const memory of memories) {
-    if (extractDiscordReactionEvent(memory)) {
-      continue;
+  const reactionMemories: Memory[] = [];
+  const pendingSourceMemories = new Map<string, Memory[]>();
+  const appendMemory = (memory: Memory): void => {
+    const reaction = extractDiscordReactionEvent(memory);
+    if (reaction) {
+      reactionMemories.push(memory);
+      return;
     }
     const room = roomById.get(memory.roomId);
     const explicitSource = extractSource(memory);
@@ -1859,9 +1868,15 @@ async function loadInboxMessages(
       (roomId
         ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
         : undefined);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+    if (!source) {
+      const pending = pendingSourceMemories.get(memory.roomId) ?? [];
+      pending.push(memory);
+      pendingSourceMemories.set(memory.roomId, pending);
+      return;
+    }
+    if (!sourceFilter.has(source.toLowerCase())) return;
     const text = extractText(memory);
-    if (!text) continue;
+    if (!text) return;
     out.push({
       id: memory.id ?? "",
       role: memory.entityId === agentId ? "assistant" : "user",
@@ -1875,7 +1890,6 @@ async function loadInboxMessages(
       roomId: memory.roomId,
       hasExternalUrl: extractContentUrl(memory) !== undefined,
       hasExplicitSource: explicitSource !== null,
-      reactions: memory.id ? reactionsByMessageId.get(memory.id) : undefined,
       from: extractFrom(memory),
       fromUserName: extractFromUserName(memory),
       avatarUrl: extractFromAvatarUrl(memory),
@@ -1887,6 +1901,76 @@ async function loadInboxMessages(
         typeof memory.entityId === "string" ? memory.entityId : undefined,
       rawSenderId: extractRawSenderId(memory),
     });
+  };
+
+  const pageSize = limit * PER_ROOM_OVERFETCH_MULTIPLIER;
+  const roomIds = roomId ? null : await collectAgentRoomIds(runtime);
+  if (roomIds && roomIds.length === 0) return [];
+  const seenMemoryIds = new Set<string>();
+  let previousPageFingerprint: string | null = null;
+  let offset = 0;
+  // The public limit counts renderable, deduplicated messages—not raw storage
+  // rows. Keep paging without a history cap; repeated-page detection protects
+  // runtimes whose adapters ignore offset.
+  while (dedupeInboxMessages(out).length < limit) {
+    const page = roomId
+      ? await runtime.getMemories({
+          tableName: "messages",
+          roomId,
+          limit: pageSize,
+          offset,
+          unique: false,
+        })
+      : await runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds: roomIds ?? [],
+          limit: pageSize,
+          offset,
+        });
+    if (page.length === 0) break;
+    const pageFingerprint = page
+      .map((memory) =>
+        memory.id
+          ? `id:${memory.id}`
+          : `row:${String(memory.createdAt)}|${memory.roomId}|${extractText(memory)}`,
+      )
+      .join("\n");
+    if (pageFingerprint === previousPageFingerprint) break;
+    previousPageFingerprint = pageFingerprint;
+
+    const freshPage: Memory[] = [];
+    for (const memory of page) {
+      if (memory.id && seenMemoryIds.has(memory.id)) continue;
+      if (memory.id) seenMemoryIds.add(memory.id);
+      freshPage.push(memory);
+    }
+    if (freshPage.length === 0) break;
+
+    const newlyResolvedRooms = new Set<string>();
+    for (const memory of freshPage) {
+      const source = extractSource(memory);
+      if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+      const memoryRoomId = memory.roomId;
+      if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
+      roomSourceById.set(memoryRoomId, source);
+      newlyResolvedRooms.add(memoryRoomId);
+    }
+    for (const resolvedRoomId of newlyResolvedRooms) {
+      const pending = pendingSourceMemories.get(resolvedRoomId) ?? [];
+      pendingSourceMemories.delete(resolvedRoomId);
+      for (const memory of pending) appendMemory(memory);
+    }
+    for (const memory of freshPage) appendMemory(memory);
+
+    if (page.length < pageSize) break;
+    offset += page.length;
+  }
+
+  const reactionsByMessageId = buildMessageReactionMap(reactionMemories);
+  for (const message of out) {
+    message.reactions = message.id
+      ? reactionsByMessageId.get(message.id)
+      : undefined;
   }
   const deduped = dedupeInboxMessages(out);
   // Newest first. The core API doesn't guarantee order across rooms, so
@@ -2517,7 +2601,7 @@ export async function handleInboxRoute(
     const roomSourceHint = roomSourceParam.length > 0 ? roomSourceParam : null;
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { messages: [], count: 0 });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     try {
@@ -2628,13 +2712,33 @@ export async function handleInboxRoute(
     // handler. This boundary authorizes the narrow top-level selector against
     // server-owned room/account records; client-controlled Content.metadata is
     // never promoted into connector routing state.
+    // A reply goes out from the account the room belongs to, so the contact
+    // sees the same identity they wrote to. Managed rooms retain their binding
+    // after account removal; only legacy unscoped sources use source routing.
     let accountRouting: InboxAccountRoutingResolution;
     try {
+      const roomAccountId = await resolveRoomAccountId(
+        runtime,
+        source,
+        readRoomConnectorAccountId(room, trustedRoomSource),
+      );
+      if (accountId && roomAccountId && accountId !== roomAccountId) {
+        helpers.json(
+          res,
+          {
+            error: `This conversation belongs to connector account ${roomAccountId}. Select that account to reply.`,
+            code: "INBOX_CONNECTOR_ACCOUNT_ROOM_MISMATCH",
+            context: { accountId, roomAccountId, roomId, source },
+          },
+          409,
+        );
+        return true;
+      }
       accountRouting = await resolveInboxAccountRouting(
         runtime,
         source,
         callerAuthorization,
-        accountId,
+        accountId ?? roomAccountId,
       );
     } catch (error) {
       // error-policy:J1 HTTP route boundary translates account-registry failures
@@ -2699,7 +2803,7 @@ export async function handleInboxRoute(
       return true;
     }
     try {
-      requireConfirmedSendHandlerDelivery(
+      const delivery = requireConfirmedSendHandlerDelivery(
         await runtime.sendMessageToTarget(
           {
             ...(accountRouting.accountId
@@ -2721,6 +2825,73 @@ export async function handleInboxRoute(
           },
         ),
       );
+      // Connectors such as iMessage and Slack only report the provider
+      // receipt and leave the outbound memory to the caller. Without it the
+      // reply is missing from the thread and from the agent's history.
+      const receipt = delivery.receipt;
+      if (receipt?.persistence.status === "not_attempted") {
+        const providerMessageId =
+          receipt.evidenceKind === "local-effect"
+            ? undefined
+            : delivery.providerMessageId;
+        const saved = await runtime
+          .createMemory(
+            {
+              id: createUniqueUuid(
+                runtime,
+                `${source}:inbox-reply:${receipt.providerMessageIds.join(",")}`,
+              ),
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: room.id,
+              content: {
+                text,
+                source,
+                ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
+              },
+              metadata: {
+                type: "message",
+                source,
+                provider: source,
+                evidenceKind: receipt.evidenceKind ?? "provider",
+                ...(receipt.evidenceKind === "local-effect"
+                  ? { localEffectIds: receipt.providerMessageIds }
+                  : { providerMessageIds: receipt.providerMessageIds }),
+                ...(providerMessageId
+                  ? { messageIdFull: providerMessageId }
+                  : {}),
+              },
+              createdAt: receipt.acceptedAt,
+            } as Memory,
+            "messages",
+          )
+          .then(
+            () => true,
+            (err: unknown) => {
+              // error-policy:J1 the provider already accepted the reply, so a
+              // local write failure must not read as a failed send.
+              runtime.reportError("inbox-reply-persistence", err, {
+                source,
+                roomId: room.id,
+              });
+              return false;
+            },
+          );
+        if (!saved) {
+          helpers.json(
+            res,
+            {
+              ok: false,
+              delivered: true,
+              code: "INBOX_REPLY_NOT_SAVED",
+              error:
+                "The reply was sent but could not be saved. Do not send it again.",
+            },
+            500,
+          );
+          return true;
+        }
+      }
       const [message] = await loadInboxMessages(
         runtime,
         1,
@@ -2834,7 +3005,7 @@ export async function handleInboxRoute(
   if (method === "GET" && pathname === "/api/inbox/chats") {
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { chats: [], count: 0 });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     const url = new URL(req.url ?? pathname, "http://localhost");
@@ -2856,7 +3027,7 @@ export async function handleInboxRoute(
   if (method === "GET" && pathname === "/api/inbox/sources") {
     const runtime = state.runtime;
     if (!runtime) {
-      helpers.json(res, { sources: [] });
+      helpers.error(res, "runtime not ready", 503);
       return true;
     }
     try {

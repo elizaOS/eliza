@@ -1,3 +1,4 @@
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
  * `eliza-scenarios` CLI. Three commands:
  *
@@ -16,15 +17,15 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/core/host-execution-env";
-import type { LiveProviderName } from "@elizaos/testing";
+import { captureHostExecutionBaseline } from "@elizaos/host";
+import type { LiveProviderName } from "../../src/live-provider.ts";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
   type ScenarioExecutionProfile,
   type ScenarioLane,
   scenarioExecutionProfile,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import {
   countScenarioCorpus,
   listScenarioMetadata,
@@ -558,7 +559,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     ScenarioRuntimeFactoryModule,
     NativeExportModule,
   ] = await Promise.all([
-    import("@elizaos/testing"),
+    import("@elizaos/testing/runtime"),
     import("./executor.ts"),
     import("./reporter.ts"),
     import("./runtime-factory.ts"),
@@ -870,7 +871,9 @@ export async function runCli(
           path.dirname(parsed.exportNativePath),
           `scenario-run-${effectiveRunId}`,
         )
-      : undefined);
+      : executionProfile === "provider-qualified"
+        ? undefined
+        : testOutputPath("scenario-runner", "runs", effectiveRunId));
   if (executionProfile === "provider-qualified" && !effectiveRunDir) {
     process.stderr.write(
       "[eliza-scenarios] provider-qualified execution requires --run-dir or --export-native so immutable trajectory artifacts can be hashed and retained.\n",
@@ -973,6 +976,7 @@ export async function runCli(
       // tagged with the right scenarioId without changing internal APIs.
       process.env.ELIZA_LIFEOPS_SCENARIO_ID = scenario.id;
       const rawReport = await runScenario(scenario, runtime, {
+        captureActionEffects: runtimeResult.captureActionEffects,
         providerName,
         minJudgeScore,
         turnTimeoutMs,

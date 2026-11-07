@@ -4,21 +4,23 @@
 
 import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import {
-  Badge,
   ContainersSkeleton,
+  ElizaAgentsPageWrapper,
+} from "../../cloud-ui/components/dashboard/cloud-dashboard-components";
+import {
   DashboardErrorState,
   DashboardLoadingState,
-  DashboardPageContainer,
-  ElizaAgentsPageWrapper,
-} from "@elizaos/ui/cloud-ui";
+} from "../../cloud-ui/components/dashboard/route-placeholders";
+import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
+import { Badge } from "../../components/ui/badge";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import { ElizaAgentsTable } from "./components/eliza-agents-table";
-import { useCreditsBalance } from "./lib/data/credits";
-import { useAgents, usePersonalElizaIdentity } from "./lib/data/eliza-agents";
-import { useT } from "./lib/i18n";
+import { useCreditsBalance } from "./lib/credits";
+import { useAgents, usePersonalElizaIdentity } from "./lib/eliza-agents";
 
 export default function AgentsPage() {
   const t = useT();

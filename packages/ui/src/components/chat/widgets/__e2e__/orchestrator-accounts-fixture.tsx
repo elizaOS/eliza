@@ -5,10 +5,7 @@
  * server. Mirrors the .stories.tsx args.
  */
 import { createRoot } from "react-dom/client";
-import type {
-  AccountsListResponse,
-  AccountWithCredentialFlag,
-} from "../../../../api/client-agent";
+import type { AccountsListResponse, AccountWithCredentialFlag } from "../../../../api/client-agent-accounts";
 import type {
   OrchestratorAccountOverview,
   OrchestratorRoomRosterOverview,

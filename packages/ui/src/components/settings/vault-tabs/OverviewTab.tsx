@@ -23,7 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../../agent-surface";
+import { useAgentElement } from "../../../agent-surface/useAgentElement";
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../../utils/asset-url.js";

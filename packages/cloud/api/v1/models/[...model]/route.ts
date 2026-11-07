@@ -1,17 +1,23 @@
 // app/api/v1/models/[...model]/route.ts
 
-import { Hono } from "hono";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
-import { requireAuthOrApiKey } from "@/lib/auth";
-import { getGroqCatalogModel, isGroqNativeModel } from "@/lib/models";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { requireAuthOrApiKey } from "@elizaos/cloud-shared/lib/auth";
+import {
+  getGroqCatalogModel,
+  isGroqNativeModel,
+} from "@elizaos/cloud-shared/lib/models";
 import {
   getProviderForModel,
   hasGroqProviderConfigured,
-} from "@/lib/providers";
-import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/providers";
+import { getCachedGatewayModelById } from "@elizaos/cloud-shared/lib/services/model-catalog";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/models/[...model]

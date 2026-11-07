@@ -4,29 +4,28 @@
  *
  * `useDefaultProviderPresets` gives the platform/mode preference;
  * `resolveDefaultTtsProvider` turns it into a provider that can actually run
- * right now: on-device Kokoro when its engine is staged (probed via
+ * right now: on-device Paradee when its engine is staged (probed via
  * `GET /api/tts/local-inference/status`), else Kokoro through Eliza Cloud when a
  * voice session exists, else ElevenLabs when a key is configured, else the
  * browser SpeechSynthesis fallback. Consumed by `useVoiceConfig` (to seed the
- * default when the user hasn't picked a provider) and by `VoiceConfigView` (to
- * label which provider the "Device default" resolves to).
+ * default when the user hasn't picked a provider).
  *
  * The readiness probe is deferred: the on-device check only fires when the
  * platform/mode preference is `local-inference` (desktop/mobile-local), so a
  * web/cloud surface never pays for a probe it wouldn't act on. Until the probe
  * settles the hook returns the non-on-device answer (cloud → ElevenLabs →
- * browser), which is always safe — it can only *upgrade* to on-device Kokoro
+ * browser), which is always safe — it can only *upgrade* to on-device Paradee
  * once the probe confirms a staged voice.
  */
 
 import { useEffect, useState } from "react";
+import type { VoiceProvider } from "../api/client-types-config";
 import { isLocalInferenceTtsReady } from "../voice/local-tts-status";
 import {
   type PresetPlatform,
   type PresetRuntimeMode,
   resolveDefaultTtsProvider,
   type VoiceCapabilitySnapshot,
-  type VoiceProvider,
 } from "../voice/voice-provider-defaults";
 import {
   type UseDefaultProviderPresetsOptions,
@@ -40,7 +39,7 @@ export interface UseResolvedTtsDefaultOptions
   /** The user has configured an ElevenLabs API key. */
   elevenLabsKeyConfigured: boolean;
   /**
-   * Test-only override for the on-device Kokoro readiness. Production leaves
+   * Test-only override for the on-device Paradee readiness. Production leaves
    * this undefined and lets the hook probe `/api/tts/local-inference/status`.
    */
   localInferenceTtsReadyOverride?: boolean;

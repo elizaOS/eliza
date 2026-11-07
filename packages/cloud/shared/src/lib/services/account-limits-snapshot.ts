@@ -9,13 +9,6 @@
  * become plausible prices, entitlements, or zero usage.
  */
 
-import { ElizaError } from "@elizaos/core";
-import Decimal from "decimal.js";
-import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
-import type {
-  PrimaryAccountBillingReadModel,
-  PrimaryComputeRateSegment,
-} from "../../db/repositories/account-billing-snapshot";
 import type {
   AccountBillingSnapshot,
   AccountBillingSnapshotV2,
@@ -36,8 +29,19 @@ import type {
   SandboxCreateLimitItem,
   SandboxLimitItem,
   StorageLimitItem,
-} from "../../types/account-billing-snapshot";
-import { buildOrganizationSubscriptionSnapshot } from "./account-subscription-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
+import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
+import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
+import type {
+  PrimaryAccountBillingReadModel,
+  PrimaryComputeRateSegment,
+} from "../../db/repositories/account-billing-snapshot";
+import { QUOTA_COUNTED_STATUSES } from "../constants/agent-sandbox-quota";
+import {
+  buildOrganizationSubscriptionSnapshot,
+  buildSubscriptionGrantSnapshot,
+} from "./account-subscription-snapshot";
 
 export type {
   AccountBillingSnapshot,
@@ -50,7 +54,7 @@ export type {
   SandboxCreateLimitItem,
   SandboxLimitItem,
   StorageLimitItem,
-} from "../../types/account-billing-snapshot";
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
 
 /**
  * Injected readers. Each maps 1:1 onto the enforcement source it mirrors; the
@@ -644,6 +648,7 @@ function allUnavailableV2(
     snapshotCompletedAt,
     balance: primary(),
     subscription: primary(),
+    grant: primary(),
     paymentMethodPresence: primary(),
     billingReadiness: primary(),
     autoTopUp: {
@@ -1056,8 +1061,8 @@ export async function buildAccountBillingSnapshot(
     const nonEagerLimit = policyLimit("nonEagerSandboxes", sandboxSource);
     const eagerLimit = policyLimit("sandboxes", sandboxSource);
     const sandboxPolicy: LimitCountPolicy = {
-      included: ["pending", "provisioning", "running", "stopped", "sleeping"],
-      excluded: ["pool rows", "disconnected", "error", "deletion_pending", "deletion_failed"],
+      included: [...QUOTA_COUNTED_STATUSES],
+      excluded: ["pool rows", "error", "deletion_pending", "deletion_failed"],
     };
     const agentSandboxes = {
       nonEagerCreate: observedCountLimit({
@@ -1492,6 +1497,7 @@ export async function buildAccountBillingSnapshot(
         primary.allowanceFunding,
         sources.cancellationAuthority,
       ),
+      grant: buildSubscriptionGrantSnapshot(primary.grant, primary.subscription, observedAt),
       snapshotStartedAt,
       snapshotCompletedAt,
       balance,

@@ -7,17 +7,16 @@
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
+import type { ServiceRouteConfig } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
-  type IAgentRuntime,
   resolveServiceRoutingInConfig,
-  type ServiceRouteConfig,
-} from "@elizaos/core";
-
+} from "@elizaos/host/protocol";
 import { isProcessOnlyEnvKey } from "../config/blocked-env-keys.ts";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,
@@ -25,6 +24,7 @@ import {
 import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
+  writeConfigEnvValue,
 } from "../config/env-vars.ts";
 import { isVaultRef } from "./operations/vault-bridge.ts";
 
@@ -55,6 +55,7 @@ export interface RuntimeSettingsProjectionOptions {
  * mnemonics, and seed phrases while allowing API keys that plugins need.
  */
 export function isEnvKeyAllowedForForwarding(key: string): boolean {
+  if (isProcessOnlyEnvKey(key)) return false;
   const upper = key.toUpperCase();
   if (upper === "ALLOW_NO_DATABASE") return false;
   if (upper.includes("PRIVATE_KEY")) return false;
@@ -117,7 +118,7 @@ export function hydrateConfigEnvForBoot(
         !isUnresolvedVaultRef(value) &&
         !env[key]
       ) {
-        env[key] = value;
+        writeConfigEnvValue(key, value, env);
       }
     }
   };
@@ -125,6 +126,31 @@ export function hydrateConfigEnvForBoot(
   const vars = (config.env as Record<string, unknown>).vars;
   if (vars && typeof vars === "object" && !Array.isArray(vars)) {
     hydrateEntries(vars as Record<string, unknown>);
+  }
+}
+
+function forwardedConfigEnvVars(config: ElizaConfig): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(collectConfigEnvVars(config)).filter(
+      ([key, value]) =>
+        isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
+    ),
+  );
+}
+
+export function reconcileConfigEnvSettings(
+  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  previous: ElizaConfig,
+  current: ElizaConfig,
+): void {
+  const before = forwardedConfigEnvVars(previous);
+  const after = forwardedConfigEnvVars(current);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (before[key] === after[key]) continue;
+    const live = runtime.getSetting(key);
+    const ownsPrevious =
+      live === null ? before[key] === undefined : String(live) === before[key];
+    if (ownsPrevious) runtime.setSetting(key, after[key] ?? null);
   }
 }
 
@@ -198,8 +224,9 @@ export function reconcileDirectTextModelSettings(
   );
   const explicit = collectConfigEnvVars(current);
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const ownsPrevious =
-      before[key] !== undefined && runtime.getSetting(key) === before[key];
+    // Read the live value once, before cleanup below mutates it.
+    const live = runtime.getSetting(key);
+    const ownsPrevious = before[key] !== undefined && live === before[key];
     if (ownsPrevious) {
       // initialize() can mirror constructor pins into both secret locations.
       // Remove only matching copies; setSetting(secret=true) would also erase
@@ -209,7 +236,11 @@ export function reconcileDirectTextModelSettings(
       const nestedSecrets = runtime.character.settings?.secrets;
       if (nestedSecrets?.[key] === before[key]) delete nestedSecrets[key];
     }
-    if (after[key] !== undefined) {
+    const canApply =
+      before[key] !== undefined
+        ? String(live) === String(before[key])
+        : live === null;
+    if (after[key] !== undefined && canApply) {
       runtime.setSetting(key, after[key]);
     } else if (ownsPrevious) {
       runtime.setSetting(key, explicit[key] ?? env[key] ?? null);
@@ -231,12 +262,7 @@ export function buildRuntimeSettingsProjection(
   return {
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
-    ...Object.fromEntries(
-      Object.entries(collectConfigEnvVars(config)).filter(
-        ([key, value]) =>
-          isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
-      ),
-    ),
+    ...forwardedConfigEnvVars(config),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
     env.EMBEDDING_PROVIDER.trim().length > 0
       ? { EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER.trim().toLowerCase() }

@@ -1,12 +1,13 @@
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.ts";
 import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
-import {
+	compileSensitiveTextPattern,
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+	SENSITIVE_TEXT_REGEXPS as DEFAULT_REDACT_REGEXPS,
 	isSensitiveLogKey,
 	redactTrailingArgs,
+	SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.js";
+
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -53,37 +54,13 @@ function normalizeMode(value?: string): RedactSensitiveMode {
 	return value === "off" ? "off" : DEFAULT_REDACT_MODE;
 }
 
-function parsePattern(raw: string): RegExp | null {
-	if (!raw.trim()) {
-		return null;
-	}
-	const match = raw.match(/^\/(.+)\/([gimsuy]*)$/);
-	try {
-		if (match) {
-			const flags = match[2].includes("g") ? match[2] : `${match[2]}g`;
-			return new RegExp(match[1], flags);
-		}
-		return new RegExp(raw, "gi");
-	} catch {
-		// error-policy:J3 custom patterns are untrusted configuration; an invalid
-		// expression is excluded from the compiled detector set.
-		return null;
-	}
-}
-
-// Compiled once at module load. The default patterns never change, and
-// String.prototype.replace resets a global regex's lastIndex before each call,
-// so the same compiled array is safe to reuse across every redaction — no need
-// to allocate 16 fresh RegExp objects per call.
-const DEFAULT_REDACT_REGEXPS: readonly RegExp[] = DEFAULT_REDACT_PATTERNS.map(
-	parsePattern,
-).filter((re): re is RegExp => Boolean(re));
-
 function resolvePatterns(value?: string[]): readonly RegExp[] {
 	if (!value?.length) {
 		return DEFAULT_REDACT_REGEXPS;
 	}
-	return value.map(parsePattern).filter((re): re is RegExp => Boolean(re));
+	return value
+		.map(compileSensitiveTextPattern)
+		.filter((re): re is RegExp => re !== null);
 }
 
 function maskToken(tokenInput: string): string {
@@ -111,7 +88,11 @@ function redactPemBlock(block: string): string {
 	if (lines.length < 2) {
 		return "***";
 	}
-	return `${lines[0]}\n…redacted…\n${lines[lines.length - 1]}`;
+	const last = lines[lines.length - 1];
+	// A block cut off at the next BEGIN header has key material as its last line.
+	return last.startsWith("-----END ")
+		? `${lines[0]}\n…redacted…\n${last}`
+		: `${lines[0]}\n…redacted…\n`;
 }
 
 function redactMatch(match: string, groups: string[]): string {
@@ -193,29 +174,24 @@ export function redactSensitiveText(
 }
 
 /**
- * Redact sensitive information from tool output detail.
- *
- * Only redacts when mode is "tools" (the default).
- *
- * @param detail - The tool detail to redact
- * @returns Redacted detail
- */
-export function redactToolDetail(detail: string): string {
-	return redactSensitiveText(detail, { mode: "tools" });
-}
-
-/**
  * Get the default redaction patterns.
  *
+ * Source reviewers may classify named assignments with their own literal parser.
+ * Runtime redaction keeps broad assignment matching by default. Provider token,
+ * quoted field, header and URL patterns remain present in both modes.
  * @returns Copy of default pattern strings
  */
-export function getDefaultRedactPatterns(): string[] {
-	return [...DEFAULT_REDACT_PATTERNS];
+export function getDefaultRedactPatterns(
+	options: { includeNamedAssignments?: boolean } = {},
+): string[] {
+	return options.includeNamedAssignments === false
+		? DEFAULT_REDACT_PATTERNS.filter(
+				(pattern) => !SENSITIVE_ASSIGNMENT_PATTERNS.includes(pattern),
+			)
+		: [...DEFAULT_REDACT_PATTERNS];
 }
 
-// ============================================================================
 // Secrets-Based Redaction
-// ============================================================================
 
 /**
  * Escape special regex characters in a string.
@@ -320,73 +296,7 @@ export function redactWithSecrets(
 	return result;
 }
 
-/**
- * Create a redaction function bound to specific secrets.
- *
- * This is useful for creating a redactor that can be passed around
- * and reused without needing to pass secrets each time.
- *
- * @param secrets - Map of secret names to secret values
- * @param applyPatterns - Whether to also apply pattern detection (default: true)
- * @returns Redaction function
- *
- * @example
- * ```ts
- * const redact = createSecretsRedactor(runtime.character.settings.secrets);
- * const safeText = redact(userMessage);
- * ```
- */
-export function createSecretsRedactor(
-	secrets: Record<string, string>,
-	applyPatterns = true,
-): (text: string) => string {
-	return (text: string) => redactWithSecrets(text, { secrets, applyPatterns });
-}
-
-/**
- * Recursively redact secrets from an object.
- *
- * Walks through all string values in an object (including nested objects
- * and arrays) and applies secret redaction.
- *
- * @param obj - Object to redact
- * @param secrets - Map of secret names to secret values
- * @param applyPatterns - Whether to also apply pattern detection
- * @returns New object with redacted values
- */
-export function redactObjectSecrets<T>(
-	obj: T,
-	secrets: Record<string, string>,
-	applyPatterns = true,
-): T {
-	if (obj === null || obj === undefined) {
-		return obj;
-	}
-
-	if (typeof obj === "string") {
-		return redactWithSecrets(obj, { secrets, applyPatterns }) as T;
-	}
-
-	if (Array.isArray(obj)) {
-		return obj.map((item) =>
-			redactObjectSecrets(item, secrets, applyPatterns),
-		) as T;
-	}
-
-	if (typeof obj === "object") {
-		const result: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(obj)) {
-			result[key] = redactObjectSecrets(value, secrets, applyPatterns);
-		}
-		return result as T;
-	}
-
-	return obj;
-}
-
-// ============================================================================
 // Log-Sink Redaction (applied to every log line, not opt-in per call)
-// ============================================================================
 
 /**
  * Redact every argument in a `logger.error(...args)` call before it reaches the

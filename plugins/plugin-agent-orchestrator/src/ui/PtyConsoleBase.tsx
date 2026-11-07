@@ -8,11 +8,15 @@
  * silently trimmed from the head. Backs the PtyConsoleDrawer /
  * PtyConsoleSidePanel wrappers and fills the `@elizaos/ui` PtyConsoleBase slot.
  */
+import {
+  Button,
+  Card,
+  type CodingAgentSession,
+  client,
+  Input,
+  useAgentElement,
+} from "@elizaos/ui";
 
-import { Button, Card, Input } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { Send, Square, Terminal, X } from "lucide-react";
 import {
   type KeyboardEvent,

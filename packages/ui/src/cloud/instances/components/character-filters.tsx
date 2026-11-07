@@ -7,17 +7,17 @@
 
 "use client";
 
+import { LayoutGrid, List, Search } from "lucide-react";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import {
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui/cloud-ui";
-import { LayoutGrid, List, Search } from "lucide-react";
-import { Button } from "../../../components/ui/button";
-import { useT } from "../lib/i18n";
+} from "../../../components/ui/select";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import type { SortOption, ViewMode } from "./types";
 
 interface CharacterFiltersProps {

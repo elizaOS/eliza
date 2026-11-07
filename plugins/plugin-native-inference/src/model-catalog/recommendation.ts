@@ -9,7 +9,7 @@ import type {
   HardwareFitLevel,
   HardwareProbe,
   TextGenerationSlot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import {
   type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,

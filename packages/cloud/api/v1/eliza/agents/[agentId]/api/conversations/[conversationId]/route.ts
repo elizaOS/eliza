@@ -1,12 +1,16 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { resolveSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestConversationDelete,
   sharedRestConversationUpdate,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../_local-dedicated-proxy";
 
 /**

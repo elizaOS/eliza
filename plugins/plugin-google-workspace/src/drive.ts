@@ -5,6 +5,7 @@
  * writes Sheet cells. Spans the Drive, Docs, and Sheets googleapis surfaces,
  * each acquired scoped from `GoogleApiClientFactory`.
  */
+import { ElizaError } from "@elizaos/core";
 import type { docs_v1, drive_v3, sheets_v4 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {
@@ -126,7 +127,7 @@ export class GoogleDriveClient {
         fields: DRIVE_FILE_FIELDS,
         supportsAllDrives: true,
       });
-      return mapDriveFile(response.data);
+      return mapCreatedDriveFile(response.data);
     }
 
     const response = await drive.files.create({
@@ -139,7 +140,7 @@ export class GoogleDriveClient {
       fields: DRIVE_FILE_FIELDS,
       supportsAllDrives: true,
     });
-    return mapDriveFile(response.data);
+    return mapCreatedDriveFile(response.data);
   }
 
   async appendToDoc(
@@ -188,6 +189,17 @@ export class GoogleDriveClient {
       updatedCells: response.data.updatedCells ?? 0,
     };
   }
+}
+
+function mapCreatedDriveFile(file: drive_v3.Schema$File): GoogleDriveFile {
+  const created = mapDriveFile(file);
+  if (!created.id.trim()) {
+    throw new ElizaError("Google Drive file creation returned no provider file id.", {
+      code: "GOOGLE_DRIVE_CREATE_RECEIPT_MISSING",
+      severity: "fatal",
+    });
+  }
+  return created;
 }
 
 function mapDriveFile(file: drive_v3.Schema$File): GoogleDriveFile {

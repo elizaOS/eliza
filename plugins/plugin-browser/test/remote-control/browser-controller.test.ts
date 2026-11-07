@@ -1,12 +1,12 @@
 /** Exercises remote browser authority and encrypted runtime persistence through the existing host contract. */
 import { describe, expect, it } from "bun:test";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   copyRemoteCommandBinding,
   type RemoteControllerPublicIdentity,
   type SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { BrowserTarget } from "../../src/browser-service";
 import {
   AgentRemoteBrowserController,

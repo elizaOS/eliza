@@ -21,12 +21,11 @@ const PROVIDER_DESTINATIONS = Object.freeze({
 });
 
 // Provider callbacks terminate on the public Steward API authority, not on
-// either browser host. Both staging browser hosts share the isolated staging
-// challenge store through api-staging.eliza.app; production retains the
-// established direct Steward callback.
+// either browser host. Each environment routes callbacks through its own
+// canonical API proxy so login does not depend on an externally owned domain.
 const CANONICAL_STEWARD_CALLBACK_BASE_URLS = Object.freeze({
   staging: "https://api-staging.eliza.app/steward",
-  production: "https://eliza.steward.fi",
+  production: "https://api.eliza.app/steward",
 });
 
 const DEPLOY_ENVIRONMENTS = new Set(["staging", "production"]);

@@ -5,6 +5,7 @@
  * device contributes to the owner's activity/presence profile.
  */
 import crypto from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type ActionEventPayload,
   type ComposerActivityPayload,
@@ -15,7 +16,6 @@ import {
   type UUID,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { getDeviceId } from "../lifeops/device-identity.js";
 import {
   contactEdgeId,
@@ -107,12 +107,9 @@ function readPlatform(payload: MessagePayload): string {
   const content = isRecord(messageRecord?.content)
     ? messageRecord.content
     : null;
-  const candidates = [
-    content?.channelType,
-    content?.source,
-    messageRecord?.source,
-    payload.source,
-  ];
+  // The platform is the connector that carried the message. The channel type
+  // is the room kind (DM, GROUP) and must not key an identity.
+  const candidates = [content?.source, messageRecord?.source, payload.source];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate;
@@ -463,6 +460,27 @@ export class PresenceSignalBridgeService extends Service {
     );
   }
 
+  /**
+   * True when the same fingerprint was recorded within DEDUPE_WINDOW_MS;
+   * otherwise records it. Fingerprints carry message ids and timestamps, so
+   * entries older than the window are dropped here instead of kept forever.
+   */
+  private isRecentDuplicate(fingerprint: string, observedMs: number): boolean {
+    if (!Number.isFinite(observedMs)) return false;
+    for (const [key, seenMs] of this.recentFingerprints) {
+      if (observedMs - seenMs < DEDUPE_WINDOW_MS) break;
+      this.recentFingerprints.delete(key);
+    }
+    const existing = this.recentFingerprints.get(fingerprint);
+    if (existing !== undefined && observedMs - existing < DEDUPE_WINDOW_MS) {
+      return true;
+    }
+    // Re-insert at the end so the map stays in observation order.
+    this.recentFingerprints.delete(fingerprint);
+    this.recentFingerprints.set(fingerprint, observedMs);
+    return false;
+  }
+
   private async captureActivityFromAction(
     payload: ActionEventPayload,
   ): Promise<void> {
@@ -475,16 +493,8 @@ export class PresenceSignalBridgeService extends Service {
     const observedAt = new Date().toISOString();
     const fingerprint = `action:${messageId}`;
     const observedMs = Date.parse(observedAt);
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
+    if (this.isRecentDuplicate(fingerprint, observedMs)) {
       return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
     }
     const repository = new LifeOpsRepository(this.runtime);
     await repository.createActivitySignal(
@@ -518,11 +528,9 @@ export class PresenceSignalBridgeService extends Service {
     }
     const conversationId = payload.conversationId ?? "unknown-conversation";
     const fingerprint = `composer:${payload.activity}:${payload.surface}:${conversationId}:${observedAt}`;
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (existing !== undefined && observedMs - existing < DEDUPE_WINDOW_MS) {
+    if (this.isRecentDuplicate(fingerprint, observedMs)) {
       return;
     }
-    this.recentFingerprints.set(fingerprint, observedMs);
 
     const state =
       payload.activity === "typing_started" ? ("active" as const) : "idle";
@@ -585,16 +593,8 @@ export class PresenceSignalBridgeService extends Service {
     const fingerprintEntity = handle ?? entityId;
     const fingerprint = `${eventType}:${fingerprintEntity}:${observedAt}`;
     const observedMs = Date.parse(observedAt);
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
+    if (this.isRecentDuplicate(fingerprint, observedMs)) {
       return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
     }
     const repository = new LifeOpsRepository(this.runtime);
     const platform = readPlatform(payload);
@@ -650,16 +650,8 @@ export class PresenceSignalBridgeService extends Service {
     const entityId = readTopLevelEntityId(payload);
     const targetId = readReactionTargetId(payload);
     const fingerprint = `reaction:${platform}:${handle ?? entityId ?? targetId}`;
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
+    if (this.isRecentDuplicate(fingerprint, observedMs)) {
       return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
     }
 
     const repository = new LifeOpsRepository(this.runtime);
@@ -706,16 +698,8 @@ export class PresenceSignalBridgeService extends Service {
     const observedAt = readEventTimestamp(payload);
     const observedMs = Date.parse(observedAt);
     const fingerprint = `view:${payload.viewId}:${payload.roomId ?? ""}`;
-    const existing = this.recentFingerprints.get(fingerprint);
-    if (
-      existing !== undefined &&
-      Number.isFinite(observedMs) &&
-      observedMs - existing < DEDUPE_WINDOW_MS
-    ) {
+    if (this.isRecentDuplicate(fingerprint, observedMs)) {
       return;
-    }
-    if (Number.isFinite(observedMs)) {
-      this.recentFingerprints.set(fingerprint, observedMs);
     }
 
     const repository = new LifeOpsRepository(this.runtime);

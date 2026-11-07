@@ -15,8 +15,8 @@ import type { Plugin } from "esbuild";
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols
  * the shell reads (`isViewVisible`, `dedupeModalities`,
- * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and proxies
- * everything else, so core's Node graph is never bundled.
+ * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and rejects
+ * unconfigured exports, so accidental dependencies cannot pass unnoticed.
  */
 export function stubElizaCore(): Plugin {
   return {
@@ -29,7 +29,6 @@ export function stubElizaCore(): Plugin {
       build.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
         contents: `
         const notifications = require(${JSON.stringify(fileURLToPath(new URL("../../../../core/src/types/notification.ts", import.meta.url)))});
-        const noop = new Proxy(() => noop, { get: () => noop });
         // The wake/provision path (client-cloud.ts) subclasses the real
         // ElizaError; esbuild's ESM interop copies only this object's own keys,
         // so a Proxy fallback would surface undefined here and break the
@@ -61,7 +60,11 @@ export function stubElizaCore(): Plugin {
             // interop cannot expose named imports supplied only by the Proxy.
             stripUnclaimedInteractionMarkup: (text) => text,
           },
-          { get: (t, p) => (p in t ? t[p] : noop) },
+          { get: (t, p) => {
+            if (p in t) return t[p];
+            if (p === "__esModule" || p === "then" || typeof p === "symbol") return undefined;
+            throw new Error("Unconfigured core fixture export: " + p);
+          } },
         );
       `,
         loader: "js",
@@ -71,7 +74,7 @@ export function stubElizaCore(): Plugin {
   };
 }
 
-/** Replace every node builtin (dead in the browser) with a no-op proxy module. */
+/** Keep explicit unavailable probes; fail if a browser fixture executes a Node-only operation. */
 export function stubNodeBuiltins(): Plugin {
   const nodeBuiltins = new Set([
     ...builtinModules,
@@ -92,7 +95,7 @@ export function stubNodeBuiltins(): Plugin {
         return null;
       });
       build.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-        contents: `function anyfn() { return anyfn; }
+        contents: `function anyfn() { throw new Error("Node-only operation executed in browser fixture"); }
 export default anyfn;
 export const createRequire = () => anyfn;
 export const homedir = anyfn;
@@ -106,21 +109,21 @@ export const dirname = anyfn;
 export const basename = anyfn;
 export const extname = anyfn;
 export const sep = "/";
-export const createHash = () => ({ update: () => ({ digest: () => "" }) });
+export const createHash = anyfn;
 export const randomBytes = anyfn;
-export const randomUUID = () => "00000000-0000-0000-0000-000000000000";
+export const randomUUID = () => globalThis.crypto.randomUUID();
 export const Buffer = {
-  from: () => ({}),
+  from: anyfn,
   isBuffer: () => false,
-  alloc: () => ({}),
-  byteLength: () => 0,
+  alloc: anyfn,
+  byteLength: anyfn,
 };
 export const promises = {};
 export const existsSync = () => false;
 export const readFileSync = anyfn;
 export const writeFileSync = anyfn;
 export const mkdirSync = anyfn;
-export const readdirSync = () => [];
+export const readdirSync = anyfn;
 export const statSync = anyfn;
 export const realpathSync = anyfn;
 export const renameSync = anyfn;
@@ -130,7 +133,7 @@ export const fileURLToPath = anyfn;
 export const pathToFileURL = anyfn;
 export const lookup = anyfn;
 export const request = anyfn;
-export const createHmac = () => ({ update: () => ({ digest: () => "" }) });
+export const createHmac = anyfn;
 export const timingSafeEqual = () => false;
 export const createCipheriv = anyfn;
 export const createDecipheriv = anyfn;
@@ -148,7 +151,7 @@ export const unlink = anyfn;
 export const writeFile = anyfn;
 export const mkdir = anyfn;
 export const stat = anyfn;
-export const readdir = () => [];
+export const readdir = anyfn;
 export const isIP = () => 0;
 // Browser fixtures never admit operator CIDRs. Keep the Node BlockList surface
 // available to transitive shared imports while making every check fail closed.

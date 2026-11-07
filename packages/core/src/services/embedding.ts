@@ -22,10 +22,7 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import {
-	type BatchItemOutcome,
-	BatchQueue,
-} from "../utils/batch-queue/index.js";
+import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue.js";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
 import { isModelFundingAuthorityError } from "../utils/model-errors";
 
@@ -35,12 +32,6 @@ interface EmbeddingQueueItem {
 	runId?: string;
 	pendingKey?: string;
 }
-
-/**
- * Service responsible for generating embeddings asynchronously
- * This service listens for EMBEDDING_GENERATION_REQUESTED events
- * and processes them in a queue to avoid blocking the main runtime
- */
 
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
@@ -222,9 +213,6 @@ export class EmbeddingGenerationService extends Service {
 		// `processBatch` throwing falls the WHOLE batch back to the per-item
 		// `process` path (BatchQueue.drain), so retry / onExhausted semantics and
 		// per-id write-back are preserved on any batch failure.
-		const hasBatchModel = Boolean(
-			this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
-		);
 		this.batchQueue = new BatchQueue<EmbeddingQueueItem>({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
@@ -244,9 +232,10 @@ export class EmbeddingGenerationService extends Service {
 					if (item.pendingKey) this.pending.delete(item.pendingKey);
 				}
 			},
-			processBatch: hasBatchModel
-				? (items) => this.generateEmbeddingsBatch(items)
-				: undefined,
+			// Provider pinning can change batch availability after startup.
+			canProcessBatch: () =>
+				Boolean(this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)),
+			processBatch: (items) => this.generateEmbeddingsBatch(items),
 			onExhausted: async (item, error) => {
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
@@ -668,6 +657,9 @@ export class EmbeddingGenerationService extends Service {
 	clearQueue(): void {
 		const size = this.batchQueue?.size ?? 0;
 		this.batchQueue?.clear();
+		// Cleared items never reach onDrainBatchOutcomes; drop their coalescing
+		// keys so an identical snapshot can be requested again.
+		this.pending.clear();
 		this.runtime.logger.info(
 			{
 				src: "plugin:basic-capabilities:service:embedding",

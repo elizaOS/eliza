@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { type MeetingBillingState, type MeetingEndReason } from "@elizaos/core/meetings";
+import { type MeetingBillingState, type MeetingEndReason } from "@elizaos/core/protocol";
 import { reserveAllowanceEligibleCredits } from "./allowance-first-credits";
 import {
   type CreditReservation,

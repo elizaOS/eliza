@@ -9,7 +9,7 @@ harnesses differ only in isolation, which the report discloses:
   across the lane; each task's ``build_lifeops_bench_agent_fn`` mints a fresh
   ``lifeops-<uuid>`` session on it. Interference is real: N sessions contend
   for one runtime. Per-session usage attribution rides the AsyncLocalStorage
-  buffer in ``suites/lifeops-bench/runner/src/server.ts`` (#13777): each turn's
+  buffer in ``harnesses/eliza/runner/src/server.ts`` (#13777): each turn's
   MODEL_USED events bind to their own async call chain, so overlapping
   sessions never double-count cost or tokens.
 - **hermes / openclaw** — one client shared across the lane, each task's
@@ -121,10 +121,14 @@ def _hermes_factory(model: str | None) -> AgentFactory:
     from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
 
     provider = (
-        os.environ.get("BENCHMARK_MODEL_PROVIDER")
-        or os.environ.get("ELIZA_PROVIDER")
-        or "cerebras"
-    ).strip().lower()
+        (
+            os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or os.environ.get("ELIZA_PROVIDER")
+            or "cerebras"
+        )
+        .strip()
+        .lower()
+    )
     model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b"
     shared_client = HermesClient(provider=provider, model=model_name)
     shared_client.wait_until_ready(timeout=60)
@@ -147,10 +151,14 @@ def _openclaw_factory(model: str | None) -> AgentFactory:
     from openclaw_adapter.lifeops_bench import build_lifeops_bench_agent_fn
 
     provider = (
-        os.environ.get("BENCHMARK_MODEL_PROVIDER")
-        or os.environ.get("ELIZA_PROVIDER")
-        or "cerebras"
-    ).strip().lower()
+        (
+            os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or os.environ.get("ELIZA_PROVIDER")
+            or "cerebras"
+        )
+        .strip()
+        .lower()
+    )
     model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b"
     shared_client = OpenClawClient(
         provider=provider,
@@ -188,7 +196,6 @@ def build_agent_factory(harness: str, *, model: str | None = None) -> AgentFacto
     builder = _FACTORY_BUILDERS.get(harness)
     if builder is None:
         raise ValueError(
-            f"unknown harness {harness!r}; expected one of "
-            f"{sorted(_FACTORY_BUILDERS)}"
+            f"unknown harness {harness!r}; expected one of {sorted(_FACTORY_BUILDERS)}"
         )
     return builder(model)

@@ -103,17 +103,8 @@ test("Linux release evidence requires qualification of the writer extracted from
   assert.match(steps[qualification].run, /--sector-size "\$sector"/);
 });
 
-test("canonical OS CI retains legacy wrapper and browser checks without obsolete package commands", () => {
+test("canonical OS CI runs browser checks", () => {
   const workflow = load("os.yml");
-  const windows = workflow.jobs["android-powershell-safety"];
-  assert.equal(windows["runs-on"], "windows-latest");
-  assert.ok(
-    windows.steps.some(
-      (step) =>
-        step.shell === "pwsh" &&
-        step.run === "android/installer/tests/wrapper-safety.ps1",
-    ),
-  );
   const browser = workflow.jobs["usb-browser"];
   assert.notEqual(browser["continue-on-error"], true);
   assert.ok(
@@ -138,7 +129,6 @@ test("canonical OS CI retains legacy wrapper and browser checks without obsolete
   const commands = Object.values(workflow.jobs)
     .flatMap((job) => (job.steps ?? []).map((step) => step.run ?? ""))
     .join("\n");
-  assert.match(commands, /android\/installer\/tests\/run-tests\.sh/);
   for (const match of commands.matchAll(
     /\b(?:node|bash) ([\w/-]+\.(?:mjs|sh))/g,
   ))

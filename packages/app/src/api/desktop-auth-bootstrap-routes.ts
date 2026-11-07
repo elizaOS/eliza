@@ -12,7 +12,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { authStoreForRuntime } from "../services/auth-store";
+import { authStoreForHost } from "../services/auth-store";
 import {
   appendAuditEvent,
   createBrowserSession,
@@ -110,7 +110,7 @@ export async function handleDesktopAuthBootstrapRoute(
     return true;
   }
 
-  const store = authStoreForRuntime(state.current);
+  const store = authStoreForHost(state);
   if (!store) {
     sendJsonError(res, 503, "db_unavailable");
     return true;

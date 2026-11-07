@@ -2,10 +2,11 @@
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import {
+  ElizaError,
   parseSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
   TodoCutoverContractError,
-} from "@elizaos/core/todo-cutover";
+} from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
@@ -228,12 +229,12 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       { runWithCloudBindingsAsync },
       { JOB_TYPES, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES },
     ] = await Promise.all([
-      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
-      import("@elizaos/cloud-shared/db/repositories/apps.ts"),
-      import("@elizaos/cloud-shared/db/repositories/containers.ts"),
-      import("@elizaos/cloud-shared/db/repositories/jobs.ts"),
-      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
-      import("@elizaos/cloud-shared/lib/services/provisioning-job-types.ts"),
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/repositories/apps"),
+      import("@elizaos/cloud-shared/db/repositories/containers"),
+      import("@elizaos/cloud-shared/db/repositories/jobs"),
+      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
+      import("@elizaos/cloud-shared/agent-contracts"),
     ]);
 
     return runWithCloudBindingsAsync(
@@ -327,6 +328,15 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               const appRow = await appsRepository.findById(appId);
               if (!appRow) {
                 throw new Error(`App not found for APP_DEPLOY: ${appId}`);
+              }
+              if (!appRow.created_by_user_id) {
+                throw new ElizaError(
+                  "The app's deployment principal is no longer available",
+                  {
+                    code: "APP_DEPLOY_PRINCIPAL_UNAVAILABLE",
+                    severity: "ephemeral",
+                  },
+                );
               }
 
               const container = await containersRepository.create({
@@ -1011,8 +1021,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (databaseUrl) {
       const [{ containersRepository }, { runWithCloudBindingsAsync }] =
         await Promise.all([
-          import("@elizaos/cloud-shared/db/repositories/containers.ts"),
-          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
+          import("@elizaos/cloud-shared/db/repositories/containers"),
+          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
         ]);
       const rows = await runWithCloudBindingsAsync(
         { DATABASE_URL: databaseUrl },

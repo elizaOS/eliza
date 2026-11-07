@@ -392,16 +392,17 @@ export class KaminoService extends Service {
 
         for (const stakingYield of stakingYields) {
           if (stakingYield.tokenMint) {
+            // /v2/staking-yields returns a fraction (0.051); reserves carry a
+            // percentage, as calculateLimoSupplyApy and #34898 do.
+            const supplyApy = parseFloat(stakingYield.apy || "0") * 100;
             reserves.push({
               market: stakingYield.tokenMint,
               marketName: `Staking-${stakingYield.tokenMint.slice(0, 8)}`,
               dataSize: 0,
               lamports: 0,
               owner: KAMINO_LEND_PROGRAM_ID,
-              supplyApy: parseFloat(stakingYield.apy || "0"),
-              borrowApy: this.calculateBorrowApy(
-                parseFloat(stakingYield.apy || "0"),
-              ),
+              supplyApy,
+              borrowApy: this.calculateBorrowApy(supplyApy),
               totalSupply: this.estimateTotalSupply(stakingYield),
               totalBorrow: this.estimateTotalBorrow(stakingYield),
               utilization: this.calculateUtilization(stakingYield),

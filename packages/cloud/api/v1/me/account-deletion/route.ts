@@ -1,22 +1,22 @@
 /** Exposes authenticated account-deletion status and fail-closed request admission. */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
-import { requireRecentSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireRecentSessionUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AccountDeletionConflictError,
   getOpenAccountDeletionRequest,
   recoverAccountDeletionAdmission,
   requestAccountDeletion,
   toAccountDeletionRequestDto,
-} from "@/lib/services/account-deletion";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/account-deletion";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));

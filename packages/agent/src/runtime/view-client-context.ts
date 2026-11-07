@@ -1,10 +1,17 @@
 /** One caller's renderer state, shared by HTTP handlers and their async agent work. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { AgentHttpRequestAuthorization } from "./host-bridge.ts";
 
 export interface ViewClientScope {
   hostKey: object;
-  clientId: string;
+  clientId?: string;
+  /** Only the HTTP boundary writes this; async descendants cannot outlive it. */
+  request?: {
+    runtime: IAgentRuntime | null;
+    authorization?: AgentHttpRequestAuthorization;
+    signal: AbortSignal;
+  };
 }
 const callers = new AsyncLocalStorage<ViewClientScope | undefined>();
 export const runWithViewClient = <T>(
@@ -38,15 +45,16 @@ export function createViewClientStore<T>() {
   }
   return {
     get(runtime: IAgentRuntime, scope = getViewClientScope()): T | null {
-      return scope
+      return scope?.clientId
         ? (clients(runtime, scope)?.get(scope.clientId) ?? null)
         : null;
     },
     set(runtime: IAgentRuntime, value: T, scope = getViewClientScope()): void {
-      if (scope) clients(runtime, scope, true)?.set(scope.clientId, value);
+      if (scope?.clientId)
+        clients(runtime, scope, true)?.set(scope.clientId, value);
     },
     delete(runtime: IAgentRuntime, scope = getViewClientScope()): void {
-      if (scope) clients(runtime, scope)?.delete(scope.clientId);
+      if (scope?.clientId) clients(runtime, scope)?.delete(scope.clientId);
     },
   };
 }

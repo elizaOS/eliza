@@ -18,19 +18,23 @@
  * restart job is already in flight.
  */
 
-import { Hono } from "hono";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { registerNudge } from "../_register-nudge";
 
 const app = new Hono<AppEnv>();
 
@@ -100,6 +104,19 @@ app.post("/", async (c) => {
       userId: agent.user_id,
       stateLossAcknowledged,
     });
+    if (enqueue.created) {
+      registerNudge(
+        c,
+        provisioningJobService.triggerImmediate(c.env).catch((error) => {
+          // error-policy:J7 the durable job remains visible to the polling worker.
+          logger.warn("[service-api] Restart worker nudge failed", {
+            agentId,
+            jobId: enqueue.job.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
+    }
 
     const existingJobCarriesWaiver =
       (enqueue.job.data as { stateLossAcknowledged?: unknown } | null)

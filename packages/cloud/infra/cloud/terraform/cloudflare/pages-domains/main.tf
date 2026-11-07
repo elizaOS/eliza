@@ -1,4 +1,11 @@
 locals {
+  # Retain imported routing record addresses through the cutover. Provider
+  # verification records are removed only when the Worker becomes the owner.
+  tunnel_dns_records = {
+    for key, record in var.railway_tunnel_dns_records : key => record
+    if var.tunnel_worker_hostname == "" || contains(record.roles, "apex-routing") || contains(record.roles, "wildcard-routing")
+  }
+
   canonical_pages_domains = var.environment == "production" ? {
     marketing = {
       project_name = "eliza-app"
@@ -237,19 +244,42 @@ resource "cloudflare_dns_record" "canonical_service" {
 
 # Railway supplies every target and verification value after the custom domain
 # is attached. Keep those values in reviewed protected inventory instead of
-# deriving them from a service id. These records intentionally remain DNS-only:
-# Railway terminates TLS, including for the two-label wildcard, so this path
-# does not depend on a Cloudflare advanced certificate.
+# deriving them from a service id. The cutover updates the same routing records
+# to proxied Worker ingress after the routes and wildcard certificate exist.
+# Keep the original inventory available for an explicit rollback.
 resource "cloudflare_dns_record" "railway_tunnel" {
-  for_each = var.railway_tunnel_dns_records
+  for_each = local.tunnel_dns_records
 
   zone_id = var.eliza_app_zone_id
   name    = each.value.name
   type    = upper(each.value.type)
-  content = each.value.content
+  content = var.tunnel_worker_hostname == "" ? each.value.content : var.tunnel_worker_hostname
   ttl     = 1
-  proxied = false
-  comment = "Canonical ${var.environment} Railway tunnel ingress (managed by terraform/cloudflare/pages-domains)"
+  proxied = var.tunnel_worker_hostname != ""
+  comment = "Canonical ${var.environment} ${var.tunnel_worker_hostname == "" ? "Railway" : "Cloudflare"} tunnel ingress (managed by terraform/cloudflare/pages-domains)"
+
+  depends_on = [cloudflare_workers_route.tunnel]
+}
+
+resource "cloudflare_workers_route" "tunnel" {
+  for_each = var.tunnel_worker_hostname == "" ? {} : local.tunnel_dns_records
+
+  zone_id = var.eliza_app_zone_id
+  pattern = "${each.value.name}/*"
+  script  = "eliza-tunnel-proxy-${var.environment}"
+
+  lifecycle {
+    precondition {
+      condition = anytrue([
+        for pack in cloudflare_certificate_pack.canonical_edge :
+        pack.status == "active" && contains(pack.hosts,
+        var.environment == "production" ? "*.tunnel.eliza.app" : "*.tunnel-staging.eliza.app")
+      ])
+      error_message = "The tunnel wildcard certificate must be active before routing changes"
+    }
+  }
+
+  depends_on = [cloudflare_certificate_pack.canonical_edge]
 }
 
 # Deep legacy site/tunnel names cannot use the one-label *.elizacloud.ai DNS

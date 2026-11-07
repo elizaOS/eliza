@@ -9,13 +9,13 @@
  * is in cloud / cloud-hybrid mode.
  */
 import { Preferences } from "@capacitor/preferences";
-import { formatError } from "@elizaos/core/utils/format-error";
 import {
+  formatError,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core/utils/unicode";
-import type { ElizaWindowBridge } from "@elizaos/ui/bridge/eliza-window-bridge";
-import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
+} from "@elizaos/core/protocol";
+import type { ElizaWindowBridge } from "@elizaos/ui";
+import { primeIosFullBunRuntime } from "../renderer/transports/ios-local-agent-transport";
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings";
 
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =

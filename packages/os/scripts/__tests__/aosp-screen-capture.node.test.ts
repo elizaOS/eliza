@@ -13,8 +13,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { crc32, deflateSync } from "node:zlib";
-import { captureScreens } from "../distro-android/capture-screens.ts";
-import { parseSubArgs } from "../distro-android/e2e-validate.ts";
+import { captureScreens } from "../android/capture-screens.ts";
+import { parseSubArgs } from "../android/e2e-validate.ts";
 
 function png() {
   const chunk = (type, data) => {
@@ -134,7 +134,7 @@ test("invalid labels and empty steps fail before accessing a device", async (t) 
 test("end-to-end validation does not launch screenshot actions after a boot refusal", async (t) => {
   const f = await fixture(t);
   await mkdir(f.outDir);
-  const script = new URL("../distro-android/e2e-validate.ts", import.meta.url);
+  const script = new URL("../android/e2e-validate.ts", import.meta.url);
   const result = spawnSync(
     process.execPath,
     [

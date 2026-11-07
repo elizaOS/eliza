@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop index ts behavior for app shell integration. */
 import type { BrowserWindow } from "electrobun/bun";
 import { logger } from "../logger";
 import type { SendToWebview } from "../types.js";

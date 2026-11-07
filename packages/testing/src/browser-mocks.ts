@@ -38,7 +38,7 @@ export function createMemoryStorage(): Storage {
       return store.get(key) ?? null;
     },
     setItem(key: string, value: string) {
-      store.set(key, value);
+      store.set(key, String(value));
     },
     removeItem(key: string) {
       store.delete(key);
@@ -325,4 +325,14 @@ export function suppressReactTestConsoleErrors(): void {
     patchedConsoleLog[CONSOLE_LOG_PATCH_MARK] = true;
     console.log = patchedConsoleLog;
   }
+}
+
+/** Install jsdom's idle layout-observer contract; tests that drive resize supply their own observer. */
+export function installIdleResizeObserver(): void {
+  if (typeof globalThis.ResizeObserver !== "undefined") return;
+  globalThis.ResizeObserver = class implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
 }

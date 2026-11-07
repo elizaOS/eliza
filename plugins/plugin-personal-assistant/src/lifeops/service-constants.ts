@@ -27,7 +27,6 @@ export {
   GOOGLE_PRIMARY_CALENDAR_ID,
   LIFEOPS_TIME_ZONE_ALIASES,
   MAX_GMAIL_TRIAGE_MAX_RESULTS,
-  MAX_OVERVIEW_OCCURRENCES,
   MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
   PROACTIVE_TASK_QUERY_TAGS,
@@ -69,4 +68,4 @@ export {
   REMINDER_URGENCY_METADATA_KEY,
   type ReminderActivityGate,
   reminderProcessingQueues,
-} from "@elizaos/core/lifeops-constants/service-constants";
+} from "@elizaos/contracts";

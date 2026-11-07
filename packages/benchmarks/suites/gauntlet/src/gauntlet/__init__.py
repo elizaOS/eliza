@@ -21,3 +21,7 @@ __all__ = [
     "TaskType",
     "OutcomeClassification",
 ]
+
+from .protocol import gauntlet_types, build_safety_hints, parse_decision_from_response, build_prompt
+
+__all__ += ["gauntlet_types", "build_safety_hints", "parse_decision_from_response", "build_prompt"]

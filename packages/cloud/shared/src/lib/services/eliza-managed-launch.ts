@@ -8,7 +8,11 @@ import {
   type AgentSandbox,
   CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../../db/schemas/agent-sandboxes";
-import { cache } from "../cache/client";
+import {
+  isSingleUseRecordStoreAvailable,
+  putSingleUseRecord,
+  takeSingleUseRecord,
+} from "../auth/single-use-records";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { logger } from "../utils/logger";
 import { decryptAgentEnvVars } from "./agent-env-crypto";
@@ -241,6 +245,13 @@ export function resolveLaunchSessionCacheKey(sessionId: string): string {
   return `agent:launch-session:${sessionId}`;
 }
 
+/** Returns a launch session once; every later read gets null. */
+export function consumeLaunchSession(
+  sessionId: string,
+): Promise<ManagedLaunchSessionPayload | null> {
+  return takeSingleUseRecord<ManagedLaunchSessionPayload>(resolveLaunchSessionCacheKey(sessionId));
+}
+
 export function resolveElizaLaunchAllowedOrigins(): string[] {
   return resolveManagedAllowedOrigins();
 }
@@ -348,10 +359,11 @@ export async function launchManagedElizaAgent(params: {
   const appUrl = new URL(resolveElizaAppUrl());
   let launchSessionId: string | null = null;
 
-  if (cache.isAvailable()) {
+  // The session carries the agent token, so it must be readable only once.
+  if (isSingleUseRecordStoreAvailable()) {
     try {
       launchSessionId = crypto.randomUUID();
-      await cache.set(
+      await putSingleUseRecord(
         resolveLaunchSessionCacheKey(launchSessionId),
         payload,
         LAUNCH_SESSION_TTL_SECONDS,

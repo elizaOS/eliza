@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from eliza_adapter.app_eval import (
+    _coding_summary_result,
     _load_evaluate_result,
     _load_tasks,
     _run_task,
@@ -123,6 +124,42 @@ def test_research_task_rejects_missing_native_runtime_provenance(
     assert result["success"] is False
     assert result["infrastructure_error"] is True
     assert "nonpublishable native runtime provenance" in result["error"]
+
+
+@pytest.mark.parametrize(
+    ("status", "infrastructure"),
+    [("error", True), ("incomplete", False)],
+)
+def test_coding_agent_command_error_is_an_infrastructure_failure(
+    tmp_path: Path,
+    status: str,
+    infrastructure: bool,
+) -> None:
+    agent_result_path = tmp_path / "agent-result.json"
+    agent_result_path.write_text(
+        json.dumps({"status": status, "error": "RuntimeError: Docker is required"}),
+        encoding="utf-8",
+    )
+
+    result = _coding_summary_result(
+        {"id": "code-001"},
+        {
+            "success": False,
+            "workspace_score": 0.0,
+            "passed": 0,
+            "failed": 3,
+            "total": 3,
+            "exit_code": 1,
+            "agent_result_path": str(agent_result_path),
+            "agent_result_status": status,
+        },
+        duration_ms=1,
+    )
+
+    assert result["success"] is False
+    assert (
+        result["workspace_execution"]["infrastructure_error"] is not None
+    ) is infrastructure
 
 
 def test_mixed_mock_cli_is_structurally_complete_but_nonpublishable(

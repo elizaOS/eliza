@@ -9,12 +9,12 @@ import type {
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   type RuntimeWithScenarioModelFixtures,
-  scenario,
   strictActionRouteFixtures,
-} from "@elizaos/testing";
-import { transientTurnEvaluationSeed } from "../../../scenarios/_fixtures/simple-turn-memory.ts";
+  transientTurnEvaluationSeed,
+} from "@elizaos/testing/models";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";

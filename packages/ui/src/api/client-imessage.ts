@@ -83,7 +83,7 @@ interface IMessageSetupStatusResponse {
   };
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getIMessageStatus(): Promise<IMessageApiStatus>;
     getIMessageMessages(

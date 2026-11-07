@@ -207,7 +207,9 @@ async function handleNotificationEvent(
     ? `${agentId}:${provenance.source}:${provenance.accountId}:${provenance.chat.id}`
     : `${agentId}:${userId}`;
   const roomId = stringToUuid(roomKey);
-  const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
+  // Agent-scoped like the room key: world ids are a global key and world
+  // reads are agent-scoped, so a server-wide id would collide across agents.
+  const worldId = stringToUuid(`server:${process.env.SERVER_NAME}:${agentId}`);
   const channelType =
     provenance && isGroupNotificationChatType(provenance.chat.type)
       ? ChannelType.GROUP

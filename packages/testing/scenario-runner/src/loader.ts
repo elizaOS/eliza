@@ -8,14 +8,18 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import ts from "typescript";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
   type ScenarioLane,
   scenarioLane,
   scenario as validateScenarioDefinition,
-} from "@elizaos/testing";
-import ts from "typescript";
+} from "../schema/index.ts";
+
+function isScenarioFile(file: string): boolean {
+  return file.endsWith(".scenario.ts") || file.endsWith(".scenarios.ts");
+}
 
 async function walk(dir: string, out: string[]): Promise<void> {
   const entries = await readdir(dir);
@@ -35,7 +39,7 @@ async function walk(dir: string, out: string[]): Promise<void> {
     if (st.isSymbolicLink()) continue;
     if (st.isDirectory()) {
       await walk(full, out);
-    } else if (entry.endsWith(".scenario.ts")) {
+    } else if (isScenarioFile(entry)) {
       out.push(full);
     }
   }
@@ -333,13 +337,22 @@ function scenarioObjectFromExpression(
   return null;
 }
 
-function findExportedScenarioObject(
+function findExportedScenarioObjects(
   sourceFile: ts.SourceFile,
-): ts.ObjectLiteralExpression | null {
+): ts.ObjectLiteralExpression[] {
   for (const statement of sourceFile.statements) {
     if (ts.isExportAssignment(statement)) {
-      const objectLiteral = scenarioObjectFromExpression(statement.expression);
-      if (objectLiteral) return objectLiteral;
+      const expressions = ts.isArrayLiteralExpression(statement.expression)
+        ? statement.expression.elements
+        : [statement.expression];
+      return expressions.map((expression) => {
+        const object = scenarioObjectFromExpression(expression);
+        if (!object)
+          throw new Error(
+            `[scenario-loader] ${sourceFile.fileName}: manifest entries must be statically readable scenario objects.`,
+          );
+        return object;
+      });
     }
 
     if (!ts.isVariableStatement(statement)) continue;
@@ -355,16 +368,16 @@ function findExportedScenarioObject(
       const objectLiteral = scenarioObjectFromExpression(
         declaration.initializer,
       );
-      if (objectLiteral) return objectLiteral;
+      if (objectLiteral) return [objectLiteral];
     }
   }
 
-  return null;
+  return [];
 }
 
-export async function loadScenarioMetadataFile(
+export async function loadScenarioMetadataEntries(
   file: string,
-): Promise<ScenarioMetadata> {
+): Promise<ScenarioMetadata[]> {
   const sourceText = await readFile(file, "utf8");
   const sourceFile = ts.createSourceFile(
     file,
@@ -373,33 +386,46 @@ export async function loadScenarioMetadataFile(
     true,
     ts.ScriptKind.TS,
   );
-  const objectLiteral = findExportedScenarioObject(sourceFile);
-  if (!objectLiteral) {
+  const objects = findExportedScenarioObjects(sourceFile);
+  if (objects.length === 0) {
     throw new Error(
       `[scenario-loader] ${file}: no statically readable scenario object in default export or exported 'scenario' value.`,
     );
   }
-  const id = getStaticStringProperty(objectLiteral, "id");
-  if (!id) {
+  return objects.map((objectLiteral) => {
+    const id = getStaticStringProperty(objectLiteral, "id");
+    if (!id) {
+      throw new Error(
+        `[scenario-loader] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
+      );
+    }
+    return {
+      file,
+      id,
+      title: getStaticStringProperty(objectLiteral, "title"),
+      status: getStaticStringProperty(objectLiteral, "status"),
+      tier: getStaticStringProperty(objectLiteral, "tier"),
+      lane: getStaticStringProperty(objectLiteral, "lane"),
+    };
+  });
+}
+
+export async function loadScenarioMetadataFile(
+  file: string,
+): Promise<ScenarioMetadata> {
+  const entries = await loadScenarioMetadataEntries(file);
+  if (entries.length !== 1)
     throw new Error(
-      `[scenario-loader] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
+      `[scenario-loader] ${file}: contains ${entries.length} scenarios; use loadScenarioMetadataEntries.`,
     );
-  }
-  return {
-    file,
-    id,
-    title: getStaticStringProperty(objectLiteral, "title"),
-    status: getStaticStringProperty(objectLiteral, "status"),
-    tier: getStaticStringProperty(objectLiteral, "tier"),
-    lane: getStaticStringProperty(objectLiteral, "lane"),
-  };
+  return entries[0];
 }
 
 export async function discoverScenarios(root: string): Promise<string[]> {
   const files: string[] = [];
   const st = await stat(root);
   if (st.isFile()) {
-    if (root.endsWith(".scenario.ts")) files.push(root);
+    if (isScenarioFile(root)) files.push(root);
   } else {
     await walk(root, files);
   }
@@ -407,28 +433,44 @@ export async function discoverScenarios(root: string): Promise<string[]> {
   return files;
 }
 
-export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
+export async function loadScenarioEntries(
+  file: string,
+): Promise<LoadedScenario[]> {
   const mod = (await import(pathToFileURL(file).href)) as Record<
     string,
     unknown
   >;
-  const candidate = mod.default ?? mod.scenario;
-  if (!isScenarioDefinition(candidate)) {
+  const exported = mod.default ?? mod.scenario;
+  const entries = Array.isArray(exported) ? exported : [exported];
+  if (entries.length === 0)
+    throw new Error(`[scenario-loader] ${file}: empty scenario manifest.`);
+  return entries.map((candidate) => {
+    if (!isScenarioDefinition(candidate)) {
+      throw new Error(
+        `[scenario-loader] ${file}: no default export or 'scenario' export matching ScenarioDefinition (need id/title/domain/turns).`,
+      );
+    }
+    // Re-validate at load time: the `scenario()` helper already validates at
+    // definition time, but a file exporting a plain object would otherwise skip
+    // strict finalCheck/lane validation entirely.
+    try {
+      validateScenarioDefinition(candidate);
+    } catch (err) {
+      throw new Error(
+        `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return { file, scenario: candidate };
+  });
+}
+
+export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
+  const entries = await loadScenarioEntries(file);
+  if (entries.length !== 1)
     throw new Error(
-      `[scenario-loader] ${file}: no default export or 'scenario' export matching ScenarioDefinition (need id/title/domain/turns).`,
+      `[scenario-loader] ${file}: contains ${entries.length} scenarios; use loadScenarioEntries.`,
     );
-  }
-  // Re-validate at load time: the `scenario()` helper already validates at
-  // definition time, but a file exporting a plain object would otherwise skip
-  // strict finalCheck/lane validation entirely.
-  try {
-    validateScenarioDefinition(candidate);
-  } catch (err) {
-    throw new Error(
-      `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  return { file, scenario: candidate };
+  return entries[0];
 }
 
 export async function loadAllScenarios(
@@ -447,24 +489,25 @@ export async function loadAllScenarios(
         continue;
       }
     }
-    const result = await loadScenarioFile(file);
-    if (lane && scenarioLane(result.scenario) !== lane) continue;
-    const expanded = includeExpanded
-      ? expandScenarioDefinition(file, result.scenario)
-      : [];
-    const candidates = [result, ...expanded];
-    if (result.scenario.status === "pending" && !includePending) continue;
-    for (const candidate of candidates) {
-      if (
-        !scenarioIdPassesFilter(
-          filter,
-          candidate.scenario.id,
-          candidate.scenario.baseScenarioId,
-        )
-      ) {
-        continue;
+    for (const result of await loadScenarioEntries(file)) {
+      if (lane && scenarioLane(result.scenario) !== lane) continue;
+      const expanded = includeExpanded
+        ? expandScenarioDefinition(file, result.scenario)
+        : [];
+      const candidates = [result, ...expanded];
+      if (result.scenario.status === "pending" && !includePending) continue;
+      for (const candidate of candidates) {
+        if (
+          !scenarioIdPassesFilter(
+            filter,
+            candidate.scenario.id,
+            candidate.scenario.baseScenarioId,
+          )
+        ) {
+          continue;
+        }
+        loaded.push(candidate);
       }
-      loaded.push(candidate);
     }
   }
   return loaded;
@@ -486,25 +529,30 @@ export async function listScenarioMetadata(
         continue;
       }
     }
-    const result = await loadScenarioMetadataFile(file);
-    // Apply the default lane exactly like `scenarioLane()` does on the run
-    // path (loadAllScenarios): a scenario with no declared lane IS a
-    // live-only scenario, so `list --lane live-only` must include it.
-    if (laneFilter && (result.lane ?? DEFAULT_SCENARIO_LANE) !== laneFilter) {
-      continue;
-    }
-    if (result.status === "pending" && !includePending) continue;
-    const candidates = [
-      result,
-      ...(includeExpanded ? expandScenarioMetadata(result) : []),
-    ];
-    for (const candidate of candidates) {
-      if (
-        !scenarioIdPassesFilter(filter, candidate.id, candidate.baseScenarioId)
-      ) {
+    for (const result of await loadScenarioMetadataEntries(file)) {
+      // Apply the default lane exactly like `scenarioLane()` does on the run
+      // path (loadAllScenarios): a scenario with no declared lane IS a
+      // live-only scenario, so `list --lane live-only` must include it.
+      if (laneFilter && (result.lane ?? DEFAULT_SCENARIO_LANE) !== laneFilter) {
         continue;
       }
-      loaded.push(candidate);
+      if (result.status === "pending" && !includePending) continue;
+      const candidates = [
+        result,
+        ...(includeExpanded ? expandScenarioMetadata(result) : []),
+      ];
+      for (const candidate of candidates) {
+        if (
+          !scenarioIdPassesFilter(
+            filter,
+            candidate.id,
+            candidate.baseScenarioId,
+          )
+        ) {
+          continue;
+        }
+        loaded.push(candidate);
+      }
     }
   }
   return loaded;

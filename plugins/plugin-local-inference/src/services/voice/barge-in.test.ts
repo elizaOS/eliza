@@ -1,330 +1,49 @@
-/**
- * BargeInController tests — the blip-vs-words distinction.
- *
- *   - legacy `attach`/`onMicActive`/`cancelSignal`/`reset` still work
- *     (`VoiceScheduler` depends on them).
- *   - VAD-driven flow while the agent is speaking:
- *       speech-active → pause-tts
- *       blip          → resume-tts
- *       ASR word      → hard-stop (cancel token tripped, AbortSignal aborted)
- *       no ASR word   → resume-tts after the grace window
- *   - barge-in is inert while the agent is NOT speaking.
- */
-
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { BargeInController } from "./barge-in";
-import type { BargeInSignal, VadEvent, VadEventListener } from "./types";
+import type { VadEvent, VadEventSource } from "./types";
 
-/** A standalone fake VAD event source the controller can bind to. */
-class FakeVad {
-	private readonly listeners = new Set<VadEventListener>();
-	onVadEvent(l: VadEventListener): () => void {
-		this.listeners.add(l);
-		return () => this.listeners.delete(l);
-	}
-	emit(e: VadEvent): void {
-		for (const l of this.listeners) l(e);
-	}
-}
-
-function speechActive(ts: number): VadEvent {
+/** Minimal VAD source: the test drives the events the detector would emit. */
+function vadStub(): VadEventSource & { emit: (event: VadEvent) => void } {
+	let listener: ((event: VadEvent) => void) | null = null;
 	return {
-		type: "speech-active",
-		timestampMs: ts,
-		probability: 0.9,
-		speechDurationMs: 200,
+		onVadEvent: (fn) => {
+			listener = fn;
+			return () => {
+				listener = null;
+			};
+		},
+		emit: (event) => listener?.(event),
 	};
 }
-function blip(ts: number): VadEvent {
-	return { type: "blip", timestampMs: ts, durationMs: 80, peakRms: 0.2 };
-}
 
-describe("BargeInController — legacy API", () => {
-	it("flips the cancel signal and notifies listeners on onMicActive", () => {
-		const c = new BargeInController();
-		let n = 0;
-		c.attach({ onCancel: () => n++ });
-		expect(c.cancelSignal().cancelled).toBe(false);
-		c.onMicActive();
-		expect(c.cancelSignal().cancelled).toBe(true);
-		expect(n).toBe(1);
-	});
+describe("BargeInController word-confirm window", () => {
+	it("hard-stops when ASR words land inside the grace window opened by a blip", () => {
+		const vad = vadStub();
+		const controller = new BargeInController({ wordsGraceMs: 600 });
+		controller.bindVad(vad);
+		controller.setAgentSpeaking(true);
+		const signals: string[] = [];
+		controller.onSignal((signal) => signals.push(signal.type));
 
-	it("reset issues a fresh cancel signal", () => {
-		const c = new BargeInController();
-		c.onMicActive();
-		expect(c.cancelSignal().cancelled).toBe(true);
-		c.reset();
-		expect(c.cancelSignal().cancelled).toBe(false);
-		expect(c.currentCancelToken()).toBeNull();
-	});
-});
-
-describe("BargeInController — VAD-driven barge-in", () => {
-	it("does nothing while the agent is not speaking", () => {
-		const c = new BargeInController();
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-		vad.emit(speechActive(100));
-		vad.emit(blip(200));
-		expect(signals).toHaveLength(0);
-	});
-
-	it("pauses TTS on speech-active and resumes on a blip", () => {
-		const c = new BargeInController();
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-
-		vad.emit(speechActive(100));
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-		// A second speech-active while already paused — no duplicate pause.
-		vad.emit(speechActive(132));
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-		// Blip → resume.
-		vad.emit(blip(300));
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
-	});
-
-	it("hard-stops (cancel token + AbortSignal) when ASR confirms a word", () => {
-		const c = new BargeInController();
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-		let onCancelCalls = 0;
-		c.attach({ onCancel: () => onCancelCalls++ });
-
-		vad.emit(speechActive(100)); // pause-tts
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-
-		c.onWordsDetected({
-			wordCount: 1,
-			partialText: "hey wait",
-			timestampMs: 250,
+		// Audio-clock timestamps, as the VAD detector reports them.
+		vad.emit({ type: "speech-start", timestampMs: 1_000, probability: 0.9 });
+		vad.emit({
+			type: "blip",
+			timestampMs: 1_100,
+			durationMs: 40,
+			peakRms: 0.01,
 		});
+		expect(signals).toEqual(["pause-tts", "resume-tts"]);
 
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "hard-stop"]);
-		const hard = signals.find((s) => s.type === "hard-stop");
-		expect(hard && hard.type === "hard-stop").toBe(true);
-		if (hard && hard.type === "hard-stop") {
-			expect(hard.token.cancelled).toBe(true);
-			expect(hard.token.reason).toBe("barge-in-words");
-			expect(hard.token.signal.aborted).toBe(true);
-		}
-		expect(c.currentCancelToken()?.cancelled).toBe(true);
-		expect(c.cancelSignal().cancelled).toBe(true);
-		expect(onCancelCalls).toBe(1);
-	});
-
-	it("denies a gated self-echo word confirmation and resumes TTS", () => {
-		const c = new BargeInController({
-			interruptGate: (evidence) =>
-				evidence.selfVoiceSimilarity && evidence.selfVoiceSimilarity >= 0.8
-					? { allow: false, reason: "self-echo" }
-					: { allow: true },
-		});
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-
-		vad.emit(speechActive(100));
-		c.onWordsDetected({
+		// The ASR sink reports its own clock (turn-controller passes Date.now()).
+		// The words arrived inside the original grace window, so they are
+		// authoritative and must promote the provisional pause into a hard stop.
+		controller.onWordsDetected({
 			wordCount: 2,
-			partialText: "forecast echo",
-			timestampMs: 180,
-			evidence: { selfVoiceSimilarity: 0.91 },
+			partialText: "wait stop",
+			timestampMs: Date.now(),
 		});
 
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
-		const resume = signals.find((s) => s.type === "resume-tts");
-		expect(resume?.reason).toBe("self-echo");
-		expect(c.currentCancelToken()).toBeNull();
-		expect(c.cancelSignal().cancelled).toBe(false);
-	});
-
-	it("lets a wake-word interjection hard-stop even when a gate would deny other speech", () => {
-		const c = new BargeInController({
-			interruptGate: (evidence) =>
-				evidence.wakeWordActive
-					? { allow: true, reason: "wake-word" }
-					: { allow: false, reason: "not-addressed" },
-		});
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-
-		vad.emit(speechActive(100));
-		c.onWordsDetected({
-			wordCount: 3,
-			partialText: "hey Eliza stop",
-			timestampMs: 190,
-			evidence: { wakeWordActive: true },
-		});
-
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "hard-stop"]);
-		const hard = signals.find((s) => s.type === "hard-stop");
-		expect(hard?.reason).toBe("wake-word");
-		expect(c.currentCancelToken()?.reason).toBe("barge-in-words");
-	});
-
-	it("ignores a late async gate allow after the agent has stopped speaking", async () => {
-		let resolveGate:
-			| ((decision: { allow: true; reason: string }) => void)
-			| undefined;
-		const c = new BargeInController({
-			interruptGate: () =>
-				new Promise((resolve) => {
-					resolveGate = resolve;
-				}),
-		});
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-
-		vad.emit(speechActive(100));
-		c.onWordsDetected({
-			wordCount: 1,
-			partialText: "wait",
-			timestampMs: 180,
-		});
-		c.setAgentSpeaking(false);
-		resolveGate?.({ allow: true, reason: "late-allow" });
-		await Promise.resolve();
-
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-		expect(c.currentCancelToken()).toBeNull();
-		expect(c.cancelSignal().cancelled).toBe(false);
-	});
-
-	it("ignores onWordsDetected with zero words", () => {
-		const c = new BargeInController();
-		const vad = new FakeVad();
-		c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-		vad.emit(speechActive(100));
-		c.onWordsDetected({ wordCount: 0, partialText: "", timestampMs: 200 });
-		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-	});
-
-	it("resumes TTS after the grace window when ASR never confirms a word", () => {
-		vi.useFakeTimers();
-		try {
-			const c = new BargeInController({ wordsGraceMs: 500 });
-			const vad = new FakeVad();
-			c.bindVad(vad);
-			c.setAgentSpeaking(true);
-			const signals: BargeInSignal[] = [];
-			c.onSignal((s) => signals.push(s));
-
-			vad.emit(speechActive(100)); // pause-tts, arms 500ms deadline
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-			vad.emit({
-				type: "speech-pause",
-				timestampMs: 300,
-				pauseDurationMs: 200,
-			});
-			vad.emit({ type: "speech-end", timestampMs: 500, speechDurationMs: 350 });
-			// Still inside the grace window.
-			vi.advanceTimersByTime(400);
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-			// Past it → resume.
-			vi.advanceTimersByTime(200);
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("a word arriving before the grace deadline cancels the resume", () => {
-		vi.useFakeTimers();
-		try {
-			const c = new BargeInController({ wordsGraceMs: 500 });
-			const vad = new FakeVad();
-			c.bindVad(vad);
-			c.setAgentSpeaking(true);
-			const signals: BargeInSignal[] = [];
-			c.onSignal((s) => signals.push(s));
-			vad.emit(speechActive(100));
-			vi.advanceTimersByTime(300);
-			c.onWordsDetected({
-				wordCount: 2,
-				partialText: "stop please",
-				timestampMs: 400,
-			});
-			vi.advanceTimersByTime(500);
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts", "hard-stop"]);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("ignores stale ASR words after the interruption window resumes TTS", () => {
-		vi.useFakeTimers();
-		try {
-			const c = new BargeInController({ wordsGraceMs: 500 });
-			const vad = new FakeVad();
-			c.bindVad(vad);
-			c.setAgentSpeaking(true);
-			const signals: BargeInSignal[] = [];
-			c.onSignal((s) => signals.push(s));
-
-			vad.emit(speechActive(100));
-			vi.advanceTimersByTime(600);
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
-
-			c.onWordsDetected({
-				wordCount: 2,
-				partialText: "late stale",
-				timestampMs: 800,
-			});
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
-			expect(c.currentCancelToken()).toBeNull();
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("setAgentSpeaking(false) clears a pending word-confirm without resuming", () => {
-		vi.useFakeTimers();
-		try {
-			const c = new BargeInController({ wordsGraceMs: 500 });
-			const vad = new FakeVad();
-			c.bindVad(vad);
-			c.setAgentSpeaking(true);
-			const signals: BargeInSignal[] = [];
-			c.onSignal((s) => signals.push(s));
-			vad.emit(speechActive(100)); // pause-tts
-			c.setAgentSpeaking(false); // agent finished its turn
-			vi.advanceTimersByTime(1000);
-			expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("unbindVad detaches the controller from VAD events", () => {
-		const c = new BargeInController();
-		const vad = new FakeVad();
-		const unbind = c.bindVad(vad);
-		c.setAgentSpeaking(true);
-		const signals: BargeInSignal[] = [];
-		c.onSignal((s) => signals.push(s));
-		unbind();
-		vad.emit(speechActive(100));
-		expect(signals).toHaveLength(0);
+		expect(signals).toEqual(["pause-tts", "resume-tts", "hard-stop"]);
 	});
 });

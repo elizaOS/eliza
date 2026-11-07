@@ -80,12 +80,17 @@ export async function loadDocumentsFromPath(
     addedFrom?: DocumentAddedFrom;
     metadata?: Record<string, unknown>;
   },
-): Promise<{ total: number; successful: number; failed: number }> {
+): Promise<{
+  total: number;
+  successful: number;
+  failed: number;
+  documentIds: UUID[];
+}> {
   const docsPath = getDocumentsPath(documentsPath);
 
   if (!fs.existsSync(docsPath)) {
     logger.warn(`Documents path does not exist: ${docsPath}`);
-    return { total: 0, successful: 0, failed: 0 };
+    return { total: 0, successful: 0, failed: 0, documentIds: [] };
   }
 
   logger.info(`Loading documents from: ${docsPath}`);
@@ -94,13 +99,14 @@ export async function loadDocumentsFromPath(
 
   if (files.length === 0) {
     logger.info("No files found in documents path");
-    return { total: 0, successful: 0, failed: 0 };
+    return { total: 0, successful: 0, failed: 0, documentIds: [] };
   }
 
   logger.info(`Found ${files.length} files to process`);
 
   let successful = 0;
   let failed = 0;
+  const documentIds: UUID[] = [];
 
   for (const filePath of files) {
     try {
@@ -128,6 +134,7 @@ export async function loadDocumentsFromPath(
       logger.info(
         `✅ "${fileName}": ${result.fragmentCount} fragments created`,
       );
+      documentIds.push(result.storedDocumentMemoryId);
       successful++;
     } catch (error) {
       // error-policy:J1 Bulk loading exposes failed counts and reports each
@@ -148,6 +155,7 @@ export async function loadDocumentsFromPath(
     total: files.length,
     successful,
     failed,
+    documentIds,
   };
 }
 
@@ -192,9 +200,7 @@ export async function addDocumentFromFilePath({
 
   const fileBuffer = fs.readFileSync(filePath);
   const isTextBacked = isTextBackedDocumentContent(contentType, fileName);
-  const content = isTextBacked
-    ? fileBuffer.toString("utf-8")
-    : fileBuffer.toString("base64");
+  const content = fileBuffer.toString("base64");
 
   const documentOptions: AddDocumentOptions = {
     agentId,
@@ -207,6 +213,7 @@ export async function addDocumentFromFilePath({
     // it with a typed error instead of this call silently masking it.
     worldId: worldId ?? agentId,
     content,
+    contentEncoding: "base64",
     roomId: roomId ?? agentId,
     entityId: entityId ?? agentId,
     scope,

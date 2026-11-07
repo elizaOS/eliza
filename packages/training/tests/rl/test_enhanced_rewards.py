@@ -7,7 +7,7 @@ and the enhanced composite reward function.
 
 import pytest
 
-from src.training.market_regime import (
+from eliza_training.rl.market_regime import (
     BEAR_THRESHOLD,
     BULL_THRESHOLD,
     MarketRegime,
@@ -17,13 +17,13 @@ from src.training.market_regime import (
     extract_regime_from_trajectory,
     get_expected_return,
 )
-from src.training.reward_config import (
+from eliza_training.rl.reward_config import (
     get_regime_expected_return,
     get_reward_weights,
     get_temporal_decay_rate,
     list_weight_profiles,
 )
-from src.training.rewards import (
+from eliza_training.rl.rewards import (
     TemporalCredit,
     TrajectoryRewardInputs,
     archetype_composite_reward,
@@ -33,7 +33,7 @@ from src.training.rewards import (
     enhanced_composite_reward,
     regime_adjusted_pnl_reward,
 )
-from src.training.temporal_credit import (
+from eliza_training.rl.temporal_credit import (
     DEFAULT_DECAY_RATE,
     aggregate_credits_by_market,
     attribute_temporal_credit,

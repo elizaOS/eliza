@@ -4,10 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
-import {
-  prepareAndroidVulkanSource,
-  validateMaintainedVulkanSource,
-} from "./vulkan-source-contract.ts";
+import { validateMaintainedVulkanSource } from "./vulkan-source-contract.ts";
 
 const declaration = {
   schemaVersion: 1,
@@ -103,10 +100,9 @@ function fixture(change = () => {}) {
 test("admits the declared pinned source without changing any shader or dispatch bytes", () => {
   const input = fixture();
   const before = git(input.source, "ls-files", "-s");
-  expect(
-    prepareAndroidVulkanSource({ ...input, maintainedSource: input.source })
-      .mode,
-  ).toBe("maintained");
+  expect(validateMaintainedVulkanSource(input).revision).toBe(
+    input.expectedRevision,
+  );
   expect(git(input.source, "status", "--porcelain")).toBe("");
   expect(git(input.source, "ls-files", "-s")).toBe(before);
 });
@@ -144,18 +140,6 @@ test("rejects a different revision and dirty shader before admission", () => {
   expect(() => validateMaintainedVulkanSource(input)).toThrow(/modified/);
 });
 
-test("refuses explicit legacy staging into the maintained source", () => {
-  const input = fixture();
-  expect(() =>
-    prepareAndroidVulkanSource({
-      ...input,
-      maintainedSource: input.source,
-      legacy: true,
-    }),
-  ).toThrow(/cannot overwrite/);
-  expect(git(input.source, "status", "--porcelain")).toBe("");
-});
-
 test("rejects a clean pinned tree without its capability declaration", () => {
   const input = fixture();
   fs.unlinkSync(
@@ -173,7 +157,7 @@ test("rejects a clean pinned tree without its capability declaration", () => {
     "missing declaration",
   );
   input.expectedRevision = git(input.source, "rev-parse", "HEAD");
-  expect(() =>
-    prepareAndroidVulkanSource({ ...input, maintainedSource: input.source }),
-  ).toThrow(/lacks the Vulkan capability declaration/);
+  expect(() => validateMaintainedVulkanSource(input)).toThrow(
+    /lacks the Vulkan capability declaration/,
+  );
 });

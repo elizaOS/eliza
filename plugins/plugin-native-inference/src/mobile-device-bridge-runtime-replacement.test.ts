@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Exercises Capacitor bridge ownership across two real AgentRuntime instances.
  * The HTTP server is intentionally unbound: only listener and service lifecycle

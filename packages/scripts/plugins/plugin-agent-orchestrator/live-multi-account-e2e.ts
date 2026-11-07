@@ -37,12 +37,10 @@ import { assessCodingAccountReadiness } from "../../../../plugins/plugin-agent-o
 // app/core graph. They are dynamically imported AFTER the gate so the
 // clean-skip path never loads them — the scheduled lane invokes this with no
 // secrets and must exit 0 without touching the build graph.
-type SaveAccount =
-  typeof import("@elizaos/auth/auth/account-storage").saveAccount;
-type AccountStoragePolicy =
-  import("@elizaos/auth/auth/account-storage").AccountStoragePolicy;
+type SaveAccount = typeof import("@elizaos/auth/auth").saveAccount;
+type AccountStoragePolicy = import("@elizaos/auth/auth").AccountStoragePolicy;
 type GetBridge =
-  typeof import("../../../app/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
+  typeof import("@elizaos/auth/accounts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
 let storagePolicy: AccountStoragePolicy;
 let getCodingAgentSelectorBridge: GetBridge;
@@ -191,12 +189,10 @@ async function main(): Promise<void> {
   process.env.ELIZA_CODING_ACCOUNT_STRATEGY ??= "least-used";
 
   // Gate passed and credentials present — now load the runtime graph.
-  const accountStorage = await import("@elizaos/auth/auth/account-storage");
+  const accountStorage = await import("@elizaos/auth/auth");
   saveAccount = accountStorage.saveAccount;
   storagePolicy = accountStorage.createIsolatedAccountStoragePolicy(home);
-  ({ getCodingAgentSelectorBridge } = await import(
-    "../../../app/src/services/coding-account-bridge.ts"
-  ));
+  ({ getCodingAgentSelectorBridge } = await import("@elizaos/auth/accounts"));
 
   const claudeIds = seedClaude(claudeTokens);
   const codexIds = seedCodex(codexBlobs);

@@ -1,5 +1,14 @@
 /** Reads legacy browser history and maintains stored session records for LifeOps. Companion enrollment and callbacks are retired. */
 import crypto from "node:crypto";
+import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserSession,
+  LifeOpsScreenTimeSession,
+  LifeOpsWorkflowDefinition,
+  UpdateLifeOpsBrowserSessionProgressRequest,
+} from "@elizaos/contracts";
 import {
   BROWSER_BRIDGE_KINDS,
   type BrowserBridgeAction,
@@ -11,15 +20,6 @@ import {
   type UpdateBrowserBridgeSettingsRequest,
   type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserSession,
-  LifeOpsScreenTimeSession,
-  LifeOpsWorkflowDefinition,
-  UpdateLifeOpsBrowserSessionProgressRequest,
-} from "../../contracts/index.js";
 import {
   mergeBrowserTaskLifecycle,
   summarizeBrowserTaskLifecycle,

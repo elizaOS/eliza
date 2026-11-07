@@ -10,6 +10,8 @@
 
 import {
   clearStoredStewardToken,
+  readStoredStewardToken,
+  replaceStoredStewardTokenIfCurrent,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
@@ -90,8 +92,20 @@ export async function syncStewardSessionCookie(
   refreshToken?: string | null,
   options?: {
     verifiedPhone?: string;
+    signal?: AbortSignal;
+    expectedToken?: string | null;
   },
 ): Promise<void> {
+  options?.signal?.throwIfAborted();
+  if (
+    options?.expectedToken !== undefined &&
+    readStoredStewardToken() !== options.expectedToken
+  ) {
+    throw new DOMException(
+      "The sign-in attempt no longer owns this session.",
+      "AbortError",
+    );
+  }
   const request: StewardSessionRequest = {
     token,
     ...(refreshToken ? { refreshToken } : {}),
@@ -102,10 +116,11 @@ export async function syncStewardSessionCookie(
     STEWARD_SESSION_ENDPOINT,
     request,
     "POST",
-    undefined,
+    options?.signal,
     sessionEndpoint,
   );
 
+  options?.signal?.throwIfAborted();
   if (!response.ok) {
     const body = await readSessionError(response);
     throw new Error(
@@ -114,16 +129,31 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
-    // The server cookie is authoritative at this endpoint now. Record this
-    // exact token/endpoint pair before publishing canonical storage: that write
-    // can rerender the mounted Steward runtime, whose passive mirror may skip
-    // only an identical POST target. The module-private, one-shot marker cannot
-    // be forged through browser event detail.
-    markStewardServerCookieSynced(token, sessionEndpoint);
-    // The cookie boundary may be entered directly by an SDK callback or after
-    // the login page already persisted the same token. Canonical storage is
-    // idempotent, so both paths publish one authority transition in total.
-    await writeStoredStewardToken(token);
+    // The phone attempt compares and writes inside the canonical mutation
+    // queue. A cancelled fetch or a newer session cannot publish stale authority.
+    if (options?.expectedToken !== undefined) {
+      const published = await replaceStoredStewardTokenIfCurrent(
+        options.expectedToken,
+        token,
+        {
+          signal: options.signal,
+          beforePublish: () =>
+            markStewardServerCookieSynced(token, sessionEndpoint),
+        },
+      );
+      if (!published)
+        throw new DOMException(
+          "The sign-in attempt no longer owns this session.",
+          "AbortError",
+        );
+    } else {
+      // Preserve the ordinary sync ordering used by existing login/recovery.
+      markStewardServerCookieSynced(token, sessionEndpoint);
+      await writeStoredStewardToken(token);
+    }
+    // Canonical publication is committed. A listener may abort navigation or
+    // queue a newer account, but cannot turn this completed write into failure.
+    if (readStoredStewardToken() !== token) return;
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );

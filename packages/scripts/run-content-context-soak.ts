@@ -5,8 +5,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
-import { runProgressiveContentMixedSoak } from "../testing/src/progressive-content-mixed-soak.ts";
+import { runProgressiveContentMixedSoak } from "@elizaos/testing/progressive-content";
+import { verifyProgressiveContentCorpus } from "elizaos-benchmarks/content-context";
 import { createProgressiveContentProductionSoakContract } from "./lib/progressive-content-production-targets.ts";
 
 export class ContentContextSoakConfigurationError extends Error {

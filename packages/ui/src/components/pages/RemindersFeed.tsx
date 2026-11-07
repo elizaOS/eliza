@@ -1,10 +1,21 @@
+import {
+  canSnoozeReminder,
+  reminderDeliveryLabel,
+  reminderDue,
+} from "../../utils/reminder-presentation";
+
+export {
+  canSnoozeReminder,
+  reminderDeliveryLabel,
+} from "../../utils/reminder-presentation";
+
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsDefinitionCreationResult,
   LifeOpsOccurrence,
   LifeOpsReminderAttempt,
   LifeOpsTaskDefinition,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import { Bell, CalendarClock, ChevronDown } from "lucide-react";
 import {
   type ReactNode,
@@ -16,13 +27,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { ApiError, isApiError } from "../../api/client-types-core";
+import {
+  getActiveAgentAuthority,
+  useActiveAgentAuthority,
+} from "../../hooks/useActiveAgentAuthority";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusDot } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 
 type ReminderRow = {
   definition: LifeOpsTaskDefinition;
@@ -31,75 +47,81 @@ type ReminderRow = {
 };
 async function request<T>(
   baseUrl: string,
+  authority: string,
   path: string,
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  if (client.getBaseUrl() !== baseUrl)
+  if (
+    client.getBaseUrl() !== baseUrl ||
+    getActiveAgentAuthority() !== authority
+  )
     throw new ApiError({
       kind: "http",
       path: `/api/lifeops/${path}`,
       status: 409,
       message: "The selected agent changed before the reminder request",
     });
-  const res = await client.rawRequest(`/api/lifeops/${path}`, {
-    method,
-    headers: { "content-type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  const controller = new AbortController();
+  const unsubscribe = client.onAuthorityChange(() => {
+    if (getActiveAgentAuthority() !== authority) controller.abort();
   });
-  if (!res.ok)
-    throw new ApiError({
-      kind: "http",
-      path: `/api/lifeops/${path}`,
-      status: res.status,
-      message: `Reminder request failed (${res.status})`,
+  try {
+    const res = await client.rawRequest(`/api/lifeops/${path}`, {
+      method,
+      signal: controller.signal,
+      headers: { "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return res.json();
-}
-export function reminderDeliveryLabel(row: ReminderRow): string {
-  if (row.definition.status === "archived") return "cancelled";
-  if (row.definition.status === "paused") return "paused";
-  if (row.definition.status === "completed") return "completed";
-  const state = row.occurrence?.state;
-  if (
-    state &&
-    ["snoozed", "completed", "skipped", "expired", "muted"].includes(state)
-  )
-    return state;
-  if (state && !["pending", "visible"].includes(state)) return "unknown";
-  const outcome = row.latestAttempt?.outcome;
-  if (outcome?.startsWith("delivered")) return "delivered";
-  if (outcome?.startsWith("blocked")) return "blocked";
-  if (outcome === "skipped_duplicate") return "duplicate";
-  if (outcome) return "unknown";
-  return row.occurrence ? "scheduled" : "unscheduled";
-}
-export function canSnoozeReminder(row: ReminderRow): boolean {
-  return (
-    row.definition.status === "active" &&
-    !!row.occurrence &&
-    ["pending", "visible", "snoozed"].includes(row.occurrence.state) &&
-    !row.occurrence.metadata?.reminderAcknowledgedAt
-  );
+    if (!res.ok)
+      throw new ApiError({
+        kind: "http",
+        path: `/api/lifeops/${path}`,
+        status: res.status,
+        message: `Reminder request failed (${res.status})`,
+      });
+    const result = await res.json();
+    if (getActiveAgentAuthority() !== authority)
+      throw new ApiError({
+        kind: "http",
+        path: `/api/lifeops/${path}`,
+        status: 409,
+        message: "The selected agent changed during the reminder request",
+      });
+    return result;
+  } finally {
+    unsubscribe();
+  }
 }
 export type ReminderCounts = { all: number; active: number; inactive: number };
 export interface RemindersFeedHandle {
   refresh(): Promise<void>;
 }
 
-export function RemindersFeed({
-  ref,
-  filter = "all",
-  hideEmpty = false,
-  onCountsChange,
-  baseUrl = client.getBaseUrl(),
-}: {
+type RemindersFeedProps = {
   baseUrl?: string;
   filter?: "all" | "active" | "inactive";
   hideEmpty?: boolean;
   ref?: Ref<RemindersFeedHandle>;
   onCountsChange?: (counts: ReminderCounts | null) => void;
-}) {
+};
+
+export function RemindersFeed(props: RemindersFeedProps) {
+  const authority = useActiveAgentAuthority();
+  // A new principal must not inherit rows, edits, or pending callbacks.
+  return (
+    <AuthorityRemindersFeed key={authority} {...props} authority={authority} />
+  );
+}
+
+function AuthorityRemindersFeed({
+  ref,
+  filter = "all",
+  hideEmpty = false,
+  onCountsChange,
+  baseUrl = client.getBaseUrl(),
+  authority,
+}: RemindersFeedProps & { authority: string }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<ReminderRow[]>([]),
     [loading, setLoading] = useState(true),
@@ -119,6 +141,7 @@ export function RemindersFeed({
     try {
       const data = await request<{ reminders: ReminderRow[] }>(
         baseUrl,
+        authority,
         "reminders",
       );
       if (generation !== loadGeneration.current) return;
@@ -148,7 +171,7 @@ export function RemindersFeed({
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [baseUrl, onCountsChange, t]);
+  }, [baseUrl, authority, onCountsChange, t]);
   useImperativeHandle(ref, () => ({ refresh: load }), [load]);
   useEffect(() => {
     mounted.current = true;
@@ -172,6 +195,7 @@ export function RemindersFeed({
           throw Error("No occurrence is available to snooze");
         await request(
           baseUrl,
+          authority,
           `occurrences/${encodeURIComponent(row.occurrence.id)}/snooze`,
           "POST",
           { minutes: 10 },
@@ -179,12 +203,17 @@ export function RemindersFeed({
       } else
         await request(
           baseUrl,
+          authority,
           `definitions/${encodeURIComponent(row.definition.id)}`,
           "PUT",
           verb === "cancel"
             ? { status: "archived" }
             : {
-                title: message,
+                ...(row.definition.cadence.kind === "once" &&
+                row.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+                row.definition.description?.trim()
+                  ? { description: message }
+                  : { title: message }),
                 ...(row.definition.cadence.kind === "once" &&
                 editDue &&
                 originalDue &&
@@ -235,12 +264,11 @@ export function RemindersFeed({
       ) : (
         <ul className="divide-y divide-border/40">
           {visibleRows.map((row) => {
-            const due =
-              row.occurrence?.snoozedUntil ??
-              row.occurrence?.dueAt ??
-              (row.definition.cadence.kind === "once"
-                ? row.definition.cadence.dueAt
-                : null);
+            const due = reminderDue(row);
+            const hasBody =
+              row.definition.cadence.kind === "once" &&
+              row.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
+              Boolean(row.definition.description?.trim());
             const cancelled = ["archived", "completed"].includes(
               row.definition.status,
             );
@@ -259,13 +287,23 @@ export function RemindersFeed({
                       htmlFor={`reminder-message-${row.definition.id}`}
                     >
                       {t("automationsreminders.message")}
-                      <Input
-                        id={`reminder-message-${row.definition.id}`}
-                        className="mt-1"
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        required
-                      />
+                      {hasBody ? (
+                        <Textarea
+                          id={`reminder-message-${row.definition.id}`}
+                          className="mt-1"
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          required
+                        />
+                      ) : (
+                        <Input
+                          id={`reminder-message-${row.definition.id}`}
+                          className="mt-1"
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          required
+                        />
+                      )}
                     </label>
                     {row.definition.cadence.kind === "once" && (
                       <label
@@ -308,7 +346,11 @@ export function RemindersFeed({
                         disabled={busy !== null}
                         onClick={() => {
                           setEditing(row.definition.id);
-                          setMessage(row.definition.title);
+                          setMessage(
+                            hasBody
+                              ? row.definition.description
+                              : row.definition.title,
+                          );
                           setOriginalDue(due);
                           const date = due ? new Date(due) : null;
                           setEditDue(
@@ -367,12 +409,7 @@ function ReminderFeedRow({
   const deliveryLabel = reminderDeliveryLabel(row);
   const successful =
     deliveryLabel === "delivered" || deliveryLabel === "completed";
-  const due =
-    row.occurrence?.snoozedUntil ??
-    row.occurrence?.dueAt ??
-    (row.definition.cadence.kind === "once"
-      ? row.definition.cadence.dueAt
-      : null);
+  const due = reminderDue(row);
   const openAction = useAgentElement<HTMLButtonElement>({
     id: `open-reminder-${row.definition.id}`,
     role: "button",
@@ -481,15 +518,26 @@ function ReminderFeedRow({
   );
 }
 
-export function ReminderEditor({
-  onSaved,
-  onCancel,
-  baseUrl = client.getBaseUrl(),
-}: {
+type ReminderEditorProps = {
   onSaved: () => void;
   onCancel: () => void;
   baseUrl?: string;
-}) {
+};
+
+export function ReminderEditor(props: ReminderEditorProps) {
+  const authority = useActiveAgentAuthority();
+  // Draft and retry identity belong to the principal who began this editor.
+  return (
+    <AuthorityReminderEditor key={authority} {...props} authority={authority} />
+  );
+}
+
+function AuthorityReminderEditor({
+  onSaved,
+  onCancel,
+  baseUrl = client.getBaseUrl(),
+  authority,
+}: ReminderEditorProps & { authority: string }) {
   const { t } = useTranslation();
   const [message, setMessage] = useState("");
   const [due, setDue] = useState("");
@@ -542,13 +590,14 @@ export function ReminderEditor({
       setSubmitted(true);
       const result = await request<LifeOpsDefinitionCreationResult>(
         baseUrl,
+        authority,
         "definitions",
         "POST",
         dispatchedRequest.current,
       );
       if (!result.definition?.id)
         throw Error(t("automationsreminders.createFailed"));
-      if (mounted.current && client.getBaseUrl() === baseUrl) onSaved();
+      if (mounted.current && getActiveAgentAuthority() === authority) onSaved();
     } catch (e) {
       setError(
         e instanceof Error ? e.message : t("automationsreminders.createFailed"),

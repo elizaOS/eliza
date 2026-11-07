@@ -3,11 +3,11 @@
  * boundary so chat can offer setup and resume intent without treating
  * untrusted action-result data as navigation or execution authority.
  */
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
 import {
-  type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
   parsePersonalWorkspaceCapabilityHandoff,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 import type {
   ChatActionResultSummary,
   ConversationMessage,

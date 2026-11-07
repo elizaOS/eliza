@@ -1,16 +1,21 @@
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } from "./subscription-funding-policy";
+import { withSubscriptionPaymentGrace } from "./subscription-payment-grace";
+
 /** Projects a coherent organization-only subscription read without provider identifiers, guessed charges or app-subscriber policy. */
 
-import { ElizaError } from "@elizaos/core";
-import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
-import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
 import type {
   Observed,
   OrganizationSubscriptionSnapshot,
   SubscriptionCancellationBlockerCode,
   SubscriptionCancellationControlSnapshot,
   SubscriptionCancellationNoticeSnapshot,
-} from "../../types/account-billing-snapshot";
+  SubscriptionGrantSnapshot,
+} from "@elizaos/cloud-sdk/account-billing-snapshot";
+import { ElizaError } from "@elizaos/core";
+import type { PrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
+import type { SubscriptionAllowanceEligibility } from "../../db/repositories/subscription-allowance-eligibility";
+import type { SubscriptionGrantObservation } from "../../db/repositories/subscription-grants";
 
 /** The reader's session authority; absent means the caller proved no interactive manager session. */
 export interface SubscriptionCancellationReaderAuthority {
@@ -37,6 +42,7 @@ function buildCancellationControl(
   subscription: Extract<PrimaryOrganizationSubscription, { state: "current" }>["subscription"],
   observedAt: string,
   authority: SubscriptionCancellationReaderAuthority,
+  configuredCancellation: boolean,
 ): SubscriptionCancellationControlSnapshot {
   const blockers: SubscriptionCancellationBlockerCode[] = [];
   if (authority.authMethod !== "session") blockers.push("interactive_session_required");
@@ -48,7 +54,7 @@ function buildCancellationControl(
     subscription.status !== "active" ||
     subscription.current_period_end.getTime() <= Date.parse(observedAt) ||
     subscription.ended_at !== null ||
-    subscription.pending_plan_key !== null ||
+    (subscription.pending_plan_key !== null && !configuredCancellation) ||
     subscription.dunning_started_at !== null ||
     subscription.grace_expires_at !== null
   )
@@ -135,11 +141,96 @@ export function buildOrganizationSubscriptionSnapshot(
       graceExpiresAt: subscription.grace_expires_at?.toISOString() ?? null,
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
       cancellationNotice: buildCancellationNotice(primary, observedAt),
-      cancellationControl: buildCancellationControl(subscription, observedAt, authority),
+      cancellationControl: buildCancellationControl(
+        subscription,
+        observedAt,
+        authority,
+        primary.configuredCancellation,
+      ),
+      fundingPolicy: {
+        status: "available",
+        source: "subscription-funding-operation-taxonomy",
+        observedAt,
+        value: {
+          schemaVersion: 1,
+          operationClasses: { ...SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION },
+          requiresRequestEligibility: true,
+        },
+      },
       allowance,
     },
   };
 }
+/**
+ * Projects the active grant for account readback. It reports dates and the
+ * current month's allowance only; admission keeps using the policy reader.
+ */
+export function buildSubscriptionGrantSnapshot(
+  observation: SubscriptionGrantObservation | null,
+  primary: PrimaryOrganizationSubscription,
+  observedAt: string,
+): Observed<SubscriptionGrantSnapshot> {
+  const provenance = { source: "primary-subscription-grant", observedAt };
+  if (!observation)
+    return { ...provenance, status: "not_applicable", reason: "no_active_subscription_grant" };
+  const { grant, period } = observation;
+  if (primary.state === "unavailable")
+    return {
+      ...provenance,
+      status: "unavailable",
+      error: { code: primary.code, retryable: true },
+    };
+  const entitlement = primary.state === "current" ? primary.entitlement : null;
+  const now = Date.parse(observedAt);
+  if (entitlement && now < entitlement.effective_from.getTime())
+    return {
+      ...provenance,
+      status: "unavailable",
+      error: { code: "entitlement_not_effective", retryable: true },
+    };
+  // Match the serving policy: active renewals retain payment grace, while
+  // dunning grace uses the published entitlement's own lifecycle deadline.
+  const paidUntil =
+    entitlement?.effective_until && entitlement.state === "active"
+      ? withSubscriptionPaymentGrace(entitlement.effective_until)
+      : entitlement?.effective_until;
+  const paidPlanTakesPrecedence = Boolean(
+    entitlement?.entitlement_effective &&
+      entitlement.plan_key !== "free" &&
+      (paidUntil == null || now < paidUntil.getTime()),
+  );
+  return {
+    ...provenance,
+    status: "available",
+    value: {
+      grantId: grant.id,
+      planKey: grant.plan_key,
+      catalogVersion: grant.catalog_version,
+      startsAt: grant.starts_at.toISOString(),
+      endsAt: grant.ends_at?.toISOString() ?? null,
+      paidPlanTakesPrecedence,
+      allowance: period
+        ? {
+            ...provenance,
+            status: "available",
+            value: {
+              periodStart: period.period_start.toISOString(),
+              periodEnd: period.period_end.toISOString(),
+              state: period.state,
+              granted: money(period.granted_amount),
+              unreserved: money(period.available_amount),
+              currency: "USD",
+            },
+          }
+        : {
+            ...provenance,
+            status: "unavailable",
+            error: { code: "subscription_grant_allowance_unavailable", retryable: true },
+          },
+    },
+  };
+}
+
 function money(value: string): string {
   if (!/^(?:0|[1-9][0-9]*)\.[0-9]{6}$/.test(value))
     throw new ElizaError("Subscription allowance amount is invalid", {

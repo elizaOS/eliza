@@ -22,7 +22,7 @@ Android images. Every cloud script prints a dry run by default and acts only wit
 ## Sizing against the repository preflight
 
 `assertBuilderCapacity` in
-[`scripts/aosp/build-grizzly-bundle.ts`](../../scripts/aosp/build-grizzly-bundle.ts)
+[`scripts/android/build-grizzly-bundle.ts`](../../scripts/android/build-grizzly-bundle.ts)
 (checked for both the source and output filesystems) refuses a host unless it is
 Linux x86_64 with at least 32 physical cores (unique `CORE,SOCKET` rows of
 `lscpu -p`), 128 GiB RAM, 1500 GB (10^12-based) total disk and 600 GiB free.
@@ -116,7 +116,7 @@ workspaces at it with `--reference /aosp/mirror`.
 
 ### Relationship to `make bootstrap`
 
-`make -C packages/os/android bootstrap` (`scripts/distro-android/bootstrap-aosp.ts`)
+`make -C packages/os/android bootstrap` (`scripts/android/bootstrap-aosp.ts`)
 remains the canonical checkout for builds: it also materializes external projects
 that are not in the AOSP manifest (for example the Pixel 11 Pro adevtool projects).
 `sync-aosp.sh` is for preparing builder hosts, mirrors and snapshots with only
@@ -127,7 +127,7 @@ the locked tag object and peeled commit; after `repo init`, that
 commit (or, in mirror mode, tag and commit in the bare repository) and every
 `requiredSourceFiles` path. Projects outside the AOSP manifest therefore fail
 closed in `sync-aosp.sh`. Check a finished checkout with
-`node packages/os/scripts/aosp/verify-source-lock.ts --profile NAME --aosp-root DIR`.
+`node packages/os/scripts/android/verify-source-lock.ts --profile NAME --aosp-root DIR`.
 
 ## Evidence levels
 

@@ -2,25 +2,23 @@
 
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
-  type AgentBackupManifestV2,
-  type AgentBackupManifestV2Draft,
-  canonicalizeAgentBackupManifestV2,
-  parseAgentBackupManifestV2,
-} from "@elizaos/core/contracts/agent-backup-manifest";
-import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  type AgentBackupManifestV2,
+  type AgentBackupManifestV2Draft,
   type AgentBackupManifestV3,
   type AgentBackupManifestV3Draft,
+  canonicalizeAgentBackupManifestV2,
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
+  parseAgentBackupManifestV2,
   parseAgentBackupManifestV3,
-} from "@elizaos/core/contracts/agent-backup-manifest-v3";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   assertAgentBackupCatalogTransition,

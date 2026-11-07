@@ -3,7 +3,7 @@
  */
 import type { ComponentType, ReactNode } from "react";
 import { EmptyState } from "../../../components/ui/empty-state";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface DataListEmptyStateProps {
   title: string;

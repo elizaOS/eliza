@@ -10,6 +10,8 @@ loaded by path so the tests don't depend on ``scripts/`` being a package.
 
 from __future__ import annotations
 
+from benchmarks.orchestrator.result_store import result_store_root
+
 import importlib.util
 import json
 import os
@@ -26,9 +28,7 @@ from typing import Any
 import pytest
 
 
-_MODULE_PATH = (
-    Path(__file__).resolve().parent.parent / "scripts" / "acceptance_gate.py"
-)
+_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "acceptance_gate.py"
 
 
 def _load_module():
@@ -65,7 +65,9 @@ def test_precheck_fails_when_key_missing(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.details["api_key_source"] is None
 
 
-def test_precheck_passes_with_key_and_install_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_precheck_passes_with_key_and_install_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _clear_credential_env(monkeypatch)
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-123")
     result = gate._step_precheck(skip_install_check=True)
@@ -153,7 +155,9 @@ def test_cerebras_smoke_classifies_pong(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.details["response_text"] == "PONG"
 
 
-def test_cerebras_smoke_routes_through_operator_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cerebras_smoke_routes_through_operator_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Pre-set operator env (cloud proxy base URL + OpenAI-style key) must be
     honored by the smoke call instead of the hardcoded Cerebras default."""
     _clear_credential_env(monkeypatch)
@@ -362,9 +366,11 @@ def test_lift_over_random_uses_floor_for_uninterpretable_benchmark() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_trajectory_normalization_warns_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_trajectory_normalization_warns_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
-    (tmp_path / "benchmark_results").mkdir(parents=True)
+    (result_store_root(tmp_path)).mkdir(parents=True)
     sanity = _make_sanity_step({"eliza": 0.5, "openclaw": 0.5, "hermes": 0.5})
     result = gate._step_trajectory_normalization(
         benchmark_id="bfcl",
@@ -376,9 +382,11 @@ def test_trajectory_normalization_warns_when_missing(monkeypatch: pytest.MonkeyP
     assert len(result.details["warnings"]) == 3
 
 
-def test_trajectory_normalization_fails_strict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_trajectory_normalization_fails_strict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
-    (tmp_path / "benchmark_results").mkdir(parents=True)
+    (result_store_root(tmp_path)).mkdir(parents=True)
     sanity = _make_sanity_step({"eliza": 0.5, "openclaw": 0.5, "hermes": 0.5})
     result = gate._step_trajectory_normalization(
         benchmark_id="bfcl",
@@ -386,12 +394,16 @@ def test_trajectory_normalization_fails_strict(monkeypatch: pytest.MonkeyPatch, 
         strict=True,
     )
     assert result.passed is False
-    assert (result.error or "").startswith("eliza:") or "missing" in (result.error or "")
+    assert (result.error or "").startswith("eliza:") or "missing" in (
+        result.error or ""
+    )
 
 
-def test_trajectory_normalization_succeeds_when_files_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_trajectory_normalization_succeeds_when_files_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
-    bench_root = tmp_path / "benchmark_results"
+    bench_root = result_store_root(tmp_path)
     for agent in ("eliza", "openclaw", "hermes"):
         run_dir = bench_root / "rg_test" / f"x__y" / f"rid_{agent}"
         run_dir.mkdir(parents=True)
@@ -456,7 +468,9 @@ def test_sanity_max_tasks_clamped_to_harness_smoke_limit(
     monkeypatch.setenv("CEREBRAS_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setattr(gate, "_benchmark_registered", lambda b: True)
     monkeypatch.setattr(
-        gate, "_cerebras_chat", lambda **k: (200, {"choices": [{"message": {"content": "PONG"}}]}, "")
+        gate,
+        "_cerebras_chat",
+        lambda **k: (200, {"choices": [{"message": {"content": "PONG"}}]}, ""),
     )
 
     class _FakeClient:
@@ -481,7 +495,11 @@ def test_sanity_max_tasks_clamped_to_harness_smoke_limit(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+        lambda **k: {
+            "run_id": f"rid_{k['agent']}",
+            "status": "succeeded",
+            "score": 1.0,
+        },
     )
     report = gate.run_acceptance_gate(
         benchmark_id="hermes_tblite",
@@ -535,7 +553,10 @@ def test_extract_cerebras_text_handles_malformed_payloads() -> None:
     assert gate._extract_cerebras_text({}) == ""
     assert gate._extract_cerebras_text({"choices": []}) == ""
     assert gate._extract_cerebras_text({"choices": [{"message": {}}]}) == ""
-    assert gate._extract_cerebras_text({"choices": [{"message": {"content": "hi"}}]}) == "hi"
+    assert (
+        gate._extract_cerebras_text({"choices": [{"message": {"content": "hi"}}]})
+        == "hi"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -586,9 +607,7 @@ class _UpstreamStub:
         self.port = int(self._server.server_address[1])
         self.remote_base_url = f"http://0.0.0.0:{self.port}/v1"
         self.loopback_base_url = f"http://127.0.0.1:{self.port}/v1"
-        self._thread = threading.Thread(
-            target=self._server.serve_forever, daemon=True
-        )
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
     def close(self) -> None:
@@ -767,7 +786,9 @@ def test_agent_smoke_routes_every_harness_through_forwarder(
     assert all(entry["token"] != REAL_UPSTREAM_KEY for entry in seen)
     # All three completions really traversed the relay into the upstream stub,
     # which only ever saw the real credential.
-    chat_hits = [r for r in upstream_stub.requests if r["path"] == "/v1/chat/completions"]
+    chat_hits = [
+        r for r in upstream_stub.requests if r["path"] == "/v1/chat/completions"
+    ]
     assert len(chat_hits) == 3
     assert all(r["authorization"] == f"Bearer {REAL_UPSTREAM_KEY}" for r in chat_hits)
     # The gate's own env is restored after each lane -- no leakage.
@@ -795,7 +816,9 @@ def test_agent_smoke_keeps_direct_path_for_loopback_env(
     for agent in gate.AGENTS:
         assert result.details["agents"][agent]["provider_route"] == "direct"
     # Direct path: operator env untouched, harnesses hit the endpoint as-is.
-    assert [entry["base_url"] for entry in seen] == [upstream_stub.loopback_base_url] * 3
+    assert [entry["base_url"] for entry in seen] == [
+        upstream_stub.loopback_base_url
+    ] * 3
     assert [entry["token"] for entry in seen] == [REAL_UPSTREAM_KEY] * 3
 
 
@@ -818,9 +841,15 @@ def test_sanity_benchmark_injects_lane_env_into_orchestrator_runs(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+        lambda **k: {
+            "run_id": f"rid_{k['agent']}",
+            "status": "succeeded",
+            "score": 1.0,
+        },
     )
-    result = gate._step_sanity_benchmark(benchmark_id="bfcl", max_tasks=1, verbose=False)
+    result = gate._step_sanity_benchmark(
+        benchmark_id="bfcl", max_tasks=1, verbose=False
+    )
     assert result.passed is True, result.error
     assert [d["agent"] for d in dispatched] == list(gate.AGENTS)
     for call in dispatched:
@@ -856,7 +885,11 @@ def test_full_gate_passes_through_forwarder_and_closes_it(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+        lambda **k: {
+            "run_id": f"rid_{k['agent']}",
+            "status": "succeeded",
+            "score": 1.0,
+        },
     )
     rc = gate.cli(["--skip-install-check", "--skip-random", "--benchmark", "bfcl"])
     assert rc == 0

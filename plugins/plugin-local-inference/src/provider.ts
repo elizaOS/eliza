@@ -37,7 +37,7 @@ import {
 	type TextToSpeechParams,
 	type TranscriptionParams,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {

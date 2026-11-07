@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -18,7 +18,13 @@
       "import": "./dist/schema.js",
       "default": "./dist/schema.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./errors": {
+      "eliza-source": "./src/pglite/errors.ts",
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js",
+      "default": "./dist/errors.js"
+    }
   },
   "files": [
     "dist",
@@ -50,21 +56,21 @@
     "@noble/hashes": "2.2.0",
     "@electric-sql/pglite": "^0.4.0",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "0.45.3",
-    "pg": "^8.23.0",
+    "drizzle-orm": "0.45.4",
+    "pg": "^8.23.1",
     "uuid": "^14.0.0",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.8",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
-    "tsup": "^8.5.1"
+    "vitest": "^5.0.5",
+    "tsup": "^9.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

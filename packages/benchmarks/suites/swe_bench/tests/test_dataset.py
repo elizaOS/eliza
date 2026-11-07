@@ -2,8 +2,8 @@
 
 import pytest
 
-from benchmarks.swe_bench.dataset import SWEBenchDataset
-from benchmarks.swe_bench.types import SWEBenchVariant
+from benchmarks.suites.swe_bench.dataset import SWEBenchDataset
+from benchmarks.suites.swe_bench.types import SWEBenchVariant
 
 
 class TestSWEBenchDataset:

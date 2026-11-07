@@ -12,5 +12,4 @@ task PRD into the agent workspace:
   original upstream German; harnesses receive it verbatim.
 
 Evidence and scoring land under the adapter's run output, not in this
-directory. See the package [`README.md`](../README.md) and
-[`AGENTS.md`](../AGENTS.md) for how runs are launched.
+directory. See the package [`README.md`](../README.md) for how runs are launched.

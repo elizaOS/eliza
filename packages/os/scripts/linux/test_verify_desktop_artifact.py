@@ -92,7 +92,7 @@ console.log(JSON.stringify(produceArtifact(options)));
         self.assertEqual((destination / "bin/eliza-desktop-doctor").read_bytes(), b"#!/bin/sh\nexit 0\n")
         os_root = SCRIPT.parents[2]
         for wrapper, prefix in (
-            ("linux/elizaos/mkosi/mkosi.extra/usr/bin/eliza-doctor", "/opt/elizaos"),
+            ("linux/mkosi/mkosi.extra/usr/bin/eliza-doctor", "/opt/elizaos"),
             ("linux/packaging/debian/eliza-doctor", "/usr/lib/elizaos"),
         ):
             launcher = (os_root / wrapper).read_text().replace(prefix, str(destination))

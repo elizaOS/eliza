@@ -5,18 +5,20 @@
 import * as React from "react";
 import {
   AXIS_COMMIT_SLOP,
-  commitAxis,
   DEFAULT_PULL_DISTANCE,
   DEFAULT_PULL_VELOCITY,
   DEFAULT_SWIPE_DISTANCE,
   DEFAULT_SWIPE_VELOCITY,
   HORIZONTAL_DOMINANCE_RATIO,
-  isRealCaptureLoss,
+  TAP_SLOP,
+} from "../../gestures/constants";
+import { isRealCaptureLoss } from "../../gestures/lost-capture";
+import {
+  commitAxis,
   resolvePull,
   resolveSwipe,
-  TAP_SLOP,
-  useRafCoalescer,
-} from "../../gestures";
+} from "../../gestures/recognizers";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 
 /**
  * Pull/flick + swipe gesture detection for the homescreen shell — a thin adapter
@@ -79,12 +81,6 @@ export interface PullGestureOptions {
   velocityThresholdX?: number;
 }
 
-/** Movement (px) under which a release is treated as a tap, not a drag. Exported
- *  so consumers that must classify the browser's compat `click` (synthesized
- *  from the same press) use the SAME tap definition as the gesture engine — see
- *  the HomeScreen notification pull zone. Aliases the shared {@link TAP_SLOP}. */
-export const PULL_GESTURE_TAP_SLOP = TAP_SLOP;
-
 export { resolvePull, resolveSwipe };
 
 export interface PullGestureBinding {
@@ -135,6 +131,8 @@ export function usePullGesture(
     t: number;
     pointerId: number;
   } | null>(null);
+  const touchCompatibilityCleanup = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => () => touchCompatibilityCleanup.current?.(), []);
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
   const axis = React.useRef<GestureAxis | null>(null);
   // Last observed pointer position/time while pressed. REAL touch can end a
@@ -188,8 +186,27 @@ export function usePullGesture(
       // moves or replaces the control, a touch compatibility click can be
       // re-hit-tested onto the newly exposed element (for example, the chat
       // composer) and perform an unrelated default action such as focus.
+      touchCompatibilityCleanup.current?.();
       if (preventTouchCompatibilityEvents && event.pointerType === "touch") {
         event.preventDefault();
+        // Cancelling pointerdown suppresses compatibility mouse events, but
+        // Chromium can still dispatch click onto content exposed by the tap.
+        // touchstart follows pointerdown; cancel that native event on this
+        // gesture owner only. React's delegated touch listener can be passive.
+        const owner = event.currentTarget;
+        const cancelTouchStart = (touch: Event) => {
+          touch.preventDefault();
+          cleanup();
+        };
+        const cleanup = () => {
+          owner.removeEventListener("touchstart", cancelTouchStart);
+          touchCompatibilityCleanup.current = null;
+        };
+        touchCompatibilityCleanup.current = cleanup;
+        owner.addEventListener("touchstart", cancelTouchStart, {
+          once: true,
+          passive: false,
+        });
       }
       // A press that reaches here is the primary pointer (a secondary touch
       // finger returned above), so it is the ONLY pointer down and it begins a
@@ -307,6 +324,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      touchCompatibilityCleanup.current?.();
       // Apply the latest coalesced drag before deciding the release. Consumers
       // read that live value to choose the nearest detent, and the canceled rAF
       // cannot replay stale motion after the settle below.
@@ -457,6 +475,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      touchCompatibilityCleanup.current?.();
       const committedAxis = axis.current;
       const l = last.current;
       drag.cancel();

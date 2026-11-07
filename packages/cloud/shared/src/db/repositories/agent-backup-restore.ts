@@ -5,6 +5,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
@@ -15,8 +16,7 @@ import {
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
   parseAgentBackupManifestV3,
-} from "@elizaos/core/contracts/agent-backup-manifest-v3";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core/contracts/agent-backup-restore-v3-stream";
+} from "@elizaos/contracts";
 import { and, eq } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";

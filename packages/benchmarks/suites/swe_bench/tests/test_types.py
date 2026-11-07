@@ -2,7 +2,7 @@
 
 import pytest
 
-from benchmarks.swe_bench.types import (
+from benchmarks.suites.swe_bench.types import (
     AgentStep,
     AgentTrajectory,
     CodeLocation,

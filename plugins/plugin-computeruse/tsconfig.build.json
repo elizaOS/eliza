@@ -2,16 +2,14 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "customConditions": [],
+    "paths": {},
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
     "incremental": false,
-    "noEmit": false,
-    "paths": {
-      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
-    }
+    "noEmit": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

@@ -21,7 +21,7 @@ import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
 
@@ -182,20 +182,8 @@ export function DashboardActionCardsSkeleton() {
   );
 }
 
-export function DashboardPageWrapper({
-  children,
-}: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="Dashboard">{children}</DashboardRoutePage>;
-}
-
 export function AppsPageWrapper({ children }: DashboardRoutePageWrapperProps) {
   return <DashboardRoutePage title="My Apps">{children}</DashboardRoutePage>;
-}
-
-export function ContainersPageWrapper({
-  children,
-}: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="Containers">{children}</DashboardRoutePage>;
 }
 
 export function ElizaAgentsPageWrapper({
@@ -260,10 +248,10 @@ export function ContainersEmptyState() {
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 rounded-sm bg-card py-12">
       <div className="space-y-2 text-center">
-        <h3 className="text-xl font-medium text-white">No containers yet</h3>
+        <h3 className="text-xl font-medium text-txt">No containers yet</h3>
       </div>
 
-      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-sm border border-white/10 bg-black/60">
+      <div className="flex w-full max-w-sm flex-col overflow-hidden rounded-sm border border-border bg-bg-muted">
         {commands.map((cmd, index) => (
           <div
             key={cmd}

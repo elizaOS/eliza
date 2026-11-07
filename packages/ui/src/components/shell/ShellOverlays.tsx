@@ -11,15 +11,15 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { SHARE_TARGET_EVENT } from "../../events";
-import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
+import { useFrameBudgetMonitor } from "../../hooks/useFrameBudgetMonitor";
+import { useLayoutShiftMonitor } from "../../hooks/useLayoutShiftMonitor";
 import { PerfOverlay } from "../../perf/PerfOverlay";
 import { bootPerfHud, installPerfHudHotkey } from "../../perf/perf-hud-control";
 import type { ShareTargetPayload } from "../../platform/init";
+import { type ActionNotice, TOAST_TTL_MS } from "../../state/action-notice";
 
-import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
-import type { AppContextValue } from "../../state/internal";
-import type { ActionNotice } from "../../state/types";
+import type { AppContextValue } from "../../state/types";
 import { ActionNoticeToast as NoticeToast } from "./ActionNoticeToast";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";

@@ -21,7 +21,7 @@ import {
   getAutonomousSourceRoot,
   getElizaCoreEntry,
   getUiSourceRoot,
-} from "@elizaos/testing/package-paths";
+} from "@elizaos/repository-tools";
 import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {

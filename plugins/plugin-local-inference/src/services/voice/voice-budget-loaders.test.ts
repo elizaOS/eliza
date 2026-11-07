@@ -16,6 +16,7 @@ import {
 	type FfiBackendSession,
 	FfiStreamingBackend,
 } from "../ffi-streaming-backend";
+import { FfiStreamingRunner } from "../ffi-streaming-runner";
 import type { HardwareProbe } from "../types";
 import { tryBuildFusedEotClassifier } from "./eot-classifier";
 import type {
@@ -443,5 +444,194 @@ describe("FfiStreamingBackend budget wire-up", () => {
 		});
 		expect(backend.hasLoadedModel()).toBe(false);
 		expect(budget.snapshot()).toHaveLength(0);
+	});
+});
+
+describe("FfiStreamingBackend generation lifecycle", () => {
+	// Each step blocks the thread for 20 ms, like a synchronous FFI decode
+	// step; the reply ends after 100 steps.
+	function blockingBinding(steps: { count: number }) {
+		return {
+			llmStreamSupported: () => true,
+			llmStreamOpen: () => ({}) as never,
+			llmStreamPrefill: () => {},
+			llmStreamNext: () => {
+				const until = Date.now() + 20;
+				while (Date.now() < until) {}
+				steps.count += 1;
+				return {
+					text: "x",
+					tokens: [1],
+					done: steps.count >= 100,
+					drafterDrafted: 0,
+					drafterAccepted: 0,
+				};
+			},
+			llmStreamCancel: () => {},
+			llmStreamClose: () => {},
+		};
+	}
+
+	async function loadedBackend(steps: { count: number }, released: string[]) {
+		const runner = new FfiStreamingRunner(
+			blockingBinding(steps) as never,
+			{} as never,
+		);
+		const backend = new FfiStreamingBackend(
+			{
+				supported: () => true,
+				async acquire(): Promise<FfiBackendSession> {
+					return {
+						binding: {} as FfiBackendSession["binding"],
+						ctx: {} as FfiBackendSession["ctx"],
+						runner: runner as unknown as FfiBackendSession["runner"],
+						tokenize: () => new Int32Array([1]),
+						mtp: null,
+						draftModelPath: null,
+						mmprojPath: null,
+					};
+				},
+				async release(): Promise<void> {
+					released.push(`released after ${steps.count} steps`);
+				},
+			},
+			{},
+		);
+		await backend.load({ modelPath: "/model.gguf" } as unknown as BackendPlan);
+		return backend;
+	}
+
+	it("stops a generation when its signal aborts", async () => {
+		const steps = { count: 0 };
+		const backend = await loadedBackend(steps, []);
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 50);
+
+		await expect(
+			backend.generateWithUsage({
+				prompt: "hi",
+				maxTokens: 1000,
+				signal: controller.signal,
+			} as never),
+		).rejects.toThrow("aborted");
+		expect(steps.count).toBeLessThan(100);
+	}, 10_000);
+
+	it("ends running generations before unload releases the session", async () => {
+		const steps = { count: 0 };
+		const released: string[] = [];
+		const backend = await loadedBackend(steps, released);
+		const generation = backend.generateWithUsage({
+			prompt: "hi",
+			maxTokens: 1000,
+		} as never);
+		const outcome = generation.then(
+			() => "completed",
+			() => "stopped",
+		);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		await backend.unload();
+
+		expect(await outcome).toBe("stopped");
+		expect(steps.count).toBeLessThan(100);
+		expect(released).toEqual([`released after ${steps.count} steps`]);
+	}, 10_000);
+
+	it("refuses generations that start while unload is ending the running ones", async () => {
+		const steps = { count: 0 };
+		const released: string[] = [];
+		const backend = await loadedBackend(steps, released);
+		const first = backend
+			.generateWithUsage({ prompt: "hi", maxTokens: 1000 } as never)
+			.then(
+				() => "completed",
+				() => "stopped",
+			);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		const unloading = backend.unload();
+		// unload() is now waiting for the first generation to settle; the
+		// session is still attached, so a new call must be refused rather
+		// than opening a stream on a context that is about to be freed.
+		const second = backend.generateWithUsage({
+			prompt: "hi",
+			maxTokens: 1000,
+		} as never);
+		await expect(second).rejects.toMatchObject({
+			code: "LOCAL_MODEL_UNLOADING",
+		});
+		const stepsWhenRefused = steps.count;
+
+		await unloading;
+
+		expect(await first).toBe("stopped");
+		expect(released).toEqual([`released after ${steps.count} steps`]);
+		// No step ran after the refusal besides the one the first generation
+		// was finishing when it was aborted.
+		expect(steps.count - stepsWhenRefused).toBeLessThanOrEqual(1);
+		expect(backend.hasLoadedModel()).toBe(false);
+	}, 10_000);
+
+	it("releases one native session once when unload callers overlap", async () => {
+		const steps = { count: 0 };
+		const released: string[] = [];
+		const backend = await loadedBackend(steps, released);
+
+		await Promise.all([backend.unload(), backend.unload()]);
+
+		expect(released).toEqual(["released after 0 steps"]);
+		expect(backend.hasLoadedModel()).toBe(false);
+	});
+
+	it("serializes overlapping model loads", async () => {
+		const acquireResolvers: Array<() => void> = [];
+		let acquiresInFlight = 0;
+		let maxAcquiresInFlight = 0;
+		let releases = 0;
+		const backend = new FfiStreamingBackend({
+			supported: () => true,
+			async acquire(): Promise<FfiBackendSession> {
+				acquiresInFlight += 1;
+				maxAcquiresInFlight = Math.max(maxAcquiresInFlight, acquiresInFlight);
+				await new Promise<void>((resolve) => acquireResolvers.push(resolve));
+				acquiresInFlight -= 1;
+				return {
+					binding: {} as FfiBackendSession["binding"],
+					ctx: {} as FfiBackendSession["ctx"],
+					runner: {} as FfiBackendSession["runner"],
+					tokenize: () => new Int32Array(),
+					mtp: null,
+					draftModelPath: null,
+					mmprojPath: null,
+				};
+			},
+			async release(): Promise<void> {
+				releases += 1;
+			},
+		});
+
+		const first = backend.load({
+			modelPath: "/first.gguf",
+		} as unknown as BackendPlan);
+		const second = backend.load({
+			modelPath: "/second.gguf",
+		} as unknown as BackendPlan);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const acquiresBeforeFirstSettled = acquireResolvers.length;
+
+		acquireResolvers[0]?.();
+		await first;
+		while (acquireResolvers.length < 2) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		acquireResolvers[1]?.();
+		await second;
+
+		expect(acquiresBeforeFirstSettled).toBe(1);
+		expect(maxAcquiresInFlight).toBe(1);
+		expect(releases).toBe(1);
+		expect(backend.currentModelPath()).toBe("/second.gguf");
+		await backend.unload();
 	});
 });

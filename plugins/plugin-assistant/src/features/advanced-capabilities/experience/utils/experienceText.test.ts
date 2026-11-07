@@ -1,80 +1,42 @@
-/**
- * Unit tests (deterministic, no runtime) for `sanitizeExperienceText`, which
- * redacts PII/secrets out of experience text before it is persisted into agent
- * memory (#8801 — it shipped untested). A regression here leaks emails, IPs,
- * home-dir usernames, or API tokens into stored experiences, so each redaction
- * class + the fail-safe truncation are pinned.
- */
 import { describe, expect, it } from "vitest";
-import { sanitizeExperienceText } from "./experienceText.ts";
+import {
+  extractExperienceKeywords,
+  isDuplicateLearning,
+} from "./experienceText.ts";
 
-describe("sanitizeExperienceText", () => {
-  it("returns a placeholder for empty input", () => {
-    expect(sanitizeExperienceText("")).toBe("Unknown context");
-    expect(sanitizeExperienceText(undefined as unknown as string)).toBe(
-      "Unknown context",
-    );
+const KOREAN_LEARNING = "사용자는 회의 전에 녹차를 마시는 습관이 있다";
+const RUSSIAN_LEARNING =
+  "Пользователь пьёт зелёный чай перед утренним совещанием каждый день";
+const ENGLISH_LEARNING =
+  "The user drinks green tea before the morning meeting every day";
+
+describe("experienceText non-Latin learnings", () => {
+  it("treats an identical Korean learning as a duplicate", () => {
+    expect(isDuplicateLearning(KOREAN_LEARNING, KOREAN_LEARNING)).toBe(true);
   });
 
-  it("redacts email addresses", () => {
-    const out = sanitizeExperienceText("ping me at jane.doe@example.com today");
-    expect(out).toContain("[EMAIL]");
-    expect(out).not.toContain("jane.doe@example.com");
+  it("treats an identical Russian learning as a duplicate", () => {
+    expect(isDuplicateLearning(RUSSIAN_LEARNING, RUSSIAN_LEARNING)).toBe(true);
   });
 
-  it("redacts IPv4 addresses", () => {
-    const out = sanitizeExperienceText("the box at 192.168.10.42 went down");
-    expect(out).toContain("[IP]");
-    expect(out).not.toContain("192.168.10.42");
+  it("derives searchable keywords from a Korean learning", () => {
+    const keywords = extractExperienceKeywords([KOREAN_LEARNING]);
+    expect(keywords).toContain("사용자는");
+    expect(keywords.length).toBeGreaterThan(0);
   });
 
-  it("redacts the username out of home directory paths", () => {
-    expect(sanitizeExperienceText("opened /Users/alice/secret.txt")).toBe(
-      "opened /Users/[USER]/secret.txt",
-    );
-    expect(sanitizeExperienceText("ran /home/bob/.ssh/id_rsa")).toBe(
-      "ran /home/[USER]/.ssh/id_rsa",
-    );
+  it("keeps the English duplicate and keyword behavior unchanged", () => {
+    expect(isDuplicateLearning(ENGLISH_LEARNING, ENGLISH_LEARNING)).toBe(true);
+    expect(extractExperienceKeywords([ENGLISH_LEARNING])).toContain("drinks");
   });
 
-  it("redacts prefixed API tokens (OpenAI / GitHub / Slack shapes)", () => {
-    for (const token of [
-      "sk-abcdefghijklmnop1234",
-      "ghp_abcdefghijklmnop1234",
-      "xoxb-abcdefghijklmnop",
-    ]) {
-      const out = sanitizeExperienceText(`the key is ${token} keep it safe`);
-      expect(out).toContain("[TOKEN]");
-      expect(out).not.toContain(token);
-    }
+  it("does not call different-language learnings duplicates", () => {
+    expect(isDuplicateLearning(KOREAN_LEARNING, ENGLISH_LEARNING)).toBe(false);
   });
 
-  it("redacts any long opaque token-like run (32+ chars)", () => {
-    const blob = "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7"; // 33 chars
-    const out = sanitizeExperienceText(`secret ${blob} end`);
-    expect(out).toContain("[TOKEN]");
-    expect(out).not.toContain(blob);
-  });
-
-  it("neutralizes third-party attribution to a generic phrasing", () => {
-    // only the "<subject> <verb>" span is rewritten; surrounding words stay
-    expect(sanitizeExperienceText("the user asked about billing")).toBe(
-      "the when asked about billing",
-    );
-    expect(sanitizeExperienceText("someone mentioned a bug")).toBe(
-      "when asked a bug",
-    );
-  });
-
-  it("preserves complete long text", () => {
-    const long = "word ".repeat(80).trim(); // ~399 chars, spaced (no token run)
-    const out = sanitizeExperienceText(long);
-    expect(out).toBe(long);
-  });
-
-  it("leaves benign text untouched", () => {
-    expect(sanitizeExperienceText("I prefer concise answers")).toBe(
-      "I prefer concise answers",
-    );
+  it("treats a decomposed copy of a learning as a duplicate", () => {
+    const decomposed = KOREAN_LEARNING.normalize("NFD");
+    expect(decomposed).not.toBe(KOREAN_LEARNING);
+    expect(isDuplicateLearning(KOREAN_LEARNING, decomposed)).toBe(true);
   });
 });

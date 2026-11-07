@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -283,24 +283,7 @@ jobs:
             --run-url "$run_url" \
             --log "$RECOVERY_LOG" \
             --output "$pr_body"
-          cat >> "$pr_body" <<'EOF'
-
-          ## Contribution provenance
-
-          <!-- contribution-attribution:v1 -->
-          <!-- attribution-row:ai-assistance -->
-          - AI assistance: no - deterministic workflow
-          <!-- attribution-row:models -->
-          - Model(s) used: None - deterministic workflow
-          <!-- attribution-row:client -->
-          - Client / agent tooling: None - deterministic workflow
-          <!-- attribution-row:skill-revision -->
-          - Skill revision: N/A - release inventory renderer does not invoke a contribution skill
-          <!-- attribution-row:status -->
-          - Attribution status: self-reported
-          EOF
           node packages/scripts/check-pr-evidence.ts --body-file "$pr_body"
-          node packages/os/scripts/check-pr-agent-attribution.ts --body-file "$pr_body"
 
           git switch -c "$BRANCH"
           git config user.name "elizaOS CI"
@@ -319,7 +302,7 @@ jobs:
 
       - name: Retain exact recovery receipts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: os-manifest-recovery
           path: |

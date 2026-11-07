@@ -4,17 +4,18 @@
  * messaging handle they want bound; the channel side confirms it through
  * /api/eliza-app/identity-link/confirm.
  */
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { startIdentityLink } from "@/lib/services/eliza-app/identity-link";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { startIdentityLink } from "@elizaos/cloud-shared/lib/services/eliza-app/identity-link";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const startSchema = z.object({
   platform: z.enum(["telegram", "discord", "whatsapp", "phone"]),

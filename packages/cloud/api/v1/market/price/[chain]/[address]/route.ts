@@ -1,7 +1,10 @@
 // Handles v1 cloud API v1 market price chain address route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Market Data: Token Price Endpoint
@@ -23,16 +26,19 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * - Cost: prevents wasted credits on invalid requests
  */
 
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
   isValidAddress,
   isValidChain,
-} from "@/lib/services/proxy/services/address-validation";
+} from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   marketDataConfig,
   marketDataHandler,
-} from "@/lib/services/proxy/services/market-data";
+} from "@elizaos/cloud-shared/lib/services/proxy/market-data";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 // WHY 30s maxDuration:
 // - Upstream calls + retries can take 15-20s

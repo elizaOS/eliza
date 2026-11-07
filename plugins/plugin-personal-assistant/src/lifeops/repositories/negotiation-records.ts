@@ -5,7 +5,7 @@ import type {
   LifeOpsProposalStatus,
   LifeOpsSchedulingNegotiation,
   LifeOpsSchedulingProposal,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import { parseJsonRecord, toNumber, toText } from "../sql.js";
 
 export function parseSchedulingNegotiation(

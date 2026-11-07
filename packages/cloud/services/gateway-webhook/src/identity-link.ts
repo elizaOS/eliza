@@ -10,7 +10,7 @@
 import {
   extractIdentityLinkCode,
   identityLinkReply,
-} from "@elizaos/cloud-services-common/identity-link-code";
+} from "@elizaos/cloud-services-common/transport";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 

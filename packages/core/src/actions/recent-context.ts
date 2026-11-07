@@ -98,7 +98,6 @@ function renderedConversationTextsFromState(
 
 export function recentConversationTextsFromState(
 	state: State | undefined,
-	_limit?: number,
 ): string[] {
 	const collected = renderedConversationTextsFromState(state);
 	for (const item of getRecentMessagesData(state)) {
@@ -111,7 +110,7 @@ export function recentConversationTextsFromState(
 
 	// Do NOT dedupe. Two distinct conversation turns with identical wording are
 	// still two turns — collapsing them drops an occurrence before model
-	// extractors build prompt context (#24858).
+	// extractors build prompt context.
 	return collected;
 }
 
@@ -119,8 +118,6 @@ export async function recentConversationTexts(args: {
 	runtime: IAgentRuntime;
 	message?: Memory;
 	state: State | undefined;
-	/** @deprecated Complete conversation context is always returned. */
-	limit?: number;
 }): Promise<string[]> {
 	const roomId =
 		typeof args.message?.roomId === "string" ? args.message.roomId : "";
@@ -130,9 +127,13 @@ export async function recentConversationTexts(args: {
 	}
 
 	try {
+		// Callers render these texts as the conversation, so read oldest-first;
+		// adapters default to newest-first.
 		const memories = await args.runtime.getMemories({
 			roomId,
 			tableName: "messages",
+			orderBy: "createdAt",
+			orderDirection: "asc",
 		});
 		const memoryTexts = Array.isArray(memories)
 			? memories

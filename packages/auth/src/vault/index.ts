@@ -137,7 +137,6 @@ export {
   resolveActiveValue,
   writeRoutingConfig,
 } from "./profiles.js";
-export * from "./testing.js";
 export type {
   AuditRecord,
   PasswordManagerReference,

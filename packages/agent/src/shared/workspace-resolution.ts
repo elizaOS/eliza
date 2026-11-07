@@ -1,21 +1,10 @@
-/**
- * Resolves the agent's default workspace directory — the folder the runtime
- * treats as the user's project root for hooks, skills, and init files.
- * Precedence: an explicit `ELIZA_WORKSPACE_DIR` override, the desktop-picked
- * folder persisted to `<stateDir>/workspace-folder.json`, the current working
- * directory when it looks like a real project (and no `ELIZA_STATE_DIR` is
- * pinned), then a per-profile `workspace` folder under the state dir. Also
- * decides whether the cwd counts as a project workspace and whether init files
- * should be bootstrapped, excluding packaged desktop runtime directories.
- */
+/** Resolve explicit, selected-project, current-directory, and profile workspaces. */
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getActiveProject, readWorkspaceFolderConfig } from "@elizaos/core";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import { resolveStateDir, resolveUserPath } from "@elizaos/core";
+import { getActiveProject } from "@elizaos/host";
 
-const EXPLICIT_WORKSPACE_DIR_KEYS = ["ELIZA_WORKSPACE_DIR"] as const;
-const EXPLICIT_STATE_DIR_KEYS = ["ELIZA_STATE_DIR"] as const;
 const PROJECT_WORKSPACE_MARKERS = [
   "AGENTS.md",
   "CLAUDE.md",
@@ -23,40 +12,6 @@ const PROJECT_WORKSPACE_MARKERS = [
   "skills",
   ".git",
 ] as const;
-
-function readWorkspaceDirOverride(env: NodeJS.ProcessEnv): string | undefined {
-  for (const key of EXPLICIT_WORKSPACE_DIR_KEYS) {
-    const value = env[key]?.trim();
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function hasExplicitStateDirOverride(env: NodeJS.ProcessEnv): boolean {
-  return EXPLICIT_STATE_DIR_KEYS.some((key) => Boolean(env[key]?.trim()));
-}
-
-// Filesystem read failures on the legacy workspace-folder.json that the
-// documented fallback boundary treats as ignorable unreadable state. ENOENT
-// never reaches this list: the config module already degrades an absent file
-// to null (error-policy:J4), so these are the rethrown non-missing cases.
-const RECOVERABLE_LEGACY_STATE_ERRNO_CODES = new Set([
-  "EISDIR",
-  "EACCES",
-  "EPERM",
-  "ENOTDIR",
-]);
-
-function isUnreadableLegacyStateError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    RECOVERABLE_LEGACY_STATE_ERRNO_CODES.has(
-      (error as NodeJS.ErrnoException).code ?? "",
-    )
-  );
-}
 
 function isLikelyPackagedRuntimeDir(dir: string): boolean {
   if (typeof dir !== "string") return false;
@@ -95,47 +50,17 @@ export function resolveDefaultAgentWorkspaceDir(
   homedir: () => string = os.homedir,
   cwd: () => string = process.cwd,
 ): string {
-  const explicitWorkspaceDir = readWorkspaceDirOverride(env);
+  const explicitWorkspaceDir = env.ELIZA_WORKSPACE_DIR?.trim();
   if (explicitWorkspaceDir) {
     return resolveUserPath(explicitWorkspaceDir);
   }
 
-  // The active project in <stateDir>/projects.json wins over the legacy
-  // single-folder config: it is the first-class replacement for it, and the
-  // desktop picker upserts+activates a project here. When projects.json is
-  // absent the registry synthesizes an active project from the legacy
-  // workspace-folder.json (see readProjectRegistry), so this step subsumes the
-  // legacy read below without changing behavior for a lone picked folder.
-  // The synthesized read propagates the config module's deliberate non-ENOENT
-  // rethrows (EISDIR/EACCES when workspace-folder.json is a directory or
-  // unreadable), and unreadable legacy state is documented as ignorable in
-  // favor of the state-directory workspace — recover exactly those filesystem
-  // read failures (#25884) and keep every other failure strict (#25769).
-  let activeProject: ReturnType<typeof getActiveProject> = null;
-  try {
-    activeProject = getActiveProject(env);
-  } catch (error) {
-    if (!isUnreadableLegacyStateError(error)) throw error;
-  }
+  const activeProject = getActiveProject(env);
   if (activeProject?.localPath?.trim()) {
     return resolveUserPath(activeProject.localPath);
   }
 
-  // Store-distributed desktop builds write the user-picked workspace folder
-  // to <stateDir>/workspace-folder.json via the Electrobun desktop RPC.
-  // Honor that file as a higher-priority signal than the project-cwd auto-
-  // detect heuristic so the user's explicit choice always wins under the
-  // sandbox. Falls through silently when the file is absent or unreadable.
-  try {
-    const persisted = readWorkspaceFolderConfig(env);
-    if (persisted?.path?.trim()) {
-      return resolveUserPath(persisted.path);
-    }
-  } catch {
-    // Ignore — fall through to cwd / state-dir defaults.
-  }
-
-  if (!hasExplicitStateDirOverride(env)) {
+  if (!env.ELIZA_STATE_DIR?.trim()) {
     const runtimeCwd = typeof cwd === "function" ? cwd() : undefined;
     if (
       typeof runtimeCwd === "string" &&

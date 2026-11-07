@@ -9,15 +9,14 @@
  */
 import type http from "node:http";
 import type { SecretsManager } from "@elizaos/auth/vault";
+import { PostProviderSwitchRequestSchema } from "@elizaos/contracts";
+import { logger } from "@elizaos/core";
 import {
-  logger,
+  type ElizaConfig,
   normalizeFirstRunProviderId,
-  PostProviderSwitchRequestSchema,
   type ReadJsonBodyOptions,
-} from "@elizaos/core";
-
+} from "@elizaos/host/protocol";
 import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import type { ElizaConfig } from "../config/config.ts";
 import type {
   ProviderSwitchIntent,
   RuntimeOperationManager,
@@ -29,6 +28,7 @@ import {
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
+  ELIZA_CLOUD_CLI_PROXY_BASE_URL,
 } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
@@ -182,10 +182,9 @@ export async function handleProviderSwitchRoutes(
 
           await applyFirstRunConnectionConfig(config, connection);
           if (normalizedProvider === "elizacloud" && trimmedApiKey) {
-            const cloudProxyBaseUrl = "https://cloud.eliza.app/api/v1";
-            process.env.ANTHROPIC_BASE_URL = cloudProxyBaseUrl;
+            process.env.ANTHROPIC_BASE_URL = ELIZA_CLOUD_CLI_PROXY_BASE_URL;
             process.env.ANTHROPIC_API_KEY = trimmedApiKey;
-            process.env.OPENAI_BASE_URL = cloudProxyBaseUrl;
+            process.env.OPENAI_BASE_URL = ELIZA_CLOUD_CLI_PROXY_BASE_URL;
             process.env.OPENAI_API_KEY = trimmedApiKey;
           }
           ctx.saveElizaConfig(config);

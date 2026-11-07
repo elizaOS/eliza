@@ -9,14 +9,14 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { verifyProgressiveContentCorpus } from "../testing/corpus/progressive-content.ts";
+import { PROGRESSIVE_CONTENT_TARGET_FAMILIES } from "@elizaos/testing/progressive-content";
 import {
   buildProgressiveContentBenchmarkReport,
   PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS,
   PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES,
   runProgressiveContentBenchmarkProcessSample,
-} from "../testing/src/progressive-content-benchmark.ts";
-import { PROGRESSIVE_CONTENT_TARGET_FAMILIES } from "../testing/src/progressive-content-target.ts";
+  verifyProgressiveContentCorpus,
+} from "elizaos-benchmarks/content-context";
 import {
   createProgressiveContentBenchmarkFactory,
   createProgressiveContentProductionTarget,

@@ -2,7 +2,7 @@
 import * as crypto from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import type { UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { exportAgent, importAgent } from "../src/services/agent-export.ts";
 

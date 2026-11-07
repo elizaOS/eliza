@@ -2,18 +2,37 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createAndroidPlatformSecureStore } from "./secure-store-android";
+
+// macOS lacks Linux abstract sockets. Record their exact wire address, then
+// route to a real filesystem broker so the complete framed exchange still runs.
+const transport = vi.hoisted(() => ({ path: "", addresses: [] as string[] }));
+vi.mock("node:net", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:net")>();
+  return {
+    ...actual,
+    connect: (path: string) => {
+      transport.addresses.push(path);
+      return actual.connect(path.startsWith("\0") ? transport.path : path);
+    },
+  };
+});
 
 let server: Server;
 let directory: string;
 afterEach(async () => {
+  vi.unstubAllEnvs();
+  transport.addresses.length = 0;
   if (server)
     await new Promise<void>((resolve) => server.close(() => resolve()));
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 
-async function broker(reply: (request: Record<string, unknown>) => unknown) {
+async function broker(
+  reply: (request: Record<string, unknown>) => unknown,
+  useDefaultSocket = false,
+) {
   directory = await mkdtemp(join(tmpdir(), "secure-store-"));
   const socketPath = join(directory, "broker.sock");
   server = createServer((socket) => {
@@ -35,7 +54,11 @@ async function broker(reply: (request: Record<string, unknown>) => unknown) {
     });
   });
   await new Promise<void>((resolve) => server.listen(socketPath, resolve));
-  return createAndroidPlatformSecureStore(socketPath, 200);
+  transport.path = socketPath;
+  return createAndroidPlatformSecureStore(
+    useDefaultSocket ? undefined : socketPath,
+    200,
+  );
 }
 
 it("preserves complete multilingual values and operation receipts across split native frames", async () => {
@@ -96,4 +119,59 @@ it("does not report success or retry after a disconnected write", async () => {
   expect(await store.set("agent", "runtime.agent_profiles", "private")).toEqual(
     { ok: false, reason: "error" },
   );
+});
+
+it.each([undefined, ""])(
+  "retains the default abstract socket for unset/empty override (%s)",
+  async (override) => {
+    vi.stubEnv("ELIZA_ANDROID_SECURE_STORE_SOCKET", override);
+    const store = await broker(
+      (r) => ({ id: r.id, ok: false, reason: "not_found" }),
+      true,
+    );
+    expect(await store.isAvailable()).toBe(true);
+    expect(transport.addresses).toEqual(["\0ai.elizaos.app.secure-store"]);
+  },
+);
+
+it("captures the embedding host socket at construction for every operation", async () => {
+  vi.stubEnv(
+    "ELIZA_ANDROID_SECURE_STORE_SOCKET",
+    "ai.example.host.secure-store",
+  );
+  const store = await broker(
+    (r) => ({
+      id: r.id,
+      ok: true,
+      value: "stored",
+      deleted: true,
+    }),
+    true,
+  );
+  vi.stubEnv("ELIZA_ANDROID_SECURE_STORE_SOCKET", "ai.other.host.secure-store");
+  expect(await store.set("vault", "runtime.agent_profiles", "stored")).toEqual({
+    ok: true,
+  });
+  expect(await store.get("vault", "runtime.agent_profiles")).toEqual({
+    ok: true,
+    value: "stored",
+  });
+  expect(await store.delete("vault", "runtime.agent_profiles")).toEqual({
+    ok: true,
+    deleted: true,
+  });
+  expect(transport.addresses).toEqual(
+    Array(3).fill("\0ai.example.host.secure-store"),
+  );
+});
+
+it("keeps an explicit socket path authoritative over the environment", async () => {
+  vi.stubEnv("ELIZA_ANDROID_SECURE_STORE_SOCKET", "ai.other.host.secure-store");
+  const store = await broker((r) => ({
+    id: r.id,
+    ok: false,
+    reason: "not_found",
+  }));
+  expect(await store.isAvailable()).toBe(true);
+  expect(transport.addresses).toEqual([transport.path]);
 });

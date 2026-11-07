@@ -11,8 +11,8 @@ pass.
 
 from __future__ import annotations
 
-from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-from benchmarks.orchestrator_lifecycle.types import (
+from benchmarks.suites.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+from benchmarks.suites.orchestrator_lifecycle.types import (
     Scenario,
     ScenarioResult,
     ScenarioTurn,

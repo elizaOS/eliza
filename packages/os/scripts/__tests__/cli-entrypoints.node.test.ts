@@ -6,32 +6,31 @@ import { join } from "node:path";
 import test from "node:test";
 
 const modules = [
+  "../trust/index",
   "eliza-source",
-  "update-eliza-source-lock",
-  "android/build-eliza-bootanimation",
-  "aosp/verify-android-instrumentation-results",
-  "aosp/verify-native-runtime",
-  "aosp/verify-source-lock",
-  "aosp/deploy-pixel",
-  "aosp/smoke-cuttlefish",
-  "distro-android/avd-test",
-  "distro-android/boot-validate",
-  "distro-android/build-bootanimation",
-  "distro-android/collect-grizzly-graphics",
-  "distro-android/grizzly-evidence",
-  "distro-android/lint-init-rc",
-  "distro-android/provision-cuttlefish-e1",
-  "distro-android/verify-grizzly-artifacts",
-  "distro-android/prepare-chromium-browser",
-  "distro-android/stage-browser-apps",
-  "distro-android/bootstrap-aosp",
-  "distro-android/build-aosp",
-  "distro-android/capture-screens",
-  "distro-android/e2e-validate",
-  "distro-android/prepare-grizzly",
-  "distro-android/sim",
-  "distro-android/sync-to-aosp",
-  "distro-android/validate",
+  "android/verify-android-instrumentation-results",
+  "android/verify-native-runtime",
+  "android/verify-source-lock",
+  "android/deploy-pixel",
+  "android/smoke-cuttlefish",
+  "android/avd-test",
+  "android/boot-validate",
+  "android/build-bootanimation",
+  "android/collect-grizzly-graphics",
+  "android/grizzly-evidence",
+  "android/lint-init-rc",
+  "android/provision-cuttlefish-e1",
+  "android/verify-grizzly-artifacts",
+  "android/prepare-chromium-browser",
+  "android/stage-browser-apps",
+  "android/bootstrap-aosp",
+  "android/build-aosp",
+  "android/capture-screens",
+  "android/e2e-validate",
+  "android/prepare-grizzly",
+  "android/sim",
+  "android/sync-to-aosp",
+  "android/validate",
 
   "check-confidential-artifacts",
   "check-confidential-image-manifest",
@@ -39,15 +38,13 @@ const modules = [
   "check-confidential-policy",
   "check-confidential-profile",
   "check-dstack-pins",
-  "check-pr-agent-attribution",
   "generate-confidential-artifacts",
-  "read-eliza-source-lock",
   "tee-evidence-bridge",
   "tee-state-volume-mount",
   "verify-image-reproducibility",
 ];
 for (const name of modules) {
-  test(`${name} can be imported without invoking its CLI`, () => {
+  test(`${name} imports without side effects`, () => {
     const module = new URL(`../${name}.ts`, import.meta.url);
     const result = spawnSync(
       process.execPath,
@@ -66,7 +63,6 @@ for (const name of modules) {
 for (const [name, args, expected, diagnostic] of [
   ["check-confidential-policy", [], 1, "--manifest must identify"],
   ["check-dstack-pins", [], 1, "--manifest must identify"],
-  ["read-eliza-source-lock", ["--unsupported"], 1, "Unknown argument"],
   ["tee-state-volume-mount", [], 2, "real dm-crypt unseal is BLOCKED"],
 ]) {
   test(`${name} preserves refusal status through a symlink`, async (t) => {

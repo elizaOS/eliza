@@ -44,10 +44,10 @@ function resolveEvmPrivateKey(runtime: IAgentRuntime): Hex | null {
     return null;
   }
   const trimmed = raw.trim();
-  if (!/^0x[a-fA-F0-9]{64}$/.test(trimmed)) {
+  if (!/^0[xX][a-fA-F0-9]{64}$/.test(trimmed)) {
     return null;
   }
-  return trimmed as Hex;
+  return `0x${trimmed.slice(2)}` as Hex;
 }
 
 function keypairFromSolanaSecret(raw: string): Keypair {

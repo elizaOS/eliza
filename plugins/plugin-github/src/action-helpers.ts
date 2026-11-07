@@ -4,7 +4,8 @@
  * resolution, parameter extraction, and confirmation gating.
  */
 
-import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import { requireConfirmation, stableStringify } from "@elizaos/core";
 import {
   type GitHubAccountSelection,
   resolveGitHubAccountSelection,
@@ -217,13 +218,6 @@ export function splitRepo(
   return { owner, name };
 }
 
-/** @deprecated LLM `confirmed` is never authoritative — use {@link requireConfirmation}. */
-export function isConfirmed(
-  _options: Record<string, unknown> | undefined,
-): boolean {
-  return false;
-}
-
 export function needsClientError(selection: GitHubAccountSelection): string {
   const accountSuffix = selection.accountId
     ? ` accountId "${selection.accountId}"`
@@ -237,15 +231,26 @@ export function getServiceOrNull(runtime: IAgentRuntime): GitHubService | null {
   return runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE);
 }
 
-export function buildResolvedClient(
+/**
+ * Resolve the client for a selection from the current account list. Pass
+ * `refresh: "on-miss"` from `validate`, which runs on every message: it only
+ * re-reads accounts when none matches, so a newly connected account is found.
+ */
+export async function buildResolvedClient(
   runtime: IAgentRuntime,
   selection: GitHubIdentity | GitHubAccountSelection,
-): ResolvedClient | { error: string } {
-  if (!getServiceOrNull(runtime)) {
+  opts: { refresh?: "always" | "on-miss" } = {},
+): Promise<ResolvedClient | { error: string }> {
+  const service = getServiceOrNull(runtime);
+  if (!service) {
     return { error: "GitHub service not available" };
   }
   const resolvedSelection =
     typeof selection === "string" ? { role: selection } : selection;
+  if (opts.refresh !== "on-miss" || !getClient(runtime, resolvedSelection)) {
+    // Services that only implement `IGitHubService` resolve from their own state.
+    await service.refreshAccounts?.();
+  }
   const client = getClient(runtime, resolvedSelection);
   if (!client) {
     return { error: needsClientError(resolvedSelection) };
@@ -268,4 +273,42 @@ export function describeSelection(selection: GitHubAccountSelection): string {
   return selection.accountId
     ? `${selection.role} (${selection.accountId})`
     : selection.role;
+}
+
+/**
+ * Two-phase confirmation bound to the request the user was shown. The planner
+ * writes the arguments again on the confirming turn, so a yes only confirms a
+ * call whose request equals the previewed one. A yes that arrives with a
+ * different request previews that request instead of running it.
+ */
+export async function confirmPreviewedRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  actionName: string;
+  pendingKey: string;
+  prompt: string;
+  callback: HandlerCallback | undefined;
+  /** Everything the mutation will send, plus the account it runs as. */
+  request: unknown;
+}): Promise<"pending" | "confirmed" | "cancelled"> {
+  const previewed = stableStringify(args.request);
+  const ask = () =>
+    requireConfirmation({
+      runtime: args.runtime,
+      message: args.message,
+      actionName: args.actionName,
+      pendingKey: args.pendingKey,
+      prompt: args.prompt,
+      callback: args.callback,
+      metadata: { previewed },
+    });
+  const decision = await ask();
+  if (
+    decision.status !== "confirmed" ||
+    decision.metadata?.previewed === previewed
+  ) {
+    return decision.status;
+  }
+  // The consumed record held another request; this call stores the new one.
+  return (await ask()).status;
 }

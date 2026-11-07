@@ -2,7 +2,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { UiTheme } from "../../state/persistence";
+import type { UiTheme } from "../../state/ui-preferences";
 import { ThemeToggle } from "./ThemeToggle";
 
 const meta = {

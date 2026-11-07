@@ -17,14 +17,14 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime, Task, TriggerType, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { WORKBENCH_TASK_TAG } from "../api/workbench-helpers.ts";
+import { WORKBENCH_TASK_TAG } from "@elizaos/host/protocol";
 import {
   readTriggerConfig,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
 } from "./runtime.ts";
 import { buildTriggerConfig, buildTriggerMetadata } from "./scheduling.ts";
-import type { NormalizedTriggerDraft } from "./types.ts";
+import type { NormalizedTriggerDraft, TriggerTaskMetadata } from "./types.ts";
 
 const SCHEDULE_TAG_PREFIX = "schedule:";
 const EVENT_TAG_PREFIX = "event:";
@@ -95,7 +95,14 @@ async function migrateWorkbenchScheduleTask(
 
   const triggerId = stringToUuid(crypto.randomUUID());
   const trigger = buildTriggerConfig({ draft, triggerId });
-  const metadata = buildTriggerMetadata({ trigger, nowMs: Date.now() });
+  // Preserve pre-existing task metadata (workbenchTodo/todo/isCompleted and
+  // integration-stashed keys): all sibling update paths pass existingMetadata
+  // to buildTriggerMetadata; the migration must not silently drop it.
+  const metadata = buildTriggerMetadata({
+    existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
+    trigger,
+    nowMs: Date.now(),
+  });
   if (!metadata) return null;
 
   const nextTags = new Set(stripScheduleTags(task.tags));

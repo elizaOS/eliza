@@ -7,9 +7,122 @@ import { join } from "node:path";
 import test from "node:test";
 import { verifyExactDeployment } from "./cloud-latency-certification.ts";
 import {
+  readDeploymentPlacement,
   verifyCertificationSource,
   withVerifiedDeployment,
 } from "./latency-certification-provenance.ts";
+
+test("placement policy is read from the deployed commit and participates in contract acknowledgement", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "latency-placement-test-"));
+  const git = (...args) =>
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        ...args,
+      ],
+      { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+    ).trim();
+  const file = "packages/cloud/api/wrangler.toml";
+  const commit = async (source) => {
+    await writeFile(join(cwd, file), source);
+    git("add", file);
+    git("commit", "-m", "fixture");
+    return git("rev-parse", "HEAD");
+  };
+  try {
+    git("init");
+    await mkdir(join(cwd, "packages/cloud/api"), { recursive: true });
+    const deploySha = await commit(
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+    );
+    const sourceSha = await commit(
+      '[env.staging]\nname = "eliza-cloud-api-staging"\n',
+    );
+    const policy = await readDeploymentPlacement(deploySha, { cwd });
+    assert.equal(policy.mode, "targeted");
+    assert.equal(policy.worker, "eliza-cloud-api-staging");
+    assert.equal(policy.region, "gcp:us-west2");
+    assert.equal(policy.deploySha, deploySha);
+    assert.match(policy.configSha256, /^[a-f0-9]{64}$/);
+    assert.equal(
+      (await readDeploymentPlacement(sourceSha, { cwd })).mode,
+      "default",
+    );
+    await assert.rejects(
+      verifyCertificationSource(
+        { sourceRef: "refs/heads/staging", sourceSha, deploySha },
+        { cwd },
+      ),
+      /require acknowledgement/,
+    );
+    const productionSha = await commit(
+      'name = "unselected-root"\nplacement = { mode = "targeted", region = "aws:us-east-1" }\n[env.production]\nname = "eliza-cloud-api-prod"\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "gcp:us-central1" }\n',
+    );
+    assert.equal(
+      (
+        await readDeploymentPlacement(productionSha, {
+          cwd,
+          environment: "production",
+        })
+      ).region,
+      "gcp:us-west2",
+    );
+    assert.equal(
+      (await readDeploymentPlacement(productionSha, { cwd })).region,
+      "gcp:us-central1",
+    );
+    await assert.rejects(
+      readDeploymentPlacement(sourceSha, { cwd, environment: "production" }),
+      /explicit environment/,
+    );
+    for (const source of [
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "smart" }',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted" }',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "", extra = true }',
+      'placement = { mode = "targeted", region = "gcp:us-west2" }\n[env.staging]\nname = "fixture"',
+      '[env.production]\nname = "fixture"',
+      "not valid TOML",
+    ])
+      await assert.rejects(
+        readDeploymentPlacement(await commit(source), { cwd }),
+      );
+    for (const source of [
+      '[vars]\nENVIRONMENT = "production"\n',
+      '[env.production]\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+      '[env.production]\nname = "invalid/worker"\n',
+      'placement = { mode = "targeted", region = "aws:us-east-1" }\n[env.production]\nname = "eliza-cloud-api-prod"\n',
+    ]) {
+      await assert.rejects(
+        readDeploymentPlacement(await commit(source), {
+          cwd,
+          environment: "production",
+        }),
+      );
+    }
+    await assert.rejects(readDeploymentPlacement("HEAD", { cwd }), /identity/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("canonical --env profiles bind placement and telemetry to each deployed Worker", async () => {
+  const deploySha = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  for (const [environment, worker] of [
+    ["staging", "eliza-cloud-api-staging"],
+    ["production", "eliza-cloud-api-prod"],
+  ]) {
+    const policy = await readDeploymentPlacement(deploySha, { environment });
+    assert.equal(policy.worker, worker);
+    assert.equal(policy.mode, "targeted");
+    assert.equal(policy.region, "gcp:us-west2");
+  }
+});
 
 test("real Git ancestry rejects untrusted revisions and binds changed verifier contracts", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "latency-provenance-test-"));
@@ -52,6 +165,33 @@ test("real Git ancestry rejects untrusted revisions and binds changed verifier c
         )
       ).relationship,
       "identical",
+    );
+    assert.equal(
+      (
+        await verifyCertificationSource(
+          {
+            ...config,
+            sourceRef: "refs/heads/main",
+            environment: "production",
+          },
+          { cwd },
+        )
+      ).deploySha,
+      base,
+    );
+    await assert.rejects(
+      verifyCertificationSource(
+        { ...config, environment: "production" },
+        { cwd },
+      ),
+      /trusted environment/,
+    );
+    await assert.rejects(
+      verifyCertificationSource(
+        { ...config, sourceRef: "refs/heads/main" },
+        { cwd },
+      ),
+      /trusted environment/,
     );
     const unrelated = git("commit-tree", "HEAD^{tree}", "-m", "unrelated");
     const descendant = git(

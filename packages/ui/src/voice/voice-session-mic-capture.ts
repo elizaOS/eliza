@@ -64,6 +64,8 @@ export interface MicAudioContextLike {
   resume(): Promise<void>;
   suspend?(): Promise<void>;
   close(): Promise<void>;
+  addEventListener?(type: "statechange", listener: () => void): void;
+  removeEventListener?(type: "statechange", listener: () => void): void;
 }
 
 export interface AudioNodeLike {
@@ -384,16 +386,11 @@ export async function startVoiceMicCapture(
       acquiredContext.state === "suspended" ||
       acquiredContext.state === "interrupted"
     ) {
-      try {
-        await awaitCaptureStep(acquiredContext.resume(), signal);
-        throwIfCaptureCancelled(signal);
-      } catch (ignoredError) {
-        if (ignoredError instanceof VoiceMicCaptureCancelledError) {
-          throw ignoredError;
-        }
-        // error-policy:J5 a denied resume is observed downstream: a non-running graph delivers no frames and the suspend path reports it.
-        void ignoredError;
-      }
+      await awaitCaptureStep(acquiredContext.resume(), signal);
+      throwIfCaptureCancelled(signal);
+    }
+    if (acquiredContext.state !== "running") {
+      throw new Error("Microphone audio context is not running");
     }
     acquiredSource = acquiredContext.createMediaStreamSource(stream);
     throwIfCaptureCancelled(signal);
@@ -533,8 +530,10 @@ export async function startVoiceMicCapture(
         }
       : null);
 
+  let visibilityGeneration = 0;
   const onVisibilityChange = (): void => {
     if (stopped || !visibility) return;
+    const generation = ++visibilityGeneration;
     if (visibility.isHidden()) {
       if (!suspended) {
         suspended = true;
@@ -543,19 +542,44 @@ export async function startVoiceMicCapture(
         options.onSuspend?.();
       }
     } else if (suspended) {
-      suspended = false;
-      // error-policy:J5 a failed resume is observed downstream as absent frame delivery on a non-running graph.
-      void ctx.resume().catch(() => {});
-      options.onResume?.();
+      void ctx
+        .resume()
+        .then(() => {
+          if (
+            stopped ||
+            generation !== visibilityGeneration ||
+            visibility.isHidden()
+          )
+            return;
+          if (ctx.state !== "running")
+            throw new Error("Microphone audio context is not running");
+          suspended = false;
+          options.onResume?.();
+        })
+        .catch((error: unknown) => {
+          if (stopped || generation !== visibilityGeneration) return;
+          // A non-running graph cannot resume this capture. Release the device
+          // rather than retaining an apparently active but silent microphone.
+          void stop();
+          options.onError?.(
+            new VoiceMicCaptureError(
+              "Microphone audio could not resume",
+              "start_failed",
+              error,
+            ),
+          );
+        });
     }
   };
   visibility?.addListener(onVisibilityChange);
 
   let onAbort: (() => void) | null = null;
+  let detachCaptureLifecycle = () => {};
 
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    detachCaptureLifecycle();
     if (onAbort && signal) signal.removeEventListener("abort", onAbort);
     visibility?.removeListener(onVisibilityChange);
     if (workletNode) {
@@ -581,9 +605,45 @@ export async function startVoiceMicCapture(
   }
   signal?.addEventListener("abort", onAbort, { once: true });
 
+  let captureReady = false;
+  const failCapture = () => {
+    if (stopped) return;
+    void stop();
+    if (captureReady)
+      options.onError?.(
+        new VoiceMicCaptureError(
+          "Microphone capture ended unexpectedly",
+          "start_failed",
+        ),
+      );
+  };
+  const onTrackEnded = () => failCapture();
+  const onContextStateChanged = () => {
+    if (ctx.state === "closed") failCapture();
+  };
+  detachCaptureLifecycle = () => {
+    audioTrack?.removeEventListener?.("ended", onTrackEnded);
+    ctx.removeEventListener?.("statechange", onContextStateChanged);
+  };
+  audioTrack?.addEventListener?.("ended", onTrackEnded);
+  if (!stopped) ctx.addEventListener?.("statechange", onContextStateChanged);
+  if (stopped || audioTrack?.readyState === "ended" || ctx.state === "closed") {
+    await stop();
+    throw new VoiceMicCaptureError(
+      "Microphone capture ended during startup",
+      "start_failed",
+    );
+  }
+
+  captureReady = true;
   return {
     get active() {
-      return !stopped && !suspended;
+      return (
+        !stopped &&
+        !suspended &&
+        ctx.state === "running" &&
+        audioTrack?.readyState !== "ended"
+      );
     },
     get backend() {
       return backend;

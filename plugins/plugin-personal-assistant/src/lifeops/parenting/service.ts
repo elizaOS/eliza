@@ -8,15 +8,15 @@
  */
 import crypto from "node:crypto";
 import {
+  type KnowledgeGraphEntity as Entity,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   type IAgentRuntime,
   type Memory,
   Service,
 } from "@elizaos/core";
-import {
-  type Entity,
-  SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { resolveAuthenticatedFamilyPrincipal } from "../family-communications/production-wiring.js";
 import {

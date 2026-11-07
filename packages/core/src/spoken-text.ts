@@ -16,6 +16,21 @@
  * exposing alternating layers without rescans.
  */
 
+import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+import { looksLikeStageDirection } from "./utils/stage-directions";
+
+const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+	"|",
+);
+const NON_SPEECH_BLOCK = new RegExp(
+	`<(${NON_SPEECH_TAGS})(?=[\\s/>])[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+	"gi",
+);
+const INCOMPLETE_NON_SPEECH_TAG = new RegExp(
+	`<(?:${NON_SPEECH_TAGS})(?=[\\s/>]|$)[^>]*$`,
+	"gi",
+);
+
 function collapseWhitespace(input: string): string {
 	return input.replace(/\s+/g, " ").trim();
 }
@@ -26,23 +41,42 @@ function stripUrls(input: string): string {
 
 function stripThinkingAndMarkup(input: string): string {
 	let text = input;
-	text = text.replace(
-		/<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
-		" ",
-	);
-	text = text.replace(
-		/<(?:think|analysis|reasoning|tool_calls?|tools?)\b[^>]*$/gi,
-		" ",
-	);
+	text = text.replace(NON_SPEECH_BLOCK, " ");
+	text = text.replace(INCOMPLETE_NON_SPEECH_TAG, " ");
 	text = text.replace(/```[\s\S]*?```/g, " ");
+	// An unterminated fence swallows to end-of-input; TTS must never speak code.
+	text = text.replace(/```[\s\S]*$/, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-	text = text.replace(/<[^>\n]+>/g, " ");
+	text = text.replace(/<(?:\/?[A-Za-z]|!)[^<>\n]*>/g, " ");
 	text = stripUrls(text);
 	return text;
 }
 
-const STAR_DIRECTION_PATTERN = /\*{1,2}[^*\n]+\*{1,2}/g;
+// A star span is either a stage direction (`*sighs*`, not spoken) or markdown
+// emphasis (`**Settings**`, `***very important***`, `I *love* it`), whose words
+// must still be spoken. A known action word is a direction anywhere. Otherwise
+// bold is emphasis, and a single-star span is a direction only where roleplay
+// puts actions: a multi-word span at the start of the reply or of a sentence
+// (`*adjusts glasses* Let me check.`). A bold-italic span keeps its `**` form
+// here: peeling only two of its three markers on the first pass left a
+// single-star span that the next pass dropped as an action.
+const STAR_SPAN_PATTERN = /\*{1,3}([^*\n]+)\*{1,3}/g;
+
+function peelStarSpan(
+	match: string,
+	inner: string,
+	offset: number,
+	source: string,
+): string {
+	if (looksLikeStageDirection(inner)) return " ";
+	if (match.startsWith("**")) return inner;
+	// A lone emphasized word (`*Carefully* read`, `choices: *yes*`) is spoken;
+	// only a multi-word span opening a sentence reads as a roleplay action.
+	const before = source.slice(0, offset).trimEnd();
+	const opensSentence = before === "" || /[.!?。！？\n]$/u.test(before);
+	return opensSentence && /\s/u.test(inner.trim()) ? " " : inner;
+}
 
 const BALANCED_DIRECTION_PATTERNS = [
 	/\([^()]*\)/g,
@@ -66,12 +100,7 @@ const DIRECTION_CLOSERS = new Map([
 	["}", "{"],
 ] as const);
 
-/**
- * Removes all balanced bracket regions in linear time. Independent stacks
- * preserve the legacy sanitizer's permissive handling of crossed delimiter
- * types while ensuring that a deeply nested outer direction cannot become
- * speech merely because the compatibility peel reached its pass budget.
- */
+/** Removes balanced bracket regions in linear time. Independent delimiter stacks support crossed bracket types without exposing nested stage directions as speech. */
 function stripResidualBalancedDirections(input: string): string {
 	const removals = new Int32Array(input.length + 1);
 	const openerStacks = new Map<string, number[]>(
@@ -111,12 +140,16 @@ function stripResidualBalancedDirections(input: string): string {
 	return parts.join("");
 }
 
-/** Fail-closes lines whose emphasis markers exceed the peel budget. */
+/** Fail-closes lines whose emphasis layers exceed the peel budget. A line of
+ * separate spans (`**a** then **b** …`) is fully consumed by one pass however
+ * many spans it holds, so only nesting reaches the fail-close. */
 function stripExcessiveStarDirections(input: string): string {
+	if (!input.includes("*")) return input;
 	return input
 		.split("\n")
 		.map((line) => {
 			let markerCount = 0;
+			let starCount = 0;
 			let first = -1;
 			let last = -1;
 			for (let index = 0; index < line.length; ) {
@@ -128,13 +161,26 @@ function stripExcessiveStarDirections(input: string): string {
 				const runStart = index;
 				while (line[index] === "*") index += 1;
 				markerCount += Math.ceil((index - runStart) / 2);
+				starCount += index - runStart;
 				last = index - 1;
 			}
-			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 && last > first
+			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 &&
+				last > first &&
+				!starSpansSettleInOnePass(line, starCount)
 				? `${line.slice(0, first)} ${line.slice(last + 1)}`
 				: line;
 		})
 		.join("\n");
+}
+
+/** True when one peel pass consumes every star on the line, so the line holds
+ * flat emphasis spans instead of nested layers the bounded peel must drop. */
+function starSpansSettleInOnePass(line: string, starCount: number): boolean {
+	let covered = 0;
+	for (const match of line.matchAll(STAR_SPAN_PATTERN)) {
+		for (const char of match[0]) if (char === "*") covered += 1;
+	}
+	return covered === starCount;
 }
 
 function stripNonSpeechDirections(input: string): string {
@@ -142,7 +188,7 @@ function stripNonSpeechDirections(input: string): string {
 	let stabilized = false;
 	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
-		text = text.replace(STAR_DIRECTION_PATTERN, " ");
+		text = text.replace(STAR_SPAN_PATTERN, peelStarSpan);
 		for (const pattern of BALANCED_DIRECTION_PATTERNS) {
 			text = text.replace(pattern, " ");
 		}
@@ -165,11 +211,21 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/[…]/g, "...");
 	text = text.replace(/[–—]/g, ", ");
 	// Collapse repeated punctuation BEFORE the spacing rules separate the
-	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
-	// The browser and Node hosts now share this implementation.
+	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !").
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
-	text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
-	text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
+	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
+	// token: spacing it makes TTS read "3. 14" as a sentence break and two
+	// numbers, so the spacing rules skip it. A comma whose digit group runs to
+	// the end of the text stays unspaced too: a streamed `$1,2` may still become
+	// `$1,299`, and spacing it would commit `$1,` as already spoken.
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([,;:，；：])\s{0,32}/g,
+		"$1 ",
+	);
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([.!?。！？])\s{0,32}/g,
+		"$1 ",
+	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
 	// later language-aware stage can read "№4" instead of a stripped "4".
 	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
@@ -188,6 +244,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
 
 function normalizeCompatibilityPreservingNumero(input: string): string {
+	if (!input.includes("\u2116")) return input.normalize("NFKC");
 	return input
 		.split(NUMERO_TOKEN_PATTERN)
 		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))

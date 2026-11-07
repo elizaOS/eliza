@@ -30,6 +30,7 @@ import {
   type SubactionsMap,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { extractUrls } from "../../utils/extract-urls.ts";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
   type DocumentListResult,
@@ -196,7 +197,7 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
     description: "Create a new text-backed document from supplied content.",
     descriptionCompressed: "create text document",
     required: ["text"],
-    optional: ["content", "title", "tags", "scope", "scopedToEntityId"],
+    optional: ["title", "tags", "scope", "scopedToEntityId"],
   },
   edit: {
     description: "Replace the content of an existing document by id.",
@@ -283,7 +284,10 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+/** URL taken from a chat line when the action has no explicit url parameter. */
+export function extractDocumentUrlFromText(text: string): string | null {
+  return extractUrls(text)[0] ?? null;
+}
 
 function isDocumentPathCharacter(char: string, windows: boolean): boolean {
   const code = char.charCodeAt(0);
@@ -395,8 +399,12 @@ function getSearchMode(value: unknown): SearchMode | undefined {
     : undefined;
 }
 
+/**
+ * The `limit` parameter tells the planner to send 0 when the field does not
+ * apply, so 0 means the same as an omitted limit.
+ */
 function getLimit(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || value === 0) return undefined;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
     throw new ElizaError(
       "Document result limit must be a positive safe integer",
@@ -407,16 +415,6 @@ function getLimit(value: unknown): number | undefined {
     );
   }
   return value;
-}
-
-function getOptionalPlannerLimit(
-  value: unknown,
-  message: Memory,
-): number | undefined {
-  if (value === 0 && !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")) {
-    return undefined;
-  }
-  return getLimit(value);
 }
 
 function getScope(
@@ -447,13 +445,18 @@ function getScopedToEntityId(
       ? (ownerId.trim() as UUID)
       : message.entityId;
   }
-  if (
-    typeof params?.scopedToEntityId === "string" &&
-    isUuid(params.scopedToEntityId)
-  ) {
-    return params.scopedToEntityId;
+  const supplied =
+    typeof params?.scopedToEntityId === "string"
+      ? params.scopedToEntityId.trim()
+      : "";
+  if (!supplied) return message.entityId;
+  if (!isUuid(supplied)) {
+    throw new ElizaError("Document scopedToEntityId must be an entity UUID", {
+      code: "DOCUMENT_INVALID_SCOPE_ENTITY",
+      context: { field: "scopedToEntityId" },
+    });
   }
-  return message.entityId;
+  return supplied;
 }
 
 async function getAddedByRole(
@@ -508,11 +511,9 @@ async function ensureWriteAccess(
 }
 
 function getCleanWriteText(params: DocumentActionParameters): string {
-  const explicit = params.text ?? params.content;
-  if (typeof explicit === "string" && explicit.trim()) {
-    return explicit.trim();
-  }
-  return "";
+  return typeof params.text === "string" && params.text.trim()
+    ? params.text
+    : "";
 }
 
 function getQuery(params: DocumentActionParameters): string {
@@ -537,6 +538,40 @@ function getOptionalPlannerString(
   return normalized;
 }
 
+function getEntityFilter(
+  value: unknown,
+  field: "scopedToEntityId" | "addedBy",
+  message: Memory,
+): UUID | undefined {
+  const supplied = getOptionalPlannerString(value, message);
+  if (supplied === undefined) return undefined;
+  if (!isUuid(supplied)) {
+    throw new ElizaError(`Document filter ${field} must be an entity UUID`, {
+      code: "DOCUMENT_INVALID_FILTER",
+      context: { field },
+    });
+  }
+  return supplied;
+}
+
+function getTimeFilter(
+  value: unknown,
+  field: "timeRangeStart" | "timeRangeEnd",
+  message: Memory,
+): number | undefined {
+  const supplied = getOptionalPlannerString(value, message);
+  if (supplied === undefined) return undefined;
+  const parsed = parseTimestampParam(supplied);
+  if (parsed === undefined) {
+    throw new ElizaError(
+      `Document filter ${field} must be an ISO date or epoch milliseconds`,
+      { code: "DOCUMENT_INVALID_FILTER", context: { field } },
+    );
+  }
+  return parsed;
+}
+
+/** List/search filters. A supplied value that cannot be read is rejected. */
 function getDocumentFilterParams(
   params: DocumentActionParameters,
   message: Memory,
@@ -553,20 +588,21 @@ function getDocumentFilterParams(
     DOCUMENT_SCOPES.has(params.scope as DocumentVisibilityScope)
       ? (params.scope as DocumentVisibilityScope)
       : undefined;
-  const scopedToEntityId =
-    typeof params.scopedToEntityId === "string" &&
-    isUuid(params.scopedToEntityId)
-      ? (params.scopedToEntityId as UUID)
-      : undefined;
-  const addedBy =
-    typeof params.addedBy === "string" && isUuid(params.addedBy)
-      ? (params.addedBy as UUID)
-      : undefined;
-  const timeRangeStart = parseTimestampParam(
-    getOptionalPlannerString(params.timeRangeStart, message),
+  const scopedToEntityId = getEntityFilter(
+    params.scopedToEntityId,
+    "scopedToEntityId",
+    message,
   );
-  const timeRangeEnd = parseTimestampParam(
-    getOptionalPlannerString(params.timeRangeEnd, message),
+  const addedBy = getEntityFilter(params.addedBy, "addedBy", message);
+  const timeRangeStart = getTimeFilter(
+    params.timeRangeStart,
+    "timeRangeStart",
+    message,
+  );
+  const timeRangeEnd = getTimeFilter(
+    params.timeRangeEnd,
+    "timeRangeEnd",
+    message,
   );
   const tags = Array.isArray(params.tags)
     ? params.tags.filter((tag): tag is string => typeof tag === "string")
@@ -642,7 +678,7 @@ function getUrl(
   if (typeof params.url === "string" && params.url.trim()) {
     return params.url.trim();
   }
-  return unwrapUserMessageText(message).match(URL_PATTERN)?.[0] ?? null;
+  return extractDocumentUrlFromText(unwrapUserMessageText(message));
 }
 
 async function scopedAddOptions(
@@ -857,6 +893,7 @@ async function handleSearch(
     content: { ...message.content, text: query },
   };
   const filters = getDocumentFilterParams(params, message);
+  const limit = getLimit(params.limit);
   const matches = await service.searchDocuments(
     searchMessage,
     filters.scopedToEntityId
@@ -864,7 +901,6 @@ async function handleSearch(
       : undefined,
     getSearchMode(params.searchMode),
   );
-  const limit = getLimit(params.limit);
   const filteredMatches = matches.filter((item) =>
     storedDocumentMatchesFilters(item, filters),
   );
@@ -1058,7 +1094,7 @@ async function handleRead(
     params.unit === "fragment" || params.unit === "byte" ? params.unit : "line";
   const offset = requiredReadInteger(params.offset, "offset", 0);
   const limit =
-    params.limit === undefined
+    params.limit === undefined || params.limit === 0
       ? undefined
       : requiredReadInteger(params.limit, "limit", 1);
   const bounded = await service.readDocumentRange(
@@ -1255,7 +1291,7 @@ async function handleEdit(
 
   const updated = await service.updateDocument({
     documentId,
-    content: text.trim(),
+    content: text,
     message,
   });
   // Return update evidence for the model to evaluate the whole request.
@@ -1371,43 +1407,19 @@ async function handleList(
   params: DocumentActionParameters,
   _callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const scope =
-    typeof params.scope === "string" &&
-    DOCUMENT_SCOPES.has(params.scope as DocumentVisibilityScope)
-      ? (params.scope as DocumentVisibilityScope)
-      : undefined;
-  const scopedToEntityId =
-    typeof params.scopedToEntityId === "string" &&
-    isUuid(params.scopedToEntityId)
-      ? (params.scopedToEntityId as UUID)
-      : undefined;
-  const addedBy =
-    typeof params.addedBy === "string" && isUuid(params.addedBy)
-      ? (params.addedBy as UUID)
-      : undefined;
-  const timeRangeStart = parseTimestampParam(
-    getOptionalPlannerString(params.timeRangeStart, message),
-  );
-  const timeRangeEnd = parseTimestampParam(
-    getOptionalPlannerString(params.timeRangeEnd, message),
-  );
+  const filters = getDocumentFilterParams(params, message);
   const query = getOptionalPlannerString(params.query, message);
   const offset =
     typeof params.offset === "number" && params.offset >= 0
       ? Math.floor(params.offset)
       : undefined;
 
-  const requestedLimit = getOptionalPlannerLimit(params.limit, message);
+  const requestedLimit = getLimit(params.limit);
   const listResult = await service.listDocumentsDetailed(message, {
     ...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
     offset,
     query,
-    scope,
-    scopedToEntityId,
-    addedBy,
-    timeRangeStart,
-    timeRangeEnd,
-    tags: Array.isArray(params.tags) ? params.tags : undefined,
+    ...filters,
   });
   const text = formatDocumentListResult(listResult);
   const listData = {
@@ -1566,9 +1578,6 @@ async function handleImportUrl(
     });
   }
 
-  const fetched = await fetchDocumentFromUrl(url, {
-    includeImageDescriptions: params.includeImageDescriptions === true,
-  });
   const scope = getScope(runtime, message, params);
   const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
   const accessError = await ensureWriteAccess(
@@ -1582,6 +1591,9 @@ async function handleImportUrl(
       values: { error: "forbidden" },
     });
   }
+  const fetched = await fetchDocumentFromUrl(url, {
+    includeImageDescriptions: params.includeImageDescriptions === true,
+  });
   const addOptions = await scopedAddOptions(
     runtime,
     message,
@@ -1695,7 +1707,8 @@ export const documentAction: Action = {
     },
     {
       name: "documentId",
-      description: "Document UUID for read, edit, or delete.",
+      description:
+        "Document UUID. Required for inspect_pins, set_pins, inspect_readers, and set_readers; also accepted for read, edit, or delete.",
       required: false,
       schema: { type: "string" },
     },
@@ -1707,7 +1720,8 @@ export const documentAction: Action = {
     },
     {
       name: "content",
-      description: "Text content to import or write.",
+      description:
+        "Text content for import_file; also accepted as replacement text for edit. For write, use text.",
       required: false,
       schema: { type: "string" },
     },
@@ -1731,7 +1745,8 @@ export const documentAction: Action = {
     },
     {
       name: "tags",
-      description: "Optional tags for created text documents.",
+      description:
+        "Tags to store on a document created by write. For list and search, a tag filter on the results.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
@@ -1768,21 +1783,21 @@ export const documentAction: Action = {
     {
       name: "addedBy",
       description:
-        "Filter list results to documents created by this entity UUID.",
+        "Filter list/search results to documents created by this entity UUID.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "timeRangeStart",
       description:
-        "ISO date or epoch ms — list results created at or after this time.",
+        "ISO date or epoch ms — list/search results created at or after this time.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "timeRangeEnd",
       description:
-        "ISO date or epoch ms — list results created at or before this time.",
+        "ISO date or epoch ms — list/search results created at or before this time.",
       required: false,
       schema: { type: "string" },
     },

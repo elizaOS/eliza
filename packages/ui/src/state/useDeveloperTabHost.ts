@@ -1,7 +1,7 @@
 /** Connects local developer chat to the normal app's canonical sender and live transcript, scoped to the same API authority. */
 
 import { useEffect, useRef } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { useActiveAgentAuthority } from "../hooks/useActiveAgentAuthority";
 import { logger } from "../logger.ts";
 import { isDeveloperWorkspaceRoute, pathForTab } from "../navigation";

@@ -34,17 +34,19 @@ import type { UUID } from "@elizaos/core";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
-  RuntimeWithScenarioModelFixtures,
   ScenarioContext,
   ScenarioTurnExecution,
-  StrictActionRouteFixture,
 } from "@elizaos/testing";
 import { scenario } from "@elizaos/testing";
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/testing/models";
 
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
-} from "../../../scenarios/_fixtures/simple-turn-memory.ts";
+} from "@elizaos/testing/models";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
@@ -143,30 +145,28 @@ const composeText = "Give me my morning brief";
 const resetText = "Reset the brief recalibration for the newsletter digests";
 const composeAgainText = "Run my morning brief again";
 
-// Route straight to the promoted `<BRIEF>_<SUBACTION>` virtual actions
-// (`promoteSubactionsToActions` in core): picking the plain BRIEF umbrella
-// tool triggers a second subaction-narrowing planner pass, which a strict
-// one-fixture-per-turn scenario deliberately does not model.
+// Whole-brief requests are owned by the canonical BRIEF tool. Route its
+// explicit subaction through the same strict request and receipt fixtures.
 const strictRoutes: StrictActionRouteFixture[] = [
   {
-    actionName: "BRIEF_RECALIBRATE",
+    actionName: "BRIEF",
     input: recalibrateText,
-    args: {},
+    args: { action: "recalibrate" },
   },
   {
-    actionName: "BRIEF_COMPOSE_MORNING",
+    actionName: "BRIEF",
     input: composeText,
-    args: {},
+    args: { action: "compose_morning" },
   },
   {
-    actionName: "BRIEF_RESET_RECALIBRATION",
+    actionName: "BRIEF",
     input: resetText,
-    args: { itemClass: NEWSLETTER_CLASS },
+    args: { action: "reset_recalibration", itemClass: NEWSLETTER_CLASS },
   },
   {
-    actionName: "BRIEF_COMPOSE_MORNING",
+    actionName: "BRIEF",
     input: composeAgainText,
-    args: {},
+    args: { action: "compose_morning" },
   },
 ];
 
@@ -393,11 +393,11 @@ function expectRecalibrateTurn(
     return `expected recalibrate subaction, saw ${JSON.stringify(data.subaction)}`;
   }
   const demoted = stringArray(data.demotedItemClasses);
-  if (!demoted || demoted.length !== 1 || demoted[0] !== NEWSLETTER_CLASS) {
+  if (demoted?.length !== 1 || demoted[0] !== NEWSLETTER_CLASS) {
     return `expected exactly [${NEWSLETTER_CLASS}] demoted, saw ${JSON.stringify(data.demotedItemClasses)}`;
   }
   const already = stringArray(data.alreadyDemotedItemClasses);
-  if (!already || already.length !== 0) {
+  if (already?.length !== 0) {
     return `expected no previously demoted classes, saw ${JSON.stringify(data.alreadyDemotedItemClasses)}`;
   }
   const text = execution.responseText ?? "";
@@ -436,7 +436,7 @@ function expectResetTurn(execution: ScenarioTurnExecution): string | undefined {
     return `expected reset_recalibration subaction, saw ${JSON.stringify(data.subaction)}`;
   }
   const restored = stringArray(data.restoredItemClasses);
-  if (!restored || restored.length !== 1 || restored[0] !== NEWSLETTER_CLASS) {
+  if (restored?.length !== 1 || restored[0] !== NEWSLETTER_CLASS) {
     return `expected exactly [${NEWSLETTER_CLASS}] restored, saw ${JSON.stringify(data.restoredItemClasses)}`;
   }
   return undefined;
@@ -597,26 +597,16 @@ export default scenario({
       },
     },
     {
+      // Per-turn assertions above retain the recalibrate/compose/reset counts
+      // and result contracts while the canonical action name is now shared.
       type: "actionCalled",
-      actionName: "BRIEF_RECALIBRATE",
+      actionName: "BRIEF",
       status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "BRIEF_COMPOSE_MORNING",
-      status: "success",
-      minCount: 2,
-    },
-    {
-      type: "actionCalled",
-      actionName: "BRIEF_RESET_RECALIBRATION",
-      status: "success",
-      minCount: 1,
+      minCount: 4,
     },
     {
       type: "selectedActionArguments",
-      actionName: "BRIEF_RESET_RECALIBRATION",
+      actionName: "BRIEF",
       includesAll: [/"itemClass":"inbox:newsletter-digest"/],
     },
     {

@@ -78,6 +78,7 @@ export function applyControlDefaults(
   }
 
   return {
+    ...control,
     // Required field (must be present)
     key,
     // Derive label from key if not provided
@@ -92,8 +93,6 @@ export function applyControlDefaults(
     // WHY 0.8: High enough to be confident, low enough to be useful
     confirmThreshold:
       control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
-    // Spread remaining properties (override defaults)
-    ...control,
   };
 }
 
@@ -115,6 +114,9 @@ export function applyFormDefaults(
   }
 
   return {
+    // Keep extension properties without replacing completed defaults.
+    ...form,
+
     // Required fields
     id,
     // Derive name from id if not provided
@@ -165,9 +167,6 @@ export function applyFormDefaults(
 
     // Debug defaults to off for performance
     debug: form.debug ?? FORM_DEFINITION_DEFAULTS.debug,
-
-    // Spread remaining properties (override defaults)
-    ...form,
   };
 }
 

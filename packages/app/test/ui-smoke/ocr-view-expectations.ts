@@ -27,44 +27,24 @@ function expected(expectation: OcrExpectation): SemanticOcrExpectationPolicy {
   return { kind: "expectation", expectation };
 }
 
-function exempt(
-  reason: string,
-  fallbackExpectation: OcrExpectation,
-): SemanticOcrExemptionPolicy {
-  return {
-    kind: "semantic-exemption",
-    reason,
-    fallbackExpectation,
-  };
-}
-
 const LAUNCHER_FALLBACK: OcrExpectation = {
   requireAll: ["Settings", "Wallet"],
   requireAny: ["Projects", "Calendar", "Automations"],
 };
 
-const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
-  requireAll: [
-    "View unavailable",
-    "This app is unavailable here",
-    "Install or enable it",
-    "App",
-  ],
-  requireAny: ["Retry", "Back to views"],
-};
-
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
-    requireAny: [
-      "Mostly clear",
-      "Learn conversational Spanish",
-      "Submit the quarterly report",
+    requireAll: ["Mostly clear"],
+    forbid: ["Learn conversational Spanish", "Submit the quarterly report"],
+  }),
+  "builtin-camera": expected({
+    requireAll: [
+      "Camera access is off",
+      "Enable camera access",
+      "Open Settings",
+      "Try again",
     ],
   }),
-  "builtin-camera": exempt(
-    "The camera is an AOSP-native surface, so the browser audit intentionally renders the truthful unavailable state.",
-    VIEW_UNAVAILABLE_FALLBACK,
-  ),
   "builtin-tasks": expected({
     requireAll: ["Tasks"],
   }),
@@ -111,8 +91,13 @@ export const VIEW_OCR_POLICIES = {
       "You are",
     ],
   }),
+  "builtin-clock": expected({
+    requireAll: ["Clock", "Alarms"],
+  }),
   "builtin-automations": expected({
-    requireAll: ["All"],
+    // The three-letter filter is easily read as "Al" by Tesseract. Require
+    // the creation control and actual view content, not a generic filter label.
+    requireAll: ["New"],
     requireAny: [
       "Reminders",
       "Nothing scheduled yet",
@@ -121,7 +106,6 @@ export const VIEW_OCR_POLICIES = {
       "Tasks",
       "Workflows",
       "Inactive",
-      "New",
     ],
   }),
   "builtin-workflow-studio": expected({

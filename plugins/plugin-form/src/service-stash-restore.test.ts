@@ -6,9 +6,10 @@
  * no live model.
  */
 import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { formAction } from "./actions/form";
 import { FormService } from "./service";
-import type { FormDefinition } from "./types";
+import type { ControlType, FormDefinition } from "./types";
 
 const entityId = "00000000-0000-4000-8000-000000000401" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000402" as UUID;
@@ -16,6 +17,7 @@ const agentId = "00000000-0000-4000-8000-000000000403" as UUID;
 
 function makeRuntime(): IAgentRuntime {
   const components = new Map<string, Component>();
+  let formService: FormService | undefined;
   const keyFor = (entity: UUID, type: string) => `${entity}:${type}`;
 
   return {
@@ -40,6 +42,10 @@ function makeRuntime(): IAgentRuntime {
     emitEvent: async () => undefined,
     registerTaskWorker: () => undefined,
     getTaskWorker: () => undefined,
+    getService: () => formService,
+    setFormService: (service: FormService) => {
+      formService = service;
+    },
     logger: {
       debug: () => undefined,
       error: () => undefined,
@@ -62,9 +68,14 @@ function signupForm(): FormDefinition {
 
 describe("FormService stash/restore across same-room restart (issue #22272)", () => {
   let service: FormService;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    service = (await FormService.start(makeRuntime())) as FormService;
+    runtime = makeRuntime();
+    service = (await FormService.start(runtime)) as FormService;
+    (
+      runtime as unknown as { setFormService(s: FormService): void }
+    ).setFormService(service);
     service.registerForm(signupForm());
   });
 
@@ -102,5 +113,98 @@ describe("FormService stash/restore across same-room restart (issue #22272)", ()
     await expect(
       service.startSession("signup", entityId, roomId),
     ).rejects.toThrow(/Active session already exists/);
+  });
+
+  it("resuming from another room continues the form in that room", async () => {
+    const otherRoomId = "00000000-0000-4000-8000-000000000404" as UUID;
+    const first = await service.startSession("signup", entityId, roomId);
+    await service.stash(first.id, entityId);
+    // The original room now holds a different active form.
+    const second = await service.startSession("signup", entityId, roomId);
+
+    const message = {
+      entityId,
+      roomId: otherRoomId,
+      content: { text: "resume my form" },
+    } as unknown as Parameters<typeof formAction.handler>[1];
+    const replies: string[] = [];
+    const result = await formAction.handler(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      async (content) => {
+        replies.push(String(content.text));
+        return [];
+      },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(replies[0]).toContain("restored");
+    expect((await service.getActiveSession(entityId, otherRoomId))?.id).toBe(
+      first.id,
+    );
+    expect((await service.getActiveSession(entityId, roomId))?.id).toBe(
+      second.id,
+    );
+    expect(await service.getStashedSessions(entityId)).toEqual([]);
+  });
+});
+
+const compositeControlType: ControlType = {
+  id: "payment",
+  getSubControls: () => [
+    { key: "amount", type: "number", label: "Amount", required: true },
+  ],
+};
+
+function checkoutForm(): FormDefinition {
+  return {
+    id: "checkout",
+    name: "Checkout",
+    controls: [
+      { key: "payment", label: "Payment", type: "payment", required: true },
+    ],
+  };
+}
+
+describe("FormService session deadline on composite answers", () => {
+  let service: FormService;
+
+  beforeEach(async () => {
+    const runtime = makeRuntime();
+    service = (await FormService.start(runtime)) as FormService;
+    (
+      runtime as unknown as { setFormService(s: FormService): void }
+    ).setFormService(service);
+    service.registerControlType(compositeControlType);
+    service.registerForm(checkoutForm());
+  });
+
+  it("extends the deadline when a subfield answer records effort", async () => {
+    const session = await service.startSession("checkout", entityId, roomId);
+    const createdDeadline = session.expiresAt;
+
+    // The user answers the composite field one minute before the deadline.
+    // That answer is effort, so the deadline must move forward from it.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(createdDeadline - 60_000);
+    try {
+      await service.updateSubField(
+        session.id,
+        entityId,
+        "payment",
+        "amount",
+        90,
+        0.95,
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    const saved = await service.getActiveSession(entityId, roomId);
+    expect(saved?.fields.payment.subFields?.amount.value).toBe(90);
+    expect(saved?.expiresAt).toBeGreaterThan(createdDeadline);
   });
 });

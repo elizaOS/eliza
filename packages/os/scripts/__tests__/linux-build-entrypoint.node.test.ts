@@ -7,50 +7,6 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("../../linux/build.sh", import.meta.url));
-test("inner Linux wrapper accepts only documented build selectors", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "linux-inner-entry-"));
-  try {
-    await writeFile(
-      path.join(directory, "make"),
-      '#!/bin/sh\nprintf "%s\\n" "$@"\nexit 17\n',
-      { mode: 0o700 },
-    );
-    const run = (args) =>
-      spawnSync(
-        "bash",
-        [path.join(path.dirname(script), "elizaos/build.sh"), ...args],
-        {
-          env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
-          cwd: directory,
-          encoding: "utf8",
-        },
-      );
-    for (const args of [
-      ["clean"],
-      ["-f", "other.mk"],
-      ["BUILDER_IMAGE=other"],
-      ["--help", "clean"],
-      ["ARCH="],
-      ["PROFILE=unknown"],
-    ]) {
-      const result = run(args);
-      assert.equal(result.status, 64, JSON.stringify(args));
-      assert.equal(result.stdout, "");
-      assert.match(result.stderr, /expected.*ARCH=.*PROFILE=/);
-    }
-    for (const flag of ["--help", "-h"]) {
-      const result = run([flag]);
-      assert.equal(result.status, 0);
-      assert.match(result.stdout, /^usage:/);
-    }
-    const selected = run(["ARCH=arm64", "PROFILE=secure-gui"]);
-    assert.equal(selected.status, 17);
-    assert.match(selected.stdout, /ARCH=arm64\nPROFILE=secure-gui\n$/);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
 test("Linux entrypoint forwards mkosi builds and preserves make failures", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "linux-build-entry-"));
   try {
@@ -77,7 +33,7 @@ test("Linux entrypoint forwards mkosi builds and preserves make failures", async
     assert.equal(built.status, 0, built.stderr);
     assert.deepEqual(built.stdout.trim().split("\n"), [
       "-C",
-      path.join(path.dirname(script), "elizaos"),
+      path.dirname(script),
       "build",
       "ARCH=amd64",
       "PROFILE=gui",
@@ -123,7 +79,7 @@ test("mkosi selectors fail before spawning a builder, including parallel make", 
           "--no-print-directory",
           "-j2",
           "-C",
-          path.join(path.dirname(script), "elizaos"),
+          path.dirname(script),
           "mkosi-summary",
           ...selectors,
         ],

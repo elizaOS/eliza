@@ -70,12 +70,15 @@ export async function dispatchIosNativeGeneration(args: {
     throw new ElizaError(
       "The iOS local model exhausted its generation boundary before completing the response",
       {
-        code: "MODEL_INCOMPLETE_OUTPUT",
+        code: "MODEL_OUTPUT_INCOMPLETE",
         context: {
           provider: args.provider,
           model: args.model,
           ...("finish_reason" in result
-            ? { reason: result.finish_reason }
+            ? {
+                reason: result.finish_reason,
+                finishReason: result.finish_reason,
+              }
             : {}),
         },
       },

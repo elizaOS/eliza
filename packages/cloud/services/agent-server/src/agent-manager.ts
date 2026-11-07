@@ -4,6 +4,7 @@ import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
+  ElizaError,
   type IAgentRuntime,
   mergeCharacterDefaults,
   type Plugin,
@@ -40,7 +41,11 @@ interface StoppedAgentEntry extends AgentEntryBase {
   state: "stopped";
 }
 
-type AgentEntry = RunningAgentEntry | StoppedAgentEntry;
+interface StartingAgentEntry extends AgentEntryBase {
+  state: "starting";
+}
+
+type AgentEntry = RunningAgentEntry | StoppedAgentEntry | StartingAgentEntry;
 
 /**
  * Platform metadata forwarded by the gateway webhook alongside a user message.
@@ -181,7 +186,15 @@ export function buildCanonicalMessageMetadata(args: {
 
 const REDIS_STATE_TTL_SECONDS = Math.max(
   60,
-  Number.parseInt(process.env.REDIS_STATE_TTL_SECONDS ?? "120", 10) || 120,
+  // parseInt stops at the first non-digit ("1e3junk" -> 1), so a typo
+  // silently changed the Redis state TTL instead of falling back to the
+  // 120 default. Require the whole trimmed value to be decimal; malformed
+  // -> NaN falls through the || 120 chain as before, mirroring
+  // resolveGenerationTimeoutMs in the discord plugin.
+  (() => {
+    const raw = (process.env.REDIS_STATE_TTL_SECONDS ?? "").trim();
+    return /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  })() || 120,
 );
 const REDIS_REFRESH_INTERVAL_MS = 30_000;
 const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
@@ -229,7 +242,8 @@ export class AgentManager {
       REDIS_STATE_TTL_SECONDS,
     );
 
-    for (const agentId of this.agents.keys()) {
+    for (const [agentId, entry] of this.agents) {
+      if (entry.state === "starting") continue;
       multi.set(
         `agent:${agentId}:server`,
         serverName,
@@ -311,6 +325,15 @@ export class AgentManager {
     return entry.runtime;
   }
 
+  private assertAcceptingAllocations(): void {
+    if (this._draining) {
+      throw new ElizaError("Server is draining", {
+        code: "AGENT_SERVER_DRAINING",
+        severity: "ephemeral",
+      });
+    }
+  }
+
   /**
    * Starts a new agent runtime on this pod.
    * Reserves capacity immediately, then initializes the runtime asynchronously.
@@ -318,6 +341,7 @@ export class AgentManager {
    * @throws {Error} "Agent already exists" if the agent is already loaded
    */
   async startAgent(agentId: string, characterRef: string) {
+    this.assertAcceptingAllocations();
     if (this.agents.size >= this.capacity) {
       throw new Error("At capacity");
     }
@@ -329,9 +353,10 @@ export class AgentManager {
     this.agents.set(agentId, {
       agentId,
       characterRef,
-      state: "stopped",
+      state: "starting",
     });
 
+    this.inFlight++;
     try {
       const character = mergeCharacterDefaults({
         id: stringToUuid(agentId),
@@ -369,10 +394,17 @@ export class AgentManager {
         plugins.push(openaiPlugin);
       }
 
+      this.assertAcceptingAllocations();
       const runtime = new AgentRuntime({ character, plugins });
       const skipMigrations = process.env.SKIP_MIGRATIONS === "true";
       await runtime.initialize({ skipMigrations });
-      await initializeManagedBrowserHost(runtime);
+      if (!this._draining) await initializeManagedBrowserHost(runtime);
+      // Initialization may finish after drain's bounded wait has expired.
+      // Its owner must stop it instead of publishing a new running agent.
+      if (this._draining) {
+        await runtime.stop();
+        this.assertAcceptingAllocations();
+      }
 
       this.agents.set(agentId, {
         agentId,
@@ -384,6 +416,8 @@ export class AgentManager {
     } catch (err) {
       this.agents.delete(agentId);
       throw err;
+    } finally {
+      this.inFlight--;
     }
   }
 
@@ -391,6 +425,12 @@ export class AgentManager {
   async stopAgent(id: string) {
     const entry = this.agents.get(id);
     if (!entry) throw new Error("Agent not found");
+    if (entry.state === "starting") {
+      throw new ElizaError("Agent is initializing", {
+        code: "AGENT_INITIALIZING",
+        severity: "ephemeral",
+      });
+    }
     if (entry.state === "stopped") return;
     await entry.runtime.stop();
     this.agents.set(id, {
@@ -405,6 +445,12 @@ export class AgentManager {
   async deleteAgent(id: string) {
     const entry = this.agents.get(id);
     if (!entry) throw new Error("Agent not found");
+    if (entry.state === "starting") {
+      throw new ElizaError("Agent is initializing", {
+        code: "AGENT_INITIALIZING",
+        severity: "ephemeral",
+      });
+    }
     if (entry.state === "running") await entry.runtime.stop();
     this.agents.delete(id);
     await getRedis().del(`agent:${id}:server`);
@@ -475,7 +521,11 @@ export class AgentManager {
           ? `${agentId}:${source}:${connectorAccountId ?? "default"}:${connectorChatId}`
           : `${agentId}:${userId}`;
       const roomId = stringToUuid(sourceRoomKey);
-      const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
+      // World ids are a global key and world reads are agent-scoped, so a
+      // server-wide id shared by every agent in this pod would collide.
+      const worldId = stringToUuid(
+        `server:${process.env.SERVER_NAME}:${agentId}`,
+      );
       const userName = resolveUserName(userId, metadata);
       const connMeta = buildConnectionMetadata(metadata);
       const chatType = metadata?.chatType?.toLowerCase();
@@ -543,8 +593,12 @@ export class AgentManager {
       }
 
       let response = "";
+      const mediaUrls: string[] = [];
       await messageService.handleMessage(rt, mem, async (content) => {
         if (content?.text) response += content.text;
+        for (const attachment of content?.attachments ?? []) {
+          if (attachment.url) mediaUrls.push(attachment.url);
+        }
         return [];
       });
 
@@ -557,7 +611,7 @@ export class AgentManager {
       // agent reply and was actually SENT to platform adapters, and (via the
       // removed `?.`) it also masked a structural pipeline failure. Genuine
       // structural failures now throw above.
-      return response;
+      return { response, mediaUrls };
     } finally {
       this.inFlight--;
     }
@@ -565,7 +619,7 @@ export class AgentManager {
 
   /**
    * Initiates graceful drain: marks the server as draining, waits up to 50s
-   * for in-flight requests (messages + events) to complete, then stops all runtimes.
+   * for in-flight allocations, messages, and events to complete, then stops all runtimes.
    */
   async drain() {
     this._draining = true;

@@ -11,8 +11,8 @@ import type {
   AppDelegationResult,
   AppDelegationScope,
 } from "@elizaos/cloud-sdk/app-delegation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -37,11 +37,13 @@ const SCOPES: AppDelegationScope[] = [
   "billing:write",
   "inference",
 ];
-let database: ReturnType<typeof import("@/db/client").getPgliteClientForTests>;
-let close: typeof import("@/db/client").closeDatabaseConnectionsForTests;
-let repository: typeof import("@/db/repositories/app-delegations").appDelegationsRepository;
-let service: typeof import("@/lib/services/app-delegation-adapter").appDelegationService;
-let issueCode: typeof import("@/lib/services/app-auth-codes").issueAppAuthCode;
+let database: ReturnType<
+  typeof import("@elizaos/cloud-shared/db/client").getPgliteClientForTests
+>;
+let close: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
+let repository: typeof import("@elizaos/cloud-shared/db/repositories/app-delegations").appDelegationsRepository;
+let service: typeof import("@elizaos/cloud-shared/lib/services/app-delegation-adapter").appDelegationService;
+let issueCode: typeof import("@elizaos/cloud-shared/lib/services/app-auth-codes").issueAppAuthCode;
 let routes: Hono<AppEnv>;
 let clientA: { clientId: string; clientSecret: string; revision: number };
 let clientB: typeof clientA;
@@ -123,34 +125,42 @@ async function googleRequest(token: string, url: string, body?: string) {
 }
 
 beforeAll(async () => {
-  const db = await import("@/db/client");
+  const db = await import("@elizaos/cloud-shared/db/client");
   database = db.getPgliteClientForTests();
   close = db.closeDatabaseConnectionsForTests;
   ({ appDelegationsRepository: repository } = await import(
-    "@/db/repositories/app-delegations"
+    "@elizaos/cloud-shared/db/repositories/app-delegations"
   ));
   ({ appDelegationService: service } = await import(
-    "@/lib/services/app-delegation-adapter"
+    "@elizaos/cloud-shared/lib/services/app-delegation-adapter"
   ));
   ({ issueAppAuthCode: issueCode } = await import(
-    "@/lib/services/app-auth-codes"
+    "@elizaos/cloud-shared/lib/services/app-auth-codes"
   ));
   const { createAppDelegationRoutes, appDelegationErrorResponse } =
     await import("./_handlers");
   const { requireAppActor, requireAppBillingActor } = await import(
-    "@/lib/auth/app-delegation-auth"
+    "@elizaos/cloud-shared/lib/auth/app-delegation-auth"
   );
   const { default: connectRoutes } = await import("../connect/route");
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true);
     CREATE TABLE users (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), email text, name text, email_verified boolean DEFAULT false, is_active boolean DEFAULT true, is_anonymous boolean DEFAULT false, deleted_at timestamptz, expires_at timestamp);
-    CREATE TABLE apps (id uuid PRIMARY KEY, created_by_user_id uuid, organization_id uuid REFERENCES organizations(id), name text NOT NULL, app_url text NOT NULL, allowed_origins jsonb NOT NULL DEFAULT '[]', is_active boolean DEFAULT true, is_approved boolean DEFAULT true, total_users integer DEFAULT 0);
+    CREATE TABLE apps (id uuid PRIMARY KEY, created_by_user_id uuid CONSTRAINT apps_created_by_user_id_users_id_fk REFERENCES users(id) ON DELETE CASCADE, organization_id uuid REFERENCES organizations(id), name text NOT NULL, app_url text NOT NULL, allowed_origins jsonb NOT NULL DEFAULT '[]', is_active boolean DEFAULT true, is_approved boolean DEFAULT true, total_users integer DEFAULT 0);
     CREATE TABLE app_users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), app_id uuid REFERENCES apps(id), user_id uuid REFERENCES users(id), signup_source text, referral_code_used text, ip_address text, user_agent text, total_requests integer DEFAULT 0, total_credits_used numeric DEFAULT 0, first_seen_at timestamp DEFAULT now(), last_seen_at timestamp DEFAULT now(), metadata jsonb DEFAULT '{}', UNIQUE(app_id,user_id));
   `);
   await database.exec(
     await Bun.file(
       new URL(
         "../../../../shared/src/db/migrations/0381_app_billing_registration.sql",
+        import.meta.url,
+      ),
+    ).text(),
+  );
+  await database.exec(
+    await Bun.file(
+      new URL(
+        "../../../../shared/src/db/migrations/0550_app_creator_audit_reference.sql",
         import.meta.url,
       ),
     ).text(),
@@ -321,7 +331,7 @@ describe("registered app delegation HTTP and database authority", () => {
   test("database consumption fence survives revocation even if a code backend returns stale data", async () => {
     await consent();
     const { AppDelegationService } = await import(
-      "@/lib/services/app-delegation"
+      "@elizaos/cloud-shared/lib/services/app-delegation"
     );
     const binding = await service.consentBinding(APP_A, USER, {
       clientId: clientA.clientId,

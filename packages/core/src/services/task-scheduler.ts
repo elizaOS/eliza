@@ -33,13 +33,69 @@ let adapter: IDatabaseAdapter | null = null;
 let activeTick: Promise<void> | null = null;
 let schedulerGeneration = 0;
 let nextRegistrationId = 0;
+/** Services inside a scheduler runTick. A restart detaches activeTick, not these runs. */
+const busyServices = new Set<TaskServiceLike>();
 
 const TICK_INTERVAL_MS = 1000;
 
-/**
- * One tick: fetch queue tasks for all dirty agents in one call, group by agentId, runTick per runtime.
- * WHY single getTasks(agentIds): one DB round-trip for many agents instead of N round-trips.
- */
+interface ProcessTask {
+	controller: AbortController;
+	run: (signal: AbortSignal) => Promise<void>;
+	active?: Promise<void>;
+}
+const processTasks = new Map<string, ProcessTask>();
+
+/** Register host-owned work on the existing process timer. The disposer drains its active run. */
+export function registerScheduledProcessTask(
+	name: string,
+	run: (signal: AbortSignal) => Promise<void>,
+): () => Promise<void> {
+	if (processTasks.has(name)) {
+		throw new ElizaError("Scheduled process task is already registered", {
+			code: "TASK_SCHEDULER_DUPLICATE_PROCESS_TASK",
+			context: { name },
+		});
+	}
+	const task: ProcessTask = { controller: new AbortController(), run };
+	processTasks.set(name, task);
+	ensureTimer();
+	return async () => {
+		if (processTasks.get(name) === task) processTasks.delete(name);
+		task.controller.abort();
+		if (!adapter && processTasks.size === 0 && timer) {
+			clearInterval(timer);
+			timer = null;
+		}
+		await task.active;
+	};
+}
+
+function runProcessTasks(): void {
+	for (const [name, task] of processTasks) {
+		if (task.active || task.controller.signal.aborted) continue;
+		task.active = Promise.resolve()
+			.then(() => {
+				if (!task.controller.signal.aborted)
+					return task.run(task.controller.signal);
+			})
+			.catch((cause) =>
+				logger.error(
+					{
+						err: new ElizaError("Scheduled process task failed", {
+							code: "TASK_SCHEDULER_PROCESS_TASK_FAILED",
+							context: { name },
+							cause,
+						}),
+					},
+					"[TaskScheduler] process task failed",
+				),
+			)
+			.finally(() => {
+				task.active = undefined;
+			});
+	}
+}
+
 function staleGenerationError(
 	expectedGeneration: number,
 	cause?: unknown,
@@ -65,6 +121,10 @@ function currentRegistration(
 	return entry?.registrationId === registrationId ? entry : undefined;
 }
 
+/**
+ * One tick: fetch queue tasks for all dirty agents in one call, group by agentId, runTick per runtime.
+ * WHY single getTasks(agentIds): one DB round-trip for many agents instead of N round-trips.
+ */
 async function tick(generation: number): Promise<void> {
 	if (generation !== schedulerGeneration) {
 		throw staleGenerationError(generation);
@@ -74,9 +134,12 @@ async function tick(generation: number): Promise<void> {
 	const registrations = new Map<string, number>();
 	for (const agentId of snapshot) {
 		const entry = registry.get(agentId);
+		// A service still inside a detached tick's runTick stays dirty: its
+		// rows are read after that run, not before.
+		if (entry && busyServices.has(entry.taskService)) continue;
 		if (entry) registrations.set(agentId, entry.registrationId);
+		dirtyAgents.delete(agentId);
 	}
-	dirtyAgents.clear();
 	if (registrations.size === 0) return;
 
 	const adp = adapter;
@@ -114,10 +177,10 @@ async function tick(generation: number): Promise<void> {
 	}
 
 	// Group by task.agentId so each runtime only receives its own tasks. WHY: runTick expects one agent's tasks.
-	const byAgent = new Map<string, Task[]>();
+	const byAgent = new Map<string, { registrationId: number; tasks: Task[] }>();
 	const staleRegistrations = new Set<string>();
 	for (const task of allTasks) {
-		const aid = task.agentId != null ? String(task.agentId) : "";
+		const aid = task.agentId ?? "";
 		const registrationId = aid ? registrations.get(aid) : undefined;
 		if (!aid || registrationId === undefined) {
 			const error = new ElizaError(
@@ -162,14 +225,12 @@ async function tick(generation: number): Promise<void> {
 			}
 			continue;
 		}
-		const list = byAgent.get(aid) ?? [];
-		list.push(task);
-		byAgent.set(aid, list);
+		const group = byAgent.get(aid);
+		if (group) group.tasks.push(task);
+		else byAgent.set(aid, { registrationId, tasks: [task] });
 	}
 
-	for (const [agentIdKey, tasks] of byAgent) {
-		const registrationId = registrations.get(agentIdKey);
-		if (registrationId === undefined) continue;
+	for (const [agentIdKey, { registrationId, tasks }] of byAgent) {
 		const entry = currentRegistration(agentIdKey, registrationId, generation);
 		if (!entry) {
 			logger.error(
@@ -187,6 +248,7 @@ async function tick(generation: number): Promise<void> {
 			);
 			continue;
 		}
+		busyServices.add(entry.taskService);
 		try {
 			await entry.taskService.runTick(tasks);
 		} catch (error) {
@@ -195,6 +257,8 @@ async function tick(generation: number): Promise<void> {
 			entry.runtime.reportError("TaskScheduler.runTick", error, {
 				agentId: agentIdKey,
 			});
+		} finally {
+			busyServices.delete(entry.taskService);
 		}
 		// Non-empty queue: keep the agent dirty so the next tick re-queries. WHY: repeat tasks and
 		// not-yet-due one-shots become due purely by time passing, with no markTaskSchedulerDirty
@@ -218,7 +282,14 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 		for (const agentId of registry.keys()) dirtyAgents.add(agentId);
 		return;
 	}
+	ensureTimer();
+}
+
+function ensureTimer(): void {
+	if (timer) return;
 	timer = setInterval(() => {
+		runProcessTasks();
+		if (!adapter) return;
 		if (activeTick) return;
 		// error-policy:J1 The process timer is the outer scheduler boundary; per-agent
 		// failures are reported inside tick, while adapter-level failure is logged here.
@@ -229,12 +300,12 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 				if (activeTick === tickPromise) activeTick = null;
 			});
 		activeTick = tickPromise;
-	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
+	}, TICK_INTERVAL_MS);
 }
 
 export function stopTaskScheduler(): void {
 	schedulerGeneration += 1;
-	if (timer) {
+	if (timer && processTasks.size === 0) {
 		clearInterval(timer);
 		timer = null;
 	}
@@ -251,7 +322,7 @@ export function registerTaskSchedulerRuntime(
 	runtime: IAgentRuntime,
 	taskService: TaskServiceLike,
 ): void {
-	const agentIdKey = String(runtime.agentId);
+	const agentIdKey = runtime.agentId;
 	nextRegistrationId += 1;
 	registry.set(agentIdKey, {
 		runtime,
@@ -262,15 +333,21 @@ export function registerTaskSchedulerRuntime(
 }
 
 /** Called by TaskService.stop(). WHY: daemon must not call runTick after runtime has stopped. */
-export function unregisterTaskSchedulerRuntime(agentId: UUID): void {
-	const agentIdKey = String(agentId);
+export function unregisterTaskSchedulerRuntime(
+	agentId: UUID,
+	taskService?: TaskServiceLike,
+): void {
+	const agentIdKey = agentId;
+	// An older service may finish stopping after its replacement registers.
+	if (taskService && registry.get(agentIdKey)?.taskService !== taskService)
+		return;
 	registry.delete(agentIdKey);
 	dirtyAgents.delete(agentIdKey);
 }
 
 /** Called by TaskService.markDirty() when daemon is present. WHY: next tick will include this agent in the batched getTasks. */
 export function markTaskSchedulerDirty(agentId: UUID): void {
-	dirtyAgents.add(String(agentId));
+	dirtyAgents.add(agentId);
 }
 
 /** TaskService uses this to decide: register with daemon vs start local timer. */

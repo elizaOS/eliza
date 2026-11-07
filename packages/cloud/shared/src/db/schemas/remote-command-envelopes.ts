@@ -4,7 +4,7 @@
  * to reject cross-scope delivery without decrypting command or result bodies.
  */
 
-import { type EncryptedRemoteControlEnvelope } from "@elizaos/core/contracts/remote-control";
+import { type EncryptedRemoteControlEnvelope } from "@elizaos/contracts";
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,

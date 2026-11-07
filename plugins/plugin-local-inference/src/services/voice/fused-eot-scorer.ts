@@ -11,7 +11,6 @@
  */
 
 import {
-	formatEotPrompt,
 	type ResolvedEotTokenContract,
 	resolveEotTokenContract,
 } from "./eot-token-contract";
@@ -36,6 +35,12 @@ export interface FfiEotScoreResult {
 	latencyMs: number;
 	/** Number of prompt tokens evaluated. */
 	promptTokens: number;
+	/**
+	 * False when no forward pass produced a finite probability (an empty
+	 * prompt or a non-finite model output). `probability` is then the neutral
+	 * 0.5 the live state machine expects, not a measurement.
+	 */
+	scored: boolean;
 }
 
 /**
@@ -93,32 +98,43 @@ export class FfiEotScorer {
 			);
 		}
 		const tokenContract = this.resolveTokenContract(ctx);
-		const formatted = formatEotPrompt(partialTranscript, tokenContract);
-		const all = tokenize({
-			ctx,
-			text: formatted,
-			addSpecial: false,
-			parseSpecial: true,
-		});
+		// Only the template prefix may contain special tokens. The transcript is
+		// user speech: tokenizing it with parseSpecial=false keeps chat-template
+		// markers spoken (or injected) by the user from steering the score.
+		const all = [
+			...tokenize({
+				ctx,
+				text: tokenContract.userPrefix,
+				addSpecial: false,
+				parseSpecial: true,
+			}),
+			...tokenize({
+				ctx,
+				text: partialTranscript.trim(),
+				addSpecial: false,
+				parseSpecial: false,
+			}),
+		];
 		if (all.length === 0) {
 			return {
 				probability: 0.5,
 				latencyMs: performance.now() - start,
 				promptTokens: 0,
+				scored: false,
 			};
 		}
 		const { targetProb } = eotScore({
 			ctx,
-			tokens: all,
+			tokens: Int32Array.from(all),
 			targetTokenId: tokenContract.closingTokenId,
 		});
-		const probability = Number.isFinite(targetProb)
-			? Math.max(0, Math.min(1, targetProb))
-			: 0.5;
+		const scored = Number.isFinite(targetProb);
+		const probability = scored ? Math.max(0, Math.min(1, targetProb)) : 0.5;
 		return {
 			probability,
 			latencyMs: performance.now() - start,
 			promptTokens: all.length,
+			scored,
 		};
 	}
 }

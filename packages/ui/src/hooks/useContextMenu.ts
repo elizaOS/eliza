@@ -6,9 +6,9 @@
 import { useEffect } from "react";
 import {
   invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
-} from "../bridge";
+} from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { dispatchChatPrefill } from "../events";
 import { useAppSelectorShallow } from "../state/app-store";
 

@@ -15,9 +15,9 @@ import * as React from "react";
 import { useComposerKeydown } from "../../chat/composer-core";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
-import { cn } from "../../lib/utils";
 import { useChatComposerOrLocal } from "../../state/ChatComposerContext.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { FormSubmitReceipt } from "../chat/MessageContent";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
@@ -32,6 +32,8 @@ export interface ChatSurfaceProps {
   messages: readonly ShellMessage[];
   onSend: (text: string) => void;
   canSend: boolean;
+  /** True while a reply is in flight; the last assistant message may still grow. */
+  responding?: boolean;
   greeting?: string;
   recording?: boolean;
   onToggleRecording?: () => void;
@@ -60,6 +62,7 @@ export function ChatSurface({
   messages,
   onSend,
   canSend,
+  responding = false,
   greeting,
   recording = false,
   onToggleRecording,
@@ -164,7 +167,12 @@ export function ChatSurface({
                         {isUser ? (
                           <UserMessageContent content={message.content} />
                         ) : (
-                          <InlineWidgetText content={message.content} />
+                          <InlineWidgetText
+                            content={message.content}
+                            messageId={message.id}
+                            producerScope={message.source}
+                            streaming={responding && message === lastMessage}
+                          />
                         )}
                       </ChatBubble>
                     )}

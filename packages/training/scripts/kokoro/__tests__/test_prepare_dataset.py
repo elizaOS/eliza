@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import prep_ljspeech  # type: ignore  # noqa: E402
+from eliza_training.kokoro import prep_ljspeech  # type: ignore  # noqa: E402
 
 
 def test_prep_emits_manifest_and_splits(tiny_ljspeech: Path, tmp_path: Path) -> None:
@@ -31,7 +31,7 @@ def test_prep_emits_manifest_and_splits(tiny_ljspeech: Path, tmp_path: Path) -> 
             "--run-dir",
             str(run_dir),
             "--config",
-            "kokoro_lora_ljspeech.yaml",
+            "kokoro_full_ljspeech.yaml",
             "--no-audio-libs",
             "--no-phonemize",
             "--speaker-id",

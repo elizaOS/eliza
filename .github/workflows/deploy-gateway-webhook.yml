@@ -41,22 +41,32 @@ jobs:
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
-      EXPECTED_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
+      EXPECTED_SERVICE_NAME: ${{ inputs.environment == 'production' && 'eliza-gateway-webhook-production' || 'eliza-gateway-webhook-staging' }}
       EXPECTED_CLOUD_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
       EXPECTED_ROUTER_ORIGIN: ${{ inputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
       EXPECTED_AGENT_BASE_DOMAIN: ${{ inputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}
-      EXPECTED_GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      EXPECTED_GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://eliza-gateway-webhook-production.square-rain-7251.workers.dev' || 'https://eliza-gateway-webhook-staging.square-rain-7251.workers.dev' }}
       GATEWAY_WEBHOOK_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
-      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Use a gateway-scoped credential without replacing shared release access.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.GATEWAY_WEBHOOK_CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      GATEWAY_RUNTIME_CONFIG: ${{ secrets.GATEWAY_WEBHOOK_RUNTIME_CONFIG }}
+      GATEWAY_WEBHOOK_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_WEBHOOK_BOOTSTRAP_SECRET }}
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+      CLOUDFLARE_GATEWAY_ACTIVE: ${{ vars.GATEWAY_WEBHOOK_CLOUDFLARE_ACTIVE }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
 
       - name: Resolve protected Telegram public identity
         env:
@@ -117,10 +127,10 @@ jobs:
             EXPECTED_AGENT_BASE_DOMAIN
             EXPECTED_GATEWAY_URL
             GATEWAY_WEBHOOK_URL
-            RAILWAY_PROJECT_ID
-            RAILWAY_ENVIRONMENT_ID
-            RAILWAY_SERVICE_ID
-            RAILWAY_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+            CLOUDFLARE_API_TOKEN
+            GATEWAY_RUNTIME_CONFIG
+            CLOUDFLARE_GATEWAY_ACTIVE
             TELEGRAM_EXPECTED_BOT_ID
             TELEGRAM_EXPECTED_BOT_USERNAME
           )
@@ -162,84 +172,12 @@ jobs:
             exit 1
           fi
 
-          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
-            value="${!name}"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
-              echo "::error::$name must be a Railway UUID on the protected $TARGET_ENVIRONMENT environment"
-              exit 1
-            fi
-          done
-          echo "Canonical protected setting names, branch, and exact source SHA are valid; secret values were not printed."
+          require_exact CLOUDFLARE_ACCOUNT_ID "$CLOUDFLARE_ACCOUNT_ID" "23cf6feaeaa541f6a0675053c33da768"
+          require_exact CLOUDFLARE_GATEWAY_ACTIVE "$CLOUDFLARE_GATEWAY_ACTIVE" "true"
+          echo "Protected target and completed Cloudflare ownership handoff verified."
 
-      - name: Install pinned Railway CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          cli_root="$RUNNER_TEMP/railway-cli"
-          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
-          mkdir -p "$cli_root"
-          curl \
-            --fail \
-            --location \
-            --silent \
-            --show-error \
-            --retry 3 \
-            --output "$archive" \
-            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
-          printf '%s  %s\n' \
-            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
-            "$archive" | sha256sum --check --status
-          tar -xzf "$archive" -C "$cli_root" railway
-          chmod 0755 "$cli_root/railway"
-          echo "$cli_root" >> "$GITHUB_PATH"
-          "$cli_root/railway" --version | grep -F "railway 5.38.0"
-
-      - name: Verify exact Railway target and public domain
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          status_path="$RUNNER_TEMP/gateway-webhook-railway-status.json"
-          domains_path="$RUNNER_TEMP/gateway-webhook-railway-domains.json"
-          railway status \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --json > "$status_path"
-
-          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_PROJECT_ID did not resolve to the selected project"
-            exit 1
-          }
-          jq -e \
-            --arg id "$RAILWAY_ENVIRONMENT_ID" \
-            --arg name "$TARGET_ENVIRONMENT" \
-            'any(.environments.edges[]; .node.id == $id and .node.name == $name)' \
-            "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_ENVIRONMENT_ID is not the canonical $TARGET_ENVIRONMENT Railway environment"
-            exit 1
-          }
-          jq -e \
-            --arg id "$RAILWAY_SERVICE_ID" \
-            --arg name "$EXPECTED_SERVICE_NAME" \
-            'any(.services.edges[]; .node.id == $id and .node.name == $name)' \
-            "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_SERVICE_ID is not the canonical $EXPECTED_SERVICE_NAME service"
-            exit 1
-          }
-
-          railway domain list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --json > "$domains_path"
-          gateway_host="${GATEWAY_WEBHOOK_URL#https://}"
-          jq -e --arg domain "$gateway_host" \
-            'any(.domains[]; .domain == $domain)' \
-            "$domains_path" >/dev/null || {
-            echo "::error::The selected service does not own the protected canonical gateway domain"
-            exit 1
-          }
-          echo "Railway project, environment, service, and public domain identities match."
+      - name: Install gateway host dependencies
+        run: bun install --frozen-lockfile --ignore-scripts --filter '@elizaos/gateway-container'
 
       - name: Check Blooio environment isolation
         env:
@@ -247,13 +185,13 @@ jobs:
           ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
         run: node packages/cloud/scripts/verify-blooio-environment-isolation.ts
 
-      - name: Verify canonical Railway variables and sensitive names
+      - name: Verify protected runtime settings and credential equality
         shell: bash
         env:
           # The Cloudflare Worker receives these exact GitHub Environment
           # secrets from cloud-cf-release.yml. Comparing them here is the only
           # place both sides of the Blooio webhook contract are observable, so
-          # a Worker/Railway value divergence is caught before deploy instead
+          # a Worker/gateway value divergence is caught before deploy instead
           # of as a 401 on every live webhook.
           WORKER_ELIZA_APP_BLOOIO_API_KEY: ${{ secrets.ELIZA_APP_BLOOIO_API_KEY }}
           WORKER_ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER }}
@@ -263,13 +201,10 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          variables_raw_path="$RUNNER_TEMP/gateway-webhook-railway-variables-raw.json"
-          variables_path="$RUNNER_TEMP/gateway-webhook-railway-variable-inventory.json"
-          railway variable list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --json > "$variables_raw_path"
+          variables_raw_path="$RUNNER_TEMP/gateway-webhook-runtime-variables-raw.json"
+          variables_path="$RUNNER_TEMP/gateway-webhook-runtime-variable-inventory.json"
+          printf '%s' "$GATEWAY_RUNTIME_CONFIG" > "$variables_raw_path"
+          jq -e 'type == "object" and all(.[]; type == "string")' "$variables_raw_path" >/dev/null
           jq '{
             canonical: {
               ELIZA_CLOUD_URL: .ELIZA_CLOUD_URL,
@@ -309,39 +244,39 @@ jobs:
               openssl dgst -sha256 -hmac "$protected_match_salt" -r |
               cut -d' ' -f1
           }
-          declare -A railway_blooio_digests=()
+          declare -A gateway_blooio_digests=()
           for name in \
             ELIZA_APP_BLOOIO_API_KEY \
             ELIZA_APP_BLOOIO_PHONE_NUMBER \
             ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
-            railway_value="$(jq -r --arg name "$name" \
+            gateway_value="$(jq -r --arg name "$name" \
               'if (.[$name] | type) == "string" then .[$name] else "" end' \
               "$variables_raw_path")"
-            railway_blooio_digests["$name"]="$(protected_digest "$railway_value")"
-            railway_value=""
+            gateway_blooio_digests["$name"]="$(protected_digest "$gateway_value")"
+            gateway_value=""
           done
 
-          declare -A railway_telegram_digests=()
+          declare -A gateway_telegram_digests=()
           for name in \
             ELIZA_APP_TELEGRAM_BOT_TOKEN \
             ELIZA_APP_TELEGRAM_WEBHOOK_SECRET; do
-            railway_value="$(jq -r --arg name "$name" \
+            gateway_value="$(jq -r --arg name "$name" \
               'if (.[$name] | type) == "string" then .[$name] else "" end' \
               "$variables_raw_path")"
-            railway_telegram_digests["$name"]="$(protected_digest "$railway_value")"
-            printf -v "railway_$name" '%s' "$railway_value"
-            railway_value=""
+            gateway_telegram_digests["$name"]="$(protected_digest "$gateway_value")"
+            printf -v "gateway_$name" '%s' "$gateway_value"
+            gateway_value=""
           done
 
           env \
-            "TELEGRAM_BOT_TOKEN=${railway_ELIZA_APP_TELEGRAM_BOT_TOKEN:-}" \
-            "TELEGRAM_WEBHOOK_SECRET=${railway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:-}" \
+            "TELEGRAM_BOT_TOKEN=${gateway_ELIZA_APP_TELEGRAM_BOT_TOKEN:-}" \
+            "TELEGRAM_WEBHOOK_SECRET=${gateway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:-}" \
             "TELEGRAM_EXPECTED_BOT_ID=$TELEGRAM_EXPECTED_BOT_ID" \
             "TELEGRAM_EXPECTED_BOT_USERNAME=$TELEGRAM_EXPECTED_BOT_USERNAME" \
             "TELEGRAM_ATTESTATION_CONTEXT=$TARGET_ENVIRONMENT" \
             node packages/cloud/scripts/verify-telegram-bot-identity.ts
-          railway_ELIZA_APP_TELEGRAM_BOT_TOKEN=""
-          railway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET=""
+          gateway_ELIZA_APP_TELEGRAM_BOT_TOKEN=""
+          gateway_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET=""
           shred -u "$variables_raw_path"
 
           require_exact_variable() {
@@ -349,7 +284,7 @@ jobs:
             local expected="$2"
             if ! jq -e --arg name "$name" --arg expected "$expected" \
               '.canonical[$name] == $expected' "$variables_path" >/dev/null; then
-              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT Railway value"
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT gateway value"
               exit 1
             fi
           }
@@ -358,7 +293,7 @@ jobs:
             if ! jq -e --arg name "$name" \
               '.nonblank_sensitive_names | index($name) != null' \
               "$variables_path" >/dev/null; then
-              echo "::error::Required sensitive Railway variable name is absent or blank: $name"
+              echo "::error::Required sensitive gateway setting name is absent or blank: $name"
               exit 1
             fi
           }
@@ -367,7 +302,7 @@ jobs:
             if ! jq -e --arg name "$name" \
               '.blooio_nonblank_names | index($name) != null' \
               "$variables_path" >/dev/null; then
-              echo "::error::Required protected $TARGET_ENVIRONMENT Blooio Railway variable name is absent or blank: $name"
+              echo "::error::Required protected $TARGET_ENVIRONMENT Blooio gateway setting name is absent or blank: $name"
               exit 1
             fi
           }
@@ -376,7 +311,7 @@ jobs:
             if ! jq -e --arg name "$name" \
               '.telegram_nonblank_names | index($name) != null' \
               "$variables_path" >/dev/null; then
-              echo "::error::Required protected $TARGET_ENVIRONMENT Telegram Railway variable name is absent or blank: $name"
+              echo "::error::Required protected $TARGET_ENVIRONMENT Telegram gateway setting name is absent or blank: $name"
               exit 1
             fi
           }
@@ -405,7 +340,7 @@ jobs:
             require_telegram_name "$name"
           done
           # Name presence on both sides still permits Worker secret A and
-          # Railway secret B, which passes every names-only check and then
+          # gateway secret B, which passes every names-only check and then
           # 401s every live Blooio webhook. Compare salted digests so the
           # values must actually agree without either value being read,
           # printed, or written anywhere.
@@ -419,13 +354,13 @@ jobs:
               echo "::error::Required protected $TARGET_ENVIRONMENT Blooio GitHub environment secret is absent or blank: $name"
               exit 1
             fi
-            if [ "$(protected_digest "$worker_value")" != "${railway_blooio_digests[$name]:-}" ]; then
-              echo "::error::Protected $TARGET_ENVIRONMENT Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: $name (compared by salted digest; values were not printed)"
+            if [ "$(protected_digest "$worker_value")" != "${gateway_blooio_digests[$name]:-}" ]; then
+              echo "::error::Protected $TARGET_ENVIRONMENT Blooio value differs between the Cloudflare Worker GitHub environment secret and the gateway setting: $name (compared by salted digest; values were not printed)"
               exit 1
             fi
             worker_value=""
           done
-          echo "Verified 3 protected $TARGET_ENVIRONMENT Blooio Worker/Railway value matches by salted digest; values were not printed."
+          echo "Verified 3 protected $TARGET_ENVIRONMENT Blooio Worker/gateway value matches by salted digest; values were not printed."
           for name in \
             ELIZA_APP_TELEGRAM_BOT_TOKEN \
             ELIZA_APP_TELEGRAM_WEBHOOK_SECRET; do
@@ -435,8 +370,8 @@ jobs:
               echo "::error::Required protected $TARGET_ENVIRONMENT Telegram GitHub environment secret is absent or blank: $name"
               exit 1
             fi
-            if [ "$(protected_digest "$worker_value")" != "${railway_telegram_digests[$name]:-}" ]; then
-              echo "::error::Protected $TARGET_ENVIRONMENT Telegram value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: $name (compared by salted digest; values were not printed)"
+            if [ "$(protected_digest "$worker_value")" != "${gateway_telegram_digests[$name]:-}" ]; then
+              echo "::error::Protected $TARGET_ENVIRONMENT Telegram value differs between the Cloudflare Worker GitHub environment secret and the gateway setting: $name (compared by salted digest; values were not printed)"
               exit 1
             fi
             worker_value=""
@@ -447,173 +382,67 @@ jobs:
              ((($names | index("KV_REST_API_URL")) != null) and
               (($names | index("KV_REST_API_TOKEN")) != null)))' \
             "$variables_path" >/dev/null; then
-            echo "::error::Required sensitive Railway variable names must include REDIS_URL or the KV_REST_API_URL/KV_REST_API_TOKEN pair"
+            echo "::error::Required sensitive gateway setting names must include REDIS_URL or the KV_REST_API_URL/KV_REST_API_TOKEN pair"
             exit 1
           fi
           echo "Canonical routing values and required sensitive variable names are present; sensitive values were not printed or changed."
 
-      - name: Capture deployment baseline
-        shell: bash
+      - name: Verify paired release credentials before mutation
+        run: node packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts --candidate-only
+
+      - name: Deploy exact gateway source and settings to Cloudflare
+        id: cloudflare_deploy
         run: |
           set -euo pipefail
           umask 077
-          railway deployment list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --limit 50 \
-            --json > "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json"
-
-      - name: Deploy exact gateway-webhook source
-        id: railway_deploy
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ] || \
-            [ -n "$(git status --porcelain --untracked-files=all)" ]; then
-            echo "::error::Refusing to deploy anything other than the exact clean dispatch SHA"
-            exit 1
-          fi
-          git ls-files --error-unmatch \
-            packages/cloud/services/gateway-webhook/Dockerfile \
-            packages/cloud/services/gateway-webhook/railway.toml \
-            packages/cloud/services/gateway-webhook/src/index.ts >/dev/null
-          if [ -e railway.toml ] || [ -L railway.toml ]; then
-            echo "::error::The checkout root already contains an unexpected Railway config"
-            exit 1
-          fi
-          cp packages/cloud/services/gateway-webhook/railway.toml railway.toml
-          if ! cmp --silent \
-            packages/cloud/services/gateway-webhook/railway.toml \
-            railway.toml; then
-            echo "::error::The materialized root Railway config differs from the tracked service manifest"
-            exit 1
-          fi
-          if [ "$(git status --porcelain --untracked-files=all)" != "?? railway.toml" ]; then
-            echo "::error::Only the byte-identical root Railway config may differ from the exact dispatch SHA"
-            exit 1
-          fi
-          grep -Fx 'dockerfilePath = "packages/cloud/services/gateway-webhook/Dockerfile"' \
-            railway.toml >/dev/null
-          grep -Fx 'healthcheckPath = "/health"' \
-            railway.toml >/dev/null
-
-          umask 077
-          result_path="$RUNNER_TEMP/gateway-webhook-deployment-start.json"
-          railway up \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --detach \
-            --yes \
-            --json \
-            --message "gateway-webhook $GITHUB_SHA ($TARGET_ENVIRONMENT)" > "$result_path"
-          deployment_id=$(jq -er '.deploymentId' "$result_path")
-          if [[ ! "$deployment_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
-            echo "::error::Railway did not return a valid deployment id"
-            exit 1
-          fi
-          if jq -e --arg id "$deployment_id" \
-            'any(.[]; .id == $id)' "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json" >/dev/null; then
-            echo "::error::Railway returned a deployment id that predates this exact-SHA upload"
-            exit 1
-          fi
-          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
-          echo "Railway accepted the exact clean dispatch SHA as deployment $deployment_id."
-
-      - name: Wait for the exact Railway deployment
-        shell: bash
-        env:
-          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
-        run: |
-          set -euo pipefail
-          umask 077
-          deployments_path="$RUNNER_TEMP/gateway-webhook-deployments.json"
-          deployment_status=""
-          for _ in $(seq 1 90); do
-            railway deployment list \
-              --project "$RAILWAY_PROJECT_ID" \
-              --environment "$RAILWAY_ENVIRONMENT_ID" \
-              --service "$RAILWAY_SERVICE_ID" \
-              --limit 50 \
-              --json > "$deployments_path"
-            deployment_status=$(jq -r --arg id "$DEPLOYMENT_ID" \
-              '[.[] | select(.id == $id)] | if length == 1 then .[0].status else "" end' \
-              "$deployments_path")
-            case "$deployment_status" in
-              SUCCESS) break ;;
-              FAILED | CRASHED | REMOVED | REMOVING | SKIPPED | CANCELED | CANCELLED)
-                echo "::error::Exact Railway deployment entered terminal status $deployment_status"
-                exit 1
-                ;;
-              *) sleep 10 ;;
-            esac
-          done
-          if [ "$deployment_status" != "SUCCESS" ]; then
-            echo "::error::Exact Railway deployment did not reach SUCCESS before timeout"
-            exit 1
-          fi
-          echo "Exact Railway deployment $DEPLOYMENT_ID reached SUCCESS."
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          node packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-before.json"
+          image_tag="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$EXPECTED_SERVICE_NAME:$GITHUB_SHA"
+          docker build --platform linux/amd64 \
+            --build-arg "ELIZA_GATEWAY_SOURCE_SHA=$GITHUB_SHA" \
+            --file packages/cloud/services/gateway-webhook/Dockerfile \
+            --tag "$image_tag" .
+          bunx wrangler@4.151.3 containers registries credentials registry.cloudflare.com \
+            --expiration-minutes 120 --push --pull --json > "$RUNNER_TEMP/gateway-registry-credential.json"
+          jq -r .password "$RUNNER_TEMP/gateway-registry-credential.json" | \
+            docker login registry.cloudflare.com \
+              --username "$(jq -r .username "$RUNNER_TEMP/gateway-registry-credential.json")" --password-stdin
+          shred -u "$RUNNER_TEMP/gateway-registry-credential.json"
+          docker push "$image_tag"
+          docker buildx imagetools inspect "$image_tag" --format '{{json .Manifest}}' > "$RUNNER_TEMP/gateway-image.json"
+          image_digest="$(jq -er .digest "$RUNNER_TEMP/gateway-image.json")"
+          [[ "$image_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          export GATEWAY_RELEASE_IMAGE="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/$EXPECTED_SERVICE_NAME@$image_digest"
+          bun packages/cloud/scripts/prepare-gateway-release.ts
+          bunx wrangler@4.151.3 deploy \
+            --config "$RUNNER_TEMP/gateway-wrangler.json" \
+            --env "webhook-$TARGET_ENVIRONMENT" \
+            --var "BUILD_ID:$GITHUB_SHA" \
+            --var GATEWAY_ENABLED:true \
+            --secrets-file "$RUNNER_TEMP/gateway-secrets.json" \
+            --containers-rollout immediate > "$RUNNER_TEMP/gateway-deploy.log"
+          version_id="$(sed -nE 's/^Current Version ID: ([a-f0-9-]+)$/\1/p' "$RUNNER_TEMP/gateway-deploy.log")"
+          [[ "$version_id" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]
+          EXPECTED_GATEWAY_IMAGE="$GATEWAY_RELEASE_IMAGE" EXPECTED_GATEWAY_VERSION="$version_id" node packages/cloud/scripts/cloudflare-gateway-deployment.ts > "$RUNNER_TEMP/gateway-after.json"
+          test "$(jq -r .versionId "$RUNNER_TEMP/gateway-before.json")" != "$version_id"
+          echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
+          echo "image=$GATEWAY_RELEASE_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "deployment_id=$(jq -r .deploymentId "$RUNNER_TEMP/gateway-after.json")" >> "$GITHUB_OUTPUT"
+          shred -u "$RUNNER_TEMP/gateway-secrets.json"
 
       - name: Verify deployed health and canonical fallback configuration
         shell: bash
         env:
-          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+          DEPLOYMENT_ID: ${{ steps.cloudflare_deploy.outputs.deployment_id }}
         run: |
           set -euo pipefail
           umask 077
-          deployment_meta_path="$RUNNER_TEMP/gateway-webhook-postdeploy-deployment.json"
-          railway deployment list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --limit 50 \
-            --json > "$deployment_meta_path"
-          jq -e --arg id "$DEPLOYMENT_ID" '
-            [.[] | select(.id == $id)] |
-            length == 1 and
-            .[0].status == "SUCCESS" and
-            .[0].meta.configFile == "/railway.toml" and
-            .[0].meta.fileServiceManifest.build.builder == "DOCKERFILE" and
-            .[0].meta.fileServiceManifest.build.dockerfilePath ==
-              "packages/cloud/services/gateway-webhook/Dockerfile" and
-            .[0].meta.fileServiceManifest.deploy.healthcheckPath == "/health" and
-            .[0].meta.fileServiceManifest.deploy.healthcheckTimeout == 90 and
-            .[0].meta.fileServiceManifest.deploy.restartPolicyType == "ON_FAILURE" and
-            .[0].meta.fileServiceManifest.deploy.restartPolicyMaxRetries == 10 and
-            .[0].meta.serviceManifest.build.builder == "DOCKERFILE" and
-            .[0].meta.serviceManifest.build.dockerfilePath ==
-              "packages/cloud/services/gateway-webhook/Dockerfile" and
-            .[0].meta.serviceManifest.deploy.healthcheckPath == "/health" and
-            .[0].meta.serviceManifest.deploy.healthcheckTimeout == 90 and
-            .[0].meta.serviceManifest.deploy.restartPolicyType == "ON_FAILURE" and
-            .[0].meta.serviceManifest.deploy.restartPolicyMaxRetries == 10
-          ' "$deployment_meta_path" >/dev/null || {
-            echo "::error::Exact deployment metadata does not prove the root config, Dockerfile, and health manifest"
-            exit 1
-          }
-
-          active_path="$RUNNER_TEMP/gateway-webhook-active-deployment.json"
           assert_active_deployment() {
-            local phase="$1"
-            railway service status \
-              --project "$RAILWAY_PROJECT_ID" \
-              --environment "$RAILWAY_ENVIRONMENT_ID" \
-              --service "$RAILWAY_SERVICE_ID" \
-              --json > "$active_path"
-            jq -e \
-              --arg id "$DEPLOYMENT_ID" \
-              --arg service "$RAILWAY_SERVICE_ID" \
-              --arg name "$EXPECTED_SERVICE_NAME" \
-              '.id == $service and
-               .name == $name and
-               .deploymentId == $id and
-               .status == "SUCCESS" and
-               .stopped == false' \
-              "$active_path" >/dev/null || {
-              echo "::error::Exact deployment is not the active service deployment $phase public verification"
-              exit 1
-            }
+            EXPECTED_GATEWAY_IMAGE="${{ steps.cloudflare_deploy.outputs.image }}" \
+            EXPECTED_GATEWAY_DEPLOYMENT="$DEPLOYMENT_ID" \
+            EXPECTED_GATEWAY_VERSION="${{ steps.cloudflare_deploy.outputs.version_id }}" \
+              node packages/cloud/scripts/cloudflare-gateway-deployment.ts > /dev/null
           }
 
           assert_active_deployment before
@@ -628,47 +457,18 @@ jobs:
               --write-out '%{http_code}' \
               "$GATEWAY_WEBHOOK_URL/health" || true)
             if [ "$health_status" = "200" ] && \
-              jq -e '.status == "healthy"' "$health_path" >/dev/null 2>&1; then
+              jq -e --arg sha "$GITHUB_SHA" '.status == "healthy" and .buildId == $sha' "$health_path" >/dev/null 2>&1; then
               break
             fi
             sleep 10
           done
           if [ "$health_status" != "200" ] || \
-            ! jq -e '.status == "healthy"' "$health_path" >/dev/null; then
+            ! jq -e --arg sha "$GITHUB_SHA" '.status == "healthy" and .buildId == $sha' "$health_path" >/dev/null; then
             echo "::error::Canonical gateway-webhook health did not become ready"
             exit 1
           fi
 
-          variables_raw_path="$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json"
-          variables_path="$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json"
-          railway variable list \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --json > "$variables_raw_path"
-          jq '{
-            ELIZA_CLOUD_URL,
-            AGENT_ROUTER_ORIGIN_HOST,
-            ELIZA_CLOUD_AGENT_BASE_DOMAIN,
-            ELIZA_APP_TELEGRAM_BOT_ID,
-            ELIZA_APP_TELEGRAM_BOT_USERNAME
-          }' "$variables_raw_path" > "$variables_path"
-          shred -u "$variables_raw_path"
-          jq -e \
-            --arg cloud "$EXPECTED_CLOUD_URL" \
-            --arg router "$EXPECTED_ROUTER_ORIGIN" \
-            --arg domain "$EXPECTED_AGENT_BASE_DOMAIN" \
-            --arg telegram_id "$TELEGRAM_EXPECTED_BOT_ID" \
-            --arg telegram_username "$TELEGRAM_EXPECTED_BOT_USERNAME" \
-            '.ELIZA_CLOUD_URL == $cloud and
-             .AGENT_ROUTER_ORIGIN_HOST == $router and
-             .ELIZA_CLOUD_AGENT_BASE_DOMAIN == $domain and
-             .ELIZA_APP_TELEGRAM_BOT_ID == $telegram_id and
-             .ELIZA_APP_TELEGRAM_BOT_USERNAME == $telegram_username' \
-            "$variables_path" >/dev/null || {
-            echo "::error::Postdeploy canonical cloud/fallback routing pair does not match the selected environment"
-            exit 1
-          }
+          node packages/cloud/scripts/verify-cloudflare-gateway-release-config.ts
 
           forwarder_probe_path="$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json"
           if ! forwarder_probe_status=$(curl \
@@ -720,7 +520,7 @@ jobs:
       - name: Write exact deployment receipt
         shell: bash
         env:
-          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+          DEPLOYMENT_ID: ${{ steps.cloudflare_deploy.outputs.deployment_id }}
         run: |
           set -euo pipefail
           receipt_dir="$RUNNER_TEMP/gateway-webhook-deployment-receipt"
@@ -730,16 +530,21 @@ jobs:
             --arg environment "$TARGET_ENVIRONMENT" \
             --arg deploymentId "$DEPLOYMENT_ID" \
             --arg service "$EXPECTED_SERVICE_NAME" \
+            --arg versionId "${{ steps.cloudflare_deploy.outputs.version_id }}" \
+            --arg image "${{ steps.cloudflare_deploy.outputs.image }}" \
             '{
               sourceSha: $sourceSha,
               environment: $environment,
               deploymentId: $deploymentId,
+              versionId: $versionId,
+              provider: "cloudflare",
+              image: $image,
               service: $service,
               telegramIdentity: "attested"
             }' > "$receipt_dir/gateway-webhook-deployment.json"
 
       - name: Publish exact deployment receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: gateway-webhook-deployment-${{ inputs.environment }}-${{ github.sha }}
           path: ${{ runner.temp }}/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json
@@ -749,7 +554,7 @@ jobs:
       - name: Write deployment summary
         shell: bash
         env:
-          DEPLOYMENT_ID: ${{ steps.railway_deploy.outputs.deployment_id }}
+          DEPLOYMENT_ID: ${{ steps.cloudflare_deploy.outputs.deployment_id }}
         run: |
           set -euo pipefail
           {
@@ -757,13 +562,13 @@ jobs:
             echo
             echo "- Environment: \`$TARGET_ENVIRONMENT\`"
             echo "- Source SHA: \`$GITHUB_SHA\`"
-            echo "- Railway deployment: \`$DEPLOYMENT_ID\`"
+            echo "- Cloudflare deployment: \`$DEPLOYMENT_ID\`"
             echo "- Service: \`$EXPECTED_SERVICE_NAME\`"
             echo "- Canonical health: passed"
             echo "- Canonical fallback pair: verified"
             echo "- Forwarder-auth readiness: enforced for eliza-app with exact headerless 401"
             echo "- Telegram identity: attested for the selected protected environment"
-            echo "- Root Railway manifest: verified"
+            echo "- Tracked Cloudflare host and Dockerfile: deployed"
             echo "- Active deployment identity: verified before and after probes"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -772,26 +577,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for path in \
-            "$RUNNER_TEMP/gateway-webhook-railway-status.json" \
-            "$RUNNER_TEMP/gateway-webhook-railway-domains.json" \
-            "$RUNNER_TEMP/gateway-webhook-railway-variables-raw.json" \
-            "$RUNNER_TEMP/gateway-webhook-railway-variable-inventory.json" \
-            "$RUNNER_TEMP/gateway-webhook-deployment-baseline.json" \
-            "$RUNNER_TEMP/gateway-webhook-deployment-start.json" \
-            "$RUNNER_TEMP/gateway-webhook-deployments.json" \
-            "$RUNNER_TEMP/gateway-webhook-health.json" \
-            "$RUNNER_TEMP/gateway-webhook-postdeploy-deployment.json" \
-            "$RUNNER_TEMP/gateway-webhook-active-deployment.json" \
-            "$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json" \
-            "$RUNNER_TEMP/gateway-webhook-telegram-identity-readiness.json" \
-            "$RUNNER_TEMP/gateway-webhook-postdeploy-variables-raw.json" \
-            "$RUNNER_TEMP/gateway-webhook-postdeploy-canonical.json" \
-            "$RUNNER_TEMP/gateway-webhook-deployment-receipt/gateway-webhook-deployment.json"; do
-            if [ -f "$path" ]; then
-              shred -u "$path"
-            fi
+          for path in "$RUNNER_TEMP"/gateway-webhook-*.json "$RUNNER_TEMP"/gateway-secrets.json "$RUNNER_TEMP"/gateway-before.json "$RUNNER_TEMP"/gateway-after.json "$RUNNER_TEMP"/gateway-registry-credential.json "$RUNNER_TEMP"/gateway-wrangler.json; do
+            if [ -f "$path" ]; then shred -u "$path"; fi
           done
-          if [ -f railway.toml ]; then
-            shred -u railway.toml
-          fi

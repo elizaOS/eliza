@@ -5,10 +5,10 @@
 
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+import type { ModelHubSnapshot } from "@elizaos/contracts";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -17,6 +17,7 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
+import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "settings-background");
@@ -125,6 +126,14 @@ async function installSettingsBackgroundRoutes(
   page: Page,
   hubOverrides: Partial<ModelHubSnapshot> = {},
 ): Promise<void> {
+  // Model and voice controls belong to the local desktop host. Its bridge alone
+  // does not replace the production web bundle's cloud-only boot policy.
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
+      {
+        apiBase: window.location.origin,
+      };
+  });
   await installDefaultAppRoutes(page);
   await page.route("**/api/cloud/credits", (route) =>
     fulfillJson(route, {
@@ -280,124 +289,6 @@ async function seedSettingsBackgroundStorage(
   });
 }
 
-async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const secureStore = new Map<string, string>();
-    type Bridge = {
-      request?: Record<string, (params?: unknown) => Promise<unknown>>;
-      onMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-      offMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-    };
-    const win = window as Window & { __ELIZA_ELECTROBUN_RPC__?: Bridge };
-    const existing = win.__ELIZA_ELECTROBUN_RPC__;
-    const now = Date.now();
-    const readyStatus = {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      uptime: 60_000,
-      startedAt: now - 60_000,
-      pendingRestart: false,
-      pendingRestartReasons: [],
-      startup: { phase: "running", attempt: 0 },
-    };
-    const readyLaunch = {
-      phase: "ready",
-      agent: {
-        state: "running",
-        port: null,
-        apiBase: null,
-        startedAt: now - 60_000,
-        error: null,
-      },
-      boot: {
-        runtimePhase: "running",
-        pluginsLoaded: 0,
-        pluginsFailed: 0,
-        database: "ok",
-      },
-      auth: { checked: true, required: false },
-      firstRun: { checked: true, complete: true, cloudProvisioned: true },
-      remotes: { seeded: true, requiredStarted: false, errors: [] },
-      localModel: { backgroundDownloadQueued: false, blocking: false },
-      diagnostics: { logPath: "", statusPath: "" },
-      recovery: {
-        canRetry: false,
-        canOpenLogs: false,
-        canCreateBugReport: false,
-      },
-      updatedAt: new Date(now).toISOString(),
-    };
-    const readyBoot = {
-      state: "running",
-      phase: "running",
-      lastError: null,
-      pluginsLoaded: 0,
-      pluginsFailed: 0,
-      database: "ok",
-      agentName: "Playwright Smoke",
-      port: null,
-      startedAt: now - 60_000,
-    };
-    const withReadyStatus = (bridge?: Bridge): Bridge => ({
-      request: {
-        ...(bridge?.request ?? {}),
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-        getAgentStatus: async () => readyStatus,
-        launchProgress: async () => readyLaunch,
-        bootProgress: async () => readyBoot,
-      },
-      onMessage: bridge?.onMessage ?? (() => {}),
-      offMessage: bridge?.offMessage ?? (() => {}),
-    });
-    let currentBridge = withReadyStatus(existing);
-    Object.defineProperty(win, "__ELIZA_ELECTROBUN_RPC__", {
-      configurable: true,
-      get() {
-        return currentBridge;
-      },
-      set(nextBridge: Bridge | undefined) {
-        currentBridge = withReadyStatus(nextBridge);
-      },
-    });
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "local:playwright-smoke",
-        kind: "local",
-        label: "Playwright Smoke",
-        apiBase: window.location.origin,
-      }),
-    );
-  });
-}
-
 async function screenshot(page: Page, name: string): Promise<void> {
   await expect(page.getByTestId("permission-priming-modal")).toBeHidden();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -543,7 +434,7 @@ test.describe("Settings appearance and model controls", () => {
       await page.getByRole("option", { name: /Rachel/ }).click();
       await screenshot(page, `voice-selector-selected-${viewport.width}`);
       const preview = page.getByRole("button", {
-        name: "Preview Voice",
+        name: "Preview voice",
         exact: true,
       });
       await preview.click();
@@ -667,6 +558,61 @@ test.describe("Settings appearance and model controls", () => {
     await screenshot(page, "mobile-general-hover");
   });
 
+  for (const mode of ["shader", "image"] as const) {
+    test(`routed Settings keeps an opaque safe-area backdrop with ${mode} wallpaper`, async ({
+      page,
+    }) => {
+      const wallpaper = await busyWallpaperDataUrl();
+      await installReadyDesktopStatusBridge(page);
+      await installSettingsBackgroundRoutes(page);
+      await seedSettingsBackgroundStorage(page, {
+        mode,
+        color: "#ef5a1f",
+        ...(mode === "image" ? { imageUrl: wallpaper } : {}),
+      });
+      for (const [name, viewport] of [
+        ["desktop", DESKTOP_VIEWPORT],
+        ["mobile", MOBILE_VIEWPORT],
+      ] as const) {
+        await page.setViewportSize(viewport);
+        await gotoSettings(page);
+        const backdrop = page.getByTestId("app-opaque-background");
+        await expect(backdrop).toBeAttached();
+        await expect(page.getByTestId("app-background-shader")).toHaveCount(0);
+        await expect(page.getByTestId("app-background-image")).toHaveCount(0);
+        const geometry = await backdrop.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const color = getComputedStyle(element).backgroundColor;
+          return {
+            top: rect.top,
+            left: rect.left,
+            bottom: rect.bottom,
+            right: rect.right,
+            viewportHeight: innerHeight,
+            viewportWidth: innerWidth,
+            color,
+            alpha: color.startsWith("rgba(")
+              ? Number(color.slice(5, -1).split(",").at(-1))
+              : color === "transparent"
+                ? 0
+                : 1,
+          };
+        });
+        expect(geometry.alpha, geometry.color).toBe(1);
+        expect(geometry.top).toBeLessThanOrEqual(0);
+        expect(geometry.left).toBeLessThanOrEqual(0);
+        expect(geometry.bottom).toBeGreaterThanOrEqual(geometry.viewportHeight);
+        expect(geometry.right).toBeGreaterThanOrEqual(geometry.viewportWidth);
+        await screenshot(page, `${name}-${mode}-opaque-settings`);
+      }
+      // The same saved background must still paint on the launcher.
+      await page.setViewportSize(DESKTOP_VIEWPORT);
+      await openAppPath(page, "/views");
+      await expect(page.getByTestId(`app-background-${mode}`)).toBeAttached();
+      await expect(page.getByTestId("app-opaque-background")).toHaveCount(0);
+      await screenshot(page, `launcher-${mode}-desktop`);
+    });
+  }
   test("keeps Settings opaque while preserving the selected launcher wallpaper", async ({
     page,
   }) => {

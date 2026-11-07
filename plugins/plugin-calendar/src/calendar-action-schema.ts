@@ -168,7 +168,7 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
   newTitle:
-    "Replacement event title for update_event, never a lookup selector. Identify the existing event with query, oldTitle, or eventId.",
+    "Proposed replacement title for update_event, never a lookup selector; the applied rename is extracted from the user's request. Identify the existing event with query, oldTitle, or eventId.",
   eventId:
     "Existing provider event ID from the externalId field returned by the calendar feed or search, not the feed row's composite id; takes precedence over title or query lookup for update_event/delete_event.",
 };
@@ -197,7 +197,7 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string", enum: ["description", "location"] },
       description:
-        "For update_event only: fields the user explicitly requests to remove. Omit for unchanged or unknown fields. Do not include a field that also has a replacement value. Title, timing and recurrence cannot be cleared this way.",
+        "For update_event only: fields the user explicitly requests to remove. The applied removal is extracted from the user's request, not from this list. Omit for unchanged or unknown fields. Do not include a field that also has a replacement value. Title, timing and recurrence cannot be cleared this way.",
     },
     ...Object.fromEntries(
       CALENDAR_DETAIL_STRING_KEYS.map((key) => {
@@ -227,6 +227,11 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string" },
     },
+    // A planner reference is a hint only: creation re-derives note provenance
+    // from the original request and verifies it exactly against Notes, so an
+    // invented value here never grants authority. No `pattern` on contentHash:
+    // schema rejection of an invented value (e.g. "unknown") only forced a
+    // second planner call; the service boundary still rejects a malformed hash.
     sourceNote: {
       type: "object",
       description:
@@ -234,7 +239,10 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       properties: {
         agentId: { type: "string" },
         noteId: { type: "string" },
-        contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        contentHash: {
+          type: "string",
+          description: "64 lowercase hex characters.",
+        },
       },
       required: ["agentId", "noteId", "contentHash"],
       additionalProperties: false,
@@ -351,7 +359,7 @@ export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     date: {
       type: "string",
       description:
-        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays; use those only for partial-day reads.",
+        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays: use timeMin with timeMax only for partial-day reads, or windowDays alone for the next N local days starting today.",
     },
     endDate: {
       type: "string",

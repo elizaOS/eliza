@@ -1,6 +1,6 @@
 /** Desktop composition injects the OS secret store into the shared controller. */
 import * as controller from "@elizaos/plugin-browser/remote-control/controller";
-import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { createNodePlatformSecureStore } from "../../../src/security/platform-secure-store-node";
 
 const store = createNodePlatformSecureStore();

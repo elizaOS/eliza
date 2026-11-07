@@ -84,6 +84,16 @@ export interface LpProtocolProvider {
   label?: string;
   service?: unknown;
   supportedChainIds?: number[];
+  /** Writes the DEX adapter cannot perform. Refused before the user confirms. */
+  unsupportedWrites?: ReadonlyArray<"open" | "close">;
+  /** Reads the DEX adapter cannot perform. Refused instead of answered as empty. */
+  unsupportedReads?: ReadonlyArray<"list_pools" | "get_position">;
+  /** True when openPosition applies range ticks. A range is refused otherwise. */
+  appliesRange?: boolean;
+  /** True when closePosition removes the given LP token amount. A close amount is refused otherwise. */
+  closeAppliesAmount?: boolean;
+  /** True when closePosition selects the position by its NFT token id. */
+  closeNeedsTokenId?: boolean;
   supportsRequest?: (request: LpProtocolRequest) => boolean;
   listPools(params: LpListPoolsParams): Promise<PoolInfo[]>;
   openPosition(params: LpPositionOperationParams): Promise<TransactionResult>;
@@ -271,6 +281,7 @@ export class LpManagementService extends Service implements ILpService {
       return [];
     }
 
+    const failures: unknown[] = [];
     const poolLists = await Promise.all(
       protocols.map(async (protocol) => {
         try {
@@ -280,12 +291,16 @@ export class LpManagementService extends Service implements ILpService {
             `[LpManagementService] Failed to list pools for ${protocol.chain}:${protocol.dex}`,
             error instanceof Error ? error.message : String(error),
           );
+          failures.push(error);
           return [];
         }
       }),
     );
 
-    return poolLists.flat();
+    const pools = poolLists.flat();
+    // A failed lookup is not an empty pool list.
+    if (pools.length === 0 && failures.length > 0) throw failures[0];
+    return pools;
   }
 
   async openPosition(
@@ -323,6 +338,9 @@ export class LpManagementService extends Service implements ILpService {
     params: LpPositionOperationParams = {},
   ): Promise<LpPositionDetails[]> {
     const protocols = this.matchingProtocols(params);
+    if (protocols.length === 0 && (params.dex || params.chainId)) {
+      throw new NoMatchingLpProtocolError(params);
+    }
     const positionLists = await Promise.all(
       protocols.map((protocol) => protocol.listPositions?.(params) ?? []),
     );
@@ -413,7 +431,8 @@ export class LpManagementService extends Service implements ILpService {
     });
   }
 
-  private resolveProtocol(request: LpProtocolRequest): LpProtocolProvider {
+  /** Throws when no single registered provider matches the request. */
+  resolveProtocol(request: LpProtocolRequest): LpProtocolProvider {
     const matches = this.matchingProtocols(request);
     if (matches.length === 0) {
       throw new NoMatchingLpProtocolError(request);
@@ -471,12 +490,28 @@ export function createSolanaLpProtocolProvider({
   service: SolanaLpServiceAdapter;
 }): LpProtocolProvider {
   const normalizedDex = normalizeRequiredDex(dex);
+  const unsupportedWrites: Array<"open" | "close"> = [];
+  if (typeof service.addLiquidity !== "function") {
+    unsupportedWrites.push("open");
+  }
+  if (typeof service.removeLiquidity !== "function") {
+    unsupportedWrites.push("close");
+  }
+  const unsupportedReads: Array<"list_pools" | "get_position"> = [];
+  if (typeof service.getPools !== "function") {
+    unsupportedReads.push("list_pools");
+  }
+  if (typeof service.getLpPositionDetails !== "function") {
+    unsupportedReads.push("get_position");
+  }
   const provider: LpProtocolProvider = {
     id: `solana:${normalizedDex}`,
     chain: "solana",
     dex: normalizedDex,
     label,
     service,
+    unsupportedWrites,
+    unsupportedReads,
     supportsRequest: (request) =>
       (!request.chain || normalizeChain(request.chain) === "solana") &&
       (!request.dex || normalizeDex(request.dex) === normalizedDex),
@@ -551,10 +586,19 @@ export function createEvmLpProtocolProvider({
   dex,
   label,
   service,
+  appliesRange,
+  closeAppliesAmount,
+  closeNeedsTokenId,
 }: {
   dex: string;
   label?: string;
   service: IEvmLpService;
+  /** Set for concentrated-liquidity adapters whose addLiquidity reads the ticks. */
+  appliesRange?: boolean;
+  /** Set for adapters whose removeLiquidity reads lpTokenAmount. */
+  closeAppliesAmount?: boolean;
+  /** Set for adapters whose removeLiquidity needs the position NFT token id. */
+  closeNeedsTokenId?: boolean;
 }): LpProtocolProvider {
   const supportedChainIds =
     typeof service.getSupportedChainIds === "function"
@@ -568,6 +612,9 @@ export function createEvmLpProtocolProvider({
     label,
     service,
     supportedChainIds,
+    appliesRange,
+    closeAppliesAmount,
+    closeNeedsTokenId,
     supportsRequest: (request) => {
       if (request.chain && normalizeChain(request.chain) !== "evm") {
         return false;

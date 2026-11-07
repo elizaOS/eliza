@@ -1,7 +1,7 @@
 // Persists Web Push subscription rows through the shared DB boundary.
 // Used by the subscription routes (POST/DELETE) and the cloud push sender
 // (list-by-user+agent, prune-gone).
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { StoredPushSubscription } from "../../lib/web-push/sender";
 import { dbRead, dbWrite } from "../client";
 import { type WebPushSubscription, webPushSubscriptions } from "../schemas/web-push-subscriptions";
@@ -87,6 +87,32 @@ export const webPushSubscriptionsRepository = {
     const rows = await dbWrite
       .delete(webPushSubscriptions)
       .where(inArray(webPushSubscriptions.endpoint, endpoints))
+      .returning({ id: webPushSubscriptions.id });
+    return rows.length;
+  },
+
+  /**
+   * Prune only the exact subscription versions that returned 404/410.
+   * A device may refresh its keys while a push is in flight; endpoint-only
+   * deletion would then remove the freshly rotated subscription as well.
+   */
+  async pruneStaleSubscriptions(
+    subscriptions: Array<Pick<WebPushSubscription, "id" | "p256dh" | "auth">>,
+  ): Promise<number> {
+    if (subscriptions.length === 0) return 0;
+    const rows = await dbWrite
+      .delete(webPushSubscriptions)
+      .where(
+        or(
+          ...subscriptions.map((subscription) =>
+            and(
+              eq(webPushSubscriptions.id, subscription.id),
+              eq(webPushSubscriptions.p256dh, subscription.p256dh),
+              eq(webPushSubscriptions.auth, subscription.auth),
+            ),
+          ),
+        ),
+      )
       .returning({ id: webPushSubscriptions.id });
     return rows.length;
   },

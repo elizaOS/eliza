@@ -25,7 +25,7 @@ from typing import Literal
 
 import numpy as np
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     PromptExceedsContextError,
     require_complete_finish_reasons,

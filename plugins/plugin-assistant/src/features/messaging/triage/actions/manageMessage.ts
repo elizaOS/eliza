@@ -1,11 +1,12 @@
 /**
  * Triage action that mutates a single message or sender — archive, trash, spam,
- * mark read/unread, add/remove a label or tag, mute thread, unsubscribe, or
- * block. Registered under the shared `MESSAGE` action name; resolves the target
+ * mark read/unread, add/remove a label or tag, or unsubscribe.
+ * Registered under the shared `MESSAGE` action name; resolves the target
  * by explicit `messageId` or by searching sender/content hints, then applies the
  * parsed operation through the TriageService's `manage`. The `unsubscribe`
- * operation first gates on user confirmation (`requireConfirmation`) before it
- * runs. ADMIN-gated.
+ * operation is refused when the message's adapter cannot unsubscribe, and
+ * otherwise gates on user confirmation (`requireConfirmation`) before it runs.
+ * ADMIN-gated.
  */
 
 import type {
@@ -33,10 +34,12 @@ async function resolveTargetMessageId(
   runtime: IAgentRuntime,
   service: TriageService,
   parsed: ManageMessageParams,
+  requester: Memory,
 ): Promise<string | null> {
   if (parsed.messageId) return parsed.messageId;
   const hits = await service.search(runtime, {
     ...parsed.lookup,
+    requester,
     sources:
       parsed.lookup.sources ?? (parsed.source ? [parsed.source] : undefined),
     limit: 1,
@@ -49,9 +52,9 @@ export const manageMessageAction: Action = {
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, mute thread, unsubscribe, or block a sender. Use this for unsubscribe/block/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
+    "Mutate a single message or sender: archive, trash, mark spam, mark read/unread, add or remove a label or tag, or unsubscribe. Use this for unsubscribe/archive/delete/label requests, including natural-language targets like newsletters@medium.com; pass messageId when known, otherwise pass sender/content hints.",
   descriptionCompressed:
-    "mutate msg/sender archive|trash|spam|read|label|tag|mute|unsubscribe|block",
+    "mutate msg/sender archive|trash|spam|read|label|tag|unsubscribe",
   similes: [
     "ARCHIVE_MESSAGE",
     "TAG_MESSAGE",
@@ -84,7 +87,7 @@ export const manageMessageAction: Action = {
     {
       name: "operation",
       description:
-        "Operation to apply: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+        "Operation to apply: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, or unsubscribe.",
       required: true,
       schema: { type: "string" as const, enum: [...MANAGE_OPERATION_KINDS] },
     },
@@ -99,6 +102,13 @@ export const manageMessageAction: Action = {
       description: "Tag for tag_add or tag_remove.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "read",
+      description:
+        "For mark_read: false marks the message unread. Defaults to true.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
   ],
   examples: [
@@ -134,7 +144,12 @@ export const manageMessageAction: Action = {
     }
 
     const service = getDefaultTriageService();
-    const messageId = await resolveTargetMessageId(runtime, service, parsed);
+    const messageId = await resolveTargetMessageId(
+      runtime,
+      service,
+      parsed,
+      message,
+    );
     if (!messageId) {
       const text = "No matching message found to manage.";
       logger.warn(`[ManageMessage] ${text}`);
@@ -142,6 +157,28 @@ export const manageMessageAction: Action = {
     }
 
     if (parsed.operation.kind === "unsubscribe") {
+      // Refuse before asking: a yes to an unsupported unsubscribe can only fail.
+      const adapter = service.getManageAdapter(runtime, messageId, {
+        source: parsed.source,
+      });
+      if (adapter?.capabilities().manage.unsubscribe !== true) {
+        const text = adapter
+          ? `${adapter.source} adapter does not support unsubscribe`
+          : `no adapter resolved for message ${messageId}`;
+        logger.info(
+          `[ManageMessage] op=unsubscribe messageId=${messageId} not ok: ${text}`,
+        );
+        return {
+          success: false,
+          text,
+          data: {
+            ok: false,
+            reason: text,
+            messageId,
+            operation: "unsubscribe",
+          },
+        };
+      }
       const preview = `Unsubscribe from the sender of message ${messageId}?`;
       const decision = await requireConfirmation({
         runtime,
@@ -175,6 +212,7 @@ export const manageMessageAction: Action = {
 
     const result = await service.manage(runtime, messageId, parsed.operation, {
       source: parsed.source,
+      requester: message,
     });
 
     const opLabel = parsed.operation.kind;
@@ -212,7 +250,6 @@ export const manageMessageAction: Action = {
         label_remove: "Removed the label.",
         tag_add: "Tagged that message.",
         tag_remove: "Removed the tag.",
-        mute_thread: "Muted that thread.",
         unsubscribe: "Unsubscribed from that sender.",
       }[opLabel] ?? "Done.";
     logger.info(`[ManageMessage] op=${opLabel} messageId=${messageId} ok`);

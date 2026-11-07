@@ -308,12 +308,27 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("device settings"),
   ));
+  // The real web system bridge reports an unknown mode. Do not present that
+  // state as Manual while exposing the Android-only view in this fixture.
+  await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
   await page.getByTestId("device-settings-brightness").fill("67");
   const mediaVolume = page.getByTestId("device-settings-volume-music");
   if (await mediaVolume.isVisible().catch(() => false)) {
     await mediaVolume.fill("8");
   }
   await page.getByTestId("device-settings-refresh").click();
+  await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath("device-settings-unknown-desktop.png"),
+    fullPage: true,
+  });
   await expectNoIssues(page, issues.splice(0), "device settings interactions");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
+  await expectNoIssues(page, issues.splice(0), "mobile device settings");
+  await page.screenshot({
+    path: test.info().outputPath("device-settings-unknown-mobile.png"),
+    fullPage: true,
+  });
   await page.close();
 });

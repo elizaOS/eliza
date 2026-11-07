@@ -9,6 +9,7 @@
 import {
   ChannelType,
   createUniqueUuid,
+  getConfiguredOwnerEntityIds,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -47,12 +48,31 @@ type TwitterMetadataTweet = Pick<
   "conversationId" | "id" | "name" | "userId" | "username"
 >;
 
-/** Persists a Twitter world through the runtime's merge-aware ensure path. */
+/**
+ * Persists a Twitter world through the runtime's merge-aware ensure path.
+ *
+ * World ownership is what core turns into the OWNER role when no owner is
+ * configured, and what the owner lookup scans. An X world belongs to the X
+ * user it is named after, so ownership is kept only when that user is a
+ * configured owner; a stranger's world carries none, and a world that still
+ * names a stranger from an earlier build has it cleared on the next write.
+ */
 export async function reconcileTwitterWorld(
   runtime: IAgentRuntime,
   world: World,
 ): Promise<void> {
-  await runtime.ensureWorldExists(world);
+  const owners = new Set(getConfiguredOwnerEntityIds(runtime));
+  const { ownership, ...rest } = world.metadata ?? {};
+  const requestedOwner = (ownership as { ownerId?: string } | undefined)
+    ?.ownerId;
+  // An explicit undefined reaches the stored world through the merge-aware
+  // ensure path and clears an ownership an earlier build wrote for a
+  // non-owner; omitting the key would keep it.
+  const metadata =
+    requestedOwner && owners.has(requestedOwner)
+      ? { ...rest, ownership: { ownerId: requestedOwner } }
+      : { ...rest, ownership: undefined };
+  await runtime.ensureWorldExists({ ...world, metadata });
 }
 
 /**

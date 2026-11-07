@@ -455,6 +455,8 @@ export interface LoginProviders {
   siwe: boolean;
   siws: boolean;
   google: boolean;
+  /** Native Google challenge/verify is configured for an enabled app client. */
+  googleNative?: boolean;
   discord: boolean;
   github: boolean;
   twitter: boolean;

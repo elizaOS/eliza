@@ -1,19 +1,23 @@
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "@elizaos/cloud-shared/testing";
 /** Starts isolated PostgreSQL and signed-session records routes with real billing repositories and controlled Stripe HTTP. */
 
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { CloudApiClient } from "@elizaos/cloud-sdk";
 import { AppBillingClient } from "@elizaos/cloud-sdk/app-billing";
+import type {
+  BuyerBillingIdentity,
+  GenericBillingRuntime,
+} from "@elizaos/cloud-shared/lib/services/generic-billing-runtime";
+import { createRuntimeStripeFixture } from "@elizaos/cloud-shared/lib/services/generic-billing-runtime.stripe-fixture";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import type { Hono } from "hono";
 import { Client } from "pg";
 import Stripe from "stripe";
-import type {
-  BuyerBillingIdentity,
-  GenericBillingRuntime,
-} from "@/lib/services/generic-billing-runtime";
-import { createRuntimeStripeFixture } from "@/lib/services/generic-billing-runtime.stripe-fixture";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 export const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_records_${randomUUID().replaceAll("-", "_")}`;
@@ -28,8 +32,8 @@ process.env.NODE_ENV ||= "test";
 process.env.APP_BILLING_UI_ORIGIN = "https://cloud.example.test";
 process.env.CACHE_BACKEND = "memory";
 export let db: Client;
-let close: typeof import("@/db/client").closeDatabaseConnectionsForTests;
-let authority: typeof import("@/db/repositories/app-subscription-authority").appSubscriptionAuthorityRepository;
+let close: typeof import("@elizaos/cloud-shared/db/client").closeDatabaseConnectionsForTests;
+let authority: typeof import("@elizaos/cloud-shared/db/repositories/app-subscription-authority").appSubscriptionAuthorityRepository;
 let runtime: GenericBillingRuntime;
 const fixture = createRuntimeStripeFixture();
 export const org = randomUUID();
@@ -84,8 +88,10 @@ export async function setupRecordsTest() {
   );
   await db.query(`CREATE SCHEMA ${schema}`);
   await db.query(`SET search_path TO ${schema},public`);
-  const { organizations } = await import("@/db/schemas/organizations");
-  const { users } = await import("@/db/schemas/users");
+  const { organizations } = await import(
+    "@elizaos/cloud-shared/db/schemas/organizations"
+  );
+  const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
   const empty = generateDrizzleJson({});
   const target = generateDrizzleJson({ organizations, users }, empty.id);
   for (const statement of await generateMigration(empty, target))
@@ -118,6 +124,7 @@ export async function setupRecordsTest() {
     "0508_app_notification_secret_envelope_v2",
     "0414_app_subscription_outbox_delivery",
     "0415_app_billing_webhook_recovery",
+    "0555_stripe_delivery_outbox",
     "0416_app_billing_checkout_expiry",
     "0417_app_billing_membership_authority",
     "0418_app_billing_seat_mutations",
@@ -126,11 +133,43 @@ export async function setupRecordsTest() {
     "0428_billing_identity_anchors",
     "0429_billing_identity_backfill",
     "0430_billing_identity_references",
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
+    "0513_organization_upgrade_live_lease",
+    "0514_organization_upgrade_quote_binding",
   ]) {
     const migration = await readFile(
       new URL(
         `../../db/migrations/${tag}.sql`,
-        import.meta.resolve("@/lib/services/generic-billing-runtime"),
+        import.meta.resolve(
+          "@elizaos/cloud-shared/lib/services/generic-billing-runtime",
+        ),
+      ),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim())
+        await db.query(statement.replaceAll('"public".', ""));
+  }
+  await installBillingCommandEvidenceTestColumns((statement) =>
+    db.query(statement),
+  );
+  await installSubscriptionGrantTestSchema((statement) => db.query(statement));
+  // The pilot allowance migrations must follow the 0542 grant installer above:
+  // 0543 references the promo_grant_id column and invoice-check constraint it
+  // leaves behind, and the allowance repository now selects pilot_redemption_id
+  // on every read. Mirrors app-subscription-authority.pglite.test.ts.
+  for (const tag of [
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0543_app_pilot_allowance",
+  ]) {
+    const migration = await readFile(
+      new URL(
+        `../../db/migrations/${tag}.sql`,
+        import.meta.resolve(
+          "@elizaos/cloud-shared/lib/services/generic-billing-runtime",
+        ),
       ),
       "utf8",
     );
@@ -146,17 +185,21 @@ export async function setupRecordsTest() {
     "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES($1,$2,'acct_runtime','acct_runtime',false,true)",
     [merchant, org],
   );
-  close = (await import("@/db/client")).closeDatabaseConnectionsForTests;
-  authority = (await import("@/db/repositories/app-subscription-authority"))
-    .appSubscriptionAuthorityRepository;
+  close = (await import("@elizaos/cloud-shared/db/client"))
+    .closeDatabaseConnectionsForTests;
+  authority = (
+    await import(
+      "@elizaos/cloud-shared/db/repositories/app-subscription-authority"
+    )
+  ).appSubscriptionAuthorityRepository;
   const { appBillingProviderBindings } = await import(
-    "@/db/repositories/app-billing-provider-bindings"
+    "@elizaos/cloud-shared/db/repositories/app-billing-provider-bindings"
   );
   const { createGenericBillingProvider } = await import(
-    "@/lib/services/generic-billing-provider"
+    "@elizaos/cloud-shared/lib/services/generic-billing-provider"
   );
   const { GenericBillingRuntime } = await import(
-    "@/lib/services/generic-billing-runtime"
+    "@elizaos/cloud-shared/lib/services/generic-billing-runtime"
   );
   runtime = new GenericBillingRuntime(async (merchantId, livemode) => {
     if (merchantId !== merchant || livemode)
@@ -231,13 +274,13 @@ function invoice(id: string, customer: string, subscription: string) {
 
 async function setupRoutes() {
   const { createGenericBillingProvider } = await import(
-    "@/lib/services/generic-billing-provider"
+    "@elizaos/cloud-shared/lib/services/generic-billing-provider"
   );
   const { appBillingProviderBindings } = await import(
-    "@/db/repositories/app-billing-provider-bindings"
+    "@elizaos/cloud-shared/db/repositories/app-billing-provider-bindings"
   );
   const { GenericBillingRecordsService } = await import(
-    "@/lib/services/generic-billing-records"
+    "@elizaos/cloud-shared/lib/services/generic-billing-records"
   );
   const stripe = new Stripe("sk_test_controlled_records", {
     maxNetworkRetries: 0,
@@ -340,7 +383,7 @@ async function setupRoutes() {
     "./_handlers"
   );
   const { runWithCloudBindingsAsync } = await import(
-    "@/lib/runtime/cloud-bindings"
+    "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
   );
   const { default: administrators } = await import(
     "./accounts/[accountId]/administrators/route"
@@ -379,7 +422,9 @@ export async function sdk(
     productionRouteTree?: boolean;
   } = {},
 ) {
-  const session = await import("@/lib/auth/playwright-test-session");
+  const session = await import(
+    "@elizaos/cloud-shared/lib/auth/playwright-test-session"
+  );
   const token = session.createPlaywrightTestSessionToken(
     identity.actorUserId,
     org,
@@ -389,7 +434,7 @@ export async function sdk(
   if (options.productionRouteTree) {
     const { billingRoute } = await import("./_handlers");
     const { runWithCloudBindingsAsync } = await import(
-      "@/lib/runtime/cloud-bindings"
+      "@elizaos/cloud-shared/lib/runtime/cloud-bindings"
     );
     const { mountShardRoutes } = await import(
       "../../../../src/_router.generated"

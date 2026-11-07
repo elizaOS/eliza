@@ -36,6 +36,11 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  isCodingAgentBackend,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   type IAgentRuntime,
   Service,
@@ -44,16 +49,11 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
-  CODING_AGENT_BACKEND_PREFLIGHTS,
-  CODING_AGENT_BACKENDS,
-  isCodingAgentBackend,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
-import {
   applyHostToolchainExecutionBaseline,
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
-} from "@elizaos/core/host-execution-env";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
+} from "@elizaos/host";
+import { isAndroidMobile } from "@elizaos/host/protocol";
 import { SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE } from "@elizaos/plugin-assistant";
 import {
   NativeAcpClient,
@@ -120,6 +120,7 @@ import {
   type PreparedPiProviderRoute,
   preparePiProviderRoute,
 } from "./pi-provider-config.js";
+import { recordedPromptDurationMs } from "./prompt-duration.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -256,6 +257,7 @@ type RunResult = {
   terminalFailure?: AcpTerminalFailure;
   protocolError?: string;
   cancelled?: boolean;
+  killedByService?: boolean;
   durationMs: number;
 };
 
@@ -2686,7 +2688,10 @@ export class AcpService extends Service {
       response: result.finalText,
       finalText: result.finalText,
       stopReason,
-      durationMs: result.durationMs || Date.now() - startedAt,
+      durationMs: recordedPromptDurationMs(
+        result.durationMs,
+        Date.now() - startedAt,
+      ),
       exitCode: result.code,
       signal: result.signal,
       ...(result.terminalFailure
@@ -2719,6 +2724,7 @@ export class AcpService extends Service {
     }
 
     if (
+      !result.killedByService &&
       (result.code === 0 || result.code === null) &&
       (stopReason !== "error" || result.finalText.trim().length > 0)
     ) {
@@ -3258,6 +3264,15 @@ export class AcpService extends Service {
     if (
       ["stopped", "errored", "completed", "cancelled"].includes(session.status)
     ) {
+      // A cancelled or failed native task keeps its status, but nothing else
+      // closes its agent subprocess.
+      await this.stopNativeClient(sessionId).catch((err: unknown) => {
+        // error-policy:J6 best-effort teardown, as for closeSession below.
+        this.log("warn", "initial task agent close failed", {
+          sessionId,
+          error: errorMessage(err),
+        });
+      });
       return;
     }
     await this.closeSession(sessionId).catch((err: unknown) => {
@@ -3843,6 +3858,24 @@ export class AcpService extends Service {
       session,
       opts,
     );
+    if (this.nativeStoppingSessionIds.has(session.id)) {
+      // The session was stopped while it was attaching: close the client the
+      // attach just opened and do not send the prompt.
+      this.nativePromptSessionIds.delete(session.id);
+      await this.stopNativeClient(session.id);
+      this.nativeStoppingSessionIds.delete(session.id);
+      await this.store.updateStatus(session.id, "stopped");
+      void this.revokeModelLease(session.id, "native_prompt:stopped");
+      return {
+        sessionId: session.id,
+        response: "",
+        finalText: "",
+        stopReason: "stopped",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    }
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
@@ -3864,7 +3897,6 @@ export class AcpService extends Service {
       finalText = handled.finalText;
       eventStopReason = handled.stopReason ?? eventStopReason;
     };
-    this.nativePromptSessionIds.add(session.id);
     client.setEventHandler(previousOnAcp);
     client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
     try {
@@ -4487,6 +4519,7 @@ export class AcpService extends Service {
           // pipeline.
           const cleanCompletion =
             !record.cancelled &&
+            !record.killedByService &&
             (code === 0 || code === null) &&
             finalText.trim().length > 0 &&
             !isIncompletePromptStopReason(stopReason);
@@ -4549,6 +4582,7 @@ export class AcpService extends Service {
           ...(terminalFailure ? { terminalFailure } : {}),
           ...(protocolError ? { protocolError } : {}),
           cancelled: record.cancelled,
+          killedByService: record.killedByService,
           durationMs: Date.now() - startedAt,
         });
       });
@@ -6045,6 +6079,10 @@ export class AcpService extends Service {
 
   private setting(key: string): string | undefined {
     const fromRuntime = this.runtime.getSetting(key);
+    // getSetting returns a saved "true"/"false" as a boolean. Keep it, or a
+    // switch saved in Settings or the character file falls back to env.
+    if (typeof fromRuntime === "boolean" || typeof fromRuntime === "number")
+      return String(fromRuntime);
     if (typeof fromRuntime === "string" && fromRuntime.length > 0)
       return fromRuntime;
     const fromEnv = process.env[key];

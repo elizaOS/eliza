@@ -28,12 +28,12 @@ import { createPortal } from "react-dom";
 import type {
   MessageAttachment,
   MessageAttachmentContentType,
-} from "../../api";
-import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
+} from "../../api/client-types-chat";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+import { cn } from "../../utils/cn";
+import { Z_SHELL_OVERLAY } from "../../utils/floating-layers";
 import { RedactedBadge } from "../RedactedBadge";
 import {
   Attachment,

@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 mcps mcpid route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Individual User MCP API
@@ -12,11 +12,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/billing";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { CreatorMonetizationRetiredError } from "@/lib/services/creator-monetization-retirement";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
 
 // ============================================================================
 // Schemas
@@ -155,8 +156,11 @@ async function __hono_PUT(
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
-  const body = await request.json();
-  const validation = updateMcpSchema.safeParse(body);
+  const decodedBody = await decodeRequestJson(request);
+  if (!decodedBody.ok) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const validation = updateMcpSchema.safeParse(decodedBody.value);
 
   if (!validation.success) {
     return Response.json(

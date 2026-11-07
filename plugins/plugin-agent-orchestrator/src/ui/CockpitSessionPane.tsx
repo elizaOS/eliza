@@ -22,17 +22,17 @@
  * The parent (CockpitRoute) owns selection — it renders this pane for a chosen
  * taskId and passes `onBack` to return to the deck.
  */
-
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import {
+  Button,
   CockpitTierToggle,
+  type CodingAgentSession,
+  client,
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
-} from "@elizaos/ui/components";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state";
+  useAgentElement,
+  useRegisterViewChatBinding,
+} from "@elizaos/ui";
+
 import {
   ArrowLeft,
   PanelRight,

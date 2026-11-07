@@ -2,7 +2,7 @@
  * The host supplies a private durable connection; no transaction may be open
  * when invoking this store. Effects only run after commitIfClaimed resolves.
  */
-import { ElizaError } from "@elizaos/core/errors";
+
 import {
   applyMessageInteractionClaim,
   applyMessageInteractionCommit,
@@ -16,7 +16,8 @@ import {
   type MessageInteractionReconcileContext,
   type MessageInteractionSession,
   type MessageInteractionSessionStore,
-} from "@elizaos/core/messaging/interactions/sessions";
+} from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import type { TaskSqliteConnection } from "./interactive-task-store.ts";
 import {
   structurallyValidSession,

@@ -3,21 +3,18 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  ChannelType,
-  installHttpPluginLifecycle,
-  MemoryType,
-  type UUID,
-} from "@elizaos/core";
+import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
 
 import {
   createDocumentsPlugin,
   type DocumentMemoryMetadata,
 } from "@elizaos/plugin-assistant";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { knowledgePlugin } from "../../../plugins/plugin-knowledge/src/plugin.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { runtimeDocumentsEnabled } from "../src/runtime/native-runtime-features.ts";
 
 const owner = "f4350000-0000-4000-8000-000000000001" as UUID;
 const room = "f4350000-0000-4000-8000-000000000002" as UUID;
@@ -47,6 +44,7 @@ beforeAll(async () => {
     settings: { ELIZA_ADMIN_ENTITY_ID: owner, LOAD_DOCS_ON_STARTUP: false },
     plugins: [createDocumentsPlugin(), knowledgePlugin],
   });
+  expect(runtimeDocumentsEnabled(fixture.runtime)).toBe(true);
   await fixture.runtime.ensureConnection({
     entityId: owner,
     roomId: room,

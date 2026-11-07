@@ -1,15 +1,15 @@
-/** Live state and secure enrollment flows for Devices & Runtimes settings. */
-
 import { Capacitor } from "@capacitor/core";
-import type { RemoteControllerPublicIdentity } from "@elizaos/core/contracts/remote-control";
+import type { RemoteControllerPublicIdentity } from "@elizaos/contracts";
+import type {
+  RemoteHostDirectory,
+  RemoteHostSummary,
+  RemotePairingClaimReceipt,
+  RemoteSessionSummary,
+} from "@elizaos/plugin-browser/remote-control/cloud-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RemoteCloudRequestError,
   RemoteControlAuthenticationRequiredError,
-  type RemoteHostDirectory,
-  type RemoteHostSummary,
-  type RemotePairingClaimReceipt,
-  type RemoteSessionSummary,
 } from "../../api/remote-control-cloud-client";
 import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
 import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-controller";
@@ -22,31 +22,35 @@ import {
 } from "../../platform/remote-target";
 import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
 import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
-import {
-  executeRuntimeManagementCommand,
-  removeProfileWithoutStaleSelection as removeProfileCanonically,
-} from "../../platform/runtime-management";
-import {
-  getSshRuntimeStatus,
-  type SshHostInspection,
-  type SshRuntimeStatus,
-  startSshRuntime,
+import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
+import type {
+  SshHostInspection,
+  SshRuntimeStatus,
 } from "../../platform/ssh-runtime";
 import {
-  type AgentProfile,
-  type AgentProfileRegistry,
+  getSshRuntimeStatus,
+  startSshRuntime,
+} from "../../platform/ssh-runtime";
+import type {
+  AgentProfile,
+  AgentProfileRegistry,
+} from "../../state/agent-profile-types";
+import {
   addAgentProfile,
   loadAgentProfileRegistry,
-  switchRuntimeNonDestructive,
-} from "../../state";
-import {
-  type ControllerPairingClaimView,
-  type DevicePairingView,
-  type DeviceRuntimeTarget,
-  DevicesRuntimesSection,
-  type LinuxRemoteTargetView,
-  type SshConnectInput,
+} from "../../state/agent-profiles";
+import { removeProfileWithoutStaleSelection as removeProfileCanonically } from "../../state/runtime-profile-removal";
+import { switchRuntimeNonDestructive } from "../../state/switch-runtime";
+import type {
+  ControllerPairingClaimView,
+  DevicePairingView,
+  DeviceRuntimeTarget,
+  LinuxRemoteTargetView,
+  SshConnectInput,
 } from "./DevicesRuntimesSection";
+import { DevicesRuntimesSection } from "./DevicesRuntimesSection";
+
+/** Live state and secure enrollment flows for Devices & Runtimes settings. */
 
 function messageFor(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim()) return cause.message;

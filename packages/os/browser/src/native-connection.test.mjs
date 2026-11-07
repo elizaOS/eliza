@@ -273,3 +273,17 @@ test("recovery failure prevents registration until a later successful retry", as
   assert.equal(f.ports.length, 1);
   f.ready();
 });
+
+test("extension events use only the registered transport generation", async () => {
+  const f = fixture();
+  const event = { type: "task-guide-answer", id: "guide", answerId: "a" };
+  await assert.rejects(f.connection.notify(event), /not registered/);
+  await f.connection.start();
+  await assert.rejects(f.connection.notify(event), /not registered/);
+  f.ready();
+  await f.connection.notify(event);
+  assert.deepEqual(f.ports[0].sent.at(-1), event);
+  f.ports[0].onDisconnect.emit();
+  await assert.rejects(f.connection.notify(event), /not registered/);
+  assert.equal(f.ports[0].sent.at(-1), event);
+});

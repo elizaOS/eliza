@@ -25,6 +25,8 @@ import {
   normalizeHostLike,
   stripHtmlRawTextElements,
 } from "@elizaos/core";
+import { decodeBasicHtmlEntities } from "../../utils/html-entities.ts";
+import { decodeHttpText } from "../../utils/http-text.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -380,28 +382,38 @@ async function readResponseBodyWithLimit(
   return output;
 }
 
-export function isYouTubeUrl(url: string): boolean {
-  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)/.test(url);
+function parseYouTubeUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      ["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname)
+      ? url
+      : null;
+  } catch {
+    // error-policy:J3 Classification rejects malformed input; the fetch boundary
+    // still reports invalid URLs through its existing validation path.
+    return null;
+  }
 }
 
-function extractYouTubeVideoId(url: string): string | null {
-  // Handle youtu.be/VIDEO_ID
-  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortMatch) return shortMatch[1];
+export function isYouTubeUrl(url: string): boolean {
+  return parseYouTubeUrl(url) !== null;
+}
 
-  // Handle youtube.com/watch?v=VIDEO_ID
-  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (watchMatch) return watchMatch[1];
-
-  // Handle youtube.com/embed/VIDEO_ID
-  const embedMatch = url.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-  if (embedMatch) return embedMatch[1];
-
-  // Handle youtube.com/v/VIDEO_ID
-  const vMatch = url.match(/\/v\/([a-zA-Z0-9_-]{11})/);
-  if (vMatch) return vMatch[1];
-
-  return null;
+function extractYouTubeVideoId(value: string): string | null {
+  const url = parseYouTubeUrl(value);
+  if (!url) return null;
+  const videoId =
+    url.hostname === "youtu.be"
+      ? url.pathname.slice(1).replace(/\/$/, "")
+      : url.pathname === "/watch"
+        ? url.searchParams.get("v")
+        : url.pathname.match(
+            /^\/(?:embed|v|shorts|live)\/([a-zA-Z0-9_-]{11})\/?$/,
+          )?.[1];
+  return typeof videoId === "string" && /^[a-zA-Z0-9_-]{11}$/.test(videoId)
+    ? videoId
+    : null;
 }
 
 async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
@@ -513,22 +525,12 @@ function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
   return "text";
 }
 
-function decodeBasicHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&amp;/gi, "&");
-}
-
 function htmlToPlainText(value: string): string {
   return decodeBasicHtmlEntities(
     stripHtmlRawTextElements(value)
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
-      .replace(/<li\b[^>]*>/gi, "- ")
+      .replace(/<li(?=[\s/>])[^>]*>/gi, "- ")
       .replace(/<[^>]+>/g, " "),
   )
     .replace(/\r/g, "")
@@ -616,7 +618,7 @@ export async function fetchDocumentFromUrl(
     };
   }
 
-  const text = new TextDecoder().decode(buffer);
+  const text = decodeHttpText(buffer, mimeType);
   return {
     filename,
     content: kind === "html" ? htmlToPlainText(text) : text,

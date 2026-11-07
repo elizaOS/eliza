@@ -18,6 +18,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import { resolveMessageTimeZone } from "../../../basic-capabilities/providers/currentTime.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
   draftIdParameter,
@@ -54,8 +55,7 @@ export const scheduleDraftSendAction: Action = {
   roleGate: { minRole: "ADMIN" },
   description:
     "Schedule a previously created draft to send at a future time. Uses authoritative adapter-native scheduling when supported and otherwise persists a one-shot task in the shared scheduler.",
-  descriptionCompressed:
-    "schedule draft send sendAtMs durable shared scheduler",
+  descriptionCompressed: "schedule draft send sendAt durable shared scheduler",
   tags: [
     "domain:messages",
     "capability:schedule",
@@ -68,7 +68,7 @@ export const scheduleDraftSendAction: Action = {
     {
       name: "sendAt",
       description:
-        "When to send the draft, as an ISO timestamp or parseable date.",
+        "When to send the draft, as an ISO 8601 timestamp or epoch milliseconds.",
       required: true,
       schema: { type: "string" as const },
     },
@@ -103,12 +103,15 @@ export const scheduleDraftSendAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const parsed = parseScheduleDraftSendParams(options);
+    const parsed = parseScheduleDraftSendParams(
+      options,
+      resolveMessageTimeZone(runtime, message),
+    );
     if ("error" in parsed) {
       logger.warn(`[ScheduleDraftSend] ${parsed.error}`);
       return { success: false, text: parsed.error, error: parsed.error };
@@ -116,7 +119,7 @@ export const scheduleDraftSendAction: Action = {
     const sendAtIso = formatSendAtIso(parsed.sendAtMs);
 
     const service = getDefaultTriageService();
-    const existing = service.getStore().getDraft(parsed.draftId);
+    const existing = service.getDraft(runtime, parsed.draftId);
     if (!existing) {
       const msg = `No draft found for id ${parsed.draftId}`;
       logger.warn(`[ScheduleDraftSend] ${msg}`);

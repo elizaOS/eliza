@@ -25,6 +25,7 @@ import {
   chunkByBudget,
   computeRequiredRuntimeArtifacts,
   computeTestRoots,
+  discoverSdkUnitTests,
   EXCLUDED_DIRS,
   ensureCloudTestRuntime,
   findMissingRoots,
@@ -215,6 +216,7 @@ describe("computeTestRoots", () => {
       cloudApiRoot: join("/repo", "packages", "cloud", "api"),
       cloudServicesRoot: join("/repo", "packages", "cloud", "services"),
       cloudMocksRoot: join("/repo", "packages", "cloud", "test-mocks"),
+      cloudSdkSrc: join("/repo", "packages", "cloud", "sdk", "src"),
     });
   });
 });
@@ -1098,5 +1100,27 @@ describe("watchdog configuration", () => {
     expect(retained).toHaveLength(MAX_CLASSIFICATION_OUTPUT_CHARS);
     expect(retained.endsWith("STATUS99")).toBe(true);
     expect(retained.startsWith("prefix")).toBe(false);
+  });
+});
+
+describe("discoverSdkUnitTests", () => {
+  it("includes keyless TS and MJS tests and excludes credentialed E2E tests", () => {
+    const root = mkdtempSync(join(tmpdir(), "sdk-tests-"));
+    try {
+      expect(() => discoverSdkUnitTests(root)).toThrow("No keyless SDK tests");
+      for (const name of [
+        "auth.test.ts",
+        "routes.test.mjs",
+        "live.e2e.test.ts",
+      ]) {
+        writeFileSync(join(root, name), "");
+      }
+      expect(discoverSdkUnitTests(root)).toEqual([
+        join(root, "auth.test.ts"),
+        join(root, "routes.test.mjs"),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

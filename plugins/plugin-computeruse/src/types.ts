@@ -65,7 +65,6 @@ export interface DesktopActionParams {
   key?: string;
   hold_keys?: string[];
   button?: "left" | "middle" | "right";
-  clicks?: number;
   scrollDirection?: "up" | "down" | "left" | "right";
   scrollAmount?: number;
   amount?: number;

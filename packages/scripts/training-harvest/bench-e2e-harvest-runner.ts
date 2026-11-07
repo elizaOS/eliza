@@ -59,7 +59,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
-const TSCONFIG = path.join(REPO_ROOT, "tsconfig.json");
 const NATIVE_EXPORT_TS = path.join(
   REPO_ROOT,
   "packages/testing/scenario-runner/src/native-export.ts",
@@ -318,9 +317,6 @@ function runE2eItem(laneRel, runEnv, config) {
         ...process.env,
         ...runEnv,
         ELIZA_LIVE_TEST: "1",
-        // The default vitest.config.ts excludes live-agent e2e lanes unless this
-        // is set (packages/app/vitest.config.ts `includeLiveE2e`).
-        ELIZA_INCLUDE_LIVE_E2E: "1",
         ELIZA_SAVE_TRAJECTORIES: "1",
         ELIZA_TRAJECTORY_DIR: trajDir,
         // Harvest wants gpt-5.5 only: blank ambient keys so the cli branch in the

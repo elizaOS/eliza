@@ -8,6 +8,21 @@
  */
 
 import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { BillingContext } from "@elizaos/cloud-shared/lib/services/ai-billing";
+import {
+  calculateVideoGenerationCostFromCatalog,
+  getDefaultVideoBillingDimensions,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { getSupportedVideoModelDefinition } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
   DEFAULT_ALLOWED_URL_PATTERNS,
   getEndpoint,
   resolveApiKeyFromEnv,
@@ -22,17 +37,6 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { BillingContext } from "@/lib/services/ai-billing";
-import {
-  calculateVideoGenerationCostFromCatalog,
-  getDefaultVideoBillingDimensions,
-} from "@/lib/services/ai-pricing";
-import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const falHandler = createRouteHandler({
   allowedUrlPatterns: DEFAULT_ALLOWED_URL_PATTERNS,
@@ -70,27 +74,6 @@ function normalizeFalPricingModel(endpoint: string): string | null {
   return endpoint;
 }
 
-function readNumber(body: unknown, keys: string[]): number | undefined {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    const value = (body as Record<string, unknown>)[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-  }
-
-  return undefined;
-}
-
 function readH3Duration(
   body: Record<string, unknown>,
   defaultDuration: number,
@@ -111,6 +94,33 @@ function readH3Duration(
     throw new ApiError(400, "validation_error", "Invalid provider duration");
   }
   return duration;
+}
+
+function readProviderDuration(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+(?:\.\d+)?s?$/.test(value.trim())
+        ? Number(value.trim().replace(/s$/, ""))
+        : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new ApiError(400, "validation_error", "Invalid provider duration");
+  }
+  return parsed;
+}
+
+// The raw proxy forwards provider JSON unchanged, so the quote reads only the
+// field the provider reads.
+function readBilledDuration(body: unknown, defaultDuration: number): number {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    !("duration" in body)
+  ) {
+    return defaultDuration;
+  }
+  return readProviderDuration((body as Record<string, unknown>).duration);
 }
 
 function readBoolean(body: unknown, keys: string[]): boolean | undefined {
@@ -201,19 +211,16 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
   }
   const durationSeconds = h3Body
     ? readH3Duration(h3Body, defaults.durationSeconds)
-    : (readNumber(body, ["durationSeconds", "duration_seconds", "duration"]) ??
-      defaults.durationSeconds);
+    : readBilledDuration(body, defaults.durationSeconds);
+  const audio = readBoolean(body, ["generate_audio"]);
+  const voiceControl = readBoolean(body, ["voice_control"]);
   const dimensions = {
     ...defaults.dimensions,
     ...(readString(body, ["resolution"])
       ? { resolution: readString(body, ["resolution"]) }
       : {}),
-    ...(readBoolean(body, ["audio", "generate_audio"]) !== undefined
-      ? { audio: readBoolean(body, ["audio", "generate_audio"]) }
-      : {}),
-    ...(readBoolean(body, ["voiceControl", "voice_control"]) !== undefined
-      ? { voiceControl: readBoolean(body, ["voiceControl", "voice_control"]) }
-      : {}),
+    ...(audio !== undefined ? { audio } : {}),
+    ...(voiceControl !== undefined ? { voiceControl } : {}),
     ...(defaults.dimensions.durationSeconds !== undefined
       ? { durationSeconds }
       : {}),
@@ -342,7 +349,11 @@ const handle: Handler<AppEnv> = async (c) => {
       const response = await invokeFalProxy(c);
 
       if (admission && pricedMutation) {
-        if (!response.ok) {
+        // A clear rejection (validation, auth, rate limit) means fal did not
+        // accept the job, so the reservation is released, as chat routes do.
+        const rejected =
+          !response.ok && isKnownUnacceptedProviderStatus(response.status);
+        if (!response.ok && !rejected) {
           logger.error(
             "[fal proxy] Provider returned an ambiguous post-dispatch failure",
             {
@@ -356,8 +367,10 @@ const handle: Handler<AppEnv> = async (c) => {
           c,
           response.ok
             ? admission.settle(pricedMutation.cost.totalCost)
-            : admission.settleUnknown(),
-          response.ok ? "settle" : "settle_unknown",
+            : rejected
+              ? admission.settle(0)
+              : admission.settleUnknown(),
+          response.ok ? "settle" : rejected ? "release" : "settle_unknown",
           settlementContext,
         );
       }

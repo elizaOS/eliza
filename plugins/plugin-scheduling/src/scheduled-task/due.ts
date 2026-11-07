@@ -24,7 +24,6 @@ import type {
 import { resolveOwnerWindowSegments } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
 const CRON_CATCHUP_WINDOW_MS = 36 * 60 * MINUTE_MS;
 
 export interface ScheduledTaskDueContext {
@@ -107,6 +106,11 @@ function localDateKey(date: Date, timeZone: string): string {
   return `${parts.year.toString().padStart(4, "0")}-${parts.month
     .toString()
     .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`;
+}
+
+/** `YYYY-MM-DD` of a UTC calendar date (no zone conversion). */
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function metadataCreatedAtMs(task: ScheduledTask): number | null {
@@ -280,8 +284,12 @@ export function windowOccurrenceKey(
   const isAfterMidnightTail =
     active.start === 0 &&
     windows.some((w) => w.name === active.name && w.end === 24 * 60);
-  const anchor = isAfterMidnightTail ? new Date(at.getTime() - DAY_MS) : at;
-  return `${localDateKey(anchor, timeZone)}:${windowKey}:${active.name}`;
+  // The previous local date by calendar arithmetic: subtracting 24 hours lands
+  // two dates back in the first hour after a 23-hour spring-forward day.
+  const dateKey = isAfterMidnightTail
+    ? utcDateKey(new Date(Date.UTC(parts.year, parts.month - 1, parts.day - 1)))
+    : localDateKey(at, timeZone);
+  return `${dateKey}:${windowKey}:${active.name}`;
 }
 
 function duringWindowDue(

@@ -6,18 +6,19 @@
  * shape the config/DB payloads; `persistCharacter` applies all three and returns
  * a success/error result rather than throwing.
  */
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   CHARACTER_PERSISTENCE_SERVICE,
+  type CharacterPersistenceReceipt,
   type CharacterPersistenceServiceLike,
   type PersistCharacterParams,
   type PersistCharacterResult,
 } from "@elizaos/plugin-assistant/character-persistence";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { agentIdentityName } from "../runtime/build-character-config.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   type RuntimeCharacterLike,
   recordCharacterHistory,
@@ -46,6 +47,7 @@ function cloneJson<T>(value: T): T {
 export function syncCharacterIntoConfig(
   config: ElizaConfig,
   character: RuntimeCharacterLike,
+  options?: { nameWasExplicitlyEdited: boolean },
 ): AgentConfigLike {
   if (!config.agents) config.agents = {};
 
@@ -55,10 +57,24 @@ export function syncCharacterIntoConfig(
     default: true,
   };
 
+  // No name is passed, so this is only a stored identity name: directly in
+  // settings, or in settings.extra on a validated (restored) character.
+  const identityName = agentIdentityName({ settings: character.settings });
+  const productName = getAgentHostBridge().productCharacter?.name;
+  const inheritedProductName =
+    options?.nameWasExplicitlyEdited === false &&
+    productName !== undefined &&
+    character.name?.trim() === productName.trim();
   const nextAgent = {
     ...primaryAgent,
-    ...(typeof character.name === "string" && character.name.trim()
+    ...(!inheritedProductName &&
+    typeof character.name === "string" &&
+    character.name.trim()
       ? { name: character.name.trim() }
+      : {}),
+    // Keep the name the ids were derived from before the first rename.
+    ...(!primaryAgent.identityName && identityName
+      ? { identityName: identityName.trim() }
       : {}),
     ...(typeof character.username === "string" && character.username.trim()
       ? { username: character.username.trim() }
@@ -184,10 +200,26 @@ export class ElizaCharacterPersistenceService
     const previousCharacter = (params.previousCharacter ??
       this.runtime.character) as RuntimeCharacterLike;
 
+    const persistence: CharacterPersistenceReceipt = {
+      config: "not-started",
+      agent: "not-started",
+      history: "not-started",
+    };
     try {
       const config = loadElizaConfig();
-      const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter);
+      const previousName =
+        params.previousName ?? params.previousCharacter?.name;
+      const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter, {
+        nameWasExplicitlyEdited:
+          params.nameWasExplicitlyEdited ??
+          (params.source !== "restore" &&
+            previousName !== undefined &&
+            previousName !== runtimeCharacter.name),
+      });
+      persistence.config = "unknown";
       saveElizaConfig(config);
+      mirrorSavedConfigToLive(config);
+      persistence.config = "committed";
 
       const persistedCharacter = buildPersistedCharacterData(runtimeCharacter);
       const runtimeMetadata =
@@ -197,8 +229,11 @@ export class ElizaCharacterPersistenceService
           ? runtimeCharacter.metadata
           : {};
 
-      await this.runtime.updateAgent(this.runtime.agentId, {
+      persistence.agent = "unknown";
+      const updated = await this.runtime.updateAgent(this.runtime.agentId, {
         name:
+          (typeof runtimeCharacter.name === "string" &&
+            runtimeCharacter.name.trim()) ||
           (typeof nextAgent.name === "string" && nextAgent.name.trim()) ||
           this.runtime.character.name,
         metadata: {
@@ -207,12 +242,20 @@ export class ElizaCharacterPersistenceService
         },
       });
 
+      if (!updated) {
+        throw new ElizaError("Character database update was not confirmed", {
+          code: "CHARACTER_AGENT_UPDATE_UNCONFIRMED",
+        });
+      }
+      persistence.agent = "committed";
+      persistence.history = "unknown";
       await recordCharacterHistory(this.runtime, {
         previousCharacter,
         nextCharacter: runtimeCharacter,
         source: params.source ?? "agent",
       });
 
+      persistence.history = "committed";
       logger.info(
         {
           agentId: this.runtime.agentId,
@@ -221,9 +264,14 @@ export class ElizaCharacterPersistenceService
         "Persisted runtime character changes",
       );
 
-      return { success: true };
+      return { success: true, persistence };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const causeMessage =
+        error instanceof Error ? error.message : String(error);
+      const message = `${causeMessage}. Persistence status: config=${persistence.config}, agent=${persistence.agent}, history=${persistence.history}. No rollback is claimed; reload and reconcile before retrying.`;
+      this.runtime.reportError("character.persistence", error, {
+        ...persistence,
+      });
       logger.error(
         {
           agentId: this.runtime.agentId,
@@ -232,7 +280,7 @@ export class ElizaCharacterPersistenceService
         },
         "Failed to persist runtime character changes",
       );
-      return { success: false, error: message };
+      return { success: false, error: message, persistence };
     }
   }
 

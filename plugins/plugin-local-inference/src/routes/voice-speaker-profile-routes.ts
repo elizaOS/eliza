@@ -28,26 +28,21 @@
  * The caller supplies the `entityId` of an existing elizaOS entity (e.g. a
  * contact the user picks in the voice-management UI, or the OWNER entity from
  * first-run). These handlers do not mint entities or relationship rows: route
- * handlers in this plugin do not hold an `IAgentRuntime` reference (see
- * `family-member-route.ts`). They bind the speaker centroid to an entity id the
- * store persists, which the attribution pipeline then resolves on the next
- * recognition.
+ * handlers in this plugin do not hold an `IAgentRuntime` reference. They bind
+ * the speaker centroid to an entity id the store persists, which the
+ * attribution pipeline then resolves on the next recognition.
  */
 import type * as http from "node:http";
-import path from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
-import {
-	readJsonBody,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core/api/http-helpers";
-import {
-	type VoiceProfileRecord,
+import { logger } from "@elizaos/core";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
+import type {
+	VoiceProfileRecord,
 	VoiceProfileStore,
 } from "../services/voice/profile-store.js";
+import { getSharedVoiceProfileStore } from "../services/voice/speaker/profile-store-factory.js";
 
 // ---------------------------------------------------------------------------
-// Injectable test hook (mirrors family-member-route.ts)
+// Injectable test hook
 // ---------------------------------------------------------------------------
 let profileStoreOverride: VoiceProfileStore | null = null;
 export function setVoiceSpeakerProfileStore(
@@ -57,11 +52,7 @@ export function setVoiceSpeakerProfileStore(
 }
 async function getProfileStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
-	const store = new VoiceProfileStore({
-		rootDir: path.join(resolveStateDir(), "voice-profiles"),
-	});
-	await store.init();
-	return store;
+	return getSharedVoiceProfileStore();
 }
 // ---------------------------------------------------------------------------
 // Response shape

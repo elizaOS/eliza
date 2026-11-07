@@ -1,18 +1,13 @@
-/**
- * Chat state — consolidated via useReducer.
- *
- * Replaces 18+ individual useState hooks and 10 sync-to-ref/persistence
- * effects with a single reducer + inline persistence in setters.
- */
+/** Chat reducer, persisted preferences, and synchronous conversation refs. */
 
 import { useCallback, useReducer, useRef } from "react";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-  StreamEventEnvelope,
-} from "../api";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { StreamEventEnvelope } from "../api/client-types-core";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { dedupeGreetings, isAgentGreetingMessage } from "./greeting-dedupe";
@@ -25,30 +20,30 @@ import {
   saveChatVoiceMuted,
   saveCompanionMessageCutoffTs,
 } from "./persistence";
-import type { ChatTurnUsage } from "./types";
+import type { AppState, ChatTurnUsage } from "./types";
 
 // ── State shape ────────────────────────────────────────────────────────
 
-export interface ChatState {
-  chatInput: string;
-  chatSending: boolean;
-  chatFirstTokenReceived: boolean;
-  chatLastUsage: ChatTurnUsage | null;
-  chatAvatarVisible: boolean;
-  chatAgentVoiceMuted: boolean;
-  chatAvatarSpeaking: boolean;
-  conversations: Conversation[];
-  activeConversationId: string | null;
-  companionMessageCutoffTs: number;
-  conversationMessages: ConversationMessage[];
-  autonomousEvents: StreamEventEnvelope[];
-  autonomousLatestEventId: string | null;
-  autonomousRunHealthByRunId: import("./autonomy").AutonomyRunHealthMap;
-  ptySessions: CodingAgentSession[];
-  unreadConversations: Set<string>;
-  chatPendingImages: ImageAttachment[];
-  chatReplyTarget: ChatReplyTarget | null;
-}
+export type ChatState = Pick<
+  AppState,
+  | "chatInput"
+  | "chatSending"
+  | "chatFirstTokenReceived"
+  | "chatLastUsage"
+  | "chatAvatarVisible"
+  | "chatAgentVoiceMuted"
+  | "chatAvatarSpeaking"
+  | "conversations"
+  | "activeConversationId"
+  | "companionMessageCutoffTs"
+  | "conversationMessages"
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "ptySessions"
+  | "unreadConversations"
+  | "chatPendingImages"
+> & { chatReplyTarget: ChatReplyTarget | null };
 
 function createInitialChatState(): ChatState {
   return {
@@ -246,7 +241,7 @@ export interface ChatStateHook {
    * `conversationMessagesRef` in step with the reducer. Never trims the newest
    * tail (see the PREPEND_MESSAGES reducer note).
    */
-  prependConversationMessages: (older: ConversationMessage[]) => void;
+  prependConversationMessages: (older: ConversationMessage[]) => number;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
@@ -395,8 +390,8 @@ export function useChatState(): ChatStateHook {
   ) as React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
 
   const prependConversationMessages = useCallback(
-    (older: ConversationMessage[]) => {
-      if (older.length === 0) return;
+    (older: ConversationMessage[]): number => {
+      if (older.length === 0) return 0;
       const current = conversationMessagesRef.current;
       // Single-greeting invariant across pagination: on an already-poisoned
       // thread the duplicated greeting pair sits at the very HEAD, so both rows
@@ -409,12 +404,13 @@ export function useChatState(): ChatStateHook {
       const olderDeduped = current.some(isAgentGreetingMessage)
         ? older.filter((m) => !isAgentGreetingMessage(m))
         : dedupeGreetings(older);
-      if (olderDeduped.length === 0) return;
+      if (olderDeduped.length === 0) return 0;
       const existingIds = new Set(current.map((m) => m.id));
       const olderToAdd = olderDeduped.filter((m) => !existingIds.has(m.id));
-      if (olderToAdd.length === 0) return;
+      if (olderToAdd.length === 0) return 0;
       conversationMessagesRef.current = [...olderToAdd, ...current];
       dispatch({ type: "PREPEND_MESSAGES", value: olderDeduped });
+      return olderToAdd.length;
     },
     [],
   );
@@ -533,5 +529,3 @@ export function useChatState(): ChatStateHook {
     autonomousReplayInFlightRef,
   };
 }
-
-export type { ChatAction as ChatDispatchAction };

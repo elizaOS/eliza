@@ -1,6 +1,6 @@
 import json
 
-import trajectories_to_sft as t
+import eliza_training.trajectories_to_sft as t
 
 
 def native_row(**overrides):

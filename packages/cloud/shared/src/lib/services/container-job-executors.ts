@@ -47,6 +47,8 @@ export interface AppContainerRow {
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
+  /** True while another row of the same app still exists on the row's node. */
+  hasOtherAppContainerOnNode(row: AppContainerRow): Promise<boolean>;
   claimNodeSlot(
     containerId: string,
     organizationId: string,
@@ -431,7 +433,13 @@ export async function executeContainerDelete(
   for (const { id, organizationId, row } of targets) {
     if (row?.hostContainerId) {
       try {
-        await deps.provider.deleteById(row.hostContainerId, row.containerName);
+        // A redeploy's new generation shares this app's DB ambassador; keep it
+        // while another row of the app is on the node.
+        if (row.nodeId && (await deps.store.hasOtherAppContainerOnNode(row))) {
+          await deps.provider.deletePrimaryById(row.hostContainerId);
+        } else {
+          await deps.provider.deleteById(row.hostContainerId, row.containerName);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!/no such (object|container)/i.test(message)) throw error;
@@ -453,17 +461,13 @@ export async function executeContainerDelete(
         organizationId,
       });
     }
-    // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
+    // Remove the ingress route before the row (and its node slot) is released.
+    // No sweep removes Caddy routes, so a route left here keeps sending the
+    // app's hostnames to this host port. A failure throws and the job retries;
+    // the container delete above and a 404 route delete are both idempotent.
     const endpoint = deriveAppPublicUrl(id);
     if (endpoint && deps.onRouteRemoved) {
-      await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch((error) => {
-        // error-policy:J6 route removal is teardown best-effort; reconciler sweeps orphans.
-        logger.warn("[ContainerExecutor] route removal failed during container delete", {
-          containerId: id,
-          hostname: endpoint.hostname,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      await deps.onRouteRemoved({ hostname: endpoint.hostname });
     }
     await deps.store.markDeleted(id, organizationId, row?.nodeId);
   }

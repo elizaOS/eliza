@@ -10,30 +10,33 @@
  * Protected by CRON_SECRET.
  */
 
-import { Hono } from "hono";
-import { usersRepository } from "@/db/repositories";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories";
 import {
   type BillableContainer,
   type ContainerBillingOrganization,
   containerBillingRepository,
-} from "@/db/repositories/container-billing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/db/repositories/container-billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
-} from "@/lib/constants/pricing";
-import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
+} from "@elizaos/cloud-shared/lib/constants/pricing";
+import { computeContainerBillingPlan } from "@elizaos/cloud-shared/lib/services/container-billing-policy";
 import {
   enqueueContainerStopOnce,
   listRecoverableContainerStopIntents,
   rearmRecoverableContainerStopIntentOnce,
-} from "@/lib/services/container-stop-job-service";
-import { emailService } from "@/lib/services/email";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/container-stop-job-service";
+import { emailService } from "@elizaos/cloud-shared/lib/services/email";
+import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface BillingResult {
   containerId: string;

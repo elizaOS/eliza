@@ -50,9 +50,3 @@ export function isTtsEchoGateActive(
     nowMs - lastPlaybackEndedAtMs <= cooldownMs
   );
 }
-
-/** Clear all playback-activity state. Test-only. */
-export function __resetTtsPlaybackActivityForTest(): void {
-  activePlaybackSessions = 0;
-  lastPlaybackEndedAtMs = null;
-}

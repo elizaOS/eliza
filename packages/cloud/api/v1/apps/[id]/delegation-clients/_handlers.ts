@@ -1,13 +1,17 @@
 /** Lets current app-owner organization administrators register and revoke confidential app clients. */
-import type { Hono } from "hono";
-import { z } from "zod";
+
+import { requireCurrentBillingManagerSession } from "@elizaos/cloud-shared/auth";
 import {
   appDelegationsRepository,
   registerAppClientSchema,
-} from "@/db/repositories/app-delegations";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/repositories/app-delegations";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Hono } from "hono";
+import { z } from "zod";
 import { appDelegationErrorResponse } from "../../../app-auth/delegations/_handlers";
 
 export function appClientManagementBoundary(app: Hono<AppEnv>) {

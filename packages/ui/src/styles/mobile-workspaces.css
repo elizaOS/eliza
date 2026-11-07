@@ -1,0 +1,46 @@
+/* Shared, scoped workspace utilities. Deliberately excludes the app reset,
+ * global shell layout, fonts and product identity. The host compiles this
+ * existing styles export with its Tailwind integration. */
+@import "tailwindcss/theme" layer(theme);
+@import "./tailwind-theme.css";
+@source "../../../../plugins/plugin-calendar/src/components/CalendarWorkspace.tsx";
+/* Published sibling packages use emitted JS, not this monorepo source tree. */
+@source "../../../plugin-calendar/dist/components/CalendarWorkspace.js";
+@source "../components/ui/button.tsx";
+@source "../components/ui/segmented-control.tsx";
+@source "../components/ui/popover.tsx";
+@source "../components/ui/button.js";
+@source "../components/ui/segmented-control.js";
+@source "../components/ui/popover.js";
+@source "../components/composites/page-panel";
+
+[data-shared-workspace] {
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --text-strong: var(--text);
+  --muted-strong: var(--text);
+  --accent-action: var(--accent);
+  --accent-action-foreground: var(--accent-foreground);
+  --accent-action-hover: color-mix(in srgb, var(--accent) 88%, var(--text));
+  --accent-action-hover-foreground: var(--accent-foreground);
+  --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
+  --min-touch-target: 44px;
+  --view-pad-bottom: 16px;
+  color: var(--text);
+  font-family: var(--font-body, inherit);
+  /* biome-ignore lint/suspicious/noUnknownAtRules: compiled by the shared Tailwind workspace build. */
+  @tailwind utilities;
+}
+
+/* A portal is the scope root, so descendant utility selectors do not match it. */
+[data-shared-workspace-popover] {
+  width: 16rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0;
+  z-index: 50;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+}

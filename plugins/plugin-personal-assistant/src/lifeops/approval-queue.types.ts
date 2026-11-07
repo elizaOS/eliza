@@ -1,6 +1,6 @@
 /** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
 
-import type { CalendarNoteSourceReference } from "@elizaos/core/contracts/calendar";
+import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
@@ -411,6 +411,8 @@ export interface ApprovalListFilter {
   readonly subjectUserId: string | null;
   readonly state: ApprovalRequestState | null;
   readonly action: ApprovalAction | null;
+  /** Omit requests of this action; applied before `limit`. */
+  readonly excludeAction?: ApprovalAction | null;
   /** Optional caller-requested page size; omit or pass null for the complete set. */
   readonly limit?: number | null;
 }

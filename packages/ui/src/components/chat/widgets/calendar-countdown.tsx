@@ -12,7 +12,7 @@
  * infrastructure.
  */
 import { type JSX, useEffect, useState } from "react";
-import { useDocumentVisibility } from "../../../hooks";
+import { useDocumentVisibility } from "../../../hooks/useDocumentVisibility";
 
 // The countdown re-formats on the same calm 60s cadence the calendar feed polls.
 // A per-minute string is precise enough for "in 40 min" and burns one local

@@ -1,17 +1,18 @@
 /**
  * GET /api/auth/cli-session/[sessionId]
  * Get the status of a CLI authentication session. Public — used by the CLI to
- * poll for completion.
+ * poll for completion. The one reply that carries the API key also says whether
+ * this sign-in made the account (`accountCreated`).
  */
 
-import { Hono } from "hono";
 import {
   cliAuthSessionsService,
   looksLikeCliAuthSessionId,
-} from "@/lib/services/cli-auth-sessions";
-import { getCorsHeaders } from "@/lib/utils/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -65,6 +66,8 @@ app.get("/", async (c) => {
           apiKey: apiKeyData.apiKey,
           keyPrefix: apiKeyData.keyPrefix,
           expiresAt: apiKeyData.expiresAt,
+          // True when this sign-in made the account; false when it existed.
+          accountCreated: apiKeyData.accountCreated,
         },
         200,
         corsHeaders,

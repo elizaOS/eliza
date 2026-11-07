@@ -32,7 +32,7 @@ import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.brand",
@@ -195,22 +195,20 @@ export function registerRuntimeManagedInternalActor(
 	runtime: IAgentRuntime,
 	actorEntityId: UUID,
 ): () => void {
-	let registrations = internalActorRegistrations.get(runtime);
-	if (!registrations) {
-		registrations = new Map();
-		internalActorRegistrations.set(runtime, registrations);
-	}
+	const registrations =
+		internalActorRegistrations.get(runtime) ?? new Map<UUID, number>();
+	internalActorRegistrations.set(runtime, registrations);
 	registrations.set(actorEntityId, (registrations.get(actorEntityId) ?? 0) + 1);
 	let released = false;
 	return () => {
 		if (released) return;
 		released = true;
-		const current = registrations?.get(actorEntityId);
+		const current = registrations.get(actorEntityId);
 		if (current === undefined) return;
 		if (current <= 1) {
-			registrations?.delete(actorEntityId);
+			registrations.delete(actorEntityId);
 		} else {
-			registrations?.set(actorEntityId, current - 1);
+			registrations.set(actorEntityId, current - 1);
 		}
 	};
 }
@@ -423,7 +421,7 @@ function bindAudience(
 		revalidateApiPrincipal,
 		sensitiveUsed: false,
 	});
-	// Enumerable symbol properties survive ordinary `{ ...message }` pipeline
+	// Enumerable symbol properties survive ordinary `{...message }` pipeline
 	// clones, while JSON and request-body parsing cannot name or serialize the
 	// module-private symbol.
 	Object.defineProperty(message, trustedDeliveryAudienceBinding, {

@@ -4,18 +4,59 @@
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
+
+import { ElizaError } from "../errors";
 import type {
 	ActionParameterSchema,
 	CompletionContextSelection,
 } from "../types/components";
+import { normalizeEffectReceipt } from "../types/effects";
+import type { JSONSchema } from "../types/model";
+import { hashStableJson } from "./context-hash";
 import type {
 	ContextEvent,
 	ContextObject,
 	ContextSegmentEvent,
-} from "../types/context-object";
-import { normalizeEffectReceipt } from "../types/effects";
-import type { JSONSchema } from "../types/model";
-import { hashStableJson } from "./context-hash";
+} from "./context-object";
+
+/** Runtime-only proof from the owner-scoped approval reader. Serialized/model
+ * metadata cannot mint this symbol; complete original receipt bytes stay intact. */
+export const HISTORICAL_EFFECT_TERMINALS: unique symbol = Symbol(
+	"historicalEffectTerminals",
+);
+export interface HistoricalEffectTerminal {
+	requestSourceEventId: string;
+	originalReceiptHash: string;
+	terminalReceipt: unknown;
+	state: "done" | "rejected" | "expired";
+}
+
+function hasHistoricalTerminal(
+	event: ContextSegmentEvent,
+	requestSourceEventId: string,
+	receipt: unknown,
+): boolean {
+	const proofs = (
+		event as ContextSegmentEvent & {
+			[HISTORICAL_EFFECT_TERMINALS]?: readonly HistoricalEffectTerminal[];
+		}
+	)[HISTORICAL_EFFECT_TERMINALS];
+	if (!proofs?.length) return false;
+	const receiptHash = hashStableJson(receipt);
+	return proofs.some(
+		(proof) =>
+			proof.requestSourceEventId === requestSourceEventId &&
+			HISTORICAL_TERMINAL_STATES.has(proof.state) &&
+			(proof.originalReceiptHash === receiptHash ||
+				hashStableJson(proof.terminalReceipt) === receiptHash),
+	);
+}
+
+const HISTORICAL_TERMINAL_STATES: ReadonlySet<string> = new Set([
+	"done",
+	"rejected",
+	"expired",
+]);
 
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 
@@ -78,42 +119,69 @@ export const COMPLETION_CONTEXT_SCHEMA = {
 	],
 } satisfies JSONSchema & ActionParameterSchema;
 
-/** A labeled history always supplies its source-set identity. Keep the schema
- * static across such turns, but do not offer an empty-ID escape hatch that
- * silently forces both later stages back to full history. Empty-history and
- * custom callers retain the general schema. An explicit identity-repair call
- * alone binds the schema to the required value; ordinary turns keep cacheable
- * schemas. This never substitutes a model ID or relaxes source validation. */
+/** Initial and repair requests both offer the exact current identity. The
+ * third argument remains accepted for existing callers; host validation and
+ * request-local token binding still decide whether a selection can apply. */
 export function withRequiredCompletionSourceIdentity(
 	schema: JSONSchema,
 	context: ContextObject,
-	exactRepair = false,
+	_exactRepair = false,
 ): JSONSchema {
 	const completion = schema.properties?.completionContext;
 	const identity = completion?.properties?.sourceSetId;
+	if (!completion || identity?.type !== "string") return schema;
+	const snapshot = completionContextSources(context);
+	if (snapshot.sources.length === 0) return schema;
 	if (
-		!completion ||
-		identity?.type !== "string" ||
-		collectCompletionContextSources(context).length === 0
-	)
-		return schema;
+		identity.enum !== undefined &&
+		(!Array.isArray(identity.enum) ||
+			!identity.enum.some((id) => id === snapshot.sourceSetId))
+	) {
+		throw new ElizaError(
+			"Source identity schema does not authorize this request.",
+			{
+				code: "COMPLETION_CONTEXT_IDENTITY_CONFLICT",
+			},
+		);
+	}
+	// Offer only this request's authorized identities. Keep canonical host
+	// parsers unchanged; strict providers need literal choices instead of regexes.
+	const sourceIds = snapshot.sources.map(({ id }) => id);
+	const sourceIdSet = new Set(sourceIds);
+	const properties = { ...completion.properties };
+	for (const name of SOURCE_LIST_FIELDS) {
+		const field = properties[name];
+		const items = field?.items;
+		if (
+			!field ||
+			!items ||
+			Array.isArray(items) ||
+			items.type !== "string" ||
+			(items.pattern !== undefined &&
+				items.pattern !== SOURCE_ID_PATTERN.source)
+		)
+			continue;
+		const { pattern: _pattern, ...literalItems } = items;
+		properties[name] = {
+			...field,
+			items: {
+				...literalItems,
+				enum: Array.isArray(items.enum)
+					? items.enum.filter(
+							(id): id is string =>
+								typeof id === "string" && sourceIdSet.has(id),
+						)
+					: sourceIds,
+			},
+		};
+	}
+	const { pattern: _pattern, ...literalIdentity } = identity;
+	properties.sourceSetId = { ...literalIdentity, enum: [snapshot.sourceSetId] };
 	return {
 		...schema,
 		properties: {
 			...schema.properties,
-			completionContext: {
-				...completion,
-				properties: {
-					...completion.properties,
-					sourceSetId: {
-						...identity,
-						pattern: "^[0-9a-f]{64}$",
-						...(exactRepair
-							? { enum: [completionContextSources(context).sourceSetId] }
-							: {}),
-					},
-				},
-			},
+			completionContext: { ...completion, properties },
 		},
 	};
 }
@@ -138,7 +206,7 @@ export function parseCompletionContextSelection(
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		return undefined;
 	const record = value as Record<string, unknown>;
-	// Keep the stored/runtime contract and legacy model responses unchanged.
+
 	const mode =
 		record.mode === "relevant_prior_dialogue"
 			? "selected"
@@ -178,7 +246,7 @@ export function collectCompletionContextSources(
 	context: ContextObject,
 ): Array<{ id: string; event: ContextSegmentEvent }> {
 	const sources: Array<{ id: string; event: ContextSegmentEvent }> = [];
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		if (
 			event.type !== "segment" ||
 			event.source !== "prior-dialogue" ||
@@ -227,7 +295,8 @@ function isHistoricalRequestEvidenceEvent(
 		!Array.isArray(segment) &&
 		"label" in segment &&
 		(segment.label === "runtime:historical_navigation" ||
-			segment.label === "runtime:historical_observations") &&
+			segment.label === "runtime:historical_observations" ||
+			segment.label === "runtime:historical_effects") &&
 		"content" in segment &&
 		typeof segment.content === "string" &&
 		"id" in segment &&
@@ -236,12 +305,15 @@ function isHistoricalRequestEvidenceEvent(
 }
 
 /** Historical navigation and owner-declared read observations follow their
- * original requests, never current state or mutation authority.
+ * original requests, never current state or mutation authority. Completion may
+ * also defer validated historical outcomes for reviewed omitted requests;
+ * canonical history and planning evidence remain complete by default.
  * Only known, unambiguous request bindings may follow a history projection.
  * Unknown or malformed records stay inline; originals are never modified. */
 export function selectHistoricalNavigation(
 	context: ContextObject,
 	includedEventIds: ReadonlySet<string>,
+	options: { historicalEffects?: boolean | "settled" } = {},
 ): ContextObject {
 	const sources = collectCompletionContextSources(context);
 	if (sources.length === 0) return context;
@@ -258,6 +330,10 @@ export function selectHistoricalNavigation(
 		...context,
 		events: context.events.filter((event) => {
 			if (!isHistoricalRequestEvidenceEvent(event)) return true;
+			const effects = event.segment.label === "runtime:historical_effects";
+			// Historical mutation evidence stays inline unless a reviewed model
+			// or source-bound background projection explicitly permits deferral.
+			if (effects && !options.historicalEffects) return true;
 			try {
 				const receipt: unknown = JSON.parse(event.segment.content);
 				if (
@@ -269,21 +345,27 @@ export function selectHistoricalNavigation(
 					!known.has(receipt.requestSourceEventId)
 				)
 					return true;
-				if (event.segment.label === "runtime:historical_observations") {
+				const requestSourceEventId = receipt.requestSourceEventId;
+				if (
+					effects ||
+					event.segment.label === "runtime:historical_observations"
+				) {
+					const field = effects ? "outcomes" : "observations";
+					const entries = (receipt as Record<string, unknown>)[field];
 					// The message-service collector owns exact operation admission. This
 					// boundary independently rejects unsafe or unfamiliar receipt shapes.
 					if (
 						eventIdCounts.get(event.id) !== 1 ||
 						!requests.has(receipt.requestSourceEventId) ||
 						Object.keys(receipt).sort().join(",") !==
-							"observations,requestSourceEventId,scope" ||
+							`${field},requestSourceEventId,scope` ||
 						!("scope" in receipt) ||
 						typeof receipt.scope !== "string" ||
 						!receipt.scope.trim() ||
-						!("observations" in receipt) ||
-						!Array.isArray(receipt.observations) ||
-						!receipt.observations.length ||
-						!receipt.observations.every((observation) => {
+						!(field in receipt) ||
+						!Array.isArray(entries) ||
+						!entries.length ||
+						!entries.every((observation) => {
 							if (
 								!observation ||
 								typeof observation !== "object" ||
@@ -292,13 +374,29 @@ export function selectHistoricalNavigation(
 									"actionName,receipt,success" ||
 								typeof observation.actionName !== "string" ||
 								!observation.actionName.trim() ||
-								observation.success !== true
+								typeof observation.success !== "boolean" ||
+								(!effects && observation.success !== true)
 							)
 								return false;
 							const normalized = normalizeEffectReceipt(observation.receipt);
 							return (
-								normalized.outcome === "noop" &&
-								!normalized.idempotency.replayed &&
+								(effects ||
+									(normalized.outcome === "noop" &&
+										!normalized.idempotency.replayed)) &&
+								// Background review may defer settled outcomes only. Preview,
+								// failures and uncertain acceptance remain visible regardless
+								// of whether their historical request was deferred.
+								(!effects ||
+									options.historicalEffects !== "settled" ||
+									(observation.success === true &&
+										(normalized.outcome === "applied" ||
+											(normalized.outcome === "noop" &&
+												normalized.idempotency.replayed))) ||
+									hasHistoricalTerminal(
+										event,
+										requestSourceEventId,
+										normalized,
+									)) &&
 								hashStableJson(normalized) ===
 									hashStableJson(observation.receipt)
 							);
@@ -326,7 +424,9 @@ export function completionContextSources(context: ContextObject): {
 			contextId: context.id,
 			roomId: context.metadata?.roomId,
 			messageId: context.metadata?.messageId,
-			sources: sources.map(({ id, event }) => ({ id, event })),
+			sources,
+			// Include exact historical outcomes in the source-set identity as well:
+			// changed historical evidence cannot reuse an earlier relevance review.
 			navigationEvidence: context.events.filter(
 				isHistoricalRequestEvidenceEvent,
 			),
@@ -336,7 +436,10 @@ export function completionContextSources(context: ContextObject): {
 }
 
 /** Relevance is applied only after source binding and complete category checks. */
-export function selectCompletionContext(context: ContextObject): {
+export function selectCompletionContext(
+	context: ContextObject,
+	options: { historicalEffects?: boolean | "settled" } = {},
+): {
 	context: ContextObject;
 	applied: boolean;
 	omittedSourceCount: number;
@@ -354,7 +457,7 @@ export function selectCompletionContext(context: ContextObject): {
 	const selectedIds = new Set(
 		SOURCE_LIST_FIELDS.flatMap((key) => selection[key]),
 	);
-	if ([...selectedIds].some((id) => !sourceIds.has(id))) return complete;
+	for (const id of selectedIds) if (!sourceIds.has(id)) return complete;
 	const omittedEvents = new Set<ContextEvent>(
 		sources.filter(({ id }) => !selectedIds.has(id)).map(({ event }) => event),
 	);
@@ -369,6 +472,7 @@ export function selectCompletionContext(context: ContextObject): {
 						.filter(({ id }) => selectedIds.has(id))
 						.map(({ event }) => event.id),
 				),
+				options,
 			).events.filter((event) => !omittedEvents.has(event)),
 		},
 		applied: true,
@@ -376,6 +480,12 @@ export function selectCompletionContext(context: ContextObject): {
 		selection,
 	};
 }
+
+const PLANNER_QUERY_TOKEN_SURFACE_MODES: ReadonlySet<string> = new Set([
+	"full",
+	"tiered",
+	"relay-delivery",
+]);
 
 /** Tokenized retrieval queries are diagnostics, not authored dialogue. Keep the
  * complete array in the source event and restore it through RESTORE_CONTEXT;
@@ -397,7 +507,7 @@ export function referencePlannerQueryTokens(context: ContextObject): {
 			!surface ||
 			typeof surface !== "object" ||
 			Array.isArray(surface) ||
-			!["full", "tiered", "relay-delivery"].includes(String(surface.mode)) ||
+			!PLANNER_QUERY_TOKEN_SURFACE_MODES.has(String(surface.mode)) ||
 			!Array.isArray(surface.queryTokens) ||
 			!surface.queryTokens.every((token) => typeof token === "string")
 		)

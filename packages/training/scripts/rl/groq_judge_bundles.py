@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 from openai import OpenAI
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 JUDGE_SCHEMA_VERSION = "groq-judge-v1"

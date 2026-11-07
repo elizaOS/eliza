@@ -6,5 +6,5 @@
     "declarationMap": false,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["./*.ts", "../../testing/src/eliza-package-paths.ts"]
+  "include": ["./*.ts", "../lib/package-paths.ts"]
 }

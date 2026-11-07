@@ -1,17 +1,4 @@
-/**
- * Standardized argument-extraction substrate for umbrella actions.
- *
- * Replaces the per-action hand-rolled `resolveSubactionPlan`-style helpers
- * (one per umbrella action) with a single shared resolver that:
- *   1. Trusts planner-supplied parameters when they are complete.
- *   2. Falls through to a single LLM extraction pass (with one repair shot)
- *      that picks the right subaction and pulls its required params from
- *      free-form intent + recent conversation.
- *
- * Intentionally narrow: this resolver knows about subactions and required
- * params, nothing else. Domain-specific param normalization, post-extraction
- * confirmation flows, and side-effect dispatch stay in the umbrella action.
- */
+/** Resolves umbrella-action arguments from complete planner parameters or one validated model extraction with one repair attempt. */
 
 import type { HandlerOptions } from "../types/components.js";
 import type { Memory } from "../types/memory.js";
@@ -21,12 +8,10 @@ import { runExtractorPipeline } from "./extractor-pipeline";
 import { parseJsonModelRecord } from "./json-model-output";
 import { recentConversationTextsFromState } from "./recent-context";
 
-// ── Public types ──────────────────────────────────────
-
 export interface SubactionSpec<TParams = Record<string, unknown>> {
 	/** Full description (per-subaction; surfaced into LLM prompt). */
 	description: string;
-	/** @deprecated Compatibility metadata; model prompts use `description`. */
+	/** Short description metadata; model prompts use `description`. */
 	descriptionCompressed: string;
 	/** Required parameter keys; missing any -> triggers extraction. */
 	required: ReadonlyArray<keyof TParams & string>;
@@ -40,7 +25,7 @@ export type SubactionsMap<TSubaction extends string = string> = {
 	readonly [K in TSubaction]: SubactionSpec;
 };
 
-export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
+export interface ResolveActionArgsInput<TSubaction extends string> {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state?: State;
@@ -65,8 +50,6 @@ export type ResolveActionArgsResult<TSubaction extends string, TParams> =
 			clarification: string;
 			partial?: Partial<TParams>;
 	  };
-
-// ── Internal helpers ──────────────────────────────────
 
 const MIN_CONFIDENCE = 0.5;
 const FALLBACK_CLARIFICATION =
@@ -117,8 +100,7 @@ function missingRequiredKeys<TSubaction extends string>(
 	subactions: SubactionsMap<TSubaction>,
 	params: Record<string, unknown>,
 ): string[] {
-	const required = subactions[subaction]?.required ?? [];
-	const allowEmptyArrays = subactions[subaction]?.allowEmptyArrays;
+	const { required, allowEmptyArrays } = subactions[subaction];
 	const missing: string[] = [];
 	for (const key of required) {
 		if (!valueIsPresent(params[key], allowEmptyArrays?.includes(key))) {
@@ -134,9 +116,6 @@ function pickKnownParams<TSubaction extends string>(
 	params: Record<string, unknown>,
 ): Record<string, unknown> {
 	const spec = subactions[subaction];
-	if (!spec) {
-		return {};
-	}
 	const allowed = new Set<string>([
 		...(spec.required as readonly string[]),
 		...((spec.optional as readonly string[] | undefined) ?? []),
@@ -260,11 +239,11 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	raw: string,
 	subactions: SubactionsMap<TSubaction>,
 ): ParsedExtraction<TSubaction> | null {
-	if (typeof raw !== "string" || raw.trim().length === 0) {
+	if (raw.trim().length === 0) {
 		return null;
 	}
-	const parsed = parseJsonModelRecord<Record<string, unknown>>(raw);
-	if (!parsed || typeof parsed !== "object") {
+	const parsed = parseJsonModelRecord(raw);
+	if (!parsed) {
 		return null;
 	}
 
@@ -299,8 +278,6 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	return { subaction, params, missing, confidence };
 }
 
-// ── Public entry point ────────────────────────────────
-
 /**
  * Resolve the (subaction, params) pair for an umbrella action.
  *
@@ -313,7 +290,7 @@ export async function resolveActionArgs<
 	TSubaction extends string,
 	TParams = Record<string, unknown>,
 >(
-	input: ResolveActionArgsInput<TSubaction, TParams>,
+	input: ResolveActionArgsInput<TSubaction>,
 ): Promise<ResolveActionArgsResult<TSubaction, TParams>> {
 	const {
 		runtime,
@@ -333,8 +310,10 @@ export async function resolveActionArgs<
 
 	// 1. Planner trust path — fully populated subaction + required fields.
 	const plannerSubactionRaw = plannerParams.action ?? plannerParams.subaction;
-	if (isSubactionKey(plannerSubactionRaw, subactions)) {
-		const plannerSubaction = plannerSubactionRaw;
+	const plannerSubaction = isSubactionKey(plannerSubactionRaw, subactions)
+		? plannerSubactionRaw
+		: null;
+	if (plannerSubaction) {
 		const missingFromPlanner = missingRequiredKeys(
 			plannerSubaction,
 			subactions,
@@ -377,27 +356,23 @@ export async function resolveActionArgs<
 		};
 	}
 
-	// Resolve subaction (with default fallback).
-	let chosen: TSubaction | null = parsed.subaction;
-	if (!chosen && defaultSubaction) {
-		chosen = defaultSubaction;
-	}
-
+	const chosen = plannerSubaction ?? parsed.subaction ?? defaultSubaction;
 	if (!chosen) {
+		const missing = parsed.missing.length > 0 ? parsed.missing : ["subaction"];
 		return {
 			ok: false,
-			missing: parsed.missing.length > 0 ? parsed.missing : ["subaction"],
-			clarification: buildClarificationMessage(
-				actionName,
-				null,
-				parsed.missing.length > 0 ? parsed.missing : ["subaction"],
-			),
+			missing,
+			clarification: buildClarificationMessage(actionName, null, missing),
 		};
 	}
 
 	// Merge planner-provided params (which take precedence) with extracted params,
 	// but only retain keys this subaction actually declares.
-	const allowedExtracted = pickKnownParams(chosen, subactions, parsed.params);
+	const extractedParams =
+		parsed.subaction === null || parsed.subaction === chosen
+			? parsed.params
+			: {};
+	const allowedExtracted = pickKnownParams(chosen, subactions, extractedParams);
 	const allowedPlanner = pickKnownParams(chosen, subactions, plannerParams);
 	const mergedParams: Record<string, unknown> = {
 		...allowedExtracted,
@@ -408,10 +383,9 @@ export async function resolveActionArgs<
 	const finalMissing =
 		missing.length > 0
 			? missing
-			: parsed.missing.filter((key) => {
-					const required = subactions[chosen as TSubaction]?.required ?? [];
-					return (required as readonly string[]).includes(key);
-				});
+			: parsed.missing.filter((key) =>
+					(subactions[chosen].required as readonly string[]).includes(key),
+				);
 
 	if (parsed.confidence < MIN_CONFIDENCE || finalMissing.length > 0) {
 		return {

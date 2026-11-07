@@ -23,7 +23,6 @@ import argparse
 import gc
 import json
 import logging
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -34,15 +33,13 @@ from safetensors.torch import save_file
 from transformers import AutoConfig
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     kernel_manifest_fragment,
     load_model_and_tokenizer,
     save_model,
 )
-from polarquant.polar_quant import (  # noqa: E402
+from eliza_training.quantization.polarquant.polar_quant import (  # noqa: E402
     PolarQuantResult,
     polar_dequantize,
     polar_quantize,

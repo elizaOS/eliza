@@ -29,7 +29,10 @@ const authorizationUrl = buildAppAuthorizeUrl({
   appId,
   redirectUri,
   state: browserSessionState,
-  delegation: { clientId, scopes: ["identity", "billing:read", "billing:write"] },
+  delegation: {
+    clientId,
+    scopes: ["identity", "billing:read", "billing:write"],
+  },
 });
 // After verifying callback state against the same browser session:
 const { data: grant } = await delegation.exchange(code, redirectUri);

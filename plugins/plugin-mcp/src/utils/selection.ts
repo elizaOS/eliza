@@ -113,13 +113,14 @@ export async function createToolSelectionArgument({
     callback,
     input: toolSelectionArgument,
     validationFn: (parsed) => validateToolSelectionArgument(parsed, toolInputSchema),
-    createFeedbackPromptFn: (originalResponse, errorMessage, composedState, userMessage) =>
-      createToolSelectionFeedbackPrompt(
-        typeof originalResponse === "string" ? originalResponse : JSON.stringify(originalResponse),
-        errorMessage,
-        composedState,
-        userMessage
-      ),
+    createFeedbackPromptFn: (originalResponse, errorMessage) => `${toolSelectionArgumentPrompt}
+
+The previous tool arguments could not be parsed or validated: ${errorMessage}
+
+Your previous response:
+${typeof originalResponse === "string" ? originalResponse : JSON.stringify(originalResponse)}
+
+Correct the arguments for the same selected tool. Return compact JSON with toolArguments and reasoning as instructed above.`,
     failureMsg: "I'm having trouble figuring out the best way to help with your request.",
   });
 }

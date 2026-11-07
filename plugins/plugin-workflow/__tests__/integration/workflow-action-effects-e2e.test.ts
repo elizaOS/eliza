@@ -13,9 +13,12 @@ import type {
   Memory,
   PlannerTrajectory,
 } from '@elizaos/core';
+import {
+  effectDeliveryBindingProvesApplication,
+  settleActionHandler,
+  validateToolArgs,
+} from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
-import { settleActionHandler } from '../../../../packages/core/src/runtime/action-handler-settlement';
-import { effectDeliveryBindingProvesApplication } from '../../../../packages/core/src/runtime/effect-delivery';
 import { parseWorkflowBody } from '../../../../packages/ui/src/components/chat/message-workflow-parser';
 import { runEvaluator } from '../../../plugin-assistant/src/runtime/evaluator';
 import { workflowAction } from '../../src/actions/workflow';
@@ -252,11 +255,19 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       });
       expect(delivered).toHaveLength(1);
     }
-    const denied = await invoke({ action: 'delete', workflowId: row.id });
-    expect(denied.success).toBe(false);
-    expect(denied.effectReceipts).toEqual([]);
-    expect(delivered).toHaveLength(0);
+    // Chat has no removal operation: the declared schema refuses it before the handler.
+    expect(
+      validateToolArgs(workflowAction, { action: 'delete', workflowId: row.id })
+    ).toMatchObject({ valid: false, invalidParameterNames: ['action'] });
     expect(await facade.listWorkflows(owner)).toHaveLength(1);
+    // Run input is workflow-defined, so its keys reach the handler unfiltered.
+    expect(
+      validateToolArgs(workflowAction, {
+        action: 'run',
+        workflowId: row.id,
+        input: { topic: 'x' },
+      })
+    ).toMatchObject({ valid: true, args: { input: { topic: 'x' } } });
     // A concurrent mutation after the create transaction must not replace its receipt version.
     const deploy = facade.deployWorkflowDefinition.bind(facade);
     let committedVersion: string | undefined;

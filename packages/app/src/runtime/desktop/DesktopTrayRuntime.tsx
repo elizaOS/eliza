@@ -8,31 +8,25 @@
  * show/hide/quit — all through the electrobun-rpc bridge. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
-
-import {
-  getElectrobunRendererRpc,
-  invokeDesktopBridgeRequest,
-  openDesktopAppWindow,
-  subscribeDesktopBridgeEvent,
-} from "@elizaos/ui/bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
-import {
-  dispatchChatOpen,
-  dispatchOpenNotificationCenter,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/ui/events";
-import { logger } from "@elizaos/ui/logger";
-import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
-  setDesktopLauncherEntries,
-} from "@elizaos/ui/state/desktop-tray-launcher";
-import { useApp } from "@elizaos/ui/state/useApp";
-import {
+  dispatchChatOpen,
+  dispatchOpenNotificationCenter,
+  getElectrobunRendererRpc,
+  invokeDesktopBridgeRequest,
+  isElectrobunRuntime,
+  logger,
+  openDesktopAppWindow,
   openDesktopSettingsWindow,
   openDesktopWorkspaceWindow,
-} from "@elizaos/ui/utils/desktop-workspace";
+  setDesktopLauncherEntries,
+  subscribeDesktopBridgeEvent,
+  TOAST_TTL_MS,
+  TRAY_ACTION_EVENT,
+  useApp,
+} from "@elizaos/ui";
+
 import { useEffect } from "react";
 import {
   DESKTOP_VIEW_WINDOWS,

@@ -133,6 +133,11 @@ function exactVisibleConsentLines(
     "Use your existing Dedicated agent?",
     `$${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hour).`,
     `Balance: $${quote.balanceUsd.toFixed(2)}; $${quote.minimumBalanceUsd.toFixed(2)} required.`,
+    `Current status: ${quote.status.replaceAll(/[_-]+/g, " ")}.`,
+    `The required balance covers ${quote.minimumRunwayDays} days of hosting.`,
+    quote.startsCompute
+      ? "Confirming starts Dedicated compute."
+      : "Confirming does not start new Dedicated compute.",
     ...(quote.deficitUsd > 0
       ? [`Add $${quote.deficitUsd.toFixed(2)} to start.`]
       : []),

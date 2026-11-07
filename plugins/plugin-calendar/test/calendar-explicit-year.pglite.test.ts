@@ -3,7 +3,13 @@
  * deterministic doubles; external grant requests reject and no model is called.
  * Structured service inputs retain their separate contract. */
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  bindTaskExtractionContext,
+  type ContextObject,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -106,51 +112,83 @@ async function create(args: {
   zone?: string;
   plannerStart?: string;
   createdAt?: string;
+  priorRequest?: string;
 }) {
   const zone = args.zone ?? "UTC";
+  const currentMessage: Memory = {
+    ...message,
+    ...(args.createdAt ? { createdAt: Date.parse(args.createdAt) } : {}),
+    content: { text: args.text, metadata: { uiTimeZone: zone } },
+  };
+  const state = { text: "", values: {}, data: {} } as State;
+  if (args.priorRequest) {
+    const context = {
+      id: "year-context",
+      metadata: { messageId: currentMessage.id, roomId: currentMessage.roomId },
+      events: [
+        {
+          id: "history:year",
+          type: "segment",
+          source: "prior-dialogue",
+          createdAt: 1,
+          segment: {
+            id: "history:year",
+            label: "prior_message:user",
+            content: `Owner: ${args.priorRequest}`,
+            metadata: {
+              entityId: currentMessage.entityId,
+              roomId: currentMessage.roomId,
+              speakerName: "Owner",
+            },
+          },
+        },
+      ],
+    } as ContextObject;
+    bindTaskExtractionContext(state, currentMessage, context, context);
+  }
+  const evidence = [
+    { sourceId: `current:${currentMessage.id}`, quote: args.text },
+  ];
+  const extracted = {
+    grantId: ELIZA_CALENDAR_GRANT_ID,
+    calendarId: ELIZA_CALENDAR_ID,
+    title: "Lunch",
+    description: null,
+    location: null,
+    requiresInput: false,
+    clarification: null,
+    startAt: args.start ?? null,
+    endAt: args.end ?? null,
+    timeZone: zone,
+    durationMinutes: null,
+    recurrence: null,
+    travelOriginAddress: null,
+    isShortPreparation: false,
+    guestIntent: { state: "none", evidence, guests: [] },
+    noteIntent: { state: "none", evidence, sourceNote: null },
+  };
   const action = createCalendarActionRunner({
     runTextModel: async () => null,
     runJsonModel: async () => ({
-      rawResponse: JSON.stringify({
-        grantId: ELIZA_CALENDAR_GRANT_ID,
-        calendarId: ELIZA_CALENDAR_ID,
-        startAt: args.start,
-        endAt: args.end,
-        timeZone: zone,
-      }),
-      parsed: {
-        grantId: ELIZA_CALENDAR_GRANT_ID,
-        calendarId: ELIZA_CALENDAR_ID,
-        startAt: args.start,
-        endAt: args.end,
-        timeZone: zone,
-      },
+      rawResponse: JSON.stringify(extracted),
+      parsed: extracted,
     }),
     recentConversationTexts: async () => [],
   });
-  const result = await action.handler(
-    runtime,
-    {
-      ...message,
-      ...(args.createdAt ? { createdAt: Date.parse(args.createdAt) } : {}),
-      content: { text: args.text, metadata: { uiTimeZone: zone } },
-    },
-    undefined,
-    {
-      parameters: {
-        subaction: "create_event",
-        intent: args.intent ?? args.text,
-        title: "Lunch",
-        details: {
-          grantId: ELIZA_CALENDAR_GRANT_ID,
-          calendarId: ELIZA_CALENDAR_ID,
-          timeZone: zone,
-          start: args.plannerStart ?? args.start,
-          end: args.end,
-        },
+  const result = await action.handler(runtime, currentMessage, state, {
+    parameters: {
+      subaction: "create_event",
+      intent: args.intent ?? args.text,
+      title: "Lunch",
+      details: {
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        timeZone: zone,
+        start: args.plannerStart ?? args.start,
+        end: args.end,
       },
     },
-  );
+  });
   return result;
 }
 async function rows() {
@@ -213,9 +251,10 @@ describe("explicit Calendar year preservation", { timeout: 30_000 }, () => {
     await expectSaved("2051-08-04T15:00:00Z", "2051-08-04T16:00:00Z");
   });
 
-  it("uses an intact intent date when the current message only confirms it", async () => {
+  it("uses the bound original date when the current message only confirms it", async () => {
     const result = await create({
       text: "Yes, create Lunch at that time.",
+      priorRequest: "Create Lunch on August 4, 2050 at 3 PM UTC for one hour.",
       intent: "Create Lunch on August 4, 2050 at 3 PM UTC for one hour.",
       start: "2050-08-04T15:00:00Z",
       end: "2050-08-04T16:00:00Z",

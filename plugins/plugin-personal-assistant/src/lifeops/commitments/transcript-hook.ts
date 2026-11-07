@@ -11,7 +11,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { MeetingTranscriptFinalizedPayload } from "@elizaos/core/meetings";
+import type { MeetingTranscriptFinalizedPayload } from "@elizaos/core/protocol";
 import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {

@@ -1,8 +1,4 @@
-/**
- * Cloud-domain client DTOs: Cloud*, App*, Trajectory*, Registry*, Whitelist*,
- * Verification*, wallet display types, CodingAgent*, Pty*. One slice of the
- * ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Cloud, billing, application, and coding-agent client DTOs. */
 
 import type {
   TrajectoryExportOptions as CoreTrajectoryExportOptions,
@@ -11,95 +7,15 @@ import type {
   TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
   TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
   TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+  TrajectoryExportFormat,
   TrajectorySemanticStageRecord,
 } from "@elizaos/core";
-import type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-} from "@elizaos/core/contracts/apps";
-import type { TrajectoryExportFormat } from "./client-types-core";
 
-export type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-};
 // Cloud
-export interface CloudStatus {
-  /** Older servers omit this field; omission must remain visibly unavailable. */
-  applicationBilling?: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection;
-  connected: boolean;
-  enabled?: boolean;
-  cloudVoiceProxyAvailable?: boolean;
-  hasApiKey?: boolean;
-  userId?: string;
-  organizationId?: string;
-  topUpUrl?: string;
-  reason?: string;
-}
-export interface CloudCredits {
-  connected: boolean;
-  balance: number | null;
-  /** True when the cloud API rejected the stored API key (same as chat 401). */
-  authRejected?: boolean;
-  error?: string;
-  low?: boolean;
-  critical?: boolean;
-  topUpUrl?: string;
-}
+export type {
+  CloudCredits,
+  CloudStatus,
+} from "./client-types-cloud-session.js";
 export interface CloudApiKeySummary {
   id: string;
   name: string;
@@ -328,50 +244,6 @@ export interface CloudCompatManagedDiscordStatus {
   connectedAt: string | null;
   restarted?: boolean;
 }
-/** Discord plugin config shape exposed to cloud dashboard. */
-export interface CloudCompatDiscordConfig {
-  dm?: {
-    enabled?: boolean;
-    policy?: "open" | "pairing" | "allowlist";
-    allowFrom?: Array<string | number>;
-    groupEnabled?: boolean;
-  };
-  requireMention?: boolean;
-  reactionNotifications?: "off" | "own" | "all" | "allowlist";
-  actions?: {
-    reactions?: boolean;
-    stickers?: boolean;
-    emojiUploads?: boolean;
-    stickerUploads?: boolean;
-    polls?: boolean;
-    permissions?: boolean;
-    messages?: boolean;
-    threads?: boolean;
-    pins?: boolean;
-    search?: boolean;
-    memberInfo?: boolean;
-    roleInfo?: boolean;
-    roles?: boolean;
-    channelInfo?: boolean;
-    voiceStatus?: boolean;
-    events?: boolean;
-    moderation?: boolean;
-    channels?: boolean;
-    presence?: boolean;
-  };
-  maxLinesPerMessage?: number;
-  textChunkLimit?: number;
-  intents?: {
-    presence?: boolean;
-    guildMembers?: boolean;
-  };
-  pluralkit?: {
-    enabled?: boolean;
-  };
-  execApprovals?: {
-    enabled?: boolean;
-  };
-}
 export interface CloudCompatManagedGithubStatus {
   configured: boolean;
   connected: boolean;
@@ -457,7 +329,7 @@ export interface CloudCompatLaunchResult {
   };
 }
 // App types — the App-run / App-session DTO contract is owned by
-// @elizaos/core/contracts/apps (re-exported from the shared root barrel and
+// @elizaos/core/protocol (re-exported from the shared root barrel and
 // re-exported above). Only InstalledAppInfo is defined here: the client's
 // installed-app view (installPath / isRunning) is a distinct shape from shared's
 // registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.
@@ -741,30 +613,7 @@ export interface TrajectoryConfig {
 export type TrajectoryExportOptions = CoreTrajectoryExportOptions & {
   format: TrajectoryExportFormat | "jsonl";
 };
-// ERC-8004 Registry & Drop types
-export interface RegistryStatus {
-  registered: boolean;
-  tokenId: number;
-  agentName: string;
-  agentEndpoint: string;
-  capabilitiesHash: string;
-  isActive: boolean;
-  tokenURI: string;
-  walletAddress: string;
-  totalAgents: number;
-  configured: boolean;
-}
-export interface RegistrationResult {
-  tokenId: number;
-  txHash: string;
-}
-export interface RegistryConfig {
-  configured: boolean;
-  chainId: number | null;
-  registryAddress: string | null;
-  collectionAddress: string | null;
-  explorerUrl: string | null;
-}
+// Drop / whitelist types
 export interface WhitelistStatus {
   eligible: boolean;
   twitterVerified: boolean;
@@ -1330,14 +1179,19 @@ export function mapAcpSessionsToCodingAgentSessions(
     status:
       s.status === "ready" || s.status === "busy"
         ? ("active" as const)
-        : s.status === "error"
-          ? ("error" as const)
-          : s.status === "stopped" ||
-              s.status === "done" ||
-              s.status === "completed" ||
-              s.status === "exited"
-            ? ("stopped" as const)
-            : ("active" as const),
+        : // Kept as is so the 5 s poll does not overwrite the "blocked" the
+          // live event set (sidebar badge, terminal focus, "waiting" text).
+          s.status === "blocked" || s.status === "tool_running"
+          ? s.status
+          : s.status === "error" || s.status === "errored"
+            ? ("error" as const)
+            : s.status === "stopped" ||
+                s.status === "cancelled" ||
+                s.status === "done" ||
+                s.status === "completed" ||
+                s.status === "exited"
+              ? ("stopped" as const)
+              : ("active" as const),
     decisionCount: 0,
     autoResolvedCount: 0,
   }));

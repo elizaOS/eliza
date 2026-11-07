@@ -74,7 +74,7 @@ function parseCreated(value: unknown): ConsumerKeyCreated {
   return { key: value.key, consumer: parseSummary(value.consumer) };
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listConsumerKeys(
       timeoutMs?: number,
