@@ -243,6 +243,37 @@ export class FallbackG2PPhonemizer implements KokoroPhonemizer {
 	}
 }
 
+/**
+ * Marks that end an eSpeak clause. The `phonemizer` package returns one IPA
+ * string per clause and drops these marks; Kokoro has a token for each.
+ */
+const CLAUSE_END = /[,.!?;:—…]+(?=\s|$)/gu;
+
+/**
+ * Puts each clause's closing mark back after its IPA. eSpeak keeps reading
+ * past a lone period followed by a lowercase word ("5 p.m. today"). Returns
+ * null when the marks found in `text` do not line up one-to-one with the
+ * clauses eSpeak returned.
+ */
+function withClausePunctuation(
+	text: string,
+	clauses: readonly string[],
+): string | null {
+	const marks: string[] = [];
+	let start = 0;
+	for (const match of text.matchAll(CLAUSE_END)) {
+		const end = match.index + match[0].length;
+		if (match[0] === "." && /^\s+\p{Ll}/u.test(text.slice(end))) continue;
+		if (/[\p{L}\p{N}]/u.test(text.slice(start, match.index))) {
+			marks.push(match[0]);
+		}
+		start = end;
+	}
+	if (/[\p{L}\p{N}]/u.test(text.slice(start))) marks.push("");
+	if (marks.length !== clauses.length) return null;
+	return clauses.map((clause, i) => clause + marks[i]).join(" ");
+}
+
 interface PhonemizeMod {
 	// The `phonemizer` / legacy `phonemize` npm package typing varies between
 	// packages and versions; treat it structurally so minor updates do not break
@@ -309,7 +340,7 @@ export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
 				: { lang },
 		);
 		const phonemes = Array.isArray(out)
-			? out.join(" ")
+			? (withClausePunctuation(text, out) ?? out.join(" "))
 			: typeof out === "string"
 				? out
 				: String(out);

@@ -567,7 +567,7 @@ describe("Android Kokoro phonemization", () => {
 		expect(response.res.statusCode).toBe(200);
 		const body = JSON.parse(response.bodyBuffer().toString());
 		expect(body).toMatchObject({ language: "en-US", phonemizer: "phonemizer" });
-		expect(body.ipa).toBe("həlˈoʊ ðɪs ɪz ɐ lˈoʊkəl spˈiːtʃ tˈɛst");
+		expect(body.ipa).toBe("həlˈoʊ. ðɪs ɪz ɐ lˈoʊkəl spˈiːtʃ tˈɛst.");
 	});
 
 	it.each(["fr-FR", "en-GB", 42])(
