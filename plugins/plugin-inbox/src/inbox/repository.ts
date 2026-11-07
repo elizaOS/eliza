@@ -47,6 +47,11 @@ const OWNER_ACTIONS = new Set<OwnerAction>([
   "ignored",
 ]);
 
+/** Lower-case letter and number runs of a sender name. */
+export function senderNameTokens(value: string): string[] {
+  return value.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // Row parsing
 // ---------------------------------------------------------------------------
@@ -302,11 +307,11 @@ export class InboxRepository {
       senderClauses.push(`source_entity_id = ${sqlText(opts.sourceEntityId)}`);
     }
     if (opts.senderName) {
-      const normalized = opts.senderName.trim().toLowerCase();
-      if (normalized) {
-        senderClauses.push(
-          `(LOWER(sender_name) LIKE ${sqlText(`%${normalized}%`)} OR ${sqlText(normalized)} LIKE '%' || LOWER(sender_name) || '%')`,
-        );
+      // The caller matches names on whole tokens, whatever the separators
+      // ("alice.smith@example.com" for "Alice Smith"), so keep every row that
+      // holds one of the tokens. A token has no LIKE wildcard in it.
+      for (const token of new Set(senderNameTokens(opts.senderName))) {
+        senderClauses.push(`LOWER(sender_name) LIKE ${sqlText(`%${token}%`)}`);
       }
     }
 

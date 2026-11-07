@@ -20,9 +20,11 @@
 import {
   type AgentRuntime,
   getConnectorAccountManager,
+  type Memory,
   ModelType,
   type ModelTypeName,
   type Plugin,
+  stringToUuid,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -43,10 +45,12 @@ import {
   createInboxGmailGateway,
   type InboxGmailGateway,
 } from "../src/inbox/google-gmail-seam.ts";
+import { InboxRepository } from "../src/inbox/repository.ts";
 import { InboxService } from "../src/inbox/service.ts";
-import type { InboundMessage } from "../src/inbox/types.ts";
+import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { InboxUnsubscribeRepository } from "../src/inbox/unsubscribe-repository.ts";
 import { InboxUnsubscribeService } from "../src/inbox/unsubscribe-service.ts";
+import { crossChannelContextProvider } from "../src/providers/cross-channel-context.ts";
 
 /**
  * Schema-only test plugin so `runtime.initialize()` runs the SQL plugin's
@@ -606,6 +610,62 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     expect(ids).toContain("msg-digest-info");
     // Ignored entries are excluded from the digest.
     expect(ids).not.toContain("msg-digest-ignore");
+  });
+
+  it("injects a sender's entries from other channels when the name tokens match but the separators differ", async () => {
+    const repository = new InboxRepository(runtime);
+    const injectedSenders = async (
+      ownerName: string,
+      stored: Array<{ source: string; senderName: string }>,
+    ): Promise<string[]> => {
+      const ownerId = stringToUuid(`cross-channel-owner-${ownerName}`);
+      runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+      await runtime.createEntity({
+        id: ownerId,
+        names: [ownerName],
+        agentId: runtime.agentId,
+      });
+      for (const { source, senderName } of stored) {
+        await repository.storeTriage({
+          source,
+          channelName: `${senderName} thread`,
+          channelType: "dm",
+          classification: "needs_reply",
+          urgency: "medium",
+          confidence: 0.9,
+          snippet: `message from ${senderName}`,
+          senderName,
+        });
+      }
+      const message = {
+        id: stringToUuid(`cross-channel-message-${ownerName}`),
+        entityId: ownerId,
+        agentId: runtime.agentId,
+        roomId: stringToUuid("cross-channel-room"),
+        content: { text: "hi", source: "discord" },
+      } as Memory;
+      const result = await crossChannelContextProvider.get(runtime, message, {
+        values: {},
+        data: {},
+        text: "",
+      });
+      const entries = (result.data?.entries ?? []) as TriageEntry[];
+      return entries.map((entry) => entry.senderName ?? "").sort();
+    };
+
+    // Gmail stores an address-only sender as the address (message-fetcher).
+    expect(
+      await injectedSenders("Alice Smith", [
+        { source: "gmail", senderName: "Alice Smith" },
+        { source: "gmail", senderName: "alice.smith@example.com" },
+        { source: "gmail", senderName: "Alicia Smithers" },
+      ]),
+    ).toEqual(["Alice Smith", "alice.smith@example.com"]);
+    expect(
+      await injectedSenders("Jean-Luc Picard", [
+        { source: "telegram", senderName: "Jean Luc Picard" },
+      ]),
+    ).toEqual(["Jean Luc Picard"]);
   });
 
   // The curation engine is pure (no model, no DB), but these run it against the

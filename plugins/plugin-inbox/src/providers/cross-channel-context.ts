@@ -25,7 +25,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import { InboxRepository } from "../inbox/repository.ts";
+import { InboxRepository, senderNameTokens } from "../inbox/repository.ts";
 import type { TriageEntry } from "../inbox/types.ts";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
@@ -73,10 +73,6 @@ function matchesSender(
   return false;
 }
 
-function nameTokens(value: string): string[] {
-  return value.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
-}
-
 function containsTokenRun(tokens: string[], run: string[]): boolean {
   for (let start = 0; start + run.length <= tokens.length; start++) {
     if (run.every((token, offset) => tokens[start + offset] === token)) {
@@ -87,8 +83,8 @@ function containsTokenRun(tokens: string[], run: string[]): boolean {
 }
 
 function namesShareWholeTokens(a: string, b: string): boolean {
-  const aTokens = nameTokens(a);
-  const bTokens = nameTokens(b);
+  const aTokens = senderNameTokens(a);
+  const bTokens = senderNameTokens(b);
   if (aTokens.length === 0 || bTokens.length === 0) return false;
   return (
     containsTokenRun(aTokens, bTokens) || containsTokenRun(bTokens, aTokens)
