@@ -63,6 +63,17 @@ async function temporaryStateFile(): Promise<string> {
   return path.join(await temporaryStateDirectory(), "notes", "state.json");
 }
 
+/** A first boot publishes either the flat file (hard link) or the link-free
+ * publication directory (Windows, and filesystems that deny hard links). */
+async function firstBootDocumentPath(filePath: string): Promise<string> {
+  try {
+    await fs.access(filePath);
+    return filePath;
+  } catch {
+    return path.join(notesPublicationDirectory(filePath), "state.json");
+  }
+}
+
 function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
   let tick = 0;
   const epoch = Date.parse(start);
@@ -645,7 +656,9 @@ describe("NotesStore", () => {
 
     expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
     expect(duplicate.snapshot()).toMatchObject({ revision: 0, notes: [] });
-    expect(await fs.readFile(scopedPath, "utf8")).not.toBe(legacyBytes);
+    expect(
+      await fs.readFile(await firstBootDocumentPath(scopedPath), "utf8"),
+    ).not.toBe(legacyBytes);
     expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
 
     await first.createNote({ title: "Scoped note" });
@@ -680,7 +693,7 @@ describe("NotesStore", () => {
     });
     await expect(service.initialize()).resolves.toBeUndefined();
     expect(service.snapshot()).toMatchObject({ revision: 0, notes: [] });
-    await fs.access(scopedPath);
+    await fs.access(await firstBootDocumentPath(scopedPath));
     await service.stop();
   });
 
