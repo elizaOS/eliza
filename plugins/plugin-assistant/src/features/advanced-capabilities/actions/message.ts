@@ -229,6 +229,31 @@ export function recentReadLimit(
   return range === "dates" ? undefined : DEFAULT_RECENT_READ_LIMIT;
 }
 
+/**
+ * The default window is a cap the model did not ask for. When it filled up,
+ * the channel may hold more than was read, and the result must say so: a
+ * bare "Read 20 messages" was summarized as the whole discussion.
+ */
+export function defaultReadWindowNote(
+  requestedLimit: number | undefined,
+  range: string | undefined,
+  limit: number | undefined,
+  returned: number,
+  cursorBound = false,
+): string {
+  if (
+    requestedLimit !== undefined ||
+    range === "dates" ||
+    limit === undefined ||
+    returned < limit
+  )
+    return "";
+  const window = cursorBound
+    ? `${limit} per page by default; more may exist beyond this page.`
+    : `Newest ${limit} by default; the channel may hold more.`;
+  return ` ${window} Pass limit, range=dates, or before=<oldest message id> to read further.`;
+}
+
 function normalizeComparable(value: unknown): string {
   return String(value ?? "")
     .trim()
@@ -4125,6 +4150,9 @@ async function handleReadChannel(
     );
   }
   const limit = recentReadLimit(range, requestedLimit);
+  const cursorBound = ["cursor", "before", "after"].some(
+    (key) => textParam(params[key]) !== undefined,
+  );
 
   // Prefer in-process connector fetchMessages when available.
   const hookConnectors = connectors.filter(
@@ -4181,10 +4209,21 @@ async function handleReadChannel(
         memories = memories.sort(compareMemoryByCreatedAtDesc);
         if (limit !== undefined) memories = memories.slice(0, limit);
       }
+      const windowNote = defaultReadWindowNote(
+        requestedLimit,
+        range,
+        limit,
+        memories.length,
+        cursorBound,
+      );
       return opSuccess(
         "read_channel",
-        `Read ${memories.length} messages from ${selectedConnector.label}.`,
-        { source: selectedConnector.source, memories },
+        `Read ${memories.length} messages from ${selectedConnector.label}.${windowNote}`,
+        {
+          source: selectedConnector.source,
+          memories,
+          ...(windowNote ? { defaultLimitApplied: limit } : {}),
+        },
       );
     } catch (error) {
       // error-policy:J1 Connector failures become structured action failures.
@@ -4263,15 +4302,27 @@ async function handleReadChannel(
     }
     memories.sort(compareMemoryByCreatedAtDesc);
     const limited = limit === undefined ? memories : memories.slice(0, limit);
+    const windowNote = defaultReadWindowNote(
+      requestedLimit,
+      range,
+      limit,
+      limited.length,
+      cursorBound,
+    );
     const readText = limited.length
-      ? `Read ${limited.length} recent messages across ${sources.length} connectors.`
+      ? `Read ${limited.length} recent messages across ${sources.length} connectors.${windowNote}`
       : "No recent conversations found.";
     return opSuccess(
       "read_channel",
       failedSources.length
         ? `${readText} Could not read: ${failedLabels}.`
         : readText,
-      { sources, memories: limited, failedSources },
+      {
+        sources,
+        memories: limited,
+        failedSources,
+        ...(windowNote ? { defaultLimitApplied: limit } : {}),
+      },
     );
   }
 
@@ -4315,12 +4366,20 @@ async function handleReadChannel(
     const memories = (
       limit === undefined ? raw : raw.slice(0, limit)
     ).reverse();
+    const windowNote = defaultReadWindowNote(
+      requestedLimit,
+      range,
+      limit,
+      memories.length,
+      cursorBound,
+    );
     return opSuccess(
       "read_channel",
-      `Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
+      `Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.${windowNote}`,
       {
         channel,
         roomId: room.id,
+        ...(windowNote ? { defaultLimitApplied: limit } : {}),
         messages: memories.map((m, i) => ({
           line: i + 1,
           id: m.id,
@@ -6629,7 +6688,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "limit",
     description:
-      "Maximum requested items (at least 1), or read_message range length in its units. For search_inbox always preserve the user's requested limit; use 25 only if none was specified.",
+      "Maximum requested items (at least 1), or read_message range length in its units. For search_inbox always preserve the user's requested limit; use 25 only if none was specified. For read_channel with range=recent, omitting it reads the newest 20 and the result says so when the channel may hold more.",
     required: false,
     requiredForSubactions: ["search_inbox"],
     subactions: [
@@ -6647,7 +6706,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "range",
-    description: 'For op=read_channel: "recent" (default) or "dates".',
+    description:
+      'For op=read_channel: "recent" (default; newest 20 unless limit is set) or "dates" (the whole range between from and until).',
     required: false,
     subactions: ["read_channel"],
     schema: { type: "string", enum: ["recent", "dates"] },

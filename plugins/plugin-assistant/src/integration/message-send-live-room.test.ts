@@ -171,6 +171,69 @@ it("reading recent messages reports connectors that could not be read", async ()
   }
 });
 
+it("a default-window read says the channel may hold more", async () => {
+  const f = await createIsolatedTestDatabase("message-read-channel-window");
+  const userId = "55555555-5555-4555-8555-555555555555" as UUID;
+  const roomId = "66666666-6666-4666-8666-666666666666" as UUID;
+  try {
+    f.runtime.registerMessageConnector({
+      source: "slack",
+      label: "Slack",
+      capabilities: ["send_message", "read_messages"],
+      supportedTargetKinds: ["channel"],
+      contexts: ["social"],
+      sendHandler: async () => undefined,
+      listRecentTargets: async () => [
+        { target: { source: "slack", channelId: "C1" } },
+      ],
+      fetchMessages: async () =>
+        Array.from({ length: 25 }, (_, index) => ({
+          id: stringToUuid(`slack:m${index}`),
+          entityId: userId,
+          agentId: f.testAgentId,
+          roomId,
+          content: { text: `message ${index}`, source: "slack" },
+          createdAt: 1_760_000_000_000 + index * 1_000,
+        })) as Memory[],
+    });
+    const message: Memory = {
+      id: "88888888-8888-4888-8888-888888888888" as UUID,
+      agentId: f.testAgentId,
+      entityId: userId,
+      roomId,
+      content: { text: "summarize today's discussion", source: "client_chat" },
+    };
+    const read = (parameters: Record<string, unknown>) =>
+      messageAction.handler(f.runtime, message, undefined, {
+        parameters: { action: "read_channel", ...parameters },
+      });
+
+    // No limit: the newest 20 are read, and the result says the window is a
+    // default that may not cover the channel.
+    const windowed = await read({});
+    expect(windowed).toMatchObject({
+      success: true,
+      data: { defaultLimitApplied: 20 },
+    });
+    expect(windowed?.text).toBe(
+      "Read 20 messages from Slack. Newest 20 by default; the channel may hold more. Pass limit, range=dates, or before=<oldest message id> to read further.",
+    );
+
+    // A cursor-bound read is a page, not the newest window.
+    const paged = await read({ before: stringToUuid("slack:m10") });
+    expect(paged?.text).toBe(
+      "Read 20 messages from Slack. 20 per page by default; more may exist beyond this page. Pass limit, range=dates, or before=<oldest message id> to read further.",
+    );
+
+    // An explicit limit is the model's own request: no default note.
+    const explicit = await read({ limit: 25 });
+    expect(explicit?.text).toBe("Read 25 messages from Slack.");
+    expect(explicit?.data).not.toHaveProperty("defaultLimitApplied");
+  } finally {
+    await f.cleanup();
+  }
+});
+
 it("an inferred-source send skips a connector whose discovery hooks fail", async () => {
   const f = await createIsolatedTestDatabase("message-send-failed-discovery");
   const userId = "55555555-5555-4555-8555-555555555555" as UUID;
