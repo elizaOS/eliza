@@ -169,22 +169,46 @@ export function readBrowserWorkspaceCookies(
   );
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Expire a cookie for every path `document.cookie` can present it from: the
+ * page's own default path (RFC 6265 §5.1.4), each ancestor directory and the
+ * root. A cookie set from a sub-path is not removed by `path=/` alone.
+ */
+export function expireBrowserWorkspaceCookie(
+  document: Document,
+  name: string,
+): void {
+  const expired = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  document.cookie = expired;
+  const paths = new Set(["/"]);
+  let prefix = "";
+  for (const segment of (document.location?.pathname ?? "/")
+    .split("/")
+    .filter(Boolean)) {
+    prefix += `/${segment}`;
+    paths.add(prefix);
+    paths.add(`${prefix}/`);
+  }
+  for (const cookiePath of paths) {
+    document.cookie = `${expired}; path=${cookiePath}`;
+  }
+}
+
 export function applyBrowserWorkspaceStateToWebDocument(
   document: Document,
   snapshot: Record<string, unknown>,
 ): void {
-  const localEntries =
-    snapshot.localStorage && typeof snapshot.localStorage === "object"
-      ? (snapshot.localStorage as Record<string, unknown>)
-      : {};
-  const sessionEntries =
-    snapshot.sessionStorage && typeof snapshot.sessionStorage === "object"
-      ? (snapshot.sessionStorage as Record<string, unknown>)
-      : {};
-  const cookies =
-    snapshot.cookies && typeof snapshot.cookies === "object"
-      ? (snapshot.cookies as Record<string, unknown>)
-      : {};
+  const localEntries = isPlainRecord(snapshot.localStorage)
+    ? snapshot.localStorage
+    : {};
+  const sessionEntries = isPlainRecord(snapshot.sessionStorage)
+    ? snapshot.sessionStorage
+    : {};
+  const cookies = isPlainRecord(snapshot.cookies) ? snapshot.cookies : null;
 
   document.defaultView?.localStorage.clear();
   for (const [key, value] of Object.entries(localEntries)) {
@@ -194,7 +218,15 @@ export function applyBrowserWorkspaceStateToWebDocument(
   for (const [key, value] of Object.entries(sessionEntries)) {
     document.defaultView?.sessionStorage.setItem(key, String(value ?? ""));
   }
-  for (const [key, value] of Object.entries(cookies)) {
-    document.cookie = `${key}=${String(value ?? "")}; path=/`;
+  // Storage is replaced. Cookies used to be merged, so a cookie set after the
+  // save survived load and the restored page still presented it.
+  if (cookies) {
+    for (const key of Object.keys(readBrowserWorkspaceCookies(document))) {
+      expireBrowserWorkspaceCookie(document, key);
+    }
+    for (const [key, value] of Object.entries(cookies)) {
+      if (!key) continue;
+      document.cookie = `${key}=${String(value ?? "")}; path=/`;
+    }
   }
 }
