@@ -382,16 +382,7 @@ export function readDocumentMutationSnapshot(
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
 		...(directGrantEntityIds.length > 0 ? { directGrantEntityIds } : {}),
-		...(metadata.runtimeInternal === true
-			? { runtimeInternal: true as const }
-			: {}),
 	};
-}
-
-function isRuntimeRequester(
-	role: DocumentListQueryParams["requesterRole"],
-): boolean {
-	return role === "AGENT" || role === "RUNTIME";
 }
 
 /** Rejects malformed revision batches before an adapter begins a transaction. */
@@ -516,9 +507,6 @@ export function isDocumentVisibleToRequester(
 	) {
 		return false;
 	}
-	if (snapshot.runtimeInternal) {
-		return isRuntimeRequester(params.requesterRole);
-	}
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
@@ -554,9 +542,6 @@ export function canRequesterMutateDocument(
 	}
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
-	if (snapshot.runtimeInternal && !isRuntimeRequester(params.requesterRole)) {
-		return false;
-	}
 	if (params.requesterRole === "OWNER") return true;
 	if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
 		return snapshot.scope === "agent-private";
@@ -574,11 +559,13 @@ export function canRequesterManageDocumentDirectGrants(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
-	const snapshot = readDocumentMutationSnapshot(memory);
-	if (!snapshot || snapshot.runtimeInternal) return false;
-	if (params.requesterRole === "OWNER") return true;
+	if (params.requesterRole === "OWNER") {
+		return readDocumentMutationSnapshot(memory) !== null;
+	}
 	if (params.requesterRole !== "ADMIN") return false;
+	const snapshot = readDocumentMutationSnapshot(memory);
 	return (
+		snapshot !== null &&
 		params.requesterRoomIds.includes(snapshot.roomId) &&
 		(snapshot.scope === "global" || snapshot.scope === "user-private")
 	);

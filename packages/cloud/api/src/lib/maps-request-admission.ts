@@ -106,7 +106,9 @@ export async function admitMapsRequest(
         );
       // Coverage and viewport copyright are metadata: entitled, never counted.
       if (operation === "coverage" || operation === "viewport") return null;
-      if (!summary.rateTier)
+      // Inference rate overrides can change the tier without changing the subscribed plan.
+      const planKey = summary.plan.id;
+      if (planKey !== "plus_monthly" && planKey !== "pro_monthly")
         throw new MapsAdmissionError(
           503,
           "maps_allowance_unconfigured",
@@ -128,7 +130,7 @@ export async function admitMapsRequest(
         },
         policy: {
           ...policy.authority,
-          planKey: summary.rateTier,
+          planKey,
           subscriptionFunded: true,
         },
       };

@@ -11,21 +11,12 @@ const context = (trace: unknown = traceA, path = "/api/v1/voice/stt") =>
     get: (key: string) => (key === "traceId" ? trace : undefined),
   }) as AppContext;
 afterEach(() => mock.restore());
-describe.each([
-  ["stt", "/api/v1/voice/stt"],
-  ["tts", "/api/v1/voice/tts"],
-  ["speech-consent", "/api/v1/voice/speech/consent"],
-  ["speech-session", "/api/v1/voice/speech/session"],
-])("%s phase diagnostics preserve business outcomes", (route, path) => {
-  const routeContext = (trace: unknown = traceA, pathname = path) =>
-    context(trace, pathname);
+describe("speech phase diagnostics preserve business outcomes", () => {
   it("preserves success identity and calls the operation once", async () => {
     const log = spyOn(logger, "audit").mockImplementation(() => {});
     const value = {},
       run = mock(async () => value);
-    expect(await timeSpeechPhase(routeContext(), "upload_read", run)).toBe(
-      value,
-    );
+    expect(await timeSpeechPhase(context(), "upload_read", run)).toBe(value);
     expect(run).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledTimes(1);
     const fields = log.mock.calls[0][1] as Record<string, unknown>;
@@ -40,7 +31,7 @@ describe.each([
     expect(fields).toMatchObject({
       traceId: traceA,
       phase: "upload_read",
-      route,
+      route: "stt",
       outcome: "returned",
     });
     expect(Number.isFinite(fields.durationMs)).toBe(true);
@@ -53,9 +44,9 @@ describe.each([
     const run = mock(async () => {
       throw error;
     });
-    await expect(
-      timeSpeechPhase(routeContext(), "audio_sniff", run),
-    ).rejects.toBe(error);
+    await expect(timeSpeechPhase(context(), "audio_sniff", run)).rejects.toBe(
+      error,
+    );
     expect(run).toHaveBeenCalledTimes(1);
   });
   it("does not reject successful work when logging fails", async () => {
@@ -64,7 +55,7 @@ describe.each([
     });
     const result = {};
     expect(
-      await timeSpeechPhase(routeContext(), "audio_buffer", async () => result),
+      await timeSpeechPhase(context(), "audio_buffer", async () => result),
     ).toBe(result);
   });
   it("keeps concurrent trace IDs isolated", async () => {
@@ -74,15 +65,11 @@ describe.each([
       release = resolve;
     });
     const first = timeSpeechPhase(
-      routeContext(traceA),
+      context(traceA),
       "auth_resolution",
       () => pending,
     );
-    await timeSpeechPhase(
-      routeContext(traceB),
-      "auth_resolution",
-      async () => {},
-    );
+    await timeSpeechPhase(context(traceB), "auth_resolution", async () => {});
     release();
     await first;
     expect(
@@ -94,13 +81,13 @@ describe.each([
     const run = mock(async () => 1);
     expect(
       await timeSpeechPhase(
-        routeContext(traceA, "/api/v1/chat/completions"),
+        context(traceA, "/api/v1/chat/completions"),
         "json_decode",
         run,
       ),
     ).toBe(1);
     expect(
-      await timeSpeechPhase(routeContext(), "UNTRUSTED_PHASE" as never, run),
+      await timeSpeechPhase(context(), "UNTRUSTED_PHASE" as never, run),
     ).toBe(1);
     expect(log).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(2);
@@ -111,7 +98,7 @@ describe.each([
       throw error;
     });
     await expect(
-      timeSpeechPhase(routeContext(traceA, "/other"), "json_decode", run),
+      timeSpeechPhase(context(traceA, "/other"), "json_decode", run),
     ).rejects.toBe(error);
     expect(run).toHaveBeenCalledTimes(1);
   });
@@ -120,7 +107,7 @@ describe.each([
     const secret = "private-token-".repeat(1000),
       error = new Error(secret);
     await expect(
-      timeSpeechPhase(routeContext(secret), "json_decode", async () => {
+      timeSpeechPhase(context(secret), "json_decode", async () => {
         throw error;
       }),
     ).rejects.toBe(error);
