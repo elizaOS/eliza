@@ -20,6 +20,8 @@ let cli: typeof import("./cli-auth-session-completion");
 let tables: typeof import("../../db/schemas");
 let provenance: typeof import("../../db/mobile-app-auth-credential-policy");
 let decrypt: typeof import("../../db/crypto/api-keys");
+let helpers: typeof import("../../db/helpers");
+let apiKeysModule: typeof import("./api-keys");
 let service: typeof import("./mobile-app-auth");
 const organizationId = randomUUID();
 const userId = randomUUID();
@@ -290,6 +292,8 @@ async function seedProvableGrant() {
       cli = await import("./cli-auth-session-completion");
       provenance = await import("../../db/mobile-app-auth-credential-policy");
       decrypt = await import("../../db/crypto/api-keys");
+      helpers = await import("../../db/helpers");
+      apiKeysModule = await import("./api-keys");
       service = await import("./mobile-app-auth");
     }, 60_000);
 
@@ -484,6 +488,91 @@ async function seedProvableGrant() {
           (await setup.query("SELECT is_active FROM api_keys WHERE id=$1", [input.credential.id]))
             .rows[0].is_active,
         ).toBe(true);
+      } finally {
+        await linker.end();
+      }
+    }, 30_000);
+
+    test("agent key rotation in a caller transaction and a Steward link on its owner take locks in one order", async () => {
+      // Policy flags are off and the organization is not enrolled: the 0553
+      // triggers still lock users and organizations. The rotation's revoke
+      // takes the organization lock and its mint then needs the users row;
+      // a Steward link holding that row needs the organization next.
+      const organization = randomUUID();
+      const owner = randomUUID();
+      const sandbox = randomUUID();
+      await setup.query("INSERT INTO organizations(id,is_active) VALUES($1,true)", [organization]);
+      await setup.query("INSERT INTO users(id,organization_id,is_active) VALUES($1,$2,true)", [
+        owner,
+        organization,
+      ]);
+      const previous = randomUUID();
+      await setup.query(
+        "INSERT INTO api_keys(id,name,key_hash,key_prefix,organization_id,user_id,is_active) VALUES($1,$2,$3,'eliza_',$4,$5,true)",
+        [previous, `agent-sandbox:${sandbox}`, `hash-${randomUUID()}`, organization, owner],
+      );
+      const linker = new Client({ connectionString: scopedUrl });
+      await linker.connect();
+      try {
+        await linker.query("BEGIN");
+        await linker.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [owner]);
+        const linkerPid = (await linker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+        const rotated = bindings
+          .runWithCloudBindingsAsync(
+            {
+              DATABASE_URL: scopedUrl,
+              TEST_DATABASE_URL: scopedUrl,
+              NODE_ENV: "test",
+              ENVIRONMENT: "local",
+              ELIZA_KMS_BACKEND: "memory",
+            },
+            () =>
+              helpers.writeTransaction((tx) =>
+                apiKeysModule.apiKeysService.createForAgent({
+                  organizationId: organization,
+                  userId: owner,
+                  agentSandboxId: sandbox,
+                  tx,
+                }),
+              ),
+          )
+          .then(
+            (value) => ({ value }),
+            (error: unknown) => ({ error }),
+          );
+        // Wait until the rotation is blocked behind the linker's row lock.
+        let waiting = false;
+        for (let attempt = 0; attempt < 200 && !waiting; attempt++) {
+          const blocked = await observer.query(
+            "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=current_database() AND $1 = ANY(pg_blocking_pids(pid))",
+            [linkerPid],
+          );
+          waiting = blocked.rows[0].n > 0;
+          if (!waiting) await Bun.sleep(10);
+        }
+        expect(waiting).toBe(true);
+        let linkError: unknown;
+        try {
+          await linker.query("UPDATE users SET steward_user_id=$1 WHERE id=$2", [
+            `steward-${randomUUID()}`,
+            owner,
+          ]);
+          await linker.query("COMMIT");
+        } catch (error) {
+          linkError = error;
+          await linker.query("ROLLBACK");
+        }
+        const result = await rotated;
+        // Opposite lock order surfaces as SQLSTATE 40P01 on one of the two.
+        expect((linkError as { code?: string } | undefined)?.code).toBeUndefined();
+        expect("error" in result ? String(result.error) : "").toBe("");
+        const keys = await setup.query(
+          "SELECT id,is_active FROM api_keys WHERE name=$1 ORDER BY is_active",
+          [`agent-sandbox:${sandbox}`],
+        );
+        expect(keys.rows).toHaveLength(2);
+        expect(keys.rows[0]).toEqual({ id: previous, is_active: false });
+        expect(keys.rows[1].is_active).toBe(true);
       } finally {
         await linker.end();
       }

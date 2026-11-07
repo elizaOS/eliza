@@ -30,6 +30,7 @@ import {
 } from "./inference-auth-cache";
 import { revokeInferenceApiKey } from "./inference-credential-revocation";
 import {
+  lockInferencePolicyUsersForKeyWrites,
   withInferencePolicyMutation,
   withInferencePolicyMutationInTransaction,
 } from "./inference-policy-fence";
@@ -1163,6 +1164,23 @@ export class ApiKeysService {
     tx?: DbTransaction;
   }): Promise<{ apiKey: ApiKey; plainKey: string; revokedKeyHashes: string[] }> {
     const name = ApiKeysService.agentApiKeyName(params.agentSandboxId);
+
+    // In one transaction the revoke's api_keys trigger takes the organization
+    // lock before the mint's insert needs the users row and user lock. Take
+    // that users half first (old owners and the new one), or a concurrent
+    // users write such as a Steward link waits on the organization while
+    // holding the user, and PostgreSQL aborts one side (40P01). Without `tx`
+    // the two halves commit separately and cannot form that cycle.
+    if (params.tx) {
+      const owners = await params.tx
+        .select({ user_id: apiKeys.user_id })
+        .from(apiKeys)
+        .where(eq(apiKeys.name, name));
+      await lockInferencePolicyUsersForKeyWrites(params.tx, [
+        params.userId,
+        ...owners.map((row) => row.user_id),
+      ]);
+    }
 
     // Idempotency: a re-run of the provisioner must not strand an old key
     // active. Revoke whatever was previously bound to this sandbox before

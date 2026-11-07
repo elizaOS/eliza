@@ -165,6 +165,22 @@ export async function lockInferencePolicyUsers(
   await lockUserPolicyAssociations(tx, userIds, options.exclusive !== true);
 }
 
+/**
+ * The user half of the global lock order for a transaction that changes an
+ * organization's API keys and then inserts one, whatever the policy flags.
+ * The 0553 api_keys and users triggers take these locks without consulting
+ * the flags: an api_keys UPDATE takes the organization lock, and the next
+ * INSERT then needs the users row and user lock. Taking the users half first
+ * keeps such a transaction in the users -> user -> organization order that
+ * every trigger-guarded users writer follows.
+ */
+export async function lockInferencePolicyUsersForKeyWrites(
+  tx: DbTransaction,
+  userIds: string[],
+): Promise<void> {
+  await lockUserPolicyAssociations(tx, userIds, true);
+}
+
 async function policyCall(
   organizationId: string,
   path: string,
