@@ -99,7 +99,8 @@
         "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
         "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
         "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
-        "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings."
+        "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings.",
+        "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved."
       ],
       "maxSteps": 40
     },

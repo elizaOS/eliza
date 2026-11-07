@@ -12,6 +12,24 @@ import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../../..");
 const cloud = path.join(root, "packages/cloud");
+const sourceExtensions = [
+  ".ts",
+  ".tsx",
+  ".sql",
+  ".lua",
+  ".py",
+  ".go",
+  ".rs",
+  ".proto",
+  ".sh",
+];
+const sourceExtensionSet = new Set(sourceExtensions);
+function isSource(file: string): boolean {
+  return (
+    sourceExtensionSet.has(path.extname(file)) &&
+    !/\.(test|spec|integration)\.|(?:^|\/)test_|_test\.py$/.test(file)
+  );
+}
 const manifest = JSON.parse(
   readFileSync(path.join(cloud, "formal/contracts.json"), "utf8"),
 ) as {
@@ -36,11 +54,7 @@ function scan(directory: string) {
         scan(absolute);
       continue;
     }
-    if (
-      !/\.(ts|tsx|sql|lua)$/.test(entry.name) ||
-      /\.(test|spec|integration)\./.test(entry.name)
-    )
-      continue;
+    if (!isSource(entry.name)) continue;
     const source = readFileSync(absolute, "utf8");
     scannedFiles++;
     const signals: Array<{ line: number; kind: string; text: string }> = [];
@@ -49,9 +63,11 @@ function scan(directory: string) {
         /(?:status|phase|state|generation|lease|fence|receipt|idempotenc|retry|abort|cancel|claim|settle)/i.test(
           line,
         )
-          ? /(?:type\s+\w+|enum\s+\w+|z\.enum|CHECK\s*\()/i.test(line)
+          ? /(?:type\s+\w+|enum\s+\w+|class\s+\w+.*\bEnum\b|z\.enum|CHECK\s*\()/i.test(
+              line,
+            )
             ? "declaration"
-            : /(?:update|set|compare|transition|\.status\s*=|\.phase\s*=|\.state\s*=|\bstatus:|\bphase:|\bstate:)/i.test(
+            : /(?:update|set|compare|transition|\b(?:status|phase|state)\s*[:=])/i.test(
                   line,
                 )
               ? "transition-candidate"
@@ -78,11 +94,7 @@ const missingSources = execFileSync(
   { cwd: root, encoding: "utf8" },
 )
   .split("\0")
-  .filter(
-    (file) =>
-      /\.(ts|tsx|sql|lua)$/.test(file) &&
-      !/\.(test|spec|integration)\./.test(file),
-  )
+  .filter(isSource)
   .filter(
     (file) =>
       !/(?:^|\/)(?:node_modules|dist|build|formal|__tests__|test|tests|e2e)\//.test(
@@ -108,7 +120,9 @@ writeFileSync(
       purpose:
         "Heuristic source discovery. A model link is not a proof of implementation coverage or completeness.",
       scannedFiles,
-      sourceSnapshotComplete: missingSources.length === 0,
+      sourceExtensions,
+      selectedSourcesPresent: missingSources.length === 0,
+      protocolCoverageComplete: false,
       missingSources,
       reviewedInventory,
       candidates,
