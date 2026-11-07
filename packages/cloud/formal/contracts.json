@@ -1,0 +1,377 @@
+{
+  "scope": "Finite protocol models; implementation refinement and whole-backend coverage remain incomplete.",
+  "models": [
+    {
+      "id": "billing-reservations",
+      "file": "billing_reservations.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/credits.ts",
+        "packages/cloud/shared/src/lib/utils/credit-reservation.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One organization and reservation, integer money units, balance 5, hold 1..3, actual cost 0..8.",
+        "A transition abstracts a committed database transaction; failures before commit roll back.",
+        "Does not prove numeric rounding, SQL isolation, provider outcomes, or TypeScript refinement."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "billing-sweep",
+      "file": "billing_sweep.qnt",
+      "sources": ["packages/cloud/shared/src/lib/services/credits.ts"],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Four rows in a total timestamp/ID order, two initially fail, and the run budget can visit all four.",
+        "The cursor advances after every selected row and resets for the next cron invocation.",
+        "Does not prove progress under an unbounded backlog, continuous insertion, or unfair scheduling."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "authorization-intents",
+      "file": "authorization_intents.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/oauth-intents.ts",
+        "packages/cloud/shared/src/lib/services/approval-requests.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Intended contract only; implementation conformance is pending private review.",
+        "Two concurrent callers, two tenants, bounded clock, and atomic decision/receipt commit.",
+        "Proof validity abstracts cryptographic checks; no cryptographic or implementation proof is claimed."
+      ],
+      "maxSteps": 30
+    },
+    {
+      "id": "agent-lifecycle",
+      "file": "agent_lifecycle.qnt",
+      "sources": ["packages/cloud/services/agent-server/src/agent-manager.ts"],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One agent projection; initialize, stop and publication acknowledge independently.",
+        "Failures may repeat forever; no availability or eventual recovery assumption.",
+        "Capacity, actual runtime cleanup and cross-agent effects require implementation tests."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "operator-routing",
+      "file": "operator_routing.qnt",
+      "sources": [
+        "packages/cloud/services/operator/capabilities/redis.ts",
+        "packages/cloud/services/operator/capabilities/reconciler.ts",
+        "packages/cloud/services/operator/capabilities/deployment-status.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two server owners and one agent; compare-and-delete is atomic.",
+        "Status writes may fail between Redis and Kubernetes; reconcile and watch writes serialize per server.",
+        "Does not prove Redis availability, Kubernetes watch delivery, or eventual convergence.",
+        "Single controller per server name. Same-name pod/incarnation ownership and process-restart fencing are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "inference-budget",
+      "file": "inference_budget.qnt",
+      "sources": [
+        "packages/cloud/api/src/inference-admission-budget.ts",
+        "packages/cloud/shared/src/lib/services/inference-funding-budget-protocol.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two installed grants of two units, two immutable request IDs, maximum reservation 1..3, costs 0..3, clock 0..4.",
+        "Transactions are atomic; request identifiers and cancellation capabilities are unique.",
+        "Provider execution, grant minting/refill, SQL reconciliation and implementation refinement are excluded."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "a2a-task-store",
+      "file": "a2a_task_store.qnt",
+      "sources": [
+        "packages/cloud/api/src/a2a-task-state.ts",
+        "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
+        "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
+        "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
+        "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings.",
+        "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "agent-routing",
+      "file": "agent_routing.qnt",
+      "sources": [
+        "packages/cloud/services/agent-server/src/agent-routing.ts",
+        "packages/cloud/services/agent-server/src/agent-manager.ts",
+        "packages/cloud/services/_common/src/redis-ownership.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One manager serializes snapshots, local retirement and close. Redis writes and ownership-checked cleanup acknowledge separately.",
+        "Replacement ownership appears only after local release; live cross-server stale writers, Redis expiry, actor generations and process crashes are outside this model.",
+        "Does not establish TypeScript refinement or unbounded progress."
+      ],
+      "maxSteps": 40
+    },
+    {
+      "id": "shutdown-sequence",
+      "file": "shutdown_sequence.qnt",
+      "sources": [
+        "packages/cloud/services/agent-server/src/agent-shutdown.ts",
+        "packages/cloud/services/agent-server/src/index.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One absolute deadline and three ordered shutdown phases; each operation may acknowledge, reject or stall.",
+        "The bounded clock abstracts elapsed monotonic scheduling; a disconnected terminal state denotes failed teardown, not proof that runtime effects completed.",
+        "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
+      ],
+      "maxSteps": 25
+    }
+  ],
+  "pendingDomains": [
+    {
+      "id": "inference-admission",
+      "paths": [
+        "api/src/inference-admission",
+        "shared/src/lib/services/inference-admission",
+        "admission-worker/"
+      ],
+      "obligations": [
+        "quota and balance fences",
+        "lease recovery",
+        "policy generations",
+        "namespace continuity"
+      ]
+    },
+    {
+      "id": "inference-streaming",
+      "paths": [
+        "shared/src/lib/services/proxy/",
+        "api/v1/chat/",
+        "api/v1/responses/"
+      ],
+      "obligations": [
+        "disconnect and timeout",
+        "provider ambiguity",
+        "exact usage settlement",
+        "bounded buffering"
+      ]
+    },
+    {
+      "id": "speech-sessions",
+      "paths": ["api/src/", "api/v1/voice/", "speech-worker/"],
+      "obligations": [
+        "session expiry and revocation",
+        "turn cancellation",
+        "audio stream backpressure",
+        "accounting recovery"
+      ]
+    },
+    {
+      "id": "a2a-tasks",
+      "paths": [
+        "api/src/a2a-task-state",
+        "shared/src/lib/services/a2a-task",
+        "shared/src/lib/services/cloudflare-a2a"
+      ],
+      "obligations": [
+        "terminal states",
+        "concurrent artifact append",
+        "cancellation",
+        "TTL and ownership"
+      ]
+    },
+    {
+      "id": "payments-and-subscriptions",
+      "paths": [
+        "shared/src/lib/services/payment",
+        "shared/src/lib/services/subscription",
+        "shared/src/lib/services/auto-top-up",
+        "shared/src/db/repositories/subscription"
+      ],
+      "obligations": [
+        "provider ambiguity",
+        "idempotent webhooks",
+        "generation fencing",
+        "durable effect receipts"
+      ]
+    },
+    {
+      "id": "app-billing",
+      "paths": [
+        "shared/src/lib/services/app-billing",
+        "shared/src/lib/services/app-charge",
+        "shared/src/db/repositories/app-billing"
+      ],
+      "obligations": [
+        "allowance allocation",
+        "settlement",
+        "refunds",
+        "outbox delivery"
+      ]
+    },
+    {
+      "id": "crypto-and-payouts",
+      "paths": [
+        "shared/src/lib/services/crypto",
+        "shared/src/lib/services/payout",
+        "shared/src/lib/services/token-redemption",
+        "shared/src/lib/services/direct-wallet"
+      ],
+      "obligations": [
+        "confirmation and reorg",
+        "replay",
+        "partial failure",
+        "ledger conservation"
+      ]
+    },
+    {
+      "id": "account-lifecycle",
+      "paths": [
+        "shared/src/lib/services/account-",
+        "shared/src/lib/services/pii-"
+      ],
+      "obligations": [
+        "deletion fences",
+        "provider cleanup receipts",
+        "revocation",
+        "retention"
+      ]
+    },
+    {
+      "id": "identity-and-pairing",
+      "paths": [
+        "shared/src/lib/services/pairing",
+        "shared/src/lib/services/remote-",
+        "api/v1/auth/",
+        "shared/src/lib/auth/"
+      ],
+      "obligations": [
+        "single-use grant",
+        "expiry",
+        "generation and sequence fences",
+        "reissue and acknowledgment"
+      ]
+    },
+    {
+      "id": "container-lifecycle",
+      "paths": [
+        "shared/src/lib/services/container",
+        "shared/src/lib/services/hetzner",
+        "services/container-control-plane/"
+      ],
+      "obligations": [
+        "provision and retirement",
+        "health probe races",
+        "lease ownership",
+        "provider deletion proof"
+      ]
+    },
+    {
+      "id": "agent-activation-and-restore",
+      "paths": [
+        "shared/src/lib/services/agent-backup",
+        "shared/src/lib/services/agent-compute",
+        "shared/src/db/repositories/agent-sandbox"
+      ],
+      "obligations": [
+        "immutable restore source",
+        "activation attestation",
+        "replacement generations",
+        "cleanup proof"
+      ]
+    },
+    {
+      "id": "app-deployment",
+      "paths": [
+        "shared/src/lib/services/app-deploy",
+        "shared/src/lib/services/apps-deploy",
+        "shared/src/db/repositories/app-frontend"
+      ],
+      "obligations": [
+        "upload and finalize",
+        "single active deployment",
+        "rollback",
+        "ingress publication"
+      ]
+    },
+    {
+      "id": "jobs-and-schedulers",
+      "paths": [
+        "shared/src/lib/services/provisioning",
+        "services/coding-remote-runner/",
+        "api/cron/"
+      ],
+      "obligations": [
+        "claim and lease expiry",
+        "retry budget",
+        "cancellation quiescence",
+        "generation fencing"
+      ]
+    },
+    {
+      "id": "messaging-and-connections",
+      "paths": [
+        "services/gateway-",
+        "shared/src/lib/services/agent-google",
+        "shared/src/lib/services/managed-account"
+      ],
+      "obligations": [
+        "deduplication",
+        "ordering",
+        "refresh and reconnect",
+        "delivery receipts"
+      ]
+    },
+    {
+      "id": "domains-and-storage",
+      "paths": [
+        "shared/src/lib/services/domain",
+        "api/v1/documents/",
+        "shared/src/lib/storage/"
+      ],
+      "obligations": [
+        "purchase and DNS verification",
+        "upload commit",
+        "content address authority",
+        "cleanup"
+      ]
+    },
+    {
+      "id": "routing-and-rate-policy",
+      "paths": [
+        "routing/",
+        "shared/src/lib/rate",
+        "shared/src/lib/cache/",
+        "api/v1/maps/"
+      ],
+      "obligations": [
+        "entitlement epochs",
+        "cache invalidation",
+        "health and failover",
+        "distributed counters"
+      ]
+    },
+    {
+      "id": "agent-routing-authority",
+      "paths": [
+        "services/agent-server/src/agent-manager.ts",
+        "services/operator/capabilities/"
+      ],
+      "obligations": [
+        "per-incarnation publication fencing",
+        "cross-server reassignment authority",
+        "stale live writer exclusion",
+        "same-name pod cleanup ownership"
+      ]
+    }
+  ]
+}
