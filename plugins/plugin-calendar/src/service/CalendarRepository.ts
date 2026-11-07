@@ -1202,6 +1202,12 @@ export class CalendarRepository {
     return row ? parseIcsCalendarSource(row) : null;
   }
 
+  /**
+   * Records a failed sync. A partial snapshot keeps its status but this error
+   * replaces its parse diagnosis, so its validators are dropped too: the next
+   * fetch re-reads the snapshot and restores the diagnosis, where a 304 would
+   * keep reporting this failure.
+   */
   async failIcsCalendarSync(args: {
     agentId: string;
     sourceId: string;
@@ -1216,6 +1222,11 @@ export class CalendarRepository {
           SET sync_status = CASE
                 WHEN sync_status = 'partial' THEN 'partial'
                 ELSE 'error'
+              END,
+              etag = CASE WHEN sync_status = 'partial' THEN NULL ELSE etag END,
+              last_modified = CASE
+                WHEN sync_status = 'partial' THEN NULL
+                ELSE last_modified
               END,
               last_error_code = ${sqlQuote(args.error.code)},
               last_error_message = ${sqlQuote(args.error.message)},

@@ -6,8 +6,13 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
+import {
+  createAssistantPlugin,
+  SECRETS_SERVICE_TYPE,
+  secretsManagerPlugin,
+} from "@elizaos/plugin-assistant";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
@@ -23,6 +28,7 @@ import {
   createConflictDetectAction,
   evaluateCalendarWriteAvailability,
 } from "../src/actions/conflict-detect.js";
+import { calendarPlugin } from "../src/plugin.ts";
 import {
   type CalendarHostGate,
   CalendarRepository,
@@ -2303,5 +2309,73 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     });
     const listed = await service.listIcsCalendarSources();
     expect(listed[0]?.syncStatus).toBe("error");
+  });
+});
+
+describe("ICS source health on a real runtime", () => {
+  let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
+  let calendarService: CalendarService;
+
+  beforeAll(async () => {
+    fixture = await createTestRuntime({
+      characterName: "IcsSourceHealth",
+      settings: { ENCRYPTION_SALT: "ics-source-health-test-salt-0123456789" },
+      plugins: [createAssistantPlugin(), secretsManagerPlugin, calendarPlugin],
+    });
+    await fixture.runtime.getServiceLoadPromise(SECRETS_SERVICE_TYPE);
+    const found = fixture.runtime.getService<CalendarService>(
+      CalendarService.serviceType,
+    );
+    if (!found) throw Error("The production Calendar service did not start");
+    calendarService = found;
+  }, 120_000);
+
+  afterAll(async () => {
+    await fixture?.cleanup();
+  });
+
+  it("reports the partial parse again when the feed returns unchanged after an outage", async () => {
+    const source = await calendarService.createIcsCalendarSource({
+      name: "Family calendar",
+      url: SOURCE_URL,
+    });
+    const feed = calendar(
+      vevent({ uid: "a", title: "School" }),
+      ["BEGIN:VEVENT", "UID:broken", "SUMMARY:No dates", "END:VEVENT"].join(
+        "\r\n",
+      ),
+    );
+    // The publisher never changes the feed and answers If-None-Match like a
+    // real server; one request in between fails.
+    let outage = false;
+    const fetchImpl = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (outage) return new Response("unavailable", { status: 503 });
+      return new Headers(init?.headers).get("if-none-match") === '"revision-1"'
+        ? new Response(null, { status: 304 })
+        : response(feed, { etag: '"revision-1"' });
+    };
+    const sync = () =>
+      calendarService.syncIcsCalendarSource(source.id, {
+        transport: { fetchImpl },
+      });
+
+    const partial = await sync();
+    expect(partial.source.error).toEqual({
+      code: "ICS_FEED_PARTIAL_PARSE",
+      message: "1 calendar event was rejected as invalid.",
+      retryable: false,
+    });
+    outage = true;
+    await expect(sync()).rejects.toMatchObject({
+      code: "ICS_FEED_HTTP_ERROR",
+    });
+    outage = false;
+    const recovered = await sync();
+    const revalidated = await sync();
+
+    expect(recovered.source.syncStatus).toBe("partial");
+    expect(recovered.source.error).toEqual(partial.source.error);
+    expect(revalidated.outcome).toBe("not_modified");
+    expect(revalidated.source.error).toEqual(partial.source.error);
   });
 });
