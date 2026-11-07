@@ -215,6 +215,25 @@ function assertTaskContract(
   }
 }
 
+function unlinkedWarningAt(
+  task: ScheduledTask,
+  identity: HouseholdGrantExpiryWarningIdentity,
+): string {
+  // Only an instant this grant's identity could have produced: no earlier
+  // than the lead before expiry, and before expiry.
+  if (task.trigger.kind !== "once") return identity.warningAt;
+  const atMs = Date.parse(task.trigger.atIso);
+  const expiresAtMs = Date.parse(identity.expiresAt);
+  if (
+    !Number.isFinite(atMs) ||
+    atMs < expiresAtMs - HOUSEHOLD_GRANT_EXPIRY_WARNING_LEAD_MS ||
+    atMs >= expiresAtMs
+  ) {
+    return identity.warningAt;
+  }
+  return task.trigger.atIso;
+}
+
 function buildTask(
   identity: HouseholdGrantExpiryWarningIdentity,
   agentId: string,
@@ -306,6 +325,12 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       autoExtend: false,
     };
   }
+  // A linked warning keeps the instant it was scheduled for. Recomputing it
+  // from this reconciliation's clock moves it once the final 24 hours begin.
+  let expected =
+    claim.kind === "complete"
+      ? { ...identity, warningAt: claim.warningAt }
+      : identity;
 
   try {
     const tasks = await input.scheduledTasks.list({ kind: "watcher" });
@@ -334,8 +359,12 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       task = await input.scheduledTasks.schedule(
         buildTask(identity, input.grant.agentId),
       );
+    } else if (claim.kind === "claimed") {
+      // An earlier attempt stored this task but did not link it. The link
+      // keeps the instant that attempt scheduled it for.
+      expected = { ...identity, warningAt: unlinkedWarningAt(task, identity) };
     }
-    assertTaskContract(task, identity);
+    assertTaskContract(task, expected);
     const completion =
       claim.kind === "complete"
         ? { kind: "linked" as const, scheduledTaskId: claim.scheduledTaskId }
@@ -343,7 +372,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
             grantId: identity.grantId,
             attemptToken,
             scheduledTaskId: task.taskId,
-            warningAt: identity.warningAt,
+            warningAt: expected.warningAt,
             expiresAt: identity.expiresAt,
             completedAt: input.now.toISOString(),
           });
@@ -378,7 +407,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       grantId: identity.grantId,
       scheduledTaskId,
       taskState: task.state.status,
-      warningAt: identity.warningAt,
+      warningAt: expected.warningAt,
       expiresAt: identity.expiresAt,
       deduplicated,
       autoExtend: false,
@@ -398,7 +427,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       "HOUSEHOLD_INVALID_CONTRACT",
       {
         grantId: identity.grantId,
-        warningAt: identity.warningAt,
+        warningAt: expected.warningAt,
         expiresAt: identity.expiresAt,
       },
       error,

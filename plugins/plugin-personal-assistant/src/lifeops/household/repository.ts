@@ -714,11 +714,17 @@ export class HouseholdCoordinationRepository {
   }): Promise<
     | { kind: "claimed" }
     | { kind: "busy"; leaseExpiresAt: string }
-    | { kind: "complete"; scheduledTaskId: string }
+    | { kind: "complete"; scheduledTaskId: string; warningAt: string }
   > {
     await this.ensureGrantExpiryWarningSchema();
-    const completed = await this.getGrantExpiryWarningTaskId(input.grantId);
-    if (completed) return { kind: "complete", scheduledTaskId: completed };
+    const completed = await this.getGrantExpiryWarning(input.grantId);
+    if (completed) {
+      return {
+        kind: "complete",
+        scheduledTaskId: completed.scheduledTaskId,
+        warningAt: completed.warningAt,
+      };
+    }
     const inserted = await this.executeWarningMutation(
       `INSERT INTO app_lifeops.life_household_grant_expiry_warning_claims (
          agent_id, grant_id, attempt_token, lease_expires_at, scheduled_task_id,
