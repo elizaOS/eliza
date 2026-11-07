@@ -1800,6 +1800,88 @@ it("keeps another agent's rooms out of lookup and world deletion", async () => {
   expect(await storage.get("rooms", unscopedRoom)).toBeNull();
 });
 
+it("keeps another agent's participant user states out of read and write", async () => {
+  const adapter = await open();
+  const ownedRoom = id();
+  const unscopedRoom = id();
+  const foreignRoom = id();
+  const otherAgentId = id();
+  await adapter.createRooms([
+    {
+      id: ownedRoom,
+      agentId,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "owned",
+    },
+    {
+      id: unscopedRoom,
+      source: "test",
+      type: ChannelType.GROUP,
+      name: "unscoped",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", foreignRoom, {
+    id: foreignRoom,
+    agentId: otherAgentId,
+    source: "test",
+    type: ChannelType.GROUP,
+    name: "foreign",
+  });
+  const foreignParticipantId = id();
+  await storage.set("participants", foreignParticipantId, {
+    id: foreignParticipantId,
+    entityId,
+    roomId: foreignRoom,
+    userState: "MUTED",
+  });
+  const ownedParticipantId = id();
+  await storage.set("participants", ownedParticipantId, {
+    id: ownedParticipantId,
+    entityId,
+    roomId: ownedRoom,
+    userState: "MUTED",
+  });
+  const unscopedParticipantId = id();
+  await storage.set("participants", unscopedParticipantId, {
+    id: unscopedParticipantId,
+    entityId,
+    roomId: unscopedRoom,
+    userState: "MUTED",
+  });
+
+  // plugin-sql scopes getParticipantUserStates with
+  // eq(participantTable.agentId, this.agentId), so a room stored for
+  // another agent answers null here. A room row that is absent (legacy
+  // rows) stays visible, matching the log reads.
+  expect(
+    await adapter.getParticipantUserStates([
+      { roomId: foreignRoom, entityId },
+      { roomId: ownedRoom, entityId },
+      { roomId: unscopedRoom, entityId },
+    ]),
+  ).toEqual([null, "MUTED", "MUTED"]);
+
+  await adapter.updateParticipantUserStates([
+    { roomId: foreignRoom, entityId, state: "FOLLOWED" },
+    { roomId: ownedRoom, entityId, state: "FOLLOWED" },
+    { roomId: unscopedRoom, entityId, state: "FOLLOWED" },
+  ]);
+
+  // The foreign row keeps its state; the owned and legacy rows follow.
+  expect(
+    await adapter.getParticipantUserStates([
+      { roomId: foreignRoom, entityId },
+      { roomId: ownedRoom, entityId },
+      { roomId: unscopedRoom, entityId },
+    ]),
+  ).toEqual([null, "FOLLOWED", "FOLLOWED"]);
+  expect(await storage.get("participants", foreignParticipantId)).toMatchObject(
+    { userState: "MUTED" },
+  );
+});
+
 const LOWER_PAIRING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
 const UPPER_PAIRING_ID = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB" as UUID;
 const PAIRING_AT = new Date("2026-08-20T16:00:00.000Z");
