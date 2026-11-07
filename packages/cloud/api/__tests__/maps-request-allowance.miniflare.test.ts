@@ -299,9 +299,9 @@ describe("Maps shared allowance", () => {
     expect((await post("/maps/admit", mapsRequest("first"), gate)).status).toBe(
       200,
     );
-    expect((await post("/maps/admit", mapsRequest("second"), gate)).status).toBe(
-      429,
-    );
+    expect(
+      (await post("/maps/admit", mapsRequest("second"), gate)).status,
+    ).toBe(429);
   });
   test("Maps requires selected burst and sustained configuration as well as an allowance", async () => {
     const absentOrUnselected = [
