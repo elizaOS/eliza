@@ -286,14 +286,16 @@ export function createQuintInventory(directory: string, models: Model[]) {
     .filter(
       (file) =>
         /^(packages|plugins)\//.test(file) &&
-        /\.(ts|tsx|js|jsx|kt|swift|rs|cpp|c|h|py)$/.test(file) &&
+        /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|kt|java|go|swift|rs|cpp|cc|cxx|c|h|hpp|m|mm|py|sh|sql)$/.test(
+          file,
+        ) &&
         !/(^|\/)(test|tests|__tests__|fixtures|vendor|generated|dist|node_modules)(\/|$)/.test(
           file,
         ) &&
         !/\.(test|spec)\./.test(file),
     )
     .filter((file) =>
-      /\b(?:state|status|phase)\s*[:=]|\buseState\b|\buseReducer\b|\btransition\b|\blifecycle\b/i.test(
+      /\b(?:state|status|phase)\s*\??\s*[:=;]|\buseState\b|\buseReducer\b|\btransition\b|\blifecycle\b|\b(?:class|interface|type|enum)\s+(?:class\s+)?\w*(?:State|Status|Phase)\w*\b|\b(?:state|status|phase)\s+(?:TEXT|VARCHAR|INTEGER|BOOLEAN)\b/i.test(
         readFileSync(path.join(directory, file), "utf8"),
       ),
     )

@@ -158,6 +158,27 @@ const coveredEntry = {
   limitations: [],
 };
 
+test("inventory includes native, ESM, shell and database state owners", () => {
+  const nativeSources = {
+    "plugins/native/src/Journal.java": "enum InstallPhase { IDLE, RUNNING }",
+    "packages/native/owner.go": "type OwnerState struct { Running bool }",
+    "packages/host/queue.mjs": "let phase = 'waiting';",
+    "packages/native/lease.cc": "enum class LeaseState { idle, owned };",
+    "packages/native/schema.sql": "CREATE TABLE requests (status TEXT);",
+    "packages/native/owner.sh": "state=waiting",
+  };
+  const directory = fixture({
+    ...checkedFiles,
+    ...nativeSources,
+    "plugins/native/test/Journal.java": "enum InstallPhase { IDLE }",
+  });
+  const inventory = createQuintInventory(directory, loadQuintModels(directory));
+  const discovered = inventory.candidates.map((candidate) => candidate.file);
+  for (const file of Object.keys(nativeSources))
+    assert(discovered.includes(file));
+  assert(!discovered.includes("plugins/native/test/Journal.java"));
+});
+
 test("the repository fingerprint binds tracked and untracked helper contents", () => {
   const directory = fixture(checkedFiles);
   const original = quintRepositoryFingerprint(directory);
