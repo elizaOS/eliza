@@ -660,9 +660,6 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.staging.vars]
-# Keep dedicated Maps policy identical to the staging admission worker.
-ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES = '{"selected":true,"plans":{"plus_monthly":{"requests":1000,"windowSeconds":86400},"pro_monthly":{"requests":5000,"windowSeconds":86400}}}'
-ELIZA_CLOUD_MAPS_PLAN_RATE_LIMITS = '{"selected":true,"plans":{"default":{"burst":{"capacity":10,"refillPerSecond":1},"sustained":{"capacity":60,"refillPerSecond":1}},"plus_monthly":{"burst":{"capacity":20,"refillPerSecond":2},"sustained":{"capacity":120,"refillPerSecond":2}},"pro_monthly":{"burst":{"capacity":50,"refillPerSecond":5},"sustained":{"capacity":300,"refillPerSecond":5}}}}'
 NODE_ENV = "production"
 # Cloudflare login upstream; ELIZA_LOGIN_API_URL can select the same environment's workers.dev origin.
 LOGIN_API_URL = "https://login-staging.eliza.app"
