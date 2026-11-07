@@ -353,7 +353,12 @@ export class SpeakerStreamManager {
     }
 
     if (buffer.confirmCount >= this.confirmThreshold) {
-      this.emitSegment(buffer, trimmed, this.absoluteWords(buffer, segments));
+      this.emitSegment(
+        buffer,
+        trimmed,
+        this.absoluteWords(buffer, segments),
+        segmentEndSec,
+      );
       const baseWindowMs = buffer.windowStartMs;
       this.advanceOffset(buffer, segmentEndSec);
       if (segmentEndSec !== undefined) {
@@ -609,11 +614,16 @@ export class SpeakerStreamManager {
     }
   }
 
-  /** Emit a confirmed segment. Does NOT reset the buffer. */
+  /**
+   * Emit a confirmed segment. Does NOT reset the buffer. `endSec` is the
+   * segment boundary, relative to the window start, when the confirmation
+   * covers only part of the window.
+   */
   private emitSegment(
     buffer: SpeakerBuffer,
     text: string,
     words: TranscriptWord[],
+    endSec?: number,
   ): void {
     if (!text || !this.onSegmentConfirmed) return;
     if (isHallucination(text)) {
@@ -629,12 +639,27 @@ export class SpeakerStreamManager {
       );
       return;
     }
+    // The window ends where its audio ends, not when the ASR result lands
+    // (an idle submit returns more than idleTimeoutSec after the speaker
+    // stopped). Capture drops silence, so a pause inside the window puts
+    // the last audio later than the samples alone reach. A confirmation
+    // with a boundary ends there: the audio after it, including what
+    // arrived while the result was in flight, starts the next segment.
+    const audioMs = Math.floor(
+      (this.unconfirmedSamples(buffer) / this.sampleRate) * 1000,
+    );
     this.onSegmentConfirmed({
       speakerKey: buffer.speakerKey,
       speakerName: buffer.speakerName,
       text,
       startMs: buffer.windowStartMs,
-      endMs: this.now(),
+      endMs:
+        endSec !== undefined
+          ? buffer.windowStartMs + Math.floor(endSec * 1000)
+          : Math.max(
+              buffer.windowStartMs + audioMs,
+              buffer.lastAudioTimestampMs,
+            ),
       seq: buffer.sequenceNumber,
       words,
     });
