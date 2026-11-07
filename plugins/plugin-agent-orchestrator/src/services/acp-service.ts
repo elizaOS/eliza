@@ -4477,33 +4477,45 @@ export class AcpService extends Service {
         ) {
           const sessionId = opts.sessionId;
           const exitMessage = this.classifyExitError(code, record.stderr);
-          void this.store.get(sessionId).then((session) => {
-            if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
-              void this.store
-                .updateStatus(sessionId, "errored", exitMessage)
-                // error-policy:J7 crash-handling write; a swallowed failure
-                // leaves a dead session stuck in a non-terminal status while the
-                // log below claims it was "marked errored" — report the write
-                // failure so the contradiction is observable.
-                .catch((err) =>
-                  this.runtime.reportError(
-                    "AcpService.markErroredOnCrash",
-                    err,
-                    { sessionId, code },
-                  ),
+          void this.store
+            .get(sessionId)
+            .then((session) => {
+              if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
+                void this.store
+                  .updateStatus(sessionId, "errored", exitMessage)
+                  // error-policy:J7 crash-handling write; a swallowed failure
+                  // leaves a dead session stuck in a non-terminal status while the
+                  // log below claims it was "marked errored" — report the write
+                  // failure so the contradiction is observable.
+                  .catch((err) =>
+                    this.runtime.reportError(
+                      "AcpService.markErroredOnCrash",
+                      err,
+                      { sessionId, code },
+                    ),
+                  );
+                this.log(
+                  "warn",
+                  "subprocess crashed mid-flight; marked errored",
+                  {
+                    sessionId,
+                    priorStatus: session.status,
+                    code,
+                    signal,
+                  },
                 );
-              this.log(
-                "warn",
-                "subprocess crashed mid-flight; marked errored",
-                {
-                  sessionId,
-                  priorStatus: session.status,
-                  code,
-                  signal,
-                },
-              );
-            }
-          });
+              }
+            })
+            .catch((err) =>
+              // error-policy:J7 the crash-marking read runs inside the
+              // subprocess close handler, which cannot return a promise to its
+              // caller; a store read failure must be reported, not left as an
+              // unhandled rejection when the session ends.
+              this.runtime.reportError("AcpService.markErroredOnCrash", err, {
+                sessionId,
+                code,
+              }),
+            );
         }
         if (opts.sessionId) await this.flushRawStdout(opts.sessionId);
         if (opts.sessionId && opts.activeForSession) {
@@ -5080,9 +5092,21 @@ export class AcpService extends Service {
     // emitter is called from deep transport paths; revocation is idempotent.
     if (revokeTerminalLease && LEASE_REVOKE_EVENTS.has(event)) {
       void this.revokeModelLease(sessionId, `event:${event}`);
-      void this.store.get(sessionId).then((session) => {
-        if (session) void this.removeOwnedGitIndex(session);
-      });
+      void this.store
+        .get(sessionId)
+        .then((session) => {
+          if (session) void this.removeOwnedGitIndex(session);
+        })
+        .catch((err) =>
+          // error-policy:J7 terminal-event cleanup runs inside a sync emitter
+          // that cannot return a promise to its caller; a store read failure
+          // must be reported, not left as an unhandled rejection when the
+          // session ends.
+          this.runtime.reportError("AcpService.terminalSessionCleanup", err, {
+            sessionId,
+            event,
+          }),
+        );
     }
   }
 
