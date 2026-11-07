@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import {
+  createDesktopBrowserWorkspaceCommandScript,
   createDesktopBrowserWorkspaceUtilityScript,
   executeDesktopBrowserWorkspaceDomCommand,
 } from "../browser-workspace-desktop.js";
@@ -65,6 +66,100 @@ describe("desktop browser workspace frame select", () => {
     run(dom, { subaction: "highlight", selector: "#target" });
 
     expect(highlightedFrames(dom)).toEqual([false, true]);
+  });
+});
+
+describe("desktop browser workspace DOM commands after frame select", () => {
+  function runCommand(dom: JSDOM, command: BrowserWorkspaceCommand): unknown {
+    return dom.window.eval(createDesktopBrowserWorkspaceCommandScript(command));
+  }
+
+  it("clicks the selected frame's element, not the top document's", () => {
+    const dom = openPage(
+      '<button id="target">Main</button><iframe id="second-frame"></iframe>',
+    );
+    const clicked: string[] = [];
+    dom.window.document
+      .querySelector("#target")
+      ?.addEventListener("click", () => clicked.push("main"));
+    dom.window.document
+      .querySelector<HTMLIFrameElement>("#second-frame")
+      ?.contentDocument?.querySelector("#target")
+      ?.addEventListener("click", () => clicked.push("frame"));
+
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+    const result = runCommand(dom, { subaction: "click", selector: "#target" });
+
+    expect(result).toMatchObject({ element: { selector: "#target" } });
+    expect(clicked).toEqual(["frame"]);
+  });
+
+  it("fills, checks and selects form controls inside the selected frame", () => {
+    const dom = openPage(
+      '<input id="email" value="main"><iframe id="second-frame"></iframe>',
+    );
+    const frameDocument =
+      dom.window.document.querySelector<HTMLIFrameElement>(
+        "#second-frame",
+      )?.contentDocument;
+    if (!frameDocument) throw new Error("iframe has no document");
+    frameDocument.body.innerHTML =
+      '<input id="email"><input id="agree" type="checkbox">' +
+      '<select id="plan"><option value="free">Free</option><option value="pro">Pro</option></select>';
+    const inputEvents: string[] = [];
+    frameDocument
+      .querySelector("#email")
+      ?.addEventListener("input", () => inputEvents.push("frame-email"));
+
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+    runCommand(dom, {
+      subaction: "fill",
+      selector: "#email",
+      value: "a@b.test",
+    });
+    runCommand(dom, { subaction: "check", selector: "#agree" });
+    runCommand(dom, { subaction: "select", selector: "#plan", value: "pro" });
+
+    expect(frameDocument.querySelector<HTMLInputElement>("#email")?.value).toBe(
+      "a@b.test",
+    );
+    expect(inputEvents).toEqual(["frame-email"]);
+    expect(
+      frameDocument.querySelector<HTMLInputElement>("#agree")?.checked,
+    ).toBe(true);
+    expect(frameDocument.querySelector<HTMLSelectElement>("#plan")?.value).toBe(
+      "pro",
+    );
+    expect(
+      dom.window.document.querySelector<HTMLInputElement>("#email")?.value,
+    ).toBe("main");
+    expect(
+      runCommand(dom, {
+        subaction: "get",
+        getMode: "value",
+        selector: "#email",
+      }),
+    ).toEqual({ value: "a@b.test" });
+  });
+
+  it("snapshots the selected frame's elements and text", () => {
+    const dom = openPage(
+      '<button id="main-only">Main</button><iframe id="second-frame"></iframe>',
+    );
+    run(dom, { subaction: "frame", selector: "#second-frame" });
+
+    const snapshot = runCommand(dom, { subaction: "snapshot" }) as {
+      bodyText?: string;
+      elements?: Array<{ selector: string }>;
+    };
+
+    expect(snapshot.bodyText).toBe("Go");
+    expect(snapshot.elements?.map((element) => element.selector)).toContain(
+      "#target",
+    );
+    expect(snapshot.elements?.map((element) => element.selector)).not.toContain(
+      "#main-only",
+    );
   });
 });
 

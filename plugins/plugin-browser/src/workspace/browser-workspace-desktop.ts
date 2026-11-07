@@ -205,6 +205,29 @@ export function createDesktopBrowserWorkspaceCommandScript(
 (() => {
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+  // A frame selected by the utility script's \`frame\` command scopes every
+  // DOM command here, as it does on the web backend; without this the click,
+  // fill, snapshot and keyboard commands kept acting on the top document while
+  // the model believed it was inside the frame.
+  const activeDocument = (() => {
+    const frameSelector = window.__elizaBrowserWorkspaceState?.currentFrame;
+    if (!frameSelector) return document;
+    try {
+      const frame = document.querySelector(frameSelector);
+      return frame && frame.contentDocument ? frame.contentDocument : document;
+    } catch {
+      return document;
+    }
+  })();
+  // An element from the selected frame belongs to that frame's window, whose
+  // constructors differ from the top window's: type checks, dispatched events
+  // and computed style must come from the element's own realm.
+  const realmOf = (node) => node?.ownerDocument?.defaultView || window;
+  const isKind = (node, name) => {
+    if (!node) return false;
+    const ctor = realmOf(node)[name] || window[name];
+    return typeof ctor === "function" && node instanceof ctor;
+  };
   const textMatches = (candidate, wanted, exact = false) => {
     const left = normalize(candidate).toLowerCase();
     const right = normalize(wanted).toLowerCase();
@@ -236,9 +259,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const serialize = (element) => {
     const value =
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
+      isKind(element, "HTMLInputElement") ||
+      isKind(element, "HTMLTextAreaElement") ||
+      isKind(element, "HTMLSelectElement")
         ? element.value
         : null;
     return {
@@ -253,7 +276,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const searchTexts = (element) => {
     const labelText = element.id
-      ? Array.from(document.querySelectorAll('label[for="' + element.id + '"]'))
+      ? Array.from(activeDocument.querySelectorAll('label[for="' + element.id + '"]'))
           .map((label) => label.textContent)
           .join(" ")
       : "";
@@ -302,7 +325,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findByText = (wanted) => {
     const needle = normalize(wanted).toLowerCase();
     if (!needle) return null;
-    const elements = Array.from(document.querySelectorAll(
+    const elements = Array.from(activeDocument.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
     const matches = elements.filter((element) => {
@@ -324,7 +347,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findAllByText = (wanted, exact = false) => {
     const needle = normalize(wanted).toLowerCase();
     if (!needle) return [];
-    const elements = Array.from(document.querySelectorAll(
+    const elements = Array.from(activeDocument.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
     return innerTextMatches(elements.filter((element) => {
@@ -343,12 +366,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }));
   };
   const findByLabel = (wanted, exact = false) => {
-    const labels = Array.from(document.querySelectorAll("label"));
+    const labels = Array.from(activeDocument.querySelectorAll("label"));
     for (const label of labels) {
       if (!textMatches(label.textContent, wanted, exact)) continue;
       const forId = label.getAttribute("for");
       if (forId) {
-        const explicit = document.getElementById(forId);
+        const explicit = activeDocument.getElementById(forId);
         if (explicit) return explicit;
       }
       const nested = label.querySelector("input, textarea, select, button");
@@ -358,12 +381,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const findAllByLabel = (wanted, exact = false) => {
     const found = [];
-    const labels = Array.from(document.querySelectorAll("label"));
+    const labels = Array.from(activeDocument.querySelectorAll("label"));
     for (const label of labels) {
       if (!textMatches(label.textContent, wanted, exact)) continue;
       const forId = label.getAttribute("for");
       if (forId) {
-        const explicit = document.getElementById(forId);
+        const explicit = activeDocument.getElementById(forId);
         if (explicit) {
           found.push(explicit);
           continue;
@@ -376,7 +399,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const findByRole = (role, name, exact = false) => {
     const candidates = Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
       )
     );
@@ -392,7 +415,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findAllByRole = (role, name, exact = false) => {
     const found = [];
     const candidates = Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]"
       )
     );
@@ -479,14 +502,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const queryOne = (selector) => {
     try {
-      return document.querySelector(selector);
+      return activeDocument.querySelector(selector);
     } catch {
       throw new Error("Invalid selector " + selector);
     }
   };
   const queryAll = (selector) => {
     try {
-      return Array.from(document.querySelectorAll(selector));
+      return Array.from(activeDocument.querySelectorAll(selector));
     } catch {
       throw new Error("Invalid selector " + selector);
     }
@@ -494,7 +517,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const findSemantic = (targetCommand = command) => {
     switch (targetCommand.findBy) {
       case "alt":
-        return Array.from(document.querySelectorAll("[alt]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[alt]")).find((element) =>
           textMatches(
             element.getAttribute("alt"),
             targetCommand.text,
@@ -516,7 +539,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           ? queryAll(targetCommand.selector).at(targetCommand.index) || null
           : null;
       case "placeholder":
-        return Array.from(document.querySelectorAll("[placeholder]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[placeholder]")).find((element) =>
           textMatches(
             element.getAttribute("placeholder"),
             targetCommand.text,
@@ -533,12 +556,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : null;
       case "testid":
         return targetCommand.text
-          ? document.querySelector('[data-testid="' + targetCommand.text + '"]')
+          ? activeDocument.querySelector('[data-testid="' + targetCommand.text + '"]')
           : null;
       case "text":
         return targetCommand.text ? findByText(targetCommand.text) : null;
       case "title":
-        return Array.from(document.querySelectorAll("[title]")).find((element) =>
+        return Array.from(activeDocument.querySelectorAll("[title]")).find((element) =>
           textMatches(
             element.getAttribute("title"),
             targetCommand.text,
@@ -553,7 +576,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     switch (targetCommand.findBy) {
       case "alt":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[alt]")).filter((element) =>
+          ? Array.from(activeDocument.querySelectorAll("[alt]")).filter((element) =>
               textMatches(
                 element.getAttribute("alt"),
                 targetCommand.text,
@@ -579,7 +602,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : [];
       case "placeholder":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[placeholder]")).filter((element) =>
+          ? Array.from(activeDocument.querySelectorAll("[placeholder]")).filter((element) =>
               textMatches(
                 element.getAttribute("placeholder"),
                 targetCommand.text,
@@ -597,14 +620,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
           : [];
       case "testid":
         return targetCommand.text
-          ? Array.from(document.querySelectorAll("[data-testid]")).filter(
+          ? Array.from(activeDocument.querySelectorAll("[data-testid]")).filter(
               (element) => element.getAttribute("data-testid") === targetCommand.text
             )
           : [];
       case "text":
         return targetCommand.text ? findAllByText(targetCommand.text, targetCommand.exact) : [];
       case "title":
-        return Array.from(document.querySelectorAll("[title]")).filter((element) =>
+        return Array.from(activeDocument.querySelectorAll("[title]")).filter((element) =>
           textMatches(
             element.getAttribute("title"),
             targetCommand.text,
@@ -665,14 +688,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
   };
   const inspect = () =>
     Array.from(
-      document.querySelectorAll(
+      activeDocument.querySelectorAll(
         "a, button, input, textarea, select, form, [role='button'], [data-testid]"
       )
 		).map((element) => serialize(element));
   const snapshot = () => ({
     title: document.title,
     url: location.href,
-		bodyText: normalize(document.body?.textContent),
+		bodyText: normalize(activeDocument.body?.textContent),
     elements: inspect(),
   });
   const setInputValue = (appendMode, target) => {
@@ -682,23 +705,23 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     if (
       !(
-        element instanceof HTMLInputElement ||
-        element instanceof HTMLTextAreaElement ||
-        element instanceof HTMLSelectElement
+        isKind(element, "HTMLInputElement") ||
+        isKind(element, "HTMLTextAreaElement") ||
+        isKind(element, "HTMLSelectElement")
       )
     ) {
       throw new Error("Target element is not an input, textarea, or select.");
     }
     const nextValue = appendMode ? \`\${element.value ?? ""}\${command.value ?? ""}\` : (command.value ?? "");
     element.value = nextValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { selector: selectorFor(element), value: element.value };
   };
   const setChecked = (targetValue) => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLInputElement)) {
+    if (!(isKind(element, "HTMLInputElement"))) {
       throw new Error("Target element is not a checkbox or radio input.");
     }
     const type = (element.type || "").toLowerCase();
@@ -706,14 +729,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
       throw new Error("Target element is not a checkbox or radio input.");
     }
     element.checked = targetValue;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { checked: element.checked, selector: selectorFor(element) };
   };
   const setSelectValue = () => {
     const element = findTarget();
     if (!element) throw new Error("Target element was not found.");
-    if (!(element instanceof HTMLSelectElement)) {
+    if (!(isKind(element, "HTMLSelectElement"))) {
       throw new Error("Target element is not a select.");
     }
     const targetValue = command.value ?? "";
@@ -726,8 +749,8 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     element.value = option.value;
     option.selected = true;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("input", { bubbles: true }));
+    element.dispatchEvent(new (realmOf(element).Event)("change", { bubbles: true }));
     return { selector: selectorFor(element), value: element.value };
   };
   const focusElement = (element) => {
@@ -735,7 +758,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (typeof element.focus === "function") {
       element.focus();
       // Match the web backend: typing after focus lands after existing text.
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (isKind(element, "HTMLInputElement") || isKind(element, "HTMLTextAreaElement")) {
         try {
           if (element.selectionStart !== null) {
             element.setSelectionRange(element.value.length, element.value.length);
@@ -744,7 +767,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       }
     }
     return {
-      focused: document.activeElement === element,
+      focused: activeDocument.activeElement === element,
       selector: selectorFor(element),
     };
   };
@@ -756,7 +779,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const activateElement = (subaction, element) => {
     if (!element) throw new Error("Target element was not found.");
     if (subaction === "dblclick") {
-      element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      element.dispatchEvent(new (realmOf(element).MouseEvent)("dblclick", { bubbles: true }));
     }
     if (typeof element.click === "function") {
       element.click();
@@ -795,10 +818,10 @@ export function createDesktopBrowserWorkspaceCommandScript(
       ).then(() => ({ x: x, y: y }));
     }
     if (subaction === "realistic-press") {
-      const target = findTarget() || document.activeElement || document.body;
+      const target = findTarget() || activeDocument.activeElement || activeDocument.body;
       const key = command.key || "Enter";
       target.dispatchEvent(
-        new KeyboardEvent("keydown", {
+        new (realmOf(target).KeyboardEvent)("keydown", {
           key: key,
           bubbles: true,
           cancelable: true,
@@ -806,7 +829,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
         }),
       );
       target.dispatchEvent(
-        new KeyboardEvent("keyup", {
+        new (realmOf(target).KeyboardEvent)("keyup", {
           key: key,
           bubbles: true,
           cancelable: true,
@@ -866,19 +889,19 @@ export function createDesktopBrowserWorkspaceCommandScript(
     }
     throw new Error("Unsupported realistic subaction: " + subaction);
   };
-  const keyboardTarget = () => findTarget() || document.activeElement || document.body;
+  const keyboardTarget = () => findTarget() || activeDocument.activeElement || activeDocument.body;
   const keyboardWrite = (appendMode) => {
     const target = keyboardTarget();
     if (
       !(
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
+        isKind(target, "HTMLInputElement") ||
+        isKind(target, "HTMLTextAreaElement") ||
+        isKind(target, "HTMLSelectElement")
       )
     ) {
       throw new Error("Keyboard text input requires an input, textarea, or select target.");
     }
-    if (target instanceof HTMLSelectElement) return setInputValue(appendMode, target);
+    if (isKind(target, "HTMLSelectElement")) return setInputValue(appendMode, target);
     // Both keyboard commands insert at the caret or replace the selected text,
     // matching the web backend.
     if (target.readOnly || target.disabled) {
@@ -890,14 +913,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
     } catch {}
     if (start === null) return setInputValue(true, target);
     target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-    target.dispatchEvent(new Event("change", { bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).Event)("input", { bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).Event)("change", { bubbles: true }));
     return { selector: selectorFor(target), value: target.value };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();
     const key = command.key || "Enter";
-    target.dispatchEvent(new KeyboardEvent(phase, { key, bubbles: true }));
+    target.dispatchEvent(new (realmOf(target).KeyboardEvent)(phase, { key, bubbles: true }));
     return { key, phase, selector: selectorFor(target) };
   };
   const scrollTarget = () => findTarget();
@@ -907,7 +930,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const pixels = Math.max(1, Math.abs(Number(command.pixels) || 240));
     const axis = direction === "left" || direction === "right" ? "x" : "y";
     const delta = direction === "up" || direction === "left" ? -pixels : pixels;
-    if (target instanceof HTMLElement) {
+    if (isKind(target, "HTMLElement")) {
       if (axis === "y") {
         target.scrollTop = (target.scrollTop || 0) + delta;
         return { axis, selector: selectorFor(target), value: target.scrollTop };
@@ -942,9 +965,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "box":
         return element.getBoundingClientRect();
       case "checked":
-        return element instanceof HTMLInputElement
+        return isKind(element, "HTMLInputElement")
           ? Boolean(element.checked)
-          : element instanceof HTMLOptionElement
+          : isKind(element, "HTMLOptionElement")
             ? Boolean(element.selected)
             : false;
       case "enabled":
@@ -952,7 +975,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       case "html":
         return element.innerHTML;
       case "styles": {
-        const computed = getComputedStyle(element);
+        const computed = realmOf(element).getComputedStyle(element);
         return {
           display: computed.display || null,
           visibility: computed.visibility || null,
@@ -1004,7 +1027,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
               return;
             }
           }
-          if (command.text && normalize(document.body?.textContent).includes(command.text)) {
+          if (command.text && normalize(activeDocument.body?.textContent).includes(command.text)) {
             resolve({ ok: true, text: command.text });
             return;
           }
@@ -1088,10 +1111,10 @@ export function createDesktopBrowserWorkspaceCommandScript(
     case "type":
       return setInputValue(true);
     case "press": {
-      const target = findTarget() ?? document.activeElement ?? document.body;
+      const target = findTarget() ?? activeDocument.activeElement ?? activeDocument.body;
       const key = command.key || "Enter";
-      target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-      target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
+      target.dispatchEvent(new (realmOf(target).KeyboardEvent)("keydown", { key, bubbles: true }));
+      target.dispatchEvent(new (realmOf(target).KeyboardEvent)("keyup", { key, bubbles: true }));
       return { key, url: location.href };
     }
     case "realistic-click":
