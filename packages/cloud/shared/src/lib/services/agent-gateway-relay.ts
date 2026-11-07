@@ -74,17 +74,38 @@ function isSessionExpired(session: AgentGatewayRelaySession): boolean {
   return Date.now() - new Date(session.lastSeenAt).getTime() > SESSION_TTL_SECONDS * 1000;
 }
 
-function parseJson<T>(value: unknown): T | null {
+/**
+ * Raised when a relay key holds a payload that cannot be decoded. Callers
+ * already read `null` as "absent" (404 session not found, empty queue, offline
+ * runtime), so corruption has to be a distinct, loud failure.
+ */
+export class RelayStateCorruptError extends Error {
+  constructor(
+    readonly key: string,
+    readonly cause: unknown,
+  ) {
+    super(`Corrupted agent gateway relay state at ${key}`);
+    this.name = "RelayStateCorruptError";
+  }
+}
+
+/**
+ * Decode a value read from a relay key. A missing key stays `null` — that is
+ * the legitimate "no session / nothing queued / no response yet" answer the
+ * poll loops depend on. A key that exists but cannot be decoded is corruption,
+ * never an empty result, so it throws instead of collapsing into `null`.
+ */
+function parseJson<T>(value: unknown, key: string): T | null {
   if (!value) {
     return null;
   }
-  try {
-    if (typeof value === "string") {
-      return JSON.parse(value) as T;
-    }
+  if (typeof value !== "string") {
     return value as T;
-  } catch {
-    return null;
+  }
+  try {
+    return JSON.parse(value) as T;
+  } catch (cause) {
+    throw new RelayStateCorruptError(key, cause);
   }
 }
 
@@ -189,11 +210,12 @@ class InMemoryRelayStore implements RelaySessionStore {
   }
 }
 
-class RedisRelayStore implements RelaySessionStore {
+export class RedisRelayStore implements RelaySessionStore {
   constructor(private readonly redis: CompatibleRedis) {}
 
   async getSession(sessionId: string): Promise<AgentGatewayRelaySession | null> {
-    return parseJson<AgentGatewayRelaySession>(await this.redis.get(buildSessionKey(sessionId)));
+    const key = buildSessionKey(sessionId);
+    return parseJson<AgentGatewayRelaySession>(await this.redis.get(key), key);
   }
 
   async setSession(session: AgentGatewayRelaySession): Promise<void> {
@@ -232,9 +254,8 @@ class RedisRelayStore implements RelaySessionStore {
   }
 
   async dequeueRequest(sessionId: string): Promise<AgentGatewayRelayRequestEnvelope | null> {
-    return parseJson<AgentGatewayRelayRequestEnvelope>(
-      await this.redis.lpop(buildQueueKey(sessionId)),
-    );
+    const key = buildQueueKey(sessionId);
+    return parseJson<AgentGatewayRelayRequestEnvelope>(await this.redis.lpop(key), key);
   }
 
   async setResponse(requestId: string, response: BridgeResponse): Promise<void> {
@@ -246,7 +267,8 @@ class RedisRelayStore implements RelaySessionStore {
   }
 
   async getResponse(requestId: string): Promise<BridgeResponse | null> {
-    return parseJson<BridgeResponse>(await this.redis.get(buildResponseKey(requestId)));
+    const key = buildResponseKey(requestId);
+    return parseJson<BridgeResponse>(await this.redis.get(key), key);
   }
 
   async deleteResponse(requestId: string): Promise<void> {
