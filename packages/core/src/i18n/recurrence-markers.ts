@@ -16,6 +16,12 @@
 // "three times a day" read the same as "every 2 weeks", "3 times a day").
 const ENGLISH_COUNT_WORD =
 	"(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty)";
+// The same counts in Spanish ("cada dos semanas", "tres veces por semana") and
+// Portuguese ("a cada duas semanas", "três vezes ao dia").
+const SPANISH_COUNT_WORD =
+	"(?:dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta)";
+const PORTUGUESE_COUNT_WORD =
+	"(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte|trinta)";
 
 const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	// en: every/each anchored to a schedule noun within the phrase
@@ -33,18 +39,30 @@ const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	/\bper\s+(?:day|week|month|year)\b/i,
 	/\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/i,
 	/\b(?:weekdays|weekends)\b/i,
-	// es: cada / todos los / todas las + schedule noun; adjective forms
-	/\b(?:cada|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b/i,
+	// es: cada [count] / todos los / todas las + schedule noun; adjective forms
+	new RegExp(
+		String.raw`\b(?:cada(?:\s+(?:\d+|${SPANISH_COUNT_WORD}))?|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|horas?|minutos?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b`,
+		"i",
+	),
 	/\bdiario\b/i,
 	/\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/i,
 	/\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/i,
-	/\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/i,
-	// pt: cada / todos os / todas as + schedule noun; adjective forms. The
-	// closing boundary is Unicode-aware: an ASCII \b never follows "manhã".
-	/\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/iu,
+	new RegExp(
+		String.raw`\b(?:una\s+vez|(?:\d+\s*|${SPANISH_COUNT_WORD}\s+)veces)\s+(?:al|a\s+la|por)\s+(?:d[ií]a|semana|mes|año)\b`,
+		"i",
+	),
+	// pt: cada [count] / todos os / todas as + schedule noun; adjective forms.
+	// The closing boundary is Unicode-aware: an ASCII \b never follows "manhã".
+	new RegExp(
+		String.raw`\b(?:cada(?:\s+(?:\d+|${PORTUGUESE_COUNT_WORD}))?|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|horas?|minutos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])`,
+		"iu",
+	),
 	/\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/i,
 	/\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/i,
-	/\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/i,
+	new RegExp(
+		String.raw`\b(?:uma\s+vez|(?:\d+\s*|${PORTUGUESE_COUNT_WORD}\s+)vezes)\s+(?:por|ao|à)\s+(?:dia|semana|m[eê]s|ano)(?![\p{L}\p{N}_])`,
+		"iu",
+	),
 	// vi: mỗi / hàng + schedule noun
 	/(?:mỗi|hàng|hằng)\s*(?:ngày|tuần|tháng|năm|sáng|tối|chiều)/i,
 	// tl: reduplicated schedule nouns and "tuwing"
