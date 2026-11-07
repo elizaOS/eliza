@@ -47,6 +47,7 @@ function createRuntime() {
     agentId,
     getService: () => service,
     getRoom: async () => ({ id: roomId, worldId: agentId }),
+    getWorld: async () => ({ id: agentId, agentId }),
     getComponent: async (entity: UUID, type: string) =>
       structuredClone(components.get(key(entity, type))),
     getComponents: async (entity: UUID) =>

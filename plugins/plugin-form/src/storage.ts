@@ -77,6 +77,27 @@ const isRecord = (
 ): value is Record<string, JsonValue> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * Submissions and autofill have no room of their own and are filed in the
+ * agent's self room, worldId = agentId. The runtime creates that room at start
+ * but not the world, and the SQL adapter's components.world_id foreign key
+ * needs it. Insert only, like the remote browser's secure store: an existing
+ * world is never rewritten.
+ */
+const ensureAgentWorld = async (runtime: IAgentRuntime): Promise<void> => {
+  if (await runtime.getWorld(runtime.agentId)) return;
+  try {
+    await runtime.createWorld({
+      id: runtime.agentId,
+      agentId: runtime.agentId,
+    });
+  } catch (error) {
+    if (!(error instanceof ElizaError) || error.code !== "WORLD_ALREADY_EXISTS")
+      throw error;
+    // error-policy:J2 a concurrent creator won; the world exists now.
+  }
+};
+
 const resolveComponentContext = async (
   runtime: IAgentRuntime,
   roomId?: UUID,
@@ -85,6 +106,7 @@ const resolveComponentContext = async (
     const room = await runtime.getRoom(roomId);
     return { roomId, worldId: room?.worldId ?? runtime.agentId };
   }
+  await ensureAgentWorld(runtime);
   return { roomId: runtime.agentId, worldId: runtime.agentId };
 };
 
