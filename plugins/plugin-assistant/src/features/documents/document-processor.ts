@@ -52,28 +52,6 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
-  let result: boolean;
-  let _source: string;
-  let rawValue: string | undefined;
-
-  if (runtime) {
-    const settingValue = runtime.getSetting("CTX_DOCUMENTS_ENABLED");
-    rawValue =
-      typeof settingValue === "string"
-        ? settingValue
-        : settingValue?.toString();
-    const cleanValue = rawValue?.trim().toLowerCase();
-    result = cleanValue === "true";
-  } else {
-    rawValue = process.env.CTX_DOCUMENTS_ENABLED;
-    const cleanValue = rawValue?.toString().trim().toLowerCase();
-    result = cleanValue === "true";
-  }
-
-  return result;
-}
-
 function shouldUseCustomLLM(config: ModelConfig): boolean {
   const textProvider = config.TEXT_PROVIDER;
   const textModel = config.TEXT_MODEL;
@@ -980,7 +958,9 @@ async function getContextualizedChunks(
 ): Promise<
   Array<{ contextualizedText: string; index: number; success: boolean }>
 > {
-  const ctxEnabled = getCtxDocumentsEnabled(runtime);
+  // Read the switch the way DocumentService.start does: runtime setting, then
+  // process.env, parsed as a core boolean ("1", "yes" and "on" count as true).
+  const ctxEnabled = validateModelConfig(runtime).CTX_DOCUMENTS_ENABLED;
 
   if (ctxEnabled && fullDocumentText) {
     return generateContextsInBatch(
