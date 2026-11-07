@@ -154,7 +154,13 @@ export function orderIdentityDeliveryClaims(
 		claim,
 		key: `${claim.connectorId}\u0000${claim.connectorAccountId}\u0000${claim.handle ?? ""}\u0000${claim.externalSubjectId}\u0000${claim.id}`,
 	}));
-	keyed.sort((left, right) => left.key.localeCompare(right.key));
+	// Code-unit order, not localeCompare: ICU collation depends on the host
+	// locale, so the same claim set would order differently across
+	// implementations and process restarts — defeating the stability this
+	// canonical ordering exists to provide.
+	keyed.sort((left, right) =>
+		left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+	);
 	return keyed.map((entry) => entry.claim);
 }
 
