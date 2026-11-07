@@ -259,6 +259,26 @@ describe("document contextualization custom-LLM gate", () => {
     );
   });
 
+  test("the full-document prompt carries template placeholders from the document verbatim", async () => {
+    const harness = makeHarness({
+      CTX_DOCUMENTS_ENABLED: "true",
+      TEXT_EMBEDDING_MODEL: "test-embedding",
+    });
+    // A document about prompt templates names the placeholders literally.
+    const placeholderText =
+      "The enrichment template fills {doc_content} with the file and {chunk_content} with the excerpt.";
+
+    await ingest(harness.runtime, placeholderText);
+
+    expect(harness.runtimeModelPrompts).toHaveLength(1);
+    expect(harness.runtimeModelPrompts[0]).toContain(
+      `<document>\n${placeholderText}\n</document>`,
+    );
+    expect(harness.runtimeModelPrompts[0]).toContain(
+      `<chunk>\n${placeholderText}\n</chunk>`,
+    );
+  });
+
   test('the cached-document prompt carries "$" sequences from the chunk verbatim', async () => {
     const harness = makeHarness({
       CTX_DOCUMENTS_ENABLED: "true",

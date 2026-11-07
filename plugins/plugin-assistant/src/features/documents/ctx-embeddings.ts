@@ -176,9 +176,11 @@ export function getContextualizationPrompt(
   }
 
   // Function replacers insert content verbatim; a string would expand "$&", "$'" and "$$".
-  return promptTemplate
-    .replace("{doc_content}", () => docContent)
-    .replace("{chunk_content}", () => chunkContent);
+  // One pass, so a "{chunk_content}" inside the inserted document is not read as the slot.
+  return promptTemplate.replace(
+    /\{(doc_content|chunk_content)\}/g,
+    (_, slot) => (slot === "doc_content" ? docContent : chunkContent),
+  );
 }
 
 export function getCachingContextualizationPrompt(
