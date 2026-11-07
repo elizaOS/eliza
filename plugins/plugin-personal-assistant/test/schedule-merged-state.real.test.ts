@@ -447,6 +447,87 @@ describe("merged schedule state", () => {
     }
   });
 
+  it("sends one night check-in when the bedtime window crosses midnight", async () => {
+    const fixture = await createFixture("lifeops-night-checkin-midnight");
+    // The night summary text comes from the model; its wording is not checked.
+    const model = vi
+      .spyOn(fixture.runtime, "useModel")
+      .mockResolvedValue("How did today go?" as never);
+    try {
+      const domain = (
+        fixture.service as unknown as {
+          remindersDomain: {
+            processSleepCycleCheckins: (args: {
+              now: Date;
+              currentSchedule: LifeOpsScheduleMergedStateRecord;
+            }) => Promise<Array<{ kind: string; status: string }>>;
+            dispatchCheckinReport: (args: {
+              reportId: string;
+            }) => Promise<{ ok: boolean; messageId?: string }>;
+          };
+        }
+      ).remindersDomain;
+      const sent: string[] = [];
+      domain.dispatchCheckinReport = async ({ reportId }) => {
+        sent.push(reportId);
+        return { ok: true, messageId: `msg-${sent.length}` };
+      };
+      // Bedtime target 00:30 UTC: the 3-hour night window runs from 21:30
+      // on Apr 19 to 00:30 on Apr 20, across local midnight.
+      const tick = async (
+        nowIso: string,
+        minutesUntilBedtime: number,
+        bedtimeTargetAt = "2026-04-20T00:30:00.000Z",
+      ) => {
+        const state = buildCloudState(
+          String(fixture.runtime.agentId),
+          nowIso,
+          "UTC",
+        );
+        state.circadianState = "awake";
+        state.relativeTime.bedtimeTargetAt = bedtimeTargetAt;
+        state.relativeTime.minutesUntilBedtimeTarget = minutesUntilBedtime;
+        return domain.processSleepCycleCheckins({
+          now: new Date(nowIso),
+          currentSchedule: state,
+        });
+      };
+
+      expect(await tick("2026-04-19T21:30:00.000Z", 180)).toMatchObject([
+        { kind: "night", status: "delivered" },
+      ]);
+      expect(await tick("2026-04-20T00:05:00.000Z", 25)).toMatchObject([
+        { kind: "night", status: "skipped_already_sent" },
+      ]);
+      // The baseline moves tonight's target later, to 01:00: a tick at 00:45
+      // is 195 minutes after the 21:30 check-in, past the 3-hour lead.
+      expect(
+        await tick("2026-04-20T00:45:00.000Z", 15, "2026-04-20T01:00:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "skipped_already_sent" }]);
+      expect(sent).toHaveLength(1);
+      // The next evening's window is a new night: it sends again.
+      expect(
+        await tick("2026-04-20T21:45:00.000Z", 165, "2026-04-21T00:30:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "delivered" }]);
+      expect(sent).toHaveLength(2);
+      // A late night: the next bedtime is 03:00, so its check-in goes out
+      // after midnight, at 00:10 on Apr 22.
+      expect(
+        await tick("2026-04-22T00:10:00.000Z", 170, "2026-04-22T03:00:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "delivered" }]);
+      expect(sent).toHaveLength(3);
+      // The evening window of that same calendar day (bedtime Apr 23 00:30)
+      // is the next night: the 00:10 check-in must not suppress it.
+      expect(
+        await tick("2026-04-22T21:45:00.000Z", 165, "2026-04-23T00:30:00.000Z"),
+      ).toMatchObject([{ kind: "night", status: "delivered" }]);
+      expect(sent).toHaveLength(4);
+    } finally {
+      model.mockRestore();
+      await fixture.cleanup();
+    }
+  });
+
   it("does not resend a night reminder when later activity moves the adaptive night window", async () => {
     const fixture = await createFixture("lifeops-adaptive-night-resend");
     // Freeze only Date so the definition is created on the test's day.

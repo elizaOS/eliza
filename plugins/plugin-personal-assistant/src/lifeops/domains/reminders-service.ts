@@ -385,6 +385,9 @@ function foregroundRequestHandling(
   }
 }
 
+/** One night check-in per night: two are never sent within this span. */
+const NIGHT_CHECKIN_DEDUPE_MS = 12 * 60 * 60 * 1000;
+
 /**
  * Reminder attempts whose send may have reached the recipient: the connector
  * accepted part of it, accepted it but failed to save it, gave no delivery
@@ -6917,6 +6920,13 @@ export class RemindersDomain {
         kind,
         now: args.now,
         timezone,
+        // The night window (bedtime minus the lead) can start before
+        // midnight and end after it, and the bedtime target can move later
+        // during the evening. A night check-in sent in the last 12 hours
+        // already served tonight; the next night is about a day later.
+        ...(kind === "night"
+          ? { sinceMs: args.now.getTime() - NIGHT_CHECKIN_DEDUPE_MS }
+          : {}),
       });
       if (alreadySent) {
         if (kind === "morning") {

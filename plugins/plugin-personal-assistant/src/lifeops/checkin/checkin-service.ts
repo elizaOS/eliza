@@ -1680,17 +1680,27 @@ export class CheckinService {
     kind: CheckinKind;
     now: Date;
     timezone: string;
+    /**
+     * Count check-ins generated from this instant up to `now` instead of the
+     * local day. A night window that crosses midnight serves one bedtime from
+     * two local days, so night uses a rolling window, not the calendar day.
+     */
+    sinceMs?: number;
   }): Promise<boolean> {
     const agentId = String(this.runtime.agentId);
     const day = localDayWindow(args.now, args.timezone);
+    const start =
+      args.sinceMs === undefined ? day.start.getTime() : args.sinceMs;
+    const end =
+      args.sinceMs === undefined ? day.end.getTime() : args.now.getTime() + 1;
     const rows = await executeRawSql(
       this.runtime,
       `SELECT id
          FROM ${CHECKIN_REPORTS_TABLE}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND kind = ${sqlQuote(args.kind)}
-          AND generated_at_ms >= ${day.start.getTime()}
-          AND generated_at_ms < ${day.end.getTime()}
+          AND generated_at_ms >= ${start}
+          AND generated_at_ms < ${end}
         LIMIT 1`,
     );
     return rows.length > 0;
