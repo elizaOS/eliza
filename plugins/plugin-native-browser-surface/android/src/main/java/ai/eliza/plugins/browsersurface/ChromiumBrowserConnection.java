@@ -7,13 +7,16 @@ import android.os.Handler;
 import android.os.Build;
 import android.os.Looper;
 import android.util.Log;
+import java.util.function.Consumer;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 
 /**
  * Keeps the authorized native browser reachable while its agent runs as a foreground service:
  * always after {@link #start()}, or only while a {@link Lease} is open and for an idle delay after.
- * The hold, retry, release and ready rules are {@link ChromiumBindingDemand}'s. Main thread only.
+ * The hold, retry, release and ready rules are {@link ChromiumBindingDemand}'s, which runs only on
+ * the main thread: a call from another thread is posted there in call order, and ready callbacks
+ * are always posted to the main thread, never run inside the caller's call.
  */
 public final class ChromiumBrowserConnection implements AutoCloseable {
     private static final String TAG = "ElizaChromiumBinding";
@@ -46,24 +49,59 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
         });
     }
 
-    /** One holder's need for the browser; {@link #close()} lets it go. Idempotent. */
+    /** One holder's need for the browser; {@link #close()} lets it go. Idempotent; any thread. */
     public final class Lease implements AutoCloseable {
-        private final ChromiumBindingDemand.Hold hold;
+        private volatile boolean open = true;
+        // Main thread only; null until an acquire() made off the main thread reaches it.
+        private volatile ChromiumBindingDemand.Hold hold;
 
-        private Lease(ChromiumBindingDemand.Hold hold) { this.hold = hold; }
+        private Lease() {}
+
+        private void attach(ChromiumBindingDemand.Hold acquired) {
+            hold = acquired;
+            if (!open) acquired.close();
+            else if (!acquired.isOpen()) open = false;
+        }
+
+        /** Runs {@code action} on the main thread once the hold exists, in call order. */
+        private void withHold(Consumer<ChromiumBindingDemand.Hold> action) {
+            onMain(() -> {
+                ChromiumBindingDemand.Hold current = hold;
+                if (current != null) action.accept(current);
+                else handler.post(() -> action.accept(hold)); // after the queued attach
+            });
+        }
 
         /** False once closed, and from the start when the connection was already closed. */
-        public boolean isOpen() { return hold.isOpen(); }
+        public boolean isOpen() {
+            ChromiumBindingDemand.Hold current = hold;
+            return open && (current == null || current.isOpen());
+        }
 
         /**
-         * Runs {@code callback} once the verified, warmed service is connected: now when it
-         * already is, otherwise on the next verified connection while this lease is open. It is
-         * dropped when this lease or the connection closes, and never runs when the browser
-         * refuses the binding or is untrusted, so keep a deadline and close the lease at it.
+         * Posts {@code callback} to the main thread once the browser service is connected,
+         * passed its package and certificate check, and was asked to warm up: at once when it
+         * already is, otherwise on the next such connection while this lease is open. Warmup is
+         * only requested, so the first page after a cold start may still wait for Chromium to
+         * initialise. The callback runs once, never inside this call, and is dropped when this
+         * lease or the connection closes. It never runs when the browser refuses the binding or
+         * is untrusted, so keep a deadline and close the lease at it.
          */
-        public void whenReady(Runnable callback) { hold.whenReady(callback); }
+        public void whenReady(Runnable callback) {
+            if (callback == null) throw new NullPointerException("callback");
+            handler.post(() -> withHold(acquired -> acquired.whenReady(callback)));
+        }
 
-        @Override public void close() { hold.close(); }
+        @Override public void close() {
+            open = false;
+            withHold(ChromiumBindingDemand.Hold::close);
+        }
+    }
+
+    /** Runs {@code task} now on the main thread, otherwise posts it there. */
+    private void onMain(Runnable task) {
+        if (Looper.myLooper() == handler.getLooper()) task.run();
+        else handler.post(task);
     }
 
     private boolean isTrustedBrowser() {
@@ -82,6 +120,7 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
                 return;
             }
             // Initializes the browser without opening an activity, tab, URL, or debugging port.
+            // Warmup is asynchronous: ready means connected, verified and warmup requested.
             boolean warmed = client.warmup(0);
             Log.i(TAG, "Verified Chromium service connected; warmup accepted=" + warmed);
             demand.connected();
@@ -102,22 +141,28 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
     };
 
     /** Holds the binding until {@link #stop()} or {@link #close()}. */
-    public void start() { demand.pin(); }
+    public void start() { onMain(demand::pin); }
 
     /** Ends {@link #start()}'s hold; the binding is released after the idle delay unless a lease is open. */
-    public void stop() { demand.unpin(); }
+    public void stop() { onMain(demand::unpin); }
 
     /**
-     * Holds the binding, binding and warming the browser now if it is not bound. After
-     * {@link #close()}, including the close a failed browser identity check makes, it returns a
-     * lease that is already closed and binds nothing; check {@link Lease#isOpen()}.
+     * Holds the binding, binding the browser and requesting its warmup if it is not bound (at
+     * once on the main thread, otherwise posted there). After {@link #close()}, including the
+     * close a failed browser identity check makes, the lease is closed and binds nothing; off the
+     * main thread it may turn closed only once the posted acquire runs. Check
+     * {@link Lease#isOpen()}.
      */
     public Lease acquire() {
-        if (demand.isClosed()) Log.w(TAG, "Chromium connection is closed; lease refused");
-        return new Lease(demand.acquire());
+        Lease lease = new Lease();
+        onMain(() -> {
+            if (demand.isClosed()) Log.w(TAG, "Chromium connection is closed; lease refused");
+            lease.attach(demand.acquire());
+        });
+        return lease;
     }
 
-    /** Whether the verified browser service is connected and warmed now. */
+    /** Whether the browser service is connected and verified now, with warmup requested. */
     public boolean isReady() { return demand.isReady(); }
 
     /** Whether the connection is closed for good: by {@link #close()} or a failed identity check. */
@@ -142,5 +187,5 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
         }
     }
 
-    @Override public void close() { demand.close(); }
+    @Override public void close() { onMain(demand::close); }
 }

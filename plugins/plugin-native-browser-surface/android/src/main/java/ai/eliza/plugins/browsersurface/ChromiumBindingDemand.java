@@ -16,7 +16,9 @@ import java.util.List;
  * the binding, is untrusted, or the demand is closed, so a caller that must not wait forever keeps
  * its own deadline and closes its hold at that deadline.
  *
- * <p>Plain JVM, driven on one thread (Android's main thread) through {@link Host}.
+ * <p>Plain JVM, not thread-safe: every call is made on one thread (Android's main thread), where
+ * {@link ChromiumBrowserConnection} marshals its callers. {@link #isReady()} and
+ * {@link #isClosed()} may be read from any thread.
  */
 public final class ChromiumBindingDemand {
     static final long FIRST_RETRY_MILLIS = 1000;
@@ -89,8 +91,8 @@ public final class ChromiumBindingDemand {
     private boolean pinned;
     private int leases;
     private boolean bound;
-    private boolean ready;
-    private boolean closed;
+    private volatile boolean ready;
+    private volatile boolean closed;
     private long retryMillis = FIRST_RETRY_MILLIS;
 
     public ChromiumBindingDemand(long idleMillis, Host host) {
@@ -105,7 +107,7 @@ public final class ChromiumBindingDemand {
 
     public boolean isBound() { return bound; }
 
-    /** Whether the verified browser service is connected now. */
+    /** Whether the verified browser service is connected now (its warmup only requested). */
     public boolean isReady() { return ready; }
 
     /** How many ready callbacks are queued; a closed hold's callbacks are gone at once. */

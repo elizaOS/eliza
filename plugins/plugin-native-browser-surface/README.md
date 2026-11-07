@@ -281,7 +281,9 @@ task authority and wait for a valid action preview before dispatching input.
 
 Android foreground-service hosts can share `ChromiumBrowserConnection`: construct
 it with the service context, call `start()` after entering foreground, and
-`close()` when the service stops. Call its lifecycle methods on the main thread.
+`close()` when the service stops. Its state lives on the main thread: a call
+from another thread is posted there in call order, so call `close()` on the main
+thread (for example in `onDestroy`) when the unbind must happen before it returns.
 It verifies the module's build-pinned package and signing certificate before
 binding and after connection. The priority-preserving Custom Tabs binding keeps
 the browser reachable without opening an activity, tab, URL or debugging port.
@@ -291,18 +293,23 @@ A host that needs the browser only for some work calls `acquire()` instead of
 `start()`. With no `start()` or open lease, the binding is released after the
 idle delay (the constructor's second argument, 60 s by default), so Android can
 freeze or reclaim the browser. That trades resident memory for latency: the
-next `acquire()` after a release may cold-start Chromium and warm it again
-before it is ready. The memory saving has not been measured on a device yet
+next `acquire()` after a release may cold-start Chromium. The memory saving has not been measured on a device yet
 (compare `dumpsys meminfo` and `oom_adj` of the browser with the host idle).
-`lease.whenReady(callback)` runs once the verified, warmed service is
-connected, and is dropped when the lease closes. It never runs when the
+`lease.whenReady(callback)` is posted to the main thread once the browser
+service is connected, has passed its package and certificate check and was asked
+to warm up; it runs once and is dropped when the lease closes. Warmup is only
+requested (`CustomTabsClient.warmup` is asynchronous), so the first page or
+native-messaging call after a cold start may still wait for Chromium to
+initialise; time that, not only `whenReady`. It never runs when the
 browser refuses the binding or fails its package or certificate check, so a
 host puts its own deadline around it and closes the lease at that deadline.
 A browser that fails verification after connecting closes the connection for
 good: `isClosed()` turns true and `acquire()` returns a lease that is already
 closed (`isOpen()` is false) and binds nothing. The hold, retry, release and
-ready rules live in the plain-JVM `ChromiumBindingDemand`, which a host that
-stages the connection stages beside it.
+ready rules live in the plain-JVM `ChromiumBindingDemand`. A host that stages
+`ChromiumBrowserConnection` as a resident helper must also list
+`ChromiumBindingDemand` and `ChromiumBrowserIdentity` in its `helpers`;
+`stageResidentHostSources` refuses the list otherwise.
 
 Android `presentBrowser()` foregrounds the certificate-pinned browser without a
 URL or new website tab. Invoke it from an explicit user interaction before a
