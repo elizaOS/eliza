@@ -91,3 +91,47 @@ it("restores every source segment of a large document", async () => {
     await fixture.cleanup();
   }
 }, 180_000);
+
+it("imports an export whose data is larger than 16 MiB", async () => {
+  const fixture = await createTestRuntime({
+    characterName: "TransferLargeHistory",
+  });
+  try {
+    const runtime = fixture.runtime;
+    // About 20 MiB of chat history: one long conversation, no media.
+    const line = `${randomUUID()} a long message in a long conversation\n`;
+    const text = line.repeat(Math.ceil((1024 * 1024) / line.length));
+    const count = 20;
+    for (let index = 0; index < count; index += 1) {
+      await runtime.createMemory(
+        {
+          id: randomUUID() as UUID,
+          agentId: runtime.agentId,
+          roomId: runtime.agentId,
+          entityId: runtime.agentId,
+          createdAt: index + 1,
+          content: { text: `${index}: ${text}` },
+        },
+        "messages",
+      );
+    }
+
+    const password = "large-history-transfer-password";
+    const bundle = await exportAgent(runtime, password);
+    const imported = await importAgent(runtime, bundle, password);
+    expect(imported.success).toBe(true);
+    const importedAgentId = imported.agentId as UUID;
+    if (!runtime.adapter.withAgentScope) throw Error("Missing scoped adapter");
+    const messages = await runtime.adapter.withAgentScope(
+      importedAgentId,
+      (db) =>
+        db.getMemories({ agentId: importedAgentId, tableName: "messages" }),
+    );
+    expect(messages).toHaveLength(count);
+    expect(
+      messages.every((memory) => memory.content.text?.endsWith(text)),
+    ).toBe(true);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 300_000);
