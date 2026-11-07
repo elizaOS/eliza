@@ -457,10 +457,14 @@ export class VisionService extends Service {
           runtime.getSetting("TF_CHANGE_THRESHOLD") ||
             runtime.getSetting("VISION_TF_CHANGE_THRESHOLD"),
         ) || this.DEFAULT_CONFIG.tfChangeThreshold,
+      // PIXEL_CHANGE_THRESHOLD is the documented setting for this gate
+      // ("Percentage of pixels that must change to trigger VLM update").
       vlmChangeThreshold:
         Number(
           runtime.getSetting("VLM_CHANGE_THRESHOLD") ||
-            runtime.getSetting("VISION_VLM_CHANGE_THRESHOLD"),
+            runtime.getSetting("VISION_VLM_CHANGE_THRESHOLD") ||
+            runtime.getSetting("PIXEL_CHANGE_THRESHOLD") ||
+            runtime.getSetting("VISION_PIXEL_CHANGE_THRESHOLD"),
         ) || this.DEFAULT_CONFIG.vlmChangeThreshold,
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
