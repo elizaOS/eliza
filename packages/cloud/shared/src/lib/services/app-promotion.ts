@@ -519,12 +519,19 @@ Return ONLY valid JSON, no markdown.`;
         text: postText,
       };
 
-      const postResult = await socialMediaService.createPost({
-        organizationId,
-        userId,
-        content: postContent,
-        platforms: [platform],
-      });
+      let postResult: Awaited<ReturnType<typeof socialMediaService.createPost>>;
+      try {
+        postResult = await socialMediaService.createPost({
+          organizationId,
+          userId,
+          content: postContent,
+          platforms: [platform],
+        });
+      } catch (error) {
+        // Earlier platforms may already be posted; keep their results.
+        results.push({ platform, success: false, error: extractErrorMessage(error) });
+        continue;
+      }
 
       const platformResult = postResult.results.find((r) => r.platform === platform);
       results.push({
@@ -557,16 +564,28 @@ Return ONLY valid JSON, no markdown.`;
     }
 
     const seoType = this.determineSeoType(config);
-    const result = await seoService.createRequest({
-      organizationId,
-      userId,
-      appId: app.id,
-      type: seoType,
-      pageUrl: app.app_url,
-      keywords: [app.name, "ai app", "eliza cloud"],
-      promptContext: `App: ${app.name}. ${app.description || ""}`,
-      operationContext,
-    });
+    let result: Awaited<ReturnType<typeof seoService.createRequest>>;
+    try {
+      result = await seoService.createRequest({
+        organizationId,
+        userId,
+        appId: app.id,
+        type: seoType,
+        pageUrl: app.app_url,
+        keywords: [app.name, "ai app", "eliza cloud"],
+        promptContext: `App: ${app.name}. ${app.description || ""}`,
+        operationContext,
+      });
+    } catch (error) {
+      // Social posts run before SEO and are already published and charged.
+      // Failing the whole promotion here would drop their results and make
+      // the client retry, which posts them again.
+      logger.error("[AppPromotion] SEO optimization failed", {
+        appId: app.id,
+        error: extractErrorMessage(error),
+      });
+      return { success: false, error: extractErrorMessage(error) };
+    }
 
     return {
       success: result.request.status === "completed",
@@ -600,27 +619,61 @@ Return ONLY valid JSON, no markdown.`;
       ? new Date(startDate.getTime() + config.duration * 24 * 60 * 60 * 1000)
       : undefined;
 
-    const campaign = await advertisingService.createCampaign({
-      organizationId,
-      adAccountId: config.adAccountId,
-      name: `${app.name} - Promotion Campaign`,
-      objective: config.objective,
-      budgetType: config.budgetType,
-      budgetAmount: config.budget,
-      bidStrategy: config.bidStrategy,
-      optimizationGoal: config.optimizationGoal,
-      startDate,
-      endDate,
-      appId: app.id,
-      audienceSegmentId: config.audienceSegmentId,
-      targeting:
-        !config.audienceSegmentId && config.targetLocations?.length
-          ? { locations: config.targetLocations }
-          : undefined,
-    });
+    // A campaign without a creative runs no ads but still holds its budget,
+    // so do not create one when the ad copy could not be generated.
+    if (!content) {
+      return {
+        success: false,
+        error: "Ad copy could not be generated, so no campaign was created.",
+      };
+    }
 
-    if (content) {
+    let campaign: Awaited<ReturnType<typeof advertisingService.createCampaign>>;
+    try {
+      campaign = await advertisingService.createCampaign({
+        organizationId,
+        adAccountId: config.adAccountId,
+        name: `${app.name} - Promotion Campaign`,
+        objective: config.objective,
+        budgetType: config.budgetType,
+        budgetAmount: config.budget,
+        bidStrategy: config.bidStrategy,
+        optimizationGoal: config.optimizationGoal,
+        startDate,
+        endDate,
+        appId: app.id,
+        audienceSegmentId: config.audienceSegmentId,
+        targeting:
+          !config.audienceSegmentId && config.targetLocations?.length
+            ? { locations: config.targetLocations }
+            : undefined,
+      });
+    } catch (error) {
+      logger.error("[AppPromotion] Ad campaign creation failed", {
+        appId: app.id,
+        error: extractErrorMessage(error),
+      });
+      return { success: false, error: extractErrorMessage(error) };
+    }
+
+    try {
       await this.createDefaultCreative(organizationId, campaign.id, app, content);
+    } catch (error) {
+      // The campaign exists and holds its budget. Report it with the creative
+      // failure instead of failing the whole promotion: a failed request
+      // makes the client retry, and each retry creates and funds another
+      // campaign.
+      logger.error("[AppPromotion] Ad creative creation failed", {
+        appId: app.id,
+        campaignId: campaign.id,
+        error: extractErrorMessage(error),
+      });
+      return {
+        success: false,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        error: `Campaign ${campaign.name} was created, but its creative was refused: ${extractErrorMessage(error)}`,
+      };
     }
 
     return {
