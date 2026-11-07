@@ -229,6 +229,39 @@ describe("attachmentsProvider", () => {
     expect(result.text).not.toContain("available via ATTACHMENT action=read");
   });
 
+  it("advertises an ATTACHMENT read for a large document whose text is stored in segments", async () => {
+    // Over the inline limit the stored row keeps a descriptor and no text.
+    const result = await attachmentsProvider.get(
+      makeRuntime([]),
+      makeMessage({
+        text: "Summarize the report I sent",
+        attachments: [
+          {
+            id: "quarterly-report",
+            url: "https://cdn.discordapp.test/attachments/1/3/report.pdf",
+            title: "report.pdf",
+            source: "Document",
+            contentType: "application/pdf",
+            textSource: {
+              kind: "attachment-text",
+              storage: "segments",
+              version: 1,
+              revision: `rev:${"a".repeat(64)}`,
+              sha256: "a".repeat(64),
+              byteLength: 70_000,
+              segmentCount: 2,
+              attachmentIdHash: "b".repeat(64),
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.text).toContain(
+      "Stored Content: available via ATTACHMENT action=read",
+    );
+  });
+
   it("advertises an ATTACHMENT read when readable text is stored", async () => {
     const result = await attachmentsProvider.get(
       makeRuntime([]),
