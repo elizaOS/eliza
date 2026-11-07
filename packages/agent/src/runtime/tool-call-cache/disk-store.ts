@@ -19,6 +19,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { logger } from "@elizaos/core";
+
 import { isRedactionDegraded } from "./redact.ts";
 import type { PrivacyRedactor, ToolCacheEntry } from "./types.ts";
 
@@ -36,8 +38,24 @@ export class DiskStore {
     const file = this.pathFor(key);
     if (!existsSync(file)) return undefined;
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as ToolCacheEntry;
-    if (parsed.key !== key) return undefined;
+    let parsed: ToolCacheEntry;
+    try {
+      parsed = JSON.parse(raw) as ToolCacheEntry;
+    } catch {
+      // A truncated write (the write path is a plain writeFileSync, so a
+      // crash mid-write leaves a partial file) must not abort the tool call
+      // that only wanted a cache lookup: treat it as a miss and evict the
+      // corrupt row so later lookups do not keep re-parsing garbage. The
+      // eviction is logged, so the failure stays visible to operators.
+      logger.warn(
+        { key },
+        "[ToolCallCache] Corrupt disk cache entry evicted; treating as miss",
+      );
+      this.delete(key);
+      return undefined;
+    }
+    if (!parsed || typeof parsed !== "object" || parsed.key !== key)
+      return undefined;
     return parsed;
   }
 
