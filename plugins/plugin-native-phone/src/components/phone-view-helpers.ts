@@ -22,12 +22,17 @@ export function callLabelFor(entry: CallLogEntry): string {
   return "Unknown";
 }
 
-/** Strip whitespace and visual separators while keeping leading + and digits. */
+/**
+ * Strip whitespace and visual separators while keeping a leading +, the digits
+ * and the dial characters the keypad and contacts use (* # and the , ; pauses).
+ * Any other character refuses the input (""), so a letter or extension text is
+ * never dropped to join the digits around it into a different number. A
+ * telephony profile still refuses codes and pauses through the shared
+ * dialable-number rule when it dials.
+ */
 export function normalizeNumber(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  const leadingPlus = trimmed.startsWith("+") ? "+" : "";
-  return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
+  const number = input.trim().replace(/[\s().\-/‐-―]/g, "");
+  return /^\+?[\d*#,;]+$/.test(number) ? number : "";
 }
 
 function normalizeCallLogLimit(limit: unknown): number {
