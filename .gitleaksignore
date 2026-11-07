@@ -415,6 +415,16 @@ b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/providers/recent-erro
 # Regular-expression source matching private-key envelopes, not PEM material.
 b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/security/pii-detectors.ts:private-key:325
 
+# packages/core/src/security/log-redaction.ts
+# PGP private-key armor redaction regular expression; the match contains regex syntax, not key material.
+34542a44b758ae0b1853dc361498e40d71bfa81b:packages/core/src/security/log-redaction.ts:private-key:174
+
+# packages/core/test/redaction-pattern-order.test.ts
+# Synthetic redaction fixtures: a sample JWT ({"sub":"redaction"}, signature "synthetic-signature")
+# and PGP armor around a placeholder body. Not credentials or key material.
+34542a44b758ae0b1853dc361498e40d71bfa81b:packages/core/test/redaction-pattern-order.test.ts:jwt:9
+34542a44b758ae0b1853dc361498e40d71bfa81b:packages/core/test/redaction-pattern-order.test.ts:private-key:41
+
 # packages/core/src/validation/secrets.ts
 # Documented Slack token shape using x characters.
 b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/validation/secrets.ts:slack-app-token:170
