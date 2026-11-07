@@ -8,13 +8,15 @@ export class PerplexityAgentBridge {
   private apiKey: string;
   private endpoint: string;
 
-  constructor(apiKey: string, endpoint = "https://api.perplexity.ai/chat/completions") {
+  constructor(apiKey: string, baseUrl?: string) {
     this.apiKey = apiKey.trim();
-    this.endpoint = endpoint;
+    const base = (baseUrl || (typeof process !== "undefined" ? process.env?.PERPLEXITY_BASE_URL : "") || "https://api.perplexity.ai").replace(/\/+$/, "");
+    this.endpoint = `${base}/chat/completions`;
   }
 
   async queryAgent(prompt: string, options: PerplexityAgentOptions = {}): Promise<string> {
-    const model = options.model ?? "sonar";
+    const defaultModel = (typeof process !== "undefined" ? process.env?.DEFAULT_SEARCH_MODEL : "") || "sonar";
+    const model = options.model ?? defaultModel;
     const temperature = options.temperature ?? 0.2;
 
     const res = await fetch(this.endpoint, {

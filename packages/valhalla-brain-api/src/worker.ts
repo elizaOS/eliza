@@ -43,6 +43,9 @@ export interface BrainEnv {
   BIRDEYE_API_KEY?: string;
   GEMINI_API_KEY?: string;
   PERPLEXITY_API_KEY?: string;
+  PERPLEXITY_BASE_URL?: string;
+  DEFAULT_SEARCH_MODEL?: string;
+  FALLBACK_MODEL?: string;
   /** Comma or newline list of "sha256:plan". Raw keys are ignored. */
   BRAIN_KEYS?: string;
   LEMONSQUEEZY_SIGNING_SECRET?: string;
@@ -202,11 +205,12 @@ export async function handleRequest(
       const perpxKey = (env.PERPLEXITY_API_KEY ?? "").trim();
       if (body.provider === "perplexity" || (perpxKey && !env.GEMINI_API_KEY)) {
         try {
-          const perpxBridge = new PerplexityAgentBridge(perpxKey);
-          const reply = await perpxBridge.queryAgent(userPrompt, { model: "sonar", searchType: "fast" });
-          return json({ reply, provider: "perplexity-sonar", ok: true });
+          const perpxBridge = new PerplexityAgentBridge(perpxKey, env.PERPLEXITY_BASE_URL);
+          const searchModel = env.DEFAULT_SEARCH_MODEL || "sonar";
+          const reply = await perpxBridge.queryAgent(userPrompt, { model: searchModel, searchType: "fast" });
+          return json({ reply, provider: `perplexity-${searchModel}`, ok: true });
         } catch (perpxErr: any) {
-          // Fall back gracefully if error occurs
+          // Fall back gracefully to Gemini or local context if error occurs
         }
       }
 
