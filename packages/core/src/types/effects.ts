@@ -9,6 +9,7 @@
  */
 
 import { ElizaError } from "../errors.js";
+import { asObjectRecord } from "../utils/type-guards";
 
 /** A persisted resource or child artifact identified without embedding payload data. */
 export interface EffectResourceRef {
@@ -163,11 +164,9 @@ export const IDEMPOTENT_EFFECT_ACTION_TAG = "effect:idempotent";
 /** Actions with this tag require validated effect receipts for visible mutation outcomes. Capability tags independently disable unsafe automatic retries. */
 export const EFFECT_RECEIPT_REQUIRED_ACTION_TAG = "effect:receipt-required";
 
-function record(value: unknown): Record<string, unknown> | null {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
+const ISO_TIMESTAMP_PATTERN =
+	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-](\d{2}):(\d{2}))$/;
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
 function invalid(message: string, context: Record<string, unknown>): never {
 	throw new ElizaError(message, {
@@ -200,10 +199,7 @@ function isoTimestamp(
 	context: Record<string, unknown>,
 ): string {
 	const timestamp = nonEmptyString(value, field, context);
-	const match =
-		/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-](\d{2}):(\d{2}))$/.exec(
-			timestamp,
-		);
+	const match = ISO_TIMESTAMP_PATTERN.exec(timestamp);
 	if (!match) {
 		return invalid(
 			`Effect receipt field '${field}' must be an ISO timestamp with a timezone.`,
@@ -222,20 +218,7 @@ function isoTimestamp(
 	const offsetHour = match[9] === undefined ? 0 : Number(match[9]);
 	const offsetMinute = match[10] === undefined ? 0 : Number(match[10]);
 	const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-	const daysInMonth = [
-		31,
-		leapYear ? 29 : 28,
-		31,
-		30,
-		31,
-		30,
-		31,
-		31,
-		30,
-		31,
-		30,
-		31,
-	][month - 1];
+	const daysInMonth = month === 2 && leapYear ? 29 : DAYS_IN_MONTH[month - 1];
 	const parsed = Date.parse(timestamp);
 	if (
 		month < 1 ||
@@ -266,7 +249,7 @@ function normalizeResourceRef(
 	field: string,
 	context: Record<string, unknown>,
 ): EffectResourceRef {
-	const raw = record(value);
+	const raw = asObjectRecord(value);
 	if (!raw) {
 		return invalid(
 			`Effect receipt field '${field}' must be a resource reference.`,
@@ -325,7 +308,7 @@ export function normalizeUserFacingEffectReceiptIds(
  * prompts, trajectory records, streaming clients, or the turn ledger.
  */
 export function normalizeEffectReceipt(value: unknown): EffectReceipt {
-	const raw = record(value);
+	const raw = asObjectRecord(value);
 	if (!raw) {
 		return invalid("Effect receipt must be an object.", {});
 	}
@@ -344,7 +327,7 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
 			normalizeResourceRef(artifact, `artifacts[${index}]`, context),
 		),
 	);
-	const idempotencyRaw = record(raw.idempotency);
+	const idempotencyRaw = asObjectRecord(raw.idempotency);
 	if (!idempotencyRaw) {
 		return invalid(
 			"Effect receipt field 'idempotency' must be an object.",
@@ -393,7 +376,7 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
 
 	switch (outcome) {
 		case "applied": {
-			const commitRaw = record(raw.commit);
+			const commitRaw = asObjectRecord(raw.commit);
 			if (!commitRaw) {
 				return invalid(
 					"Applied effect receipts require commit proof.",
@@ -432,7 +415,7 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
 				reason: nonEmptyString(raw.reason, "reason", context),
 			});
 		case "failed": {
-			const failureRaw = record(raw.failure);
+			const failureRaw = asObjectRecord(raw.failure);
 			if (!failureRaw) {
 				return invalid(
 					"Failed effect receipts require failure details.",
@@ -465,7 +448,7 @@ export function normalizeEffectReceipt(value: unknown): EffectReceipt {
 			});
 		}
 		case "rolled_back": {
-			const rollbackRaw = record(raw.rollback);
+			const rollbackRaw = asObjectRecord(raw.rollback);
 			if (!rollbackRaw) {
 				return invalid(
 					"Rolled-back effect receipts require rollback proof.",
@@ -580,30 +563,29 @@ export function mergeEffectReceipts(
 export function revertedEffectReceiptIds(
 	receipts: readonly EffectReceipt[],
 ): ReadonlySet<string> {
-	return new Set(
-		receipts.flatMap((receipt) =>
-			receipt.outcome === "rolled_back"
-				? [...receipt.rollback.revertedReceiptIds]
-				: [],
-		),
+	const reverted = new Set<string>();
+	for (const receipt of receipts) {
+		if (receipt.outcome !== "rolled_back") continue;
+		for (const id of receipt.rollback.revertedReceiptIds) reverted.add(id);
+	}
+	return reverted;
+}
+
+function hasBoundUserFacingText(result: EffectBearingResult): boolean {
+	return (
+		result.verifiedUserFacing === true &&
+		typeof result.userFacingText === "string" &&
+		result.userFacingText.trim().length > 0 &&
+		Array.isArray(result.userFacingEffectReceiptIds) &&
+		result.userFacingEffectReceiptIds.length > 0
 	);
 }
 
-/** Resolve every current-turn receipt bound to exact action-owned text. */
-export function resolveUserFacingEffectReceipts(
+/** Resolve bound receipt IDs against an already-normalized receipt list. */
+function resolveBoundReceipts(
 	result: EffectBearingResult,
-	allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
-): readonly EffectReceipt[] | null {
-	if (
-		result.verifiedUserFacing !== true ||
-		typeof result.userFacingText !== "string" ||
-		result.userFacingText.trim().length === 0 ||
-		!Array.isArray(result.userFacingEffectReceiptIds) ||
-		result.userFacingEffectReceiptIds.length === 0
-	) {
-		return null;
-	}
-	const normalizedReceipts = normalizeEffectReceipts(allTurnReceipts);
+	normalizedReceipts: readonly EffectReceipt[],
+): EffectReceipt[] | null {
 	const normalizedIds = normalizeStringArray(
 		result.userFacingEffectReceiptIds,
 		"userFacingEffectReceiptIds",
@@ -618,7 +600,20 @@ export function resolveUserFacingEffectReceipts(
 		if (!receipt) return null;
 		resolved.push(receipt);
 	}
-	return Object.freeze(resolved);
+	return resolved;
+}
+
+/** Resolve every current-turn receipt bound to exact action-owned text. */
+export function resolveUserFacingEffectReceipts(
+	result: EffectBearingResult,
+	allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
+): readonly EffectReceipt[] | null {
+	if (!hasBoundUserFacingText(result)) return null;
+	const resolved = resolveBoundReceipts(
+		result,
+		normalizeEffectReceipts(allTurnReceipts),
+	);
+	return resolved && Object.freeze(resolved);
 }
 
 // A replayed no-op is proof the desired state is durably committed: the
@@ -659,17 +654,19 @@ export function resolveAppliedUserFacingEffectReceipts(
 	result: EffectBearingResult,
 	allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
 ): readonly CommittedEffectReceipt[] | null {
-	const resolved = resolveUserFacingEffectReceipts(result, allTurnReceipts);
+	if (!hasBoundUserFacingText(result)) return null;
+	const normalized = normalizeEffectReceipts(allTurnReceipts);
+	const resolved = resolveBoundReceipts(result, normalized);
 	if (!resolved) return null;
-	const availableIds = new Set(
-		activeCommittedEffectReceipts(allTurnReceipts).map(
-			(receipt) => receipt.receiptId,
-		),
-	);
-	if (resolved.some((receipt) => !availableIds.has(receipt.receiptId))) {
-		return null;
+	const reverted = revertedEffectReceiptIds(normalized);
+	const committed: CommittedEffectReceipt[] = [];
+	for (const receipt of resolved) {
+		if (!isCommittedEffectReceipt(receipt) || reverted.has(receipt.receiptId)) {
+			return null;
+		}
+		committed.push(receipt);
 	}
-	return Object.freeze(resolved as CommittedEffectReceipt[]);
+	return Object.freeze(committed);
 }
 
 /** True only when exact verified text is bound to active committed receipts. */

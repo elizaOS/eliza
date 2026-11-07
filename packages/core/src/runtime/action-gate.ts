@@ -14,7 +14,7 @@ import {
 	getTrustedDeliveryAudience,
 } from "../security/trusted-delivery-audience";
 import type { Action } from "../types/components";
-import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
+import type { AgentContext, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
@@ -227,8 +227,10 @@ export function actionGateRejection(
 				};
 	}
 
-	const contextRoleGate = action.contextGate?.roleGate ?? action.roleGate;
-	if (!satisfiesRoleGate(ctx.userRoles, contextRoleGate)) {
+	// The context gate's own roleGate replaces the top-level one for this check;
+	// the top-level roleGate still applies afterwards (checked last).
+	const contextGateRole = action.contextGate?.roleGate;
+	if (!satisfiesRoleGate(ctx.userRoles, contextGateRole ?? action.roleGate)) {
 		return {
 			kind: "role",
 			reason: `Action ${action.name} is not allowed for the current role`,
@@ -243,9 +245,7 @@ export function actionGateRejection(
 		};
 	}
 
-	if (
-		!satisfiesRoleGate(ctx.userRoles, action.roleGate as RoleGate | undefined)
-	) {
+	if (contextGateRole && !satisfiesRoleGate(ctx.userRoles, action.roleGate)) {
 		return {
 			kind: "role",
 			reason: `Action ${action.name} is not allowed for the current role`,
@@ -268,7 +268,7 @@ export function canActionRun(
 	action: GateableAction,
 	ctx: ActionGateContext,
 ): boolean {
-	return actionGateFailure(action, ctx) === undefined;
+	return actionGateRejection(action, ctx) === undefined;
 }
 
 /**
@@ -280,17 +280,14 @@ export async function resolveActionCallerRoles(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<RoleGateRole[]> {
-	if (
-		typeof message.entityId === "string" &&
-		message.entityId === runtime.agentId
-	) {
+	if (message.entityId === runtime.agentId) {
 		return ["OWNER"];
 	}
 
 	try {
 		const result = await checkSenderRole(runtime, message);
 		if (result?.role) {
-			return [result.role as RoleGateRole];
+			return [result.role];
 		}
 	} catch (error) {
 		// error-policy:J2 A role-store failure cannot be converted into a role
@@ -360,12 +357,6 @@ export async function resolveActionGateFailure(
 }
 
 /**
- * Gate that keeps `private` actions off any non-autonomous turn — exposing and
- * executing them only when the triggering message is one of the autonomy
- * service's own self-prompts.
- */
-
-/**
  * "Private" actions (see {@link Action.private}) may only run inside the
  * agent's own autonomous loop, never in direct response to a user request.
  *
@@ -376,23 +367,9 @@ export async function resolveActionGateFailure(
  * withheld.
  *
  * The marker is trustworthy here because inbound messages are stripped of a
- * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
- * removes it from every
- * message whose source is not the autonomy service, so a connector forwarding
- * client-supplied metadata cannot use it to unlock private actions.
- */
-function isAutonomousTurn(message: Memory | undefined): boolean {
-	const metadata = message?.content?.metadata;
-	if (typeof metadata !== "object" || metadata === null) {
-		return false;
-	}
-	return (metadata as { isAutonomous?: unknown }).isAutonomous === true;
-}
-
-/**
- * Returns true when `action` is allowed to be exposed/executed on the current
- * turn given its private-mode flag. Private actions are allowed only on
- * autonomous turns; non-private actions are always allowed.
+ * forged `isAutonomous` upstream: `hardenIncomingUserMessage` removes it from
+ * every message whose source is not the autonomy service, so a connector
+ * forwarding client-supplied metadata cannot use it to unlock private actions.
  */
 function privateActionAllowedOnTurn(
 	action: Pick<Action, "private">,
@@ -401,5 +378,10 @@ function privateActionAllowedOnTurn(
 	if (!action.private) {
 		return true;
 	}
-	return isAutonomousTurn(message);
+	const metadata = message?.content?.metadata;
+	return (
+		typeof metadata === "object" &&
+		metadata !== null &&
+		(metadata as { isAutonomous?: unknown }).isAutonomous === true
+	);
 }

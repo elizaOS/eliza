@@ -13,8 +13,6 @@ import { TurnAbortedError } from "./turn-aborted-error";
  * abort further processing. Sibling parsed values remain read-only.
  */
 
-// Result shape
-
 /**
  * Sender-role classification piped through Stage 1. Re-exported here as a
  * narrow type so this module does not depend on agent/role internals.
@@ -64,8 +62,6 @@ export interface ResponseHandlerResult {
 	[extra: string]: unknown;
 }
 
-// Context passed to evaluators
-
 /**
  * Context passed to `shouldRun` and `handle`. Read-only view of the runtime
  * state plus the parsed result so far. Handlers mutate via the returned
@@ -94,8 +90,6 @@ export interface ResponseHandlerFieldHandleContext<TValue>
 	readonly parsed: Readonly<ResponseHandlerResult>;
 }
 
-// Per-field result emitted by handlers
-
 /**
  * What a handler can affect:
  *
@@ -123,8 +117,6 @@ export interface ResponseHandlerFieldEffect {
 	};
 	debug?: string[];
 }
-
-// The evaluator contract
 
 /**
  * A ResponseHandlerFieldEvaluator owns one top-level property of the
@@ -243,9 +235,6 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 		| Promise<ResponseHandlerFieldEffect | undefined>;
 }
 
-// Run trace — recorded per turn for observability and InterruptBench
-// assertions.
-
 export interface ResponseHandlerFieldTrace {
 	fieldName: string;
 	active: boolean;
@@ -272,24 +261,17 @@ export interface ResponseHandlerFieldRunResult {
 }
 
 /**
- * ResponseHandlerFieldRegistry — owns the registered set of field evaluators
- * and provides the composition primitives (schema, prompt, dispatch) used by
- * the Stage-1 response handler.
- *
- * See./response-handler-field-evaluator.ts for the contract.
- */
-
-// Registration
-
-/**
- * Stable registration. The registry de-dupes by `name` (first-wins, matches
- * runtime.registerAction). Throws when a registration would violate strict-
- * schema rules.
+ * Owns the registered set of field evaluators and provides the composition
+ * primitives (schema, prompt, dispatch) used by the Stage-1 response handler.
+ * The registry de-dupes by `name` (first-wins, matches runtime.registerAction)
+ * and throws when a registration would violate strict-schema rules.
  */
 export class ResponseHandlerFieldRegistry {
 	private evaluators = new Map<string, ResponseHandlerFieldEvaluator>();
 	private cachedSchema: JSONSchema | null = null;
 	private cachedSchemaSignature: string | null = null;
+	private cachedSorted: ReadonlyArray<ResponseHandlerFieldEvaluator> | null =
+		null;
 
 	register(evaluator: ResponseHandlerFieldEvaluator): void {
 		if (!evaluator.name || typeof evaluator.name !== "string") {
@@ -311,17 +293,19 @@ export class ResponseHandlerFieldRegistry {
 			return; // First registration wins, matches Action de-dup behavior
 		}
 		this.evaluators.set(evaluator.name, evaluator);
-		this.cachedSchema = null;
-		this.cachedSchemaSignature = null;
+		this.invalidateCaches();
 	}
 
 	unregister(name: string): boolean {
 		const removed = this.evaluators.delete(name);
-		if (removed) {
-			this.cachedSchema = null;
-			this.cachedSchemaSignature = null;
-		}
+		if (removed) this.invalidateCaches();
 		return removed;
+	}
+
+	private invalidateCaches(): void {
+		this.cachedSchema = null;
+		this.cachedSchemaSignature = null;
+		this.cachedSorted = null;
 	}
 
 	list(
@@ -333,8 +317,6 @@ export class ResponseHandlerFieldRegistry {
 	size(): number {
 		return this.evaluators.size;
 	}
-
-	// Schema composition — byte-stable across turns
 
 	/**
 	 * Build the composed HANDLE_RESPONSE schema. Cached across calls; the
@@ -391,8 +373,6 @@ export class ResponseHandlerFieldRegistry {
 		return this.cachedSchemaSignature ?? "";
 	}
 
-	// Prompt composition — slices per active evaluator
-
 	/**
 	 * Compose the per-turn system-prompt slices. Each active evaluator
 	 * contributes its complete `description` verbatim. The composition is one big
@@ -424,8 +404,7 @@ export class ResponseHandlerFieldRegistry {
 				: true;
 			if (should) {
 				active.push(evaluator.name);
-				const slice = evaluator.description;
-				sections.push(`### ${evaluator.name}\n${slice}`);
+				sections.push(`### ${evaluator.name}\n${evaluator.description}`);
 				const facts = await evaluator.getContext?.(ctx);
 				if (facts?.trim()) context.push(`### ${evaluator.name}\n${facts}`);
 			} else {
@@ -443,8 +422,6 @@ export class ResponseHandlerFieldRegistry {
 			skippedFieldNames: skipped,
 		};
 	}
-
-	// Dispatch — parse + handle each field
 
 	/**
 	 * Parse the LLM's structured output, then dispatch each field's slice to
@@ -475,10 +452,8 @@ export class ResponseHandlerFieldRegistry {
 		// Build a fully-defaulted result first. Any field the LLM omitted
 		// (shouldn't happen with strict mode, but defensively) gets its empty
 		// value. Plugin fields fall through with `null` if no parse was set.
-		const parsed = buildDefaultedResult(
-			this.sortedEvaluators(),
-			args.rawParsed,
-		);
+		const evaluators = this.sortedEvaluators();
+		const parsed = buildDefaultedResult(evaluators, args.rawParsed);
 
 		const baseCtx: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
@@ -493,7 +468,7 @@ export class ResponseHandlerFieldRegistry {
 			trace: ResponseHandlerFieldTrace;
 			value: unknown;
 		}> = [];
-		for (const evaluator of this.sortedEvaluators()) {
+		for (const evaluator of evaluators) {
 			const trace: ResponseHandlerFieldTrace = {
 				fieldName: evaluator.name,
 				active: true,
@@ -508,7 +483,6 @@ export class ResponseHandlerFieldRegistry {
 					: true;
 				if (!should) {
 					trace.active = false;
-					trace.parseOutcome = "skipped";
 					traces.push(trace);
 					continue;
 				}
@@ -650,21 +624,30 @@ export class ResponseHandlerFieldRegistry {
 		};
 	}
 
-	// Internal helpers
-
 	private sortedEvaluators(
 		options: ResponseHandlerFieldSelectionOptions = {},
 	): ReadonlyArray<ResponseHandlerFieldEvaluator> {
 		const includeNames = normalizeFieldSelection(options);
+		if (!includeNames) {
+			this.cachedSorted ??= [...this.evaluators.values()].sort(
+				compareEvaluators,
+			);
+			return this.cachedSorted;
+		}
 		return [...this.evaluators.values()]
-			.filter((evaluator) => !includeNames || includeNames.has(evaluator.name))
-			.sort((a, b) => {
-				const pa = a.priority ?? 100;
-				const pb = b.priority ?? 100;
-				if (pa !== pb) return pa - pb;
-				return a.name.localeCompare(b.name);
-			});
+			.filter((evaluator) => includeNames.has(evaluator.name))
+			.sort(compareEvaluators);
 	}
+}
+
+function compareEvaluators(
+	a: ResponseHandlerFieldEvaluator,
+	b: ResponseHandlerFieldEvaluator,
+): number {
+	const pa = a.priority ?? 100;
+	const pb = b.priority ?? 100;
+	if (pa !== pb) return pa - pb;
+	return a.name.localeCompare(b.name);
 }
 
 export interface ResponseHandlerFieldSelectionOptions {
@@ -676,8 +659,7 @@ function normalizeFieldSelection(
 ): ReadonlySet<string> | null {
 	const include = options.includeFieldNames;
 	if (!include) return null;
-	const names = include instanceof Set ? [...include] : [...include];
-	return new Set(names.map((name) => String(name)).filter(Boolean));
+	return new Set([...include].filter(Boolean));
 }
 
 function fieldSelectionKey(
