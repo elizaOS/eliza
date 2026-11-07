@@ -245,8 +245,12 @@ not be spoken before `done`. The cursor confirms earlier events, which are then
 released. On `done`, `message` is the exact buffered reply. Every check of the
 buffered route also applies; a failed pull answers as the buffered route would,
 and the renderer then discards the pulled text. `POST .../stream/cancel` with
-`{streamId}` ends the turn; call it after `done` too, to free the slot. The
-`messageStream` option sets `maxStreams` per account (default 2),
+`{streamId}` closes the relay and frees its slot. A paired-session upstream can
+continue its accepted turn after that transport closes. For Stop, first call
+`POST /turns/{roomId}/abort` using the `roomId` returned by
+`POST /conversations`, then release the stream. An unsuccessful abort leaves
+the turn's outcome unconfirmed. After `done`, use `stream/cancel` alone to free
+the slot. The `messageStream` option sets `maxStreams` per account (default 2),
 `maxBufferedChars` of unconfirmed text (more fails, never truncates), `idleMs`
 until an unpulled stream is cancelled, `holdMs` (default 2 s) and `coalesceMs`
 (default 150 ms): new text waits that long for more, unless it ends a phrase.
