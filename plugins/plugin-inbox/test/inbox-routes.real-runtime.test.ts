@@ -491,13 +491,13 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
   });
   it("approving an already-sent reply again sends nothing; a new reply body still sends", async () => {
     // Connector boundary only: a discord adapter that records each dispatch
-    // and can be told to fail one send.
+    // and can be told to fail the next send before or after the dispatch.
     const sends: string[] = [];
-    let failNextSend = false;
+    let failNextSend: "before" | "after" | "no-receipt" | null = null;
     let drafts = 0;
     getDefaultTriageService().register({
       source: "discord",
-      isAvailable: () => true,
+      isAvailable: () => failNextSend !== "before",
       capabilities: () => ({
         list: false,
         search: false,
@@ -511,11 +511,17 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
         preview: draft.body,
       }),
       sendDraft: async (_rt: unknown, draftId: string) => {
-        if (failNextSend) {
-          failNextSend = false;
-          throw new Error("discord send failed");
-        }
+        // Anything past this line happened after the connector accepted
+        // the message: the recipient has it even when the call rejects.
         sends.push(draftId);
+        if (failNextSend === "after") {
+          failNextSend = null;
+          throw new Error("discord acknowledgement timed out");
+        }
+        if (failNextSend === "no-receipt") {
+          failNextSend = null;
+          return { externalId: "" };
+        }
         return { externalId: `x-${draftId}` };
       },
     } as never);
@@ -538,9 +544,10 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
         body: {},
       });
 
-    // A failed send leaves the entry sendable.
-    failNextSend = true;
+    // A send refused before dispatch leaves the entry sendable.
+    failNextSend = "before";
     expect((await approve()).status).toBe(500);
+    failNextSend = null;
     expect((await repo.getById(entry.id))?.autoReplied).toBe(false);
 
     expect((await approve()).status).toBe(200);
@@ -559,5 +566,57 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     );
     expect(followUp.status).toBe(200);
     expect(sends).toEqual(["approve-twice-2", "approve-twice-3"]);
+
+    // A send that fails after the connector accepted the message, or that
+    // comes back without a provider receipt, is not sent again: the
+    // recipient already has it. A different body still sends.
+    for (const [index, mode] of (["after", "no-receipt"] as const).entries()) {
+      const unconfirmed = await repo.storeTriage({
+        source: "discord",
+        sourceMessageId: `approve-unconfirmed-${mode}`,
+        sourceRoomId: "approve-twice-room",
+        channelName: "dm",
+        channelType: "dm",
+        classification: "needs_reply",
+        urgency: "medium",
+        confidence: 0.9,
+        snippet: "did it go through?",
+        senderName: "Alice",
+        suggestedResponse: "Yes, it went through.",
+      });
+      const approveUnconfirmed = () =>
+        call("POST", `/api/lifeops/inbox/${unconfirmed.id}/approve`, {
+          params: { id: unconfirmed.id },
+          body: {},
+        });
+      const sentBefore = sends.length;
+      failNextSend = mode;
+      const first = await approveUnconfirmed();
+      expect(first.status).toBe(500);
+      expect(sends).toHaveLength(sentBefore + 1);
+
+      // The owner retries after the error: the recipient must not get the
+      // reply a second time.
+      const retry = await approveUnconfirmed();
+      expect(sends).toHaveLength(sentBefore + 1);
+      expect(retry.status).toBe(409);
+      expect(retry.body).toMatchObject({ ok: false, alreadySent: true });
+      expect((await repo.getById(unconfirmed.id))?.autoReplied).toBe(true);
+      expect(first.body).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("delivery is not confirmed"),
+      });
+
+      const different = await call(
+        "POST",
+        `/api/lifeops/inbox/${unconfirmed.id}/reply`,
+        {
+          params: { id: unconfirmed.id },
+          body: { body: `Sorry for the noise (${index}).`, confirmed: true },
+        },
+      );
+      expect(different.status).toBe(200);
+      expect(sends).toHaveLength(sentBefore + 2);
+    }
   });
 });
