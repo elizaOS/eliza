@@ -9,11 +9,13 @@
  */
 import type {
   AccessContext,
+  DocumentRangeReadResult,
   IAgentRuntime,
   Memory,
   Service,
   UUID,
 } from "@elizaos/core";
+import type { DocumentReadOptions } from "./complete-read.ts";
 
 import type {
   DocumentAddedByRole,
@@ -107,6 +109,11 @@ export interface DocumentsServiceLike {
     documentId: UUID,
     accessContext: AccessContext,
   ): Promise<Memory[]>;
+  readDocumentRangeWithAccessContext?(
+    documentId: UUID,
+    options: DocumentReadOptions,
+    accessContext: AccessContext,
+  ): Promise<DocumentRangeReadResult | null>;
   getMemories(params: {
     tableName: string;
     roomId?: UUID;

@@ -9,6 +9,7 @@ import {
   type AccessContext,
   type AgentRuntime,
   actorFromAccessContext,
+  type DocumentRangeReadResult,
   ElizaError,
   type IFileStorageService,
   type Memory,
@@ -46,6 +47,8 @@ import {
   getDocumentEditability,
   getDocumentProvenance,
   getDocumentTitleFromMetadata,
+  hasSegmentedDocumentSource,
+  isDocumentTextBacked,
   presentDocument,
 } from "./document-presenter.js";
 import {
@@ -1176,6 +1179,53 @@ export async function handleDocumentsRoutes(
       error(res, "Canonical document authorization is unavailable", 503);
       return true;
     }
+    let documentForPresentation = document;
+    if (
+      typeof document.content.text !== "string" &&
+      hasSegmentedDocumentSource(document) &&
+      isDocumentTextBacked(document)
+    ) {
+      if (!documentsService.readDocumentRangeWithAccessContext) {
+        error(res, "Canonical document source reader is unavailable", 503);
+        return true;
+      }
+      let rangeRead: DocumentRangeReadResult | null;
+      try {
+        rangeRead = await documentsService.readDocumentRangeWithAccessContext(
+          documentId,
+          { unit: "byte", offset: 0 },
+          accessContext,
+        );
+      } catch (cause) {
+        // error-policy:J1 Translate typed segmented-source read failures at the HTTP boundary.
+        if (!(cause instanceof ElizaError)) throw cause;
+        const status =
+          cause.code === "DOCUMENT_READ_UNAVAILABLE"
+            ? 404
+            : cause.code === "DOCUMENT_READ_REVISION_CHANGED"
+              ? 409
+              : cause.code === "DOCUMENT_RANGE_READ_UNSUPPORTED"
+                ? 503
+                : 500;
+        error(res, cause.message, status);
+        return true;
+      }
+      if (!rangeRead) {
+        error(res, "Document not found", 404);
+        return true;
+      }
+      documentForPresentation = {
+        ...document,
+        content: {
+          ...document.content,
+          text: rangeRead.text,
+        },
+        metadata: {
+          ...(asRecord(document.metadata) ?? {}),
+          textBacked: true,
+        } as Memory["metadata"],
+      };
+    }
     const fragmentCount = (
       await documentsService.listDocumentFragmentsWithAccessContext(
         documentId,
@@ -1183,7 +1233,7 @@ export async function handleDocumentsRoutes(
       )
     ).length;
     json(res, {
-      document: presentDocument(document, fragmentCount, {
+      document: presentDocument(documentForPresentation, fragmentCount, {
         includeContent: true,
       }),
     });

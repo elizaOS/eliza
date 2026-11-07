@@ -305,6 +305,15 @@ export function getDocumentVisibilityScope(
     : "global";
 }
 
+export function hasSegmentedDocumentSource(memory: Memory): boolean {
+  const source = asRecord(asRecord(memory.content)?.documentSource);
+  return (
+    source?.kind === "document-source" &&
+    source?.storage === "segments" &&
+    (asNumber(source?.byteLength) ?? 0) > 0
+  );
+}
+
 export function isDocumentTextBacked(memory: Memory): boolean {
   const metadata = asRecord(memory.metadata);
   if (typeof metadata?.textBacked === "boolean") {
@@ -318,7 +327,10 @@ export function isDocumentTextBacked(memory: Memory): boolean {
   }
 
   const contentText = memory.content.text;
-  if (typeof contentText !== "string" || contentText.trim().length === 0) {
+  if (typeof contentText !== "string") {
+    return hasSegmentedDocumentSource(memory);
+  }
+  if (contentText.trim().length === 0) {
     return false;
   }
 
