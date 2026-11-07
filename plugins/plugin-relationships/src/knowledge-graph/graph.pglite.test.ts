@@ -239,6 +239,119 @@ it("keeps the latest contact time and platform when an older interaction arrives
   });
 });
 
+it("keeps the newest contact's platform with its time when contacts merge on PostgreSQL", async () => {
+  const entities = graph.getEntityStore();
+  const contact = (entityId: string) =>
+    entities.upsert({
+      entityId,
+      type: "person",
+      preferredName: "Merged contact",
+      identities: [],
+      tags: [],
+      visibility: "owner_only",
+      state: {},
+    });
+  const inbound = (platform: string, occurredAt: string) => ({
+    platform,
+    direction: "inbound" as const,
+    summary: "synthetic",
+    occurredAt,
+  });
+  const older = "2026-07-01T09:00:00.000Z";
+  const newer = "2026-11-02T18:00:00.000Z";
+
+  // The source holds the newer interaction.
+  await contact("merge-target-old");
+  await contact("merge-source-new");
+  await entities.recordInteraction("merge-target-old", inbound("gmail", older));
+  await entities.recordInteraction(
+    "merge-source-new",
+    inbound("telegram", newer),
+  );
+  await entities.merge("merge-target-old", ["merge-source-new"]);
+  expect((await entities.get("merge-target-old"))?.state).toMatchObject({
+    lastObservedAt: newer,
+    lastInboundAt: newer,
+    lastInteractionPlatform: "telegram",
+  });
+
+  // The target holds the newer interaction.
+  await contact("merge-target-new");
+  await contact("merge-source-old");
+  await entities.recordInteraction(
+    "merge-target-new",
+    inbound("telegram", newer),
+  );
+  await entities.recordInteraction("merge-source-old", inbound("gmail", older));
+  await entities.merge("merge-target-new", ["merge-source-old"]);
+  expect((await entities.get("merge-target-new"))?.state).toMatchObject({
+    lastObservedAt: newer,
+    lastInteractionPlatform: "telegram",
+  });
+});
+
+it("keeps the newest known platform when a newer merged contact has none", async () => {
+  const entities = graph.getEntityStore();
+  const contact = (entityId: string, state: Record<string, string>) =>
+    entities.upsert({
+      entityId,
+      type: "person",
+      preferredName: "Merged contact",
+      identities: [],
+      tags: [],
+      visibility: "owner_only",
+      state,
+    });
+
+  // An observation without a platform is newer than the last interaction.
+  await contact("merge3-target", {
+    lastObservedAt: "2026-07-01T09:00:00.000Z",
+    lastInteractionPlatform: "gmail",
+  });
+  await contact("merge3-telegram", {
+    lastObservedAt: "2026-10-01T09:00:00.000Z",
+    lastInteractionPlatform: "telegram",
+  });
+  await contact("merge3-observed", {
+    lastObservedAt: "2026-11-02T18:00:00.000Z",
+  });
+  await entities.merge("merge3-target", ["merge3-telegram", "merge3-observed"]);
+  expect((await entities.get("merge3-target"))?.state).toMatchObject({
+    lastObservedAt: "2026-11-02T18:00:00.000Z",
+    lastInteractionPlatform: "telegram",
+  });
+});
+
+it("lets a valid merged time replace an unparseable stored time", async () => {
+  const entities = graph.getEntityStore();
+  const contact = (entityId: string, state: Record<string, string>) =>
+    entities.upsert({
+      entityId,
+      type: "person",
+      preferredName: "Merged contact",
+      identities: [],
+      tags: [],
+      visibility: "owner_only",
+      state,
+    });
+  await contact("merge3-bad-target", {
+    lastObservedAt: "not-an-iso-date",
+    lastInboundAt: "not-an-iso-date",
+    lastInteractionPlatform: "gmail",
+  });
+  await contact("merge3-valid-source", {
+    lastObservedAt: "2026-11-02T18:00:00.000Z",
+    lastInboundAt: "2026-11-02T18:00:00.000Z",
+    lastInteractionPlatform: "telegram",
+  });
+  await entities.merge("merge3-bad-target", ["merge3-valid-source"]);
+  expect((await entities.get("merge3-bad-target"))?.state).toMatchObject({
+    lastObservedAt: "2026-11-02T18:00:00.000Z",
+    lastInboundAt: "2026-11-02T18:00:00.000Z",
+    lastInteractionPlatform: "telegram",
+  });
+});
+
 it("filters entities by an exact tag, not a LIKE pattern", async () => {
   const entities = graph.getEntityStore();
   const input = {
