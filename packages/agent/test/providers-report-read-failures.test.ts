@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AgentRuntime,
+  attestDeliveryAudienceFromCanonicalRoom,
   type Memory,
   stringToUuid,
   type UUID,
@@ -190,6 +191,111 @@ it("reports a failed store read and tells the model the context is missing", asy
       "AutomationTerminalBridgeProvider.get",
       "RolodexProvider.get",
     ]);
+  } finally {
+    await runtime.stop().catch(() => undefined);
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("keeps the owner's tasks and automation instructions out of shared and non-owner turns", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agent-tasks-audience-"));
+  const owner = randomUUID() as UUID;
+  const guest = randomUUID() as UUID;
+  const runtime = new AgentRuntime({
+    agentId: randomUUID() as UUID,
+    character: {
+      name: "Probe",
+      bio: [],
+      settings: { ELIZA_ADMIN_ENTITY_ID: owner },
+    },
+    logLevel: "fatal",
+  });
+  const adapter = SQLiteDatabaseAdapter.create(
+    join(directory, "agent.sqlite"),
+    runtime.agentId,
+  );
+  runtime.registerDatabaseAdapter(adapter);
+  await runtime.initialize({ skipMigrations: true });
+  const provider = createOngoingTasksProvider();
+  runtime.registerProvider(provider);
+  try {
+    const worldId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "w",
+      metadata: {
+        // The guest holds no explicit role: an ordinary member.
+        roles: { [owner]: "OWNER" },
+        ownership: { ownerId: owner },
+      },
+    });
+    await runtime.createEntities([
+      { id: owner, agentId: runtime.agentId, names: ["Owner"] },
+      { id: guest, agentId: runtime.agentId, names: ["Guest"] },
+    ]);
+    const dm = randomUUID() as UUID;
+    const guestDm = randomUUID() as UUID;
+    const group = randomUUID() as UUID;
+    for (const [id, type] of [
+      [dm, "DM"],
+      [guestDm, "DM"],
+      [group, "GROUP"],
+    ] as const) {
+      await runtime.createRoom({
+        id,
+        agentId: runtime.agentId,
+        worldId,
+        source: "discord",
+        type: type as never,
+        name: type,
+      });
+    }
+    await runtime.addParticipant(owner, group);
+    await runtime.addParticipant(guest, group);
+    await runtime.addParticipant(owner, dm);
+    await runtime.addParticipant(guest, guestDm);
+    for (const roomId of [dm, guestDm, group])
+      await runtime.addParticipant(runtime.agentId, roomId);
+    await runtime.createTask({
+      name: "Doctor follow-up",
+      roomId: dm,
+      worldId,
+      tags: ["repeat", "trigger"],
+      metadata: {
+        trigger: {
+          triggerId: "trg-private",
+          enabled: true,
+          triggerType: "interval",
+          intervalMs: 3_600_000,
+          displayName: "Doctor follow-up",
+          instructions: "Call Dr. X about the biopsy result",
+        },
+      },
+    } as never);
+    const from = (entityId: UUID, roomId: UUID): Memory =>
+      ({
+        id: randomUUID() as UUID,
+        entityId,
+        agentId: runtime.agentId,
+        roomId,
+        content: { text: "what automations are running?", source: "discord" },
+        createdAt: Date.now(),
+      }) as Memory;
+    // Attested like a connector turn: from canonical room state.
+    const compose = async (entityId: UUID, roomId: UUID) => {
+      const message = from(entityId, roomId);
+      await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+      return (await runtime.composeState(message, [provider.name], true, true))
+        .text;
+    };
+
+    // The owner's private DM still sees them.
+    expect(await compose(owner, dm)).toContain("biopsy");
+    // Another member never does, even in their own DM with the agent.
+    expect(await compose(guest, guestDm)).not.toContain("biopsy");
+    // Nor a turn whose audience includes someone besides the owner.
+    expect(await compose(owner, group)).not.toContain("biopsy");
   } finally {
     await runtime.stop().catch(() => undefined);
     await rm(directory, { recursive: true, force: true });

@@ -13,6 +13,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
+import { OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core";
 import { readTaskCompleted, toWorkbenchTask } from "@elizaos/host/protocol";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
@@ -55,7 +56,11 @@ export function createOngoingTasksProvider(): Provider {
     contextGate: { anyOf: ["tasks", "automation"] },
     cacheStable: false,
     cacheScope: "turn",
-    roleGate: { minRole: "USER" },
+    // Workbench tasks and automation instructions are the owner's: the same
+    // surface the TRIGGER action's list operation gates. Never compose them
+    // into a turn whose delivery audience includes anyone else.
+    roleGate: { minRole: "OWNER" },
+    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 
     async get(
       runtime: IAgentRuntime,
