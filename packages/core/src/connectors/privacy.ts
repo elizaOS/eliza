@@ -1,5 +1,5 @@
 /**
- * Privacy-level vocabulary and comparison helpers for connector accounts — the
+ * Privacy-level vocabulary for connector accounts — the
  * ordered `owner_only < team_visible < semi_public < public` scale that gates
  * whether an account's data may surface in providers, summaries, and public
  * posts. Stored on `account.metadata.privacy`; consumed alongside the
@@ -33,26 +33,6 @@ export const PRIVACY_LEVELS: PrivacyLevel[] = [
 ];
 
 export const DEFAULT_PRIVACY_LEVEL: PrivacyLevel = "owner_only";
-
-const PRIVACY_LEVEL_RANK: Record<PrivacyLevel, number> = {
-	owner_only: 0,
-	team_visible: 1,
-	semi_public: 2,
-	public: 3,
-};
-
-/**
- * Returns true when `actual` is at least as permissive as `required`.
- *
- * Levels are ordered owner_only=0, team_visible=1, semi_public=2, public=3
- * and the comparison is `actual >= required`.
- */
-export function privacyAtLeast(
-	actual: PrivacyLevel,
-	required: PrivacyLevel,
-): boolean {
-	return PRIVACY_LEVEL_RANK[actual] >= PRIVACY_LEVEL_RANK[required];
-}
 
 /**
  * Type guard for arbitrary string values, returning true only for canonical

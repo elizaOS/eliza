@@ -4,7 +4,7 @@ function describeRelativeTime(
 	timestamp: number,
 	style: "compact" | "verbose",
 ): string {
-	if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+	if (!Number.isFinite(timestamp)) {
 		return "just now";
 	}
 

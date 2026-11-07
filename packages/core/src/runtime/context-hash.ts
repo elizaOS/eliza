@@ -6,7 +6,7 @@
  */
 import { createHash } from "../utils/crypto-compat";
 
-export type StableJsonValue =
+type StableJsonValue =
 	| string
 	| number
 	| boolean
@@ -14,7 +14,7 @@ export type StableJsonValue =
 	| readonly StableJsonValue[]
 	| { readonly [key: string]: StableJsonValue | undefined };
 
-export interface HashablePromptSegment {
+interface HashablePromptSegment {
 	content: string;
 	stable?: boolean;
 	id?: string;
@@ -22,14 +22,7 @@ export interface HashablePromptSegment {
 	metadata?: StableJsonValue;
 }
 
-export interface SegmentHash {
-	index: number;
-	hash: string;
-	contentHash: string;
-	stable: boolean;
-}
-
-export interface PrefixHash {
+interface PrefixHash {
 	index: number;
 	hash: string;
 	segmentHash: string;
@@ -72,34 +65,27 @@ function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
 		return serialized;
 	}
 
-	if (type === "object") {
-		if (seen.has(value as object)) {
-			throw new TypeError("Cannot stable stringify circular structures");
-		}
-		seen.add(value as object);
-		const entries = Object.entries(value as Record<string, unknown>)
-			.filter(([, entryValue]) => {
-				const entryType = typeof entryValue;
-				return (
-					entryType !== "undefined" &&
-					entryType !== "function" &&
-					entryType !== "symbol"
-				);
-			})
-			// Code-unit order, not localeCompare: ICU collation depends on the
-			// host locale, so the same object would hash differently under
-			// LC_ALL=sv_SE than under LC_ALL=C — defeating the cross-run
-			// identity this module exists to provide.
-			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-			.map(
-				([key, entryValue]) =>
-					`${JSON.stringify(key)}:${stableStringifyValue(entryValue, seen)}`,
-			);
-		seen.delete(value as object);
-		return `{${entries.join(",")}}`;
+	if (seen.has(value as object)) {
+		throw new TypeError("Cannot stable stringify circular structures");
 	}
-
-	return JSON.stringify(value);
+	seen.add(value as object);
+	const record = value as Record<string, unknown>;
+	// Code-unit order, not localeCompare: ICU collation depends on the host
+	// locale, so the same object would hash differently under LC_ALL=sv_SE than
+	// under LC_ALL=C — defeating the cross-run identity this module exists to
+	// provide.
+	const keys = Object.keys(record).sort((left, right) =>
+		left < right ? -1 : left > right ? 1 : 0,
+	);
+	let serialized = "";
+	for (const key of keys) {
+		const entry = stableStringifyValue(record[key], seen);
+		// Undefined, function and symbol members are dropped, as in JSON.
+		if (entry === "") continue;
+		serialized += `${serialized ? "," : ""}${JSON.stringify(key)}:${entry}`;
+	}
+	seen.delete(value as object);
+	return `{${serialized}}`;
 }
 
 export function stableJsonStringify(value: unknown): string {
@@ -111,43 +97,22 @@ export function hashStableJson(value: unknown): string {
 	return hashString(stableJsonStringify(value));
 }
 
-export function hashPromptSegment(segment: HashablePromptSegment): SegmentHash {
-	return {
-		index: -1,
-		hash: hashStableJson({
+export function computePrefixHashes(
+	segments: readonly HashablePromptSegment[],
+): PrefixHash[] {
+	let prefixHash = hashStableJson({ contextPrefix: [] });
+	return segments.map((segment, index) => {
+		const segmentHash = hashStableJson({
 			content: segment.content,
 			id: segment.id,
 			label: segment.label,
 			metadata: segment.metadata,
 			stable: Boolean(segment.stable),
-		}),
-		contentHash: hashString(segment.content),
-		stable: Boolean(segment.stable),
-	};
-}
-
-export function hashPromptSegments(
-	segments: readonly HashablePromptSegment[],
-): SegmentHash[] {
-	return segments.map((segment, index) => ({
-		...hashPromptSegment(segment),
-		index,
-	}));
-}
-
-export function computePrefixHashes(
-	segments: readonly HashablePromptSegment[],
-): PrefixHash[] {
-	let prefixHash = hashStableJson({ contextPrefix: [] });
-	return hashPromptSegments(segments).map((segmentHash, index) => {
+		});
 		prefixHash = hashStableJson({
 			previousPrefixHash: prefixHash,
-			segmentHash: segmentHash.hash,
+			segmentHash,
 		});
-		return {
-			index,
-			hash: prefixHash,
-			segmentHash: segmentHash.hash,
-		};
+		return { index, hash: prefixHash, segmentHash };
 	});
 }

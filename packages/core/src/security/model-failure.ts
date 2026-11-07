@@ -19,7 +19,7 @@ import {
 } from "../utils/model-errors.ts";
 import {
 	findNextCloseTag,
-	REASONING_TAG_NAMES,
+	REASONING_TAG_ALTERNATION,
 	stripPairedTagBlocks,
 	stripUnclosedTagSuffix,
 } from "../utils/reasoning-tags.ts";
@@ -251,6 +251,16 @@ export function isAuthError(error: unknown): boolean {
 	);
 }
 
+/** Socket-level error codes that mean the provider was unreachable, not wrong. */
+const TRANSIENT_NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+]);
+
 /**
  * Detect failures where another model provider is worth trying before giving up.
  * This intentionally includes {@link isRateLimitError} so subscription-credit
@@ -297,14 +307,7 @@ export function isModelProviderFallbackError(
 	const localFailure = asErrorObject(unwrapped);
 	if (
 		typeof localFailure?.code === "string" &&
-		[
-			"ECONNREFUSED",
-			"ECONNRESET",
-			"ENETUNREACH",
-			"EHOSTUNREACH",
-			"EAI_AGAIN",
-			"ETIMEDOUT",
-		].includes(localFailure.code)
+		TRANSIENT_NETWORK_ERROR_CODES.has(localFailure.code)
 	)
 		return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
@@ -475,8 +478,6 @@ export function buildFailureReplyPrompt(
 		"Reply:",
 	].join("\n");
 }
-
-const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
 
 /**
  * Strips a leading close-only residue prefix — model output can open with a
