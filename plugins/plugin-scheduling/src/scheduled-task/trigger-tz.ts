@@ -16,10 +16,13 @@ export const OWNER_LOCAL_TZ = "owner_local";
  * new trigger; core evaluates one stored before that check in UTC.
  */
 export function resolveTriggerTz(
-  tz: string,
+  tz: string | undefined,
   ownerFacts: OwnerFactsView | undefined,
 ): string {
-  if (tz === OWNER_LOCAL_TZ) return ownerFacts?.timezone ?? "UTC";
+  // A cron stored without a zone ("every day at 8am") means the owner's
+  // local time, not UTC.
+  if (tz === undefined || tz === OWNER_LOCAL_TZ)
+    return ownerFacts?.timezone ?? "UTC";
   return tz;
 }
 

@@ -813,7 +813,11 @@ describe("SCHEDULED_TASK action", () => {
     expect(retimed?.success).toBe(true);
     expect(
       (retimed?.data as { task?: ScheduledTask } | undefined)?.task?.trigger,
-    ).toMatchObject({ kind: "cron", expression: "0 8 * * *" });
+    ).toMatchObject({
+      kind: "cron",
+      expression: "0 8 * * *",
+      tz: "owner_local",
+    });
 
     const badTrigger = await call({
       action: "update",

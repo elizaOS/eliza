@@ -73,6 +73,7 @@ import type {
 } from "../lifeops/scheduled-task/index.js";
 import {
   ChannelKeyError,
+  OWNER_LOCAL_TZ,
   SCHEDULED_TASK_EDIT_READONLY_KEYS,
   ScheduledTaskValidationError,
 } from "../lifeops/scheduled-task/index.js";
@@ -809,13 +810,15 @@ function normalizeTriggerInput(
             'Cron triggers need { kind: "cron", expression: "<5-field cron>", tz?: "<IANA timezone>" } — e.g. { kind: "cron", expression: "0 8,21 * * *", tz: "America/New_York" }.',
         };
       }
-      const tz = pickString(record, ["tz", "timezone", "timeZone"]);
+      // A cron with no zone runs in the owner's local time, not UTC.
+      const tz =
+        pickString(record, ["tz", "timezone", "timeZone"]) ?? OWNER_LOCAL_TZ;
       return {
         ok: true,
         trigger: {
           kind: "cron",
           expression,
-          ...(tz ? { tz } : {}),
+          tz,
         } as ScheduledTaskTrigger,
       };
     }

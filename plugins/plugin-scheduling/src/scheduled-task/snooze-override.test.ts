@@ -1,6 +1,7 @@
 import { type IAgentRuntime, ServiceType, type UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
+import { computeNextFireAt } from "./next-fire-at.js";
 import { ScheduledTaskRunnerService } from "./runner-service.js";
 import { runStandaloneSchedulingTick } from "./standalone-tick.js";
 import type { ScheduledTaskTrigger } from "./types.js";
@@ -145,5 +146,28 @@ describe("editing the trigger of a snoozed task", () => {
       await h.tickAt(iso);
     }
     expect(h.firedAt).toEqual(["2026-10-11T15:00:00.000Z"]);
+  });
+});
+
+describe("cron trigger stored without a zone", () => {
+  it("fires at the owner's local time, not UTC", async () => {
+    // "Every day at 8am" from a New York owner, stored as the action used to
+    // store it: no tz.
+    const next = await computeNextFireAt(
+      {
+        trigger: {
+          kind: "cron",
+          expression: "0 8 * * *",
+        } as ScheduledTaskTrigger,
+        state: { status: "scheduled", followupCount: 0 },
+        metadata: {},
+      } as never,
+      {
+        now: new Date("2026-11-09T00:00:00.000Z"),
+        ownerFacts: { timezone: "America/New_York" },
+      },
+    );
+    // 08:00 EST, not 08:00 UTC (03:00 in New York).
+    expect(next).toBe("2026-11-09T13:00:00.000Z");
   });
 });
