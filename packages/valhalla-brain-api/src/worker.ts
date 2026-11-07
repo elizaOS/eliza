@@ -40,6 +40,7 @@ export interface BrainEnv {
   KV?: { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> };
   HELIUS_API_KEY?: string;
   BIRDEYE_API_KEY?: string;
+  GEMINI_API_KEY?: string; // Integrated Gemini Chat Secret
   /** Comma or newline list of "sha256:plan". Raw keys are ignored. */
   BRAIN_KEYS?: string;
   LEMONSQUEEZY_SIGNING_SECRET?: string;
@@ -183,6 +184,53 @@ export async function handleRequest(
 ): Promise<Response> {
   if (request.method === "OPTIONS") return json({ ok: true });
   const url = new URL(request.url);
+
+  // 1. Direct Public Gemini Chat Route (Resolves V-CHAT-CONFIG)
+  if (request.method === "POST" && (url.pathname === "/v1/chat" || url.pathname === "/api/chat")) {
+    try {
+      const body = (await request.json().catch(() => ({}))) as {
+        prompt?: string;
+        messages?: { role: string; content: string }[];
+      };
+
+      const userPrompt = body.prompt || (body.messages && body.messages.length > 0 ? body.messages[body.messages.length - 1].content : "");
+      if (!userPrompt) {
+        return json({ error: "Prompt or message is required" }, 400);
+      }
+
+      const geminiKey = (env.GEMINI_API_KEY ?? "").trim() || (process.env.GEMINI_API_KEY ?? "").trim();
+      if (!geminiKey) {
+        // Fallback response with helpful market context if key is being configured
+        return json({
+          reply: `[VALHALLA ASSISTANT]: Regarding "${userPrompt}" — Market volume on Solana DEXs is active with high focus on liquid pairs. To enable full generative analysis and custom indicators, set your GEMINI_API_KEY in the environment or via Merlin Setup on /os/.`,
+          provider: "valhalla-fallback",
+          status: "CONFIG_PENDING"
+        }, 200);
+      }
+
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+      const geminiRes = await fetch(geminiEndpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: userPrompt }] }],
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
+        })
+      });
+
+      if (!geminiRes.ok) {
+        const errText = await geminiRes.text();
+        return json({ error: `Gemini API Error: ${errText}` }, geminiRes.status);
+      }
+
+      const geminiData = (await geminiRes.json()) as any;
+      const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+      return json({ reply, provider: "gemini-2.0-flash", ok: true });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
   const signIn = await handleSiwsVerify(request);
   if (signIn) return signIn;
   const trades = await handleProTrades(request, store, env);
