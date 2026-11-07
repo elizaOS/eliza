@@ -369,15 +369,20 @@ const graphemeSegmenter = new GraphemeSegmenter("en", {
  * Back the break off to the previous grapheme boundary so the cluster stays
  * whole in one chunk. When a single cluster alone is longer than the index
  * (an oversized cluster at the very start of the remaining text), no earlier
- * boundary exists, so the surrogate-safe boundary below is the fallback: it
- * is the only case with no clean boundary.
+ * boundary exists, so advance past the whole cluster: a cap smaller than one
+ * cluster cannot represent that cluster, so emitting it whole — exceeding the
+ * cap — is the contract, chosen over corrupting output or stalling the loop.
  */
 function avoidGraphemeSplit(text: string, index: number): number {
 	if (index <= 0 || index >= text.length) {
 		return index;
 	}
 	let boundary = 0;
+	let firstClusterLength = 0;
 	for (const { segment } of graphemeSegmenter.segment(text)) {
+		if (firstClusterLength === 0) {
+			firstClusterLength = segment.length;
+		}
 		if (boundary + segment.length > index) {
 			break;
 		}
@@ -389,30 +394,7 @@ function avoidGraphemeSplit(text: string, index: number): number {
 	if (boundary > 0) {
 		return boundary;
 	}
-	return avoidSurrogateSplit(text, index);
-}
-
-/**
- * A hard break at an arbitrary UTF-16 index can land between the two halves of
- * a surrogate pair (any non-BMP character: emoji, symbols, rare CJK), leaving a
- * lone surrogate that renders as U+FFFD in the emitted chunk. Back the break
- * off by one code unit so the pair stays whole. When backing off would yield an
- * empty chunk (index 1, i.e. `limit === 1` on an astral-first run), advance
- * past the pair instead: a one-unit cap cannot represent any astral scalar, so
- * emitting one whole pair — exceeding the cap by a single code unit — is the
- * contract, chosen over corrupting output or stalling the loop. Pre-existing
- * lone surrogates in the input are passed through untouched.
- */
-function avoidSurrogateSplit(text: string, index: number): number {
-	if (index <= 0 || index >= text.length) {
-		return index;
-	}
-	const high = text.charCodeAt(index - 1);
-	const low = text.charCodeAt(index);
-	if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
-		return index > 1 ? index - 1 : index + 1;
-	}
-	return index;
+	return firstClusterLength;
 }
 
 /**
