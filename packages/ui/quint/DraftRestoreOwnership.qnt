@@ -111,7 +111,7 @@ module DraftRestoreOwnership {
         marked: s.storageFault == "before",
         unsettled: s.active and accepted and s.storageFault == "before",
         conflict: s.active and (not(accepted) or s.storageFault != "ok"),
-        result: if (not(s.active) or accepted) "fulfilled" else "rejected"
+        result: if ((not(s.active) or accepted) and s.storageFault == "ok") "fulfilled" else "rejected"
       } else {
         ...completed, consuming: false,
         saved: if (accepted) "" else if (s.active and s.editor != "") s.editor else "saved",

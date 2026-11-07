@@ -1099,7 +1099,7 @@ describe("DurableDraftController asynchronous restore ownership", () => {
     await f.c.hold("Unsent message");
     f.set("");
     f.store.save = async () => { throw new Error("Storage unavailable"); };
-    await f.c.release();
+    await expect(f.c.release()).rejects.toThrow(/Review local draft storage/);
     expect(f.get()).toBe("Unsent message");
     expect(f.saved()?.sending).toBe(true);
     expect(f.c.state.unsettled).toBe(true);

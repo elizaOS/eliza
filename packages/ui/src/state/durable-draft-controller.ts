@@ -817,6 +817,15 @@ export class DurableDraftController<Recovery = unknown> {
       reject = fail;
     });
     held.releasing = completion;
+    const confirmSaved = async (binding: Binding<Recovery>, text: string) => {
+      await binding.queue;
+      if (
+        binding.failed ||
+        (binding.record?.text ?? "") !== text ||
+        isSendingDurableDraft(binding.record)
+      )
+        throw new Error(this.messages.storageUnavailable);
+    };
     const begin = (): void | Promise<void> => {
       if (this.held !== held) return;
       const binding =
@@ -829,7 +838,7 @@ export class DurableDraftController<Recovery = unknown> {
         this.held = undefined;
         this.unmark(held.binding);
         this.publish({ message: this.messages.notSentKept });
-        return held.binding.queue;
+        return confirmSaved(held.binding, held.text);
       }
       const now = this.text();
       const restored = now.trim() ? `${held.text}\n${now}` : held.text;
@@ -843,7 +852,7 @@ export class DurableDraftController<Recovery = unknown> {
           this.held = undefined;
           this.unmark(held.binding);
           this.publish({ message: this.messages.notSentKept });
-          return held.binding.queue;
+          return confirmSaved(held.binding, held.text);
         }
         if (applied && this.text() === restored) {
           this.held = undefined;
@@ -852,7 +861,7 @@ export class DurableDraftController<Recovery = unknown> {
             else this.edit(restored);
           }
           this.publish({ message: this.messages.notSent });
-          return binding.queue;
+          return confirmSaved(binding, restored);
         }
         // A skipped or failed host update cannot discard the unsent message.
         // Keep both copies durably and require review instead of rewriting the
