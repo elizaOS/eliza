@@ -275,6 +275,32 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(replies.join("\n")).toContain(data.commitHash.slice(0, 8));
   });
 
+  it("pushes a commit the sub-agent already made on a clean tree (skipPR)", async () => {
+    const { bare, remoteUrl, work } = makeRepoPair();
+    const runtime = makeRuntime(tempDir("submit-base-"));
+    const service = await startService(runtime);
+    registerWorkspace(service, work, remoteUrl);
+
+    // Sub-agents commit their own work and leave the push to Eliza.
+    writeFileSync(join(work, "agent.ts"), "export const z = 3;\n");
+    git(work, "add", "agent.ts");
+    git(work, "commit", "-q", "-m", "feat: sub-agent change");
+    const agentCommit = git(work, "rev-parse", "HEAD");
+
+    const { result, replies } = await runSubmit(runtime, {
+      workspaceId: "ws-submit-1",
+      skipPR: true,
+    });
+
+    expect(result.success, JSON.stringify({ result, replies })).toBe(true);
+    expect(result.text).not.toBe("No changes to commit in this workspace.");
+    const data = result.data as { commitHash: string };
+    // No extra commit is invented: the sub-agent's commit is the one pushed.
+    expect(data.commitHash).toBe(agentCommit);
+    expect(git(work, "rev-parse", "HEAD")).toBe(agentCommit);
+    expect(git(bare, "rev-parse", "refs/heads/feat/submit")).toBe(agentCommit);
+  });
+
   it("surfaces a push rejection as a structured failure, never a phantom success", async () => {
     const { bare, remoteUrl, work } = makeRepoPair();
     const runtime = makeRuntime(tempDir("submit-base-"));

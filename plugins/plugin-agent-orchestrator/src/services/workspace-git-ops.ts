@@ -38,6 +38,15 @@ export async function getStatus(
     encoding: "utf-8",
   }).trim();
 
+  // Commits a sub-agent made but nobody pushed: reachable from HEAD and from
+  // no remote-tracking ref (works before the branch has an upstream).
+  const unpushedCommits = Number(
+    execFileSync("git", ["rev-list", "--count", "HEAD", "--not", "--remotes"], {
+      cwd: workspacePath,
+      encoding: "utf-8",
+    }).trim(),
+  );
+
   const lines = statusOutput.split("\n").filter(Boolean);
   const modified: string[] = [];
   const staged: string[] = [];
@@ -64,10 +73,20 @@ export async function getStatus(
   return {
     branch: branchOutput,
     clean: lines.length === 0,
+    unpushedCommits,
     modified,
     staged,
     untracked,
   };
+}
+
+/** The commit HEAD points at in a workspace directory. */
+export async function headCommit(workspacePath: string): Promise<string> {
+  const { execFileSync } = await import("node:child_process");
+  return execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: workspacePath,
+    encoding: "utf-8",
+  }).trim();
 }
 
 /**
