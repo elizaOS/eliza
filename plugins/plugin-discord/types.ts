@@ -247,6 +247,8 @@ export interface IDiscordService {
 		message: Message,
 		options?: BuildMemoryFromMessageOptions,
 	) => Promise<Memory | null>;
+	/** Channel allowlist check (env CHANNEL_IDS plus dynamic additions). */
+	isChannelAllowed?: (channelId: string) => boolean;
 	/** Synchronous inbound admission check used by every turn-start path. */
 	admitInboundMessage?: (messageId: string, channelId: string) => boolean;
 	getVoiceTargets?: (query?: {

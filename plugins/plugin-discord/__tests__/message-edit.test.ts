@@ -31,7 +31,11 @@ const asStored = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 function makeHarness(
 	replies: Array<string | null>,
-	{ replyBeforeHold = false, respondBeforeHold = false } = {},
+	{
+		replyBeforeHold = false,
+		respondBeforeHold = false,
+		allowedChannelIds = undefined as string[] | undefined,
+	} = {},
 ) {
 	const rows = new Map<string, { memory: Memory; table: string }>();
 	const turns: Content[] = [];
@@ -156,6 +160,9 @@ function makeHarness(
 		resolveDiscordEntityId: (userId: string) =>
 			createUniqueUuid(runtime as never, userId),
 		isOwnerAliasedDiscordUser: () => false,
+		// The account facade's allowlist check: unset allows every channel.
+		isChannelAllowed: (channelId: string) =>
+			!allowedChannelIds || allowedChannelIds.includes(channelId),
 		getChannelType: async () => ChannelType.DM,
 		discordSettings: {
 			autoReply: true,
@@ -242,6 +249,35 @@ function edit(message: DiscordMessage, content: string, at: number) {
 }
 
 const EDITED_AT = Date.UTC(2026, 9, 20, 20, 57, 23);
+const GUILD_CHANNEL_ID = "777000000000000010";
+
+/** A guild text channel the bot may post in; its replies land in `sends`. */
+function guildChannel(
+	sends: string[],
+	overrides: Record<string, unknown> = {},
+) {
+	return {
+		...channel,
+		id: GUILD_CHANNEL_ID,
+		type: DiscordChannelType.GuildText,
+		guild: {
+			id: "111000000000000000",
+			members: { cache: { get: () => ({}) } },
+		},
+		client: { user: { id: BOT_USER_ID } },
+		permissionsFor: () => ({ has: () => true }),
+		send: async (options: { content?: string }) => {
+			sends.push(options.content ?? "");
+			return {
+				id: `99100000000000000${sends.length}`,
+				content: options.content ?? "",
+				createdTimestamp: Date.now(),
+				attachments: { size: 0 },
+			};
+		},
+		...overrides,
+	};
+}
 
 describe("Discord message edits", () => {
 	it("updates the stored memory and runs one more turn when the agent had replied", async () => {
@@ -268,6 +304,62 @@ describe("Discord message edits", () => {
 		await h.manager.handleMessageEdit(message);
 		expect(h.turns).toHaveLength(2);
 		expect(h.sends).toHaveLength(2);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("does not answer an edit in a channel the allowlist no longer includes", async () => {
+		const allowedChannelIds = [GUILD_CHANNEL_ID];
+		const h = makeHarness(["first reply", "should not be sent"], {
+			allowedChannelIds,
+		});
+		const message = makeMessage("hihi", {
+			channel: guildChannel(h.sends),
+			channelId: GUILD_CHANNEL_ID,
+		});
+		await h.manager.handleMessage(message);
+		expect(h.sends).toEqual(["first reply"]);
+
+		// The owner narrows CHANNEL_IDS; then the user edits the old message.
+		allowedChannelIds.splice(0, 1, "777000000000000001");
+		await h.manager.handleMessageEdit(edit(message, "hi", EDITED_AT));
+
+		expect(h.turns).toHaveLength(1);
+		expect(h.sends).toEqual(["first reply"]);
+		expect(h.errors).toEqual([]);
+	});
+
+	it("still answers an edit in an allowed channel or a thread of one", async () => {
+		const threadId = "777000000000000002";
+		const h = makeHarness(["first", "second", "third", "fourth"], {
+			allowedChannelIds: [GUILD_CHANNEL_ID],
+		});
+		const inChannel = makeMessage("hihi", {
+			channel: guildChannel(h.sends),
+			channelId: GUILD_CHANNEL_ID,
+		});
+		await h.manager.handleMessage(inChannel);
+		await h.manager.handleMessageEdit(edit(inChannel, "hi", EDITED_AT));
+
+		const inThread = makeMessage("yoyo", {
+			id: "666000000000000003",
+			channel: guildChannel(h.sends, {
+				id: threadId,
+				type: DiscordChannelType.PublicThread,
+				parentId: GUILD_CHANNEL_ID,
+				isThread: () => true,
+			}),
+			channelId: threadId,
+		});
+		await h.manager.handleMessage(inThread);
+		await h.manager.handleMessageEdit(edit(inThread, "yo", EDITED_AT));
+
+		expect(h.turns.map((turn) => turn.currentMessageText)).toEqual([
+			"hihi",
+			"hi",
+			"yoyo",
+			"yo",
+		]);
+		expect(h.sends).toEqual(["first", "second", "third", "fourth"]);
 		expect(h.errors).toEqual([]);
 	});
 

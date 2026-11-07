@@ -1522,6 +1522,24 @@ export class MessageManager {
 		if (message.author.bot) {
 			return;
 		}
+		// The channel allowlist the messageCreate listener applies: DMs are
+		// exempt and a thread follows its parent. Without it, narrowing
+		// CHANNEL_IDS still lets an edit re-run a turn in a removed channel.
+		const service = this.discordService;
+		const channel = message.channel;
+		if (
+			service.isChannelAllowed &&
+			channel.type !== DiscordChannelType.DM &&
+			channel.type !== DiscordChannelType.GroupDM &&
+			!service.isChannelAllowed(channel.id) &&
+			!(
+				channel.isThread() &&
+				channel.parentId &&
+				service.isChannelAllowed(channel.parentId)
+			)
+		) {
+			return;
+		}
 		const editedAt = discordEditedAt(message);
 		if (
 			this.discordService.admitInboundMessage?.(
