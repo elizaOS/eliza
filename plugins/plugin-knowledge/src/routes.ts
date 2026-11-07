@@ -1336,6 +1336,18 @@ export async function handleDocumentsRoutes(
         );
       }
     }
+    // Check the upload scope before any model work. An upload the actor may
+    // not write must fail here, not after an image description model call.
+    const uploadFilters = chatAudience
+      ? {
+          scope: "global" as const,
+          scopedToEntityId: undefined,
+          error: undefined,
+        }
+      : filtersFromUploadBody(document, actor);
+    if (uploadFilters.error) {
+      throw new Error(uploadFilters.error);
+    }
     let content = document.content;
     // Capture the bytes exactly as uploaded before any content rewrite (e.g.
     // image → description text), so the linked original-bytes file is faithful.
@@ -1406,16 +1418,6 @@ export async function handleDocumentsRoutes(
     const textBacked =
       isTextBackedContentType(contentType) ||
       hasTextBackedFilename(document.filename);
-    const uploadFilters = chatAudience
-      ? {
-          scope: "global" as const,
-          scopedToEntityId: undefined,
-          error: undefined,
-        }
-      : filtersFromUploadBody(document, actor);
-    if (uploadFilters.error) {
-      throw new Error(uploadFilters.error);
-    }
     const scopedToEntityId = uploadFilters.scopedToEntityId;
     const { roomId, worldId } = location;
     const entityId =
@@ -1577,7 +1579,7 @@ export async function handleDocumentsRoutes(
       error(
         res,
         `Failed to add document: ${message}`,
-        /Only the owner|Users can only/i.test(message)
+        /Only the owner|Users can only|Guests cannot/i.test(message)
           ? 403
           : /Image uploads require|Image description model/i.test(message)
             ? 400
