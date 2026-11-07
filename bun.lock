@@ -1035,6 +1035,7 @@
       "name": "@elizaos/operator",
       "version": "0.0.1",
       "dependencies": {
+        "@elizaos/cloud-services-common": "workspace:*",
         "ioredis": "^5.10.1",
         "kubernetes-fluent-client": "^3.11.11",
         "pepr": "^2.0.0",

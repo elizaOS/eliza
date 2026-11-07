@@ -1,0 +1,27 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/oauth-intents.ts",
+    "packages/cloud/shared/src/lib/services/approval-requests.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "Intended contract only; implementation conformance is pending private review.",
+      "Two concurrent callers, two tenants, bounded clock, and atomic decision/receipt commit.",
+      "Proof validity abstracts cryptographic checks; no cryptographic or implementation proof is claimed."
+    ],
+    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+  },
+  "cases": [
+    {
+      "name": "authorization-intents",
+      "main": "authorization_intents",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

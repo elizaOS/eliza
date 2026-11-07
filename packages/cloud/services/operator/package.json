@@ -45,7 +45,8 @@
   "dependencies": {
     "ioredis": "^5.10.1",
     "kubernetes-fluent-client": "^3.11.11",
-    "pepr": "^2.0.0"
+    "pepr": "^2.0.0",
+    "@elizaos/cloud-services-common": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.3",
