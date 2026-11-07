@@ -183,12 +183,7 @@
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", ready, { once: true });
 })(
-  function pageCommand(
-    command,
-    snapshotId,
-    validateOnly = false,
-    host = undefined,
-  ) {
+  function pageCommand(command, snapshotId, validateOnly = false) {
     const policy = command.taskPolicy;
     const denied = () => ({
       error: {
@@ -197,21 +192,6 @@
           "This action requires the person or a new authorized task observation.",
       },
     });
-    if (
-      host !== undefined &&
-      (!host ||
-        typeof host.scope !== "object" ||
-        host.scope === null ||
-        (host.ownedHosts !== undefined &&
-          !(host.ownedHosts instanceof WeakSet)))
-    )
-      return {
-        error: {
-          kind: "INVALID_REQUEST",
-          message: "A host scope must be an object the host keeps.",
-        },
-      };
-    const store = host === undefined ? globalThis : host.scope;
     if (
       policy &&
       (window !== window.top ||
@@ -241,20 +221,20 @@
       policy.commitGrant.selector === policy.expectedSelector &&
       Date.now() < policy.commitGrant.expiresAt &&
       !(
-        store[grantKey]?.document === document &&
-        store[grantKey].used.has(policy.commitGrant.grantId)
+        globalThis[grantKey]?.document === document &&
+        globalThis[grantKey].used.has(policy.commitGrant.grantId)
       )
         ? policy.commitGrant
         : null;
     if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
       return denied();
-    let monitor = store[monitorKey];
+    let monitor = globalThis[monitorKey];
     if (!monitor || monitor.document !== document) {
       monitor = {
         document,
         domRevision: 0,
         inputRevision: 0,
-        ownedHosts: host?.ownedHosts ?? new WeakSet(),
+        ownedHosts: new WeakSet(),
         editedFields: new WeakSet(),
       };
       monitor.recordMutations = (records) => {
@@ -300,7 +280,7 @@
         },
         true,
       );
-      store[monitorKey] = monitor;
+      globalThis[monitorKey] = monitor;
     }
     // Drain queued mutations synchronously as an effect may arrive before the
     // MutationObserver microtask. Never store or return form values in this monitor.
@@ -960,13 +940,10 @@
         const AGREES =
           /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm)\b/i;
         // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
-        // and is not in the way until the site shows a challenge. Its frame's
-        // address says size=invisible.
+        // and is not in the way until the site shows a challenge.
         const captchas = [...document.querySelectorAll(CAPTCHA)].filter(
           (node) =>
-            !node.matches(
-              'button,input,a,[data-size=invisible],iframe[src*="size=invisible" i]',
-            ) &&
+            !node.matches("button,input,a,[data-size=invisible]") &&
             !node.closest(".grecaptcha-badge") &&
             !owned(node) &&
             visible(node),
@@ -1127,7 +1104,7 @@
           (left, right) => rank[left.covers] - rank[right.covers],
         );
       })();
-      store[key] = {
+      globalThis[key] = {
         snapshotId,
         nodes,
         document,
@@ -1138,9 +1115,9 @@
       };
       // A submit or page change that a task fill or click set off in this
       // document, under this binding. The watch below stopped it.
-      const violation = store[watchKey]?.violation;
+      const violation = globalThis[watchKey]?.violation;
       // The commit the person said yes to, which the watch let through once.
-      const consented = store[watchKey]?.consented;
+      const consented = globalThis[watchKey]?.consented;
       // A one-shot comparison from the actual fill, kept in this isolated realm.
       // Neither the expected text nor the field value leaves the page.
       const inputReadback = monitor.inputReadback;
@@ -1177,9 +1154,9 @@
           ? { effectViolation: violation.kind }
           : {}),
         // For the browser host's network watch only; it never reaches a host.
-        ...(policy && store[watchKey]?.scope === policy.guidanceScope
+        ...(policy && globalThis[watchKey]?.scope === policy.guidanceScope
           ? {
-              watchHandoff: handoffOf(store[watchKey]),
+              watchHandoff: handoffOf(globalThis[watchKey]),
             }
           : {}),
         ...(policy && consented && consented.scope === policy.guidanceScope
@@ -1213,7 +1190,7 @@
         elements,
       };
     }
-    const state = store[key];
+    const state = globalThis[key];
     if (
       !state ||
       state.snapshotId !== command.snapshotId ||
@@ -1426,7 +1403,7 @@
     }
     if (validateOnly) return { validated: true };
     if (policy?.actionId) {
-      const feedback = store.__elizaPageGuidanceV1;
+      const feedback = globalThis.__elizaPageGuidanceV1;
       if (
         !feedback?.actionReady?.(
           policy.actionId,
@@ -1438,16 +1415,16 @@
         return denied();
       feedback.markActed();
     }
-    delete store[key];
+    delete globalThis[key];
     if (destination) {
-      store[watchKey]?.stop();
+      globalThis[watchKey]?.stop();
       location.assign(destination.href);
       return { dispatched: true, requiresReadback: true };
     }
     if (grant) {
-      if (store[grantKey]?.document !== document)
-        store[grantKey] = { document, used: new Set() };
-      store[grantKey].used.add(grant.grantId);
+      if (globalThis[grantKey]?.document !== document)
+        globalThis[grantKey] = { document, used: new Set() };
+      globalThis[grantKey].used.add(grant.grantId);
     }
     let previousWatchHandoff;
     if (
@@ -1492,7 +1469,7 @@
       // which is reported), a second submit, another form, another origin, any
       // other own-site request and every other page change, same-document
       // address changes included, are still stopped or recorded as above.
-      const prior = store[watchKey];
+      const prior = globalThis[watchKey];
       prior?.stop();
       // What the earlier watch saw of her up to now. Her press since the last
       // snapshot reaches the network watch's earlier effect only this way.
@@ -1506,8 +1483,8 @@
       const controller = new AbortController();
       const watch = {
         violation:
-          store[watchKey]?.violation?.scope === policy.guidanceScope
-            ? (store[watchKey]?.violation ?? null)
+          globalThis[watchKey]?.violation?.scope === policy.guidanceScope
+            ? (globalThis[watchKey]?.violation ?? null)
             : null,
         // A receipt belongs to this dispatch, not an earlier approved action.
         consented: null,
@@ -2064,7 +2041,7 @@
         () => controller.abort(),
         Math.min(policy.expiresAt - Date.now(), 2 ** 31 - 1),
       );
-      store[watchKey] = watch;
+      globalThis[watchKey] = watch;
     }
     if (command.subaction === "click") {
       // Only text changed during this exact synchronous activation is eligible.
@@ -2144,7 +2121,7 @@
         behavior: "instant",
       });
     }
-    const effectWatch = policy ? store[watchKey] : undefined;
+    const effectWatch = policy ? globalThis[watchKey] : undefined;
     return {
       dispatched: true,
       completed: false,
