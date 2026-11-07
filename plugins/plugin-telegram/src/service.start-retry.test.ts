@@ -392,6 +392,54 @@ describe("TelegramService startup wiring", () => {
     RETRY_TEST_TIMEOUT_MS,
   );
 
+  it(
+    "keeps polling after an update whose entity sync threw",
+    async () => {
+      const api = await startStubBotApi();
+      const handleMessage = vi
+        .spyOn(MessageManager.prototype, "handleMessage")
+        .mockResolvedValue(undefined);
+      const reported: string[] = [];
+      const runtime = makeRuntime(api.apiRoot);
+      let failOnce = true;
+      Object.assign(runtime, {
+        reportError: (scope: string) => {
+          reported.push(scope);
+        },
+        ensureWorldExists: async () => {
+          if (failOnce) {
+            failOnce = false;
+            throw new Error("database busy");
+          }
+        },
+      });
+
+      const service = await TelegramService.start(runtime);
+      services.push(service);
+      await api.waitForActiveGetUpdates(1);
+      const update = (id: number, text: string) => ({
+        update_id: id,
+        message: {
+          message_id: id,
+          date: id,
+          text,
+          chat: { id: 42, type: "private", first_name: "Test" },
+          from: { id: 7, is_bot: false, first_name: "Sender" },
+        },
+      });
+      await api.deliverUpdate(update(1, "arrives while the database is busy"));
+      await api.waitForGetUpdatesCalls(2);
+      await api.deliverUpdate(update(2, "arrives once it recovered"));
+      await api.waitForGetUpdatesCalls(3);
+
+      expect({
+        handled: handleMessage.mock.calls.length,
+        reported,
+      }).toEqual({ handled: 1, reported: ["telegram:update"] });
+    },
+    RETRY_TEST_TIMEOUT_MS,
+  );
+
   it("completes all four one-shot wiring steps inside initializeBot", async () => {
     const api = await startStubBotApi();
     const service = new TelegramService(makeRuntime(api.apiRoot));

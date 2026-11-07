@@ -471,6 +471,19 @@ export class TelegramService extends Service {
     const bot = new Telegraf(account.botToken, {
       telegram: { apiRoot: account.apiRoot },
     });
+    // error-policy:J7 Telegraf's default error handler rethrows, which stops
+    // the long-poll loop and confirms the batch offset, so one update whose
+    // middleware threw (an entity sync against a busy database) was dropped
+    // for good and the poller relaunched with backoff until it gave up.
+    // Report the update's failure and keep polling.
+    bot.catch((error, ctx) => {
+      this.runtime.reportError("telegram:update", error, {
+        accountId: account.accountId,
+        agentId: this.runtime.agentId,
+        chatId: ctx.chat?.id,
+        updateId: ctx.update?.update_id,
+      });
+    });
     const messageManager = new MessageManager(
       bot,
       this.runtime,
