@@ -97,9 +97,10 @@ export async function admitMapsRequest(
   const request = await withOrganizationPolicyReadAdmission(
     caller.organization_id,
     undefined,
-    async (policy) => {
+    async (policy, transaction) => {
       const summary = await readOrganizationEntitlementSummary(
         caller.organization_id,
+        { transaction },
       );
       if (
         !policy.subscriptionFunded ||
