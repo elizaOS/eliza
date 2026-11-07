@@ -162,6 +162,8 @@ interface Binding<Recovery> {
   ready: boolean;
   failed: boolean;
   queue: Promise<void>;
+  writeSerial: number;
+  savedWriteSerial: number;
 }
 
 /** A send in flight: the saved copy keeps its text until dispatch is known. */
@@ -198,6 +200,9 @@ export class DurableDraftController<Recovery = unknown> {
   private active?: Binding<Recovery>;
   private opening?: Promise<void>;
   private held?: Held<Recovery>;
+  /** Pending or unconfirmed writes remain owned after the editor changes binding. */
+  private readonly pendingWrites = new Set<Binding<Recovery>>();
+  private writeSerial = 0;
   private readonly messages: DurableDraftMessages;
   state: DurableDraftState = initialState();
 
@@ -272,6 +277,8 @@ export class DurableDraftController<Recovery = unknown> {
       ready: false,
       failed: false,
       queue: Promise.resolve(),
+      writeSerial: 0,
+      savedWriteSerial: 0,
     };
     this.active = binding;
     this.publish({
@@ -423,7 +430,10 @@ export class DurableDraftController<Recovery = unknown> {
     text: () => string | undefined,
     clearStatus = false,
   ): void {
-    binding.queue = binding.queue.then(async () => {
+    this.pendingWrites.add(binding);
+    const serial = ++this.writeSerial;
+    binding.writeSerial = serial;
+    const task = binding.queue.then(async () => {
       if (binding.failed) return;
       const value = text();
       if (value === undefined) return;
@@ -432,6 +442,7 @@ export class DurableDraftController<Recovery = unknown> {
           binding.record,
           value,
         );
+        binding.savedWriteSerial = serial;
         if (clearStatus && this.active === binding && binding.last === value)
           this.publish({ message: "" });
       } catch (error) {
@@ -445,6 +456,21 @@ export class DurableDraftController<Recovery = unknown> {
         if (this.active === binding) await this.reviewConflict(binding);
       }
     });
+    binding.queue = task;
+    void task.then(
+      () => {
+        if (
+          binding.queue === task &&
+          !binding.failed &&
+          (binding.record?.text ?? "") === binding.last &&
+          !isSendingDurableDraft(binding.record)
+        )
+          this.pendingWrites.delete(binding);
+      },
+      () => {
+        /* An unconfirmed write must still prevent the handoff. */
+      },
+    );
   }
 
   /**
@@ -557,33 +583,59 @@ export class DurableDraftController<Recovery = unknown> {
     if (!binding) {
       if (!current() || this.text() || this.held)
         throw new Error(this.messages.storageUnavailable);
-      return;
-    }
-    if (!binding.ready || binding.failed || this.state.consuming || this.held)
+    } else if (
+      !binding.ready ||
+      binding.failed ||
+      this.state.consuming ||
+      this.held
+    )
       throw new Error(this.messages.storageUnavailable);
     const text = this.text();
-    this.edit(text);
-    const queue = binding.queue;
-    await queue;
+    if (binding) this.edit(text);
+    const writes = new Set(this.pendingWrites);
+    if (binding) writes.add(binding);
+    const snapshots = [...writes].map((owner) => ({
+      owner,
+      queue: owner.queue,
+      text: owner.last,
+    }));
+    await Promise.all(snapshots.map((row) => row.queue));
+    // A later edit saved by a reopened editor can resolve its own earlier
+    // failed write. A read-only reopen cannot discard that unconfirmed text.
+    const superseded = (owner: Binding<Recovery>) =>
+      binding !== undefined &&
+      owner !== binding &&
+      owner.key === binding.key &&
+      binding.savedWriteSerial > owner.writeSerial;
     const unchanged = () =>
       current() &&
       this.active === binding &&
-      binding.ready &&
-      !binding.failed &&
       !this.state.consuming &&
       !this.held &&
       this.text() === text &&
-      binding.queue === queue;
+      [...this.pendingWrites].every((owner) => writes.has(owner)) &&
+      snapshots.every(
+        (row) =>
+          row.owner.ready &&
+          (!row.owner.failed || superseded(row.owner)) &&
+          row.owner.queue === row.queue &&
+          row.owner.last === row.text,
+      );
     if (!unchanged()) throw new Error(this.messages.changed);
-    const saved = await this.requireStore(binding).read();
-    if (!unchanged()) throw new Error(this.messages.changed);
-    if (
-      (saved?.text ?? "") !== text ||
-      isSendingDurableDraft(saved) ||
-      (saved?.revision ?? null) !== (binding.record?.revision ?? null) ||
-      (saved?.binding ?? null) !== (binding.record?.binding ?? null)
-    )
-      throw new Error(this.messages.storageUnavailable);
+    for (const row of snapshots) {
+      if (superseded(row.owner)) continue;
+      const saved = await this.requireStore(row.owner).read();
+      if (!unchanged()) throw new Error(this.messages.changed);
+      if (
+        (saved?.text ?? "") !== row.text ||
+        isSendingDurableDraft(saved) ||
+        (saved?.revision ?? null) !== (row.owner.record?.revision ?? null) ||
+        (saved?.binding ?? null) !== (row.owner.record?.binding ?? null)
+      )
+        throw new Error(this.messages.storageUnavailable);
+    }
+    for (const row of snapshots)
+      if (superseded(row.owner)) this.pendingWrites.delete(row.owner);
   }
 
   /**

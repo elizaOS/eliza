@@ -1334,6 +1334,81 @@ describe("browserDocumentDraftSlot", () => {
 
 
 describe("DurableDraftController passive update handoff", () => {
+  it("waits for a retired binding's pending write before a lifecycle handoff", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.store.save = async (...args) => { await gate; return save(...args); };
+    f.set("draft from the previous view");
+    f.c.retire();
+    f.set("");
+    let settled = false;
+    const pending = f.c.flush().then(() => { settled = true; });
+    await tick();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(f.saved()?.text).toBe("draft from the previous view");
+    expect(f.saved()?.sending).toBeUndefined();
+    expect(f.get()).toBe("");
+  });
+
+  it("drains the previous binding and preserves the new binding's own text", async () => {
+    const previous = fixture(), active = fixture();
+    let text = "";
+    const controller = new DurableDraftController(
+      async key => key === "previous" ? previous.store : active.store,
+      () => text,
+      value => { text = value; },
+      () => {},
+    );
+    await controller.open("previous");
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const save = previous.store.save;
+    previous.store.save = async (...args) => { await gate; return save(...args); };
+    text = "previous view draft"; controller.edit(text); controller.retire();
+    text = ""; await controller.open("active");
+    text = "current view draft"; controller.edit(text);
+    let settled = false;
+    const pending = controller.flush().then(() => { settled = true; });
+    await tick(); expect(settled).toBe(false);
+    release(); await pending;
+    expect(previous.saved()?.text).toBe("previous view draft");
+    expect(active.saved()?.text).toBe("current view draft");
+    expect(text).toBe("current view draft");
+    expect(controller.binding).toBe("active");
+  });
+
+  it("allows a recovered write on the same binding", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("keep through recovery");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    f.store.save = save;
+    await f.c.retry();
+    await f.c.flush();
+    expect(f.saved()?.text).toBe("keep through recovery");
+    expect(f.get()).toBe("keep through recovery");
+  });
+
+  it("refuses shutdown when a retired draft write failed", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("unsaved previous draft");
+    f.c.retire();
+    f.set("");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()).toBeNull();
+  });
+
   it("waits for an actual queued write and reads it back without a send mark", async () => {
     const f = fixture();
     await f.c.open("test");
