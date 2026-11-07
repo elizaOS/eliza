@@ -157,6 +157,17 @@ export default defineConfig({
         replacement: path.join(coreSrc, "utils", "atomic-json.ts"),
       },
       {
+        // Core's declared exports map task-events and task-widgets to their
+        // messaging leaves, not to src/task-events.ts / src/task-widgets.ts,
+        // so the catch-all below cannot resolve them.
+        find: /^@elizaos\/core\/task-events$/,
+        replacement: path.join(coreSrc, "messaging", "task-events.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/task-widgets$/,
+        replacement: path.join(coreSrc, "messaging", "task-widgets.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: path.join(coreSrc, "$1"),
       },
