@@ -904,6 +904,7 @@ async function collectTodaysMeetings(
       `SELECT id, title, start_at, end_at, status, is_all_day
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
+          AND side = 'owner'
           AND ${calendarDayPredicate(day)}
         ORDER BY start_at ASC
         LIMIT 50`,
