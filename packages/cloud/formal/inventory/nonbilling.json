@@ -487,7 +487,9 @@
       "sources": [
         "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
         "packages/cloud/shared/src/lib/storage/agent-backup-object-store.ts",
-        "packages/cloud/api/v1/cron/agent-backups/route.ts"
+        "packages/cloud/api/v1/cron/agent-backups/route.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
       ],
       "states": [
         "admitted",
@@ -505,15 +507,15 @@
         "Cleanup cannot remove the active replacement"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "Terminal cleanup models one immutable attempt, two concurrent trusted turns and two node occurrences.",
+        "Valid exact provider proofs and atomic receipt/capacity transactions are assumed; capture, streaming and activation need separate models."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["exact_restore_recovery.qnt", "restore_cleanup_rotation.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite restore/activation model yet.",
+        "Only terminal exact cleanup is modeled; capture, restore materialization and activation remain open.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
