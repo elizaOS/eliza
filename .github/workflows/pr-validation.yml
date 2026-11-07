@@ -165,6 +165,29 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
+      - name: Setup Java for cloud protocol models
+        if: steps.affected.outputs.cloud == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Verify cloud protocol models
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 15
+        run: |
+          bun run test:cloud:formal
+          bun run verify:cloud:formal
+
+      - name: Upload cloud protocol verification
+        if: always() && steps.affected.outputs.cloud == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cloud-protocol-verification
+          path: test-results/cloud-formal
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
