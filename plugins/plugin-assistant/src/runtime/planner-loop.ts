@@ -6589,6 +6589,10 @@ async function executeQueuedToolCall(params: {
   );
 
   const startedAt = Date.now();
+  // The executor may canonicalize the call object in place (a promoted
+  // family's umbrella becomes its child). Keep the emitted name so the
+  // settled-call guard still recognizes the same call on a later round.
+  const requestedToolName = params.toolCall.name;
   let result: PlannerToolResult;
   try {
     result = await params.params.executeToolCall(params.toolCall, {
@@ -6641,6 +6645,9 @@ async function executeQueuedToolCall(params: {
   const completedStep: PlannerStep = {
     iteration: params.iteration,
     toolCall: params.toolCall,
+    ...(params.toolCall.name !== requestedToolName
+      ? { requestedToolName }
+      : {}),
     result,
   };
   params.trajectory.steps.push(completedStep);
@@ -9067,6 +9074,18 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
   return `${name} ${canonicalParamsString(toolCall.params ?? {})}`;
 }
 
+/** The recorded call's identity, and the one under the name the model emitted when the executor renamed it. */
+function settledStepIdentities(step: PlannerStep): string[] {
+  if (!step.toolCall) return [];
+  const identities = [toolCallIdentity(step.toolCall)];
+  if (step.requestedToolName && step.requestedToolName !== step.toolCall.name) {
+    identities.push(
+      toolCallIdentity({ ...step.toolCall, name: step.requestedToolName }),
+    );
+  }
+  return identities;
+}
+
 /**
  * True only when every executed call proves it changed nothing: refused before
  * dispatch, a declared read-only result, or receipts that are all fresh no-ops,
@@ -9147,7 +9166,7 @@ export function partitionRedundantSucceededCalls(
   const invalidDefinitions = new Set<string>();
   for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
     if (!step.toolCall || !step.result) continue;
-    const identity = toolCallIdentity(step.toolCall);
+    const identities = settledStepIdentities(step);
     const failure = step.result.failureProvenance;
     if (
       step.result.success === false &&
@@ -9168,9 +9187,9 @@ export function partitionRedundantSucceededCalls(
       ) {
         succeeded.clear();
       }
-      succeeded.add(identity);
+      for (const identity of identities) succeeded.add(identity);
     } else if (hasNonRetryableToolFailure(step.result)) {
-      failedNonRetryable.add(identity);
+      for (const identity of identities) failedNonRetryable.add(identity);
     }
   }
   const fresh: PlannerToolCall[] = [];

@@ -302,6 +302,13 @@ export interface PlannerStep {
 	iteration: number;
 	thought?: string;
 	toolCall?: PlannerToolCall;
+	/**
+	 * The tool name the model emitted when the executor canonicalized the
+	 * recorded call to another name (a promoted family's umbrella dispatched as
+	 * its child, or a simile resolved to the canonical action). The settled-call
+	 * guard matches a later call under either name.
+	 */
+	requestedToolName?: string;
 	result?: PlannerToolResult;
 	terminalMessage?: string;
 	terminalOnly?: boolean;
