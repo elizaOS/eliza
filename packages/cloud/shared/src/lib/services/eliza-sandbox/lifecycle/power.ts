@@ -1467,40 +1467,49 @@ export class SandboxPower {
       });
       return { success: false, containerStarted: false, reprovisioned: false, error: message };
     };
-    const provider = await this.host.getProvider();
-    if (!provider.observeRuntime || !provider.startRetainedRuntime)
-      return release("Provider cannot resume a retained runtime in place");
-    const observed = await provider.observeRuntime({
-      organizationId: orgId,
-      agentId,
-      nodeId: retained.runtime.nodeId,
-      containerName: retained.runtime.containerName,
-      expected: retained.runtime,
-    });
-    if (observed.kind === "absent")
-      return release("Retained runtime is missing; recovery requires an explicit restore decision");
-    if (observed.kind === "unavailable")
-      return release(`Retained runtime observation is unavailable: ${observed.reason}`);
+    // Every failure after admission releases the row, or it stays
+    // `provisioning` and no later resume can take the retained branch.
+    let started = false;
     try {
+      const provider = await this.host.getProvider();
+      if (!provider.observeRuntime || !provider.startRetainedRuntime)
+        return release("Provider cannot resume a retained runtime in place");
+      const observed = await provider.observeRuntime({
+        organizationId: orgId,
+        agentId,
+        nodeId: retained.runtime.nodeId,
+        containerName: retained.runtime.containerName,
+        expected: retained.runtime,
+      });
+      if (observed.kind === "absent")
+        return release(
+          "Retained runtime is missing; recovery requires an explicit restore decision",
+        );
+      if (observed.kind === "unavailable")
+        return release(`Retained runtime observation is unavailable: ${observed.reason}`);
       await provider.startRetainedRuntime(retained.runtime);
-    } catch (error) {
-      // error-policy:J1 an unconfirmed exact start remains a retryable retained resume.
-      return release(error instanceof Error ? error.message : String(error));
-    }
-    const handle: SandboxHandle = {
-      sandboxId: admitted.sandbox_id ?? retained.runtime.containerName,
-      bridgeUrl: retained.bridgeUrl,
-      healthUrl: retained.healthUrl,
-      metadata: admitted.headscale_ip ? { headscaleIp: admitted.headscale_ip } : undefined,
-    };
-    const ready = provider.checkHealthDetailed
-      ? (await provider.checkHealthDetailed(handle, { kind: "canonical" })).ready
-      : await provider.checkHealth(handle, { kind: "canonical" });
-    if (!ready)
-      return {
-        ...(await release("Retained runtime started but is not ready; resume can be retried")),
-        containerStarted: true,
+      started = true;
+      const handle: SandboxHandle = {
+        sandboxId: admitted.sandbox_id ?? retained.runtime.containerName,
+        bridgeUrl: retained.bridgeUrl,
+        healthUrl: retained.healthUrl,
+        metadata: admitted.headscale_ip ? { headscaleIp: admitted.headscale_ip } : undefined,
       };
+      const ready = provider.checkHealthDetailed
+        ? (await provider.checkHealthDetailed(handle, { kind: "canonical" })).ready
+        : await provider.checkHealth(handle, { kind: "canonical" });
+      if (!ready)
+        return {
+          ...(await release("Retained runtime started but is not ready; resume can be retried")),
+          containerStarted: true,
+        };
+    } catch (error) {
+      // error-policy:J1 an unconfirmed start or readiness remains a retryable retained resume.
+      return {
+        ...(await release(error instanceof Error ? error.message : String(error))),
+        containerStarted: started,
+      };
+    }
     await dbWrite.transaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, orgId);
       const [row] = await tx
