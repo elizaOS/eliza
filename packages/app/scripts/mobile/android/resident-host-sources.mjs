@@ -76,6 +76,7 @@ export const RESIDENT_HOST_HELPERS = Object.freeze({
   ...Object.fromEntries(
     [
       ["ChromiumBrowserIdentity", "verbatim"],
+      ["ChromiumBindingDemand", "verbatim"],
       ["ChromiumBrowserConnection", "host-build-config"],
       ["BrowserWebOrigin", "verbatim"],
       ["BrowserDownloadPolicy", "verbatim"],

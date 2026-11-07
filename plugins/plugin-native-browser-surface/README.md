@@ -286,6 +286,12 @@ It verifies the module's build-pinned package and signing certificate before
 binding and after connection. The priority-preserving Custom Tabs binding keeps
 the browser reachable without opening an activity, tab, URL or debugging port.
 It does not grant task/action authority or claim that a renderer is observable.
+A host that needs the browser only for some work calls `acquire()` instead of
+`start()` and closes the returned lease when that work ends; `stop()` ends a
+`start()`. With no `start()` or open lease, the binding is released after the
+idle delay (the constructor's second argument, 60 s by default), so Android can
+freeze or reclaim the browser. `whenReady(callback)` runs once the verified
+service is connected; it never runs on refusal, so callers keep a deadline.
 
 Android `presentBrowser()` foregrounds the certificate-pinned browser without a
 URL or new website tab. Invoke it from an explicit user interaction before a

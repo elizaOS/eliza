@@ -30,6 +30,7 @@ const classes = [
   "BrowserAutofillExtras",
   "BrowserTabHostConfig",
   "BrowserEffectWatch",
+  "ChromiumBindingDemand",
 ];
 const consumers = [
   "BrowserWebPolicyTest",
@@ -41,6 +42,7 @@ const consumers = [
   "BrowserSitePromptTest",
   "BrowserTabHostConfigTest",
   "BrowserEffectWatchTest",
+  "ChromiumBindingDemandTest",
 ];
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
