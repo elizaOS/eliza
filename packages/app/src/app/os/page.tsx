@@ -4,11 +4,14 @@ import React, { useState, useEffect } from "react";
 import { MerlinWizard } from "@/components/desktop/MerlinWizard";
 import { TreasuryDesk } from "@/components/desktop/TreasuryDesk";
 import { AdminTerminal } from "@/components/desktop/AdminTerminal";
+import { ValhallaChatVoice } from "@/components/desktop/ValhallaChatVoice";
+import { MASTER_ADMIN_EMAIL } from "@/services/adminAuth";
 
 export default function ValhallaOSDesktop() {
   const [merlinOpen, setMerlinOpen] = useState(false);
-  const [treasuryOpen, setTreasuryOpen] = useState(true);
+  const [treasuryOpen, setTreasuryOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [persona, setPersona] = useState<"sentinel" | "nomad" | "offline">("offline");
   const [lastPing, setLastPing] = useState<string>("Initializing Loopback...");
 
@@ -52,12 +55,22 @@ export default function ValhallaOSDesktop() {
       }}
     >
       {/* Desktop App Icons */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 18, padding: 16, width: 90 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16, width: 90 }}>
+        <div
+          onDoubleClick={() => setChatOpen(true)}
+          style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
+        >
+          <div style={{ fontSize: 32, marginBottom: 2 }}>🎙️</div>
+          <span style={{ backgroundColor: chatOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
+            Voice & Chat
+          </span>
+        </div>
+
         <div
           onDoubleClick={() => setMerlinOpen(true)}
           style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
         >
-          <div style={{ fontSize: 34, marginBottom: 2 }}>🪄</div>
+          <div style={{ fontSize: 32, marginBottom: 2 }}>🪄</div>
           <span style={{ backgroundColor: merlinOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
             Merlin Setup
           </span>
@@ -67,7 +80,7 @@ export default function ValhallaOSDesktop() {
           onDoubleClick={() => setTreasuryOpen(true)}
           style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
         >
-          <div style={{ fontSize: 34, marginBottom: 2 }}>💰</div>
+          <div style={{ fontSize: 32, marginBottom: 2 }}>💰</div>
           <span style={{ backgroundColor: treasuryOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
             Treasury Desk
           </span>
@@ -77,7 +90,7 @@ export default function ValhallaOSDesktop() {
           onDoubleClick={() => setAdminOpen(true)}
           style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
         >
-          <div style={{ fontSize: 34, marginBottom: 2 }}>🛡️</div>
+          <div style={{ fontSize: 32, marginBottom: 2 }}>🛡️</div>
           <span style={{ backgroundColor: adminOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
             Admin Terminal
           </span>
@@ -85,20 +98,26 @@ export default function ValhallaOSDesktop() {
       </div>
 
       {/* Windows */}
+      {chatOpen && (
+        <div style={{ position: "absolute", top: 30, left: 120, zIndex: 15 }}>
+          <ValhallaChatVoice onClose={() => setChatOpen(false)} />
+        </div>
+      )}
+
       {merlinOpen && (
-        <div style={{ position: "absolute", top: 40, left: 80, zIndex: 10 }}>
+        <div style={{ position: "absolute", top: 60, left: 160, zIndex: 10 }}>
           <MerlinWizard onClose={() => setMerlinOpen(false)} />
         </div>
       )}
 
       {treasuryOpen && (
-        <div style={{ position: "absolute", top: 100, left: 280, zIndex: 5 }}>
+        <div style={{ position: "absolute", top: 120, left: 300, zIndex: 5 }}>
           <TreasuryDesk onClose={() => setTreasuryOpen(false)} />
         </div>
       )}
 
       {adminOpen && (
-        <div style={{ position: "absolute", top: 60, left: 200, zIndex: 20 }}>
+        <div style={{ position: "absolute", top: 70, left: 220, zIndex: 20 }}>
           <AdminTerminal onClose={() => setAdminOpen(false)} />
         </div>
       )}
@@ -124,7 +143,7 @@ export default function ValhallaOSDesktop() {
           Start
         </button>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: "#333" }}>Admin: keene.jos@gmail.com</span>
+          <span style={{ fontSize: 10, color: "#333" }}>Admin: {MASTER_ADMIN_EMAIL}</span>
           <div style={{ fontSize: 11, padding: "2px 8px", border: "1px inset #808080", backgroundColor: "#dfdfdf" }}>
             Engine: <strong>{persona.toUpperCase()}</strong>
           </div>
