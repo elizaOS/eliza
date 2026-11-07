@@ -81,8 +81,12 @@ function stringField(value: unknown): string | undefined {
 }
 
 function canonicalParticipants(values: readonly string[]): string[] {
+  // Code-unit order, not localeCompare: ICU collation depends on the host
+  // locale, and membershipVersion() persists this order as a string that is
+  // compared by equality at dispatch time, so the order must be identical
+  // on every host. Mirror of the core trusted-delivery audience ordering.
   return [...new Set(values.filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
+    a < b ? -1 : a > b ? 1 : 0,
   );
 }
 

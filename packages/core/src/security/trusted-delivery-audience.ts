@@ -301,9 +301,13 @@ async function filterRuntimeInternalParticipants(
 }
 
 function canonicalParticipants(participants: readonly UUID[]): UUID[] {
+	// Code-unit order, not localeCompare: ICU collation depends on the host
+	// locale, and membershipVersion() persists this order as a string that
+	// other processes compare by equality, so the order must be identical
+	// on every host.
 	return [
 		...new Set(participants.filter((id) => typeof id === "string" && id)),
-	].sort((a, b) => a.localeCompare(b));
+	].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 function membershipVersion(participants: readonly UUID[]): string {
