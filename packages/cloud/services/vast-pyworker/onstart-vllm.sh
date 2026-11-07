@@ -394,7 +394,10 @@ OBSERVER_ARGS=(
   --stats-path "$VLLM_STATS_PATH"
   --interval "$VLLM_STATS_INTERVAL_S"
 )
-if python3 -c "import scripts.inference.heartbeat" >/dev/null 2>&1; then
+# The supervisor and heartbeat share an API. Prefer the refreshed checkout to
+# an older training installation inherited from the image or mounted volume.
+OBSERVER_PYTHONPATH="$PYWORKER_DIR/packages/training${PYTHONPATH:+:$PYTHONPATH}"
+if PYTHONPATH="$OBSERVER_PYTHONPATH" python3 -c "import scripts.inference.heartbeat" >/dev/null 2>&1; then
   OBSERVER_ARGS+=(
     --heartbeat
     --heartbeat-out "$HEARTBEAT_OUT"
@@ -406,7 +409,7 @@ else
   echo "[onstart-vllm] heartbeat module not importable on this image; skipping observability scraper"
 fi
 mkdir -p "$(dirname "$VLLM_OBSERVABILITY_LOG")"
-nohup python3 observability.py "${OBSERVER_ARGS[@]}" >> "$VLLM_OBSERVABILITY_LOG" 2>&1 &
+PYTHONPATH="$OBSERVER_PYTHONPATH" nohup python3 observability.py "${OBSERVER_ARGS[@]}" >> "$VLLM_OBSERVABILITY_LOG" 2>&1 &
 echo "[onstart-vllm] observability supervisor pid: $!"
 
 

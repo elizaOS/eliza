@@ -110,12 +110,23 @@ class ObservabilityTests(unittest.TestCase):
                 (service / "observability.py").write_bytes(
                     (SERVICE / "observability.py").read_bytes()
                 )
-                heartbeat = root / "scripts/inference/heartbeat.py"
+                heartbeat = repo / "packages/training/scripts/inference/heartbeat.py"
                 heartbeat.parent.mkdir(parents=True)
+                (heartbeat.parent / "__init__.py").touch()
+                (heartbeat.parent.parent / "__init__.py").touch()
                 heartbeat.write_bytes(
                     (
                         SERVICE.parents[2] / "training/scripts/inference/heartbeat.py"
                     ).read_bytes()
+                )
+                # An older externally installed heartbeat has no stop_event
+                # API. Bootstrap must load the module from its own checkout.
+                stale_heartbeat = root / "scripts/inference/heartbeat.py"
+                stale_heartbeat.parent.mkdir(parents=True)
+                (stale_heartbeat.parent / "__init__.py").touch()
+                (stale_heartbeat.parent.parent / "__init__.py").touch()
+                stale_heartbeat.write_text(
+                    "def main():\n    raise RuntimeError('stale heartbeat selected')\n"
                 )
                 for name in ("git", "pip", "pgrep"):
                     path = bin_dir / name
