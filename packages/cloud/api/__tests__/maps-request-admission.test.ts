@@ -6,6 +6,7 @@ let locked = false,
   dispatched = 0,
   usage = 0;
 let status = "active",
+  planId = "plus_monthly",
   expiry = "2099-01-01T00:00:00Z",
   signal: AbortController;
 let response: () => Promise<Response> = async () =>
@@ -60,8 +61,8 @@ mock.module(
       expect(locked).toBe(true);
       expect(options.transaction).toBe(policyTransaction);
       return {
-        plan: { status },
-        rateTier: "selected_test",
+        plan: { id: planId, status },
+        rateTier: "custom",
         effectiveUntil: new Date(expiry),
       };
     },
@@ -72,7 +73,7 @@ mock.module(
   () => ({
     callMapsRequestAllowance: async (
       namespace: unknown,
-      _request: unknown,
+      request: { policy: { planKey: string } },
       outcome?: string,
     ) => {
       expect(namespace).toBe(mapsGateBinding);
@@ -81,6 +82,7 @@ mock.module(
         return Response.json({ recorded: true });
       }
       expect(locked).toBe(true);
+      expect(request.policy.planKey).toBe(planId);
       admitted++;
       return response();
     },
@@ -97,6 +99,7 @@ beforeEach(() => {
   admitted = dispatched = usage = 0;
   locked = false;
   status = "active";
+  planId = "plus_monthly";
   expiry = "2099-01-01T00:00:00Z";
   signal = new AbortController();
   response = async () => Response.json({ admitted: true });
@@ -148,6 +151,22 @@ test("active subscription with zero inference funds uses separate Maps allowance
   expect(admitted).toBe(1);
   expect(dispatched).toBe(1);
   expect(usage).toBe(1);
+});
+test("Pro keeps its Maps plan when the inference tier is overridden", async () => {
+  planId = "pro_monthly";
+  expect((await call()).status).toBe(200);
+  expect(admitted).toBe(1);
+  expect(dispatched).toBe(1);
+});
+test("unknown subscription plan never consumes Maps allowance", async () => {
+  planId = "unknown";
+  const result = await call();
+  expect(result.status).toBe(503);
+  expect(((await result.json()) as { code: string }).code).toBe(
+    "maps_allowance_unconfigured",
+  );
+  expect(admitted).toBe(0);
+  expect(dispatched).toBe(0);
 });
 test("revoked subscription never consumes allowance or dispatches", async () => {
   status = "none";
