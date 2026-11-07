@@ -1617,6 +1617,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         if (params.worldId && m.worldId !== params.worldId) return false;
         if (params.tableName && storedMemoryTableName(m) !== params.tableName)
           return false;
+        // Match plugin-sql: a default document_fragments listing holds
+        // embedding chunks only. Source segments stay out unless the
+        // caller asks for them by fragmentRole.
+        if (
+          params.tableName === "document_fragments" &&
+          params.metadata?.fragmentRole !== "source-segment" &&
+          ((m.metadata ?? {}) as Record<string, unknown>).fragmentRole ===
+            "source-segment"
+        )
+          return false;
         // 0 is a real timestamp. Truthiness checks dropped epoch rows and
         // ignored an exclusive upper bound of 0 (`end: before - 1` when
         // `before` is 1), so those queries returned the unfiltered set.
