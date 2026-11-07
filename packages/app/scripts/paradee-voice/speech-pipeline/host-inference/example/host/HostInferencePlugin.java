@@ -39,6 +39,12 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
 
     @Override protected long idleReleaseMillis() { return 0; }
 
+    /** Models stay resident while shown; a minute after the host is hidden and idle, they go. */
+    @Override protected long hiddenReleaseMillis() { return 60000; }
+
+    /** For example: speech this host synthesized is still playing under audio focus. */
+    @Override protected boolean holdsModels() { return refusing; }
+
     @Override protected boolean answerBeforeInstall() { return true; }
 
     @Override protected String failureCode(String code, Throwable failure) {
@@ -50,6 +56,12 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
     @PluginMethod public void pause(PluginCall call) {
         refusing = true;
         cancelAll();
+        call.resolve();
+    }
+
+    /** Releases the models now when nothing is queued or running; the next request loads them. */
+    @PluginMethod public void trim(PluginCall call) {
+        releaseModels();
         call.resolve();
     }
 }
