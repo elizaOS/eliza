@@ -4424,3 +4424,34 @@ describe("compute billing recovery", () => {
 });
 
 test("PGlite setup is mandatory", () => expect(ready).toBe(true));
+
+test(
+  "restarting an already deploying container advances its lifecycle generation",
+  async () => {
+    const { org, user } = await seed();
+    const containerId = crypto.randomUUID();
+    const now = new Date("2026-08-19T03:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "restart-generation",
+      project_name: "restart-generation",
+      status: "deploying",
+      billing_status: "active",
+      desired_count: 1,
+      cpu: 1024,
+      memory: 2048,
+      created_at: now,
+      updated_at: now,
+      last_billed_at: now,
+    });
+    const first = await containersRepository.prepareFundedRestart(containerId, org.id, now);
+    expect(first.status).toBe("deploying");
+    expect(first.lifecycle_revision).toBe(1);
+    const second = await containersRepository.prepareFundedRestart(containerId, org.id, now);
+    expect(second.status).toBe("deploying");
+    expect(second.lifecycle_revision).toBe(2);
+  },
+  PGLITE_TIMEOUT,
+);

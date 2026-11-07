@@ -470,15 +470,15 @@
         "Stale probes cannot revive a retired generation"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "One container, two original-row identities, bounded placement changes and one restart are modeled.",
+        "The canonical revision advances on placement changes; exact database timestamp text distinguishes row identity. Provider truth and transport reliability remain assumptions."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["container_monitor.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No complete container model yet.",
+        "Only asynchronous health observations and lifecycle/placement/row ABA fences are modeled; provider creation and deletion remain open.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
