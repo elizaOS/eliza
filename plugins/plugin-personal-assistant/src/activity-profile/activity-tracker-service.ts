@@ -65,6 +65,21 @@ async function loadActivityTrackerModule(): Promise<ActivityTrackerModule | null
   }
 }
 
+function persistedEventKind(
+  event: ActivityCollectorEvent,
+): "activate" | "deactivate" {
+  if (
+    isSystemInactivityApp({
+      bundleId: event.bundleId,
+      appName: event.appName,
+      platform: process.platform,
+    })
+  ) {
+    return "deactivate";
+  }
+  return event.event === "activate" ? "activate" : "deactivate";
+}
+
 export class ActivityTrackerService extends Service {
   static override readonly serviceType = "activity_tracker";
 
@@ -75,6 +90,12 @@ export class ActivityTrackerService extends Service {
   private mode: ActivityTrackerMode = "disabled-non-darwin";
   private writeFailures = 0;
   private writeQueue: Promise<void> = Promise.resolve();
+  /** The app whose activate is the newest queued event, if any. */
+  private openActivation: {
+    bundleId: string;
+    appName: string;
+    ts: number;
+  } | null = null;
 
   static override async start(
     runtime: IAgentRuntime,
@@ -88,6 +109,7 @@ export class ActivityTrackerService extends Service {
     if (this.handle) {
       await this.handle.stop();
       this.handle = null;
+      this.closeOpenActivation();
     }
     await this.writeQueue;
   }
@@ -134,6 +156,7 @@ export class ActivityTrackerService extends Service {
         },
         onExit: (exit) => {
           this.mode = "stopped";
+          this.closeOpenActivation();
           logger.info(
             { reason: exit.reason },
             "[activity-tracker] Collector exited cleanly; events will stop flowing.",
@@ -141,6 +164,7 @@ export class ActivityTrackerService extends Service {
         },
         onFatal: (reason) => {
           this.mode = "failed";
+          this.closeOpenActivation();
           logger.error(
             { reason },
             "[activity-tracker] Collector terminated — events will stop flowing.",
@@ -163,10 +187,40 @@ export class ActivityTrackerService extends Service {
   }
 
   private enqueueEvent(event: ActivityCollectorEvent): void {
+    // Reports drop a row without a bundle id, so it neither opens nor closes
+    // the app in front.
+    if (event.bundleId) {
+      this.openActivation =
+        persistedEventKind(event) === "activate"
+          ? {
+              bundleId: event.bundleId,
+              appName: event.appName ?? "",
+              ts: event.ts,
+            }
+          : null;
+    }
     this.writeQueue = this.writeQueue.then(
       () => this.persistEvent(event),
       () => this.persistEvent(event),
     );
+  }
+
+  /**
+   * Reports end an app's dwell at the next event, so an activate that is still
+   * open when the collector stops would run on until the next start. Close it
+   * at the moment the collector stopped observing, and never in the activate's
+   * own millisecond, where the two rows would have no order.
+   */
+  private closeOpenActivation(): void {
+    const open = this.openActivation;
+    if (!open) return;
+    this.enqueueEvent({
+      ts: Math.max(Date.now(), open.ts + 1),
+      event: "deactivate",
+      bundleId: open.bundleId,
+      appName: open.appName,
+      windowTitle: null,
+    });
   }
 
   private async persistEvent(event: ActivityCollectorEvent): Promise<void> {
@@ -174,15 +228,7 @@ export class ActivityTrackerService extends Service {
     if (!runtime) return;
     const agentId = String(runtime.agentId);
     const observedAt = new Date(event.ts).toISOString();
-    const rawEventKind = isSystemInactivityApp({
-      bundleId: event.bundleId,
-      appName: event.appName,
-      platform: process.platform,
-    })
-      ? "deactivate"
-      : event.event;
-    const eventKind: "activate" | "deactivate" =
-      rawEventKind === "activate" ? "activate" : "deactivate";
+    const eventKind = persistedEventKind(event);
     try {
       await insertActivityEvent(runtime, {
         agentId,

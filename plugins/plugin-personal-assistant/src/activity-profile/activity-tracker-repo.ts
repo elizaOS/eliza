@@ -94,3 +94,32 @@ export async function listActivityEvents(
     .map(mapRow)
     .filter((row): row is ActivityEventRow => row !== null);
 }
+
+/**
+ * The newest event strictly before `beforeIso`. A report window reads it to
+ * learn which app was already in front when the window opened.
+ *
+ * Rows that {@link mapRow} drops (no bundle id) are skipped, as reports skip
+ * them inside a window. On a shared stamp the activate is the newer event: an
+ * app switch closes the old app and opens the new one in the same millisecond.
+ */
+export async function getLatestActivityEventBefore(
+  runtime: IAgentRuntime,
+  agentId: string,
+  beforeIso: string,
+): Promise<ActivityEventRow | null> {
+  const rows = await executeRawSql(
+    runtime,
+    `SELECT id, agent_id, observed_at, event_kind, bundle_id, app_name, window_title
+     FROM app_lifeops.life_activity_events
+     WHERE agent_id = ${sqlQuote(agentId)}
+       AND observed_at < ${sqlQuote(beforeIso)}
+       AND event_kind IN ('activate', 'deactivate')
+       AND bundle_id <> ''
+     ORDER BY observed_at DESC,
+       CASE event_kind WHEN 'activate' THEN 1 ELSE 0 END DESC
+     LIMIT 1`,
+  );
+  const row = rows[0];
+  return row ? mapRow(row) : null;
+}

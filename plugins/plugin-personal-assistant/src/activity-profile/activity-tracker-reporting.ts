@@ -11,13 +11,16 @@
  *     timestamp of the NEXT event (activate or deactivate), or at `now`
  *     if no following event exists.
  *   - `deactivate` events do not anchor a new interval.
- *   - Intervals are clipped to the report window [since, until].
+ *   - Intervals are clipped to the report window [since, until]. The newest
+ *     event before `since` is read too, so an app that was already in front
+ *     when the window opened counts from `since`.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import {
   type ActivityEventRow,
+  getLatestActivityEventBefore,
   listActivityEvents,
 } from "./activity-tracker-repo.js";
 import {
@@ -163,12 +166,18 @@ export async function getActivityReportBetween(
   const sinceMs = Math.max(0, Math.trunc(options.sinceMs));
   const untilMs = Math.max(sinceMs, Math.trunc(options.untilMs));
   const redactor = options.redactor ?? resolveRedactorConfigFromEnv();
-  const events = await listActivityEvents(
+  const sinceIso = new Date(sinceMs).toISOString();
+  const leading = await getLatestActivityEventBefore(
     runtime,
     agentId,
-    new Date(sinceMs).toISOString(),
+    sinceIso,
   );
-  const intervals = intervalsFromEvents(events, sinceMs, untilMs);
+  const events = await listActivityEvents(runtime, agentId, sinceIso);
+  const intervals = intervalsFromEvents(
+    leading ? [leading, ...events] : events,
+    sinceMs,
+    untilMs,
+  );
   const { apps, totalMs } = aggregateByApp(intervals, redactor, options.limit);
   return { sinceMs, untilMs, totalMs, apps };
 }
