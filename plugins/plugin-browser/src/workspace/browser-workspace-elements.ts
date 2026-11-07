@@ -16,7 +16,29 @@ import type {
   BrowserWorkspaceRuntimeState,
 } from "./browser-workspace-types.js";
 
-export function buildBrowserWorkspaceElementSelector(element: Element): string {
+function buildBrowserWorkspaceNthOfTypeSelector(element: Element): string {
+  const parent = element.parentElement;
+  if (!parent) {
+    return element.tagName.toLowerCase();
+  }
+
+  const siblings = parent.children;
+  let index = 1;
+  for (let cursor = 0; cursor < siblings.length; cursor += 1) {
+    const sibling = siblings.item(cursor);
+    if (!sibling || sibling.tagName !== element.tagName) {
+      continue;
+    }
+    if (sibling === element) {
+      break;
+    }
+    index += 1;
+  }
+
+  return `${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+}
+
+function buildBrowserWorkspaceShortElementSelector(element: Element): string {
   const escapeFn = (
     globalThis as { CSS?: { escape?: (value: string) => string } }
   ).CSS?.escape;
@@ -44,25 +66,42 @@ export function buildBrowserWorkspaceElementSelector(element: Element): string {
     return `${element.tagName.toLowerCase()}[type=${buildBrowserWorkspaceCssStringLiteral(type)}]`;
   }
 
-  const parent = element.parentElement;
-  if (!parent) {
-    return element.tagName.toLowerCase();
+  return buildBrowserWorkspaceNthOfTypeSelector(element);
+}
+
+function selectsBrowserWorkspaceElement(
+  element: Element,
+  selector: string,
+): boolean {
+  try {
+    return element.ownerDocument.querySelector(selector) === element;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Element refs and the selected frame are read back with querySelector, which
+ * returns the first match. The short form is only unique among siblings (or
+ * not at all for a repeated name or type), so when it selects an earlier
+ * element, prefix parent steps until the path selects this one; a path from
+ * :root always does.
+ */
+export function buildBrowserWorkspaceElementSelector(element: Element): string {
+  const selector = buildBrowserWorkspaceShortElementSelector(element);
+  if (selectsBrowserWorkspaceElement(element, selector)) {
+    return selector;
   }
 
-  const siblings = parent.children;
-  let index = 1;
-  for (let cursor = 0; cursor < siblings.length; cursor += 1) {
-    const sibling = siblings.item(cursor);
-    if (!sibling || sibling.tagName !== element.tagName) {
-      continue;
-    }
-    if (sibling === element) {
-      break;
-    }
-    index += 1;
+  let path = buildBrowserWorkspaceNthOfTypeSelector(element);
+  for (
+    let parent = element.parentElement;
+    parent && !selectsBrowserWorkspaceElement(element, path);
+    parent = parent.parentElement
+  ) {
+    path = `${parent.parentElement ? buildBrowserWorkspaceNthOfTypeSelector(parent) : ":root"} > ${path}`;
   }
-
-  return `${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+  return path;
 }
 
 export function createBrowserWorkspaceElementSummary(
