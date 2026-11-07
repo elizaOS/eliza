@@ -430,31 +430,33 @@ export class AgentRuntime implements IAgentRuntime {
 		},
 		this.retirement,
 	);
-	private readonly embeddings = new RuntimeEmbeddings(this, {
+	private readonly embeddings: RuntimeEmbeddings = new RuntimeEmbeddings(this, {
 		resolveModelRegistrations: (...args) =>
 			this.modelDispatch.resolveModelRegistrations(...args),
 	});
 	private readonly confidentialInference:
 		| ConfidentialInferenceAuthority
 		| undefined;
-	private readonly modelDispatch = new RuntimeModelDispatch(this, {
-		confidentialInference: () => this.confidentialInference,
-		processingPolicy: () => processingPolicyFor(this),
-		models: () => this.models,
-		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
-		validateEmbeddingOutput: (...args) =>
-			this.embeddings.validateProviderOutput(...args),
-		currentRoomId: () => this.currentRoomId,
-		isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
-		isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),
-		hooksForPhase: (...args) => this.pipelineHooks.hooksForPhase(...args),
-		invokePipelineHooks: (...args) =>
-			this.pipelineHooks.invokePipelineHooks(...args),
-		createSecretSwapSession: (...args) => this.createSecretSwapSession(...args),
-		createPiiSwapSession: (...args) => this.createPiiSwapSession(...args),
-		initResolver: () => this.initResolver,
-		_ensureServiceStarted: (...args) => this._ensureServiceStarted(...args),
-	});
+	private readonly modelDispatch: RuntimeModelDispatch =
+		new RuntimeModelDispatch(this, {
+			confidentialInference: () => this.confidentialInference,
+			processingPolicy: () => processingPolicyFor(this),
+			models: () => this.models,
+			pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
+			validateEmbeddingOutput: (...args) =>
+				this.embeddings.validateProviderOutput(...args),
+			currentRoomId: () => this.currentRoomId,
+			isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
+			isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),
+			hooksForPhase: (...args) => this.pipelineHooks.hooksForPhase(...args),
+			invokePipelineHooks: (...args) =>
+				this.pipelineHooks.invokePipelineHooks(...args),
+			createSecretSwapSession: (...args) =>
+				this.createSecretSwapSession(...args),
+			createPiiSwapSession: (...args) => this.createPiiSwapSession(...args),
+			initResolver: () => this.initResolver,
+			_ensureServiceStarted: (...args) => this._ensureServiceStarted(...args),
+		});
 	private readonly pipelineHooks = new RuntimePipelineHooks(this);
 	// Plugin lifecycle and host send-availability probes share this map.
 	private sendHandlers = new Map<string, SendHandlerFunction>();
