@@ -27,6 +27,15 @@ Express progress with its actual fairness assumptions. Simulation uses a fixed
 seed and the case's explicit trace bounds. It does not check temporal properties
 or establish exhaustive coverage.
 
+Each name in a case's `temporal` list also needs a `temporalChecks` entry with
+`property`, `expect` (`holds` or `counterexample`), and nonempty `assumptions`.
+State explicitly when no fairness is assumed. Safety and positive temporal
+properties run together; negative properties run separately. Expected negative checks pass only on a TLC
+temporal counterexample with a loop, never on a tool error or safety violation.
+Reports retain each expectation, assumption and observed result. The shutdown
+liveness case checks both necessary timer fairness conditions and a fair failed
+shutdown; it does not assume provider success or prove a wall-clock deadline.
+
 Reports and command logs go to repository-root `test-results/quint/`. They
 record source hashes, tool version, commands and outcomes. Inventory discovery
 uses source patterns as review candidates. A source link alone does not prove

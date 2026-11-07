@@ -20,11 +20,20 @@
         "CachedHasCanonicalReceipt",
         "LockOwnership"
       ],
-      "temporal": [
-        "DecisionReturns"
-      ],
+      "temporal": ["DecisionReturns"],
       "maxSteps": 100,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DecisionReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ReviewedApproval: DecisionReturns = Fairness.implies(Callers.forall(c => (s.phase.get(c) == \"queued\").leadsTo(Set(\"done\", \"failed\").contains(s.phase.get(c)))))",
+            "Model fairness predicate Fairness = Callers.forall(c => and { Acquire(c).weakFair(s), Review(c).weakFair(s), Control(c).weakFair(s), Readback(c).weakFair(s), Persist(c).weakFair(s), Resume(c).weakFair(s) })",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        }
+      ]
     }
   ]
 }
