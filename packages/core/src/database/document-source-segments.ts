@@ -70,7 +70,9 @@ export interface DocumentSourceProjection {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
+// Keep a byte order mark as a character. The default decoder removes it,
+// and that removal breaks the segment byte length check on read.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 function bytes(value: string): Uint8Array {
 	return encoder.encode(value);
