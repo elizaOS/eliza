@@ -7,7 +7,21 @@ export interface CumulativeCaptureOptions {
   previewIntervalMs: number;
   minimumNewSeconds: number;
   speechThreshold: number;
+  /** A caller-owned context to capture on, so endpointing can share it. It is never closed
+   * here. Create it with `{ sampleRate }` equal to `sampleRate`: a context at another rate
+   * (for example a default 48 kHz one) is refused with a RangeError, because it would make
+   * every stored chunk and preview several times larger. */
+  context?: AudioContext;
+  /** RMS level of every worklet block, with the stream sample index where the block ends
+   * (time = endSample / sampleRate). Blocks past `maximumSeconds` are still reported. */
+  onLevel?: (level: number, endSample: number, sampleRate: number) => void;
 }
+/** Closes the capture; `snapshot` sends a preview of the speech so far at once (for example at a
+ * pause) instead of at the next tick. It waits for a preview in flight and resolves true when
+ * `receive` completed, false when there was nothing new or the capture is closed or inactive. */
+export type CumulativeCapture = (() => void) & {
+  snapshot: () => Promise<boolean>;
+};
 function positive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
@@ -33,7 +47,7 @@ export async function startCumulativeMicrophoneCapture(
   ) => Promise<void>,
   active: () => boolean,
   options: CumulativeCaptureOptions,
-): Promise<(() => void) | undefined> {
+): Promise<CumulativeCapture | undefined> {
   if (
     !options.workletUrl ||
     !options.processorName ||
@@ -46,14 +60,19 @@ export async function startCumulativeMicrophoneCapture(
     ].every(positive)
   )
     throw new RangeError("Invalid microphone capture policy");
+  const shared = options.context;
+  if (shared && shared.sampleRate !== options.sampleRate)
+    throw new RangeError(
+      "The shared AudioContext must run at the capture sample rate",
+    );
   if (
-    typeof AudioContext === "undefined" ||
-    typeof AudioWorkletNode === "undefined"
+    typeof AudioWorkletNode === "undefined" ||
+    (!shared && typeof AudioContext === "undefined")
   )
     return;
   let context: AudioContext;
   try {
-    context = new AudioContext({ sampleRate: options.sampleRate });
+    context = shared ?? new AudioContext({ sampleRate: options.sampleRate });
   } catch {
     return;
   }
@@ -62,10 +81,11 @@ export async function startCumulativeMicrophoneCapture(
   let timer: ReturnType<typeof setInterval> | undefined;
   const chunks: Float32Array[] = [];
   let samples = 0,
+    received = 0,
     lastUploaded = 0,
-    pending = false,
     closed = false,
     heardSpeech = false;
+  let inflight: Promise<boolean> | undefined;
   const close = () => {
     if (closed) return;
     closed = true;
@@ -77,7 +97,45 @@ export async function startCumulativeMicrophoneCapture(
       processor.port.close();
     }
     chunks.length = 0;
-    void context.close().catch(() => {});
+    if (!shared) void context.close().catch(() => {});
+  };
+  const deliver = (minimumSamples: number): Promise<boolean> | undefined => {
+    if (
+      closed ||
+      !active() ||
+      !heardSpeech ||
+      inflight ||
+      samples - lastUploaded < Math.max(1, minimumSamples)
+    )
+      return;
+    lastUploaded = samples;
+    const sending = chunks.slice();
+    // The guard is set before `receive` runs, so a synchronous throw cannot leave it stale.
+    let settle!: (sentOk: boolean) => void;
+    const sent = new Promise<boolean>((resolve) => {
+      settle = resolve;
+    });
+    inflight = sent;
+    void (async () => {
+      let sentOk = false;
+      try {
+        await receive(sending, context.sampleRate);
+        sentOk = true;
+      } catch {
+        /* A failed preview does not discard the caller's final recording. */
+      } finally {
+        if (inflight === sent) inflight = undefined;
+        settle(sentOk);
+      }
+    })();
+    return sent;
+  };
+  const snapshot = async (): Promise<boolean> => {
+    for (let current = inflight; current; current = inflight) {
+      await current;
+      if (inflight === current) return false;
+    }
+    return (await deliver(1)) ?? false;
   };
   try {
     await context.audioWorklet.addModule(options.workletUrl);
@@ -94,21 +152,32 @@ export async function startCumulativeMicrophoneCapture(
       if (
         closed ||
         !active() ||
-        samples >= context.sampleRate * options.maximumSeconds ||
-        !(data instanceof Float32Array)
+        !(data instanceof Float32Array) ||
+        !data.length
       )
         return;
+      received += data.length;
       const remaining = Math.max(
         0,
         Math.floor(context.sampleRate * options.maximumSeconds) - samples,
       );
-      if (!remaining || !data.length) return;
+      // Without onLevel, blocks past the cap are dropped before any work, as before.
+      if (!remaining && !options.onLevel) return;
+      const level = Math.sqrt(
+        data.reduce((sum, sample) => sum + sample * sample, 0) / data.length,
+      );
+      options.onLevel?.(level, received, context.sampleRate);
+      if (!remaining) return;
       const chunk = data.length > remaining ? data.slice(0, remaining) : data;
       chunks.push(chunk);
       samples += chunk.length;
-      const energy = Math.sqrt(
-        chunk.reduce((sum, sample) => sum + sample * sample, 0) / chunk.length,
-      );
+      const energy =
+        chunk === data
+          ? level
+          : Math.sqrt(
+              chunk.reduce((sum, sample) => sum + sample * sample, 0) /
+                chunk.length,
+            );
       if (energy >= options.speechThreshold) heardSpeech = true;
     };
     source.connect(processor);
@@ -119,28 +188,9 @@ export async function startCumulativeMicrophoneCapture(
       return;
     }
     timer = setInterval(() => {
-      if (
-        closed ||
-        !active() ||
-        !heardSpeech ||
-        pending ||
-        samples - lastUploaded < context.sampleRate * options.minimumNewSeconds
-      )
-        return;
-      pending = true;
-      lastUploaded = samples;
-      const snapshot = chunks.slice();
-      void (async () => {
-        try {
-          await receive(snapshot, context.sampleRate);
-        } catch {
-          /* A failed preview does not discard the caller's final recording. */
-        } finally {
-          pending = false;
-        }
-      })();
+      void deliver(context.sampleRate * options.minimumNewSeconds);
     }, options.previewIntervalMs);
-    return close;
+    return Object.assign(close, { snapshot });
   } catch {
     close();
     return;
@@ -153,6 +203,8 @@ export interface SpeechPauseOptions {
   speechFrames: number;
   pollMs: number;
   fftSize: number;
+  /** A caller-owned context (for example the capture's) to observe on; it is never closed here. */
+  context?: AudioContext;
 }
 /** Audio observation only. It cannot submit a message or interpret intent. */
 export function observeMicrophonePause(
@@ -172,7 +224,8 @@ export function observeMicrophonePause(
     (options.fftSize & (options.fftSize - 1)) !== 0
   )
     throw new RangeError("Invalid speech pause policy");
-  if (typeof AudioContext === "undefined") return () => {};
+  const shared = options.context;
+  if (!shared && typeof AudioContext === "undefined") return () => {};
   let context: AudioContext | undefined,
     source: MediaStreamAudioSourceNode | undefined;
   let interval: ReturnType<typeof setInterval> | undefined,
@@ -182,10 +235,10 @@ export function observeMicrophonePause(
     closed = true;
     clearInterval(interval);
     source?.disconnect();
-    void context?.close().catch(() => {});
+    if (!shared) void context?.close().catch(() => {});
   };
   try {
-    context = new AudioContext();
+    context = shared ?? new AudioContext();
     source = context.createMediaStreamSource(stream);
     const analyser = context.createAnalyser();
     analyser.fftSize = options.fftSize;

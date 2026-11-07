@@ -2,9 +2,6 @@ import type { NormalizedChatType } from "../utils/channel-utils.js";
 
 // Base Policy Types
 
-/** Reply mode for message responses. */
-export type ReplyMode = "text" | "command";
-
 /** Typing indicator behavior. */
 export type TypingMode = "never" | "instant" | "thinking" | "message";
 
@@ -221,7 +218,3 @@ export type ProviderCommandsConfig = {
 export type AgentElevatedAllowFromConfig = Partial<
 	Record<string, Array<string | number>>
 >;
-
-/** Tool-permission config contracts shared by channel and agent configuration. */
-
-// Re-export from channel-config to avoid duplication

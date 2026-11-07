@@ -694,7 +694,6 @@ describe("Miniflare Durable Object integration", () => {
     socket.accept();
     await runWithCloudBindings(
       {
-        INFERENCE_STRONG_REVOCATION_ENABLED: "false",
         VOICE_SPEECH_RELAY_ENABLED: "true",
         INFERENCE_ADMISSION_GATES: {
           getByName(gate: string) {

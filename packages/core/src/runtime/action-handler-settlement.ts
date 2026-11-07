@@ -50,6 +50,7 @@ import {
 	isProviderContextOverflowFailure,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
+import { isPlainObject } from "../utils/type-guards";
 import { bindEffectDelivery } from "./effect-delivery";
 
 type BufferedActionCallback = {
@@ -74,14 +75,6 @@ export interface SettleActionHandlerOptions {
 	 * a normalized failure result so planner loops can reason about the failure.
 	 */
 	handlerError?: "return-failure" | "rethrow";
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 function invalidActionResult(message: string): never {
@@ -116,7 +109,7 @@ export function normalizeActionResult(
 	result: unknown,
 	operationAttempt?: BoundRequestOperationAttempt,
 ): ActionResult {
-	if (!isObjectRecord(result)) {
+	if (!isPlainObject(result)) {
 		return invalidActionResult(
 			"Action handlers must return a plain ActionResult object.",
 		);
@@ -127,7 +120,7 @@ export function normalizeActionResult(
 		);
 	}
 	const rawResult = result as unknown as ActionResult;
-	const resultData = isObjectRecord(rawResult.data) ? rawResult.data : {};
+	const resultData = isPlainObject(rawResult.data) ? rawResult.data : {};
 	const effectReceipts =
 		rawResult.effectReceipts === undefined
 			? undefined
@@ -150,7 +143,6 @@ export function normalizeActionResult(
 
 	const normalized: ActionResult = {
 		...rawResult,
-		success: rawResult.success,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }
@@ -166,13 +158,11 @@ export function normalizeActionResult(
 	if (operationAttempt)
 		bindRequestOperationResult(normalized, operationAttempt);
 	copyBoundOperationDenial(rawResult, normalized, operationAttempt);
-	const finalResult =
-		rawResult.replyFailure === undefined
-			? normalized
-			: applyGroundedActionReply(normalized, {
-					kind: "unavailable",
-					failure: normalizeActionReplyFailure(rawResult.replyFailure),
-				});
+	if (rawResult.replyFailure === undefined) return normalized;
+	const finalResult = applyGroundedActionReply(normalized, {
+		kind: "unavailable",
+		failure: normalizeActionReplyFailure(rawResult.replyFailure),
+	});
 	if (operationAttempt)
 		bindRequestOperationResult(finalResult, operationAttempt);
 	copyBoundOperationDenial(normalized, finalResult, operationAttempt);
@@ -356,6 +346,19 @@ export async function settleActionHandler(
 	};
 	const deliverWithoutModelStream = (buffered: BufferedActionCallback) =>
 		runWithSuppressedModelStream(() => deliverSafely(buffered));
+	// Every settled delivery runs on one chain, so a callback emitted while the
+	// buffered ones drain queues behind them (ActionSettlement.tla
+	// DeliveredInEmissionOrder). deliverSafely never rejects.
+	let deliveryTail: Promise<unknown> = Promise.resolve();
+	const deliverInOrder = (
+		buffered: BufferedActionCallback,
+	): Promise<Memory[]> => {
+		const delivery = deliveryTail.then(() =>
+			deliverWithoutModelStream(buffered),
+		);
+		deliveryTail = delivery;
+		return delivery;
+	};
 
 	const actionCallback: HandlerCallback | undefined = options.callback
 		? async (response, actionName) => {
@@ -376,7 +379,7 @@ export async function settleActionHandler(
 					);
 					return [];
 				}
-				return deliverWithoutModelStream(buffered);
+				return deliverInOrder(buffered);
 			}
 		: undefined;
 
@@ -483,13 +486,13 @@ export async function settleActionHandler(
 			failureProvenance,
 		);
 	}
-	if (isObjectRecord(rawResult)) {
+	if (isPlainObject(rawResult)) {
 		effectContractDeclared =
 			"effectReceipts" in rawResult ||
 			"userFacingEffectReceiptIds" in rawResult;
 	}
 	try {
-		if (isObjectRecord(rawResult) && options.operationAttempt)
+		if (isPlainObject(rawResult) && options.operationAttempt)
 			bindRequestOperationResult(rawResult, options.operationAttempt);
 		settledResult = normalizeActionResult(
 			options.action.name,
@@ -556,9 +559,8 @@ export async function settleActionHandler(
 	// No action-owned prose is an acceptable substitute for unavailable model
 	// presentation. Keep the settled effect and let the turn emit system status.
 	if (settledResult.replyFailure) bufferedCallbacks.length = 0;
-	for (const buffered of bufferedCallbacks) {
-		await deliverWithoutModelStream(buffered);
-	}
+	for (const buffered of bufferedCallbacks) void deliverInOrder(buffered);
+	await deliveryTail;
 	if (callbackDeliveryFailures.length > 0) {
 		settledResult = {
 			...settledResult,

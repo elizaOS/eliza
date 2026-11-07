@@ -59,6 +59,8 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
+	type StructuredStreamField,
+	type StructuredStreamGate,
 	type TextStreamResult,
 } from "../types/model.js";
 import {
@@ -106,18 +108,21 @@ import {
 	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
 	isCanonicalModelCapabilityDisabled,
+	isTextGenerationModelKey,
 	isTextStreamResult,
 	isUnavailableLocalModel,
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
 	readReasoningTokensFromResponse,
-	resolveResponseSkeletonStreamFields,
+	resolveStructuredStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
 import type { RuntimePipelineHooks } from "./pipeline-hooks.js";
 import {
+	buildCanonicalSystemPrompt,
 	dropDuplicateLeadingSystemMessage,
 	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
 } from "./system-prompt";
 import {
 	buildProviderAttributionsFromState,
@@ -171,19 +176,74 @@ export interface RuntimeModelDispatchHost {
 	invokePipelineHooks(
 		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
 	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>;
-	attachEffectiveSystemPrompt(
-		modelKey: string,
-		params: unknown,
-	): string | undefined;
 	createSecretSwapSession(): SecretSwapSession;
 	createPiiSwapSession(): PseudonymSession;
-	collectPromptText(params: unknown, systemPrompt: string | undefined): string;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;
 	_ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null>;
-	buildRuntimeSystemPrompt(): string | undefined;
-	getFirstUserPromptFromMessages(messages: unknown): string | undefined;
+}
+
+function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
+	if (!Array.isArray(messages)) {
+		return undefined;
+	}
+	for (const message of messages) {
+		if (!message || typeof message !== "object" || Array.isArray(message)) {
+			continue;
+		}
+		const record = message as { role?: unknown; content?: unknown };
+		if (record.role !== "user") {
+			continue;
+		}
+		const content = textFromChatMessageContent(record.content);
+		if (content) {
+			return content;
+		}
+	}
+	return undefined;
+}
+
+/** Request fields shared by the successful and failed llm-call trajectory records. */
+function trajectoryRequestFields(
+	trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
+	modelParams: unknown,
+	promptContent: string | null | undefined,
+	fallbackSystemPrompt: string | undefined,
+) {
+	const paramsRecord = isPlainObject(modelParams)
+		? (modelParams as Record<string, unknown>)
+		: {};
+	const systemPrompt =
+		resolveEffectiveSystemPrompt({
+			params: modelParams,
+			fallback: fallbackSystemPrompt,
+		}) ?? "";
+	const userPrompt =
+		getFirstUserPromptFromMessages(paramsRecord.messages) ??
+		promptContent ??
+		"";
+	const messages = Array.isArray(paramsRecord.messages)
+		? (paramsRecord.messages as unknown[])
+		: undefined;
+	const prompt =
+		typeof paramsRecord.prompt === "string" ? paramsRecord.prompt : userPrompt;
+	return {
+		paramsRecord,
+		temperature:
+			typeof paramsRecord.temperature === "number"
+				? paramsRecord.temperature
+				: undefined,
+		maxTokens:
+			typeof paramsRecord.maxTokens === "number"
+				? paramsRecord.maxTokens
+				: undefined,
+		systemPrompt,
+		userPrompt,
+		messages,
+		prompt,
+		...reboundProviderAttributions(trajCtx, messages, prompt),
+	};
 }
 
 export class RuntimeModelDispatch {
@@ -210,7 +270,34 @@ export class RuntimeModelDispatch {
 	) {}
 
 	/** Records the provider serving the most recent successful call for each requested model type. Trajectory recorders use this attribution instead of inventing a provider identity. */
-	lastResolvedModelProviderByType = new Map<string, string>();
+	private readonly lastResolvedModelProviderByType = new Map<string, string>();
+
+	buildRuntimeSystemPrompt(): string | undefined {
+		return (
+			buildCanonicalSystemPrompt({
+				character: this.runtime.character,
+				userRole: getTrajectoryContext()?.userRole,
+			}) || undefined
+		);
+	}
+
+	/** Attach the effective system prompt to a text request that does not set one. */
+	private attachEffectiveSystemPrompt(
+		modelKey: string,
+		params: unknown,
+	): string | undefined {
+		if (!isTextGenerationModelKey(modelKey) || !isPlainObject(params)) {
+			return undefined;
+		}
+		const systemPrompt = resolveEffectiveSystemPrompt({
+			params,
+			fallback: this.buildRuntimeSystemPrompt(),
+		});
+		if (systemPrompt !== undefined && !Object.hasOwn(params, "system")) {
+			(params as Record<string, unknown>).system = systemPrompt;
+		}
+		return systemPrompt;
+	}
 
 	registerModel(
 		modelType: ModelTypeName | string,
@@ -235,27 +322,24 @@ export class RuntimeModelDispatch {
 			);
 			return;
 		}
-		if (!this.host.models().has(modelKey)) {
-			this.host.models().set(modelKey, []);
+		const models = this.host.models();
+		let modelsArray = models.get(modelKey);
+		if (!modelsArray) {
+			modelsArray = [];
+			models.set(modelKey, modelsArray);
 		}
-
-		const registrationOrder = Date.now();
-		const modelsArray = this.host.models().get(modelKey);
-		if (modelsArray) {
-			modelsArray.push({
-				handler,
-				metadata,
-				provider,
-				priority: priority || 0,
-				registrationOrder,
-			});
-			modelsArray.sort((a, b) => {
-				if ((b.priority || 0) !== (a.priority || 0)) {
-					return (b.priority || 0) - (a.priority || 0);
-				}
-				return (a.registrationOrder || 0) - (b.registrationOrder || 0);
-			});
-		}
+		modelsArray.push({
+			handler,
+			metadata,
+			provider,
+			priority: priority || 0,
+			registrationOrder: Date.now(),
+		});
+		modelsArray.sort(
+			(a, b) =>
+				(b.priority || 0) - (a.priority || 0) ||
+				(a.registrationOrder || 0) - (b.registrationOrder || 0),
+		);
 
 		// Announce the registration so observers (e.g. the local-inference
 		// routing table) can mirror the model registry without patching the
@@ -309,18 +393,6 @@ export class RuntimeModelDispatch {
 	}
 
 	/**
-	 * The runtime-selected text-model provider, or undefined to use the default
-	 * (highest-priority) handler. Read from `ELIZA_BRAIN_PROVIDER` so an owner
-	 * action that mutates `character.settings` (and/or persists it to config)
-	 * flips the chat brain on the next model call with no restart. Returns
-	 * undefined when the setting is empty OR names a provider that has no
-	 * registered text handler, so a stale or mistyped value never strands the
-	 * brain — it simply falls back to the default provider. The same contract
-	 * holds at call time: useModel keeps the default-chain registrations behind
-	 * the override as a failover tail, so a rate-limited/exhausted override
-	 * provider falls to the registered backups instead of stranding the brain.
-	 */
-	/**
 	 * Record the provider that served a successful `useModel` call, keyed by the
 	 * requested model-type string. Only real (non-empty) provider names are
 	 * stored so a caller reading it back never sees a fabricated value.
@@ -348,11 +420,15 @@ export class RuntimeModelDispatch {
 		return this.lastResolvedModelProviderByType.get(String(modelType));
 	}
 
+	/**
+	 * The runtime-selected text-model provider (`ELIZA_BRAIN_PROVIDER`), or
+	 * undefined to use the default (highest-priority) handler. It is read on
+	 * every call, so an owner action that changes the setting flips the chat
+	 * brain on the next model call with no restart.
+	 */
 	resolveTextProviderOverride(): string | undefined {
 		const raw = this.runtime.getSetting("ELIZA_BRAIN_PROVIDER");
-		const override = typeof raw === "string" ? raw.trim() : "";
-		if (!override) return undefined;
-		return override;
+		return (typeof raw === "string" ? raw.trim() : "") || undefined;
 	}
 
 	isCanonicalModelCapabilityDisabled(modelType: string): boolean {
@@ -361,7 +437,7 @@ export class RuntimeModelDispatch {
 
 	assertCanonicalModelCapabilityEnabled(modelType: string): void {
 		if (!this.isCanonicalModelCapabilityDisabled(modelType)) return;
-		const capability = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+		const capability = isTextGenerationModelKey(modelType)
 			? "llmText"
 			: "embeddings";
 		throw new NoModelProviderConfiguredError(
@@ -464,7 +540,7 @@ export class RuntimeModelDispatch {
 		// so callers (chat UI, etc.) can render an actionable hint instead of
 		// a generic "No handler found for delegate type" parse-failure message.
 		// Issue: elizaOS/eliza.
-		if (TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)) {
+		if (isTextGenerationModelKey(requestedModelKey)) {
 			const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
 				const handlers = this.host.models().get(key);
 				return Array.isArray(handlers) && handlers.length > 0;
@@ -780,7 +856,6 @@ export class RuntimeModelDispatch {
 	logModelCall(
 		modelType: string,
 		modelKey: string,
-		_params: unknown,
 		promptContent: string | null,
 		systemPrompt: string | undefined,
 		elapsedTime: number,
@@ -836,10 +911,7 @@ export class RuntimeModelDispatch {
 							runId: this.runtime.getCurrentRunId(),
 							timestamp: Date.now(),
 							executionTime: elapsedTime,
-							provider:
-								provider ||
-								this.host.models().get(modelKey)?.[0]?.provider ||
-								"unknown",
+							provider: resolvedProvider,
 							response: responseValue,
 						},
 						type: `useModel:${modelKey}`,
@@ -918,8 +990,7 @@ export class RuntimeModelDispatch {
 		// between loaded providers with no restart. A selection is a strict pin:
 		// failure or missing registration must not silently switch providers.
 		const providerOverride =
-			provider === undefined &&
-			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
+			provider === undefined && isTextGenerationModelKey(requestedModelKey)
 				? this.resolveTextProviderOverride()
 				: undefined;
 		const resolvedModels = this.resolveModelRegistrations(
@@ -1081,7 +1152,7 @@ export class RuntimeModelDispatch {
 			const handler = resolvedModel.handler;
 			if (
 				getModelAttemptLease() &&
-				(!TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) ||
+				(!isTextGenerationModelKey(String(resolvedModelKey)) ||
 					resolvedModel.provider !== "openai")
 			) {
 				throw new ElizaError("Model provider has no qualified attempt guard", {
@@ -1193,19 +1264,8 @@ export class RuntimeModelDispatch {
 					// The `user` parameter is used by LLM providers for tracking and analytics purposes.
 					// We only auto-populate when user is undefined (not explicitly set to empty string or null)
 					// to allow users to intentionally set an empty identifier if needed.
-					const shouldAttachUser =
-						requestedModelKey === ModelType.TEXT_NANO ||
-						requestedModelKey === ModelType.TEXT_SMALL ||
-						requestedModelKey === ModelType.TEXT_MEDIUM ||
-						requestedModelKey === ModelType.TEXT_LARGE ||
-						requestedModelKey === ModelType.TEXT_MEGA ||
-						requestedModelKey === ModelType.RESPONSE_HANDLER ||
-						requestedModelKey === ModelType.ACTION_PLANNER ||
-						requestedModelKey === ModelType.TEXT_REASONING_SMALL ||
-						requestedModelKey === ModelType.TEXT_REASONING_LARGE ||
-						requestedModelKey === ModelType.TEXT_COMPLETION;
 					if (
-						shouldAttachUser &&
+						isTextGenerationModelKey(requestedModelKey) &&
 						isPlainObject(modelParams) &&
 						this.runtime.character.name
 					) {
@@ -1253,6 +1313,8 @@ export class RuntimeModelDispatch {
 					signal?: AbortSignal;
 					streamStructured?: boolean;
 					responseSkeleton?: ResponseSkeleton;
+					streamFields?: readonly StructuredStreamField[];
+					streamFieldGate?: StructuredStreamGate;
 				}
 				const streamingCtx = getStreamingContext();
 				const paramsAsStreaming = isPlainObject(modelParams)
@@ -1263,7 +1325,7 @@ export class RuntimeModelDispatch {
 				const msgId = streamingCtx?.messageId;
 				const abortSignal = dispatchSignal;
 				const explicitStream = paramsAsStreaming?.stream;
-				const resolvedProviderName = resolvedModel?.provider;
+				const resolvedProviderName = resolvedModel.provider;
 				// stream: false = force no stream, otherwise stream if any callback exists.
 				// Vision describes are often hidden preprocessing/OCR calls inside a chat
 				// turn; do not leak those chunks into the visible chat stream unless the
@@ -1276,16 +1338,25 @@ export class RuntimeModelDispatch {
 						: requiresExplicitStreaming
 							? explicitStream === true
 							: !!(paramsChunk || ctxChunk || explicitStream);
-				const structuredStreamFields =
+				// Structured calls release only their declared user-visible fields,
+				// behind the caller's gate. Both are runtime-only and never reach
+				// the provider handler.
+				const structuredStream =
 					shouldStream && paramsAsStreaming?.streamStructured === true
-						? resolveResponseSkeletonStreamFields(
+						? resolveStructuredStreamFields(
 								paramsAsStreaming.responseSkeleton,
+								paramsAsStreaming.streamFields,
 							)
-						: [];
+						: { fields: [], parts: {} };
+				const structuredStreamGate = paramsAsStreaming?.streamFieldGate;
+				if (paramsAsStreaming) {
+					delete paramsAsStreaming.streamFields;
+					delete paramsAsStreaming.streamFieldGate;
+				}
 				const suppressStructuredStream =
 					shouldStream &&
 					paramsAsStreaming?.streamStructured === true &&
-					structuredStreamFields.length === 0;
+					structuredStream.fields.length === 0;
 				let downstreamDelivery = Promise.resolve();
 				let downstreamDeliveryError: unknown;
 				let downstreamDeliveryFailed = false;
@@ -1307,16 +1378,19 @@ export class RuntimeModelDispatch {
 							downstreamDeliveryError = error;
 						});
 				};
-				drainStructuredStreamCallbacks = async () => {
+				const drainDownstreamDelivery = async () => {
 					await downstreamDelivery;
 					if (downstreamDeliveryFailed) throw downstreamDeliveryError;
 				};
+				drainStructuredStreamCallbacks = drainDownstreamDelivery;
 				const structuredExtractor =
-					structuredStreamFields.length > 0 &&
+					structuredStream.fields.length > 0 &&
 					paramsAsStreaming?.responseSkeleton
 						? new ResponseSkeletonStreamExtractor({
 								skeleton: paramsAsStreaming.responseSkeleton,
-								streamFields: structuredStreamFields,
+								streamFields: structuredStream.fields,
+								streamParts: structuredStream.parts,
+								...(structuredStreamGate ? { gate: structuredStreamGate } : {}),
 								unordered: true,
 								onChunk: (chunk, _field, accumulated, streamRevision) =>
 									downstreamChunk(chunk, accumulated, streamRevision),
@@ -1413,6 +1487,30 @@ export class RuntimeModelDispatch {
 					const { safe, visible } = guardScanner.flush();
 					if (safe.length > 0) await emitModelStreamChunk(safe, visible);
 				};
+				/** Flush held stream output, run stream-end hooks, and signal stream end
+				 * so the streaming context can reset between useModel calls. */
+				const finishDeliveredStream = async (): Promise<void> => {
+					await flushGuardedStream();
+					structuredExtractor?.flush();
+					await drainDownstreamDelivery();
+					const trajStreamEnd = getTrajectoryContext();
+					await this.host.invokePipelineHooks(
+						"model_stream_end",
+						modelStreamEndPipelineHookContext({
+							source: "use_model",
+							roomId:
+								(trajStreamEnd?.roomId as UUID | undefined) ??
+								this.host.currentRoomId() ??
+								this.runtime.agentId,
+							runId: this.runtime.getCurrentRunId(),
+							messageId: msgId ?? trajStreamEnd?.messageId,
+							text: streamedText,
+						}),
+						"Model stream end (useModel)",
+						true,
+					);
+					getStreamingContext()?.onStreamEnd?.();
+				};
 				// Enable callbacks for declared streaming handlers and recognized local providers. eliza-
 				// router forwards callbacks after local routing.
 				const declaredStreamable = resolvedModel.metadata?.streamable;
@@ -1457,12 +1555,10 @@ export class RuntimeModelDispatch {
 					}
 				}
 
-				const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(
-					String(resolvedModelKey),
-				)
+				const textModelKey = isTextGenerationModelKey(String(resolvedModelKey))
 					? String(resolvedModelKey)
 					: requestedModelKey;
-				let effectiveSystemPrompt = this.host.attachEffectiveSystemPrompt(
+				let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
 					textModelKey,
 					modelParams,
 				);
@@ -1504,7 +1600,7 @@ export class RuntimeModelDispatch {
 					// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
 					// inference is offloaded to onnxruntime's threadpool, so it overlaps the
 					// event loop rather than blocking other turns.
-					piiIngressText = this.host.collectPromptText(
+					piiIngressText = collectPiiPromptText(
 						modelParams,
 						effectiveSystemPrompt,
 					);
@@ -1543,7 +1639,7 @@ export class RuntimeModelDispatch {
 					// context) with never-seen PII. If the assembled text changed, re-run
 					// detection so that new PII is swapped too — not just already-learned
 					// values re-masked. learn() is idempotent, so this only adds new entities.
-					const postHookText = this.host.collectPromptText(
+					const postHookText = collectPiiPromptText(
 						modelParams,
 						effectiveSystemPrompt,
 					);
@@ -1567,7 +1663,7 @@ export class RuntimeModelDispatch {
 					secretSwapSession?.entries.some((entry) =>
 						entry.placeholder.startsWith("__ELIZA_CONTACT_"),
 					) &&
-					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) &&
+					isTextGenerationModelKey(String(resolvedModelKey)) &&
 					isPlainObject(modelParams)
 				) {
 					const guidance =
@@ -1589,7 +1685,7 @@ export class RuntimeModelDispatch {
 				const attemptLease = getModelAttemptLease();
 				if (
 					attemptLease &&
-					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))
+					isTextGenerationModelKey(String(resolvedModelKey))
 				) {
 					if (!isPlainObject(modelParams))
 						throw new ElizaError("Bounded text request must be structured", {
@@ -1644,7 +1740,7 @@ export class RuntimeModelDispatch {
 					});
 				}
 
-				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
+				if (isTextGenerationModelKey(String(resolvedModelKey))) {
 					let finalBudget = this.buildFinalModelInputBudget(
 						modelParams,
 						resolvedModel.metadata,
@@ -1861,31 +1957,7 @@ export class RuntimeModelDispatch {
 						});
 					}
 					throwIfAborted();
-					await flushGuardedStream();
-					structuredExtractor?.flush();
-					await drainStructuredStreamCallbacks();
-
-					const trajStreamEnd = getTrajectoryContext();
-					await this.host.invokePipelineHooks(
-						"model_stream_end",
-						modelStreamEndPipelineHookContext({
-							source: "use_model",
-							roomId:
-								(trajStreamEnd?.roomId as UUID | undefined) ??
-								this.host.currentRoomId() ??
-								this.runtime.agentId,
-							runId: this.runtime.getCurrentRunId(),
-							messageId: msgId ?? trajStreamEnd?.messageId,
-							text: streamedText,
-						}),
-						"Model stream end (useModel)",
-						true,
-					);
-
-					// Signal stream end to allow context to reset state between useModel calls
-					const streamingCtxEnd = getStreamingContext();
-					const ctxEnd = streamingCtxEnd?.onStreamEnd;
-					if (ctxEnd) ctxEnd();
+					await finishDeliveredStream();
 
 					// Retain tool calls, finish reason, and usage alongside streamed text.
 					const streamRaw = rawResponse as {
@@ -1974,7 +2046,6 @@ export class RuntimeModelDispatch {
 					this.logModelCall(
 						String(modelType),
 						resolvedModelKey,
-						modelParams,
 						promptContent,
 						effectiveSystemPrompt,
 						elapsedTime,
@@ -2005,28 +2076,7 @@ export class RuntimeModelDispatch {
 				}
 
 				if (handlerDeliveredStream) {
-					await flushGuardedStream();
-					structuredExtractor?.flush();
-					await drainStructuredStreamCallbacks();
-					const trajStreamEnd = getTrajectoryContext();
-					await this.host.invokePipelineHooks(
-						"model_stream_end",
-						modelStreamEndPipelineHookContext({
-							source: "use_model",
-							roomId:
-								(trajStreamEnd?.roomId as UUID | undefined) ??
-								this.host.currentRoomId() ??
-								this.runtime.agentId,
-							runId: this.runtime.getCurrentRunId(),
-							messageId: msgId ?? trajStreamEnd?.messageId,
-							text: streamedText,
-						}),
-						"Model stream end (useModel)",
-						true,
-					);
-					const streamingCtxEnd = getStreamingContext();
-					const ctxEnd = streamingCtxEnd?.onStreamEnd;
-					if (ctxEnd) ctxEnd();
+					await finishDeliveredStream();
 				}
 
 				if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
@@ -2083,7 +2133,6 @@ export class RuntimeModelDispatch {
 				this.logModelCall(
 					String(modelType),
 					resolvedModelKey,
-					modelParams,
 					promptContent,
 					effectiveSystemPrompt,
 					elapsedTime,
@@ -2272,7 +2321,7 @@ export class RuntimeModelDispatch {
 				}
 				if (handlerStartedAt === null) throwIfAborted();
 				const unavailableLocalText =
-					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
+					isTextGenerationModelKey(requestedModelKey) &&
 					isUnavailableLocalModel(error);
 				const rejectedLocalAdmission =
 					handlerStartedAt === null && unavailableLocalText;
@@ -2451,36 +2500,23 @@ export class RuntimeModelDispatch {
 			)) as (Service & TrajectoryRuntimeLlmCallLogger) | null;
 			if (!stepId || !trajLogger) return;
 
-			const tempRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { temperature?: number }).temperature
-				: undefined;
-			const maxTokensRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { maxTokens?: number }).maxTokens
-				: undefined;
-			const paramsRecord = isPlainObject(args.modelParams)
-				? (args.modelParams as Record<string, unknown>)
-				: {};
-			const systemPrompt =
-				resolveEffectiveSystemPrompt({
-					params: args.modelParams,
-					fallback: this.host.buildRuntimeSystemPrompt(),
-				}) ?? "";
-			const userPrompt =
-				this.host.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-				args.promptContent ??
-				"";
-			const resultRecord = isPlainObject(args.result)
-				? (args.result as Record<string, unknown>)
-				: {};
-			const messages = Array.isArray(paramsRecord.messages)
-				? paramsRecord.messages
-				: undefined;
-			const prompt =
-				typeof paramsRecord.prompt === "string"
-					? paramsRecord.prompt
-					: userPrompt;
-			const { providerOrder, providerAttributions } =
-				reboundProviderAttributions(trajCtx, messages, prompt);
+			const {
+				paramsRecord,
+				temperature,
+				maxTokens,
+				systemPrompt,
+				userPrompt,
+				messages,
+				prompt,
+				providerOrder,
+				providerAttributions,
+			} = trajectoryRequestFields(
+				trajCtx,
+				args.modelParams,
+				args.promptContent,
+				this.buildRuntimeSystemPrompt(),
+			);
+			const resultRecord = isPlainObject(args.result) ? args.result : {};
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -2511,10 +2547,8 @@ export class RuntimeModelDispatch {
 						? resultRecord.finishReason
 						: undefined,
 				providerMetadata: resultRecord.providerMetadata,
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
-				...(typeof maxTokensRaw === "number"
-					? { maxTokens: maxTokensRaw }
-					: {}),
+				...(temperature !== undefined ? { temperature } : {}),
+				...(maxTokens !== undefined ? { maxTokens } : {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
@@ -2583,24 +2617,22 @@ export class RuntimeModelDispatch {
 			)) as (Service & TrajectoryRuntimeLlmCallLogger) | null;
 			if (!trajLogger) return;
 
-			const paramsRecord = isPlainObject(args.modelParams)
-				? (args.modelParams as Record<string, unknown>)
-				: {};
-			const tempRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { temperature?: number }).temperature
-				: undefined;
-			const maxTokensRaw = isPlainObject(args.modelParams)
-				? (args.modelParams as { maxTokens?: number }).maxTokens
-				: undefined;
-			const systemPrompt =
-				resolveEffectiveSystemPrompt({
-					params: args.modelParams,
-					fallback: this.host.buildRuntimeSystemPrompt(),
-				}) ?? "";
-			const userPrompt =
-				this.host.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-				args.promptContent ??
-				"";
+			const {
+				paramsRecord,
+				temperature,
+				maxTokens,
+				systemPrompt,
+				userPrompt,
+				messages,
+				prompt,
+				providerOrder,
+				providerAttributions,
+			} = trajectoryRequestFields(
+				trajCtx,
+				args.modelParams,
+				args.promptContent,
+				this.buildRuntimeSystemPrompt(),
+			);
 			const errorMessage =
 				args.error instanceof Error
 					? args.error.message
@@ -2631,15 +2663,6 @@ export class RuntimeModelDispatch {
 				`${errorMessage}${detailSuffix}`,
 			);
 			const failureEvidence = modelOutputIncompleteEvidence(args.error);
-			const messages = Array.isArray(paramsRecord.messages)
-				? (paramsRecord.messages as unknown[])
-				: undefined;
-			const prompt =
-				typeof paramsRecord.prompt === "string"
-					? paramsRecord.prompt
-					: userPrompt;
-			const { providerOrder, providerAttributions } =
-				reboundProviderAttributions(trajCtx, messages, prompt);
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
@@ -2678,10 +2701,10 @@ export class RuntimeModelDispatch {
 					? { maxTokensOmitted: true }
 					: typeof failureEvidence?.maxTokens === "number"
 						? { maxTokens: failureEvidence.maxTokens }
-						: typeof maxTokensRaw === "number"
-							? { maxTokens: maxTokensRaw }
+						: maxTokens !== undefined
+							? { maxTokens }
 							: {}),
-				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(temperature !== undefined ? { temperature } : {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),

@@ -1,7 +1,7 @@
 /** Compiles dynamic prompts and preserves ordered provider segments for cache planning.
  * The compiled-template cache is shared across runtime instances. */
 
-import { type PromptSegment, type State } from "@elizaos/core";
+import type { PromptSegment, State } from "@elizaos/core";
 import { compileTemplate } from "../../text/template-engine.js";
 
 const RUNTIME_TEMPLATE_CACHE = new Map<

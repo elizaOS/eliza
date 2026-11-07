@@ -126,16 +126,35 @@ type IntentMarker = {
 	start: number;
 };
 
-function patternMatches(text: string, pattern: RegExp): IntentMarker[] {
-	const flags = pattern.flags.includes("g")
-		? pattern.flags
-		: `${pattern.flags}g`;
-	const matcher = new RegExp(pattern.source, flags);
-	return Array.from(text.matchAll(matcher), (match) => ({
-		end: (match.index ?? 0) + match[0].length,
-		kind: "recurrence" as const,
-		start: match.index ?? 0,
-	}));
+// matchAll needs the global flag. Compile the global forms once; matchAll
+// clones its regex, so the shared instances never carry lastIndex state.
+function toGlobal(patterns: readonly RegExp[]): readonly RegExp[] {
+	return patterns.map((pattern) =>
+		pattern.global ? pattern : new RegExp(pattern.source, `${pattern.flags}g`),
+	);
+}
+const GLOBAL_ONE_SHOT_PATTERNS = toGlobal(ONE_SHOT_DIRECTIVE_PATTERNS);
+const GLOBAL_RECURRENCE_PATTERNS = toGlobal([
+	...ASCII_RECURRENCE_PATTERNS,
+	...JAPANESE_RECURRENCE_PATTERNS,
+]);
+const ROLE_LABELS = new Set(["user", "owner", "assistant", "agent", "system"]);
+
+function pushPatternMatches(
+	out: IntentMarker[],
+	text: string,
+	patterns: readonly RegExp[],
+	kind: IntentMarker["kind"],
+): void {
+	for (const pattern of patterns) {
+		for (const match of text.matchAll(pattern)) {
+			out.push({
+				end: match.index + match[0].length,
+				kind,
+				start: match.index,
+			});
+		}
+	}
 }
 
 function orderedIntentMarkers(text: string): IntentMarker[] {
@@ -144,14 +163,14 @@ function orderedIntentMarkers(text: string): IntentMarker[] {
 			value.replace(pattern, (match) => " ".repeat(match.length)),
 		text,
 	);
-	const oneShot = ONE_SHOT_DIRECTIVE_PATTERNS.flatMap((pattern) =>
-		patternMatches(sanitized, pattern).map((match) => ({
-			...match,
-			kind: "one-shot" as const,
-		})),
-	);
-	const recurrence = ASCII_RECURRENCE_PATTERNS.flatMap((pattern) =>
-		patternMatches(sanitized, pattern),
+	const oneShot: IntentMarker[] = [];
+	pushPatternMatches(oneShot, sanitized, GLOBAL_ONE_SHOT_PATTERNS, "one-shot");
+	const recurrence: IntentMarker[] = [];
+	pushPatternMatches(
+		recurrence,
+		sanitized,
+		GLOBAL_RECURRENCE_PATTERNS,
+		"recurrence",
 	);
 	for (const marker of CJK_RECURRENCE_MARKERS) {
 		let start = sanitized.indexOf(marker);
@@ -163,9 +182,6 @@ function orderedIntentMarkers(text: string): IntentMarker[] {
 			});
 			start = sanitized.indexOf(marker, start + marker.length);
 		}
-	}
-	for (const pattern of JAPANESE_RECURRENCE_PATTERNS) {
-		recurrence.push(...patternMatches(sanitized, pattern));
 	}
 	const nonNegatedRecurrence = recurrence.filter(
 		(positive) =>
@@ -188,7 +204,7 @@ function authoritativeSegments(text: string): string[] {
 			const colonIndex = line.indexOf(":");
 			if (colonIndex < 0) return [line];
 			const role = line.slice(0, colonIndex).trim().toLowerCase();
-			if (!["user", "owner", "assistant", "agent", "system"].includes(role)) {
+			if (!ROLE_LABELS.has(role)) {
 				return [line];
 			}
 			return role === "user" || role === "owner"

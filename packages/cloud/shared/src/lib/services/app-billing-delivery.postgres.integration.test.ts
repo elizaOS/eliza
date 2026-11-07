@@ -93,6 +93,7 @@ beforeAll(async () => {
     "0508_app_notification_secret_envelope_v2",
     "0414_app_subscription_outbox_delivery",
     "0415_app_billing_webhook_recovery",
+    "0555_stripe_delivery_outbox",
     "0416_app_billing_checkout_expiry",
     "0417_app_billing_membership_authority",
     "0416_app_billing_checkout_expiry",
@@ -444,7 +445,7 @@ async function current(scopeId: string) {
 }
 
 describe("generic subscription webhook and delivery", () => {
-  test("signed HTTP intake survives failed queue handoff and duplicate delivery, with cancellation winning stale event timestamps", async () => {
+  test("signed HTTP intake records its delivery durably once across duplicate delivery, with cancellation winning stale event timestamps", async () => {
     const f = await fixture(),
       wire = await providerFixture(f),
       t = await triggerFor(f);
@@ -453,14 +454,8 @@ describe("generic subscription webhook and delivery", () => {
     const Stripe = (await import("stripe")).default;
     const signing = new Stripe("sk_test_signature_fixture"),
       secret = "whsec_delivery_test";
-    let enqueues = 0;
     const app = new Hono<import("../../types/cloud-worker-env").AppEnv>();
-    app.post("/", (c) =>
-      handleStripeWebhook(c, async () => {
-        enqueues++;
-        throw new Error("Controlled Redis outage");
-      }),
-    );
+    app.post("/", (c) => handleStripeWebhook(c));
     app.onError((_error, c) => c.json({ error: "Unavailable" }, 503));
     const server = Bun.serve({
       port: 0,
@@ -478,10 +473,19 @@ describe("generic subscription webhook and delivery", () => {
         }),
       };
       const first = await fetch(server.url, { method: "POST", body: t.body, headers });
-      expect(first.status).toBe(503);
+      expect(first.status).toBe(200);
+      expect(await first.json()).toEqual({ received: true, queued: true });
       const duplicate = await fetch(server.url, { method: "POST", body: t.body, headers });
       expect(duplicate.status).toBe(200);
-      expect(enqueues).toBe(1);
+      expect(await duplicate.json()).toEqual({ received: true, duplicate: true });
+      expect(
+        (
+          await client.query(
+            "SELECT delivery_payload->'appBilling'->>'receiptKey' receipt,delivery_attempts attempts FROM webhook_events WHERE event_id=$1",
+            [t.receiptKey],
+          )
+        ).rows,
+      ).toEqual([{ receipt: t.receiptKey, attempts: 0 }]);
       const changedBody = JSON.stringify({ ...t.event, created: t.event.created - 1 });
       const changed = await fetch(server.url, {
         method: "POST",

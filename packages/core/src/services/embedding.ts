@@ -33,12 +33,6 @@ interface EmbeddingQueueItem {
 	pendingKey?: string;
 }
 
-/**
- * Service responsible for generating embeddings asynchronously
- * This service listens for EMBEDDING_GENERATION_REQUESTED events
- * and processes them in a queue to avoid blocking the main runtime
- */
-
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
 	capabilityDescription =
@@ -663,6 +657,9 @@ export class EmbeddingGenerationService extends Service {
 	clearQueue(): void {
 		const size = this.batchQueue?.size ?? 0;
 		this.batchQueue?.clear();
+		// Cleared items never reach onDrainBatchOutcomes; drop their coalescing
+		// keys so an identical snapshot can be requested again.
+		this.pending.clear();
 		this.runtime.logger.info(
 			{
 				src: "plugin:basic-capabilities:service:embedding",
