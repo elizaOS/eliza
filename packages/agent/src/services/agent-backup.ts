@@ -81,6 +81,7 @@ import {
   releaseAbandonedAgentBackupAuthorityClaim,
   withAgentBackupAuthority,
 } from "./agent-backup-authority.ts";
+import { readPgliteDirectoryLayout } from "./agent-backup-pglite-layout.ts";
 
 type JsonRecord = Record<string, unknown>;
 const EMPTY_LEGACY_CONFIG_SECTION = Object.freeze({});
@@ -2054,43 +2055,6 @@ async function prepareVaultRestoreDirectories(
     }
   }
   return directories.sort();
-}
-/**
- * File-set archives omit empty directories, but PostgreSQL requires its empty
- * layout directories. Derive them (and PG_VERSION) from this PGlite version.
- */
-async function readPgliteDirectoryLayout(): Promise<{
-  pgVersion: Buffer;
-  directories: string[];
-}> {
-  const { PGlite } = await import("@electric-sql/pglite");
-  const template = await fs.mkdtemp(
-    path.join(os.tmpdir(), "eliza-pglite-restore-layout-"),
-  );
-  try {
-    const database = await PGlite.create(template);
-    await database.close();
-    const directories: string[] = [];
-    const visit = async (directory: string): Promise<void> => {
-      for (const entry of await fs.readdir(directory, {
-        withFileTypes: true,
-      })) {
-        if (!entry.isDirectory()) continue;
-        const absolute = path.join(directory, entry.name);
-        directories.push(
-          normalizeRelativePath(path.relative(template, absolute)),
-        );
-        await visit(absolute);
-      }
-    };
-    await visit(template);
-    return {
-      pgVersion: await fs.readFile(path.join(template, "PG_VERSION")),
-      directories: directories.sort(),
-    };
-  } finally {
-    await fs.rm(template, { recursive: true, force: true });
-  }
 }
 async function restoreFileSet(
   root: string,
