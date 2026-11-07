@@ -13,7 +13,10 @@
 import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import type { AppContainerProvider } from "./app-container-provider";
-import type { AppContainerNodeSlotClaim } from "./app-container-store-queries";
+import type {
+  AppContainerNodeSlotClaim,
+  AppContainerPublicationAuthority,
+} from "./app-container-store-queries";
 import { deriveAppPublicUrl } from "./app-url";
 import {
   isContainerDeleteJobData,
@@ -35,6 +38,8 @@ export interface AppContainerRow {
   image: string;
   port: number;
   organizationId: string;
+  /** Exact original row identity retained across provider I/O. */
+  createdAtSnapshot: string;
   userId: string;
   /** Caller env incl. the app's per-tenant DATABASE_URL (never the shared one). */
   environmentVars?: Record<string, string>;
@@ -58,14 +63,24 @@ export interface AppContainerStore {
     containerId: string,
     organizationId: string,
     nodeId: string,
+    authority?: AppContainerPublicationAuthority,
   ): Promise<boolean>;
   markRunning(
     containerId: string,
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
+    authority: AppContainerPublicationAuthority,
   ): Promise<void>;
   markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void>;
-  markError(containerId: string, error: string): Promise<void>;
-  markCleanupRequired(containerId: string, error: string): Promise<void>;
+  markError(
+    containerId: string,
+    error: string,
+    authority?: AppContainerPublicationAuthority,
+  ): Promise<void>;
+  markCleanupRequired(
+    containerId: string,
+    error: string,
+    authority?: AppContainerPublicationAuthority,
+  ): Promise<void>;
 }
 
 export interface ContainerExecutorDeps {
@@ -127,6 +142,23 @@ async function requireRow(store: AppContainerStore, containerId: string): Promis
   return row;
 }
 
+function publicationAuthority(row: AppContainerRow): AppContainerPublicationAuthority {
+  return {
+    organizationId: row.organizationId,
+    deploymentGeneration: row.deploymentGeneration ?? null,
+    createdAtSnapshot: row.createdAtSnapshot,
+  };
+}
+
+function isStalePublication(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error.code === "APP_CONTAINER_PUBLICATION_STALE" || error.code === "APP_CONTAINER_ROW_MISSING")
+  );
+}
+
 async function settleFailedProvision(
   deps: ContainerExecutorDeps,
   row: AppContainerRow,
@@ -144,6 +176,7 @@ async function settleFailedProvision(
     await deps.store.markCleanupRequired(
       containerId,
       `${failureMessage}; Docker absence unproven: ${cleanupMessage}`,
+      publicationAuthority(row),
     );
     throw new ElizaError(
       `App container ${containerId} provisioning failed and Docker cleanup could not be proven`,
@@ -160,11 +193,13 @@ async function settleFailedProvision(
     containerId,
     row.organizationId,
     nodeId,
+    publicationAuthority(row),
   );
   if (!rolledBack) {
     await deps.store.markCleanupRequired(
       containerId,
       `${failureMessage}; Docker is absent but the node-slot claim could not be released`,
+      publicationAuthority(row),
     );
     throw new ElizaError(`App container ${containerId} node-slot rollback was not applied`, {
       code: "APP_CONTAINER_SLOT_ROLLBACK_UNAPPLIED",
@@ -174,7 +209,7 @@ async function settleFailedProvision(
     });
   }
 
-  await deps.store.markError(containerId, failureMessage);
+  await deps.store.markError(containerId, failureMessage, publicationAuthority(row));
   throw failure;
 }
 
@@ -191,6 +226,7 @@ async function discardStaleProvision(
     await deps.store.markCleanupRequired(
       row.id,
       `Stale deployment primary cleanup unproven: ${cleanupMessage}`,
+      publicationAuthority(row),
     );
     throw new ElizaError(`Could not discard stale app deployment container ${row.id}`, {
       code: "APP_DEPLOYMENT_STALE_CLEANUP_UNPROVEN",
@@ -207,11 +243,13 @@ async function discardStaleProvision(
     row.id,
     row.organizationId,
     deps.provider.targetNodeId,
+    publicationAuthority(row),
   );
   if (!rolledBack) {
     await deps.store.markCleanupRequired(
       row.id,
       "Stale deployment primary is absent but the node-slot claim could not be released",
+      publicationAuthority(row),
     );
     throw new ElizaError(`Could not release stale app deployment slot ${row.id}`, {
       code: "APP_DEPLOYMENT_STALE_SLOT_ROLLBACK_UNAPPLIED",
@@ -306,13 +344,26 @@ export async function executeContainerProvision(
       );
       return;
     }
-    await deps.store.markRunning(containerId, {
-      hostContainerId: result.containerId,
-      hostPort: result.hostPort,
-      network: result.network,
-      nodeHost: result.nodeHost,
-    });
+    await deps.store.markRunning(
+      containerId,
+      {
+        hostContainerId: result.containerId,
+        hostPort: result.hostPort,
+        network: result.network,
+        nodeHost: result.nodeHost,
+      },
+      publicationAuthority(row),
+    );
   } catch (error) {
+    if (isStalePublication(error)) {
+      await discardStaleProvision(deps, row, result);
+      logger.info("[ContainerExecutor] discarded superseded container publication", {
+        containerId,
+        appId: row.appId,
+        deploymentGeneration: generation,
+      });
+      return;
+    }
     // error-policy:J2 cleanup and slot-accounting context is added by settleFailedProvision.
     return settleFailedProvision(deps, row, containerId, error);
   }
@@ -550,21 +601,31 @@ export async function executeContainerUpgrade(
     port: row.port,
     environmentVars: row.environmentVars,
   });
+  let result: Awaited<ReturnType<AppContainerProvider["provision"]>> | undefined;
   try {
-    const result = await deps.provider.provision({
+    result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,
       input,
     });
-    await deps.store.markRunning(data.containerId, {
-      hostContainerId: result.containerId,
-      hostPort: result.hostPort,
-      network: result.network,
-    });
+    await deps.store.markRunning(
+      data.containerId,
+      {
+        hostContainerId: result.containerId,
+        hostPort: result.hostPort,
+        network: result.network,
+      },
+      publicationAuthority(row),
+    );
   } catch (error) {
+    if (result && isStalePublication(error)) {
+      await discardStaleProvision(deps, row, result);
+      return;
+    }
     await deps.store.markError(
       data.containerId,
       error instanceof Error ? error.message : String(error),
+      publicationAuthority(row),
     );
     throw error;
   }

@@ -714,12 +714,12 @@
         "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
         "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["app_container_publication.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite deployment model yet.",
+        "Only container placement publication and stale cleanup identity are modeled; build, ingress and complete deployment flow remain open.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
