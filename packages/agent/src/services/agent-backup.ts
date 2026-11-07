@@ -551,7 +551,9 @@ async function collectFileSet(params: {
     }
   }
   await visit(root);
-  files.sort((left, right) => left.path.localeCompare(right.path));
+  files.sort((left, right) =>
+    compareAgentBackupCaptureV2FilePaths(left.path, right.path),
+  );
   return withFileSetHash({
     kind: "file-set",
     rootLabel: params.rootLabel,
