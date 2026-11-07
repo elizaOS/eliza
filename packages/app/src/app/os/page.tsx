@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { MerlinWizard } from "@/components/desktop/MerlinWizard";
 import { TreasuryDesk } from "@/components/desktop/TreasuryDesk";
+import { AdminTerminal } from "@/components/desktop/AdminTerminal";
 
 export default function ValhallaOSDesktop() {
   const [merlinOpen, setMerlinOpen] = useState(false);
   const [treasuryOpen, setTreasuryOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [persona, setPersona] = useState<"sentinel" | "nomad" | "offline">("offline");
   const [lastPing, setLastPing] = useState<string>("Initializing Loopback...");
 
@@ -49,12 +51,13 @@ export default function ValhallaOSDesktop() {
         fontFamily: "'MS Sans Serif', Tahoma, sans-serif"
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: 16, width: 90 }}>
+      {/* Desktop App Icons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, padding: 16, width: 90 }}>
         <div
           onDoubleClick={() => setMerlinOpen(true)}
           style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
         >
-          <div style={{ fontSize: 36, marginBottom: 4 }}>🪄</div>
+          <div style={{ fontSize: 34, marginBottom: 2 }}>🪄</div>
           <span style={{ backgroundColor: merlinOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
             Merlin Setup
           </span>
@@ -64,13 +67,24 @@ export default function ValhallaOSDesktop() {
           onDoubleClick={() => setTreasuryOpen(true)}
           style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
         >
-          <div style={{ fontSize: 36, marginBottom: 4 }}>💰</div>
+          <div style={{ fontSize: 34, marginBottom: 2 }}>💰</div>
           <span style={{ backgroundColor: treasuryOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
             Treasury Desk
           </span>
         </div>
+
+        <div
+          onDoubleClick={() => setAdminOpen(true)}
+          style={{ textAlign: "center", cursor: "pointer", color: "#fff", fontSize: 11 }}
+        >
+          <div style={{ fontSize: 34, marginBottom: 2 }}>🛡️</div>
+          <span style={{ backgroundColor: adminOpen ? "#000080" : "rgba(0,0,0,0.4)", padding: "2px 4px" }}>
+            Admin Terminal
+          </span>
+        </div>
       </div>
 
+      {/* Windows */}
       {merlinOpen && (
         <div style={{ position: "absolute", top: 40, left: 80, zIndex: 10 }}>
           <MerlinWizard onClose={() => setMerlinOpen(false)} />
@@ -83,6 +97,13 @@ export default function ValhallaOSDesktop() {
         </div>
       )}
 
+      {adminOpen && (
+        <div style={{ position: "absolute", top: 60, left: 200, zIndex: 20 }}>
+          <AdminTerminal onClose={() => setAdminOpen(false)} />
+        </div>
+      )}
+
+      {/* Persistent Retro Taskbar */}
       <div
         className="window"
         style={{
@@ -102,7 +123,8 @@ export default function ValhallaOSDesktop() {
         <button className="default" style={{ fontWeight: "bold", height: 24, fontSize: 11 }}>
           Start
         </button>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: "#333" }}>Admin: keene.jos@gmail.com</span>
           <div style={{ fontSize: 11, padding: "2px 8px", border: "1px inset #808080", backgroundColor: "#dfdfdf" }}>
             Engine: <strong>{persona.toUpperCase()}</strong>
           </div>
