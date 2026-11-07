@@ -16,7 +16,7 @@ import {
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
-import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/rate-limiter";
+import { claimLowCreditsEmail, releaseLowCreditsEmailClaim } from "../email/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
 import { getRequestTaskDefer } from "../runtime/request-context";
@@ -1221,11 +1221,6 @@ export class CreditsService {
         return;
       }
 
-      const canSend = await canSendLowCreditsEmail(organizationId);
-      if (!canSend) {
-        return;
-      }
-
       const org = await organizationsService.getById(organizationId);
       if (!org) {
         return;
@@ -1239,6 +1234,11 @@ export class CreditsService {
         return;
       }
 
+      // One email per organization per cooldown, however many debits ask.
+      if (!(await claimLowCreditsEmail(organizationId))) {
+        return;
+      }
+
       const sent = await emailService.sendLowCreditsEmail({
         email: recipientEmail,
         organizationName: org.name,
@@ -1247,8 +1247,8 @@ export class CreditsService {
         billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
       });
 
-      if (sent) {
-        await markLowCreditsEmailSent(organizationId);
+      if (!sent) {
+        await releaseLowCreditsEmailClaim(organizationId);
       }
     } catch (error) {
       logger.error(
