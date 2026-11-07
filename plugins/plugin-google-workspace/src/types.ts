@@ -201,6 +201,8 @@ export interface GoogleGmailSendResult {
   messageId: string | null;
   threadId: string | null;
   labelIds: string[];
+  /** The Message-ID header this client wrote into the sent message. */
+  messageIdHeader?: string;
 }
 
 export interface GoogleGmailDraftResult extends GoogleGmailSendResult {
@@ -915,6 +917,7 @@ export interface IGoogleGmailService extends Service {
       threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult>;
   sendGmailMessage(
@@ -924,8 +927,12 @@ export interface IGoogleGmailService extends Service {
       bcc?: string[];
       subject: string;
       bodyText: string;
+      messageIdHeader?: string;
     }
   ): Promise<GoogleGmailSendResult>;
+  findGmailMessageByHeaderId(
+    params: GoogleAccountRef & { messageIdHeader: string }
+  ): Promise<{ messageId: string; threadId: string | null } | null>;
   createGmailDraft(
     params: GoogleAccountRef & {
       to: string[];

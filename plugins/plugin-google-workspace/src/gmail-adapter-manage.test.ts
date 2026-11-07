@@ -38,6 +38,7 @@ async function trash(receipt: GoogleGmailMutationReceipt) {
     getGmailMessageRevision: vi.fn(),
     sendGmailReply: vi.fn(),
     sendGmailMessage: vi.fn(),
+    findGmailMessageByHeaderId: vi.fn(),
     modifyGmailMessages: vi.fn(async () => receipt),
     createGmailFilterForSender: vi.fn(),
   };

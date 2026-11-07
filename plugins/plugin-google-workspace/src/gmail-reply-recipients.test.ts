@@ -42,6 +42,7 @@ async function replyRecipients(message: GoogleGmailMessageSummary): Promise<stri
     getGmailMessageRevision: vi.fn(),
     sendGmailReply,
     sendGmailMessage: vi.fn(),
+    findGmailMessageByHeaderId: vi.fn(),
     modifyGmailMessages: vi.fn(),
     createGmailFilterForSender: vi.fn(),
   };
