@@ -382,3 +382,100 @@ describe("Solana transfer confirmation states", () => {
     }
   });
 });
+
+describe("pump.fun buy confirmation states", () => {
+  const mint = "So11111111111111111111111111111111111111112";
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockGetLatestBlockhash.mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123456,
+    });
+    mockSendTransaction.mockResolvedValue("pump-signature-abc123");
+    // PumpPortal trade-local returns an unsigned transaction for the wallet.
+    const { TransactionMessage, VersionedTransaction } = await import(
+      "@solana/web3.js"
+    );
+    const payer = (testKeypairHolder.keypair as { publicKey: never }).publicKey;
+    const unsigned = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: payer,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [],
+      }).compileToV0Message(),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(Buffer.from(unsigned.serialize()), {
+            status: 200,
+            headers: { "content-type": "application/octet-stream" },
+          }),
+      ),
+    );
+  });
+
+  async function buy() {
+    const runtime = createMockRuntime();
+    const service = new WalletBackendService(runtime);
+    registerDefaultWalletChainHandlers(service, runtime);
+    return service.routeWalletAction({
+      subaction: "pump_fun_buy",
+      chain: "pumpfun",
+      toToken: mint,
+      amount: "0.5",
+      mode: "execute",
+      dryRun: false,
+    });
+  }
+
+  it("reports a buy whose confirmation read failed as unconfirmed, not failed", async () => {
+    mockConfirmTransaction.mockRejectedValue(
+      new Error("429 Too Many Requests"),
+    );
+
+    const result = await buy();
+
+    // A failure here invites a second "yes" and a second 0.5 SOL buy.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.signature).toBe("pump-signature-abc123");
+      expect(
+        (result.result.metadata as { confirmationStatus?: string })
+          ?.confirmationStatus,
+      ).toBe("unconfirmed");
+    }
+  });
+
+  it("reports a buy whose send response was lost as unconfirmed with its signature", async () => {
+    mockSendTransaction.mockRejectedValue(new TypeError("fetch failed"));
+
+    const result = await buy();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.signature).toBeTruthy();
+      expect(result.result.metadata).toMatchObject({
+        confirmationStatus: "unconfirmed",
+        sendUncertain: true,
+      });
+    }
+    expect(mockConfirmTransaction).not.toHaveBeenCalled();
+  });
+
+  it("still reports an explicit on-chain failure as failed", async () => {
+    mockConfirmTransaction.mockResolvedValue({
+      value: { err: { InstructionError: [2, { Custom: 6003 }] } },
+    });
+
+    const result = await buy();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("EXECUTION_FAILED");
+      expect(result.detail).toContain("Pump.fun buy failed");
+    }
+  });
+});
