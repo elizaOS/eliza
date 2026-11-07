@@ -12,6 +12,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "HostSpeech")
 public final class HostInferencePlugin extends ElizaInferencePlugin {
     private volatile boolean refusing;
+    /** Speech this host synthesized is still playing under audio focus. */
+    private volatile boolean playing;
 
     @Override protected void admit(PluginCall call) throws Refusal {
         if (refusing) throw new Refusal("Speech is paused", "PAUSED");
@@ -42,8 +44,8 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
     /** Models stay resident while shown; a minute after the host is hidden and idle, they go. */
     @Override protected long hiddenReleaseMillis() { return 60000; }
 
-    /** For example: speech this host synthesized is still playing under audio focus. */
-    @Override protected boolean holdsModels() { return refusing; }
+    /** A hidden release waits while this host's speech still plays. */
+    @Override protected boolean holdsModels() { return playing; }
 
     @Override protected boolean answerBeforeInstall() { return true; }
 
@@ -59,7 +61,16 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
         call.resolve();
     }
 
-    /** Releases the models now when nothing is queued or running; the next request loads them. */
+    /** The host's player starts or stops its speech under audio focus. */
+    @PluginMethod public void playing(PluginCall call) {
+        playing = Boolean.TRUE.equals(call.getBoolean("playing", false));
+        call.resolve();
+    }
+
+    /**
+     * Queues a release of the models for when nothing is queued or running, and
+     * resolves at once without its result; the next request loads them again.
+     */
     @PluginMethod public void trim(PluginCall call) {
         releaseModels();
         call.resolve();

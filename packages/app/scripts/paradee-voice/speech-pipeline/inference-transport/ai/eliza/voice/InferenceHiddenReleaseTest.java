@@ -2,6 +2,7 @@ package ai.eliza.voice;
 
 import android.content.ComponentCallbacks2;
 import android.content.Context;
+import android.content.res.AssetManager;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import java.util.concurrent.CountDownLatch;
@@ -16,12 +17,12 @@ import java.util.function.BooleanSupplier;
 public final class InferenceHiddenReleaseTest {
     static final long WINDOW = 300;
 
-    /** A host that opts in, with a hold it can set. */
+    /** A host that opts in once window is set (below 0: the transport's default), with a hold it can set. */
     static final class Host extends ElizaInferencePlugin {
-        volatile long window;
+        volatile long window = -1;
         volatile boolean holds;
         @Override protected long idleReleaseMillis() { return 0; }
-        @Override protected long hiddenReleaseMillis() { return window; }
+        @Override protected long hiddenReleaseMillis() { return window < 0 ? super.hiddenReleaseMillis() : window; }
         @Override protected boolean holdsModels() { return holds; }
     }
 
@@ -77,15 +78,18 @@ public final class InferenceHiddenReleaseTest {
         host.load();
         ComponentCallbacks2 trims = context.callbacks.get(0);
 
-        // Off by default (window 0): hidden and idle keeps the models.
+        // Off by default (the transport's own hiddenReleaseMillis): hidden and idle keeps the models.
         settled(speak(host));
         host.handleOnStop();
         Thread.sleep(2 * WINDOW);
         check(SESSION.releases == 0, "no hidden release unless the host opts in");
 
-        // Shown keeps the models.
+        // Shown keeps the models, also through a running-moderate trim and a UI_HIDDEN that comes
+        // late, after the host was shown again.
         host.handleOnStart();
         host.window = WINDOW;
+        trims.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE);
+        trims.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN);
         Thread.sleep(2 * WINDOW);
         check(SESSION.releases == 0, "a shown host keeps the models");
 
@@ -97,7 +101,7 @@ public final class InferenceHiddenReleaseTest {
         check((System.nanoTime() - spoke) / 1_000_000 >= WINDOW, "not before the window");
         check(SESSION.releases == 2 && SESSION.releasedWhileRunning == 0, "both lanes release, nothing running");
 
-        // A second hidden signal with nothing done since releases nothing more.
+        // A UI_HIDDEN after the stop, with nothing done since, releases nothing more.
         trims.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN);
         Thread.sleep(2 * WINDOW);
         check(SESSION.releases == 2, "nothing held, nothing released again");
@@ -125,11 +129,11 @@ public final class InferenceHiddenReleaseTest {
         settled(call[0]);
         check(waitFor(() -> SESSION.frees == 3) && SESSION.releasedWhileRunning == 0, "released after the transcription");
 
-        // The host's own hold (for example audio focus) keeps them; UI_HIDDEN alone triggers the check.
+        // The host's own hold (for example audio focus) keeps them.
         host.handleOnStart();
         settled(speak(host));
         host.holds = true;
-        trims.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN);
+        host.handleOnStop();
         Thread.sleep(2 * WINDOW);
         check(SESSION.frees == 3, "the host's hold keeps the models");
         host.holds = false;
@@ -153,5 +157,29 @@ public final class InferenceHiddenReleaseTest {
         settled(speak(host));
         check(SESSION.loads == 6 && SESSION.releasedWhileRunning == 0, "a released transport speaks again, loading once");
 
+        // Hidden with nothing held, so no check is left; then a status call with speechLanguage
+        // loads the voice and the ASR. A hidden check releases them after the window.
+        check(host.releaseModels().get(5, TimeUnit.SECONDS) && SESSION.frees == 6, "released before hiding");
+        host.handleOnStop();
+        Thread.sleep(2 * WINDOW);
+        AssetManager.packaged = true;
+        PluginCall status = new PluginCall().put("speechLanguage", "en");
+        host.status(status);
+        settled(status);
+        check(waitFor(() -> SESSION.loads == 7), "the status warm-up loads the models");
+        check(waitFor(() -> SESSION.frees == 7), "models a status call loaded while hidden are released");
+        check(SESSION.releasedWhileRunning == 0, "never while the warm-up runs");
+        AssetManager.packaged = false;
+
+        // A destroyed bridge: its window is kept and its holdsModels is no longer asked.
+        host.handleOnStart();
+        settled(speak(host));
+        host.holds = true;
+        host.handleOnStop();
+        Thread.sleep(2 * WINDOW);
+        check(SESSION.frees == 7, "the host's hold keeps the models");
+        host.handleOnDestroy();
+        check(waitFor(() -> SESSION.frees == 8), "after the bridge is destroyed, its window still releases");
+        check(SESSION.releasedWhileRunning == 0, "never while running");
     }
 }

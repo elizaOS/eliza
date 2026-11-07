@@ -156,7 +156,9 @@ rejection codes), `resolved` (for example timing logs), `idleReleaseMillis`,
 models once the host's activity stops or Android reports `TRIM_MEMORY_UI_HIDDEN`,
 nothing is queued or running and nothing was spoken or heard for that time;
 never cancels running work), `releaseModels` and `cancelAll`. The defaults keep
-the behavior above: no release for a hidden host.
+the behavior above: no release for a hidden host. A host that overrides
+`handleOnStart` or `handleOnStop` must call `super`, since they tell the
+transport that the host is shown or hidden.
 
 Transcription runs on its own hearing worker with its own client of the
 session, so a slow host recognizer never holds synthesis, and a cancel on one

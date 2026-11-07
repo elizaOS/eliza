@@ -51,6 +51,8 @@ public class ElizaInferencePlugin extends Plugin {
     private final Map<String, Request> requests = new ConcurrentHashMap<>();
     private Models models;
     private volatile boolean destroyed;
+    /** Between handleOnStart and handleOnStop: a late TRIM_MEMORY_UI_HIDDEN then does not hide. */
+    private volatile boolean started;
 
     @Override
     public void load() {
@@ -63,6 +65,7 @@ public class ElizaInferencePlugin extends Plugin {
     @Override
     protected void handleOnStart() {
         super.handleOnStart();
+        started = true;
         models.shown(true);
     }
 
@@ -70,6 +73,7 @@ public class ElizaInferencePlugin extends Plugin {
     @Override
     protected void handleOnStop() {
         super.handleOnStop();
+        started = false;
         models.shown(false);
     }
 
@@ -174,10 +178,15 @@ public class ElizaInferencePlugin extends Plugin {
      * {@link #holdsModels} is false. A check that must wait runs again later;
      * it stops when the host is shown again. Running work is never cancelled,
      * and the next request loads the models again. Other consumers of the
-     * shared session keep their own holds, and work done while hidden is
-     * released the same way. 0 or less (the default) never releases for
-     * hiding. Read on the speech worker at each check, from the bridge that
-     * loaded last (once it is destroyed, the value it gave then).
+     * shared session keep their own holds. Models loaded while hidden, by a
+     * request, a status call or its warm-up, are released the same way. 0 or
+     * less (the default) never releases for hiding and queues no check.
+     *
+     * <p>Read from the bridge that loaded last, on the main thread or a worker,
+     * each time a check is queued or runs, so it must answer at once. When that
+     * bridge is destroyed, the value it gives then is kept. A host that
+     * overrides {@code handleOnStart} or {@code handleOnStop} must call
+     * {@code super}: they tell the transport that the host is shown or hidden.
      */
     protected long hiddenReleaseMillis() { return 0; }
 
@@ -195,6 +204,10 @@ public class ElizaInferencePlugin extends Plugin {
      * when no request is queued or running and {@link #holdsModels} is false;
      * the next request loads them again. Completes with true when it released
      * a hold. For hosts and their tests; shown or hidden does not matter.
+     *
+     * <p>The release runs on the speech worker after the speech-lane work
+     * queued before it, which can take a long time (for example long synthesis
+     * or a model load). Never wait for the Future on the main thread.
      */
     protected final Future<Boolean> releaseModels() {
         return models.worker.submit(() -> models.releaseIfQuiet(this));
@@ -296,8 +309,6 @@ public class ElizaInferencePlugin extends Plugin {
                 requests.remove(id, request);
                 models.lastActivity = SystemClock.elapsedRealtime();
                 models.pending.decrementAndGet();
-                // Work done while hidden: a later hidden check releases it too.
-                if (!models.shown) models.checkHidden();
             }
         });
     }
@@ -592,6 +603,9 @@ public class ElizaInferencePlugin extends Plugin {
             if (lane.client == null) lane.client = current.client();
             InferenceSession.Client active = lane.client;
             holding = true;
+            // Loaded while hidden (a request, status or a warm-up): a hidden check releases it.
+            // hiddenLock is never held while this lock is taken, so this cannot deadlock.
+            if (!shown) checkHidden();
             if (request != null) request.begin(active::cancel);
             lastActivity = SystemClock.elapsedRealtime();
             return active;
@@ -604,8 +618,12 @@ public class ElizaInferencePlugin extends Plugin {
             }
             checkHidden();
         }
-        /** While hidden, queues one hidden check unless one is already queued or scheduled. */
+        /**
+         * While hidden and the window is above 0, queues one hidden check unless
+         * one is already queued or scheduled.
+         */
         void checkHidden() {
+            if (hiddenWindow(host) <= 0) return;
             long round;
             synchronized (hiddenLock) {
                 if (shown || hiddenQueued) return;
@@ -619,6 +637,10 @@ public class ElizaInferencePlugin extends Plugin {
          * still applies, since a service may keep the process after the
          * activity is gone; {@link #holdsModels} is no longer asked.
          */
+        /** The hidden release delay: from {@code owner}, or the one kept when it is null. */
+        long hiddenWindow(ElizaInferencePlugin owner) {
+            return owner != null ? owner.hiddenReleaseMillis() : hiddenMillis;
+        }
         void forget(ElizaInferencePlugin bridge) {
             if (host != bridge) return;
             hiddenMillis = bridge.hiddenReleaseMillis();
@@ -643,10 +665,10 @@ public class ElizaInferencePlugin extends Plugin {
             long wait;
             synchronized (this) {
                 ElizaInferencePlugin owner = host;
-                long window = owner != null ? owner.hiddenReleaseMillis() : hiddenMillis;
+                long window = hiddenWindow(owner);
                 if (shown || !holding || window <= 0) return;
                 wait = quiet(owner) ? lastActivity + window - SystemClock.elapsedRealtime() : window;
-                if (wait <= 0) { trim(); return; }
+                if (wait <= 0) { release(); return; }
             }
             synchronized (hiddenLock) {
                 if (round != hiddenRound || hiddenQueued) return;
@@ -657,11 +679,14 @@ public class ElizaInferencePlugin extends Plugin {
         /** Speech worker: releases now when quiet; true when a hold was dropped. */
         synchronized boolean releaseIfQuiet(ElizaInferencePlugin owner) {
             if (!holding || !quiet(owner)) return false;
-            trim();
+            release();
             return true;
         }
-        /** Speech worker: drops both lanes' holds on the models. */
-        void trim() {
+        /**
+         * Speech worker, under this lock: drops both lanes' holds on the
+         * models. A pending memory-pressure release keeps its flag.
+         */
+        private void release() {
             holding = false;
             try {
                 for (Lane lane : new Lane[] {speech, hearing}) {
@@ -669,7 +694,10 @@ public class ElizaInferencePlugin extends Plugin {
                     if (active != null) active.release();
                 }
             } catch (RuntimeException failure) { Log.e("ElizaInference", "Native memory release failed", failure); }
-            finally { pressure = false; }
+        }
+        /** Speech worker: the idle and memory-pressure release; it ends the pressure. */
+        synchronized void trim() {
+            try { release(); } finally { pressure = false; }
         }
         void releasePressure() {
             pressure = true;
@@ -683,7 +711,11 @@ public class ElizaInferencePlugin extends Plugin {
         }
         @Override public void onTrimMemory(int level) {
             if (level == TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_RUNNING_CRITICAL || level >= TRIM_MEMORY_BACKGROUND) releasePressure();
-            else if (level == TRIM_MEMORY_UI_HIDDEN) shown(false);
+            else if (level == TRIM_MEMORY_UI_HIDDEN) {
+                // Late after the host was shown again: its handleOnStart wins.
+                ElizaInferencePlugin bridge = host;
+                if (bridge == null || !bridge.started) shown(false);
+            }
         }
         @Override public void onLowMemory() { releasePressure(); }
         @Override public void onConfigurationChanged(Configuration configuration) {}
