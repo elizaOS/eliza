@@ -253,7 +253,7 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-async function seed(balance = "10.000000") {
+async function seed(balance = "10.000000", lastBilledAt = new Date("2026-08-19T01:00:00.000Z")) {
   const [org] = await dbWrite
     .insert(organizations)
     .values({
@@ -267,7 +267,6 @@ async function seed(balance = "10.000000") {
     .insert(users)
     .values({ steward_user_id: `steward-${crypto.randomUUID()}`, organization_id: org.id })
     .returning();
-  const lastBilledAt = new Date("2026-08-19T01:00:00.000Z");
   const [sandbox] = await dbWrite
     .insert(agentSandboxes)
     .values({
@@ -687,7 +686,12 @@ describe("compute billing recovery", () => {
   });
 
   test("migration-backed deletion states debit once and replay with zero effect", async () => {
-    const { org, user, sandbox } = await seed("20.000000");
+    // This migration uses the current database clock. Keep the funded history
+    // relative to it; a fixed historical start eventually exhausts this fixture.
+    const { org, user, sandbox } = await seed(
+      "20.000000",
+      new Date(Date.now() - 2 * 60 * 60 * 1000),
+    );
     await getPgliteClientForTests().exec(deletionBillingMigration);
     try {
       const transitionAt = new Date();
@@ -745,7 +749,7 @@ describe("compute billing recovery", () => {
       };
       const first = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
       const replay = await containerBillingRepository.recordSuccessfulDailyBilling(containerInput);
-      expect(first).toMatchObject({ alreadyBilled: false });
+      expect(first).toMatchObject({ alreadyBilled: false, insufficient: false });
       expect(first.amount).toBeCloseTo(0.67, 4);
       expect(replay).toMatchObject({ alreadyBilled: true, amount: 0 });
 
