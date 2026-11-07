@@ -599,7 +599,9 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
       if (!url.pathname.startsWith("/api/cloud/billing/")) {
         return false;
       }
-      if (!(await ensureRouteAuthorized(req, res, state))) {
+      // Policy also requires OWNER. Repeat it on the handler so a missing
+      // policy row cannot still forward the owner's Cloud key.
+      if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) {
         return true;
       }
       return handleCloudBillingRoute(req, res, url.pathname, method, {

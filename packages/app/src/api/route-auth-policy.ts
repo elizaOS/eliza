@@ -159,7 +159,9 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionExact("cloud.disconnect", "POST", "/api/cloud/disconnect"),
   sessionPrefix("cloud.compat", "/api/cloud/compat/"),
   sessionPrefix("cloud.v1", "/api/cloud/v1/"),
-  sessionPrefix("cloud.billing", "/api/cloud/billing/"),
+  // The billing proxy attaches the owner's Cloud key. A paired USER can
+  // read the ledger or link an affiliate code, so this prefix is owner-only.
+  ownerPrefix("cloud.billing", "/api/cloud/billing/"),
 
   sessionExact("dev.stack", "GET", "/api/dev/stack"),
   sessionExact("dev.route-catalog", "GET", "/api/dev/route-catalog"),
