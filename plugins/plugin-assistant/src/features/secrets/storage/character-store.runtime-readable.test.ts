@@ -44,7 +44,11 @@ it("exposes a secret set in chat through runtime.getSetting", async () => {
   // declared secret containers, so anything else under settings would ship.
   await service.set("PLAIN_KEY", "plain-value", context, { encrypted: false });
   const { secrets: _declared, ...rest } = runtime.character.settings ?? {};
-  const outsideDeclared = JSON.stringify({ ...runtime.character, secrets: undefined, settings: rest });
+  const outsideDeclared = JSON.stringify({
+    ...runtime.character,
+    secrets: undefined,
+    settings: rest,
+  });
   for (const leaked of ["sk-new", "plain-value", "authTag", "keyId"]) {
     expect(outsideDeclared).not.toContain(leaked);
   }
