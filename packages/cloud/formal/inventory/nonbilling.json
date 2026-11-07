@@ -1114,6 +1114,33 @@
         "No finite MCP session model yet.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
+    },
+    {
+      "id": "native-inference-worker-supervision",
+      "sources": [
+        "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
+        "packages/cloud/services/vast-pyworker/observability.py",
+        "packages/cloud/services/vast-pyworker/worker.py",
+        "packages/training/scripts/inference/heartbeat.py"
+      ],
+      "states": ["unstarted", "locked", "running", "stopping", "stopped"],
+      "invariants": [
+        "At most one cooperating observer owns the metrics and heartbeat writers.",
+        "Restart preserves existing observation history.",
+        "Graceful shutdown joins the heartbeat before releasing ownership."
+      ],
+      "assumptions": [
+        "Two observer attempts, one process-owned kernel lock and one heartbeat thread per owner.",
+        "Legacy untracked processes must be retired during upgrade; distributed storage locking, disk failure and GPU readiness are not proved."
+      ],
+      "models": ["vast_worker_supervision.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model worker admission, queue capacity, provider readiness and process-to-GPU lifecycle.",
+        "Verify deployed model completion and readiness against the actual GPU and model configuration."
+      ]
     }
   ]
 }
