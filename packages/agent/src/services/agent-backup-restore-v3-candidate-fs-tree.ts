@@ -71,6 +71,9 @@ const HASH_UPDATE = Hash.prototype.update as (
 ) => Hash;
 const HASH_DIGEST_HEX = Hash.prototype.digest as (encoding: "hex") => string;
 const INTRINSIC_UINT8_ARRAY = Uint8Array;
+const INTRINSIC_MAP = Map;
+const MAP_GET = Map.prototype.get;
+const MAP_SET = Map.prototype.set;
 const INTRINSIC_SET = Set;
 const SET_ADD = Set.prototype.add;
 const SET_HAS = Set.prototype.has;
@@ -207,6 +210,14 @@ function sortNames(value: string[]): string[] {
   return value;
 }
 
+function mapGet<K, V>(value: Map<K, V>, key: K): V | undefined {
+  return REFLECT_APPLY(MAP_GET, value, [key]);
+}
+
+function mapSet<K, V>(value: Map<K, V>, key: K, entry: V): void {
+  REFLECT_APPLY(MAP_SET, value, [key, entry]);
+}
+
 function setAdd<T>(value: Set<T>, entry: T): void {
   REFLECT_APPLY(SET_ADD, value, [entry]);
 }
@@ -275,6 +286,10 @@ interface CleanupEntry {
   readonly parentStats: CandidateFsExactStats;
   readonly kind: "directory" | "file";
   readonly stats: CandidateFsExactStats;
+}
+
+function inodeKey(stats: CandidateFsExactStats): string {
+  return `${stats.device}:${stats.inode}`;
 }
 
 function snapshotCleanupNames(value: readonly string[]): readonly string[] {
@@ -808,6 +823,10 @@ export async function cleanupCandidateFsVolatile(
   const limits = resolveCleanupLimits(limitsValue);
   const cleanupNames = snapshotCleanupNames(names);
   const entries: CleanupEntry[] = [];
+  // A file-tree finalize stopped between link(2) and unlink(2) leaves its
+  // partial and final names on one inode. Such a file is removable only when
+  // the preflight finds every link of that inode inside the volatile paths.
+  const linksInScope = new INTRINSIC_MAP<string, number>();
   let removedBytes = 0;
   await authority.assertAuthority(control);
   const operationLock = await authority.operationLock(
@@ -910,12 +929,16 @@ export async function cleanupCandidateFsVolatile(
           await boundedInternalCleanup(() => directoryHandle.close());
         }
       } else {
-        requirePrivateSingleLinkFile(
-          stats,
-          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
-          "Candidate volatile cleanup refuses a linked or non-regular file",
-        );
-        removedBytes += stats.size;
+        if (!stats.file || (stats.mode & 0o7077) !== 0) {
+          candidateFsError(
+            "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+            "Candidate volatile cleanup refuses a linked or non-regular file",
+          );
+        }
+        const inode = inodeKey(stats);
+        const seenLinks = mapGet(linksInScope, inode) ?? 0;
+        if (seenLinks === 0) removedBytes += stats.size;
+        mapSet(linksInScope, inode, seenLinks + 1);
         entries[entries.length] = {
           segments,
           parentStats,
@@ -969,6 +992,17 @@ export async function cleanupCandidateFsVolatile(
     } finally {
       await boundedInternalCleanup(() => root.handle.close());
     }
+    for (const entry of entries) {
+      if (
+        entry.kind === "file" &&
+        mapGet(linksInScope, inodeKey(entry.stats)) !== entry.stats.linkCount
+      ) {
+        candidateFsError(
+          "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_CLEANUP_UNSAFE",
+          "Candidate volatile cleanup refuses a linked or non-regular file",
+        );
+      }
+    }
 
     assertActive(control);
     const cleanupControl = internalCleanupControl();
@@ -996,13 +1030,25 @@ export async function cleanupCandidateFsVolatile(
             "Candidate volatile directory is no longer private before removal",
           );
         }
+        const inode = inodeKey(entry.stats);
+        const remainingLinks = mapGet(linksInScope, inode) ?? 0;
+        // Removing an earlier link of this file lowered its link count and
+        // moved its ctime; every other field must still match the preflight.
+        const expected =
+          entry.kind === "file" && remainingLinks !== entry.stats.linkCount
+            ? {
+                ...entry.stats,
+                linkCount: remainingLinks,
+                changedNanoseconds: current.changedNanoseconds,
+              }
+            : entry.stats;
         if (
           !sameIdentity(current, entry.stats) ||
           current.symbolicLink ||
           (entry.kind === "file" &&
             (!current.file ||
-              current.linkCount !== 1 ||
-              !sameStableFile(current, entry.stats))) ||
+              current.linkCount !== remainingLinks ||
+              !sameStableFile(current, expected))) ||
           (entry.kind === "directory" && !current.directory)
         ) {
           candidateFsError(
@@ -1010,8 +1056,10 @@ export async function cleanupCandidateFsVolatile(
             "Candidate volatile path changed before removal",
           );
         }
-        if (entry.kind === "file") await fs.unlink(target);
-        else await fs.rmdir(target);
+        if (entry.kind === "file") {
+          await fs.unlink(target);
+          mapSet(linksInScope, inode, remainingLinks - 1);
+        } else await fs.rmdir(target);
       } finally {
         await boundedInternalCleanup(() => parent.handle.close());
       }
