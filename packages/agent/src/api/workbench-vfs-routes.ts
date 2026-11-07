@@ -524,11 +524,13 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
     const status =
       err.code === "SYMLINK_DENIED"
         ? 422
-        : err.code === "INVALID_GIT_URL" ||
-            err.code === "INVALID_GIT_PATH" ||
-            err.code === "MISSING_ARGUMENT"
-          ? 400
-          : 500;
+        : err.code === "REPOSITORY_EXISTS"
+          ? 409
+          : err.code === "INVALID_GIT_URL" ||
+              err.code === "INVALID_GIT_PATH" ||
+              err.code === "MISSING_ARGUMENT"
+            ? 400
+            : 500;
     ctx.error(ctx.res, err.message, status);
     return;
   }

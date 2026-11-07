@@ -40,6 +40,7 @@ export class VfsGitError extends Error {
       | "INVALID_GIT_URL"
       | "INVALID_GIT_PATH"
       | "MISSING_ARGUMENT"
+      | "REPOSITORY_EXISTS"
       | "SYMLINK_DENIED",
   ) {
     super(message);
@@ -105,6 +106,15 @@ class IsomorphicVfsGitService implements VfsGitService {
 
   private async clone(request: PostWorkbenchVfsGitRequest) {
     const url = requireUrl(request.url);
+    // isomorphic-git removes `<dir>/.git` when a clone fails, so cloning over
+    // an existing repository would delete its history. Refuse it.
+    if (await pathExists(path.join(this.vfs.filesRoot, ".git"))) {
+      throw new VfsGitError(
+        "VFS project already has a Git repository",
+        "REPOSITORY_EXISTS",
+      );
+    }
+    const existing = await listPaths(this.vfs.filesRoot);
     await git.clone({
       fs,
       http,
@@ -115,7 +125,15 @@ class IsomorphicVfsGitService implements VfsGitService {
       ref: request.ref ?? request.branch,
       onAuth: authCallback(request),
     });
-    await rejectAndRemoveSymlinks(this.vfs.filesRoot);
+    try {
+      await rejectAndRemoveSymlinks(this.vfs.filesRoot);
+    } catch (error) {
+      // Undo a rejected clone: remove its repository, as isomorphic-git does
+      // for a clone that fails (or the check above refuses every later clone),
+      // and every file it checked out. Files the project had before stay.
+      await removePathsNotIn(this.vfs.filesRoot, existing);
+      throw error;
+    }
     return {
       action: "clone",
       url: redactGitUrl(url),
@@ -374,6 +392,16 @@ async function currentBranch(dir: string): Promise<string | null> {
     .catch(() => null);
 }
 
+async function pathExists(target: string): Promise<boolean> {
+  return fsp.lstat(target).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    },
+  );
+}
+
 function commitView(commit: ReadCommitResult) {
   return {
     oid: commit.oid,
@@ -381,6 +409,33 @@ function commitView(commit: ReadCommitResult) {
     author: commit.commit.author,
     committer: commit.commit.committer,
   };
+}
+
+async function listPaths(root: string): Promise<Set<string>> {
+  const paths = new Set<string>();
+  const walk = async (dir: string): Promise<void> => {
+    for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, dirent.name);
+      paths.add(entryPath);
+      if (dirent.isDirectory()) await walk(entryPath);
+    }
+  };
+  await walk(root);
+  return paths;
+}
+
+async function removePathsNotIn(
+  dir: string,
+  keep: ReadonlySet<string>,
+): Promise<void> {
+  for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, dirent.name);
+    if (!keep.has(entryPath)) {
+      await fsp.rm(entryPath, { recursive: true, force: true });
+    } else if (dirent.isDirectory()) {
+      await removePathsNotIn(entryPath, keep);
+    }
+  }
 }
 
 async function rejectAndRemoveSymlinks(root: string): Promise<void> {
