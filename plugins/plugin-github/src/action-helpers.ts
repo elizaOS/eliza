@@ -5,7 +5,12 @@
  */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
-import { requireConfirmation, stableStringify } from "@elizaos/core";
+import {
+  hasRoleAccess,
+  isAgentSelf,
+  requireConfirmation,
+  stableStringify,
+} from "@elizaos/core";
 import {
   type GitHubAccountSelection,
   resolveGitHubAccountSelection,
@@ -231,13 +236,20 @@ export function getServiceOrNull(runtime: IAgentRuntime): GitHubService | null {
   return runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE);
 }
 
+export const OWNER_GITHUB_ACCOUNT_REFUSAL =
+  "Only the owner can use their own GitHub account. Nothing was done.";
+
 /**
  * Resolve the client for a selection from the current account list. Pass
  * `refresh: "on-miss"` from `validate`, which runs on every message: it only
  * re-reads accounts when none matches, so a newly connected account is found.
+ *
+ * A `user` account is the owner's personal GitHub account. It resolves only
+ * for a sender with the OWNER role, whatever `as` or `accountId` selected it.
  */
 export async function buildResolvedClient(
   runtime: IAgentRuntime,
+  message: Memory,
   selection: GitHubIdentity | GitHubAccountSelection,
   opts: { refresh?: "always" | "on-miss" } = {},
 ): Promise<ResolvedClient | { error: string }> {
@@ -245,19 +257,43 @@ export async function buildResolvedClient(
   if (!service) {
     return { error: "GitHub service not available" };
   }
-  const resolvedSelection =
+  const requestedSelection =
     typeof selection === "string" ? { role: selection } : selection;
-  if (opts.refresh !== "on-miss" || !getClient(runtime, resolvedSelection)) {
+  // The usual connection (Settings token, device sign-in, connector OAuth) is
+  // only the owner's account. An operation that defaults to the agent account
+  // then uses it for the owner when no agent account is connected; the owner
+  // check below still applies. The agent's own turns have no human owner
+  // behind them, so they keep failing closed.
+  const ownerFallback =
+    "defaulted" in requestedSelection &&
+    requestedSelection.defaulted &&
+    requestedSelection.role === "agent" &&
+    !isAgentSelf(runtime, message);
+  const pickSelection = (): GitHubAccountSelection | null =>
+    getClient(runtime, requestedSelection)
+      ? requestedSelection
+      : ownerFallback && getClient(runtime, { role: "user" })
+        ? { role: "user" }
+        : null;
+  if (opts.refresh !== "on-miss" || !pickSelection()) {
     // Services that only implement `IGitHubService` resolve from their own state.
     await service.refreshAccounts?.();
   }
+  const resolvedSelection = pickSelection() ?? requestedSelection;
   const client = getClient(runtime, resolvedSelection);
-  if (!client) {
+  const identity = service.getAccountRole(resolvedSelection);
+  if (!client || !identity) {
     return { error: needsClientError(resolvedSelection) };
+  }
+  if (
+    identity === "user" &&
+    !(await hasRoleAccess(runtime, message, "OWNER"))
+  ) {
+    return { error: OWNER_GITHUB_ACCOUNT_REFUSAL };
   }
   return {
     client,
-    identity: resolvedSelection.role,
+    identity,
     accountId: resolvedSelection.accountId,
   };
 }

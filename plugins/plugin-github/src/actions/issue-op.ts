@@ -441,11 +441,14 @@ export const issueOpAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
   ): Promise<boolean> => {
-    const r = await buildResolvedClient(runtime, "agent", {
-      refresh: "on-miss",
-    });
+    const r = await buildResolvedClient(
+      runtime,
+      message,
+      resolveAccountSelection(undefined, "agent"),
+      { refresh: "on-miss" },
+    );
     return !("error" in r);
   },
 
@@ -483,7 +486,7 @@ export const issueOpAction: Action = {
       await callback?.({ text: request.error });
       return { success: false, error: request.error };
     }
-    const resolved = await buildResolvedClient(runtime, selection);
+    const resolved = await buildResolvedClient(runtime, message, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };
@@ -492,7 +495,10 @@ export const issueOpAction: Action = {
     const preview = buildPreview(
       op,
       repo,
-      describeSelection(selection),
+      describeSelection({
+        role: resolved.identity,
+        accountId: resolved.accountId,
+      }),
       options,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
@@ -503,7 +509,12 @@ export const issueOpAction: Action = {
       pendingKey: `${op}:${repo}`,
       prompt,
       callback,
-      request: { repo, request, selection },
+      // Bind the account the preview named, not the one requested.
+      request: {
+        repo,
+        request,
+        account: { role: resolved.identity, accountId: resolved.accountId },
+      },
     });
     if (decision === "pending") {
       return {
