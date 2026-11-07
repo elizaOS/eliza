@@ -3708,12 +3708,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteAgents(agentIds: UUID[]): Promise<boolean> {
-    let removed = false;
+    // Storage failures throw, so reaching the end means every delete
+    // succeeded — including no-ops that matched no rows. Report success to
+    // match the pg adapter, whose deleteAgents returns true on any successful
+    // DELETE regardless of row count.
     for (const id of agentIds) {
-      const ok = await this.storage.delete(COLLECTIONS.AGENTS, id);
-      if (ok) removed = true;
+      await this.storage.delete(COLLECTIONS.AGENTS, id);
     }
-    return removed;
+    return true;
   }
 
   async countAgents(): Promise<number> {

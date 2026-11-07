@@ -2134,6 +2134,16 @@ it("reports no id for a duplicate agent create and keeps the stored row", async 
   expect(stored?.settings).toEqual({ keep: "yes" });
 });
 
+it("reports true on deleteAgents for existing, empty, or nonexistent ids, like plugin-sql", async () => {
+  const adapter = await open();
+  await adapter.createAgents([{ id: agentId, name: "Agent 1" }]);
+  expect(await adapter.deleteAgents([])).toBe(true);
+  expect(await adapter.deleteAgents([agentId])).toBe(true);
+  expect(await adapter.getAgentsByIds([agentId])).toEqual([]);
+  expect(await adapter.deleteAgents([agentId])).toBe(true);
+  expect(await adapter.deleteAgents([id()])).toBe(true);
+});
+
 it("keeps an existing memory when a create reuses its id, like plugin-sql", async () => {
   const adapter = await open();
   const memoryId = id();
