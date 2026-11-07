@@ -7,14 +7,20 @@
  * predicate. Settings resolution is the behavior under test: runtime settings
  * must drive the branch when the environment is unset, and a blank runtime
  * setting must fall through to the environment instead of reading as "present".
+ * The CTX_DOCUMENTS_ENABLED switch in front of the gate is read through a real
+ * runtime and must agree with the documents config the service starts with.
  */
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ChannelType, ModelType } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { validateModelConfig } from "./config.ts";
 import { processFragmentsSynchronously } from "./document-processor.ts";
+import { DocumentService } from "./service.ts";
 
 const DOCUMENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const DOCUMENT_TEXT =
@@ -153,6 +159,71 @@ async function ingest(
   });
 }
 
+/** Uploads DOCUMENT_TEXT through DocumentService on a real PGlite runtime. */
+async function ingestThroughService(settings: Record<string, string>) {
+  const owner = randomUUID() as UUID;
+  const roomId = randomUUID() as UUID;
+  const worldId = randomUUID() as UUID;
+  const fixture = await createTestRuntime({
+    characterName: "ContextSwitch",
+    embeddingDimensions: 384,
+    settings: { ELIZA_ADMIN_ENTITY_ID: owner, ...settings },
+  });
+  try {
+    const { runtime } = fixture;
+    const prompts: string[] = [];
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async () => Array.from({ length: 384 }, (_, i) => ((i % 7) + 1) / 10),
+      "context-switch",
+      1_000,
+    );
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async (_runtime, params: { prompt?: string }) => {
+        prompts.push(String(params.prompt));
+        return RUNTIME_MODEL_CONTEXT;
+      },
+      "context-switch",
+      1_000,
+    );
+    await runtime.ensureConnection({
+      entityId: owner,
+      roomId,
+      worldId,
+      worldName: "Context switch",
+      userName: "Owner",
+      name: "Context switch",
+      source: "test",
+      type: ChannelType.DM,
+    });
+    await new DocumentService(runtime).addDocument({
+      agentId: runtime.agentId,
+      entityId: owner,
+      addedBy: owner,
+      roomId,
+      worldId,
+      clientDocumentId: "" as UUID,
+      originalFilename: "refunds.txt",
+      contentType: "text/plain",
+      content: DOCUMENT_TEXT,
+      scope: "owner-private",
+    });
+    const fragments = await runtime.getMemories({
+      tableName: "document_fragments",
+      agentId: runtime.agentId,
+      count: 10,
+    });
+    return {
+      configEnabled: validateModelConfig(runtime).CTX_DOCUMENTS_ENABLED,
+      prompts,
+      fragmentText: fragmentText(fragments),
+    };
+  } finally {
+    await fixture.cleanup();
+  }
+}
+
 function fragmentText(fragments: Memory[]): string {
   const text = fragments[0]?.content?.text;
   if (typeof text !== "string") {
@@ -275,4 +346,22 @@ describe("document contextualization custom-LLM gate", () => {
       JSON.stringify(`<chunk>\n${DOLLAR_PATTERN_TEXT}\n</chunk>`).slice(1, -1),
     );
   });
+
+  test("CTX_DOCUMENTS_ENABLED=true in the environment alone turns contextualization on", async () => {
+    process.env.CTX_DOCUMENTS_ENABLED = "true";
+
+    const result = await ingestThroughService({});
+
+    expect(result.configEnabled).toBe(true);
+    expect(result.prompts).toHaveLength(1);
+    expect(result.fragmentText).toContain(RUNTIME_MODEL_CONTEXT);
+  }, 120_000);
+
+  test('CTX_DOCUMENTS_ENABLED="1" in character settings turns contextualization on', async () => {
+    const result = await ingestThroughService({ CTX_DOCUMENTS_ENABLED: "1" });
+
+    expect(result.configEnabled).toBe(true);
+    expect(result.prompts).toHaveLength(1);
+    expect(result.fragmentText).toContain(RUNTIME_MODEL_CONTEXT);
+  }, 120_000);
 });
