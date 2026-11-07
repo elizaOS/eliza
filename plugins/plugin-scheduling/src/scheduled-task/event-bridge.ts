@@ -16,6 +16,7 @@
  */
 
 import { type EventPayload, type IAgentRuntime, logger } from "@elizaos/core";
+import { scheduledOverrideAtMs } from "./due.js";
 import type {
   ScheduledTaskFireResult,
   ScheduledTaskRunnerHandle,
@@ -75,6 +76,11 @@ export interface FireEventTriggeredTasksArgs {
   runner: EventBridgeRunner;
   eventKind: string;
   payload?: unknown;
+  /**
+   * The runner's clock. Defaults to the system clock, which is the runner's
+   * clock when `getRunner` is called without a `now` override.
+   */
+  now?: () => Date;
 }
 
 export interface EventTriggeredFireOutcome {
@@ -85,7 +91,8 @@ export interface EventTriggeredFireOutcome {
 }
 
 /**
- * Fire every `scheduled` task whose trigger matches the emitted event.
+ * Fire every `scheduled` task whose trigger matches the emitted event and is
+ * not parked until a later time.
  * Per-task errors are collected (and logged by the installer's handler) so
  * one broken row cannot starve the other listeners of the same event.
  */
@@ -93,11 +100,17 @@ export async function fireEventTriggeredTasks(
   args: FireEventTriggeredTasksArgs,
 ): Promise<EventTriggeredFireOutcome> {
   const scheduled = await args.runner.list({ status: "scheduled" });
+  const nowMs = (args.now?.() ?? new Date()).getTime();
   const outcome: EventTriggeredFireOutcome = { results: [], errors: [] };
   for (const task of scheduled) {
     if (task.trigger.kind !== "event") continue;
     if (task.trigger.eventKind !== args.eventKind) continue;
     if (!eventFilterMatches(task.trigger.filter, args.payload)) continue;
+    // A snoozed, gate-deferred or retry-parked task waits for its parked
+    // time; the tick fires it then. A past `firedAt` (the parked time has
+    // passed, or a reopened row kept its last fire) does not hold the task.
+    const parkedAtMs = scheduledOverrideAtMs(task);
+    if (parkedAtMs !== null && parkedAtMs > nowMs) continue;
     try {
       const result = await args.runner.fireWithResult(task.taskId, {
         cause: "automatic",

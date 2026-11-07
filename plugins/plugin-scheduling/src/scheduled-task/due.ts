@@ -121,12 +121,22 @@ function metadataCreatedAtMs(task: ScheduledTask): number | null {
   );
 }
 
+/**
+ * The `firedAt` of a `scheduled` row: the instant it is parked at (owner
+ * snooze, gate defer, dispatch retry or advance), or the last fire that a
+ * reopened row kept. Null when the row has none. The tick fires the row once
+ * that instant has passed.
+ */
+export function scheduledOverrideAtMs(task: ScheduledTask): number | null {
+  if (task.state.status !== "scheduled") return null;
+  return parseIsoMs(task.state.firedAt);
+}
+
 function scheduledOverrideDue(
   task: ScheduledTask,
   nowMs: number,
 ): ScheduledTaskDueDecision | null {
-  if (task.state.status !== "scheduled") return null;
-  const fireAtMs = parseIsoMs(task.state.firedAt);
+  const fireAtMs = scheduledOverrideAtMs(task);
   if (fireAtMs === null) return null;
   if (fireAtMs > nowMs) {
     return { due: false, reason: "scheduled_override_pending" };
