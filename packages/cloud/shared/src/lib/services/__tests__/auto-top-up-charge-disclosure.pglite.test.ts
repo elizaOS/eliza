@@ -5,7 +5,7 @@
  * and the receipt breakdown parsed from the durable charge metadata matches.
  */
 
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 
 const ambientDatabaseUrl = process.env.DATABASE_URL ?? "";
 if (ambientDatabaseUrl && !ambientDatabaseUrl.startsWith("pglite")) {
@@ -149,6 +149,58 @@ test(
         total_charged: "112.12",
       }),
     ).toBeNull();
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "auto top-up billing notices go to the billing contact, never an ordinary member",
+  async () => {
+    const { autoTopUpService } = await import("../auto-top-up");
+    const { emailService } = await import("../email");
+    const send = spyOn(emailService, "sendAutoTopUpDisabledEmail").mockResolvedValue(true);
+    const notify = (organizationId: string) =>
+      (
+        autoTopUpService as unknown as {
+          queueAutoTopUpDisabledEmail(id: string, reason: string): Promise<void>;
+        }
+      ).queueAutoTopUpDisabledEmail(organizationId, "card declined");
+    const seed = async (billingEmail: string | null, members: Array<[string, string]>) => {
+      const [organization] = await dbWrite
+        .insert(organizations)
+        .values({ name: "Team", slug: unique("org"), billing_email: billingEmail })
+        .returning();
+      // Inserted in this order; the member comes first.
+      for (const [role, email] of members)
+        await dbWrite.insert(users).values({
+          steward_user_id: unique(role),
+          organization_id: organization.id,
+          role,
+          email,
+        });
+      return organization.id;
+    };
+    try {
+      const memberFirst = await seed(null, [
+        ["member", `member-${unique("m")}@example.test`],
+        ["owner", "owner@example.test"],
+      ]);
+      await notify(memberFirst);
+      expect(send.mock.calls.at(-1)?.[0].email).toBe("owner@example.test");
+
+      const withBilling = await seed("billing@example.test", [
+        ["member", `member-${unique("m")}@example.test`],
+      ]);
+      await notify(withBilling);
+      expect(send.mock.calls.at(-1)?.[0].email).toBe("billing@example.test");
+
+      const callsBefore = send.mock.calls.length;
+      const membersOnly = await seed(null, [["member", `member-${unique("m")}@example.test`]]);
+      await notify(membersOnly);
+      expect(send.mock.calls.length).toBe(callsBefore);
+    } finally {
+      send.mockRestore();
+    }
   },
   TEST_TIMEOUT,
 );
