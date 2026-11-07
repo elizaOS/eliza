@@ -500,6 +500,8 @@ export function collectPluginNames(
   );
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
+  const uiCapabilities = (config.ui as Record<string, unknown> | undefined)
+    ?.capabilities as Record<string, unknown> | undefined;
 
   const isPluginExplicitlyDisabled = (pluginPackageName: string): boolean => {
     const marker = "/plugin-";
@@ -510,7 +512,11 @@ export function collectPluginNames(
         : pluginPackageName;
     return (
       pluginEntries?.[pluginId]?.enabled === false ||
-      pluginEntries?.[pluginPackageName]?.enabled === false
+      pluginEntries?.[pluginPackageName]?.enabled === false ||
+      // Settings -> Capabilities "Enable Browser" off (or SETTINGS
+      // toggle_capability) disables the browser even though it is a core
+      // plugin; only an explicit false counts.
+      (pluginId === "browser" && uiCapabilities?.browser === false)
     );
   };
 

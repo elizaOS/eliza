@@ -149,3 +149,23 @@ it("does not override explicitly disabled selective-owner dependencies", () => {
   // This asserts collection only; initialization with missing dependencies is
   // not qualified by this test.
 });
+
+it("does not load the browser after the owner switches the Browser capability off", () => {
+  vi.stubEnv("ELIZA_PLATFORM", "linux");
+  vi.stubEnv("ELIZA_PLUGIN_SET", "");
+  const BROWSER = "@elizaos/plugin-browser";
+  // A core plugin: loaded by default.
+  expect(collectPluginNames({}).has(BROWSER)).toBe(true);
+  // Settings -> Capabilities "Enable Browser" off (or SETTINGS toggle_capability).
+  expect(
+    collectPluginNames({
+      ui: { capabilities: { browser: false } },
+    } as ElizaConfig).has(BROWSER),
+  ).toBe(false);
+  // Only an explicit false disables it.
+  expect(
+    collectPluginNames({
+      ui: { capabilities: { browser: true } },
+    } as ElizaConfig).has(BROWSER),
+  ).toBe(true);
+});
