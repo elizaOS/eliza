@@ -411,7 +411,9 @@ export class VoiceProfileStore {
 			if (!victim) break;
 			const record = await this.readProfileFromDisk(victim.profileId);
 			if (record && record.entityId !== null) continue;
-			if (record && (record.confidence >= 0.5 || record.sampleCount >= 3)) {
+			// Attribution creates every unmatched cluster at confidence 0.5, so a
+			// voice heard once is still low confidence at exactly 0.5.
+			if (record && (record.confidence > 0.5 || record.sampleCount >= 3)) {
 				continue;
 			}
 			// error-policy:J6 best-effort teardown — the index (rewritten below) is
