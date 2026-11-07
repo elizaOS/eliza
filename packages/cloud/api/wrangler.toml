@@ -592,6 +592,8 @@ routes = [
 type = "durable-object"
 storage = "sqlite"
 
+# Retained (not transferred, not deleted): drains pre-switch session objects
+# and keeps a binding-only rollback. New sessions use eliza-cloud-speech-staging.
 [env.staging.exports.SpeechRelayCoordinator]
 type = "durable-object"
 storage = "sqlite"
@@ -885,9 +887,14 @@ class_name = "HfEgressState"
 name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
 
+# New speech sessions live in the lean staging speech host (cold start ~1 s
+# there vs ~4.4 s in this 32 MB Worker). The class export above stays so
+# objects created before the switch still finish their retirement alarms here.
+# Production keeps this binding local until staging proves the move.
 [[env.staging.durable_objects.bindings]]
 name = "SPEECH_RELAY_SESSIONS"
 class_name = "SpeechRelayCoordinator"
+script_name = "eliza-cloud-speech-staging"
 
 [[env.staging.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"

@@ -228,7 +228,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
 
-  test("staging publishes the validated admission authority before its API", () => {
+  test("staging publishes the validated admission and speech hosts before its API", () => {
     const apiConfig = Bun.TOML.parse(
       readFileSync(
         resolve(repoRoot, "packages/cloud/api/wrangler.toml"),
@@ -252,6 +252,19 @@ describe("committed Cloud CF workflow matches the policy", () => {
         (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
       ).script_name,
     ).toBe("eliza-cloud-admission-staging");
+    // Speech sessions follow the same split: staging only, production local.
+    expect(
+      apiConfig.env.production.durable_objects.bindings.filter(
+        (binding) => binding.name === "SPEECH_RELAY_SESSIONS",
+      ),
+    ).toEqual([
+      { name: "SPEECH_RELAY_SESSIONS", class_name: "SpeechRelayCoordinator" },
+    ]);
+    expect(
+      apiConfig.env.staging.durable_objects.bindings.find(
+        (binding) => binding.name === "SPEECH_RELAY_SESSIONS",
+      ).script_name,
+    ).toBe("eliza-cloud-speech-staging");
     const parsed = Bun.YAML.parse(cloudCfRelease);
     const deploy = parsed.jobs["deploy-api"].steps.find(
       (step) => step.name === "Deploy to Cloudflare Workers",
@@ -274,14 +287,35 @@ recheck_canonical_source() { printf 'guard\n'; }
 bun() {
   case "$1" in
     *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' ;;
-    *verify-staging-contract.ts)
+    *admission-worker/verify-staging-contract.ts)
       printf 'validate\n'
       [ "$FAILURE" != validation ] || return 23 ;;
+    *speech-worker/verify-staging-contract.ts)
+      if [ "\${2:-}" = --required-secret-names ]; then
+        printf 'CARTESIA_API_KEY DATABASE_URL\n'
+      else
+        printf 'validate-speech\n' >&2
+        [ "$FAILURE" != speech-validation ] || return 25
+      fi ;;
     *) return 90 ;;
   esac
 }
+node() {
+  case "$1" in
+    *verify-worker-secret-binding-names.ts)
+      shift
+      printf 'speech-secrets %s\n' "$*" >&2
+      [ "$FAILURE" != speech-secrets ] || return 26 ;;
+    *) return 91 ;;
+  esac
+}
 bunx() {
-  if [[ "$*" == *--config* ]]; then
+  if [[ "$*" == *"secret list"* ]]; then
+    printf '[]'
+  elif [[ "$*" == *speech-worker* ]]; then
+    printf 'speech %s\n' "$*"
+    [ "$FAILURE" != speech ] || return 27
+  elif [[ "$*" == *--config* ]]; then
     printf 'admission %s\n' "$*"
     [ "$FAILURE" != admission ] || return 24
   else
@@ -298,6 +332,7 @@ ${fragment}`,
             CHECKOUT_DIR: repoRoot,
             DEPLOY_ENVIRONMENT: environment,
             GITHUB_SHA: "a".repeat(40),
+            CLOUD_VOICE_USAGE_BACKEND: "redis",
             FAILURE: failure,
           },
         },
@@ -305,6 +340,7 @@ ${fragment}`,
     const admission = `admission wrangler deploy --config ../admission-worker/wrangler.toml --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --tag ${"a".repeat(40)}`;
     const api = (environment) =>
       `api wrangler deploy --env ${environment} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)}`;
+    const speech = `speech wrangler deploy --config ../speech-worker/wrangler.toml --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --var CLOUD_VOICE_USAGE_BACKEND:redis --tag ${"a".repeat(40)}`;
     const staging = run("staging");
     expect(staging.status).toBe(0);
     expect(staging.stdout.trim().split("\n")).toEqual([
@@ -314,20 +350,37 @@ ${fragment}`,
       "guard",
       admission,
       "guard",
+      "guard",
+      speech,
+      "guard",
       api("staging"),
     ]);
+    // The speech host is validated and its secret names are present before
+    // it is published, and both happen before the API that binds it.
+    expect(staging.stderr).toContain("validate-speech");
+    expect(staging.stderr).toContain(
+      "speech-secrets CARTESIA_API_KEY DATABASE_URL",
+    );
     const production = run("production");
     expect(production.status).toBe(0);
     expect(production.stdout.trim().split("\n")).toEqual([
       "guard",
       api("production"),
     ]);
-    for (const failure of ["validation", "admission"]) {
+    for (const failure of [
+      "validation",
+      "admission",
+      "speech-validation",
+      "speech-secrets",
+      "speech",
+    ]) {
       const stopped = run("staging", failure);
       expect(stopped.status).not.toBe(0);
       expect(stopped.stdout).not.toContain("api wrangler deploy");
       if (failure === "validation")
         expect(stopped.stdout).not.toContain("admission wrangler deploy");
+      if (failure !== "speech")
+        expect(stopped.stdout).not.toContain("speech wrangler deploy");
     }
   });
 
