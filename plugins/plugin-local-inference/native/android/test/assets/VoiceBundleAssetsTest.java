@@ -77,7 +77,12 @@ public final class VoiceBundleAssetsTest {
                 magic + "\noffset=0\nlength=4\npath=" + apk + "\nextra=1\n"}) {
             Files.writeString(file, bad);
             try { VoiceBundleAssets.modelRegion(file.toFile()); throw new AssertionError("invalid region accepted: " + bad); }
-            catch (java.io.IOException expected) {}
+            catch (java.io.IOException expected) {
+                // A broken region file, or a missing or short APK, is not a missing model.
+                if (expected instanceof java.io.FileNotFoundException) {
+                    throw new AssertionError("invalid region reported as a missing model: " + bad, expected);
+                }
+            }
         }
         // A file that only looks like the magic without its newline is a model.
         Files.writeString(file, magic + " model bytes");
