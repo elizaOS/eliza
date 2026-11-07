@@ -30,6 +30,7 @@ export type StorageVolume = {
   primary: boolean;
   free: number;
   total: number;
+  usage?: { bytes: number; files: number };
 };
 export type FilesCategory =
   | "downloads"
@@ -314,11 +315,13 @@ export function formatSize(bytes: number): string {
   );
 }
 export function formatFree(
-  volume: Pick<StorageVolume, "free" | "total">,
+  volume: Pick<StorageVolume, "free" | "total" | "usage">,
 ): string {
-  return volume.total > 0
-    ? `${formatSize(volume.free)} free of ${formatSize(volume.total)}`
-    : "";
+  if (volume.total > 0)
+    return `${formatSize(volume.free)} free of ${formatSize(volume.total)}`;
+  const usage = volume.usage;
+  if (!usage) return "";
+  return `${formatSize(usage.bytes)} in ${usage.files} app ${usage.files === 1 ? "file" : "files"}`;
 }
 
 /** The agent's read-only filter. It only narrows what the view shows (spec FilterIsReadOnly). */

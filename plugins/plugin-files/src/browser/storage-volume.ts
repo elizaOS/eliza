@@ -6,6 +6,7 @@ import {
   joinPath,
   parentOf,
   type StorageEntry,
+  type StorageVolume,
   type TrashEntry,
   trashExpired,
   validName,
@@ -585,23 +586,44 @@ export class BrowserStorageVolume {
     if (!row || row.directory) throw new Missing();
     return this.library.select({ id: row.id });
   }
-  async volume() {
-    let free = 0,
-      total = 0;
-    try {
-      const estimate = await navigator.storage?.estimate?.();
-      total = estimate?.quota ?? 0;
-      free = Math.max(0, total - (estimate?.usage ?? 0));
-    } catch {
-      /* Free space is then not shown. */
-    }
-    return {
+  async volume(): Promise<StorageVolume> {
+    const volume = {
       id: "primary",
       name: "Internal storage",
       primary: true,
-      free,
-      total,
+      free: 0,
+      total: 0,
     };
+    try {
+      const estimate = await navigator.storage?.estimate?.();
+      const { quota, usage } = estimate ?? {};
+      if (
+        typeof quota === "number" &&
+        Number.isFinite(quota) &&
+        quota > 0 &&
+        typeof usage === "number" &&
+        Number.isFinite(usage) &&
+        usage >= 0 &&
+        usage <= quota
+      )
+        return { ...volume, free: quota - usage, total: quota };
+    } catch {
+      /* The origin quota is optional. */
+    }
+
+    try {
+      const usage = await this.library.usage();
+      if (
+        Number.isSafeInteger(usage.bytes) &&
+        usage.bytes >= 0 &&
+        Number.isSafeInteger(usage.files) &&
+        usage.files >= 0
+      )
+        return { ...volume, usage };
+    } catch {
+      /* Keep the volume usable when usage cannot be read. */
+    }
+    return volume;
   }
 
   /** The host storage* plugin surface. */
