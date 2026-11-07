@@ -5,19 +5,16 @@ import { EmailNotifier } from "./emailNotifier";
 export interface OverseerConfig {
   checkIntervalMs?: number;
   autoHealEnabled?: boolean;
+  currentUserEmail?: string;
 }
 
 /**
  * AutonomousSystemOverseer
  * 
- * Interweaves:
- *  - DeepSeek Reasoning / Code Repair
- *  - Google Gemini 2.0 Flash
- *  - Perplexity Real-time Web Grounding
- *  - ElizaOS Brain Core
- *  - Automated Email Alerts
- * 
- * Runs independently idle without requiring active user control.
+ * General-user aligned autonomous system loop:
+ *  - Interweaves DeepSeek, Gemini 2.0 Flash, Perplexity Sonar, and ElizaOS
+ *  - Dispatches updates directly to the active logged-in user
+ *  - Routes infrastructure alerts to admin only when explicitly defined
  */
 export class AutonomousSystemOverseer {
   private router: ModelStackRouter;
@@ -26,20 +23,25 @@ export class AutonomousSystemOverseer {
   private isRunning = false;
   private intervalMs: number;
   private cycleCount = 0;
+  private currentUserEmail?: string;
 
   constructor(config: OverseerConfig = {}) {
     this.router = new ModelStackRouter();
     this.crossSpeech = new CrossSpeechEngine();
     this.notifier = new EmailNotifier();
-    this.intervalMs = config.checkIntervalMs || 120_000; // 2 minute idle loop
+    this.intervalMs = config.checkIntervalMs || 120_000;
+    this.currentUserEmail = config.currentUserEmail;
+  }
+
+  setCurrentUser(email: string): void {
+    this.currentUserEmail = email;
   }
 
   startAutonomousLoop(): void {
     if (this.isRunning) return;
     this.isRunning = true;
     console.log("=================================================================");
-    console.log("  VALHALLA AUTONOMOUS OVERSEER ACTIVE                            ");
-    console.log("  Interweaving: DeepSeek + Gemini + Perplexity + ElizaOS Brain   ");
+    console.log("  VALHALLA AUTONOMOUS OVERSEER: GENERAL USER & SESSION ACTIVE    ");
     console.log("  Self-Sustaining Mode: IDLE INDEPENDENT EXECUTION               ");
     console.log("=================================================================");
     this.runCycle();
@@ -82,19 +84,21 @@ export class AutonomousSystemOverseer {
           "Automated self-healing triggered: reconnecting broken bridge routes and resetting local memory indices"
         );
 
-        // Notify Administrator by Email on repair action
+        // Notify session user of autonomous recovery
         await this.notifier.sendEmail({
-          subject: "Autonomous Self-Repair Dispatched",
+          subject: "Your Workspace Self-Healing Completed",
           level: "REPAIR_ALERT",
-          body: `Valhalla Autonomous Overseer detected network drift during Cycle #${this.cycleCount}.\n\nDeepSeek repair engine and Gorgo ACP have reconciled the state.\n\nDiagnosis summary:\n${diagnosis.content}`,
-        });
-      } else if (this.cycleCount % 30 === 0) {
-        // Send periodic heartbeat email every hour
+          audience: "user",
+          body: `Valhalla Autonomous Overseer detected network drift during Cycle #${this.cycleCount}.\n\nYour session was automatically reconciled and remains non-custodial and secure.\n\nDiagnosis summary:\n${diagnosis.content}`,
+        }, this.currentUserEmail);
+      } else if (this.cycleCount % 30 === 0 && this.currentUserEmail) {
+        // Send user periodic health update every hour
         await this.notifier.sendEmail({
-          subject: `Autonomous Heartbeat Report (Cycle #${this.cycleCount})`,
+          subject: `Your Valhalla Desk Status (Cycle #${this.cycleCount})`,
           level: "INFO",
-          body: `All systems nominal.\nActive peers: ${this.crossSpeech.getPeers().length}\nLatest provider grounding: ${diagnosis.provider}\nStatus: ONLINE & SELF-SUSTAINING`,
-        });
+          audience: "user",
+          body: `All systems nominal.\nConnected peers: ${this.crossSpeech.getPeers().length}\nYour desk is live, calibrated, and self-sustaining.\nStatus: ONLINE`,
+        }, this.currentUserEmail);
       }
 
     } catch (err: any) {

@@ -2,31 +2,49 @@ export interface EmailAlertPayload {
   to?: string;
   subject: string;
   body: string;
-  level: "INFO" | "REPAIR_ALERT" | "CRITICAL_DRIFT";
+  level: "INFO" | "REPAIR_ALERT" | "CRITICAL_DRIFT" | "USER_NOTIFICATION";
+  audience?: "user" | "admin";
 }
 
 /**
  * Autonomous Email Alert Dispatcher
- * Sends operational health reports, drift alerts, and automated repair summaries
- * to MASTER_ADMIN_EMAIL / LEADER_EMAIL without blocking main event loops.
+ * Sends updates, operational health, and receipts to the ACTIVE LOGGED-IN USER
+ * by default.
+ * Admin-only security/repair notices route strictly to configured server-side admin secrets.
  */
 export class EmailNotifier {
   private resendApiKey: string;
-  private defaultRecipient: string;
+  private adminEmail: string;
 
   constructor() {
     this.resendApiKey = (typeof process !== "undefined" ? process.env?.RESEND_API_KEY : "") || "";
-    this.defaultRecipient = (typeof process !== "undefined" ? process.env?.MASTER_ADMIN_EMAIL || process.env?.LEADER_EMAIL : "") || "keene.jos@gmail.com";
+    this.adminEmail = (typeof process !== "undefined" ? process.env?.MASTER_ADMIN_EMAIL || process.env?.LEADER_EMAIL : "") || "";
   }
 
-  async sendEmail(payload: EmailAlertPayload): Promise<boolean> {
-    const recipient = payload.to || this.defaultRecipient;
-    const formattedSubject = `[VALHALLA OS ${payload.level}] ${payload.subject}`;
+  /**
+   * Resolves recipient dynamically from the authenticated session user.
+   */
+  resolveRecipient(targetUserEmail?: string, audience: "user" | "admin" = "user"): string | null {
+    if (audience === "admin") {
+      return this.adminEmail || targetUserEmail || null;
+    }
+    return targetUserEmail || this.adminEmail || null;
+  }
 
-    console.log(`[AUTONOMOUS EMAIL DISPATCH] Recipient: ${recipient} | Subject: ${formattedSubject}`);
+  async sendEmail(payload: EmailAlertPayload, userEmail?: string): Promise<boolean> {
+    const audience = payload.audience || "user";
+    const recipient = payload.to || this.resolveRecipient(userEmail, audience);
+
+    if (!recipient) {
+      console.log(`[EMAIL NOTICE]: No recipient address provided for ${payload.subject}. Skipping dispatch.`);
+      return false;
+    }
+
+    const formattedSubject = `[VALHALLA OS ${payload.level}] ${payload.subject}`;
+    console.log(`[EMAIL DISPATCH] Audience: ${audience.toUpperCase()} | Recipient: ${recipient} | Subject: ${formattedSubject}`);
 
     if (!this.resendApiKey) {
-      console.log(`[EMAIL SIMULATED]: Notification queued locally (Set RESEND_API_KEY for live delivery).\nBody: ${payload.body.substring(0, 180)}...`);
+      console.log(`[EMAIL SIMULATED]: Delivered to session user ${recipient}.\nBody: ${payload.body.substring(0, 160)}...`);
       return true;
     }
 
@@ -38,7 +56,7 @@ export class EmailNotifier {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "ValhallaOS Overseer <overseer@valhalla-app.xyz>",
+          from: "ValhallaOS <updates@valhalla-app.xyz>",
           to: [recipient],
           subject: formattedSubject,
           text: payload.body,
@@ -51,7 +69,7 @@ export class EmailNotifier {
         return false;
       }
 
-      console.log(`[EMAIL DELIVERED] Successfully sent autonomous update to ${recipient}`);
+      console.log(`[EMAIL DELIVERED] Autonomous update sent to ${recipient}`);
       return true;
     } catch (err: any) {
       console.error("[EMAIL ERROR]", err.message);
