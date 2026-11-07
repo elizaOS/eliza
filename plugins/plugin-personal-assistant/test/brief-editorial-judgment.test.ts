@@ -109,6 +109,73 @@ describe("brief editorial judgment", () => {
     );
   });
 
+  it("matches low-signal class words as whole words", () => {
+    const contract = buildBriefEditorialContract({
+      sections: {
+        calendar: [
+          {
+            id: "gi-visit",
+            title: "GI doctor follow-up for indigestion",
+            startAt: "2026-07-06T16:00:00.000Z",
+            endAt: "2026-07-06T16:30:00.000Z",
+          },
+          {
+            id: "fyi-sync",
+            title: "Team newsletters FYI",
+            startAt: "2026-07-06T17:00:00.000Z",
+            endAt: "2026-07-06T17:30:00.000Z",
+          },
+        ],
+        inbox: [
+          {
+            id: "msg-comp",
+            channel: "gmail",
+            senderName: "Priya",
+            snippet:
+              "Jordan was promoted to VP. Please approve the updated comp plan before Friday.",
+            urgency: "high",
+            classification: "needs_reply",
+          },
+          {
+            id: "msg-promos",
+            channel: "gmail",
+            senderName: "Shop",
+            snippet: "Promotional offers and weekly digests inside.",
+            urgency: "low",
+            classification: "newsletter",
+          },
+        ],
+      },
+      // The owner already demoted newsletters.
+      engagementSummaries: [
+        {
+          itemClass: "inbox:newsletter-digest",
+          renderedCount: 9,
+          ignoredCount: 0,
+          actedOnCount: 0,
+          lastEventAt: "2026-07-05T08:00:00.000Z",
+          lastDemotedAt: "2026-07-05T08:00:00.000Z",
+          lastRestoredAt: null,
+        },
+      ],
+    });
+    const classes = Object.fromEntries(
+      contract.items.map((item) => [item.itemId, item.itemClass]),
+    );
+
+    expect(classes).toEqual({
+      "calendar:gi-visit": "calendar:meeting",
+      "calendar:fyi-sync": "calendar:low-signal",
+      "inbox:msg-comp": "inbox:decision-required",
+      "inbox:msg-promos": "inbox:newsletter-digest",
+    });
+    expect(
+      contract.decisions.find(
+        (decision) => decision.itemId === "inbox:msg-comp",
+      )?.action,
+    ).toBe("lead");
+  });
+
   it("tracks explicit demoted/restored markers and gives them precedence over ignore counts", () => {
     const rows = [
       {

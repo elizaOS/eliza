@@ -146,7 +146,9 @@ function moneyConsequence(item: LifeOpsBriefingMoneyItem): number {
 
 function calendarItemClass(item: LifeOpsBriefingCalendarItem): string {
   const title = item.title.toLowerCase();
-  if (/\bnewsletter|digest|fyis?\b/u.test(title)) return "calendar:low-signal";
+  if (/\b(?:newsletters?|digests?|fyis?)\b/u.test(title)) {
+    return "calendar:low-signal";
+  }
   if (/\b(board|investor|legal|deadline|client|customer)\b/u.test(title)) {
     return "calendar:high-consequence";
   }
@@ -155,7 +157,11 @@ function calendarItemClass(item: LifeOpsBriefingCalendarItem): string {
 
 function inboxItemClass(item: LifeOpsBriefingInboxItem): string {
   const snippet = item.snippet.toLowerCase();
-  if (/\bnewsletter|digest|roundup|promo|promotion\b/u.test(snippet)) {
+  if (
+    /\b(?:newsletters?|digests?|roundups?|promos?|promotions?|promotional)\b/u.test(
+      snippet,
+    )
+  ) {
     return "inbox:newsletter-digest";
   }
   if (/\b(approve|deadline|sign|urgent|pay|renew|decision)\b/u.test(snippet)) {
