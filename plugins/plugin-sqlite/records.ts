@@ -1660,11 +1660,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           }
         }
         if (params.unique && !m.unique) return false;
-        if (params.metadata) {
-          const md = (m.metadata ?? {}) as Record<string, unknown>;
-          for (const [k, v] of Object.entries(params.metadata)) {
-            if (md[k] !== v) return false;
-          }
+        if (
+          params.metadata &&
+          !dataContainsFilter(m.metadata, params.metadata)
+        ) {
+          return false;
         }
         if (textContains) {
           const text = (m.content as { text?: unknown } | undefined)?.text;
@@ -2695,11 +2695,8 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
       if ((m.agentId ?? this.agentId) !== effectiveAgentId) return false;
-      if (params.metadata) {
-        const md = (m.metadata ?? {}) as Record<string, unknown>;
-        for (const [k, v] of Object.entries(params.metadata)) {
-          if (md[k] !== v) return false;
-        }
+      if (params.metadata && !dataContainsFilter(m.metadata, params.metadata)) {
+        return false;
       }
       return true;
     });
