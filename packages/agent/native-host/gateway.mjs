@@ -184,9 +184,11 @@ export function createLocalAgentGateway({
     typeof isAllowedOrigin === "function"
       ? isAllowedOrigin
       : Set.prototype.has.bind(new Set(origins));
-  const inferenceAvailable = async () => {
+  // `inferenceConfigured` may receive `{ credentialGate }`: this request's
+  // account check, run at most once, which a host can use in place of its own.
+  const inferenceAvailable = async (context) => {
     try {
-      return (await inferenceConfigured()) === true;
+      return (await inferenceConfigured(context)) === true;
     } catch {
       return false;
     }
@@ -269,13 +271,19 @@ export function createLocalAgentGateway({
   // Message admission, shared by the buffered and the streamed routes.
   const admitMessage = async (conversationId, input) => {
     const { body, chatTask } = hostPolicy.prepareMessage(input);
-    if (!(await inferenceAvailable()))
+    // One account check serves the inference check and the owner below.
+    const checkEpoch = epoch;
+    let ownerCheck;
+    const checkOwner = () => (ownerCheck ??= currentOwner());
+    if (!(await inferenceAvailable({ credentialGate: checkOwner })))
       throw refusal(503, {
         code: "INFERENCE_UNAVAILABLE",
         error: message("error15"),
       });
     const requestEpoch = epoch;
-    const owner = await currentOwner();
+    // A reset during the inference check: read the owner again.
+    if (requestEpoch !== checkEpoch) ownerCheck = undefined;
+    const owner = await checkOwner();
     if (requestEpoch !== epoch) throw ownershipError();
     const record = rooms.get(conversationId);
     if (!record || record.owner !== owner) throw ownershipError();

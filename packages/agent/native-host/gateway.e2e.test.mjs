@@ -627,6 +627,63 @@ for (const transition of ["reset", "rotate"]) {
   });
 }
 
+test("a message's inference check and owner share one account check", async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  // Account checks for one message: a host check that ignores the gateway's
+  // check, then one that uses it in place of its own.
+  const checksPerMessage = async (useGatewayCheck) => {
+    let checks = 0;
+    const credentialGate = async () => {
+      checks++;
+      return "owner";
+    };
+    const gateway = createLocalAgentGateway({
+      upstream: target,
+      token: "upstream-authority",
+      inboundToken: "host-authority",
+      credentialGate,
+      hostPolicy: policy,
+      inferenceConfigured: async (context) => {
+        await (useGatewayCheck ? context.credentialGate : credentialGate)();
+        return true;
+      },
+    });
+    const base = await listen(gateway);
+    const post = (path, body = {}) =>
+      fetch(base + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer host-authority",
+        },
+        body: JSON.stringify(body),
+      });
+    try {
+      assert.equal((await post("/conversations")).status, 200);
+      const before = checks;
+      const sent = await post(`/conversations/${id}/messages`, {
+        text: "hello",
+      });
+      assert.equal(sent.status, 200);
+      return checks - before;
+    } finally {
+      await close(gateway);
+    }
+  };
+  try {
+    const own = await checksPerMessage(false);
+    assert.equal(await checksPerMessage(true), own - 1);
+  } finally {
+    await close(upstream);
+  }
+});
+
 const predicatePolicy = {
   ...policy,
   origins: undefined,

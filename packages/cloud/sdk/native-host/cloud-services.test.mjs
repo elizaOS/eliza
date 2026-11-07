@@ -1027,6 +1027,82 @@ test("a host revocation port records a refused stored key before it is cleared",
   assert.equal(requests.length, asked);
 });
 
+test("concurrent account checks share one parallel Cloud read until an account change", async () => {
+  const requests = [];
+  let release = () => {},
+    refuse = false,
+    revoked = 0;
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    initialApiKey: "private-test-credential",
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    credentialRevocation: {
+      onRevoked: async () => {
+        revoked++;
+      },
+      status: async () => ({ revoked: revoked > 0, localDataPending: false }),
+    },
+    fetchImpl: async (url) => {
+      const path = new URL(url).pathname;
+      requests.push(path);
+      if (path === "/api/v1/user") {
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+        return Response.json(refuse ? {} : { id: "user" }, {
+          status: refuse ? 401 : 200,
+        });
+      }
+      return Response.json({}, { status: refuse ? 401 : 200 });
+    },
+  });
+  const settle = async () => {
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+  };
+  const first = routes.accountAccess();
+  const joined = routes.requirePaidAccess();
+  await settle();
+  // Both reads are asked before the identity answer arrives.
+  assert.deepEqual(requests, ["/api/v1/user", "/api/v1/billing/limits"]);
+  // A state-changing route ends: a later check does not join the old read.
+  const route = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  route.listen(0, "127.0.0.1");
+  await once(route, "listening");
+  try {
+    const changed = await fetch(
+      `http://127.0.0.1:${route.address().port}/cloud/not-a-route`,
+      { method: "POST" },
+    );
+    assert.equal(changed.status, 404);
+  } finally {
+    route.closeAllConnections();
+    await new Promise((resolve) => route.close(resolve));
+  }
+  const releaseFirst = release;
+  const after = routes.accountAccess();
+  await settle();
+  assert.equal(requests.length, 4);
+  releaseFirst();
+  release();
+  assert.deepEqual(await first, { state: "active" });
+  await joined;
+  assert.deepEqual(await after, { state: "active" });
+  // The billing refusal arrives first; the identity refusal still names the
+  // stored key as revoked.
+  refuse = true;
+  const refused = routes.accountAccess();
+  await settle();
+  release();
+  assert.deepEqual(await refused, {
+    state: "signed_out",
+    revoked: true,
+    localDataPending: false,
+  });
+  assert.equal(revoked, 1);
+});
+
 test("a JSON-null saved pending sign-in stays benign across cloud routes", async () => {
   const routes = createCloudRoutes({
     hostPolicy: policy,
