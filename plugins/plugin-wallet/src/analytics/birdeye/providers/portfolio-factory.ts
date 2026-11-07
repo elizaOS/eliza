@@ -186,10 +186,7 @@ function getPortfolioService(
   if (includeTrades && typeof beService.fetchWalletTxList !== "function") {
     return undefined;
   }
-  return {
-    fetchWalletTokenList: beService.fetchWalletTokenList,
-    fetchWalletTxList: beService.fetchWalletTxList,
-  };
+  return beService as PortfolioService;
 }
 
 export function createBirdeyePortfolioProvider(
