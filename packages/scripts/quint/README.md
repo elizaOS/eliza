@@ -16,7 +16,8 @@ bun run test:quint --inventory --require-complete
 
 The repository pins Quint 0.33.1 and Apalache 0.62.4. Install dependencies with
 `bun install`. Full verification needs Java 21. Quint downloads the backend
-on first use, then compiles the Quint model and runs TLC. Generated backend
+on first use, then compiles the Quint model and runs TLC. Native OTA conformance
+also needs Go 1.27.1 on `PATH`, as pinned by the native trust engine. Generated backend
 input is temporary. Maintained specifications are Quint.
 
 Every case is typechecked and its Quint tests run before verification. The

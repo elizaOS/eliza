@@ -39,7 +39,7 @@ jobs:
     name: Quality
     if: needs.preflight.outputs.source == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
@@ -74,6 +74,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - name: Setup Go for native Quint conformance
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
       - name: Quint application state models
         run: bun run test:quint
       - name: Upload Quint verification evidence
@@ -81,7 +86,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: quint-verification
-          path: test-results/quint/
+          path: |
+            test-results/quint/
+            test-results/quint-*/
           if-no-files-found: ignore
           retention-days: 7
       - name: Prompt secret scan
