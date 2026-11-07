@@ -645,6 +645,26 @@ export class GoogleDomain {
       );
     }
     const requestedGrantId = normalizeOptionalString(request.grantId);
+    if (!requestedGrantId) {
+      // A request that names no account (chat, connector registry) would
+      // fall back to the default account. With several connected, that can
+      // remove an account the owner did not mean; refuse instead.
+      const connected = (
+        await listGoogleConnectorAccounts({
+          runtime: this.ctx.runtime,
+          requestedSide: side,
+        })
+      ).filter((account) => account.status === "connected");
+      if (connected.length > 1) {
+        const names = connected
+          .map((account) => account.displayHandle || account.id)
+          .join(", ");
+        fail(
+          409,
+          `Several Google accounts are connected (${names}). Nothing was disconnected. Choose the account to disconnect in Connections.`,
+        );
+      }
+    }
     const account = await resolveGoogleConnectorAccount({
       runtime: this.ctx.runtime,
       requestedSide: side,
