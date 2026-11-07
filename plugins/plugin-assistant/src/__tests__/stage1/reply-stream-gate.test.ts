@@ -119,15 +119,50 @@ async function stage1StreamCall(
   const params = useModelCalls(runtime)[0]?.[1] as {
     streamFieldGate?: StructuredStreamGate;
     responseSkeleton?: { spans: Array<{ key?: string }> };
+    tools?: Array<{
+      name?: string;
+      parameters?: { properties?: Record<string, unknown> };
+    }>;
   };
+  const toolFields = new Set(
+    Object.keys(
+      params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")?.parameters
+        ?.properties ?? {},
+    ),
+  );
   const keys = (params.responseSkeleton?.spans ?? [])
     .map((span) => span.key)
     .filter((key): key is string => typeof key === "string");
   const precedingKeys = [...new Set(keys.slice(0, keys.indexOf("replyText")))];
-  return { gate: params.streamFieldGate, keys, precedingKeys };
+  return { gate: params.streamFieldGate, keys, precedingKeys, toolFields };
 }
 
 describe("Stage 1 reply stream gate", () => {
+  it("opens for the fields a tool-calling provider is actually asked for when the schema drops contextRequests", async () => {
+    const { gate, keys, toolFields } = await stage1StreamCall({
+      owner: true,
+      pluginFields: OWNER_ROUTING_FIELDS,
+    });
+    expect(toolFields.has("replyText")).toBe(true);
+    // No reference is available on this turn, so the sent schema omits
+    // contextRequests even though the field is active (Pixel 10a, Nov 2026:
+    // the gate waited for it and never opened).
+    expect(toolFields.has("contextRequests")).toBe(false);
+    const noEffect = Object.fromEntries(
+      OWNER_ROUTING_FIELDS.map((field) => [field.name, field.noEffect]),
+    );
+    const sentPreceding = keys
+      .slice(0, keys.indexOf("replyText"))
+      .filter((key) => toolFields.has(key));
+    const preceding = Object.fromEntries(
+      [...new Set(sentPreceding)].map((key) => [
+        key,
+        key in noEffect ? noEffect[key] : DIRECT_ANSWER_VALUES[key],
+      ]),
+    );
+    expect(gate?.(preceding)).toBe(true);
+  });
+
   it("opens for a direct answer with the fields the real Stage-1 schema writes before replyText", async () => {
     const { gate, keys, precedingKeys } = await stage1StreamCall();
     expect(gate).toBeTypeOf("function");
@@ -145,7 +180,7 @@ describe("Stage 1 reply stream gate", () => {
   });
 
   it("holds when the routing fields send the turn to planned work or are incomplete", async () => {
-    const { gate, precedingKeys } = await stage1StreamCall();
+    const { gate, precedingKeys, toolFields } = await stage1StreamCall();
     const direct = Object.fromEntries(
       precedingKeys.map((key) => [key, DIRECT_ANSWER_VALUES[key]]),
     );
@@ -161,10 +196,9 @@ describe("Stage 1 reply stream gate", () => {
       expect(gate?.(withoutStatus)).toBe(false);
     }
     expect(gate?.({ ...direct, contextRequests: ["history:all"] })).toBe(false);
-    if (precedingKeys.includes("contextRequests")) {
-      const { contextRequests: _read, ...withoutReads } = direct;
-      expect(gate?.(withoutReads)).toBe(false);
-    }
+    // The gate waits for contextRequests only when the sent schema asks for it.
+    const { contextRequests: _read, ...withoutReads } = direct;
+    expect(gate?.(withoutReads)).toBe(!toolFields.has("contextRequests"));
     expect(gate?.(null)).toBe(false);
   });
 
