@@ -239,3 +239,34 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
     page.getByRole("button", { name: "remove smoke.png" }),
   ).toHaveCount(0, { timeout: 10_000 });
 });
+
+test("chat overlay: an empty file is refused at intake instead of queued for a send the server rejects", async ({
+  page,
+}) => {
+  const conversations = await installAttachmentStreamMock(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId("chat-composer-plus")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // A zero-byte text file passes the type and size caps but reads to an empty
+  // base64 body, which validateChatImages rejects with a 400.
+  const fileInput = page.locator('input[type="file"][accept^="image/*"]');
+  await fileInput.setInputFiles({
+    name: "empty.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(0),
+  });
+
+  await expect(page.getByRole("alert")).toContainText('"empty.txt" is empty', {
+    timeout: 10_000,
+  });
+  await expect(
+    page.getByRole("button", { name: "remove empty.txt" }),
+  ).toHaveCount(0);
+  expect(conversations.streamCalls()).toHaveLength(0);
+});
