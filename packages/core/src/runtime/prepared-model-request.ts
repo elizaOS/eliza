@@ -317,7 +317,7 @@ export function createPreparedModelRequestGuard(
 
 	if (
 		rejectionAuthority === "exact-provider-tokenizer-with-explicit-limits" &&
-		counted.count >= dispatchThresholdTokens
+		counted.count > dispatchThresholdTokens
 	) {
 		throw new ElizaError(
 			"Complete provider-prepared model request exceeds its context budget",
