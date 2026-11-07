@@ -17,7 +17,7 @@ export function looksLikeRelationshipFollowUpReminder(
   const text = normalizeMessageText(message);
   return (
     /\bfollow up with\b/.test(text) &&
-    /\b(next\s+(week|month)|tomorrow|today|tonight|this\s+week|on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d)\b/.test(
+    /\b(next\s+(week|month)|tomorrow|today|tonight|this\s+week|on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b|\bat\s+\d/.test(
       text,
     ) &&
     !/\bevery\b/.test(text)
