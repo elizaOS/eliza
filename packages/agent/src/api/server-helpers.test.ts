@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildChatAttachments } from "./server-helpers.ts";
+import { buildChatAttachments, validateChatImages } from "./server-helpers.ts";
 
 const previousStateDir = process.env.ELIZA_STATE_DIR;
 let stateDir: string;
@@ -37,5 +37,41 @@ describe("buildChatAttachments", () => {
     expect(first?.id).toBe(first?.checksum);
     expect(second?.id).toBe(second?.checksum);
     expect(first?.id).not.toBe(second?.id);
+  });
+});
+
+describe("validateChatImages thumbnail", () => {
+  const png = Buffer.from("real image bytes").toString("base64");
+
+  it.each(["=", "==", "A"])(
+    "rejects a thumbnail whose base64 %j decodes to zero bytes",
+    (thumbnailData) => {
+      expect(
+        validateChatImages([
+          {
+            data: png,
+            mimeType: "image/png",
+            name: "photo.png",
+            thumbnail: { data: thumbnailData, mimeType: "image/jpeg" },
+          },
+        ]),
+      ).toBe("Thumbnail data decodes to zero bytes");
+    },
+  );
+
+  it("accepts a thumbnail that carries bytes", () => {
+    expect(
+      validateChatImages([
+        {
+          data: png,
+          mimeType: "image/png",
+          name: "photo.png",
+          thumbnail: {
+            data: Buffer.from("thumb").toString("base64"),
+            mimeType: "image/jpeg",
+          },
+        },
+      ]),
+    ).toBeNull();
   });
 });
