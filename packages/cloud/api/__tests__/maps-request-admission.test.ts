@@ -70,7 +70,12 @@ mock.module(
 mock.module(
   "@elizaos/cloud-shared/lib/services/inference-admission-gate",
   () => ({
-    callMapsRequestAllowance: async (_request: unknown, outcome?: string) => {
+    callMapsRequestAllowance: async (
+      namespace: unknown,
+      _request: unknown,
+      outcome?: string,
+    ) => {
+      expect(namespace).toBe(mapsGateBinding);
       if (outcome) {
         usage++;
         return Response.json({ recorded: true });
@@ -85,6 +90,7 @@ const { admitMapsRequest, authenticateMapsCaller } = await import(
   "../src/lib/maps-request-admission"
 );
 const { createMapsRoute } = await import("../src/lib/maps-route");
+const mapsGateBinding = {};
 let gatesBound = true;
 beforeEach(() => {
   gatesBound = true;
@@ -132,7 +138,7 @@ function call(body: unknown = { query: "test" }, key = "request") {
     },
     {
       NODE_ENV: "test",
-      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: {} } : {}),
+      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: mapsGateBinding } : {}),
     },
   );
 }
