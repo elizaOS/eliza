@@ -16,6 +16,7 @@ import {
 import { runOnboardingChat } from "./eliza-app/onboarding-chat";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { BRIDGE_TURN_IN_PROGRESS_CODE } from "./eliza-sandbox/bridge/contracts";
 import { resolvePersonalDedicatedTrafficAccess } from "./personal-dedicated-fallback";
 import {
   isPhoneSchemaMigrationRequired,
@@ -49,6 +50,11 @@ export interface AgentGatewayRouteReplyCta {
 export interface AgentGatewayRouteResult {
   handled: boolean;
   replyText?: string | null;
+  /**
+   * The sandbox accepted the turn but had not answered by the bridge deadline.
+   * It finishes the turn on its own, so nothing else may run this message.
+   */
+  outcome?: "unknown";
   /**
    * Optional login handoff for transports that can render a link button
    * (Discord). When set, replyText intentionally omits the raw login URL.
@@ -667,6 +673,20 @@ export class AgentGatewayRouterService {
       rpc,
     );
 
+    if (response.error?.code === BRIDGE_TURN_IN_PROGRESS_CODE) {
+      logger.warn("[agent-gateway] Sandbox is still running the inbound turn; outcome unknown", {
+        agentId: target.sandbox.id,
+        organizationId: target.sandbox.organization_id,
+        method: rpc.method,
+      });
+      return {
+        handled: true,
+        outcome: "unknown",
+        agentId: target.sandbox.id,
+        organizationId: target.sandbox.organization_id,
+        roomId: extractRoomId(rpc),
+      };
+    }
     if (response.error) {
       logger.warn("[agent-gateway] Sandbox bridge rejected inbound message", {
         agentId: target.sandbox.id,
