@@ -7595,7 +7595,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
     return this.withDatabase(async () => {
       const id = entry.id || (v4() as UUID);
-      await this.db
+      const [inserted] = await this.db
         .insert(pairingAllowlistTable)
         .values({
           id,
@@ -7605,8 +7605,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           metadata: entry.metadata || {},
           agentId: entry.agentId,
         })
-        .onConflictDoNothing();
-      return id;
+        .onConflictDoNothing()
+        .returning();
+      if (inserted) return inserted.id as UUID;
+
+      const [existing] = await this.db
+        .select({ id: pairingAllowlistTable.id })
+        .from(pairingAllowlistTable)
+        .where(
+          and(
+            eq(pairingAllowlistTable.channel, entry.channel),
+            eq(pairingAllowlistTable.senderId, entry.senderId),
+            eq(pairingAllowlistTable.agentId, entry.agentId)
+          )
+        )
+        .limit(1);
+      if (existing) return existing.id as UUID;
+      throw new ElizaError("Pairing grant identity conflicts with another scope", {
+        code: "PAIRING_ALLOWLIST_ID_CONFLICT",
+      });
     });
   }
 
