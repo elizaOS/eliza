@@ -2470,13 +2470,14 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 function toFileStat(entry: SandboxEntryInfo): FileStat {
-  const kind = entry.symlinkTarget
-    ? "symlink"
-    : entry.type === "dir"
-      ? "directory"
-      : entry.type === "file"
-        ? "file"
-        : "other";
+  const kind =
+    entry.type === "symlink" || entry.symlinkTarget
+      ? "symlink"
+      : entry.type === "dir"
+        ? "directory"
+        : entry.type === "file"
+          ? "file"
+          : "other";
   return {
     path: entry.path,
     name: entry.name,
