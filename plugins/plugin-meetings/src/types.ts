@@ -37,9 +37,15 @@ export interface MeetingAudioSink {
    * Push captured PCM for one speaker stream. `speakerKey` is the adapter's
    * stable per-stream key (track index, SSRC, caption author, …) — it does
    * NOT need to be a display name; call `setSpeakerName` once attribution
-   * resolves one.
+   * resolves one. `capturedAtMs` is the wall-clock time (`Date.now()`) the
+   * chunk was captured, for adapters that hold audio before they can attribute
+   * it (Teams waits for the caption author); it defaults to the push time.
    */
-  pushSpeakerAudio(speakerKey: string, samples: Float32Array): void;
+  pushSpeakerAudio(
+    speakerKey: string,
+    samples: Float32Array,
+    capturedAtMs?: number,
+  ): void;
   /** Attribute a speaker key to a display name (vote-and-lock result). */
   setSpeakerName(speakerKey: string, displayName: string): void;
   /** Force-finalize a speaker's pending buffer (speaker change, mute, leave). */

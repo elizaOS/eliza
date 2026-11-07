@@ -179,7 +179,7 @@ export class TeamsCaptionRouter {
     }
     while (this.queue.length > 0) {
       const entry = this.queue.shift() as QueuedChunk;
-      this.sink.pushSpeakerAudio(speaker, entry.data);
+      this.sink.pushSpeakerAudio(speaker, entry.data, entry.timestamp);
     }
   }
 

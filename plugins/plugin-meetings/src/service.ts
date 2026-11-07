@@ -651,8 +651,8 @@ export class MeetingService extends Service {
   private rosterTrackingSink(session: InternalSession): MeetingAudioSink {
     const { pipeline } = session;
     return {
-      pushSpeakerAudio: (speakerKey, samples) =>
-        pipeline.pushSpeakerAudio(speakerKey, samples),
+      pushSpeakerAudio: (speakerKey, samples, capturedAtMs) =>
+        pipeline.pushSpeakerAudio(speakerKey, samples, capturedAtMs),
       setSpeakerName: (speakerKey, displayName) =>
         pipeline.setSpeakerName(speakerKey, displayName),
       flushSpeaker: (speakerKey) => pipeline.flushSpeaker(speakerKey),
