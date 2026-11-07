@@ -554,9 +554,7 @@ export async function getCachedFlatPricingEntry(
     throw new AiPricingCacheUnavailableError();
   }
   flatPricingFailures.delete(cacheKey);
-  return await awaitColdPricing(
-    scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx),
-  );
+  return await awaitColdPricing(scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx));
 }
 
 /** Test hook: reset all process-local pricing caches between tests. */

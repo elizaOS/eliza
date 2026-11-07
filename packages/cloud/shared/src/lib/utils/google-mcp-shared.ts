@@ -14,17 +14,6 @@ export const GOOGLE_API_TIMEOUT_MS = 30_000;
 
 // ── Authenticated fetch with timeout + rich error extraction ─────────────────
 
-/** A non-OK Google API answer; `status` lets callers map preconditions (412). */
-export class GoogleApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "GoogleApiError";
-  }
-}
-
 export async function googleFetchWithToken(
   token: string,
   url: string,
@@ -67,7 +56,7 @@ export async function googleFetchWithToken(
     } catch {
       errorDetail = `Google API error: ${response.status} ${response.statusText}`;
     }
-    throw new GoogleApiError(response.status, errorDetail);
+    throw new Error(errorDetail);
   }
   return response;
 }

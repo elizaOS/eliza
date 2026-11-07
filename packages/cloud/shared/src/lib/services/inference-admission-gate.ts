@@ -144,7 +144,10 @@ export class InferenceAdmissionGateUnavailableError extends Error {
 export class InferenceAdmissionDispatchMarkError extends InferenceAdmissionGateUnavailableError {
   readonly reason: "ambiguous";
 
-  constructor(message: string, options?: { cause?: unknown; reason?: "ambiguous" }) {
+  constructor(
+    message: string,
+    options?: { cause?: unknown; reason?: "ambiguous" },
+  ) {
     super(message, options);
     this.name = "InferenceAdmissionDispatchMarkError";
     this.reason = options?.reason ?? "ambiguous";
@@ -914,12 +917,9 @@ export async function acquireInferenceAdmissionLease(params: {
       await hydrateInferenceAdmissionGate(params.organizationId, stub);
     } catch (error) {
       // error-policy:J2 no lease was recorded; report the primary failure.
-      throw new InferenceAdmissionGateUnavailableError(
-        "Inference admission gate hydration failed",
-        {
-          cause: error,
-        },
-      );
+      throw new InferenceAdmissionGateUnavailableError("Inference admission gate hydration failed", {
+        cause: error,
+      });
     }
     response = await requestLease();
   }

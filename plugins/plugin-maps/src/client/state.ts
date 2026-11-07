@@ -13,7 +13,6 @@ import {
   type ResultState,
   type Route,
   type TravelMode,
-  transitDetails,
   unavailableCapabilities,
 } from "./contracts.ts";
 import type { MapsLocation, Position } from "./location.ts";
@@ -450,12 +449,7 @@ export class MapsController {
       !Number.isFinite(result.fetchedAt) ||
       result.fetchedAt <= 0 ||
       result.fetchedAt > Date.now() + 60000 ||
-      // Live traffic applies to driving; walk, cycle and transit durations are free flow.
-      (result.traffic !== "none" &&
-        result.traffic !== this.capabilities().traffic) ||
-      (result.staticDurationSeconds !== undefined &&
-        (!Number.isFinite(result.staticDurationSeconds) ||
-          result.staticDurationSeconds < 0))
+      result.traffic !== this.capabilities().traffic
     )
       throw new MapsFailure(
         "invalid-response",
@@ -477,9 +471,6 @@ export class MapsController {
         coordinate: coordinate(step.coordinate),
         distanceMeters: step.distanceMeters,
         ...(step.maneuver ? { maneuver: step.maneuver } : {}),
-        ...(step.transit !== undefined
-          ? { transit: transitDetails(step.transit) }
-          : {}),
       };
     });
     return {

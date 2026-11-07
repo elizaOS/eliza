@@ -76,10 +76,7 @@ import {
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
-import {
-  debitInferenceCost,
-  InferenceBillingUnavailableError,
-} from "./inference-billing-fast-path";
+import { debitInferenceCost, InferenceBillingUnavailableError } from "./inference-billing-fast-path";
 import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,

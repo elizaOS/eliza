@@ -18,14 +18,10 @@ import {
   type MapsOperation,
   type MapsProviderAdapter,
   MapsServiceError,
-  type MapsTile,
-  type MapsTileRequest,
   mapsPlaceDetailsRequestSchema,
   mapsReverseRequestSchema,
   mapsRoutesRequestSchema,
   mapsTextSearchRequestSchema,
-  mapsTileRequestSchema,
-  mapsViewportRequestSchema,
 } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import {
   MAPS_PROVIDER_SETTINGS,
@@ -52,8 +48,6 @@ import {
 } from "./maps-request-admission";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
-/** Tiles are per-caller (authenticated) and change rarely. */
-const TILE_CACHE = "private, max-age=86400";
 
 export interface MapsRouteDependencies {
   authenticate(c: AppContext): Promise<MapsCaller>;
@@ -184,22 +178,8 @@ function parsed<T>(
   return result.data;
 }
 
-function tileRequest(c: AppContext): MapsTileRequest {
-  const value = (name: string) => {
-    const raw = c.req.param(name);
-    return raw !== undefined && /^\d{1,7}$/.test(raw)
-      ? Number(raw)
-      : Number.NaN;
-  };
-  return parsed(mapsTileRequestSchema, {
-    z: value("z"),
-    x: value("x"),
-    y: value("y"),
-  });
-}
-
 async function dispatch(
-  operation: Exclude<MapsOperation, "tiles">,
+  operation: MapsOperation,
   provider: MapsProviderAdapter,
   c: AppContext,
   body: unknown,
@@ -254,25 +234,10 @@ async function dispatch(
           signal,
         ),
       };
-    case "viewport": {
-      const viewport = provider.viewport;
-      if (!viewport) throw new Error("Viewport provider disappeared");
-      return {
-        ...(await viewport.call(
-          provider,
-          parsed(mapsViewportRequestSchema, body),
-          signal,
-        )),
-      };
-    }
   }
 }
 
-/**
- * One Maps route: GET for coverage and tiles (the tile address is in the path,
- * like any map client's), POST for every operation that carries a query or
- * location.
- */
+/** One Maps route: GET for coverage, POST for every operation that carries a query or location. */
 export function createMapsRoute(
   operation: MapsOperation,
   dependencies: MapsRouteDependencies = defaultMapsRouteDependencies,
@@ -310,28 +275,10 @@ export function createMapsRoute(
           "Eliza Cloud Maps is not configured.",
         ),
       );
-    if (
-      (operation === "tiles" && !provider.tile) ||
-      (operation === "viewport" && !provider.viewport) ||
-      ((operation === "tiles" || operation === "viewport") &&
-        !provider.coverage().tiles)
-    )
-      return failure(
-        c,
-        new MapsServiceError(
-          "maps_not_configured",
-          "The configured Maps provider serves no map tiles.",
-        ),
-      );
     let body: unknown;
-    let tile: MapsTileRequest | undefined;
     try {
-      if (operation === "tiles") tile = tileRequest(c);
-      body =
-        operation === "coverage" || operation === "tiles"
-          ? undefined
-          : await readBody(c);
-      if (operation !== "coverage" && operation !== "tiles")
+      body = operation === "coverage" ? undefined : await readBody(c);
+      if (operation !== "coverage")
         parsed<unknown>(
           operation === "search" || operation === "geocode"
             ? mapsTextSearchRequestSchema
@@ -339,9 +286,7 @@ export function createMapsRoute(
               ? mapsReverseRequestSchema
               : operation === "details"
                 ? mapsPlaceDetailsRequestSchema
-                : operation === "viewport"
-                  ? mapsViewportRequestSchema
-                  : mapsRoutesRequestSchema,
+                : mapsRoutesRequestSchema,
           body,
         );
     } catch (error) {
@@ -433,12 +378,7 @@ export function createMapsRoute(
           NO_STORE,
         );
       }
-      let result: Record<string, unknown> | MapsTile;
-      if (operation === "tiles") {
-        const tileFor = provider.tile;
-        if (!tileFor || !tile) throw new Error("Tile provider disappeared");
-        result = await tileFor.call(provider, tile, c.req.raw.signal);
-      } else result = await dispatch(operation, provider, c, body);
+      const result = await dispatch(operation, provider, c, body);
       if (c.req.raw.signal.aborted) {
         await record("cancelled");
         return c.json(
@@ -449,17 +389,7 @@ export function createMapsRoute(
       }
       const outcome = record("succeeded");
       if (!getGenerativeExecutionContext(c)) await outcome;
-      if (operation === "tiles") {
-        const image = result as MapsTile;
-        return new Response(image.body, {
-          status: 200,
-          headers: {
-            "Content-Type": image.contentType,
-            "Cache-Control": TILE_CACHE,
-          },
-        });
-      }
-      return c.json(result as Record<string, unknown>, 200, NO_STORE);
+      return c.json(result, 200, NO_STORE);
     } catch (error) {
       // Every admitted request gets an outcome. A failure the provider raises
       // after admission (an id the geocoder cannot use, a misconfigured
@@ -475,7 +405,7 @@ export function createMapsRoute(
       return failure(c, error);
     }
   };
-  if (operation === "coverage" || operation === "tiles") app.get("/", handler);
+  if (operation === "coverage") app.get("/", handler);
   else app.post("/", handler);
   return app;
 }

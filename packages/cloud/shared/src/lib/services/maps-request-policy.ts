@@ -39,7 +39,7 @@ export interface MapsAllowanceRequest {
   organizationId: string;
   requestId: string;
   credential: InferenceCredentialCheck & { organizationId: string };
-  operation: "search" | "geocode" | "reverse" | "details" | "routes" | "tiles";
+  operation: "search" | "geocode" | "reverse" | "details" | "routes";
   policy: {
     generation: string;
     planKey: string;

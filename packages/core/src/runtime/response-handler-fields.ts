@@ -8,9 +8,9 @@ import { TurnAbortedError } from "./turn-aborted-error";
 /**
  * Field evaluators own the schema, prompt contribution, and handler for each structured
  * response field. All fields remain required for stable schema bytes; shouldRun controls
- * prompt and handler activation, with empty defaults for inactive fields. Every active field
- * is parsed first; handlers then run in priority order, mutate the shared result, and may
- * abort further processing. Sibling parsed values remain read-only.
+ * prompt and handler activation, with empty defaults for inactive fields. Handlers run in
+ * priority order, mutate the shared result, and may abort further processing. Sibling parsed
+ * values remain read-only.
  */
 
 // Result shape
@@ -156,27 +156,12 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	/**
 	 * Execution order. Lower runs first. Defaults to 100. Conventions:
 	 *
-	 * 0-19 - core routing fields (shouldRespond, contexts) and plugin
-	 * routing fields that declare `directReplyValue` (threadOps, calendar,
-	 * etc.), generated before the reply
-	 * 20 - replyText
-	 * 20-49 - other plugin-contributed action surfaces
-	 * 50-79 - retrieval hints
+	 * 0-19 - core routing fields (shouldRespond, contexts)
+	 * 20-49 - plugin-contributed action surfaces (threadOps, calendar, etc.)
+	 * 50-79 - retrieval hints (candidateActionNames)
 	 * 80-99 - extract/memory pipeline (facts, relationships, addressedTo)
 	 */
 	priority?: number;
-
-	/**
-	 * The values of this field that keep the turn a direct answer. Declaring
-	 * it promises that, whenever it returns true for the model's raw value,
-	 * this field's parse and handle neither reroute the turn (contexts,
-	 * intents, action candidates, planner, preempt) nor change `replyText`.
-	 * A host that streams `replyText` while it is generated may then start
-	 * the stream once this field was written before it (priority below
-	 * `replyText`'s) with such a value. A field without it, or written after
-	 * `replyText`, holds that stream: its value is not known in time.
-	 */
-	directReplyValue?: (value: unknown) => boolean;
 
 	/**
 	 * JSON schema fragment for THIS field. Must declare a deterministic
@@ -447,12 +432,9 @@ export class ResponseHandlerFieldRegistry {
 	// Dispatch — parse + handle each field
 
 	/**
-	 * Parse the LLM's structured output, then dispatch each field's slice to
-	 * its handler in priority order. Every active field is parsed before any
-	 * handler runs, so a handler sees all siblings in canonical form and a
-	 * later field's parse never overwrites its mutation: a field generated
-	 * before `replyText` can still replace the reply. Handlers may preempt
-	 * downstream processing (abort, ack-and-stop, ignore, direct-reply).
+	 * Parse the LLM's structured output and dispatch each field's slice to
+	 * its handler in priority order. Handlers may preempt downstream
+	 * processing (abort, ack-and-stop, ignore, direct-reply).
 	 *
 	 * Active set is recomputed here (we don't trust the prompt-slice run to
 	 * tell us — the prompt is rendered into stable cache and may be reused
@@ -488,11 +470,6 @@ export class ResponseHandlerFieldRegistry {
 			turnSignal: args.turnSignal,
 		};
 
-		const handlers: Array<{
-			evaluator: ResponseHandlerFieldEvaluator;
-			trace: ResponseHandlerFieldTrace;
-			value: unknown;
-		}> = [];
 		for (const evaluator of this.sortedEvaluators()) {
 			const trace: ResponseHandlerFieldTrace = {
 				fieldName: evaluator.name,
@@ -560,39 +537,16 @@ export class ResponseHandlerFieldRegistry {
 				// Re-stamp the parsed result with the post-parse value so siblings
 				// see the canonical form.
 				parsed[evaluator.name] = value;
-				traces.push(trace);
-				if (evaluator.handle) handlers.push({ evaluator, trace, value });
-			} catch (error) {
-				// A cancelled turn is not a field failure: stop here and let
-				// the turn end as cancelled.
-				if (error instanceof TurnAbortedError) throw error;
-				// error-policy:J1 Field activation appends an explicit failure
-				// trace while independent fields continue.
-				const messageStr =
-					error instanceof Error ? error.message : String(error);
-				trace.errorMessage = messageStr;
-				fieldErrors[evaluator.name] = messageStr;
-				traces.push(trace);
-				args.runtime.logger.warn(
-					{
-						src: "response-handler-field-registry",
-						field: evaluator.name,
-						err: messageStr,
-					},
-					"Response-handler field shouldRun failed",
-				);
-				args.runtime.reportError(
-					"ResponseHandlerFieldRegistry.shouldRun",
-					error,
-					{ evaluator: evaluator.name },
-				);
-			}
-		}
 
-		for (const { evaluator, trace, value } of handlers) {
-			try {
+				// Run the handler.
+				if (!evaluator.handle) {
+					traces.push(trace);
+					continue;
+				}
 				if (args.turnSignal.aborted) {
 					// A prior preempt already fired abort. Skip remaining handlers.
+					trace.handled = false;
+					traces.push(trace);
 					continue;
 				}
 				const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
@@ -600,7 +554,7 @@ export class ResponseHandlerFieldRegistry {
 					value,
 					parsed,
 				};
-				const effect = await evaluator.handle?.(handleCtx);
+				const effect = await evaluator.handle(handleCtx);
 				trace.handled = true;
 				if (effect?.debug?.length) {
 					trace.debug = effect.debug.slice();
@@ -614,6 +568,7 @@ export class ResponseHandlerFieldRegistry {
 					trace.preemptReason = effect.preempt.reason;
 					preempt = effect.preempt;
 				}
+				traces.push(trace);
 				if (preempt) {
 					// Don't run further handlers after a preempt.
 					break;
@@ -628,6 +583,7 @@ export class ResponseHandlerFieldRegistry {
 					error instanceof Error ? error.message : String(error);
 				trace.errorMessage = messageStr;
 				fieldErrors[evaluator.name] = messageStr;
+				traces.push(trace);
 				args.runtime.logger.warn(
 					{
 						src: "response-handler-field-registry",
