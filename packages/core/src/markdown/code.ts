@@ -188,19 +188,30 @@ export function unwrapWholeCodeFence(
 	if (fenceLength < 3 || value.length < fenceLength * 2) {
 		return null;
 	}
+	// CommonMark trims spaces and tabs before the info string, so "``` json"
+	// has the label json. After such a space the label must be a whole word,
+	// so compact content such as ``` textual ``` stays content.
+	let labelStart = fenceLength;
+	while (value[labelStart] === " " || value[labelStart] === "\t")
+		labelStart += 1;
 	// Lowercase only the label region, not the whole (possibly large) value.
 	let longestLanguage = 0;
 	for (const language of languages) {
 		longestLanguage = Math.max(longestLanguage, language.length);
 	}
 	const lowerLabel = value
-		.slice(fenceLength, fenceLength + longestLanguage)
+		.slice(labelStart, labelStart + longestLanguage)
 		.toLowerCase();
 	const acceptedLanguage = [...languages]
 		.sort((left, right) => right.length - left.length)
-		.find((language) => lowerLabel.startsWith(language.toLowerCase()));
+		.find(
+			(language) =>
+				lowerLabel.startsWith(language.toLowerCase()) &&
+				(labelStart === fenceLength ||
+					/\s/u.test(value[labelStart + language.length] ?? "")),
+		);
 	let cursor = acceptedLanguage
-		? fenceLength + acceptedLanguage.length
+		? labelStart + acceptedLanguage.length
 		: fenceLength;
 	if (!acceptedLanguage) {
 		while (
