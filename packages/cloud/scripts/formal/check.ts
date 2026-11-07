@@ -1,6 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -49,6 +55,36 @@ for (const model of manifest.models) {
 for (const file of files) {
   if (!manifest.models.some((model) => model.file === file)) {
     throw new Error(`Unregistered model: ${file}`);
+  }
+}
+const registeredFiles = new Set(manifest.models.map((model) => model.file));
+for (const file of readdirSync(path.join(formal, "inventory")).filter((name) =>
+  name.endsWith(".json"),
+)) {
+  const inventory = JSON.parse(
+    readFileSync(path.join(formal, "inventory", file), "utf8"),
+  ) as {
+    flows: Array<{
+      id: string;
+      sources: string[];
+      models: string[];
+      coverage: string;
+    }>;
+  };
+  for (const flow of inventory.flows) {
+    for (const model of flow.models) {
+      if (!registeredFiles.has(model))
+        throw new Error(`Unregistered inventory model: ${flow.id}: ${model}`);
+    }
+    for (const source of flow.sources) {
+      if (!existsSync(path.join(root, source)))
+        throw new Error(`Missing inventory source: ${flow.id}: ${source}`);
+    }
+    if (flow.coverage === "partial-bounded-model" && flow.models.length === 0) {
+      throw new Error(
+        `Inventory claims model coverage without a model: ${flow.id}`,
+      );
+    }
   }
 }
 if (selected && !ids.has(selected))
