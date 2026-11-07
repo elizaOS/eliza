@@ -545,6 +545,47 @@ export class DurableDraftController<Recovery = unknown> {
   }
 
   /**
+   * Persist and read back the current editor without claiming a send, clearing
+   * text, resolving a conflict, or restoring a different copy. The host must
+   * prevent further edits before using this result to stop its process.
+   * A changed binding, queued edit or in-flight send refuses that handoff.
+   */
+  async flush(current: () => boolean = () => true): Promise<void> {
+    await this.opening;
+    const binding = this.active;
+    if (!binding) {
+      if (!current() || this.text() || this.held)
+        throw new Error(this.messages.storageUnavailable);
+      return;
+    }
+    if (!binding.ready || binding.failed || this.state.consuming || this.held)
+      throw new Error(this.messages.storageUnavailable);
+    const text = this.text();
+    this.edit(text);
+    const queue = binding.queue;
+    await queue;
+    const unchanged = () =>
+      current() &&
+      this.active === binding &&
+      binding.ready &&
+      !binding.failed &&
+      !this.state.consuming &&
+      !this.held &&
+      this.text() === text &&
+      binding.queue === queue;
+    if (!unchanged()) throw new Error(this.messages.changed);
+    const saved = await this.requireStore(binding).read();
+    if (!unchanged()) throw new Error(this.messages.changed);
+    if (
+      (saved?.text ?? "") !== text ||
+      isSendingDurableDraft(saved) ||
+      (saved?.revision ?? null) !== (binding.record?.revision ?? null) ||
+      (saved?.binding ?? null) !== (binding.record?.binding ?? null)
+    )
+      throw new Error(this.messages.storageUnavailable);
+  }
+
+  /**
    * Before dispatch: require the saved copy to match the editor exactly, then
    * mark it as sending and keep it saved while the editor is cleared for the
    * in-flight message. Follow with {@link commit}, {@link release} or
