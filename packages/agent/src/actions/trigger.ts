@@ -1402,12 +1402,15 @@ async function opList(
       triggerId: trigger.triggerId,
       displayName: trigger.displayName,
     });
+    // A paused row holds the far-future parked time, not a real fire time —
+    // the same shape the update reply already avoids. Describe a paused
+    // trigger from its schedule so the list never names a date a year away.
     lines.push(
       `- "${displayLabel(trigger.displayName)}" — ${describeSchedule(
         trigger,
         messageTimeZone,
         Date.now(),
-        trigger.nextRunAtMs,
+        trigger.enabled === false ? undefined : trigger.nextRunAtMs,
       )}${paused}`,
     );
   }

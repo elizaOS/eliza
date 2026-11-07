@@ -17,6 +17,7 @@ import {
   type TriggerRouteContext,
 } from "../../../plugins/plugin-workflow/src/trigger-routes.ts";
 import { triggerAction } from "../src/actions/trigger.ts";
+import { describeOnceAt } from "../src/triggers/humanize.ts";
 import {
   ensureOwnerConversation,
   resolvePromptDeliveryRoom,
@@ -557,6 +558,56 @@ it("edits a paused trigger through the action and keeps it paused", async () => 
       (live?.metadata as { updateInterval?: number } | undefined)
         ?.updateInterval,
     ).not.toBe(DISABLED_TRIGGER_INTERVAL_MS);
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
+it("lists a paused one-shot cron trigger from its schedule, not the parked time", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Remind me to stretch." },
+  } as Memory;
+  const run = (parameters: JsonObject) =>
+    triggerAction.handler(fixture.runtime, message, undefined, { parameters });
+  const created = await run({
+    action: "create",
+    displayName: `Paused one-shot ${randomUUID().slice(0, 8)}`,
+    instructions: "Remind the user to stretch.",
+    cronExpression: "0 9 * * *",
+    maxRuns: 1,
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const paused = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: false,
+    });
+    expect(paused, paused?.text).toMatchObject({ success: true });
+    const saved = await fixture.runtime.getTask(taskId);
+    const savedTrigger = saved && readTriggerConfig(saved);
+    expect(savedTrigger).toMatchObject({ enabled: false, maxRuns: 1 });
+    // A paused row parks nextRunAtMs about a year out; the list must never
+    // name that parked instant as the trigger's next time.
+    const parkedMs = savedTrigger?.nextRunAtMs;
+    expect(parkedMs).toBeGreaterThan(Date.now() + 300 * 86400000);
+    const listed = await run({ action: "list" });
+    expect(listed, listed?.text).toMatchObject({ success: true });
+    expect(listed?.text).toContain("(paused)");
+    expect(listed?.text).not.toContain(
+      describeOnceAt(
+        new Date(parkedMs as number).toISOString(),
+        Date.now(),
+        "UTC",
+      ) ?? "",
+    );
   } finally {
     await fixture.runtime.deleteTask(taskId);
   }
