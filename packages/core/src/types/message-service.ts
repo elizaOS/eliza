@@ -28,9 +28,6 @@ import type {
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
-/**
- * Configuration options for message processing
- */
 export type {
 	TypedReadEgressReceipt,
 	TypedReadFact,
@@ -42,6 +39,9 @@ export type {
 	TypedReadRequirement,
 } from "../runtime/typed-read-contract";
 
+/**
+ * Configuration options for message processing
+ */
 export interface MessageProcessingOptions {
 	/** Trusted host projection from this turn's admitted producer receipts; never populated by RPC input. */
 	resolveTypedReadReply?: import("../runtime/typed-read-contract").TypedReadReplyResolver;
@@ -68,6 +68,16 @@ export interface MessageProcessingOptions {
 	onStreamChunk?: StreamChunkCallback;
 	/** Transient progress from existing inference; never a persisted or final reply. */
 	onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
+	/**
+	 * Transient, content-free status for each activity the turn starts, in
+	 * order. The label comes from the action's registered category, never its
+	 * arguments or results, and owner-exclusive turns publish it only to a
+	 * revalidated audience. Never reply text, history or a delivery receipt.
+	 */
+	onActivityStatus?: (activity: {
+		actionName: string;
+		label: string;
+	}) => void | Promise<void>;
 	/**
 	 * Called at most once when Stage 1 commits the turn to a response; never
 	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and

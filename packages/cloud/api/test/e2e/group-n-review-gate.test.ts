@@ -23,50 +23,6 @@ import {
 } from "./_helpers/api";
 import { approveAppInDb, hasReviewModel } from "./_helpers/review";
 
-const MAX_COLD_ADMISSION_ATTEMPTS = 3;
-
-async function submitReviewAfterColdAdmission(
-  appId: string,
-): Promise<Response> {
-  for (let attempt = 1; attempt <= MAX_COLD_ADMISSION_ATTEMPTS; attempt += 1) {
-    const response = await api.post(
-      `/api/v1/apps/${appId}/review`,
-      {},
-      { headers: bearerHeaders() },
-    );
-    if (response.status !== 503) {
-      return response;
-    }
-
-    const body = (await response.clone().json()) as {
-      success?: boolean;
-      error?: string;
-      code?: string;
-      details?: { retryable?: boolean; retryAfterSeconds?: number };
-    };
-    expect(body).toEqual({
-      success: false,
-      error: "Generative admission cache is warming; retry shortly",
-      code: "service_unavailable",
-      details: { retryable: true, retryAfterSeconds: 1 },
-    });
-
-    if (attempt < MAX_COLD_ADMISSION_ATTEMPTS) {
-      const retryAfterHeader = response.headers.get("Retry-After");
-      const retryAfterSeconds = retryAfterHeader
-        ? Number(retryAfterHeader)
-        : body.details?.retryAfterSeconds;
-      expect(Number.isFinite(retryAfterSeconds)).toBe(true);
-      expect(retryAfterSeconds).toBeGreaterThan(0);
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.ceil((retryAfterSeconds ?? 1) * 1_000)),
-      );
-    }
-  }
-
-  throw new Error("Cold admission retry loop exited without a response");
-}
-
 async function expectMonetizationRetired(response: Response): Promise<void> {
   expect(response.status).toBe(410);
   expect(await response.json()).toMatchObject({
@@ -238,7 +194,11 @@ describeE2E("App compliance-review gate", () => {
         "PixelPad",
         "A collaborative pixel-art drawing canvas for hobbyists.",
       );
-      const res = await submitReviewAfterColdAdmission(appId);
+      const res = await api.post(
+        `/api/v1/apps/${appId}/review`,
+        {},
+        { headers: bearerHeaders() },
+      );
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         review?: {

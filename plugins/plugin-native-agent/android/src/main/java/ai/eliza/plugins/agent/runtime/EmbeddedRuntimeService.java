@@ -47,6 +47,7 @@ public abstract class EmbeddedRuntimeService extends Service {
     NativeProcessSupervisor.Snapshot state=service==null?null:service.supervisor.snapshot().lifecycle;
     JSONObject result=new JSONObject().put("available",available).put("onDevice",true)
       .put("state",available?(state==null?"stopped":state.state.name().toLowerCase(Locale.ROOT)):"unavailable");
+    if(available)result.put("requestBodyLimit",RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS);
     if(state!=null && state.failure!=null)result.put("error",state.failure instanceof IOException?state.failure.getMessage():startupFailure);
     if(service!=null)result.put("epoch",state.epoch);
     return result;

@@ -1,27 +1,9 @@
+/** Owns database mutations and their room, entity, and relationship cache invalidation using the canonical adapter and original runtime hooks. */
 import { randomUUID as uuidv4 } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { ElizaError } from "../errors";
-import type { Content } from "../types/primitives.js";
-import {
-	buildMessageContentProjection,
-	collectMessageContentSegmentIds,
-	messageContentRequiresSegments,
-} from "./message-content-segments";
-/** Owns database mutations and their room, entity, and relationship cache invalidation using the canonical adapter and original runtime hooks. */
-
 import { redactWithSecrets } from "../security/redact.js";
-import type { Service } from "../types/service.ts";
-
-/** Optional evidence-maintenance service supplied by an extraction plugin. */
-type EvidenceMutationService = Service & {
-	mutateSourceEvidence<T>(
-		ids: UUID[],
-		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
-		write: () => Promise<T>,
-	): Promise<T>;
-};
-
-import type { PatchOp } from "../types/database.js";
+import type { MemoryEmbeddingUpdate, PatchOp } from "../types/database.js";
 import type {
 	Component,
 	Entity,
@@ -31,13 +13,28 @@ import type {
 } from "../types/environment.js";
 import type { Memory, MemoryMetadata } from "../types/memory.js";
 import { afterMemoryPersistedPipelineHookContext } from "../types/pipeline-hooks";
-import type { Metadata, UUID } from "../types/primitives.js";
+import type { Content, Metadata, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
+import type { Service } from "../types/service.ts";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./fact-write-dedupe";
+import {
+	buildMessageContentProjection,
+	collectMessageContentSegmentIds,
+	messageContentRequiresSegments,
+} from "./message-content-segments";
 import type { SingleFlightMemo } from "./single-flight-memo";
+
+/** Optional evidence-maintenance service supplied by an extraction plugin. */
+type EvidenceMutationService = Service & {
+	mutateSourceEvidence<T>(
+		ids: UUID[],
+		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+		write: () => Promise<T>,
+	): Promise<T>;
+};
 
 export interface RuntimeDataMutationsHost {
 	invalidateTurnEntityDetails(): void;
@@ -52,6 +49,26 @@ export class RuntimeDataMutations {
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeDataMutationsHost,
 	) {}
+
+	private readonly factWrites = new Map<UUID, Promise<void>>();
+
+	private serialiseFactWrite<T>(
+		roomId: UUID,
+		write: () => Promise<T>,
+	): Promise<T> {
+		const result = (this.factWrites.get(roomId) ?? Promise.resolve()).then(
+			write,
+		);
+		const tail = result.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.factWrites.set(roomId, tail);
+		void tail.then(() => {
+			if (this.factWrites.get(roomId) === tail) this.factWrites.delete(roomId);
+		});
+		return result;
+	}
 
 	private async mutateSourceEvidence<T>(
 		ids: UUID[],
@@ -76,12 +93,10 @@ export class RuntimeDataMutations {
 		this.host.invalidateTurnIdentityClusters();
 	}
 
-	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
 		await this.updateEntities([entity]);
 	}
 
-	// Batch component methods
 	async createComponents(components: Component[]): Promise<UUID[]> {
 		const ids = await this.runtime.adapter.createComponents(components);
 		this.host.invalidateTurnEntityDetails();
@@ -98,7 +113,6 @@ export class RuntimeDataMutations {
 		this.host.invalidateTurnEntityDetails();
 	}
 
-	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.runtime.adapter.createComponents([component]);
 		this.host.invalidateTurnEntityDetails();
@@ -157,56 +171,57 @@ export class RuntimeDataMutations {
 		this.host.invalidateTurnEntityDetails();
 	}
 
+	/** Redacts configured secrets and credential patterns from memory text. */
+	private redactMemoryText(memory: Memory): Memory {
+		if (!memory.content.text) return memory;
+		return {
+			...memory,
+			content: {
+				...memory.content,
+				text: redactWithSecrets(memory.content.text, {
+					secrets: this.host.getSecretsForRedaction(),
+					applyPatterns: true,
+				}),
+			},
+		};
+	}
+
 	async upsertMemory(
 		memory: Memory,
 		tableName: string,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		// Apply secret redaction (same as createMemory) to prevent plaintext secrets
-		const secrets = this.host.getSecretsForRedaction();
-		if (memory.content.text) {
-			memory = {
-				...memory,
-				content: {
-					...memory.content,
-					text: redactWithSecrets(memory.content.text, {
-						secrets,
-						applyPatterns: true,
-					}),
-				},
-			};
-		}
-		return this.upsertMemories([{ memory, tableName }], options);
+		return this.upsertMemories(
+			[{ memory: this.redactMemoryText(memory), tableName }],
+			options,
+		);
 	}
 
 	async upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		const messageEntries = memories.filter(
-			(entry) => entry.tableName === "messages",
-		);
-		const messages = messageEntries
-			.filter((entry) => entry.memory.id)
-			.map((entry) => entry.memory as Memory & { id: UUID });
+		const messages: Array<Memory & { id: UUID }> = [];
+		const messageIds: UUID[] = [];
 		// Memory.id is optional: id-less upserts still write rows through the
 		// adapter's createMemory fallback, so their rooms must be invalidated
 		// too, or the memo keeps serving the stale window.
-		const messageRoomIds = new Set(
-			messageEntries.map((entry) => entry.memory.roomId),
-		);
-		return this.mutateSourceEvidence(
-			messages.map((row) => row.id),
-			messages,
-			async () => {
-				await this.runtime.adapter.upsertMemories(memories, options);
-				for (const roomId of messageRoomIds)
-					this.host.roomMessagesMemo().invalidate(roomId);
-			},
-		);
+		const messageRoomIds = new Set<UUID>();
+		for (const { memory, tableName } of memories) {
+			if (tableName !== "messages") continue;
+			messageRoomIds.add(memory.roomId);
+			if (memory.id) {
+				messages.push(memory as Memory & { id: UUID });
+				messageIds.push(memory.id);
+			}
+		}
+		return this.mutateSourceEvidence(messageIds, messages, async () => {
+			await this.runtime.adapter.upsertMemories(memories, options);
+			for (const roomId of messageRoomIds)
+				this.host.roomMessagesMemo().invalidate(roomId);
+		});
 	}
 
-	// Batch relationship methods
 	async createRelationships(
 		relationships: Array<{
 			sourceEntityId: UUID;
@@ -230,7 +245,6 @@ export class RuntimeDataMutations {
 		this.host.invalidateTurnIdentityClusters();
 	}
 
-	// Single-item relationship wrappers
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -247,11 +261,8 @@ export class RuntimeDataMutations {
 		this.host.invalidateTurnIdentityClusters();
 	}
 
-	// ── Batch memory passthroughs ────────────────────────────────────────
-	// These go straight to the adapter with no transformation.
-	// WHY no redaction here: batch callers are responsible for their own
-	// content. The single-item createMemory() wrapper below handles
-	// redaction for the common case.
+	// Batch callers are responsible for their own content: no redaction here.
+	// The single-item createMemory() wrapper handles redaction.
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
@@ -288,9 +299,7 @@ export class RuntimeDataMutations {
 		this.host.roomMessagesMemo().invalidate();
 	}
 
-	async updateMemoryEmbedding(
-		update: import("../types/database").MemoryEmbeddingUpdate,
-	): Promise<boolean> {
+	async updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean> {
 		// A vector-only write does not change source evidence. Keep it outside the
 		// reconciliation lease (including during shutdown); the adapter owns CAS.
 		if (update.expected.agentId !== this.runtime.agentId) return false;
@@ -310,10 +319,8 @@ export class RuntimeDataMutations {
 	private redactMessageContentForStorage(content: Content): Content {
 		// The pattern sweep runs without configured secrets, as in redactSecrets.
 		const secrets = this.host.getSecretsForRedaction();
-		const redact = (value: string | undefined): string | undefined =>
-			typeof value === "string"
-				? redactWithSecrets(value, { secrets, applyPatterns: true })
-				: value;
+		const redact = (value: string): string =>
+			redactWithSecrets(value, { secrets, applyPatterns: true });
 		return {
 			...content,
 			...(typeof content.text === "string"
@@ -412,11 +419,13 @@ export class RuntimeDataMutations {
 							"message_content_segments",
 						)
 					: [];
+				const storedById = new Map(
+					segments.map((entry) => [entry.id, entry] as const),
+				);
 				if (
-					projection.segments.every((segment) => {
-						const stored = segments.find((entry) => entry.id === segment.id);
-						return sameEvidence(stored, segment, true);
-					})
+					projection.segments.every((segment) =>
+						sameEvidence(storedById.get(segment.id), segment, true),
+					)
 				)
 					return id;
 			}
@@ -526,19 +535,7 @@ export class RuntimeDataMutations {
 
 		// Redact any secrets from memory content before storing. The credential
 		// pattern sweep also runs when the character configures no secrets.
-		const secrets = this.host.getSecretsForRedaction();
-		if (memory.content.text) {
-			memory = {
-				...memory,
-				content: {
-					...memory.content,
-					text: redactWithSecrets(memory.content.text, {
-						secrets,
-						applyPatterns: true,
-					}),
-				},
-			};
-		}
+		memory = this.redactMemoryText(memory);
 
 		// Facts are structurally deduped at write time: when an equivalent row
 		// (same normalized text + room + entity) already exists, skip the insert
@@ -549,20 +546,28 @@ export class RuntimeDataMutations {
 		// A dedupe hit may still carry new information: stronger metadata on the
 		// incoming occurrence (higher confidence, an explicit kind, a fresher
 		// validity timestamp) upgrades the kept row instead of being dropped.
+		// The check and its update or insert run one at a time per room, so
+		// concurrent identical writes cannot both miss (tla/FactWriteDedupe.tla).
+		const insert = () =>
+			this.runtime.adapter.createMemories([{ memory, tableName, unique }]);
+		let ids: UUID[];
 		if (tableName === "facts") {
-			const equivalent = await findEquivalentFact(this.runtime, memory);
-			if (equivalent?.id) {
-				const upgraded = mergeStrongerFactMetadata(equivalent, memory);
-				if (upgraded) {
-					await this.updateMemory({ id: equivalent.id, metadata: upgraded });
-				}
-				return equivalent.id;
-			}
-		}
-
-		const ids = await this.runtime.adapter.createMemories([
-			{ memory, tableName, unique },
-		]);
+			// An array is the inserted ids; a single id is the equivalent row kept.
+			const outcome = await this.serialiseFactWrite(
+				memory.roomId,
+				async (): Promise<UUID[] | UUID> => {
+					const equivalent = await findEquivalentFact(this.runtime, memory);
+					if (!equivalent?.id) return insert();
+					const upgraded = mergeStrongerFactMetadata(equivalent, memory);
+					if (upgraded) {
+						await this.updateMemory({ id: equivalent.id, metadata: upgraded });
+					}
+					return equivalent.id;
+				},
+			);
+			if (!Array.isArray(outcome)) return outcome;
+			ids = outcome;
+		} else ids = await insert();
 		// The intake path persists the user message immediately before
 		// composeState reads the room window; busting the key here makes the
 		// coalesced messages-scan self-enforcing — a stale window can never
@@ -582,14 +587,13 @@ export class RuntimeDataMutations {
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
 		await this.updateMemories([memory]);
-		return true; // Successfully updated if no error thrown
+		return true;
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
 		await this.deleteMemories([memoryId]);
 	}
 
-	// ── Participant passthroughs & wrappers ──────────────────────────────
 	async deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
 	): Promise<boolean> {
@@ -617,7 +621,6 @@ export class RuntimeDataMutations {
 		return deleted;
 	}
 
-	// ── Room passthroughs & wrappers ────────────────────────────────────
 	async updateRooms(rooms: Room[]): Promise<void> {
 		await this.runtime.adapter.updateRooms(rooms);
 		for (const room of rooms) {
@@ -633,7 +636,6 @@ export class RuntimeDataMutations {
 		}
 	}
 
-	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
 		return this.updateRooms([room]);
 	}
@@ -641,8 +643,6 @@ export class RuntimeDataMutations {
 	async deleteRoom(roomId: UUID): Promise<void> {
 		return this.deleteRooms([roomId]);
 	}
-
-	// ── Batch pass-throughs required by IDatabaseAdapter ────────────────
 
 	async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
 		await this.runtime.adapter.deleteRoomsByWorldIds(worldIds);

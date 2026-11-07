@@ -45,10 +45,10 @@ export interface PairingCheckParams {
 /**
  * Get the PairingService from the runtime, or null if not available.
  */
-export async function getPairingService(
+export function getPairingService(
 	runtime: IAgentRuntime,
-): Promise<PairingService | null> {
-	return runtime.getService(ServiceType.PAIRING) as PairingService | null;
+): PairingService | null {
+	return runtime.getService<PairingService>(ServiceType.PAIRING);
 }
 
 /**
@@ -82,7 +82,7 @@ export async function checkPairingAllowed(
 ): Promise<PairingCheckResult> {
 	const { channel, senderId, metadata, suppressReply } = params;
 
-	const pairingService = await getPairingService(runtime);
+	const pairingService = getPairingService(runtime);
 	if (!pairingService) {
 		// Fail CLOSED, and treat this as a systemic misconfiguration rather than
 		// a per-message event: callers only reach here because the channel's DM
@@ -188,7 +188,7 @@ export async function addToAllowlist(
 	senderId: string,
 	metadata?: Record<string, string>,
 ): Promise<boolean> {
-	const pairingService = await getPairingService(runtime);
+	const pairingService = getPairingService(runtime);
 	if (!pairingService) {
 		runtime.logger.warn(
 			{ src: "pairing-integration", channel },
@@ -209,7 +209,7 @@ export async function removeFromAllowlist(
 	channel: PairingChannel,
 	senderId: string,
 ): Promise<boolean> {
-	const pairingService = await getPairingService(runtime);
+	const pairingService = getPairingService(runtime);
 	if (!pairingService) {
 		return false;
 	}
@@ -225,7 +225,7 @@ export async function isInAllowlist(
 	channel: PairingChannel,
 	senderId: string,
 ): Promise<boolean> {
-	const pairingService = await getPairingService(runtime);
+	const pairingService = getPairingService(runtime);
 	if (!pairingService) {
 		return false;
 	}
@@ -242,7 +242,7 @@ export async function approvePairingCode(
 	channel: PairingChannel,
 	code: string,
 ): Promise<string | null> {
-	const pairingService = await getPairingService(runtime);
+	const pairingService = getPairingService(runtime);
 	if (!pairingService) {
 		return null;
 	}

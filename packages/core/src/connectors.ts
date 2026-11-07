@@ -52,6 +52,23 @@ const registeredMetadataByOwner = new Map<
 	Map<string, ConnectorSourceMetadata>
 >();
 const rawToCanonical = new Map<string, string>();
+/**
+ * Owner-merged metadata per registered canonical source, rebuilt on every
+ * registration change so per-message lookups do not re-merge every owner.
+ */
+const mergedByCanonical = new Map<string, ConnectorSourceMetadata>();
+/** What an unregistered source merges to while any owner is registered. */
+const UNREGISTERED_SOURCE_METADATA = freezeMetadata(
+	mergeMetadata(undefined, undefined),
+);
+
+/** Cached metadata is shared by every reader, so it is read-only. */
+function freezeMetadata(
+	metadata: ConnectorSourceMetadata,
+): ConnectorSourceMetadata {
+	if (metadata.aliases) Object.freeze(metadata.aliases);
+	return Object.freeze(metadata);
+}
 
 function mergeMetadata(
 	base: ConnectorSourceMetadata | undefined,
@@ -70,17 +87,7 @@ function mergeMetadata(
 	};
 }
 
-function listRegisteredCanonicalSources(): string[] {
-	const sources = new Set<string>();
-	for (const ownerMetadata of registeredMetadataByOwner.values()) {
-		for (const canonical of ownerMetadata.keys()) {
-			sources.add(canonical);
-		}
-	}
-	return [...sources];
-}
-
-function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
+function mergeOwners(canonical: string): ConnectorSourceMetadata {
 	let merged: ConnectorSourceMetadata | undefined;
 	for (const ownerMetadata of registeredMetadataByOwner.values()) {
 		merged = mergeMetadata(merged, ownerMetadata.get(canonical));
@@ -88,11 +95,29 @@ function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
 	return merged ?? {};
 }
 
+function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
+	return (
+		mergedByCanonical.get(canonical) ??
+		(registeredMetadataByOwner.size > 0 ? UNREGISTERED_SOURCE_METADATA : {})
+	);
+}
+
 function rebuildRawToCanonical(): void {
 	rawToCanonical.clear();
+	mergedByCanonical.clear();
 
-	for (const canonical of listRegisteredCanonicalSources()) {
-		for (const alias of getMergedMetadata(canonical).aliases ?? [canonical]) {
+	for (const ownerMetadata of registeredMetadataByOwner.values()) {
+		for (const canonical of ownerMetadata.keys()) {
+			if (!mergedByCanonical.has(canonical)) {
+				mergedByCanonical.set(
+					canonical,
+					freezeMetadata(mergeOwners(canonical)),
+				);
+			}
+		}
+	}
+	for (const [canonical, metadata] of mergedByCanonical) {
+		for (const alias of metadata.aliases ?? [canonical]) {
 			rawToCanonical.set(alias, canonical);
 		}
 	}

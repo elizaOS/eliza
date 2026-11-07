@@ -9,10 +9,7 @@ import type { Provider, ProviderResult } from "../types/components.js";
 import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
-import {
-	deepToWellFormedUnicode,
-	toWellFormedUnicode,
-} from "../utils/unicode.ts";
+import { deepToWellFormedUnicode } from "../utils/unicode.ts";
 
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;
@@ -64,26 +61,27 @@ export function isProviderThrottleReport(
 	return status === 429;
 }
 
-const EMPTY_RESULT: ProviderResult = {
-	data: { recentErrors: [] },
-	values: { recentErrors: "" },
-	text: "",
-};
+/** A fresh result per call: callers may mutate the provider result they receive. */
+function emptyResult(): ProviderResult {
+	return {
+		data: { recentErrors: [] },
+		values: { recentErrors: "" },
+		text: "",
+	};
+}
 
 export function serializeContext(
 	context: Record<string, unknown> | undefined,
 ): string | undefined {
 	if (!context || Object.keys(context).length === 0) return undefined;
-	let text: string;
 	try {
-		const safeContext = deepToWellFormedUnicode(context);
-		text = JSON.stringify(safeContext);
+		// JSON.stringify escapes lone surrogates, so the result is well-formed.
+		return JSON.stringify(deepToWellFormedUnicode(context));
 	} catch {
 		// error-policy:J3 untrusted-input sanitizing — context may hold a
 		// circular/non-serializable value; drop it rather than fabricate one.
 		return undefined;
 	}
-	return toWellFormedUnicode(text);
 }
 
 /**
@@ -143,10 +141,10 @@ export const recentErrorsProvider: Provider = {
 		_state?: State,
 	): Promise<ProviderResult> => {
 		const entries = runtime.getRecentReportedErrors();
-		if (entries.length === 0) return EMPTY_RESULT;
+		if (entries.length === 0) return emptyResult();
 
 		const selected = selectRecentErrors(entries, Date.now());
-		if (selected.length === 0) return EMPTY_RESULT;
+		if (selected.length === 0) return emptyResult();
 
 		const text = renderText(selected, (value) => runtime.redactSecrets(value));
 		logger.debug(

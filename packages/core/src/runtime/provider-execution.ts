@@ -2,7 +2,7 @@
 
 import type { ElizaError } from "../errors";
 import type { ProviderResult } from "../types/components.js";
-import { TurnAbortedError } from "./turn-controller";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 export type ProviderExecutionOutcome = "success" | "error" | "aborted";
 
@@ -146,7 +146,7 @@ export function runProviderExecution<T>(
 			reject(signal.reason ?? new Error("Provider execution aborted"));
 		};
 		if (signal.aborted) {
-			rejectFromSignal?.();
+			rejectFromSignal();
 			return;
 		}
 		signal.addEventListener("abort", rejectFromSignal, {

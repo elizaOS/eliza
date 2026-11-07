@@ -71,6 +71,29 @@ func (d *EnrolledDiscovery) unchanged() error {
 // RunWithTimeSource accepts no wall-clock/point-time override. Source failure
 // returns no descriptor and leaves any acquired schedule claim for recovery.
 func (d *EnrolledDiscovery) RunWithTimeSource(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, deviceJSON []byte, securityFloor, generation int64) (*DiscoveryResult, error) {
+	return d.runEnrolled(deviceJSON, securityFloor, generation, func(policy []byte) (*DiscoveryResult, error) {
+		return d.session.RunPrepared(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory, d.enrollment.Root, d.config.MetadataBase, deviceJSON, policy, generation)
+	})
+}
+
+// RefreshWithTimeSource fetches and authenticates metadata while a plan is
+// already prepared. It ratchets the lane's floors and revocations and records
+// the refresh that EvaluatePreparedForCommit requires, but it persists no
+// prepared record and returns no descriptor, so it cannot stage or replace the
+// plan it guards. Use a schedule directory of its own: a success does not hold
+// back the next refresh, so each activation run can refresh before it commits.
+func (d *EnrolledDiscovery) RefreshWithTimeSource(scheduleDirectory, trustDirectory, admissionDirectory string, deviceJSON []byte, securityFloor, generation int64) (*DiscoveryResult, error) {
+	return d.runEnrolled(deviceJSON, securityFloor, generation, func(policy []byte) (*DiscoveryResult, error) {
+		result, err := d.session.runAdmitted(scheduleDirectory, trustDirectory, admissionDirectory, d.enrollment.Root, d.config.MetadataBase, deviceJSON, policy, generation, true)
+		if err != nil {
+			return nil, err
+		}
+		result.Descriptor = nil
+		return result, nil
+	})
+}
+
+func (d *EnrolledDiscovery) runEnrolled(deviceJSON []byte, securityFloor, generation int64, run func(policy []byte) (*DiscoveryResult, error)) (*DiscoveryResult, error) {
 	bounds, err := readTimeBounds(d.session.source)
 	if err != nil {
 		d.Close()
@@ -97,7 +120,7 @@ func (d *EnrolledDiscovery) RunWithTimeSource(scheduleDirectory, trustDirectory,
 	if err != nil {
 		return nil, err
 	}
-	result, err := d.session.RunPrepared(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory, d.enrollment.Root, d.config.MetadataBase, deviceJSON, policy, generation)
+	result, err := run(policy)
 	if err != nil {
 		return nil, err
 	}
