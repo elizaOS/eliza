@@ -140,7 +140,14 @@ loading) and then sends `navigationChanged`, so the host re-reads `progress`.
 
 Script popups never open. `getSurfaceState` also returns `title`, `canGoBack`,
 `canGoForward`, `progress`, `pageError` and `textZoom`; `setTextZoom` sets the page
-text size from 50 to 300 percent.
+text size from 50 to 300 percent. On Android every `navigationChanged` event also
+carries these fields as they were when it was sent. Listeners receive every surface's
+events, so a host uses them only when `exists` is true and `owner`, `session` and
+`epoch` match its own identity, which `getSurfaceState` checks itself. They are a
+snapshot: one sent before a host command settled can predate it, and a later title or
+progress change sends no event. iOS sends only the identity, so a host falls back to
+`getSurfaceState` when the fields are absent. The bundled `packages/ui` shell still
+re-reads `getSurfaceState` after its queued commands settle.
 
 `parseBrowserAddressInput` (also exported as `./address-input` without bridge
 registration) classifies address-bar text as an HTTP(S) URL, search text, or a
