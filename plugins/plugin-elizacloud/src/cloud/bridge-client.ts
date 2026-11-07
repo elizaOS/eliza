@@ -421,7 +421,13 @@ export class ElizaCloudClient {
         signal: withTimeout(10_000, options.signal),
       });
       if (isRedirectResponse(response)) return false;
-      return response.ok;
+      if (!response.ok) return false;
+      // The bridge answers a stopped or unreachable sandbox with HTTP 200 and
+      // a JSON-RPC error, so the status code alone does not mean alive.
+      const rpc = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      return !rpc?.error;
     } catch {
       return false;
     }
