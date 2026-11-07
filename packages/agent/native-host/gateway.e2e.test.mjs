@@ -684,6 +684,51 @@ test("a message's inference check and owner share one account check", async () =
   }
 });
 
+test("a gateway without a credential gate passes no account check to the host", async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  const contexts = [];
+  const gateway = createLocalAgentGateway({
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    hostPolicy: policy,
+    inferenceConfigured: async (context) => {
+      contexts.push(context);
+      return true;
+    },
+  });
+  const base = await listen(gateway);
+  const post = (path, body = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    const sent = await post(`/conversations/${id}/messages`, {
+      text: "hello",
+    });
+    assert.equal(sent.status, 200);
+    assert.ok(contexts.length > 0);
+    // No gate here: the host falls back to its own account check.
+    for (const context of contexts)
+      assert.equal(context?.credentialGate, undefined);
+  } finally {
+    await close(gateway);
+    await close(upstream);
+  }
+});
+
 test("a reset during the inference check drops the account check it shared", async () => {
   let owner = "first",
     holdNext = false;

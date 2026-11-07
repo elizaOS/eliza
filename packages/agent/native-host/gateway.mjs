@@ -186,6 +186,8 @@ export function createLocalAgentGateway({
       : Set.prototype.has.bind(new Set(origins));
   // `inferenceConfigured` may receive `{ credentialGate }`: this request's
   // account check, run at most once, which a host can use in place of its own.
+  // It is passed only when this gateway has a credential gate, so a host whose
+  // gateway has none still runs its own check.
   const inferenceAvailable = async (context) => {
     try {
       return (await inferenceConfigured(context)) === true;
@@ -275,7 +277,11 @@ export function createLocalAgentGateway({
     const checkEpoch = epoch;
     let ownerCheck;
     const checkOwner = () => (ownerCheck ??= currentOwner());
-    if (!(await inferenceAvailable({ credentialGate: checkOwner })))
+    const sharedCheck =
+      typeof credentialGate === "function"
+        ? { credentialGate: checkOwner }
+        : undefined;
+    if (!(await inferenceAvailable(sharedCheck)))
       throw refusal(503, {
         code: "INFERENCE_UNAVAILABLE",
         error: message("error15"),

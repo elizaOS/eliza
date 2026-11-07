@@ -149,6 +149,9 @@ for (const native of [false, true]) {
       );
       assert.equal(checked, 1);
       assert.equal(f.brokerRequests, requests);
+      // Without one (a gateway with no credential gate), the host's own runs.
+      assert.equal(await f.serverOptions.inferenceConfigured(), true);
+      assert.ok(f.brokerRequests > requests);
     }
     assert.equal(f.serverOptions.token, "upstream-fixture-token");
     assert.equal(
