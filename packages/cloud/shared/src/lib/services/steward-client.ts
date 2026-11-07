@@ -11,6 +11,7 @@
  */
 
 import { LoginClient } from "@elizaos/auth";
+import { ElizaError } from "@elizaos/core";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { StewardUrlEnv } from "../steward-url";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
@@ -293,31 +294,50 @@ async function stewardHeaders(options: StewardClientOptions = {}): Promise<Recor
   return headers;
 }
 
+/**
+ * `stewardFetch` answers `null` only for a record Steward says does not exist.
+ * An upstream that rejected the read (401/403/429/5xx) or never answered is a
+ * failed read, and its callers must not receive the absent-record answer for it.
+ */
+const STEWARD_READ_UNAVAILABLE = "STEWARD_READ_UNAVAILABLE";
+
 async function stewardFetch<T>(
   path: string,
   options?: RequestInit,
   clientOptions?: StewardClientOptions,
 ): Promise<T | null> {
   const url = `${resolveStewardHostUrl()}${path}`;
+  let upstreamStatus: number | undefined;
   try {
     const response = await fetch(url, {
       ...options,
       headers: { ...(await stewardHeaders(clientOptions)), ...(options?.headers ?? {}) },
       signal: AbortSignal.timeout(10_000),
     });
+    upstreamStatus = response.status;
 
+    if (response.status === 404) return null;
     if (!response.ok) {
-      if (response.status === 404) return null;
+      // Callers that treat wallet enrichment as supplementary catch this error
+      // and continue, so the failure itself has to be logged here or it is lost.
       logger.warn(`[steward-client] ${path} returned ${response.status}`);
-      return null;
+      throw new ElizaError(`Steward ${path} answered ${response.status}`, {
+        code: STEWARD_READ_UNAVAILABLE,
+        context: { path, status: response.status },
+      });
     }
 
     return (await response.json()) as T;
-  } catch (err) {
+  } catch (error) {
+    if (error instanceof ElizaError) throw error;
     logger.warn(
-      `[steward-client] Failed to reach Steward at ${url}: ${err instanceof Error ? err.message : String(err)}`,
+      `[steward-client] Failed to reach Steward at ${url}: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return null;
+    throw new ElizaError(`Steward ${path} could not be read`, {
+      code: STEWARD_READ_UNAVAILABLE,
+      cause: error,
+      context: { path, ...(upstreamStatus === undefined ? {} : { status: upstreamStatus }) },
+    });
   }
 }
 
@@ -327,6 +347,9 @@ async function stewardFetch<T>(
 
 /**
  * Fetch agent info from Steward, including wallet address.
+ *
+ * Returns null only when Steward says the agent does not exist. A rejected or
+ * unreachable read throws `ElizaError` with code `STEWARD_READ_UNAVAILABLE`.
  */
 export async function getStewardAgent(
   agentId: string,
@@ -376,7 +399,19 @@ export async function getStewardWalletInfo(
     };
   } catch {
     // SDK call failed, try lightweight fetch as fallback
-    agent = await getStewardAgent(agentId, options);
+    try {
+      agent = await getStewardAgent(agentId, options);
+    } catch (error) {
+      // This summary is supplementary: its only caller falls back to the
+      // persisted agentServerWallets row, so an unreachable Steward stays a
+      // degraded (null) summary instead of a failed wallet request. The typed
+      // read failure is logged with its upstream status for the operator.
+      if (!(error instanceof ElizaError) || error.code !== STEWARD_READ_UNAVAILABLE) throw error;
+      logger.warn(`[steward-client] Steward wallet lookup failed for ${agentId}`, {
+        status: error.context?.status,
+      });
+      return null;
+    }
   }
 
   if (!agent) return null;
