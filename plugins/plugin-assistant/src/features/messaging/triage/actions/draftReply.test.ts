@@ -267,6 +267,34 @@ describe("draftReplyAction", () => {
     expect(adapter.createCount).toBe(1);
   });
 
+  it("strips a [Your Name] sign-off without cutting a closing line in half", async () => {
+    const adapter = new RecordingReplyAdapter([messageRef()]);
+    getDefaultTriageService().register(adapter);
+    const draftBody = async (body: string) => {
+      const result = await draftReplyAction.handler(
+        createFakeRuntime(),
+        turn,
+        undefined,
+        options({ sender: "Alice", body }),
+      );
+      expect(result.success).toBe(true);
+      return adapter.lastDraft?.body;
+    };
+
+    await expect(
+      draftBody("Thursday works for me.\n\nThanks,\n[Your Name]"),
+    ).resolves.toBe("Thursday works for me.");
+    await expect(
+      draftBody("Thursday works for me.\n\nKind regards,\n[Your Name]"),
+    ).resolves.toBe("Thursday works for me.\n\nKind regards,");
+    await expect(
+      draftBody("Thursday works for me.\n\nBest regards,\n[Your Name]"),
+    ).resolves.toBe("Thursday works for me.\n\nBest regards,");
+    await expect(
+      draftBody("The 3pm slot works best,\n[Your Name]"),
+    ).resolves.toBe("The 3pm slot works best,");
+  });
+
   it("rejects a draft with no message id and no sender or content hint", async () => {
     const adapter = new RecordingReplyAdapter([messageRef()]);
     getDefaultTriageService().register(adapter);

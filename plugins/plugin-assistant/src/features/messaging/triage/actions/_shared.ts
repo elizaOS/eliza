@@ -381,9 +381,12 @@ function stripPlaceholderSignatureOnce(
     if (body[closingEnd - 1] === ",") closingEnd -= 1;
     for (const closing of PLACEHOLDER_SIGNATURE_CLOSINGS) {
       const closingStart = closingEnd - closing.length;
+      // The closing must fill its line: "Kind regards," is not "regards,".
+      const lineStart = body.lastIndexOf("\n", closingStart - 1) + 1;
       if (
         closingStart >= 0 &&
-        body.slice(closingStart, closingEnd).toLowerCase() === closing
+        body.slice(closingStart, closingEnd).toLowerCase() === closing &&
+        body.slice(lineStart, closingStart).trim() === ""
       ) {
         removalStart = closingStart;
         strippedClosing = true;
