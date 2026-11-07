@@ -18,8 +18,8 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createV5ReplyStrategyResult } from "../../../plugins/plugin-assistant/src/services/message/reply-policy.ts";
 import {
+  createStage1DirectReplyStreamGate,
   STAGE1_REPLY_STREAM_FIELDS,
-  stage1DirectReplyStreamGate,
 } from "../../../plugins/plugin-assistant/src/services/message/stage1-reply-stream.ts";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -30,10 +30,10 @@ const skeleton: ResponseSkeleton = {
     { kind: "enum", key: "shouldRespond", enumValues: ["RESPOND", "IGNORE"] },
     { kind: "literal", value: ',"contexts":' },
     { kind: "free-json", key: "contexts" },
+    { kind: "literal", value: ',"contextRequests":' },
+    { kind: "free-json", key: "contextRequests" },
     { kind: "literal", value: ',"intents":' },
     { kind: "free-json", key: "intents" },
-    { kind: "literal", value: ',"candidateActionNames":' },
-    { kind: "free-json", key: "candidateActionNames" },
     { kind: "literal", value: ',"replyEffectStatus":' },
     {
       kind: "enum",
@@ -52,8 +52,8 @@ const envelope = (
   replyText: string,
   route: {
     contexts?: string[];
+    contextRequests?: string[];
     intents?: string[];
-    candidateActionNames?: string[];
     replyEffectStatus?: string;
   } = {},
 ) =>
@@ -61,8 +61,8 @@ const envelope = (
     shouldRespond: "RESPOND",
     contexts:
       route.contexts ?? (route.intents?.length ? ["calendar"] : ["simple"]),
+    contextRequests: route.contextRequests ?? [],
     intents: route.intents ?? [],
-    candidateActionNames: route.candidateActionNames ?? [],
     replyEffectStatus: route.replyEffectStatus ?? "none",
     replyText,
     facts: ["the user is planning a trip"],
@@ -134,7 +134,11 @@ async function runTurn(
             streamStructured: true,
             responseSkeleton: skeleton,
             streamFields: STAGE1_REPLY_STREAM_FIELDS,
-            streamFieldGate: stage1DirectReplyStreamGate,
+            streamFieldGate: createStage1DirectReplyStreamGate(() =>
+              skeleton.spans.flatMap((span) =>
+                span.key ? [{ name: span.key }] : [],
+              ),
+            ),
             onStreamChunk: options?.onStreamChunk,
           });
         }
@@ -316,20 +320,28 @@ it("keeps planned-work acknowledgements and effect claims off the token stream",
       }),
       "You have two meetings tomorrow.",
     ],
-    // Simple context, but the action candidate and effect status, generated
-    // before the reply, send this claim to planning: it must not stream.
+    // Simple context, but the effect status, generated before the reply,
+    // sends this claim to planning: it must not stream.
     [
       envelope("Done, I've sent the email to Bob.", {
         contexts: ["simple"],
-        candidateActionNames: ["SEND_EMAIL"],
         replyEffectStatus: "applied",
       }),
       "I sent the email to Bob.",
     ],
+    // Simple context, but a context read: the text is an acknowledgement
+    // and Stage 1 runs again with the read, so it must not stream.
+    [
+      envelope("Let me look back through our chat.", {
+        contexts: ["simple"],
+        contextRequests: ["history:all"],
+      }),
+      "We talked about your trip to Lisbon.",
+    ],
   ]) {
     const events = await runTurn([planned], final);
     const texts = clientTexts(events);
-    expect(texts.join("\n")).not.toMatch(/On it|Done, I've/);
+    expect(texts.join("\n")).not.toMatch(/On it|Done, I've|Let me look back/);
     expect(texts.at(-1)).toBe(final);
   }
 }, 60_000);
