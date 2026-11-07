@@ -1123,3 +1123,53 @@ it("asks which live namesake to cancel, even right after saving one", async () =
       await service.deleteDefinition(entry.definition.id);
   }
 });
+
+// A polite cancel request is not a create. When the planner sends it to this
+// surface as a create, nothing is saved and the named reminder stays as it was.
+it("refuses a create from a polite cancel request", async () => {
+  const existing = await seed("Call Dad");
+  const text = "Are you able to cancel the reminder to call Dad?";
+  const callDad = async () =>
+    (await service.listDefinitions()).filter(
+      (row) => row.definition.title === "Call Dad",
+    );
+  try {
+    const result = await invoke(
+      {
+        action: "create",
+        title: "Call Dad",
+        intent: text,
+        createPlan: {
+          mode: "create",
+          multiStep: false,
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          notificationMode: "default",
+          timeOfDay: null,
+          timeZone: null,
+          title: "Call Dad",
+          description: null,
+          cadenceKind: "once",
+          dueDate: null,
+          dueInDays: null,
+          dueWeekday: null,
+          dueInMinutes: 120,
+        },
+      },
+      text,
+    );
+    expect(result.data, JSON.stringify(result)).toMatchObject({
+      outcome: "no_action",
+      reason: "REMINDER_CREATE_CONTEXT_REJECTED",
+    });
+    expect((await callDad()).map((row) => row.definition.id)).toEqual([
+      existing.definition.id,
+    ]);
+    expect(
+      (await service.getDefinition(existing.definition.id)).definition,
+    ).toEqual(existing.definition);
+  } finally {
+    for (const row of await callDad())
+      await service.deleteDefinition(row.definition.id);
+  }
+});

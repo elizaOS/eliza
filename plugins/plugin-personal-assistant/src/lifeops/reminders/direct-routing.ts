@@ -25,6 +25,12 @@ const REMINDER_CREATE_PATTERNS: readonly RegExp[] = [
 const DIRECT_REQUEST_LEAD_IN =
   /^(?:(?:(?:hey|hi|hello)(?:\s+[\p{L}'’-]+)?[,!]|(?:okay|ok|alright|also|and|then)[,!]?|please|(?:can|could|would|will)\s+you(?:\s+please)?|i\s+(?:need|want)\s+(?:you\s+)?to|i(?:['’]d|\s+would)\s+like\s+(?:you\s+)?to|i\s+was\s+hoping\s+you\s+could|help\s+me)\s+)+/iu;
 
+// "Is it possible to", "are you able to" and a leading "you know what," ask
+// for the reminder the way "can you" does. Strip them before the anchored
+// meta checks so a polite request is not read as a question about reminders.
+const POLITE_REQUEST_LEAD_IN =
+  /^(?:you\s+know\s+what\s*[,!?:;.—–-]+\s*|(?:is\s+it|would\s+it\s+be)\s+possible(?:\s+for\s+you)?\s+to\s+|are\s+you\s+able\s+to\s+)+/iu;
+
 const REMINDER_META_PREFIX =
   /^(?:(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?(?:what|when|where|who|why|how|is|are|explain|define|tell me(?: about| how| what| whether| if)|give (?:me )?an? example|write (?:a )?story|tell (?:me )?a story|quote)|(?:suppose|imagine|if i say)|(?:in|as)\s+(?:(?:this|that|an?|the)\s+)?(?:example|story|quote))\b/iu;
 const REMINDER_META_SUFFIX =
@@ -65,7 +71,16 @@ const RESCINDED_REMINDER =
   /\bremind\s+(?:me|myself)\b[\s\S]{0,160}(?:[;,—-]\s*(?:actually\s+)?(?:disregard|ignore|cancel|scratch|withdraw|forget)\b(?:\s+(?:it|this|that)(?:\s+request)?)?|\bnever\s+mind\b)/iu;
 
 export function isOwnerReminderNonCommandContext(text: string): boolean {
-  const normalized = text.trim();
+  const trimmed = text.trim();
+  // Drop a polite lead-in only when a reminder request follows it. "Is it
+  // possible to delete my reminder?" keeps its leading "is", so the meta
+  // prefix still refuses a create built from it.
+  const politeStripped = trimmed.replace(POLITE_REQUEST_LEAD_IN, "");
+  const normalized = REMINDER_CREATE_PATTERNS.some((pattern) =>
+    pattern.test(politeStripped.replace(DIRECT_REQUEST_LEAD_IN, "")),
+  )
+    ? politeStripped
+    : trimmed;
   return (
     REMINDER_META_PREFIX.test(normalized) ||
     REMINDER_META_SUFFIX.test(normalized) ||
@@ -80,7 +95,9 @@ export function isOwnerReminderNonCommandContext(text: string): boolean {
 
 export function looksLikeOwnerReminderCreateRequest(text: string): boolean {
   const normalized = text.trim();
-  const directRequest = normalized.replace(DIRECT_REQUEST_LEAD_IN, "");
+  const directRequest = normalized
+    .replace(POLITE_REQUEST_LEAD_IN, "")
+    .replace(DIRECT_REQUEST_LEAD_IN, "");
   return (
     normalized.length > 0 &&
     !isOwnerReminderNonCommandContext(normalized) &&
