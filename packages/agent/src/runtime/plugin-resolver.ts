@@ -64,11 +64,12 @@ import {
 } from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
-  collectDeniedPluginNames,
+  collectConfiguredDeniedPluginNames,
   collectPluginNames,
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
+  readSkipPluginNames,
 } from "./plugin-collector.ts";
 import {
   collectStagedDirectoryLinks,
@@ -2673,14 +2674,8 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const envSkipPlugins = (process.env.ELIZA_SKIP_PLUGINS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const denyList = collectDeniedPluginNames([
-    ...(config.plugins?.deny ?? []),
-    ...envSkipPlugins,
-  ]);
+  const envSkipPlugins = readSkipPluginNames();
+  const denyList = collectConfiguredDeniedPluginNames(config);
   if (envSkipPlugins.length > 0) {
     logger.info(
       `[eliza] Skipping ${envSkipPlugins.length} plugin(s) via ELIZA_SKIP_PLUGINS: ${envSkipPlugins.join(", ")}`,

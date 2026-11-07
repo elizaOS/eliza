@@ -28,7 +28,7 @@
 			"type": "boolean",
 			"required": false,
 			"sensitive": false,
-			"default": "False",
+			"default": false,
 			"label": "Disable Actions",
 			"help": "Set to true to disable subscription management actions",
 			"advanced": false
@@ -37,12 +37,12 @@
 			"type": "number",
 			"required": false,
 			"sensitive": false,
-			"default": "15",
+			"default": 15,
 			"label": "Check Interval Minutes",
 			"help": "Interval in minutes between feed checks",
 			"advanced": false,
 			"min": 0,
-			"unit": "ms"
+			"unit": "minutes"
 		}
 	},
 	"render": {

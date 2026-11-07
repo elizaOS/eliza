@@ -88,7 +88,7 @@ test("actual canonical native dispatch fences aliases, held stops and Activity r
     write(
       "ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
       source(
-        "plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+        "plugins/plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
       ),
     );
     const service = source(`${app}ElizaAgentService.java`);

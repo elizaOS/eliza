@@ -1331,3 +1331,172 @@ describe("browserDocumentDraftSlot", () => {
     expect((await store.save(null, "After reset")).text).toBe("After reset");
   });
 });
+
+
+describe("DurableDraftController passive update handoff", () => {
+  it("waits for a retired binding's pending write before a lifecycle handoff", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.store.save = async (...args) => { await gate; return save(...args); };
+    f.set("draft from the previous view");
+    f.c.retire();
+    f.set("");
+    let settled = false;
+    const pending = f.c.flush().then(() => { settled = true; });
+    await tick();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(f.saved()?.text).toBe("draft from the previous view");
+    expect(f.saved()?.sending).toBeUndefined();
+    expect(f.get()).toBe("");
+  });
+
+  it("drains the previous binding and preserves the new binding's own text", async () => {
+    const previous = fixture(), active = fixture();
+    let text = "";
+    const controller = new DurableDraftController(
+      async key => key === "previous" ? previous.store : active.store,
+      () => text,
+      value => { text = value; },
+      () => {},
+    );
+    await controller.open("previous");
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const save = previous.store.save;
+    previous.store.save = async (...args) => { await gate; return save(...args); };
+    text = "previous view draft"; controller.edit(text); controller.retire();
+    text = ""; await controller.open("active");
+    text = "current view draft"; controller.edit(text);
+    let settled = false;
+    const pending = controller.flush().then(() => { settled = true; });
+    await tick(); expect(settled).toBe(false);
+    release(); await pending;
+    expect(previous.saved()?.text).toBe("previous view draft");
+    expect(active.saved()?.text).toBe("current view draft");
+    expect(text).toBe("current view draft");
+    expect(controller.binding).toBe("active");
+  });
+
+  it("allows a recovered write on the same binding", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("keep through recovery");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    f.store.save = save;
+    await f.c.retry();
+    await f.c.flush();
+    expect(f.saved()?.text).toBe("keep through recovery");
+    expect(f.get()).toBe("keep through recovery");
+  });
+
+  it("refuses shutdown when a retired draft write failed", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.store.save = async () => { throw new Error("storage offline"); };
+    f.set("unsaved previous draft");
+    f.c.retire();
+    f.set("");
+    await tick();
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()).toBeNull();
+  });
+
+  it("waits for an actual queued write and reads it back without a send mark", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    const save = f.store.save;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    f.store.save = async (...args) => { await gate; return save(...args); };
+    f.set("keep this draft");
+    let settled = false;
+    const pending = f.c.flush().then(() => { settled = true; });
+    await tick();
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(f.get()).toBe("keep this draft");
+    expect(f.saved()?.text).toBe("keep this draft");
+    expect(f.saved()?.sending).toBeUndefined();
+    expect(f.c.holding).toBe(false);
+  });
+
+  it("refuses a foreign revision even when its text matches", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.set("same text");
+    await f.c.flush();
+    f.external("same text");
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()?.revision).toBe("external");
+    expect(f.get()).toBe("same text");
+  });
+
+  it("refuses held sends without clearing or replaying their saved mark", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.set("send already started");
+    await f.c.hold(f.get());
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.saved()?.sending).toBe(true);
+    expect(f.saved()?.text).toBe("send already started");
+    expect(f.c.holding).toBe(true);
+  });
+
+  it("refuses an edit or owner retirement while readback is pending", async () => {
+    for (const change of ["edit", "retire"] as const) {
+      const f = fixture();
+      await f.c.open("test");
+      f.set("before update");
+      await f.c.flush();
+      const read = f.store.read;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      f.store.read = async () => { await gate; return read(); };
+      const pending = f.c.flush();
+      await tick();
+      if (change === "edit") f.set("newer edit");
+      else f.c.retire();
+      release();
+      await expect(pending).rejects.toThrow();
+      expect(f.saved()?.sending).toBeUndefined();
+    }
+  });
+
+  it("refuses failed storage and keeps the editor text", async () => {
+    const f = fixture();
+    await f.c.open("test");
+    f.store.save = async () => { throw new Error("disk unavailable"); };
+    f.set("keep in editor");
+    await expect(f.c.flush()).rejects.toThrow();
+    expect(f.get()).toBe("keep in editor");
+    expect(f.saved()).toBeNull();
+  });
+});
+
+
+it("passive flush refuses a binding replacement during its opening read", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const c = new DurableDraftController(
+    async (key) => ({
+      async read() { if (key === "first") await gate; return null; },
+      async save() { throw new Error("No write expected"); },
+    }),
+    () => "", () => {}, () => {},
+  );
+  const opening = c.open("first");
+  const flushing = c.flush();
+  await c.open("second");
+  release();
+  await opening;
+  await expect(flushing).rejects.toThrow();
+});

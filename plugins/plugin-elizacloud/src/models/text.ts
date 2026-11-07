@@ -495,13 +495,13 @@ function firstNumber(...values: unknown[]): number | undefined {
 }
 
 /**
- * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
+ * Bounded retry for the gateway's typed transient 503.
  *
- * A cold Cloudflare Worker answers with 503 and a machine-readable transient
- * code (`*_cache_warming`, `inference_admission_unavailable`,
- * `rate_limit_unavailable`, or the generative ApiError
- * retryable envelope) while it hydrates auth/billing/admission state under
- * waitUntil or starts the inference-admission Durable Object — recovery is ~3s.
+ * The Cloud gateway fills cold caches inline, so it no longer answers a cold
+ * request with a warming 503. It still answers 503 with a machine-readable
+ * transient code (`inference_admission_unavailable`, `billing_unavailable`,
+ * `rate_limit_unavailable`, or the generative ApiError retryable envelope)
+ * when the admission Durable Object or the primary is briefly unreachable.
  * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
  * useModel failover ladder classifies any thrown 503 as fallback-class and
  * advances instantly, so one cold gateway spent the whole
@@ -512,20 +512,20 @@ function firstNumber(...values: unknown[]): number | undefined {
  * retaining failover to a distinct provider. The gate is structural — HTTP
  * status + typed body code/flag — never message prose, so a genuinely dead
  * provider (any other 503 body, or any non-503) still throws immediately.
- * The schedule is bounded and sums past the measured ~3s recovery; a
+ * The schedule is bounded (about 3s in total); a
  * Retry-After header or `details.retryAfterSeconds` stretches an individual
  * wait up to a hard cap but never adds attempts.
  */
 const WARMING_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 1500];
 const WARMING_RETRY_MAX_WAIT_MS = 2_000;
 
-/** Persistent cache warming after the provider's complete bounded retry budget. */
+/** A typed transient 503 persisted through the provider's bounded retry budget. */
 export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
   override readonly name = "ElizaCloudGatewayWarmingExhaustedError";
   readonly status = 503;
 
   constructor(label: string, attempts: number) {
-    super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
+    super("elizaOS Cloud gateway remained unavailable after transient retries", {
       code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
@@ -643,8 +643,8 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 
 /**
  * True only for the gateway's explicit transient 503 shapes:
- * `{ error: { code: "*_cache_warming" | "inference_admission_unavailable" } }`
- * (chat/completions, embeddings) or
+ * `{ error: { code: "inference_admission_unavailable" | "billing_unavailable"
+ * | "rate_limit_unavailable" } }` (chat/completions, embeddings) or
  * the generative ApiError envelope `{ code: "service_unavailable",
  * details: { retryable: true } }`, plus the inference-admission boundary's
  * `{ success: false, code: "rate_limit_unavailable" }`. Everything else —
@@ -658,7 +658,8 @@ export function isWarmingUnavailableResponse(status: number, bodyText: string): 
   const errorCode = asRecord(body.error).code;
   if (
     errorCode === "inference_admission_unavailable" ||
-    (typeof errorCode === "string" && errorCode.endsWith("_cache_warming"))
+    errorCode === "billing_unavailable" ||
+    errorCode === "rate_limit_unavailable"
   ) {
     return true;
   }

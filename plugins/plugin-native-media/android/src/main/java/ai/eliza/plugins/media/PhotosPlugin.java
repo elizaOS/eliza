@@ -6,18 +6,12 @@ import android.net.Uri;
 import android.os.Build;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.Permission;
-import com.getcapacitor.annotation.PermissionCallback;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -27,8 +21,9 @@ import java.util.concurrent.RejectedExecutionException;
  * copies, explicit capture keeps and same-origin video playback are bound to Capacitor here, so a
  * host only registers a subclass under its own plugin name and installed media names.
  *
- * <p>A host subclass declares {@code @CapacitorPlugin(name = ..., permissions = ...)} with the four
- * aliases in {@link PhotoLibraryAccess#ALIASES} and answers {@link #mediaConfig()} and
+ * <p>The library access, permitted reads and share come from {@link PermittedPhotosPlugin}. A host
+ * subclass declares {@code @CapacitorPlugin(name = ..., permissions = ...)} with the four aliases
+ * in {@link PhotoLibraryAccess#ALIASES} and answers {@link #mediaConfig()} and
  * {@link #playbackPath()}. Access is requested only from {@link #requestLibraryAccess}; list, read
  * and resume never prompt. Every read holds the catalog's ticket and is published only while it is
  * still current. {@code pixels}/{@code thumbnails} choose bounded previews; the original bytes
@@ -37,47 +32,12 @@ import java.util.concurrent.RejectedExecutionException;
  * destroying it closes every engine and answers queued calls. Changes to other apps' media (trash,
  * favorite, permanent removal) go through the native review, never a URI-only request.
  */
-public abstract class PhotosPlugin extends Plugin {
-  /**
-   * Fixed answer for a request that reached a destroyed activity. It names no cause as certain and
-   * claims nothing about work the request would have led to.
-   */
-  public static final String CLOSED =
-      "Android could not show this request; the app may have closed. Reopen it and try again.";
-
-  /** QA markers are a closed enum: never media data or exception text. See {@link #diagnostic}. */
-  public enum Diagnostic {
-    READ_INVOKED,
-    READ_SUCCEEDED,
-    READ_FAILED_SECURITY,
-    READ_FAILED_ARGUMENT,
-    READ_FAILED_IO,
-    READ_FAILED_OTHER,
-    LIBRARY_CHANGED_RESUME,
-    LIBRARY_CHANGED_CATALOG;
-
-    /** The failure category of a read; the exception's message is never part of it. */
-    public static Diagnostic readFailure(Exception failure) {
-      return failure instanceof SecurityException            ? READ_FAILED_SECURITY
-          : failure instanceof IllegalArgumentException      ? READ_FAILED_ARGUMENT
-          : failure instanceof java.io.IOException           ? READ_FAILED_IO
-                                                             : READ_FAILED_OTHER;
-    }
-  }
-
+public abstract class PhotosPlugin extends PermittedPhotosPlugin {
   /** The host's installed media names: preference files, MediaStore folders and name prefixes. */
   protected abstract OwnedMediaConfig mediaConfig();
 
   /** The same-origin path prefix of video playback grants, for example {@code /_myapp_owned_video/}. */
   protected abstract String playbackPath();
-
-  /** A debug QA marker. Hosts may log it in debug builds; the default records nothing. */
-  protected void diagnostic(Diagnostic marker) {}
-
-  /** The answer for a request made after the activity is gone. */
-  protected String closedMessage() {
-    return CLOSED;
-  }
 
   /** The shared album write gate; instrumentation tests hold it to stall real album writers. */
   public static final Object ALBUMS_LOCK = OwnedAlbums.LOCK;
@@ -90,61 +50,15 @@ public abstract class PhotosPlugin extends Plugin {
   private OwnedCaptures captures;
   private OwnedMediaLibrary owned;
   private OwnedAlbums albums;
-  private volatile boolean destroyed;
-  private final ExecutorService worker = Executors.newSingleThreadExecutor();
-
-  /** Runs a launcher-backed request; a launcher that is already gone rejects instead of throwing. */
-  protected final boolean ask(PluginCall call, Runnable launch) {
-    try {
-      launch.run();
-      return true;
-    } catch (IllegalStateException closed) {
-      call.reject(closedMessage());
-      return false;
-    }
-  }
-
-  private void submit(PluginCall call, Runnable action) {
-    if (destroyed) {
-      call.reject("Photo library closed");
-      return;
-    }
-    try {
-      worker.execute(() -> {
-        if (destroyed) call.reject("Photo library closed");
-        else action.run();
-      });
-    } catch (RejectedExecutionException stopped) {
-      call.reject("Photo library closed");
-    }
-  }
-
-  /**
-   * A host plugin must declare every library alias so {@link PhotoLibraryAccess#permissionAliases}
-   * can name the right ones on any API level. Shared with {@link DeviceLibraryPlugin}.
-   */
-  static void requireLibraryAliases(Plugin plugin) {
-    CapacitorPlugin annotation = plugin.getClass().getAnnotation(CapacitorPlugin.class);
-    Set<String> declared = new HashSet<>();
-    if (annotation != null)
-      for (Permission permission : annotation.permissions()) declared.add(permission.alias());
-    if (!declared.containsAll(PhotoLibraryAccess.ALIASES))
-      throw new IllegalStateException("Photos host plugin must declare permission aliases " + PhotoLibraryAccess.ALIASES);
-  }
 
   @Override
   public void load() {
-    requireLibraryAliases(this);
-    // Observation starts only while the Photos grid is open (watchLibrary). Playback grants recheck
-    // their item's revision on every byte request, so unrelated media writes do not revoke them.
+    super.load();
+    // Playback grants recheck their item's revision on every byte request, so unrelated media
+    // writes do not revoke them.
     OwnedMediaConfig config = mediaConfig();
-    permitted = new PermittedMediaCatalog(getContext(), false, () -> {
-      if (!destroyed) {
-        diagnostic(Diagnostic.LIBRARY_CHANGED_CATALOG);
-        notifyListeners("libraryChanged", new JSObject());
-      }
-    });
-    mediaReview = new PermittedMediaReview(getBridge(), permitted, worker, this::ask);
+    permitted = permittedCatalog();
+    mediaReview = new PermittedMediaReview(getBridge(), permitted, worker(), this::ask);
     edits = new OwnedPhotoEdits(getContext(), config, new OwnedPhotoEdits.SourceAccess() {
       @Override
       public boolean accepts(String id) {
@@ -172,122 +86,16 @@ public abstract class PhotosPlugin extends Plugin {
     getBridge().setWebViewClient(playback);
   }
 
-  /** The single permitted-media catalog shared with the agent album: one index, one epoch. */
-  public PermittedMediaCatalog permittedCatalog() {
-    return permitted;
-  }
-
   /** The single permitted-media review shared with the agent album: one review at a time. */
   public PermittedMediaReview permittedReview() {
     return mediaReview;
   }
 
-  @PluginMethod
-  public void libraryAccess(PluginCall call) {
-    call.resolve(permitted.access());
-  }
-
-  /** Photos grid enter/leave. The agent album watches the same catalog under its own name. */
-  @PluginMethod
-  public void watchLibrary(PluginCall call) {
-    boolean active = call.getBoolean("active", false) && !destroyed;
-    permitted.watch("photos", active);
-    JSObject out = new JSObject();
-    out.put("active", active);
-    call.resolve(out);
-  }
-
-  @PluginMethod
-  public void openLibrarySettings(PluginCall call) {
-    if (destroyed || !getActivity().hasWindowFocus()) {
-      call.reject("Return to Photos to review access");
-      return;
-    }
-    try {
-      getActivity().startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-          Uri.fromParts("package", getContext().getPackageName(), null)));
-      call.resolve();
-    } catch (RuntimeException unavailable) {
-      call.reject("Android app settings could not open");
-    }
-  }
-
-  /** The aliases an explicit access request names on this device. */
-  public static String[] libraryPermissionAliases() {
-    return PhotoLibraryAccess.permissionAliases(Build.VERSION.SDK_INT);
-  }
-
-  /** Only the explicit Photos permission control invokes this, never list/read/resume. */
-  @PluginMethod
-  public void requestLibraryAccess(PluginCall call) {
-    if (destroyed || !getActivity().hasWindowFocus()) {
-      call.reject("Return to Photos to choose access");
-      return;
-    }
-    String[] aliases = libraryPermissionAliases();
-    ask(call, () -> requestPermissionForAliases(aliases, call, "libraryPermissionResult"));
-  }
-
-  @PermissionCallback
-  private void libraryPermissionResult(PluginCall call) {
-    permitted.invalidate();
-    libraryAccess(call);
-  }
-
-  @Override
-  @PluginMethod
-  public void requestPermissions(PluginCall call) {
-    requestLibraryAccess(call);
-  }
-
-  private interface ReadAction {
-    JSObject run() throws Exception;
-  }
-
-  private void submitRead(PluginCall call, ReadAction action) {
-    try {
-      long ticket = permitted.readTicket();
-      submit(call, () -> {
-        try {
-          permitted.requireReadTicket(ticket);
-          JSObject value = action.run();
-          permitted.publish(call, value, ticket);
-        } catch (Exception changed) {
-          call.reject("Photo library changed or is unavailable. Refresh Photos and check its access.");
-        }
-      });
-    } catch (Exception unavailable) {
-      call.reject("Unlock and reopen Photos before reading the library.");
-    }
-  }
-
-  @PluginMethod
-  public void listPermitted(PluginCall call) {
-    submitRead(call, () -> permitted.list(call.getString("before", ""), call.getString("query", ""),
-        call.getString("kind", "all"), call.getBoolean("thumbnails", true), call.getString("filter", "all")));
-  }
-
-  @PluginMethod
-  public void readPermitted(PluginCall call) {
-    submitRead(call, () -> permitted.read(call.getString("id"), call.getString("revision"),
-        call.getBoolean("pixels", true)));
-  }
-
   @Override
   protected void handleOnPause() {
     if (videoCopies != null) videoCopies.cancel(null);
-    if (permitted != null) {
-      permitted.watch("photos", false);
-      permitted.foreground(false);
-    }
+    super.handleOnPause();
     if (playback != null) playback.clear();
-  }
-
-  @Override
-  protected void handleOnResume() {
-    if (permitted != null) permitted.foreground(true);
-    diagnostic(Diagnostic.LIBRARY_CHANGED_RESUME);
-    notifyListeners("libraryChanged", new JSObject());
   }
 
   @PluginMethod
@@ -354,7 +162,7 @@ public abstract class PhotosPlugin extends Plugin {
   }
 
   private synchronized VideoCopyEdits videoCopies() throws java.io.IOException {
-    if (destroyed) throw new java.io.IOException("Photo library closed");
+    if (destroyed()) throw new java.io.IOException("Photo library closed");
     if (videoCopies == null)
       videoCopies = new VideoCopyEdits(getContext(), mediaConfig(), new VideoCopyEdits.Sources() {
         @Override
@@ -365,7 +173,7 @@ public abstract class PhotosPlugin extends Plugin {
         public VideoCopyEdits.Source recheck(String key, String expected) throws Exception {
           return videoSource(key, expected, false);
         }
-      }, () -> !destroyed && getActivity() != null && getActivity().hasWindowFocus());
+      }, () -> !destroyed() && getActivity() != null && getActivity().hasWindowFocus());
     return videoCopies;
   }
 
@@ -374,7 +182,7 @@ public abstract class PhotosPlugin extends Plugin {
    * Capacitor API. Hosts expose it to their own native review path only.
    */
   protected final void preserveClosedFailure(String operationId, String expectedRecordHash, PluginCall call) {
-    if (destroyed || getActivity() == null || !getActivity().hasWindowFocus()) {
+    if (destroyed() || getActivity() == null || !getActivity().hasWindowFocus()) {
       call.reject("Video copy preservation refused");
       return;
     }
@@ -392,7 +200,7 @@ public abstract class PhotosPlugin extends Plugin {
    * keeps the export.
    */
   private VideoCopyEdits.Source videoSource(String key, String expected, boolean opening) throws Exception {
-    if (destroyed || getActivity() == null || opening && !getActivity().hasWindowFocus() || expected == null)
+    if (destroyed() || getActivity() == null || opening && !getActivity().hasWindowFocus() || expected == null)
       throw new IllegalStateException("Return to Photos and reopen the video");
     JSObject record;
     Uri source;
@@ -521,16 +329,15 @@ public abstract class PhotosPlugin extends Plugin {
     });
   }
 
+  /** Shares one permitted item or one item of the host's owned library. */
+  @Override
   @PluginMethod
   public void share(PluginCall call) {
     submit(call, () -> {
       try {
         String key = call.getString("id", "");
         if (PhotoLibraryAccess.permitted(key)) {
-          String revision = call.getString("revision");
-          if (revision == null || revision.isEmpty()) throw new IllegalArgumentException();
-          permitted.read(key, revision, false);
-          call.resolve(SelectedDocuments.shareUri(getActivity(), permitted.uri(MediaLibraryKey.parse(key))));
+          call.resolve(SelectedDocuments.shareUri(getActivity(), permittedShareUri(call)));
           return;
         }
         call.resolve(SelectedDocuments.shareUri(getActivity(), owned.verified(key, null)));
@@ -567,7 +374,7 @@ public abstract class PhotosPlugin extends Plugin {
         for (int i = 1; i < uris.size(); i++) clip.addItem(new ClipData.Item(uris.get(i)));
         send.setClipData(clip);
         getActivity().runOnUiThread(() -> {
-          if (destroyed || getActivity().isFinishing() || !getActivity().hasWindowFocus()) {
+          if (destroyed() || getActivity().isFinishing() || !getActivity().hasWindowFocus()) {
             call.reject("Return to Photos and share the selection again");
             return;
           }
@@ -641,7 +448,7 @@ public abstract class PhotosPlugin extends Plugin {
               change[0], change[1], true);
           return;
         }
-        call.resolve(owned.changeMany(operation, items, () -> destroyed));
+        call.resolve(owned.changeMany(operation, items, () -> destroyed()));
       } catch (Exception invalid) {
         call.reject("Select 1–20 distinct owned items with current revisions.");
       }
@@ -705,7 +512,7 @@ public abstract class PhotosPlugin extends Plugin {
         return;
       }
       try {
-        call.resolve(owned.deletePreparedTrash(call.getString("confirmation", ""), () -> destroyed));
+        call.resolve(owned.deletePreparedTrash(call.getString("confirmation", ""), () -> destroyed()));
       } catch (IllegalStateException expired) {
         call.reject("Delete confirmation expired. Review trash again.");
       }
@@ -734,14 +541,14 @@ public abstract class PhotosPlugin extends Plugin {
         call.reject("Owned albums require Android 11 or later");
         return;
       }
-      if (destroyed) {
+      if (destroyed()) {
         call.reject("Photo library closed");
         return;
       }
       try {
         call.resolve(albums.change(call.getString("operation", ""), call.getString("id", ""),
             call.getString("revision"), call.getString("name"), call.getString("mediaId", ""),
-            call.getString("mediaRevision"), () -> destroyed));
+            call.getString("mediaRevision"), () -> destroyed()));
       } catch (IllegalArgumentException failure) {
         call.reject(failure.getMessage());
       } catch (Exception failure) {
@@ -751,20 +558,17 @@ public abstract class PhotosPlugin extends Plugin {
   }
 
   @Override
-  protected void handleOnDestroy() {
-    destroyed = true;
+  protected void closeEngines() {
     if (videoCopies != null) videoCopies.close();
     if (mediaReview != null) mediaReview.close();
-    if (permitted != null) permitted.close();
     if (edits != null) edits.cancel(null);
     try {
-      worker.execute(() -> {
+      worker().execute(() -> {
         if (edits != null) edits.close();
       });
     } catch (RejectedExecutionException stopped) {
       // Already stopped: nothing left to close on it.
     }
-    worker.shutdown();
     if (playback != null) playback.clear();
   }
 }

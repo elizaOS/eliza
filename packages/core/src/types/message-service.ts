@@ -28,9 +28,6 @@ import type {
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
-/**
- * Configuration options for message processing
- */
 export type {
 	TypedReadEgressReceipt,
 	TypedReadFact,
@@ -42,6 +39,9 @@ export type {
 	TypedReadRequirement,
 } from "../runtime/typed-read-contract";
 
+/**
+ * Configuration options for message processing
+ */
 export interface MessageProcessingOptions {
 	/** Trusted host projection from this turn's admitted producer receipts; never populated by RPC input. */
 	resolveTypedReadReply?: import("../runtime/typed-read-contract").TypedReadReplyResolver;

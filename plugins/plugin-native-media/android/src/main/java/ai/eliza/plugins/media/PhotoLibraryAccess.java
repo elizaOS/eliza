@@ -31,12 +31,34 @@ public final class PhotoLibraryAccess {
 
   private PhotoLibraryAccess() {}
 
+  /** Access value for a kind of which the host reads only the media it saved itself. */
+  public static final String OWNED = "owned";
+
+  /** Which part of the device library a host reads, and so which permissions it may ask for. */
+  public enum Profile {
+    /** Photos and videos: legacy storage before Android 13, the media grants and selected access. */
+    LIBRARY,
+    /**
+     * Still photos only. Android 13 and later ask only for {@code READ_MEDIA_IMAGES}; earlier
+     * levels ask for nothing and read only the photos this app saved, which scoped storage
+     * allows without a permission. Videos are never read.
+     */
+    IMAGES
+  }
+
   /**
    * The permission aliases a host plugin declares ({@code libraryLegacy}, {@code libraryImages},
    * {@code libraryVideos}, {@code librarySelected}) that an explicit access request names on
    * {@code sdk}. The obsolete legacy permission is never asked for together with the media grants.
    */
   public static String[] permissionAliases(int sdk) {
+    return permissionAliases(sdk, Profile.LIBRARY);
+  }
+
+  /** {@link #permissionAliases(int)} for {@code profile}; may be empty (nothing to ask). */
+  public static String[] permissionAliases(int sdk, Profile profile) {
+    if (profile == Profile.IMAGES)
+      return sdk >= MEDIA_PERMISSIONS_SDK ? new String[] {"libraryImages"} : new String[0];
     if (sdk >= SELECTED_SDK)
       return new String[] {"libraryImages", "libraryVideos", "librarySelected"};
     if (sdk >= MEDIA_PERMISSIONS_SDK) return new String[] {"libraryImages", "libraryVideos"};
@@ -46,6 +68,38 @@ public final class PhotoLibraryAccess {
   /** Every alias a host plugin must declare for {@link #permissionAliases(int)} on any level. */
   public static final List<String> ALIASES =
       List.of("libraryLegacy", "libraryImages", "libraryVideos", "librarySelected");
+
+  /** Every alias a host plugin with {@code profile} must declare. */
+  public static List<String> aliases(Profile profile) {
+    return profile == Profile.IMAGES ? List.of("libraryImages") : ALIASES;
+  }
+
+  /**
+   * The catalog's access answer as {@code {scope, images, videos}} from the granted permissions on
+   * {@code sdk}. Each kind is {@code full}, {@code selected}, {@link #OWNED} or {@code denied}. For
+   * {@link Profile#LIBRARY} the scope is {@code full} (both kinds), {@code partial} (one kind),
+   * {@code selected} or {@code denied}. For {@link Profile#IMAGES} videos are always denied and
+   * the scope is the images answer.
+   */
+  public static String[] access(Profile profile, int sdk, boolean legacy, boolean images,
+      boolean videos, boolean selected) {
+    if (profile == Profile.IMAGES) {
+      String value = sdk < MEDIA_PERMISSIONS_SDK ? OWNED : images ? "full" : "denied";
+      return new String[] {value, value, "denied"};
+    }
+    boolean old = sdk < MEDIA_PERMISSIONS_SDK && legacy;
+    boolean image = old || (sdk >= MEDIA_PERMISSIONS_SDK && images);
+    boolean video = old || (sdk >= MEDIA_PERMISSIONS_SDK && videos);
+    boolean chosen = sdk >= SELECTED_SDK && selected;
+    return new String[] {
+      image && video   ? "full"
+          : image || video ? "partial"
+          : chosen         ? "selected"
+                           : "denied",
+      image ? "full" : chosen ? "selected" : "denied",
+      video ? "full" : chosen ? "selected" : "denied"
+    };
+  }
 
   /** Whether the catalog's {@code access()} answer grants any read at all. */
   public static boolean readable(JSONObject access) {

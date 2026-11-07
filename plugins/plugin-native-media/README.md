@@ -61,7 +61,16 @@ Full permitted library (other apps' media, as far as Android grants it):
 
 Capacitor bindings (a host registers a subclass under its own plugin name):
 
-- `PhotosPlugin` – the Photos bridge over the engines above: library access (`libraryAccess`,
+- `PermittedPhotosPlugin` – the read-only Photos bridge: library access (`libraryAccess`,
+  `requestLibraryAccess`, `openLibrarySettings`, `watchLibrary`), permitted listings and reads with
+  bounded previews (`listPermitted`, `readPermitted` with an `edge` of 64–2048 pixels) and `share`
+  of one permitted item. It owns only the permitted catalog: no edits, captures, albums, trash,
+  favorites, playback or WebView client, and the host answers no media names. A host that shows
+  only still photos returns `PhotoLibraryAccess.Profile.IMAGES` from `libraryProfile()` and
+  declares only the `libraryImages` alias: Android 13 and later then ask only for
+  `READ_MEDIA_IMAGES`, earlier levels ask for nothing and read only the photos the app saved
+  (access `owned`), and videos are never read.
+- `PhotosPlugin` – the Photos bridge over the engines above, built on `PermittedPhotosPlugin`: library access (`libraryAccess`,
   `requestLibraryAccess` from an explicit control only, `openLibrarySettings`), permitted and owned
   listings with bounded previews (`list`, `listPermitted`, `read`, `readPermitted`, `summary`),
   favorite and Recently deleted changes (single and 1–20 item batches, permitted items through the
@@ -97,7 +106,19 @@ public final class MyPhotosPlugin extends PhotosPlugin {
 }
 ```
 
-Register the `PhotosPlugin` subclass before the `DeviceLibraryPlugin` subclass.
+Register the `PhotosPlugin` subclass before the `DeviceLibraryPlugin` subclass. Listed and read
+items carry `bucket` (the folder Android files them under) and `dateTaken` (0 when unknown).
+
+```java
+@CapacitorPlugin(name = "MyPhotoViewer", permissions = {
+  @Permission(alias = "libraryImages", strings = {Manifest.permission.READ_MEDIA_IMAGES})
+})
+public final class MyPhotoViewerPlugin extends PermittedPhotosPlugin {
+  @Override protected PhotoLibraryAccess.Profile libraryProfile() {
+    return PhotoLibraryAccess.Profile.IMAGES;
+  }
+}
+```
 
 Selected documents:
 

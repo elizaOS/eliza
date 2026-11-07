@@ -228,7 +228,7 @@
     "lodash": "4.18.1",
     "tar": "7.5.22",
     "adm-zip": "0.6.0",
-    "serialize-javascript": "7.0.5",
+    "serialize-javascript": "7.1.4",
     "tmp": "0.2.7",
     "@electric-sql/client": "1.0.14",
     "@electric-sql/experimental": "1.0.14",
@@ -278,7 +278,12 @@
     "three": "0.184.0",
     "pdfjs-dist": "6.4.299",
     "@types/bun": "1.4.2",
-    "bun-types": "1.4.2"
+    "bun-types": "1.4.2",
+    "qs": "^6.17.1",
+    "node-forge": "^1.4.3",
+    "follow-redirects": "^1.16.2",
+    "@hono/node-server": "^2.1.6",
+    "fast-uri": "^3.1.9"
   },
   "patchedDependencies": {
     "sql.js@1.14.2": "patches/sql.js@1.14.2.patch",

@@ -25,6 +25,12 @@ new File(repoRoot, 'plugins').listFiles().sort { it.name }.each { pluginDir ->
         def projectName = manifest.name.replaceFirst('^@', '').replace('/', '-')
         include ":${projectName}"
         project(":${projectName}").projectDir = new File(pluginDir, 'android')
+        // Optional sibling modules (android-<name>) are included as <project>-<name>.
+        pluginDir.listFiles().findAll { it.name.startsWith('android-') && new File(it, 'build.gradle').isFile() }.each { moduleDir ->
+            def moduleName = ":${projectName}-${moduleDir.name - 'android-'}"
+            include moduleName
+            project(moduleName).projectDir = moduleDir
+        }
     }
 }
 

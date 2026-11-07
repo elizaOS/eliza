@@ -183,8 +183,12 @@ async function withMutationAudit<T>(
     return outcome;
   };
   return outerTx
-    ? withInferencePolicyMutationInTransaction(outerTx, { organizationIds, userLockIds }, run)
-    : withInferencePolicyMutation({ organizationIds, userLockIds }, run);
+    ? withInferencePolicyMutationInTransaction(
+        outerTx,
+        { organizationIds, userLockIds, credentialOnly: true },
+        run,
+      )
+    : withInferencePolicyMutation({ organizationIds, userLockIds, credentialOnly: true }, run);
 }
 
 export interface MobileCredentialSummary {
@@ -1121,6 +1125,7 @@ export class ApiKeysService {
         {
           organizationIds: rows.map((row) => row.organization_id),
           userLockIds: rows.map((row) => row.user_id),
+          credentialOnly: true,
         },
         fn,
       );

@@ -7,8 +7,6 @@
 import type { ChannelType, Metadata, UUID } from "./primitives";
 import type { WorldSettings } from "./settings";
 
-export type TimestampValue = number;
-
 export interface Component {
 	id: UUID;
 	entityId: UUID;
@@ -17,7 +15,7 @@ export interface Component {
 	worldId: UUID;
 	sourceEntityId: UUID;
 	type: string;
-	createdAt: TimestampValue;
+	createdAt: number;
 	data?: Metadata;
 }
 
@@ -118,5 +116,4 @@ export interface Relationship {
 	createdAt?: string;
 }
 
-// Re-export Metadata for convenience
 export type { Metadata };

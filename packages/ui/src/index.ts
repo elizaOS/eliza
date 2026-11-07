@@ -1498,6 +1498,7 @@ export {
 } from "./voice/draft-transcript-guard.js";
 export {
   audioBlobBase64,
+  type CumulativeCapture,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
   type SpeechPauseOptions,

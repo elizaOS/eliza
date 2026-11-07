@@ -23,12 +23,12 @@ final class SecretSurfaces {
   private SecretSurfaces() {}
   static final long REVEAL_MILLIS = 30_000, CLIPBOARD_MILLIS = 45_000;
   private static AlertDialog current;
+  private static PasswordSurfaces.Hold currentSurface;
   private static final NativeDeadlineTimer REVEAL_TIMER = new NativeDeadlineTimer();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
   /** FLAG_SECURE dialog; dismissed after {@link #REVEAL_MILLIS} or when the host stops. */
   static void reveal(Activity activity, String title, String secret) {
-    dismiss();
     TextView value = new TextView(activity);
     value.setText(secret);
     value.setTypeface(Typeface.MONOSPACE);
@@ -39,13 +39,21 @@ final class SecretSurfaces {
     AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(title).setView(value)
       .setPositiveButton(R.string.eliza_passwords_hide, (shown, which) -> shown.dismiss()).create();
     dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-    dialog.setOnDismissListener(closed -> { value.setText(""); if (current == closed) { current = null; REVEAL_TIMER.cancel(); } });
-    current = dialog;
+    PasswordSurfaces.Hold surface = PasswordSurfaces.open(); // Before an earlier reveal closes, so the surface stays up.
+    dismiss();
+    dialog.setOnDismissListener(closed -> { value.setText(""); surface.close(); if (current == closed) { current = null; currentSurface = null; REVEAL_TIMER.cancel(); } });
+    current = dialog; currentSurface = surface;
     dialog.show();
     REVEAL_TIMER.after(REVEAL_MILLIS, SecretSurfaces::dismiss);
   }
 
-  static void dismiss() { REVEAL_TIMER.cancel(); AlertDialog dialog = current; current = null; if (dialog != null && dialog.isShowing()) dialog.dismiss(); }
+  /** Hide, the timer and every host close end the surface here or in the dismiss listener, whichever is first. */
+  static void dismiss() {
+    REVEAL_TIMER.cancel();
+    AlertDialog dialog = current; PasswordSurfaces.Hold surface = currentSurface; current = null; currentSurface = null;
+    if (dialog != null && dialog.isShowing()) dialog.dismiss();
+    if (surface != null) surface.close();
+  }
 
   private static String clipLabel;
   private static long clipExpiresAt;

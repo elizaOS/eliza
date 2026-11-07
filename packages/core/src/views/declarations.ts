@@ -1,8 +1,5 @@
+/** View declaration types carried by plugins and the host view presentation policy. */
 import type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
-
-/** View declaration types carried by plugins; host presentation policies live in shared. */
-
-/** A view's category. See {@link VIEW_KINDS}. */
 import type { ViewKind } from "../types/view-kind.js";
 
 export type { ViewKind } from "../types/view-kind.js";
@@ -33,8 +30,6 @@ export type ViewType = "gui" | "tui" | "xr";
  * while the shipped view bundle can remain focused on the GUI renderer.
  */
 export type ViewModality = ViewType;
-
-/** Resolves host view presentation policy without loading the Node runtime. */
 
 /** The four view kinds, in escalating "exposure" order. */
 export const VIEW_KINDS = [
@@ -128,10 +123,6 @@ export function dedupeModalities(
 	return MODALITY_ORDER.filter((m) => seen.has(m));
 }
 
-/** Collapses host view declarations while preserving their runtime interaction handlers. */
-
-export type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
-
 /**
  * The surfaces a view declaration renders on: the explicit `modalities` list
  * when set, otherwise the single `viewType` (default "gui").
@@ -155,13 +146,12 @@ export function getViewModalities(
 export function collapseViewDeclarations(
 	views: readonly ViewDeclaration[],
 ): CollapsedView[] {
-	const order: string[] = [];
+	// Map iteration follows first insertion, so ids keep first-seen order.
 	const byId = new Map<string, CollapsedView>();
 	for (const view of views) {
 		const mods = getViewModalities(view);
 		const existing = byId.get(view.id);
 		if (!existing) {
-			order.push(view.id);
 			byId.set(view.id, { ...view, modalities: mods });
 			continue;
 		}
@@ -171,5 +161,5 @@ export function collapseViewDeclarations(
 		const base = isGui && !baseWasGui ? view : existing;
 		byId.set(view.id, { ...base, modalities: merged });
 	}
-	return order.map((id) => byId.get(id) as CollapsedView);
+	return Array.from(byId.values());
 }

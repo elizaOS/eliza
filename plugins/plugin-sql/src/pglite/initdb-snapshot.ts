@@ -18,15 +18,11 @@ import { readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PGliteOptions } from "@electric-sql/pglite";
+import { isMemoryDataDir } from "./memory-settings";
 
 export const INITDB_SNAPSHOT_FILE = "pglite-initdb.bin";
 /** An empty cluster is about 4 MB compressed; anything far larger is not one. */
 export const MAX_INITDB_SNAPSHOT_BYTES = 64 * 1024 * 1024;
-
-const isMemoryDataDir = (dataDir: unknown): boolean =>
-  dataDir === undefined ||
-  dataDir === null ||
-  (typeof dataDir === "string" && dataDir.startsWith("memory://"));
 
 /** The snapshot file to use for these options, or null. */
 export function initdbSnapshotPath(

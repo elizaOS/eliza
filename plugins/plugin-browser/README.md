@@ -176,11 +176,22 @@ did not start (a link click still opens its link). It also records, without
 being able to stop them, a same-document address change (`history.pushState`)
 and a fetch, XMLHttpRequest or beacon to the page's own site, such as a code
 field that verifies itself with `fetch()`. A snapshot then reports
-`effectViolation` (`submit`, `navigation` or `request`); the actuator records
-such an action as an unknown outcome, and the bill workflow pauses on any later
+`effectViolation` (`submit`, `navigation`, `request`, or `window` when the
+browser's network watch saw the page open a window); the actuator records such
+an action as an unknown outcome, and the bill workflow pauses on any later
 snapshot that carries it. A request still in flight when the actuator reads its
-after-action snapshot appears only in a later snapshot, and anything the page
-does after the 30 seconds is not watched. `showGuidance` accepts
+after-action snapshot appears only in a later snapshot. The in-page watch does
+not see anything the page does after the 30 seconds. A browser host with a
+network watch (the owned Chromium extension, the Android WebView surface) also
+watches every frame's requests at request start until the binding expires:
+writes to the page's own site for the whole binding, and requests to other sites
+within 30 seconds of the effect. Its snapshot frames then carry
+`effectWatch: {frames, unseen}`, and every snapshot frame carries `lang` (the
+language the page declares, or null). On a page that shows money (a card or bank
+field, or a currency next to a number), a click with no commit grant may press
+only a link to another document, a checkbox or radio, an option, a `summary`, or
+a disclosure button or tab whose `aria-controls` names an element in the page;
+every other control, a reviewed binding target included, needs a commit grant. `showGuidance` accepts
 `keepClearRefs` (controls the label must not cover, peer capability
 `task-guide-keep-clear`) and returns `placement` and `dismissed`.
 

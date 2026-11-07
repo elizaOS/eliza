@@ -235,38 +235,7 @@ app.post("/", async (c) => {
     });
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const characterResolution = executionCtx
-      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-      : {
-          kind: "ready" as const,
-          character: (await charactersService.getById(id)) ?? null,
-        };
-    if (characterResolution.kind !== "ready") {
-      // Confirm only the negative cold-cache case. Existing agents remain
-      // fail-closed until their cached character is ready for inference.
-      if (!(await charactersService.getById(id))) {
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Agent not found" },
-            id: null,
-          },
-          404,
-        );
-      }
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Agent cache is warming; retry shortly",
-          },
-          id: null,
-        },
-        503,
-      );
-    }
-    const character = characterResolution.character;
+    const character = (await charactersService.getById(id)) ?? null;
     if (!character) {
       return c.json(
         {

@@ -74,7 +74,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
         output,
         path.resolve(
           root,
-          "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+          "../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
         ),
         ...shared,
         path.resolve(

@@ -8,9 +8,6 @@ import {
   type SpeechRelayEvent,
 } from "./speech-relay-session";
 export const SPEECH_RELAY_WIRE_VERSION = 1;
-/** A caller that accepts a 64-hex `sessionId` asks for an unnamed session object. */
-export const SPEECH_SESSION_ID_HEADER = "x-eliza-speech-session-id";
-export const SPEECH_SESSION_ID_UNIQUE = "unique-v1";
 export const SPEECH_RELAY_ROUTES = Object.freeze({
   consent: "/api/v1/voice/speech/consent",
   mint: "/api/v1/voice/speech/session",

@@ -110,6 +110,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0508_app_notification_secret_envelope_v2",
       "0414_app_subscription_outbox_delivery",
       "0415_app_billing_webhook_recovery",
+      "0555_stripe_delivery_outbox",
       "0416_app_billing_checkout_expiry",
       "0417_app_billing_membership_authority",
       "0420_app_billing_import_commands",

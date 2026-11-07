@@ -4,8 +4,8 @@ import { readStewardSessionToken } from "@elizaos/cloud-shared/auth";
 import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { callMapsRequestAllowance } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import {
+  hasInferenceRevocationBoundary,
   type InferenceCredentialCheck,
-  isInferenceStrongRevocationEnabled,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import type {
@@ -63,7 +63,12 @@ export async function admitMapsRequest(
   caller: MapsCaller,
   operation: MapsOperation,
 ): Promise<MapsCompletion> {
-  if (!isInferenceStrongRevocationEnabled() || !caller.credential)
+  if (
+    !hasInferenceRevocationBoundary(
+      c.env as unknown as Record<string, unknown>,
+    ) ||
+    !caller.credential
+  )
     throw new MapsAdmissionError(
       503,
       "maps_allowance_unconfigured",
@@ -78,6 +83,7 @@ export async function admitMapsRequest(
   const requestId = c.req.header("Idempotency-Key");
   if (
     operation !== "coverage" &&
+    operation !== "viewport" &&
     (!requestId || !/^[A-Za-z0-9_-]{1,128}$/.test(requestId))
   )
     throw new MapsAdmissionError(
@@ -104,7 +110,8 @@ export async function admitMapsRequest(
           "subscription_required",
           "An active Eliza subscription is required for Maps.",
         );
-      if (operation === "coverage") return null;
+      // Coverage and viewport copyright are metadata: entitled, never counted.
+      if (operation === "coverage" || operation === "viewport") return null;
       if (!summary.rateTier)
         throw new MapsAdmissionError(
           503,

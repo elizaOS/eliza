@@ -656,7 +656,7 @@ describe("Cloud speech evidence and client lifecycle", () => {
         }finally{logs.mockRestore();await active.close();}
     });
     test("disconnect interrupts warming backoff without another paid attempt",async()=>{
-        vi.useFakeTimers();upstreamResponse=()=>Response.json({error:{code:"auth_cache_warming",retryAfter:3}},{status:503});
+        vi.useFakeTimers();upstreamResponse=()=>Response.json({error:{code:"service_unavailable",retryAfter:3}},{status:503});
         const req=fakeReq(JSON.stringify({text:"synthetic speech"})),{res}=fakeRes();
         const pending=handleCloudTtsPreviewRoute(req,res);
         await vi.advanceTimersByTimeAsync(10);expect(upstream.length).toBe(1);

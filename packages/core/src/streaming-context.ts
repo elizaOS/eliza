@@ -256,9 +256,8 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 		// error-policy:J7 Streaming observers cannot alter model/action flow;
 		// the owning runtime receives the observer failure when available.
 		context?.reportError?.("StreamingContext.emitHook", error, {
-			hook: String(hook),
+			hook,
 		});
-		// Streaming observers must not break the underlying model/action flow.
 	}
 }
 
@@ -284,18 +283,8 @@ const STREAMING_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.streamingContextManager",
 );
 
-function initContextManagerSync(): IStreamingContextManager {
+function createStreamingContextManager(): IStreamingContextManager {
 	return new AsyncContextManager<StreamingContext | undefined>();
-}
-
-function getOrCreateContextManager(): IStreamingContextManager {
-	// The shared global slot is the single source of truth (no module-local
-	// cache): under a duplicated core bundle every copy must observe the same
-	// manager, and `setStreamingContextManager` must be visible everywhere.
-	return getAmbientSingleton(
-		STREAMING_CONTEXT_MANAGER_KEY,
-		initContextManagerSync,
-	);
 }
 
 /**
@@ -311,11 +300,17 @@ export function setStreamingContextManager(
 }
 
 /**
- * Get the global streaming context manager.
- * Auto-detects and creates the appropriate manager on first access.
+ * Get the global streaming context manager, creating it on first access.
+ *
+ * The shared global slot is the single source of truth (no module-local
+ * cache): under a duplicated core bundle every copy must observe the same
+ * manager, and `setStreamingContextManager` must be visible everywhere.
  */
 export function getStreamingContextManager(): IStreamingContextManager {
-	return getOrCreateContextManager();
+	return getAmbientSingleton(
+		STREAMING_CONTEXT_MANAGER_KEY,
+		createStreamingContextManager,
+	);
 }
 
 /**
@@ -341,7 +336,7 @@ export function runWithStreamingContext<T>(
 	context: StreamingContext | undefined,
 	fn: () => T,
 ): T {
-	const manager = getOrCreateContextManager();
+	const manager = getStreamingContextManager();
 	const parent = manager.active();
 	const sameTurn =
 		!context?.messageId || context.messageId === parent?.messageId;
@@ -359,24 +354,25 @@ export function runWithStreamingContext<T>(
 		}
 		context = {
 			...context,
+			messageId: context?.messageId || parent.messageId,
 			modelAttemptLease: parent.modelAttemptLease,
 			modelAttemptTurnId: originalTurn,
+			abortSignal: inheritedAbortSignal(context, parent.abortSignal),
 		};
-		if (!context.messageId) context.messageId = parent.messageId;
-		if (parent.abortSignal)
-			context.abortSignal = context.abortSignal
-				? AbortSignal.any([parent.abortSignal, context.abortSignal])
-				: parent.abortSignal;
 	}
 	if (parent?.actionConstraints && sameTurn) {
 		// Detaching model streaming must not detach execution policy/cancellation.
-		context = context ?? { messageId: parent.messageId };
-		context.actionConstraints = parent.actionConstraints;
-		if (parent.abortSignal && context.abortSignal !== parent.abortSignal) {
-			context.abortSignal = context.abortSignal
-				? AbortSignal.any([parent.abortSignal, context.abortSignal])
-				: parent.abortSignal;
-		}
+		// Derive a new scope: a caller's reused context object must not carry
+		// this turn's policy or signal into a later turn.
+		const base = context ?? { messageId: parent.messageId };
+		context = {
+			...base,
+			actionConstraints: parent.actionConstraints,
+			// A leased parent's signal was already merged into the copy above.
+			abortSignal: parent.modelAttemptLease
+				? base.abortSignal
+				: inheritedAbortSignal(base, parent.abortSignal),
+		};
 	} else if (
 		parent?.actionConstraints &&
 		context?.actionConstraints === parent.actionConstraints
@@ -384,6 +380,16 @@ export function runWithStreamingContext<T>(
 		context = { ...context, actionConstraints: new Map() };
 	}
 	return manager.run(context, fn);
+}
+
+/** A nested scope can only add cancellation on top of its parent's signal. */
+function inheritedAbortSignal(
+	context: StreamingContext | undefined,
+	parentSignal: AbortSignal | undefined,
+): AbortSignal | undefined {
+	const own = context?.abortSignal;
+	if (!parentSignal || own === parentSignal) return own;
+	return own ? AbortSignal.any([parentSignal, own]) : parentSignal;
 }
 
 /** Register validated policy on the ambient turn before asynchronous selection. */
@@ -484,7 +490,7 @@ export function runWithSuppressedModelStream<T>(fn: () => T): T {
  * @returns The current streaming context or undefined
  */
 export function getStreamingContext(): StreamingContext | undefined {
-	return getOrCreateContextManager().active();
+	return getStreamingContextManager().active();
 }
 
 // useModel → chunk callback delivery (dedupe `model_stream_chunk` hooks)
@@ -502,12 +508,12 @@ const MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY = Symbol.for(
 	"elizaos.modelStreamChunkDeliveryDepth",
 );
 
-function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
-	return getAmbientSingleton(
-		MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
-		() => new AsyncLocalStorage<number>(),
-	);
-}
+// Nothing replaces this slot after creation, so one lookup at module load is
+// enough; this sits on the per-token delivery path.
+const modelStreamChunkDeliveryDepth = getAmbientSingleton(
+	MODEL_STREAM_CHUNK_DELIVERY_DEPTH_KEY,
+	() => new AsyncLocalStorage<number>(),
+);
 
 /**
  * While `> 0`, the runtime is inside `useModel`'s delivery of one `textStream` chunk to
@@ -516,15 +522,15 @@ function modelStreamChunkDeliveryDepthStorage(): AsyncLocalStorage<number> {
  * this window so the same raw token is not processed twice.
  */
 export function getModelStreamChunkDeliveryDepth(): number {
-	const s = modelStreamChunkDeliveryDepthStorage();
-	return s.getStore() ?? 0;
+	return modelStreamChunkDeliveryDepth.getStore() ?? 0;
 }
 
 /** Wrap `paramsChunk` / `ctxChunk` invocations from `useModel`'s stream loop. */
 export function runInsideModelStreamChunkDelivery<T>(
 	fn: () => T | Promise<T>,
 ): T | Promise<T> {
-	const s = modelStreamChunkDeliveryDepthStorage();
-	const parent = s.getStore() ?? 0;
-	return s.run(parent + 1, fn);
+	return modelStreamChunkDeliveryDepth.run(
+		getModelStreamChunkDeliveryDepth() + 1,
+		fn,
+	);
 }

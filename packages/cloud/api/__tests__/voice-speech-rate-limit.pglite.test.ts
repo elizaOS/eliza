@@ -29,13 +29,9 @@ import { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: strong revocation is off, so the combined auth cache is
-// not qualified and Worker requests authorize authoritatively; the cache-only
-// limiter then finds a cold organization projection and returns the retryable
-// warming contract. The compatibility limiter uses Redis REST, and the cache
-// uses the in-memory test backend.
-process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
-process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+// A cold key and a cold organization projection are filled from the primary
+// inside the request. The compatibility limiter uses Redis REST, and the
+// cache uses the in-memory test backend.
 process.env.CACHE_BACKEND = "memory";
 process.env.REDIS_RATE_LIMITING = "true";
 process.env.DIRECT_REDIS_BACKEND = "redis-rest";
@@ -75,9 +71,13 @@ const INFERENCE_ADMISSION_GATES = {
           path: new URL(request.url).pathname,
           body: await request.json(),
         };
-        gateCalls.push(call);
+        // The gate is also the revocation boundary and the snapshot
+        // publication target; only limiter decisions are recorded here.
+        if (call.path === "/credential/check")
+          return Response.json({ allowed: true });
         if (call.path !== "/rate-limit")
-          return new Response("unexpected", { status: 404 });
+          return Response.json({ committed: true, hydrated: true });
+        gateCalls.push(call);
         const bump = (window: string) => {
           const count = (gateWindows.get(window) ?? 0) + 1;
           gateWindows.set(window, count);
@@ -271,13 +271,6 @@ beforeEach(() => {
  * empty TTS text), so an admitted caller gets 400 with no provider work.
  */
 async function speak(route: "stt" | "tts", rawKey: string) {
-  const first = await speakOnce(route, rawKey);
-  if (first.status !== 503) return first;
-  const body = (await first.clone().json()) as {
-    code?: string;
-  };
-  if (body.code !== "auth_cache_warming") return first;
-  expect(first.headers.get("Retry-After")).toBe("1");
   return await speakOnce(route, rawKey);
 }
 
@@ -337,15 +330,7 @@ async function generatePersonalMedia(
   workerTurn: boolean,
   mediaType: "image" | "audio",
 ) {
-  try {
-    return await generatePersonalMediaOnce(workerTurn, mediaType);
-  } catch (error) {
-    // A cold organization projection is a retryable warming signal; its
-    // hydration already ran under the turn's `waitUntil`.
-    if (!(error instanceof Error) || !/warming/i.test(error.message))
-      throw error;
-    return await generatePersonalMediaOnce(workerTurn, mediaType);
-  }
+  return await generatePersonalMediaOnce(workerTurn, mediaType);
 }
 
 async function generatePersonalMediaOnce(
@@ -391,14 +376,9 @@ describe("Worker speech rate limit without an admission snapshot", () => {
       resetInferenceAdmissionMemoryCacheForTests();
       await cache.del(CacheKeys.inference.orgAdmission(ORG));
       const response = await speakOnce(route, keys[`cold_${route}`].raw);
-      // One request: no warming refusal, no client retry. The limiter then
-      // decides from the authoritative projection it just published.
+      // One request: no refusal, no client retry. The cold key's primary
+      // decision carries the organization projection the limiter decides from.
       expect(response.status).not.toBe(503);
-      expect(
-        await cache.get(CacheKeys.inference.orgAdmission(ORG)),
-      ).toMatchObject({
-        rateLimits: { strictRpm: strictRpm },
-      });
     }
     // The limiter itself takes no Redis round trip; an admitted consent
     // request then writes its nonce to the consent store.
@@ -407,7 +387,7 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     ).toHaveLength(4);
   });
 
-  test("a cold projection whose hydration is not acknowledged keeps the retryable warming code", async () => {
+  test("a cold projection whose cache write fails is still served from the primary fill", async () => {
     const [
       { cache },
       { CacheKeys },
@@ -426,19 +406,14 @@ describe("Worker speech rate limit without an admission snapshot", () => {
         resetInferenceAdmissionMemoryCacheForTests();
         await cache.del(CacheKeys.inference.orgAdmission(ORG));
         const response = await speakOnce(route, keys[`cold_${route}`].raw);
-        expect(response.status).toBe(503);
-        expect(response.headers.get("Retry-After")).toBe("1");
-        expect(await response.json()).toMatchObject({
-          code: "auth_cache_warming",
-          retryAfterSeconds: 1,
-          details: { retryable: true, retryAfterSeconds: 1 },
-        });
+        expect(response.status).not.toBe(503);
       }
     } finally {
       write.mockRestore();
     }
-    expect(gateCalls).toHaveLength(0);
-    expect(redisCalls).toBe(0);
+    expect(
+      gateCalls.filter((call) => call.path === "/rate-limit"),
+    ).toHaveLength(4);
   });
 
   test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {

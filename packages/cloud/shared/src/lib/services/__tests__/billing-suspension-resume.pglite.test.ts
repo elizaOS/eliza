@@ -42,6 +42,7 @@ import { orgRateLimitOverrides } from "../../../db/schemas/org-rate-limit-overri
 import { orgStorageQuota } from "../../../db/schemas/org-storage-quota";
 import { organizationConfig } from "../../../db/schemas/organization-config";
 import { organizationEntitlements } from "../../../db/schemas/organization-entitlements";
+import { organizationPolicyAudit } from "../../../db/schemas/organization-policy-audit";
 import { organizations } from "../../../db/schemas/organizations";
 import { personalDedicatedFallbacks } from "../../../db/schemas/personal-dedicated-fallbacks";
 import { personalDedicatedUpgradeAuthorities } from "../../../db/schemas/personal-dedicated-upgrade-authorities";
@@ -116,6 +117,7 @@ beforeAll(async () => {
     ["billing_subscriptions", billingSubscriptions],
     ["billing_subscription_revisions", billingSubscriptionRevisions],
     ["organization_subscription_authorities", organizationSubscriptionAuthorities],
+    ["organization_policy_audit", organizationPolicyAudit],
     ["subscription_allowance_periods", subscriptionAllowancePeriods],
     ["org_rate_limit_overrides", orgRateLimitOverrides],
     ["organization_config", organizationConfig],
@@ -383,49 +385,84 @@ test(
       billingHold: (await billingHoldService.getState(held.orgId)).status === "held",
     };
     expect(snapshot.billingHold).toBe(false);
-    const clawback = await creditsService.clawbackCredits({
-      organizationId: held.orgId,
-      amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
-      description: "refund clawback",
-      stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
-    });
-    expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
-
-    // A previously clear cached hold must not replace the primary decision,
-    // even when the experimental snapshot setting is present. The real hold
-    // writer above runs without delegated policy enrollment for this org.
-    for (const snapshotFlag of ["false", "true"]) {
-      await expect(
-        runWithCloudBindingsAsync(
-          {
-            INFERENCE_DEFERRED_ADMISSION: "true",
-            INFERENCE_OPTIMISTIC_BILLING: "true",
-            INFERENCE_SNAPSHOT_ADMISSION_ENABLED: snapshotFlag,
-            INFERENCE_ADMISSION_GATES: {
-              getByName() {
-                throw new Error("A held organization must stop before acquiring a lease");
-              },
-            },
+    // The organization gate as the hold writer and the Worker admission see
+    // it: the standing fence (pending entries plus the committed generation
+    // floor) and a lease that refuses a superseded generation.
+    const pending = new Set<string>();
+    let floor = 0n;
+    const gatePaths: string[] = [];
+    const organizationGate = {
+      getByName() {
+        return {
+          async fetch(request: Request) {
+            const path = new URL(request.url).pathname;
+            gatePaths.push(path);
+            const body = (await request.json()) as {
+              mutationId?: string;
+              policyGeneration?: string;
+            };
+            if (path === "/policy-fence/begin") {
+              pending.add(String(body.mutationId));
+              return Response.json({ blocked: true });
+            }
+            if (path === "/policy-fence/commit" || path === "/policy-fence/abort") {
+              pending.delete(String(body.mutationId));
+              if (path === "/policy-fence/commit" && body.policyGeneration)
+                floor =
+                  BigInt(body.policyGeneration) > floor ? BigInt(body.policyGeneration) : floor;
+              return Response.json({ committed: true });
+            }
+            if (path === "/hydrate") return Response.json({ hydrated: true });
+            if (path.startsWith("/lease")) {
+              if (pending.size > 0 || BigInt(body.policyGeneration ?? "0") < floor)
+                return Response.json(
+                  { success: false, code: "inference_admission_policy_stale" },
+                  { status: 409 },
+                );
+              throw new Error("A held organization must stop before acquiring a lease");
+            }
+            throw new Error(`unexpected gate path ${path}`);
           },
-          () =>
-            admitOrganizationInference({
-              context: {
-                organizationId: held.orgId,
-                userId: held.userId,
-                model: "openai/gpt-5-mini",
-                provider: "openai",
-                billingSource: "openai",
-                requestId: crypto.randomUUID(),
-              },
-              estimatedInputTokens: 0,
-              estimatedOutputTokens: 0,
-              flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
-              executionCtx: { waitUntil() {} },
-              admissionSnapshot: snapshot,
-            }),
-        ),
-      ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
-    }
+        };
+      },
+    };
+    const clawback = await runWithCloudBindingsAsync(
+      { INFERENCE_ADMISSION_GATES: organizationGate },
+      () =>
+        creditsService.clawbackCredits({
+          organizationId: held.orgId,
+          amount: AGENT_PRICING.MINIMUM_DEPOSIT + 5,
+          description: "refund clawback",
+          stripePaymentIntentId: `stripe:refund:${unique("ch")}:1`,
+        }),
+    );
+    expect(clawback.shortfallAmount).toBeCloseTo(5, 6);
+    expect(gatePaths.slice(0, 2)).toEqual(["/policy-fence/begin", "/policy-fence/commit"]);
+    expect(pending.size).toBe(0);
+    expect(floor > BigInt(snapshot.authority.generation)).toBe(true);
+
+    // A previously clear cached hold cannot lease after the hold commits: the
+    // gate refuses its superseded generation, admission refills the snapshot
+    // from the primary and refuses on the hold it now carries.
+    await expect(
+      runWithCloudBindingsAsync({ INFERENCE_ADMISSION_GATES: organizationGate }, () =>
+        admitOrganizationInference({
+          context: {
+            organizationId: held.orgId,
+            userId: held.userId,
+            model: "openai/gpt-5-mini",
+            provider: "openai",
+            billingSource: "openai",
+            requestId: crypto.randomUUID(),
+          },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+          executionCtx: { waitUntil() {} },
+          admissionSnapshot: snapshot,
+        }),
+      ),
+    ).rejects.toMatchObject({ name: "BillingHoldActiveError" });
 
     // Funds that land without settling the shortfall do not lift the hold.
     await creditsService.addCredits({

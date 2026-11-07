@@ -1,5 +1,5 @@
 /** Real route/admission orchestration with explicit authority and provider boundaries; no live effects. */
-import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
 
 let locked = false,
   admitted = 0,
@@ -74,14 +74,9 @@ const { admitMapsRequest, authenticateMapsCaller } = await import(
   "../src/lib/maps-request-admission"
 );
 const { createMapsRoute } = await import("../src/lib/maps-route");
-const previous = process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
-afterAll(() => {
-  if (previous === undefined)
-    delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
-  else process.env.INFERENCE_STRONG_REVOCATION_ENABLED = previous;
-});
+let gatesBound = true;
 beforeEach(() => {
-  process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
+  gatesBound = true;
   admitted = dispatched = usage = 0;
   locked = false;
   status = "active";
@@ -124,7 +119,10 @@ function call(body: unknown = { query: "test" }, key = "request") {
       },
       body: JSON.stringify(body),
     },
-    { NODE_ENV: "test" },
+    {
+      NODE_ENV: "test",
+      ...(gatesBound ? { INFERENCE_ADMISSION_GATES: {} } : {}),
+    },
   );
 }
 test("active subscription with zero inference funds uses separate Maps allowance without monetary reads", async () => {
@@ -188,7 +186,7 @@ test("cancellation after admission remains consumed and records cancellation", a
   expect(usage).toBe(1);
 });
 test("missing operator revocation configuration is actionable and never an upgrade or charge", async () => {
-  delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
+  gatesBound = false;
   const result = await call();
   expect(result.status).toBe(503);
   expect(((await result.json()) as { code: string }).code).toBe(

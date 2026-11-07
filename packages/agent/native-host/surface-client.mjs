@@ -22,10 +22,27 @@ export async function connectSurfaceCommandClient({
   const lifetime = new AbortController(),
     active = new Map();
   let sequence = 0,
-    transportError = null;
+    transportError = null,
+    closing = null;
+  // Close the host connection once, as soon as the client stops. This wakes a
+  // held pull even when the request adapter cannot abort it.
+  const closeHost = () =>
+    (closing ??= Promise.resolve()
+      .then(() =>
+        request(
+          "/browser/surface/close",
+          connection,
+          AbortSignal.timeout(3000),
+        ),
+      )
+      .then(
+        () => null,
+        (error) => (error?.code === "STALE_REF" ? null : error),
+      ));
   const stop = () => {
     lifetime.abort();
     for (const entry of active.values()) entry.controller.abort();
+    void closeHost();
   };
   signal?.addEventListener("abort", stop, { once: true });
   if (signal?.aborted) stop();
@@ -135,15 +152,8 @@ export async function connectSurfaceCommandClient({
       signal?.removeEventListener("abort", stop);
       // Closing the host connection retires delivered effects as uncertain even
       // if a native operation has not yet returned. It does not claim to undo it.
-      try {
-        await request(
-          "/browser/surface/close",
-          connection,
-          AbortSignal.timeout(3000),
-        );
-      } catch (error) {
-        if (error?.code !== "STALE_REF") completionError ??= error;
-      }
+      const closeError = await closeHost();
+      if (closeError) completionError ??= closeError;
     }
     if (completionError) throw completionError;
   })();

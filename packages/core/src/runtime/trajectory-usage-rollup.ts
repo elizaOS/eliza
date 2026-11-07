@@ -48,23 +48,26 @@ function emptyTotals(): TrajectoryUsageTotals {
 	};
 }
 
+/** A truncated or hand-edited trajectory file may carry a NaN/undefined
+ * metric, which must not poison the roll-up into NaN. */
+function finiteOrZero(value: number | undefined): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 /** Accumulate one trajectory's metrics into a totals bucket, in place. */
 function addMetrics(
 	into: TrajectoryUsageTotals,
 	metrics: RecordedTrajectoryMetrics,
 ): void {
-	// Guard every field: a truncated or hand-edited trajectory file may carry a
-	// NaN/undefined metric, which must not poison the roll-up into NaN.
-	const n = (value: number | undefined): number =>
-		typeof value === "number" && Number.isFinite(value) ? value : 0;
-	into.promptTokens += n(metrics.totalPromptTokens);
-	into.completionTokens += n(metrics.totalCompletionTokens);
-	into.cacheReadTokens += n(metrics.totalCacheReadTokens);
-	into.cacheCreationTokens += n(metrics.totalCacheCreationTokens);
-	into.reasoningTokens += n(metrics.totalReasoningTokens);
-	into.costUsd += n(metrics.totalCostUsd);
-	into.totalTokens +=
-		n(metrics.totalPromptTokens) + n(metrics.totalCompletionTokens);
+	const promptTokens = finiteOrZero(metrics.totalPromptTokens);
+	const completionTokens = finiteOrZero(metrics.totalCompletionTokens);
+	into.promptTokens += promptTokens;
+	into.completionTokens += completionTokens;
+	into.cacheReadTokens += finiteOrZero(metrics.totalCacheReadTokens);
+	into.cacheCreationTokens += finiteOrZero(metrics.totalCacheCreationTokens);
+	into.reasoningTokens += finiteOrZero(metrics.totalReasoningTokens);
+	into.costUsd += finiteOrZero(metrics.totalCostUsd);
+	into.totalTokens += promptTokens + completionTokens;
 	into.trajectoryCount += 1;
 }
 
@@ -85,9 +88,12 @@ export function rollUpTrajectoryUsage(
 		const metrics = trajectory.metrics;
 		if (!metrics) continue;
 		const key = trajectory.traceId ?? "";
-		const bucket = buckets.get(key) ?? emptyTotals();
+		let bucket = buckets.get(key);
+		if (!bucket) {
+			bucket = emptyTotals();
+			buckets.set(key, bucket);
+		}
 		addMetrics(bucket, metrics);
-		buckets.set(key, bucket);
 		addMetrics(grand, metrics);
 	}
 	// Sort named traces first and records without correlation last.

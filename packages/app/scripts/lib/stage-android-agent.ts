@@ -1426,6 +1426,8 @@ export async function stageAndroidEmbeddingArtifact({
  *   bunChannel  stable | canary. ELIZA_BUN_CHANNEL overrides this option.
  *   bunTarget   linux-musl (legacy) | android. Explicit target; no ABI fallback.
  *               ELIZA_ANDROID_BUN_TARGET overrides this option.
+ *   embeddingModel  Defaults to true. false stages no BGE embedding model, for a
+ *               host whose agent never loads it; a model an earlier run staged is removed.
  *   log         Defaults to console.log.
  */
 export async function stageAndroidAgentRuntime({
@@ -1435,10 +1437,15 @@ export async function stageAndroidAgentRuntime({
   bunChannel: preferredBunChannel,
   bunTarget: preferredBunTarget,
   objective = false,
+  embeddingModel = true,
   log = console.log,
 } = {}) {
   if (!androidDir)
     throw new Error("stageAndroidAgentRuntime: androidDir is required");
+  if (typeof embeddingModel !== "boolean")
+    throw new Error(
+      "stageAndroidAgentRuntime: embeddingModel must be a boolean",
+    );
   if (!spikeDir)
     throw new Error("stageAndroidAgentRuntime: spikeDir is required");
 
@@ -1475,23 +1482,30 @@ export async function stageAndroidAgentRuntime({
     "agent",
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
-  const embeddingTarget = await stageAndroidEmbeddingArtifact({
-    assetsAgentDir,
-  });
+  const stagedFiles = [];
+  if (embeddingModel) {
+    const embeddingTarget = await stageAndroidEmbeddingArtifact({
+      assetsAgentDir,
+    });
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: embeddingTarget,
+        relativePath: path.relative(
+          path.join(androidDir, "app", "src", "main"),
+          embeddingTarget,
+        ),
+        source: { kind: "pinned-embedding-model", ...FUSED_EMBEDDING_ARTIFACT },
+      }),
+    );
+  } else
+    fs.rmSync(
+      path.join(assetsAgentDir, "models", FUSED_EMBEDDING_ARTIFACT.filename),
+      { force: true },
+    );
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   fs.mkdirSync(jniLibsDir, { recursive: true });
 
   let stagedCount = 0;
-  const stagedFiles = [
-    fileProvenanceEntry({
-      filePath: embeddingTarget,
-      relativePath: path.relative(
-        path.join(androidDir, "app", "src", "main"),
-        embeddingTarget,
-      ),
-      source: { kind: "pinned-embedding-model", ...FUSED_EMBEDDING_ARTIFACT },
-    }),
-  ];
   const riscv64Artifact = {
     required:
       objective && targets.some((target) => target.bunArch === "riscv64"),

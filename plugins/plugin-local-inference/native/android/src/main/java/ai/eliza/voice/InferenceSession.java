@@ -39,6 +39,8 @@ public final class InferenceSession implements AutoCloseable {
     private final File espeakDir;
     private final java.util.Map<String, File> otherVoices;
     private final java.util.Map<String, ParadeeVoice> loadedOther = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Caller-set speed ranges by language ({min, max}); applied at each load. Guarded by this. */
+    private final java.util.Map<String, float[]> speedRanges = new java.util.HashMap<>();
     private final AtomicLong generation = new AtomicLong();
     private volatile ParadeeVoice voice;
     private volatile NativeAsr asr;
@@ -153,7 +155,7 @@ public final class InferenceSession implements AutoCloseable {
 
     private ParadeeVoice voice(Admission admitted) throws IOException {
         long ctx = acquire(admitted);
-        if (voice == null) voice = new ParadeeVoice(voiceModel, lexicon, espeakDir, ctx);
+        if (voice == null) voice = ranged(new ParadeeVoice(voiceModel, lexicon, espeakDir, ctx), "en");
         checkGeneration(admitted);
         return voice;
     }
@@ -166,11 +168,42 @@ public final class InferenceSession implements AutoCloseable {
         long ctx = acquire(admitted);
         ParadeeVoice other = loadedOther.get(language);
         if (other == null) {
-            other = new ParadeeVoice(model, null, espeakDir, language, ctx);
+            other = ranged(new ParadeeVoice(model, null, espeakDir, language, ctx), language);
             loadedOther.put(language, other);
         }
         checkGeneration(admitted);
         return other;
+    }
+
+    /** Caller holds this session's lock. Applies the language's speed range; a refused range fails the load. */
+    private ParadeeVoice ranged(ParadeeVoice loaded, String language) {
+        float[] range = speedRanges.get(language);
+        if (range == null) return loaded;
+        try {
+            loaded.speedRange(range[0], range[1]);
+            return loaded;
+        } catch (RuntimeException failure) {
+            loaded.close();
+            throw failure;
+        }
+    }
+
+    /**
+     * Sets the speed range of the voice for {@code language} (one of
+     * {@link #speechLanguages}), as {@link ParadeeVoice#speedRange} does. The
+     * session keeps it and applies it each time it loads that voice, so it
+     * survives {@link #trimMemory} and {@link Client#release}; a loaded voice
+     * takes it at once. It applies to every client. Waits for a running call.
+     */
+    public void speedRange(String language, float min, float max) {
+        if (!speechLanguages().contains(language)) throw new IllegalArgumentException("No " + language + " speech voice in this bundle");
+        ParadeeVoice.checkSpeedRange(min, max);
+        synchronized (this) {
+            if (closed) throw new IllegalStateException("Inference session closed");
+            ParadeeVoice loaded = "en".equals(language) ? voice : loadedOther.get(language);
+            if (loaded != null) loaded.speedRange(min, max);
+            speedRanges.put(language, new float[] {min, max});
+        }
     }
 
     private NativeAsr asr(Admission admitted) throws IOException {
@@ -288,6 +321,40 @@ public final class InferenceSession implements AutoCloseable {
             begin(admitted);
             try {
                 voice(admitted);
+                asr(admitted);
+                checkGeneration(admitted);
+            } finally {
+                end();
+            }
+        }
+    }
+
+    /** Loads only the voice for {@code language} (null or "en": the English voice), for a readiness check. */
+    public void prepareVoice(String language) throws IOException {
+        prepareVoice(new Admission(null), language);
+    }
+
+    private void prepareVoice(Admission admitted, String language) throws IOException {
+        synchronized (this) {
+            begin(admitted);
+            try {
+                voice(admitted, language);
+                checkGeneration(admitted);
+            } finally {
+                end();
+            }
+        }
+    }
+
+    /** Loads only speech recognition, for a readiness check. */
+    public void prepareRecognition() throws IOException {
+        prepareRecognition(new Admission(null));
+    }
+
+    private void prepareRecognition(Admission admitted) throws IOException {
+        synchronized (this) {
+            begin(admitted);
+            try {
                 asr(admitted);
                 checkGeneration(admitted);
             } finally {
@@ -542,6 +609,10 @@ public final class InferenceSession implements AutoCloseable {
         public boolean isSpeechLoaded() { return InferenceSession.this.isSpeechLoaded(); }
 
         public void prepareSpeech() throws IOException { InferenceSession.this.prepareSpeech(new Admission(this)); }
+
+        public void prepareVoice(String language) throws IOException { InferenceSession.this.prepareVoice(new Admission(this), language); }
+
+        public void prepareRecognition() throws IOException { InferenceSession.this.prepareRecognition(new Admission(this)); }
 
         public int speechSampleRate() throws IOException { return InferenceSession.this.speechSampleRate(new Admission(this)); }
 

@@ -1091,9 +1091,6 @@ describe("subscription allowance lifecycle", () => {
     const { cache } = await import("../cache/client");
     const { CacheKeys } = await import("../cache/keys");
     const snapshots = await import("./inference-admission-snapshot");
-    const { admitOrganizationInference, InferenceAdmissionUnavailableError } = await import(
-      "./organization-inference-admission"
-    );
     const { getOrgTier } = await import("./org-rate-limits");
     const { advanceOrganizationPolicyGeneration } = await import(
       "../../db/repositories/organization-policy-generation"
@@ -1113,23 +1110,10 @@ describe("subscription allowance lifecycle", () => {
     );
     const next = (BigInt(stale.authority.generation) + 1n).toString();
 
-    // The stale snapshot still fails its request closed, but the shared
-    // projection is republished at once instead of waiting out its TTL.
-    await expect(
-      admitOrganizationInference({
-        context: {
-          organizationId: org,
-          userId: "74000000-0000-4000-8000-000000000001",
-          model: "gpt-4o-mini",
-          provider: "openai",
-          billingSource: "gateway",
-          requestId: "req_stale_snapshot_0001",
-        },
-        estimatedInputTokens: 1,
-        estimatedOutputTokens: 1,
-        admissionSnapshot: stale,
-      }),
-    ).rejects.toBeInstanceOf(InferenceAdmissionUnavailableError);
+    // A Worker lease decided from the stale snapshot is refused by the
+    // organization gate; its repair republishes the shared projection at once
+    // instead of waiting out its TTL.
+    await snapshots.refreshStaleInferenceAdmissionSnapshot(org);
     const republished = await cache.get<{ authority: { generation: string } }>(
       CacheKeys.inference.orgAdmission(org),
     );

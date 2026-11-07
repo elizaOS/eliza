@@ -265,6 +265,9 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     authParams: {
       access_type: "offline",
       prompt: "consent",
+      // Incremental authorization: a later consent (another capability, or
+      // the app's native grant) keeps every scope granted before it.
+      include_granted_scopes: "true",
     },
     storage: "platform_credentials",
     useGenericRoutes: true,

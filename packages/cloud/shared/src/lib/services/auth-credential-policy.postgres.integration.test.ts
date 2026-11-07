@@ -20,6 +20,7 @@ let cli: typeof import("./cli-auth-session-completion");
 let tables: typeof import("../../db/schemas");
 let provenance: typeof import("../../db/mobile-app-auth-credential-policy");
 let decrypt: typeof import("../../db/crypto/api-keys");
+let service: typeof import("./mobile-app-auth");
 const organizationId = randomUUID();
 const userId = randomUUID();
 const appId = randomUUID();
@@ -160,6 +161,56 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
   );
 }
 
+// A grant whose code, state, verifier and secret are real, so the service's
+// own `acknowledgeMobileAppAuthCredential` can check the proof.
+async function seedProvableGrant() {
+  const seeded = await seedGrant();
+  const hex = () => randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
+  const proof = {
+    code: `emac_${hex()}`,
+    codeVerifier: `verifier-${hex()}`,
+    state: `state-${hex()}`,
+    credentialId: seeded.credential.id!,
+    secret: `eliza_mobile_${hex()}`,
+  };
+  const binding: MobileAppAuthGrantBinding = {
+    ...seeded.binding,
+    codeHash: service.sha256Hex(proof.code),
+    stateHash: service.sha256Hex(proof.state),
+    codeChallenge: service.deriveMobileAppAuthS256Challenge(proof.codeVerifier),
+  };
+  await setup.query(
+    "UPDATE mobile_app_auth_grants SET code_hash=$2,state_hash=$3,code_challenge=$4 WHERE id=$1",
+    [seeded.id, binding.codeHash, binding.stateHash, binding.codeChallenge],
+  );
+  const credential = { ...seeded.credential, key_hash: service.sha256Hex(proof.secret) };
+  const ack = (now: Date) =>
+    run(() =>
+      service.acknowledgeMobileAppAuthCredential({
+        registration: {
+          appId,
+          clientId: binding.clientId,
+          environment: binding.environment,
+          redirectUri: binding.redirectUri,
+          scopes: service.MOBILE_APP_AUTH_SCOPES,
+          credentialTtlSeconds: 3600,
+        },
+        binding: {
+          clientId: binding.clientId,
+          environment: binding.environment,
+          redirectUri: binding.redirectUri,
+          state: proof.state,
+        },
+        code: proof.code,
+        codeVerifier: proof.codeVerifier,
+        credentialId: proof.credentialId,
+        secret: proof.secret,
+        now,
+      }),
+    );
+  return { ...seeded, binding, credential, ack };
+}
+
 (url ? describe : describe.skip)(
   "canonical credential writers with enrolled inference policy",
   () => {
@@ -239,6 +290,7 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       cli = await import("./cli-auth-session-completion");
       provenance = await import("../../db/mobile-app-auth-credential-policy");
       decrypt = await import("../../db/crypto/api-keys");
+      service = await import("./mobile-app-auth");
     }, 60_000);
 
     beforeEach(async () => {
@@ -301,6 +353,29 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       expect(keys.rows).toEqual([{ id: input.credential.id, is_active: true }]);
       expect(begins).toHaveLength(3);
       expect(commits).toHaveLength(3);
+    }, 30_000);
+
+    test("a landed acknowledgement replays after the code's acknowledgeBy; one that never landed is refused", async () => {
+      // The host keeps `acknowledgeBy` (the code's expiry) with its receipt and
+      // resends the same proof when an ack reply was lost.
+      const landed = await seedProvableGrant();
+      await exchange(landed);
+      const acknowledgeBy = new Date(landed.now.getTime() + 60_000);
+      const first = await landed.ack(landed.now);
+      expect(first.status).toBe("acknowledged");
+      const late = new Date(acknowledgeBy.getTime() + 1_000);
+      const replay = await landed.ack(late);
+      expect(replay).toEqual(first);
+
+      const lost = await seedProvableGrant();
+      await exchange(lost);
+      await expect(lost.ack(late)).rejects.toMatchObject({
+        protocolCode: "authorization_code_expired",
+      });
+      const keys = await setup.query("SELECT id,is_active,deleted_at FROM api_keys ORDER BY id");
+      const byId = new Map(keys.rows.map((row) => [row.id, row]));
+      expect(byId.get(landed.credential.id)).toMatchObject({ is_active: true, deleted_at: null });
+      expect(byId.get(lost.credential.id)?.is_active).toBe(false);
     }, 30_000);
 
     test("expiry cleanup fences every organization before tombstoning inactive and acknowledged credentials", async () => {

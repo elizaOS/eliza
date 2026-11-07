@@ -93,7 +93,7 @@ async function bundle(): Promise<string> {
 }
 
 export async function createRatePolicyWorker(
-  flags: { ratePolicy?: boolean; strongRevocation?: boolean } = {},
+  flags: { ratePolicy?: boolean } = {},
 ): Promise<Miniflare> {
   bundled ??= bundle();
   return new Miniflare({
@@ -109,9 +109,6 @@ export async function createRatePolicyWorker(
     },
     bindings: {
       INFERENCE_RATE_POLICY_ADMISSION: String(flags.ratePolicy ?? true),
-      INFERENCE_STRONG_REVOCATION_ENABLED: String(
-        flags.strongRevocation ?? true,
-      ),
       INFERENCE_FUNDED_BUDGET_ADMISSION: "false",
     },
   });

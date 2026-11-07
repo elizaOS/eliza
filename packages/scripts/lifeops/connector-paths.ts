@@ -305,7 +305,7 @@ export const CONNECTOR_PATHS = [
     },
     availability: { type: "always" },
     notes:
-      "OWNER and AGENT are separate real Google accounts (owner-agent matrix doc §3); the role rides oauth start metadata (packages/core/src/connectors/oauth-role.ts), not env names.",
+      "OWNER and AGENT are separate real Google accounts (owner-agent matrix doc §3); the role rides oauth start metadata (requestedRole), not env names.",
   }),
 
   // --- Telegram -----------------------------------------------------------------

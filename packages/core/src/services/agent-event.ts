@@ -17,9 +17,7 @@ import type {
 	HeartbeatEventPayload,
 	HeartbeatIndicatorType,
 	HeartbeatStatus,
-	MemoryEventData,
 	MessageEventData,
-	ProviderEventData,
 } from "../types/agent-event.ts";
 import type { UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.js";
@@ -142,14 +140,6 @@ export class AgentEventService extends Service {
 	clearRunContext(runId: string): void {
 		this.runContextById.delete(runId);
 		this.seqByRun.delete(runId);
-	}
-
-	/**
-	 * Clear all run contexts (useful for testing)
-	 */
-	clearAllRunContexts(): void {
-		this.runContextById.clear();
-		this.seqByRun.clear();
 	}
 
 	/**
@@ -314,72 +304,6 @@ export class AgentEventService extends Service {
 	}
 
 	/**
-	 * Helper: Emit a tool event
-	 */
-	emitTool(
-		runId: string,
-		data: {
-			type: "tool_call" | "tool_result" | "tool_error";
-			toolName: string;
-			input?: Record<string, unknown>;
-			output?: Record<string, unknown>;
-			duration?: number;
-			error?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "tool",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Helper: Emit an assistant event
-	 */
-	emitAssistant(
-		runId: string,
-		data: {
-			type: "message" | "thought" | "plan" | "reflection";
-			content: string;
-			role?: "assistant" | "user" | "system";
-			tokens?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "assistant",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Helper: Emit an error event
-	 */
-	emitError(
-		runId: string,
-		data: {
-			type: "error" | "warning";
-			code?: string;
-			message: string;
-			stack?: string;
-			recoverable?: boolean;
-		},
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "error",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
 	 * Helper: Emit a message event (received, sent, queued, failed)
 	 */
 	emitMessage(
@@ -411,29 +335,6 @@ export class AgentEventService extends Service {
 		sessionKey?: string,
 	): void {
 		this.emitMessage(runId, { type: "received", ...params }, sessionKey);
-	}
-
-	/**
-	 * Convenience: Emit message sent event
-	 */
-	emitMessageSent(
-		runId: string,
-		params: {
-			messageId?: UUID;
-			channel?: string;
-			userId?: UUID;
-			roomId?: UUID;
-			content?: string;
-			hasAttachments?: boolean;
-			deliveredAt?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMessage(
-			runId,
-			{ type: "sent", deliveredAt: Date.now(), ...params },
-			sessionKey,
-		);
 	}
 
 	/**
@@ -483,27 +384,6 @@ export class AgentEventService extends Service {
 	}
 
 	/**
-	 * Convenience: Emit action error event
-	 */
-	emitActionError(
-		runId: string,
-		params: {
-			actionName: string;
-			handler?: string;
-			error: string;
-			duration?: number;
-			memoryId?: UUID;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitAction(
-			runId,
-			{ type: "error", success: false, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
 	 * Helper: Emit an evaluator event (start, complete, error, skipped)
 	 */
 	emitEvaluator(
@@ -548,125 +428,6 @@ export class AgentEventService extends Service {
 		sessionKey?: string,
 	): void {
 		this.emitEvaluator(runId, { type: "complete", ...params }, sessionKey);
-	}
-
-	/**
-	 * Helper: Emit a provider event (start, complete, error, cached)
-	 */
-	emitProvider(
-		runId: string,
-		data: ProviderEventData,
-		sessionKey?: string,
-	): void {
-		this.emit({
-			runId,
-			stream: "provider",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Convenience: Emit provider start event
-	 */
-	emitProviderStart(
-		runId: string,
-		params: {
-			providerName: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitProvider(runId, { type: "start", ...params }, sessionKey);
-	}
-
-	/**
-	 * Convenience: Emit provider complete event
-	 */
-	emitProviderComplete(
-		runId: string,
-		params: {
-			providerName: string;
-			data?: unknown;
-			duration?: number;
-			fromCache?: boolean;
-			tokens?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitProvider(runId, { type: "complete", ...params }, sessionKey);
-	}
-
-	/**
-	 * Helper: Emit a memory event (create, update, delete, search, retrieved)
-	 */
-	emitMemory(runId: string, data: MemoryEventData, sessionKey?: string): void {
-		this.emit({
-			runId,
-			stream: "memory",
-			data,
-			sessionKey,
-		});
-	}
-
-	/**
-	 * Convenience: Emit memory create event
-	 */
-	emitMemoryCreate(
-		runId: string,
-		params: {
-			memoryId: UUID;
-			tableName?: string;
-			roomId?: UUID;
-			preview?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "create", success: true, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
-	 * Convenience: Emit memory search event
-	 */
-	emitMemorySearch(
-		runId: string,
-		params: {
-			tableName?: string;
-			roomId?: UUID;
-			count?: number;
-			duration?: number;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "search", success: true, ...params },
-			sessionKey,
-		);
-	}
-
-	/**
-	 * Convenience: Emit memory retrieved event
-	 */
-	emitMemoryRetrieved(
-		runId: string,
-		params: {
-			memoryId?: UUID;
-			tableName?: string;
-			roomId?: UUID;
-			count?: number;
-			preview?: string;
-		},
-		sessionKey?: string,
-	): void {
-		this.emitMemory(
-			runId,
-			{ type: "retrieved", success: true, ...params },
-			sessionKey,
-		);
 	}
 }
 

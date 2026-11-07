@@ -45,6 +45,33 @@ public final class PhotoLibraryAccessTest {
     for (int sdk = 29; sdk <= 36; sdk++)
       check(PhotoLibraryAccess.ALIASES.containsAll(Arrays.asList(PhotoLibraryAccess.permissionAliases(sdk))));
 
+    // An images-only host asks only for READ_MEDIA_IMAGES from Android 13, and for nothing before.
+    PhotoLibraryAccess.Profile images = PhotoLibraryAccess.Profile.IMAGES;
+    for (int sdk = 29; sdk <= 32; sdk++)
+      check(PhotoLibraryAccess.permissionAliases(sdk, images).length == 0);
+    for (int sdk = 33; sdk <= 36; sdk++)
+      check(Arrays.equals(PhotoLibraryAccess.permissionAliases(sdk, images), new String[] {"libraryImages"}));
+    check(PhotoLibraryAccess.aliases(images).equals(List.of("libraryImages")));
+    check(PhotoLibraryAccess.aliases(PhotoLibraryAccess.Profile.LIBRARY).equals(PhotoLibraryAccess.ALIASES));
+    // Before 13 it reads only its own photos, even with legacy storage granted; videos never.
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 32, true, false, false, false),
+        new String[] {"owned", "owned", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 34, false, true, true, true),
+        new String[] {"full", "full", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(images, 34, false, false, true, true),
+        new String[] {"denied", "denied", "denied"}));
+    check(PhotoLibraryAccess.readable(access("owned", "owned", "denied")));
+    // The full library profile keeps its answers.
+    PhotoLibraryAccess.Profile library = PhotoLibraryAccess.Profile.LIBRARY;
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 32, true, false, false, false),
+        new String[] {"full", "full", "full"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 32, false, true, true, true),
+        new String[] {"denied", "denied", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 33, false, true, false, true),
+        new String[] {"partial", "full", "denied"}));
+    check(Arrays.equals(PhotoLibraryAccess.access(library, 34, false, false, false, true),
+        new String[] {"selected", "selected", "selected"}));
+
     // Scope: full, partial (one kind), Android 14 selected and denied are reported per kind.
     JSONObject full = PhotoLibraryAccess.scope(access("full", "full", "full"), 36, false, "v1", new JSONObject());
     check(full.getString("scope").equals("full") && full.getBoolean("images") && full.getBoolean("videos"));

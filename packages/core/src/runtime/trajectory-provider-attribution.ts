@@ -35,8 +35,9 @@ interface ProviderTextSnapshot {
 	position: number;
 }
 
-export function sha256Text(text: string): string {
-	return createHash("sha256").update(text).digest("hex");
+/** Lowercase hex SHA-256 of UTF-8 text or raw bytes. */
+export function sha256Hex(value: string | Uint8Array): string {
+	return createHash("sha256").update(value).digest("hex");
 }
 
 /**
@@ -131,14 +132,10 @@ function providerSnapshotsFromState(state: State | undefined): {
 			continue;
 		}
 		const text = (provider as { text?: unknown }).text;
-		if (typeof text !== "string" || text.trim() === "") {
-			continue;
-		}
-		snapshots.push({
-			providerName,
-			text: text.trim(),
-			position: snapshots.length,
-		});
+		if (typeof text !== "string") continue;
+		const trimmed = text.trim();
+		if (trimmed === "") continue;
+		snapshots.push({ providerName, text: trimmed, position: snapshots.length });
 	}
 	return { providerOrder, snapshots };
 }
@@ -192,7 +189,7 @@ export function buildProviderAttributionsFromState(args: {
 		cursor = span.nextCursor;
 		return {
 			providerName: snapshot.providerName,
-			sha256: sha256Text(snapshot.text),
+			sha256: sha256Hex(snapshot.text),
 			tokenCount: estimateTrajectoryTextTokens(snapshot.text),
 			tokenCountEstimated: true as const,
 			position: snapshot.position,
@@ -202,53 +199,4 @@ export function buildProviderAttributionsFromState(args: {
 		};
 	});
 	return { providerOrder, providerAttributions };
-}
-
-/**
- * Defensible input-cost share for provider rollups. Allocates only the
- * prompt/input fraction of `costUsd`, then only the fraction of the prompt
- * represented by the provider estimate. Returns 0 when the call has no finite
- * cost or no prompt tokens to attribute.
- */
-export function estimatedProviderInputCostShareUsd(args: {
-	costUsd: number | undefined;
-	promptTokens: number | undefined;
-	completionTokens: number | undefined;
-	providerTokenEstimate: number;
-	totalProviderTokenEstimates: number;
-}): number {
-	const cost = args.costUsd;
-	if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
-		return 0;
-	}
-	const totalEstimates = Number.isFinite(args.totalProviderTokenEstimates)
-		? Math.max(0, args.totalProviderTokenEstimates)
-		: 0;
-	const providerEstimate = Number.isFinite(args.providerTokenEstimate)
-		? Math.max(0, args.providerTokenEstimate)
-		: 0;
-	if (!(totalEstimates > 0) || !(providerEstimate > 0)) {
-		return 0;
-	}
-	const promptTokens =
-		typeof args.promptTokens === "number" &&
-		Number.isFinite(args.promptTokens) &&
-		args.promptTokens > 0
-			? args.promptTokens
-			: undefined;
-	const completionTokens =
-		typeof args.completionTokens === "number" &&
-		Number.isFinite(args.completionTokens) &&
-		args.completionTokens > 0
-			? args.completionTokens
-			: 0;
-	// Without a prompt-token observation we cannot separate input spend from
-	// completion spend; refuse to allocate the full call cost across providers.
-	if (promptTokens === undefined) {
-		return 0;
-	}
-	const totalTokens = promptTokens + completionTokens;
-	const inputShare = totalTokens > 0 ? promptTokens / totalTokens : 1;
-	const attributionDenominator = Math.max(promptTokens, totalEstimates);
-	return cost * inputShare * (providerEstimate / attributionDenominator);
 }

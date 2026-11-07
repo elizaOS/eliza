@@ -28,7 +28,6 @@ export type ApiErrorCode =
   | "storage_quota_exceeded"
   | "creator_monetization_retired"
   | "affiliate_payout_exceeds_payable"
-  | "auth_cache_warming"
   | "service_unavailable"
   | "internal_error";
 
@@ -320,6 +319,17 @@ export function failureResponse(c: Context, error: unknown): Response {
         code: inferCodeFromStatus(error.status),
       },
       error.status as 400,
+    );
+  }
+  if (error instanceof Error && error.name === "InferenceCredentialRevocationUnavailableError") {
+    return c.json(
+      {
+        success: false,
+        error: "Authorization service is temporarily unavailable",
+        code: "service_unavailable" as const,
+      },
+      503,
+      { "Retry-After": "1" },
     );
   }
   const lifecycleConstraint = findAutoTopUpLifecycleGuardConstraint(error);

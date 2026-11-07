@@ -5,6 +5,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createNativeCloudAuth as createEnrollment } from "../../../auth/native-host/cloud-enrollment.mjs";
 import {
   createCloudRoutes,
   createFileCredentialStore,
@@ -478,7 +479,13 @@ for (const [checkoutPath, requestBody] of [
         await started;
         const disconnected = await post(disconnectPath, {});
         assert.equal(disconnected.status, 200);
-        assert.deepEqual(cancellations, [{ disconnect: true }]);
+        // Logout disconnects; a sign-in cancel drops only the pending sign-in.
+        assert.deepEqual(
+          cancellations,
+          disconnectPath === "/cloud/logout"
+            ? [{ disconnect: true }]
+            : [undefined],
+        );
         releaseAuthority();
         const result = await pending;
         assert.equal(result.status, 409);
@@ -676,6 +683,91 @@ test("native Google sign-in relays only the return address to the private attemp
   );
 });
 
+test("a host-only sign-in refuses browser, Google link and generic Google routes before any work", async (t) => {
+  const handled = [],
+    requests = [];
+  const enrollment = {
+    handle: async (operation, input) => {
+      handled.push([operation, input]);
+      return { status: "ok" };
+    },
+    cancel: async () => ({ status: "cancelled" }),
+  };
+  const routes = createCloudRoutes({
+    browserSignIn: false,
+    accountGoogleLink: false,
+    googleSignInRoutes: false,
+    hostPolicy: {
+      ...policy,
+      messages: {
+        browserSignInUnavailable: "Sign in with a code in the app.",
+        accountGoogleLinkUnavailable: "Sign in with a code in the app.",
+        googleSignInRoutesUnavailable: "Choose Continue with Google.",
+      },
+      createNativeCloudAuth: () => enrollment,
+    },
+    pendingCredentialStore: { read: async () => null },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url) => {
+      requests.push(url);
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, value) =>
+    fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  const code = "Sign in with a code in the app.",
+    google = "Choose Continue with Google.";
+  const callbackUrl = "https://app.example/return#code=c&state=s";
+  for (const [response, error] of [
+    [await post("/cloud/login", {}), code],
+    [
+      await fetch(
+        `${base}/cloud/login/status?sessionId=12345678-1234-1234-1234-123456789012`,
+      ),
+      code,
+    ],
+    [await post("/cloud/account/methods/google/start", {}), code],
+    [await post("/cloud/account/methods/google/return", { callbackUrl }), code],
+    [await post("/cloud/account/methods/google/status", {}), code],
+    [await post("/cloud/account/methods/google/complete", {}), code],
+    [await post("/cloud/account/methods/google/cancel", {}), code],
+    [await post("/cloud/native/start", { method: "google" }), google],
+    [await post("/cloud/native/google/return", { callbackUrl }), google],
+  ]) {
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error,
+      code: "internal_sign_in_only",
+    });
+  }
+  assert.deepEqual(handled, []);
+  assert.deepEqual(requests, []);
+  // Code sign-in and the other account methods are still served.
+  assert.equal(
+    (await post("/cloud/native/start", { email: "a@example.test" })).status,
+    200,
+  );
+  assert.equal((await post("/cloud/account/methods", {})).status, 200);
+  assert.deepEqual(handled, [
+    ["start", { email: "a@example.test" }],
+    ["account-methods", {}],
+  ]);
+});
+
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];
   let cloudSaysCreated;
@@ -830,6 +922,111 @@ test("a saved pending sign-in that becomes unparseable reports account recovery,
   }
 });
 
+test("a host revocation port records a refused stored key before it is cleared", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "cloud-revocation-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = createFileCredentialStore(join(directory, "credential"));
+  const ledger = { revoked: false, localDataPending: false, seen: [] };
+  let failRecord = false;
+  const users = new Set(["key-a"]),
+    requests = [];
+  let refuseLimits = false,
+    holdUser = null,
+    userAsked = () => {};
+  const routes = createCloudRoutes({
+    hostPolicy: policy,
+    credentialStore: store,
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    credentialRevocation: {
+      onRevoked: async ({ key }) => {
+        // Inside the critical section: the refused key is still stored.
+        ledger.seen.push([key, await store.read()]);
+        if (failRecord) throw Error("Ledger unavailable");
+        Object.assign(ledger, { revoked: true, localDataPending: true });
+      },
+      status: () => ledger,
+    },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname,
+        key = init.headers.Authorization?.slice("Bearer ".length);
+      requests.push(path);
+      if (path === "/api/v1/user") {
+        userAsked();
+        await holdUser;
+        return users.has(key)
+          ? Response.json({ id: "user" })
+          : Response.json({}, { status: 401 });
+      }
+      if (path === "/api/v1/billing/limits")
+        return Response.json({}, { status: refuseLimits ? 401 : 200 });
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const access = async () =>
+    (await fetch(`${base}/cloud/account/access`)).json();
+  await store.write("key-a");
+  assert.deepEqual(await access(), { state: "active" });
+  // A billing refusal clears the key, as before, but names no revocation.
+  refuseLimits = true;
+  assert.deepEqual(await access(), { state: "signed_out" });
+  assert.equal(await store.read(), null);
+  refuseLimits = false;
+  // A check that her own sign-out overtakes is not a revocation.
+  await store.write("key-a");
+  users.clear();
+  let release;
+  holdUser = new Promise((resolve) => {
+    release = resolve;
+  });
+  const asking = new Promise((resolve) => {
+    userAsked = resolve;
+  });
+  const overtaken = fetch(`${base}/cloud/account/access`);
+  await asking;
+  userAsked = () => {};
+  const logout = await fetch(`${base}/cloud/logout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(logout.status, 200);
+  release();
+  holdUser = null;
+  assert.equal((await overtaken).status, 409);
+  assert.deepEqual(ledger.seen, []);
+  // Signed out elsewhere: the host records it while the key is still stored.
+  await store.write("key-a");
+  failRecord = true;
+  assert.deepEqual(await access(), { state: "unavailable" });
+  assert.equal(await store.read(), "key-a", "Unrecorded: the key stays");
+  failRecord = false;
+  const revoked = {
+    state: "signed_out",
+    revoked: true,
+    localDataPending: true,
+  };
+  assert.deepEqual(await access(), revoked);
+  assert.deepEqual(ledger.seen, [
+    ["key-a", "key-a"],
+    ["key-a", "key-a"],
+  ]);
+  assert.equal(await store.read(), null);
+  // Later answers still say why, without asking Cloud again.
+  const asked = requests.length;
+  assert.deepEqual(await access(), revoked);
+  assert.equal(requests.length, asked);
+});
+
 test("a JSON-null saved pending sign-in stays benign across cloud routes", async () => {
   const routes = createCloudRoutes({
     hostPolicy: policy,
@@ -865,6 +1062,252 @@ test("a JSON-null saved pending sign-in stays benign across cloud routes", async
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// A loopback stand-in for Cloud's redeem and account routes. `answer` decides
+// each redeem reply; it may destroy the socket to lose the answer in transit.
+async function subscriptionCloud(t, answer) {
+  const redeems = [];
+  const cloud = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const reply = (status, value, headers = {}) => {
+      res.writeHead(status, { "Content-Type": "application/json", ...headers });
+      res.end(typeof value === "string" ? value : JSON.stringify(value));
+    };
+    if (req.url === "/api/v1/user") return reply(200, { data: { id: "user" } });
+    if (req.url === "/api/v1/billing/limits")
+      return reply(200, {
+        data: {
+          v2: {
+            snapshotCompletedAt: new Date().toISOString(),
+            grant: {
+              status: "available",
+              value: {
+                grantId: "grant-1",
+                planKey: "annual_team",
+                startsAt: "2026-01-01T00:00:00.000Z",
+                endsAt: "2099-01-01T00:00:00.000Z",
+                paidPlanTakesPrecedence: false,
+                allowance: { status: "unavailable" },
+              },
+            },
+          },
+        },
+      });
+    if (req.method === "POST" && req.url === "/api/v1/subscription/redeem") {
+      redeems.push({
+        authorization: req.headers.authorization,
+        body: JSON.parse(Buffer.concat(chunks).toString()),
+      });
+      return answer({ req, res, reply, attempt: redeems.length });
+    }
+    reply(404, { error: "not found" });
+  });
+  cloud.listen(0, "127.0.0.1");
+  await once(cloud, "listening");
+  t.after(() => {
+    cloud.closeAllConnections();
+    cloud.close();
+  });
+  const local = `http://127.0.0.1:${cloud.address().port}`;
+  return {
+    redeems,
+    fetchImpl: (url, init) =>
+      fetch(url.replace("https://api.eliza.app", local), init),
+  };
+}
+async function serve(t, routes) {
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return (value, path = "/cloud/account/subscription/redeem") =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof value === "string" ? value : JSON.stringify(value),
+    });
+}
+const redeemed = (grant = {}, replayed = false) => ({
+  success: true,
+  replayed,
+  grant: {
+    id: "grant-1",
+    planKey: "annual_team",
+    startsAt: "2026-01-01T00:00:00.000Z",
+    endsAt: "2099-01-01T00:00:00.000Z",
+    revoked: false,
+    paidPlanTakesPrecedence: false,
+    ...grant,
+  },
+});
+
+test("subscription code redemption and the snapshot grant stay off unless the host opts in", async (t) => {
+  const seen = [];
+  const cloud = await subscriptionCloud(t, ({ reply }) =>
+    reply(200, redeemed()),
+  );
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      projectAccountAccess: (...args) => {
+        seen.push(args.length);
+        return { state: "active" };
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: cloud.fetchImpl,
+  });
+  const post = await serve(t, routes);
+  assert.equal((await post({ code: "ABCD-EFGH-JKMN-PQRS" })).status, 404);
+  assert.equal(cloud.redeems.length, 0);
+  await routes.accountAccess();
+  assert.deepEqual(seen, [2]);
+});
+
+test("a host that opts in redeems a code once, replays a lost answer and reads the grant", async (t) => {
+  let pending = null,
+    answer = ({ res, attempt }) =>
+      attempt === 1
+        ? res.destroy()
+        : res.writeHead(200).end(JSON.stringify(redeemed()));
+  const cloud = await subscriptionCloud(t, (input) => answer(input));
+  const projected = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      subscriptionCodes: true,
+      messages: {
+        subscriptionCodeInvalid: "Host words: invalid",
+        subscriptionCodePaidPlanActive: "Host words: paid plan",
+        subscriptionCodeEnded: "Host words: ended",
+        subscriptionCodeSignedOut: "Host words: signed out",
+      },
+      projectAccountAccess: (_user, _snapshot, context) => {
+        projected.push(context);
+        return { state: "active" };
+      },
+    },
+    pendingCredentialStore: { read: async () => pending },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: cloud.fetchImpl,
+  });
+  const post = await serve(t, routes);
+
+  // The first answer is lost; one replay with the same key gets the grant.
+  const first = await post({ code: " abcd efgh jkmn pqrs " });
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), {
+    replayed: false,
+    grant: {
+      planKey: "annual_team",
+      startsAt: "2026-01-01T00:00:00.000Z",
+      endsAt: "2099-01-01T00:00:00.000Z",
+      paidPlanTakesPrecedence: false,
+    },
+  });
+  assert.equal(cloud.redeems.length, 2);
+  assert.deepEqual(cloud.redeems[0], cloud.redeems[1]);
+  assert.equal(
+    cloud.redeems[0].authorization,
+    "Bearer private-test-credential",
+  );
+  assert.equal(cloud.redeems[0].body.code, "ABCDEFGHJKMNPQRS");
+  assert.match(cloud.redeems[0].body.idempotencyKey, /^redeem:[0-9a-f]{40}$/);
+
+  // Cloud's refusals become typed codes with the host's words, never Cloud's.
+  for (const [reply, status, code, error] of [
+    [
+      [400, { code: "invalid_subscription_code", error: "Cloud words" }],
+      400,
+      "invalid",
+      "Host words: invalid",
+    ],
+    [
+      [409, { code: "subscription_grant_paid_plan_active" }],
+      409,
+      "paid-plan-active",
+      "Host words: paid plan",
+    ],
+    [
+      [409, { code: "subscription_grant_already_redeemed" }],
+      409,
+      "already-redeemed",
+    ],
+    [[403, { code: "access_denied" }], 403, "account"],
+    [[500, { code: "internal_error" }], 503, "unavailable"],
+    [
+      [200, redeemed({ revoked: true }, true)],
+      409,
+      "ended",
+      "Host words: ended",
+    ],
+    [
+      [200, redeemed({ endsAt: "2026-02-01T00:00:00.000Z" }, true)],
+      409,
+      "ended",
+    ],
+    [[200, redeemed({ planKey: "plus_monthly" })], 503, "unavailable"],
+    [[200, "x".repeat(70000)], 503, "unavailable"],
+  ]) {
+    answer = ({ reply: send }) => send(...reply);
+    const response = await post({ code: "ABCDEFGHJKMNPQRS" });
+    const value = await response.json();
+    assert.deepEqual([response.status, value.code], [status, code], code);
+    if (error) assert.equal(value.error, error);
+    assert.doesNotMatch(JSON.stringify(value), /Cloud words|ABCD/);
+  }
+  answer = ({ reply }) =>
+    reply(429, { code: "rate_limited" }, { "Retry-After": "90" });
+  const limited = await post({ code: "ABCDEFGHJKMNPQRS" });
+  assert.deepEqual(
+    [limited.status, (await limited.json()).retryAfter],
+    [429, 90],
+  );
+
+  // A body that cannot be a code, or a pending disconnect, never reaches Cloud.
+  const before = cloud.redeems.length;
+  for (const value of [
+    { code: "short" },
+    { code: "ABCDEFGHJKMNPQRS", plan: "x" },
+    "x".repeat(5000),
+  ]) {
+    const response = await post(value);
+    assert.deepEqual(
+      [response.status, (await response.json()).code],
+      [400, "invalid"],
+    );
+  }
+  pending = JSON.stringify({ kind: "revocation" });
+  const signedOut = await post({ code: "ABCDEFGHJKMNPQRS" });
+  assert.deepEqual(
+    [signedOut.status, await signedOut.json()],
+    [401, { error: "Host words: signed out", code: "signed-out" }],
+  );
+  assert.equal(cloud.redeems.length, before);
+  pending = null;
+
+  // The account check gives the host the snapshot's grant.
+  await routes.accountAccess();
+  assert.deepEqual(projected.at(-1), {
+    grant: {
+      status: "active",
+      planKey: "annual_team",
+      startsAt: "2026-01-01T00:00:00.000Z",
+      endsAt: "2099-01-01T00:00:00.000Z",
+      paidPlanTakesPrecedence: false,
+      allowance: null,
+    },
+  });
 });
 
 test("native speech rendering validates context and confirms exact provider speed", async () => {
@@ -1004,9 +1447,11 @@ function googleHost(t, google, extraPolicy = {}) {
             grantedScopes: google.connections[named] ?? [],
           });
         return Response.json({
-          connected: google.connectionId !== null,
+          connected: google.connectionId !== null && !google.reason,
           configured: true,
-          reason: google.connectionId ? "connected" : "disconnected",
+          reason:
+            google.reason ??
+            (google.connectionId ? "connected" : "disconnected"),
           identity: { email: "owner@example.test" },
           connectionId: google.connectionId,
           grantedCapabilities: ["google.gmail.triage"],
@@ -1030,6 +1475,20 @@ function googleHost(t, google, extraPolicy = {}) {
         return Response.json({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
         });
+      if (path === "/api/v1/eliza/google/gmail/inbox-v1/capabilities")
+        return google.capabilitiesStatus
+          ? new Response(null, { status: google.capabilitiesStatus })
+          : Response.json(
+              google.capabilities ?? {
+                version: 1,
+                attachmentPolicy: {
+                  mimeTypes: ["application/pdf", "image/png"],
+                  maximumBytes: 5242880,
+                  maximumOutgoing: 10,
+                  maximumTotalBytes: 5242880,
+                },
+              },
+            );
       if (path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/operations")) {
         if (google.operationResponse) return google.operationResponse(path);
         if (google.operationStatus)
@@ -1046,7 +1505,7 @@ function googleHost(t, google, extraPolicy = {}) {
             reviewDigest: "a".repeat(64),
             state: path.endsWith("/dispatch") ? "succeeded" : "prepared",
             providerResult: path.endsWith("/dispatch")
-              ? { messageId: "m1" }
+              ? { messageId: "m1", labelIds: ["UNREAD"], historyId: "4243" }
               : null,
             rejectionCode: null,
             createdAt: "2026-10-30T00:00:00Z",
@@ -1144,6 +1603,49 @@ test("Gmail status names its connection and whether message bodies can be read",
   assert.equal(disconnected.connectionId, null);
   assert.equal(disconnected.canReadMessages, false);
   assert.equal(calls.length, 9);
+});
+
+test("Gmail status reports the host policy and its verdict on each grant", async (t) => {
+  const MODIFY = "https://www.googleapis.com/auth/gmail.modify";
+  const SEND = "https://www.googleapis.com/auth/gmail.send";
+  // [scopes, verdict on a read-only host, verdict on an owner-writes host]
+  for (const [scopes, readOnlyHost, writesHost] of [
+    [[READ_SCOPE, "openid"], "read-only", "read-only"],
+    [[READ_SCOPE, MODIFY, "email"], "too-broad", "part-write"],
+    [[READ_SCOPE, SEND], "too-broad", "part-write"],
+    [[READ_SCOPE, MODIFY, SEND, "openid"], "too-broad", "write"],
+    [[READ_SCOPE, "https://mail.google.com/"], "too-broad", "too-broad"],
+    [[READ_SCOPE, METADATA_SCOPE], "too-broad", "too-broad"],
+    [[READ_SCOPE, "not a scope"], "too-broad", "too-broad"],
+    [[METADATA_SCOPE, "openid"], "no-read", "no-read"],
+    [["openid", "email"], "no-read", "no-read"],
+    [[MODIFY, SEND], "too-broad", "no-read"],
+  ]) {
+    for (const [ownerWrites, grant] of [
+      [false, readOnlyHost],
+      [true, writesHost],
+    ]) {
+      const google = { connectionId: GRANT_A, scopes };
+      const { get } = googleHost(t, google, { gmailOwnerWrites: ownerWrites });
+      const status = await (await get("/gmail/status")).json();
+      const label = `${scopes.join(" ")} ownerWrites=${ownerWrites}`;
+      assert.equal(status.ownerWrites, ownerWrites, label);
+      assert.equal(status.grant, grant, label);
+      assert.equal(
+        status.canReadMessages,
+        ["read-only", "part-write", "write"].includes(grant),
+        label,
+      );
+      // Not connected: the policy is still reported, and nothing reads.
+      google.connectionId = null;
+      const disconnected = await (await get("/gmail/status")).json();
+      assert.deepEqual(
+        [disconnected.ownerWrites, disconnected.grant],
+        [ownerWrites, "no-read"],
+        label,
+      );
+    }
+  }
 });
 
 test("a Gmail grant wider than read-only is never read, by task reads or by list and read", async (t) => {
@@ -1344,11 +1846,21 @@ test("task reads report typed reasons and retry only transient failures", async 
       code: "cloud_sign_in_required",
     });
   }
-  // Cloud's Google connector answers 409 when the Google token needs a
-  // reconnect. A fresh status check names the case.
+  // Cloud's Google connector answers 409 when the Google token cannot be
+  // refreshed. A fresh status check names the case: a token that needs a
+  // reconnect, or an outage while the same grant is still connected.
   google.searchFailures = [409];
+  google.afterFailure = () => {
+    google.reason = "needs_reauth";
+  };
   await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
     code: "reauth_required",
+  });
+  google.reason = undefined;
+  google.searchFailures = [409];
+  google.afterFailure = undefined;
+  await assert.rejects(port.searchGmailMessagesPage(search(GRANT_A)), {
+    code: "unavailable",
   });
   google.searchFailures = [409];
   google.afterFailure = () => {
@@ -2003,6 +2515,7 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(prepared.receipt.state, "prepared");
+  assert.equal(prepared.receipt.mailbox, null);
   assert.deepEqual(prepared.review, { kind: "archive", messageId: "m1" });
   const prepare = calls.find((c) => c.url.endsWith("/inbox-v1/operations"));
   assert.equal(prepare.init.method, "POST");
@@ -2017,6 +2530,13 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     proposal: archive,
   });
   assert.equal(done.receipt.state, "succeeded");
+  // The labels the change left, reduced as a read reduces them.
+  assert.deepEqual(done.receipt.mailbox, {
+    historyId: "4243",
+    unread: true,
+    inInbox: false,
+    inTrash: false,
+  });
   assert.ok(
     calls.some((c) =>
       c.url.endsWith(`/inbox-v1/operations/${OPERATION}/dispatch`),
@@ -2076,16 +2596,258 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     { code: "review_changed", status: 409 },
   );
   google.operationStatus = undefined;
+  // Cloud's attachment limits, read for the same current grant.
+  assert.deepEqual(await writer.capabilities(), {
+    version: 1,
+    accountId: GRANT_A,
+    attachmentPolicy: {
+      mimeTypes: ["application/pdf", "image/png"],
+      maximumBytes: 5242880,
+      maximumOutgoing: 10,
+      maximumTotalBytes: 5242880,
+    },
+  });
+  assert.ok(
+    calls.some((c) =>
+      c.url.endsWith(`/inbox-v1/capabilities?grantId=${GRANT_A}`),
+    ),
+  );
+  // A server without the policy is refused, never filled with copied limits.
+  google.capabilities = { version: 1 };
+  await assert.rejects(writer.capabilities(), { status: 502 });
+  google.capabilities = undefined;
+  // A failed Google token read is an outage, not a changed review.
+  google.capabilitiesStatus = 409;
+  await assert.rejects(writer.capabilities(), {
+    code: "unavailable",
+    status: 503,
+  });
+  google.capabilitiesStatus = undefined;
   // Another connected mailbox, or a revoked grant, is refused before Cloud.
   google.connectionId = GRANT_B;
   await assert.rejects(
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "account_changed" },
   );
+  await assert.rejects(writer.capabilities(), { code: "account_changed" });
   google.connectionId = GRANT_A;
   google.scopes = [READ_SCOPE, "openid"];
   await assert.rejects(
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "insufficient_scope" },
   );
+});
+
+/** The routes over the real native enrollment and a fake Cloud. */
+async function enrollmentRoutes(t, { hold } = {}) {
+  const binding = {
+    clientId: "org.example.native",
+    environment: "test",
+    redirectUri: "https://example.org/native/callback",
+  };
+  const later = () => new Date(Date.now() + 300000).toISOString();
+  const revoked = [];
+  let pending = null;
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: (options) =>
+        createEnrollment({
+          ...options,
+          auth: "https://auth.example.test",
+          binding,
+          appName: "Example Native",
+        }),
+    },
+    pendingCredentialStore: {
+      read: async () => pending,
+      write: async (value) => {
+        pending = value;
+      },
+      clear: async () => {
+        pending = null;
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      await hold?.(path);
+      if (path.endsWith("/config"))
+        return Response.json({
+          ...binding,
+          codeChallengeMethod: "S256",
+          scopes: ["cloud:user"],
+          app: { name: "Example Native" },
+        });
+      if (path === "/auth/email/send")
+        return Response.json({ ok: true, data: { expiresAt: later() } });
+      if (path === "/auth/email/code/verify")
+        return Response.json({ ok: true, token: "synthetic-session-token" });
+      if (path.endsWith("/connect"))
+        return Response.json({
+          codeType: "mobile_app_auth_code",
+          code: "synthetic-grant",
+          expiresAt: later(),
+        });
+      if (path.endsWith("/token"))
+        return Response.json({
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          secret: `eliza_mobile_${"a".repeat(64)}`,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: later(),
+        });
+      if (path.endsWith("/ack"))
+        return Response.json({
+          status: "acknowledged",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          expiresAt: later(),
+        });
+      if (path === "/api/v1/api-keys/current" && init.method === "DELETE") {
+        revoked.push(init.headers.Authorization);
+        return Response.json({
+          success: true,
+          status: "revoked",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          revokedAt: new Date().toISOString(),
+        });
+      }
+      throw Error(`Unexpected provider request ${path}`);
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = (path, input = {}) =>
+    fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  const status = async () =>
+    (
+      await fetch(`http://127.0.0.1:${server.address().port}/cloud/status`)
+    ).json();
+  return { post, status, revoked };
+}
+
+test("a sign-in cancel never disconnects the account a finished sign-in reported", async (t) => {
+  const { post, status, revoked } = await enrollmentRoutes(t);
+  const begun = await (
+    await post("/cloud/native/start", { email: "synthetic@example.com" })
+  ).json();
+  const verified = await post("/cloud/native/verify", {
+    sessionId: begun.sessionId,
+    code: "123456",
+  });
+  assert.equal((await verified.json()).connected, true);
+  // A late Stop, park or Close of the set-up screen.
+  const cancelled = await post("/cloud/native/cancel");
+  assert.equal(cancelled.status, 200);
+  assert.deepEqual(revoked, []);
+  assert.equal((await status()).connected, true);
+  // Disconnecting stays its own route.
+  assert.equal((await post("/cloud/logout")).status, 200);
+  assert.equal(revoked.length, 1);
+  assert.equal((await status()).connected, false);
+});
+
+test("a sign-in request refused while the host is busy names the conflict", async (t) => {
+  let release, entered;
+  const reached = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { post } = await enrollmentRoutes(t, {
+    hold: async (path) => {
+      if (path === "/auth/email/send") {
+        entered();
+        await gate;
+      }
+    },
+  });
+  const starting = post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  await reached;
+  const busy = await post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  assert.equal(busy.status, 409);
+  assert.equal((await busy.json()).code, "sign_in_busy");
+  release();
+  assert.equal((await starting).status, 200);
+});
+
+test("the owner mail writer refuses a send review it cannot show the owner", async (t) => {
+  const google = {
+    connectionId: GRANT_A,
+    scopes: [READ_SCOPE, SEND_SCOPE, "openid"],
+  };
+  const { routes } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  const review = {
+    kind: "send",
+    from: "owner@example.test",
+    to: ["ann@example.test"],
+    cc: [],
+    subject: "Hello",
+    attachments: [{ name: "bill.pdf" }],
+  };
+  const answer = (value) => () =>
+    Response.json({
+      receipt: {
+        requestId: OPERATION,
+        kind: "send",
+        reviewDigest: "a".repeat(64),
+        state: "prepared",
+      },
+      review: value,
+    });
+  const proposal = {
+    kind: "send",
+    mode: "compose",
+    to: ["ann@example.test"],
+    subject: "Hello",
+    bodyText: "Hi",
+  };
+  // Cloud sends with cc or bcc alone.
+  for (const valid of [
+    review,
+    { ...review, to: [], bcc: ["b@example.test"] },
+  ]) {
+    google.operationResponse = answer(valid);
+    assert.deepEqual(
+      (await writer.prepare({ requestId: OPERATION, proposal })).review,
+      valid,
+    );
+  }
+  for (const malformed of [
+    { ...review, from: "Owner <owner@example.test>" },
+    { ...review, to: [] },
+    { ...review, bcc: ["ann..b@example.test"] },
+    { ...review, cc: Array(50).fill("b@example.test") },
+    { ...review, to: ["ann..b@example.test"] },
+    { ...review, cc: "ann@example.test" },
+    { ...review, subject: undefined },
+    { ...review, attachments: [{ size: 4 }] },
+    { ...review, forwardedAttachments: {} },
+    { ...review, kind: "archive" },
+  ]) {
+    google.operationResponse = answer(malformed);
+    await assert.rejects(writer.prepare({ requestId: OPERATION, proposal }), {
+      status: 502,
+    });
+  }
 });

@@ -29,6 +29,7 @@ const classes = [
   "BrowserExternalPage",
   "BrowserAutofillExtras",
   "BrowserTabHostConfig",
+  "BrowserEffectWatch",
 ];
 const consumers = [
   "BrowserWebPolicyTest",
@@ -39,6 +40,7 @@ const consumers = [
   "BrowserProfileCaptureTest",
   "BrowserSitePromptTest",
   "BrowserTabHostConfigTest",
+  "BrowserEffectWatchTest",
 ];
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
@@ -104,7 +106,7 @@ test("browser login bindings are admitted by the password policy only for the bo
       ),
       path.join(
         secureStore,
-        "android/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java",
+        "android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/PasswordFacets.java",
       ),
       ...autofillConsumers.map((name) =>
         path.join(plugin, "test/native-host", `${name}.java`),

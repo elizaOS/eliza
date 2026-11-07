@@ -18,6 +18,8 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
+    "android-nativeonly/src/main/",
+    "android-nativeonly/build.gradle",
     "dist/",
     "ios/Sources/",
     "*.podspec"
@@ -38,7 +40,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test:native-session": "node --test test/native-host/credential-access.node.mjs",
-    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs"
+    "test:native-passwords": "node --test test/native-host/password-custody.node.mjs",
+    "test:native-identity": "node --test test/native-host/owner-identity.node.mjs"
   },
   "capacitor": {
     "android": {

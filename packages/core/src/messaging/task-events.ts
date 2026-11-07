@@ -7,6 +7,8 @@ import { ElizaError } from "../errors.ts";
  * holds the same rule for staged hosts that cannot import this package.
  */
 export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/;
+/** An opaque journal reference: the task id rule, also admitting `/`. */
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/;
 
 const TASK_STATUSES = [
 	"active",
@@ -42,6 +44,7 @@ export const TASK_EVENT_KINDS = {
 	checkpoint: { operation: null, origin: "none" },
 	observe: { operation: null, origin: "optional" },
 	resume: { operation: null, origin: "optional" },
+	rebind: { operation: null, origin: "none" },
 	pause: { operation: null, origin: "none" },
 	cancel: { operation: null, origin: "none" },
 	recover: { operation: null, origin: "none" },
@@ -99,6 +102,7 @@ const fields = [
 	"status",
 ];
 const optional = ["operationId", "operationStatus", "origin"];
+const eventKeys = [...fields, ...optional] as (keyof TaskEvent)[];
 function includes<T extends string>(
 	list: readonly T[],
 	value: unknown,
@@ -119,7 +123,7 @@ export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 	if (
 		event.schemaVersion !== 1 ||
 		typeof event.taskId !== "string" ||
-		!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(event.taskId) ||
+		!OPAQUE_REF_PATTERN.test(event.taskId) ||
 		[event.sequence, event.epoch, event.at].some(
 			(n) => !Number.isSafeInteger(n) || Number(n) < 0,
 		) ||
@@ -139,7 +143,7 @@ export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 	} else {
 		if (
 			typeof event.operationId !== "string" ||
-			!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(event.operationId)
+			!OPAQUE_REF_PATTERN.test(event.operationId)
 		)
 			reject("Invalid event operation");
 		if (!includes(shape.operation, event.operationStatus))
@@ -175,33 +179,30 @@ export function mergeTaskEvents(
 ): TaskEvent[] {
 	const merged: TaskEvent[] = [];
 	const known = new Map<number, TaskEvent>();
-	for (const value of [...previous, ...incoming]) {
-		validateTaskEvent(value);
-		if (value.taskId !== taskId)
-			reject("Task event belongs to a different task");
-		const duplicate = known.get(value.sequence);
-		if (duplicate) {
+	for (const values of [previous, incoming]) {
+		for (const value of values) {
+			validateTaskEvent(value);
+			if (value.taskId !== taskId)
+				reject("Task event belongs to a different task");
+			const duplicate = known.get(value.sequence);
+			if (duplicate) {
+				if (eventKeys.some((key) => duplicate[key] !== value[key]))
+					reject("Conflicting task event replay");
+				continue;
+			}
+			const last = merged.at(-1);
 			if (
-				[...fields, ...optional].some(
-					(key) =>
-						duplicate[key as keyof TaskEvent] !== value[key as keyof TaskEvent],
-				)
+				(!last &&
+					value.kind !== "checkpoint" &&
+					(value.kind !== "create" || value.sequence !== 0)) ||
+				(last &&
+					(value.sequence !== last.sequence + 1 || value.epoch < last.epoch))
 			)
-				reject("Conflicting task event replay");
-			continue;
+				reject("Task event history has a gap or moved backwards");
+			const event = structuredClone(value);
+			known.set(event.sequence, event);
+			merged.push(event);
 		}
-		const last = merged.at(-1);
-		if (
-			(!last &&
-				value.kind !== "checkpoint" &&
-				(value.kind !== "create" || value.sequence !== 0)) ||
-			(last &&
-				(value.sequence !== last.sequence + 1 || value.epoch < last.epoch))
-		)
-			reject("Task event history has a gap or moved backwards");
-		const event = structuredClone(value);
-		known.set(event.sequence, event);
-		merged.push(event);
 	}
 	return merged;
 }
@@ -311,8 +312,7 @@ export class TaskEventReader {
 		this.options.changed(structuredClone(this.state));
 	}
 	start(taskId: string): Promise<void> {
-		if (!/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(taskId))
-			throw new Error("Invalid task ID");
+		if (!OPAQUE_REF_PATTERN.test(taskId)) throw new Error("Invalid task ID");
 		this.stop();
 		this.taskId = taskId;
 		this.state = { page: null, pending: false, failed: false };

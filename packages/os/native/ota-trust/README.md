@@ -43,6 +43,38 @@ that shares no other role's authority, and go-tuf counts each authorized key
 once, so a repeated signature or an aliased key cannot stand in for the second
 approval. Who holds those keys is the host's decision.
 
+Each trust session first removes the cached descriptor and interrupted
+temporary files, which hold no trust state, so a write torn by a crash cannot
+stop discovery. Torn trust metadata is refused, never reset, and discovery
+reports it as `Failure` `trust-cache` instead of an ordinary deferral. An I/O
+error such as a full disk or a failed fsync may pass, so it reports as `fetch`.
+
+Admission is not a lasting permission to install. `EvaluatePreparedForCommit`
+rechecks a prepared pair just before commit against current bounds and the
+lane's stored revocations, security floor and sequence. It requires a metadata
+refresh no older than `refreshedAfterLowerMs` and a commit no later than
+`commitByUpperMs`, so the time from refresh to commit is bounded. Only a fetched
+descriptor records a refresh; `RefreshWithTimeSource` fetches one for a prepared
+plan without staging anything, and its schedule adds no wait after a success,
+so every activation run can refresh. `EvaluatePreparedRecovery` reports a
+recovery that revocations or floors have made permanently unloadable, so the
+host can stop waiting for it.
+
+A newer sequence on the lane supersedes a prepared release for every device,
+even one the newer release defers (outside its cohort, paused, not started):
+once it is published the older one is withdrawn, and the device waits for the
+newer one. This is the `OtaFreshAdmission` model's rule.
+
+The refresh times live in `refreshed.json`, beside `admission.json`, which
+keeps the version 1 shape: a build from before refreshes were recorded still
+reads the state, so a host whose updater updates itself can recover to one. A
+missing or damaged `refreshed.json` reads as never refreshed, which is stale
+until the next fetch rewrites it.
+
+`TestFreshAdmissionConformance` is a differential test against a hand port of
+the `OtaFreshAdmission` model's predicates, not a run of the model; set
+`OTA_FRESH_CONFORMANCE=full` for every two-step sequence.
+
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers
 must independently recheck current device state and installation authority.

@@ -22,13 +22,8 @@ import { Readable } from "node:stream";
 import type { PinnedLookupFetchLike } from "./fetch-guard.js";
 import type { LookupFn } from "./ssrf.js";
 
-export const nodeLookupFn: LookupFn = async (hostname, options) => {
-	const results = await dnsLookup(hostname, options);
-	return results.map((entry) => ({
-		address: entry.address,
-		family: entry.family,
-	}));
-};
+export const nodeLookupFn: LookupFn = (hostname, options) =>
+	dnsLookup(hostname, options);
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
 	const normalized: Record<string, string> = {};
@@ -118,7 +113,7 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 
 	return new Promise<Response>((resolve, reject) => {
 		let settled = false;
-		const signal = init.signal ?? undefined;
+		const signal = init.signal;
 
 		const cleanupSignal = () => {
 			signal?.removeEventListener("abort", onAbort);
@@ -141,9 +136,7 @@ export const nodePinnedFetch: PinnedLookupFetchLike = async ({
 			resolve(responseFromIncomingMessage(response, cleanupSignal));
 		});
 
-		request.on("error", (error) => {
-			rejectOnce(error);
-		});
+		request.on("error", rejectOnce);
 
 		if (signal) {
 			if (signal.aborted) {

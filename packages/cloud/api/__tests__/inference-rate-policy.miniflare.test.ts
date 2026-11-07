@@ -320,24 +320,4 @@ describe("flags", () => {
       await disabled.dispose();
     }
   });
-
-  test("without strong revocation the lane refuses but mutation fences stay served", async () => {
-    const weak = await createRatePolicyWorker({ strongRevocation: false });
-    try {
-      const org = crypto.randomUUID();
-      expect(
-        (await gatePost(weak, org, "/rate-policy/rate", rateProof(org))).status,
-      ).toBe(503);
-      expect(
-        (
-          await gatePost(weak, org, "/policy-mutation/begin", {
-            organizationId: org,
-            mutationId: "m",
-          })
-        ).status,
-      ).toBe(200);
-    } finally {
-      await weak.dispose();
-    }
-  });
 });

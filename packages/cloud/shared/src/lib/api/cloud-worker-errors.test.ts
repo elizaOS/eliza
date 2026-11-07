@@ -29,6 +29,24 @@ async function bodyOf(res: Response): Promise<{
 }
 
 describe("failureResponse infrastructure-error sanitization", () => {
+  it("reports a credential boundary outage as a retryable 503 without its diagnostic", async () => {
+    const error = Object.assign(
+      new Error("private diagnostic token=fixture-secret user=fixture-owner"),
+      {
+        name: "InferenceCredentialRevocationUnavailableError",
+        statusCode: 503,
+      },
+    );
+    const res = failureResponse(fakeContext(), error);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
+    expect(await bodyOf(res)).toEqual({
+      success: false,
+      error: "Authorization service is temporarily unavailable",
+      code: "service_unavailable",
+    });
+  });
+
   it("never leaks raw SQL from a Drizzle/postgres query failure", async () => {
     const error = new Error(
       'Failed query: select "id","name","key_hash","permissions" from "api_keys" where "api_keys"."key_hash" = $1\nparams: 2ebf70e43edbaadbc5e7c8ebcf6dd9c61f8b986fc3dd5ac1d1474ed515e239ac',

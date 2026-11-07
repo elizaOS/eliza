@@ -83,9 +83,29 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
   const built = fs.statSync(output).mtimeMs;
   assert.deepEqual(buildTaskRuntime(output, options), report);
   assert.equal(fs.statSync(output).mtimeMs, built);
-  fs.appendFileSync(path.join(temporary, "browser/errors.ts"), "\n");
+  // A rebuild replaces each file whole: a reader that opened the old file
+  // still reads all of it, and the path holds the complete new file.
+  const stagedErrors = path.join(temporary, "browser/errors.ts");
+  fs.appendFileSync(stagedErrors, "\n");
+  const changed = fs.readFileSync(stagedErrors);
+  const reader = fs.openSync(stagedErrors, "r");
+  t.after(() => fs.closeSync(reader));
   assert.deepEqual(buildTaskRuntime(output, options), report);
   assert.notEqual(fs.statSync(output).mtimeMs, built);
+  assert.deepEqual(fs.readFileSync(reader), changed);
+  assert.equal(
+    fs.readFileSync(stagedErrors, "utf8"),
+    fs.readFileSync(
+      path.join(sourceRoot, "packages/core/src/errors.ts"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(
+    fs
+      .readdirSync(temporary, { recursive: true })
+      .filter((name) => name.endsWith(".tmp")),
+    [],
+  );
   assert.equal(
     report.bundleSha256,
     createHash("sha256").update(fs.readFileSync(output)).digest("hex"),
@@ -128,6 +148,27 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
       .update(fs.readFileSync(path.join(temporary, "browser/utils/errors.ts")))
       .digest("hex"),
   );
+  // A browser host resolves each staged package import through a narrow
+  // @elizaos/core leaf to a staged file, with no alias for the full protocol.
+  const coreExports = JSON.parse(
+    fs.readFileSync(
+      path.join(sourceRoot, "packages/core/package.json"),
+      "utf8",
+    ),
+  ).exports;
+  for (const name of Object.keys(browserProvenance.files)) {
+    const text = fs.readFileSync(path.join(temporary, "browser", name), "utf8");
+    for (const [, leaf] of text.matchAll(/from "@elizaos\/core\/([^"]+)"/g)) {
+      const source = coreExports[`./${leaf}`]?.["eliza-source"];
+      assert.ok(
+        Object.hasOwn(
+          browserProvenance.files,
+          source?.replace(/^\.\/src\//, ""),
+        ),
+        `${name} imports @elizaos/core/${leaf}, which is not staged`,
+      );
+    }
+  }
   const commandBytes = fs.readFileSync(
     path.join(commandDirectory, "command-handler.mjs"),
   );

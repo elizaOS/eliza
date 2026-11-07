@@ -1,10 +1,10 @@
 /**
- * Cache-only affiliate markup resolution for Worker inference admission.
+ * Cache-first affiliate markup resolution for Worker inference admission.
  *
- * Affiliate configuration is mutable money policy, so a request may consume
- * only a validated shared-cache record. A miss or malformed record schedules
- * authoritative hydration under the Worker lifetime and returns a retryable
- * state; Postgres never joins model dispatch.
+ * Affiliate configuration is mutable money policy, so a request consumes only
+ * a validated record. A warm request reads the shared cache; a miss or
+ * malformed record reads the primary once, inline (coalesced per isolate), and
+ * projects the record into the cache under the Worker lifetime.
  */
 
 import { affiliatesRepository } from "../../db/repositories/affiliates";
@@ -18,16 +18,10 @@ const NEGATIVE_AFFILIATE = { __none: true } as const;
 type CachedAffiliate = AffiliateCode | typeof NEGATIVE_AFFILIATE;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export class InferenceAffiliateCacheWarmingError extends Error {
-  constructor() {
-    super("Inference affiliate cache is warming; retry the request");
-    this.name = "InferenceAffiliateCacheWarmingError";
-  }
-}
-
+/** The primary affiliate record is unreadable or carries an invalid markup. */
 export class InferenceAffiliateCacheUnavailableError extends Error {
-  constructor() {
-    super("Inference affiliate cache is unavailable; retry the request");
+  constructor(options?: { cause?: unknown }) {
+    super("Inference affiliate policy is unavailable; retry the request", options);
     this.name = "InferenceAffiliateCacheUnavailableError";
   }
 }
@@ -53,60 +47,76 @@ function isAffiliateCode(value: unknown): value is AffiliateCode {
   );
 }
 
-const affiliateHydrationInFlight = new Map<string, Promise<void>>();
+const affiliateReadsInFlight = new Map<string, Promise<CachedAffiliate>>();
 
-function hydrateAffiliate(code: string): Promise<void> {
-  const existing = affiliateHydrationInFlight.get(code);
-  if (existing) return existing;
-
-  const hydration = Promise.resolve()
-    .then(() => affiliatesRepository.getAffiliateCodeByCode(code))
-    .then(async (record) => {
-      const cached: CachedAffiliate = record ?? NEGATIVE_AFFILIATE;
-      const outcome = await cache.setWithOutcome(
-        CacheKeys.affiliate.codeByCode(code),
-        cached,
-        CacheTTL.affiliate.data,
-      );
-      if (outcome.kind !== "written") {
-        throw new Error(`Affiliate cache write failed: ${outcome.kind}`);
-      }
-    });
-  affiliateHydrationInFlight.set(code, hydration);
-  const cleanup = () => {
-    if (affiliateHydrationInFlight.get(code) === hydration) {
-      affiliateHydrationInFlight.delete(code);
-    }
-  };
-  hydration.then(cleanup, cleanup);
-  return hydration;
-}
-
-function scheduleAffiliateHydration(
+/** One primary read per code per isolate; the cache projection runs off-response. */
+function readAffiliateFromPrimary(
   code: string,
   executionCtx: { waitUntil(promise: Promise<unknown>): void },
-): void {
-  const observed = hydrateAffiliate(code).then(
-    () => undefined,
-    (error) => {
-      // error-policy:J7 affiliate hydration is deliberately outside model
-      // dispatch; log the failure and leave the cache cold for a safe retry.
-      logger.warn("[InferenceBilling] affiliate cache hydration failed", {
-        code,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    },
+): Promise<CachedAffiliate> {
+  const existing = affiliateReadsInFlight.get(code);
+  if (existing) return existing;
+  const read = Promise.resolve()
+    .then(() => affiliatesRepository.getAffiliateCodeByCode(code))
+    .then((record): CachedAffiliate => record ?? NEGATIVE_AFFILIATE);
+  affiliateReadsInFlight.set(code, read);
+  const cleanup = () => {
+    if (affiliateReadsInFlight.get(code) === read) affiliateReadsInFlight.delete(code);
+  };
+  read.then(cleanup, cleanup);
+  executionCtx.waitUntil(
+    read
+      .then(async (record) => {
+        const outcome = await cache.setWithOutcome(
+          CacheKeys.affiliate.codeByCode(code),
+          record,
+          CacheTTL.affiliate.data,
+        );
+        if (outcome.kind !== "written") {
+          throw new Error(`Affiliate cache write failed: ${outcome.kind}`);
+        }
+      })
+      .catch((error) => {
+        // error-policy:J7 the projection is outside model dispatch; the next
+        // request reads the primary again.
+        logger.warn("[InferenceBilling] affiliate cache projection failed", {
+          code,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
   );
-  executionCtx.waitUntil(observed);
+  return read;
 }
 
 /**
- * Return immutable affiliate attribution for one inference charge.
- *
  * Inactive, missing, self-referral, and non-positive markup records retain the
  * authoritative billing semantics of `reserveCredits`: they contribute no
- * affiliate markup. Malformed cache data is unavailable, never interpreted as
- * a valid zero-markup policy.
+ * affiliate markup. Returns `undefined` for a record that cannot be trusted.
+ */
+function attributionFromRecord(
+  record: unknown,
+  code: string,
+  userId: string,
+): AffiliateBillingAttribution | null | undefined {
+  if (isNegativeAffiliate(record)) return null;
+  if (!isAffiliateCode(record) || record.code !== code) return undefined;
+  if (!record.is_active || record.user_id === userId) return null;
+  if (typeof record.markup_percent === "string" && record.markup_percent.trim() === "")
+    return undefined;
+  const storedPercent = Number(record.markup_percent);
+  if (!Number.isFinite(storedPercent) || storedPercent > 1000) return undefined;
+  if (storedPercent <= 0) return null;
+  return Object.freeze({
+    affiliateCodeId: record.id,
+    affiliateUserId: record.user_id,
+    affiliateCode: record.code,
+    markupPercent: storedPercent / 100,
+  });
+}
+
+/**
+ * Return immutable affiliate attribution for one inference charge. Malformed
+ * data is unavailable, never interpreted as a valid zero-markup policy.
  */
 export async function getCachedInferenceAffiliateAttribution(params: {
   affiliateCode?: string | null;
@@ -119,53 +129,21 @@ export async function getCachedInferenceAffiliateAttribution(params: {
 
   const outcome = await cache.getWithOutcome<unknown>(CacheKeys.affiliate.codeByCode(code));
   if (outcome.kind === "hit") {
-    if (isNegativeAffiliate(outcome.value)) return null;
-    if (!isAffiliateCode(outcome.value) || outcome.value.code !== code) {
-      scheduleAffiliateHydration(code, params.executionCtx);
-      throw new InferenceAffiliateCacheUnavailableError();
-    }
-    if (!outcome.value.is_active || outcome.value.user_id === params.userId) return null;
-
-    if (
-      typeof outcome.value.markup_percent === "string" &&
-      outcome.value.markup_percent.trim() === ""
-    ) {
-      scheduleAffiliateHydration(code, params.executionCtx);
-      throw new InferenceAffiliateCacheUnavailableError();
-    }
-    const storedPercent = Number(outcome.value.markup_percent);
-    if (!Number.isFinite(storedPercent) || storedPercent > 1000) {
-      scheduleAffiliateHydration(code, params.executionCtx);
-      throw new InferenceAffiliateCacheUnavailableError();
-    }
-    if (storedPercent <= 0) return null;
-    return Object.freeze({
-      affiliateCodeId: outcome.value.id,
-      affiliateUserId: outcome.value.user_id,
-      affiliateCode: outcome.value.code,
-      markupPercent: storedPercent / 100,
-    });
+    const cached = attributionFromRecord(outcome.value, code, params.userId);
+    if (cached !== undefined) return cached;
   }
-
-  scheduleAffiliateHydration(code, params.executionCtx);
-  if (outcome.kind === "miss") {
-    throw new InferenceAffiliateCacheWarmingError();
+  let record: CachedAffiliate;
+  try {
+    record = await readAffiliateFromPrimary(code, params.executionCtx);
+  } catch (error) {
+    throw new InferenceAffiliateCacheUnavailableError({ cause: error });
   }
-  throw new InferenceAffiliateCacheUnavailableError();
+  const authoritative = attributionFromRecord(record, code, params.userId);
+  if (authoritative === undefined) throw new InferenceAffiliateCacheUnavailableError();
+  return authoritative;
 }
 
-/** Backward-compatible numeric view for callers not yet carrying attribution. */
-export async function getCachedInferenceAffiliateMarkup(params: {
-  affiliateCode?: string | null;
-  organizationId: string;
-  userId: string;
-  executionCtx: { waitUntil(promise: Promise<unknown>): void };
-}): Promise<number> {
-  const attribution = await getCachedInferenceAffiliateAttribution(params);
-  return attribution?.markupPercent ?? 0;
-}
-
-/** Test hook for isolating in-flight hydrations. */
+/** Test hook for isolating in-flight primary reads. */
 export function __clearInferenceAffiliateCacheState(): void {
-  affiliateHydrationInFlight.clear();
+  affiliateReadsInFlight.clear();
 }

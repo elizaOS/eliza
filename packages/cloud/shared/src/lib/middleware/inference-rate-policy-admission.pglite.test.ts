@@ -122,7 +122,6 @@ async function enforce(
   return cloudBindings.runWithCloudBindingsAsync(
     {
       INFERENCE_RATE_POLICY_ADMISSION: String(options.enabled ?? true),
-      INFERENCE_STRONG_REVOCATION_ENABLED: "true",
       INFERENCE_ADMISSION_GATES: namespace(reply),
     },
     () =>

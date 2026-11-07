@@ -63,6 +63,15 @@ by the original bridge and host extensions; it refuses unavailable provider
 lookups instead of treating them as a missing local calendar. Hosts must check
 permissions, chosen destinations and owner authority before invoking these helpers.
 
+`CalendarEventEdits` changes or deletes one existing event for a host with its own
+bridge, after the host has confirmed the change with the user. `snapshot` returns the
+event's calendar, `revision`, `writable` and `repeating`. `update` and `delete` take
+that revision and apply one atomic batch that asserts the event and calendar rows are
+unchanged. They throw `CalendarEventEdits.Refused` with reason `GONE`, `READ_ONLY`,
+`REPEATING` or `CHANGED` and write nothing. They do not check attendees or reminders.
+`CalendarEventOptions.defaultZone()` gives the device zone for a timed event, or UTC
+when Android names the zone in a form `zone()` refuses, such as `GMT`.
+
 Run `node --test test/native-host/read-window.test.mjs` for the complete/default and
 bounded-read contracts. After compiling the real shared bridge and host classes
 against Android APIs, `test/native-host/bridge-check.mjs` accepts `--classes`,

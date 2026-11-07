@@ -183,8 +183,10 @@ export const completionContextFieldEvaluator: ResponseHandlerFieldEvaluator<
 };
 
 // ---------------------------------------------------------------------------
-// candidateActionNames — priority 50.
+// candidateActionNames — priority 17.
 // One flat model-facing hint list; downstream retrieval can fan it back out.
+// Routing input: generated before replyText so a reply streams only once the
+// turn is settled as a direct answer (stage1-reply-stream.ts).
 // ---------------------------------------------------------------------------
 
 export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
@@ -195,7 +197,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
     "Optional exact action-name retrieval hints when known; otherwise empty and the planner discovers operations from contexts and intents. Hints grant neither availability nor permission. Exclude hypothetical, prohibited, cancelled or clarification-dependent effects.",
   descriptionCompressed:
     "Optional exact action-name retrieval hints when known; otherwise empty and the planner discovers operations from contexts and intents. Hints grant neither availability nor permission. Exclude hypothetical, prohibited, cancelled or clarification-dependent effects.",
-  priority: 50,
+  priority: 17,
   schema: {
     type: "array",
     items: { type: "string" },
@@ -246,8 +248,9 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 };
 
 // ---------------------------------------------------------------------------
-// replyEffectStatus — priority 25.
+// replyEffectStatus — priority 18.
 // Semantic safety signal for indirect, vague, or non-English completion text.
+// Routing input: generated before replyText (see candidateActionNames).
 // ---------------------------------------------------------------------------
 
 /** Normalize the same effect contract in field-registry and fallback parsing. */
@@ -268,7 +271,7 @@ export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<Repl
       "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist, and recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied ends this turn and requires intents=[]; keep a clarification or preview waiting for user input free of executable pending intents. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
     descriptionCompressed:
       "Classify current-request work: pending=work executable now, including fresh reads, checking whether records exist, and recording approval, rejection or cancellation of an existing pending request; applied=claims a completed state change, never proof; non_applied=failed, unavailable, preview, awaiting input or declining unstarted work with no persisted decision required; none=a complete supplied-evidence answer with no runtime work remaining. Read-only does not mean none. Recall answered entirely from supplied context is none; retrieving stored history is pending. non_applied ends this turn and requires intents=[]; keep a clarification or preview waiting for user input free of executable pending intents. Work already specified by the user is pending, not a missing-input preview. A pending proposal or approval-ready claim needs a recorded proposal, not a prior failed attempt.",
-    priority: 25,
+    priority: 18,
     schema: {
       type: "string",
       enum: ["none", "applied", "non_applied", "pending"],

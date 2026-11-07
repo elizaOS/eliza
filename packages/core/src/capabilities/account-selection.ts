@@ -21,6 +21,7 @@ import {
 	CONNECTED_ACCOUNT_STATUSES,
 	type ConnectedAccount,
 	type ConnectedAccountMode,
+	type ConnectedAccountStatus,
 } from "../types/provider-integrations";
 
 const RISK_RANK: Readonly<Record<CapabilityRiskLevel, number>> = Object.freeze({
@@ -113,6 +114,7 @@ function validateSelectionFacts(
 	accounts: readonly ConnectedAccount[],
 	policy: AccountSelectionPolicy,
 	signals: readonly AccountSelectionSignal[],
+	accountIds: ReadonlySet<string>,
 	signalsById: ReadonlyMap<string, AccountSelectionSignal>,
 ): void {
 	if (!CAPABILITY_RISK_LEVELS.includes(policy.maxRiskLevel)) {
@@ -129,7 +131,6 @@ function validateSelectionFacts(
 			{ maxUnitCostMicros: policy.maxUnitCostMicros },
 		);
 	}
-	const accountIds = new Set(accounts.map((account) => account.accountId));
 	for (const signal of signals) {
 		if (!accountIds.has(signal.accountId)) {
 			invalidSelectionInput(
@@ -179,7 +180,10 @@ function validateSelectionFacts(
 }
 
 const ACCOUNT_STATUS_UNAVAILABILITY: Readonly<
-	Record<string, { code: CapabilityUnavailableCode; retryable: boolean }>
+	Record<
+		Exclude<ConnectedAccountStatus, "connected">,
+		{ code: CapabilityUnavailableCode; retryable: boolean }
+	>
 > = Object.freeze({
 	disabled: { code: "account_disabled", retryable: false },
 	error: { code: "account_error", retryable: true },
@@ -243,15 +247,12 @@ function evaluateAccount(
 	) {
 		return { kind: "denied", reasonCode: "organization_policy_denied" };
 	}
+	// validateSelectionFacts already refused any status outside the known set.
 	if (account.status !== "connected") {
-		const mapped = ACCOUNT_STATUS_UNAVAILABILITY[account.status];
-		if (mapped === undefined) {
-			invalidSelectionInput("Connected account has an unknown status.", {
-				accountId: account.accountId,
-				status: account.status,
-			});
-		}
-		return { kind: "unavailable", ...mapped };
+		return {
+			kind: "unavailable",
+			...ACCOUNT_STATUS_UNAVAILABILITY[account.status],
+		};
 	}
 	const capability = account.capabilities.find(
 		(entry) => entry.capabilityId === intent.capabilityId,
@@ -347,7 +348,7 @@ export function selectConnectedAccount(
 			{},
 		);
 	}
-	validateSelectionFacts(accounts, policy, signals, signalsById);
+	validateSelectionFacts(accounts, policy, signals, accountIds, signalsById);
 
 	// The intent-vs-policy risk comparison names no field of any account, so it
 	// is decided once before any account is inspected. Leaving it inside the
@@ -427,22 +428,24 @@ export function selectConnectedAccount(
 				accountId: null,
 			};
 		}
-		const unavailable = ineligibilities.filter(
-			(entry): entry is Extract<Ineligibility, { kind: "unavailable" }> =>
-				entry.kind === "unavailable",
-		);
-		if (unavailable.length === 0) {
+		// No denial, so every entry is unavailable; keep the first most actionable.
+		let best: Extract<Ineligibility, { kind: "unavailable" }> | undefined;
+		for (const entry of ineligibilities) {
+			if (
+				entry.kind === "unavailable" &&
+				(best === undefined ||
+					UNAVAILABLE_PRECEDENCE.indexOf(entry.code) <
+						UNAVAILABLE_PRECEDENCE.indexOf(best.code))
+			)
+				best = entry;
+		}
+		if (best === undefined) {
 			return {
 				outcome: "unavailable",
 				code: "not_configured",
 				retryable: false,
 			};
 		}
-		const best = [...unavailable].sort(
-			(a, b) =>
-				UNAVAILABLE_PRECEDENCE.indexOf(a.code) -
-				UNAVAILABLE_PRECEDENCE.indexOf(b.code),
-		)[0];
 		return {
 			outcome: "unavailable",
 			code: best.code,
@@ -450,7 +453,7 @@ export function selectConnectedAccount(
 		};
 	}
 
-	const ranked = [...eligible].sort((a, b) =>
+	const ranked = eligible.sort((a, b) =>
 		compareEligible(a, b, policy.preferredRegion),
 	);
 	const winner = ranked[0];

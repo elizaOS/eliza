@@ -10,6 +10,12 @@ export interface RuntimeStatus {
   available: boolean;
   state: string;
   error?: string;
+  /**
+   * Largest request body the native bridge admits, in UTF-16 units of the body
+   * as the host serializes it. An upper bound: JSON.stringify can be shorter
+   * (Android org.json escapes `/`). Absent when no native runtime is available.
+   */
+  requestBodyLimit?: number;
 }
 export interface RuntimeJsonResponse {
   status: number;

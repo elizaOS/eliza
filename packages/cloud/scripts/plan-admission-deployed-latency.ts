@@ -67,7 +67,7 @@ export const OUTCOMES = [
   "allowance-exhausted",
   "subscription-required",
   "billing-refused",
-  "cache-warming",
+  "limiter-unavailable",
   "unauthorized",
   "unavailable",
   "unexpected",
@@ -99,7 +99,7 @@ const DEFAULT_EXPECT: Record<Condition, Outcome[]> = {
   "cache-miss": ["admitted"],
   exhausted: ["rate-limited", "allowance-exhausted"],
   expired: ["subscription-required", "billing-refused"],
-  "billing-outage": ["admitted", "cache-warming", "unavailable"],
+  "billing-outage": ["admitted", "limiter-unavailable", "unavailable"],
 };
 
 function fail(message: string): never {
@@ -243,9 +243,9 @@ export function classifyResponse(
   if (
     status === 503 &&
     typeof error === "object" &&
-    error?.code === "rate_limit_cache_warming"
+    error?.code === "rate_limit_unavailable"
   )
-    return "cache-warming";
+    return "limiter-unavailable";
   const limit = readServiceLimit({ status, data: body, retryAfter });
   if (limit) return limit.kind;
   if (status === 401 || status === 403) return "unauthorized";

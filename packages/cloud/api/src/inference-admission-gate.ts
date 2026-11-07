@@ -193,6 +193,11 @@ interface OrganizationStateRequest {
   active: boolean;
 }
 
+interface PolicyFenceRequest {
+  mutationId: string;
+  policyGeneration?: string;
+}
+
 interface RateLimitCutoverRequest {
   windowMs: number;
 }
@@ -231,6 +236,16 @@ const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
 const API_KEY_RATE_LIMIT_WINDOW_PREFIX = "api-key:";
 const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
+/**
+ * Standing fence for cache-served admission. Every organization policy or
+ * billing-hold mutation opens a pending entry before its database write and
+ * closes it after COMMIT with the generation the write produced. While any
+ * entry is open no new lease or dispatch is admitted, and afterwards a lease
+ * decided from an older generation is stale. An abandoned entry expires.
+ */
+const POLICY_FENCE_PENDING_KEY = "policy-fence:pending";
+const POLICY_FENCE_GENERATION_KEY = "policy-fence:generation";
+const POLICY_FENCE_MAX_PENDING_MS = 120_000;
 const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
 const SESSION_CUTOFF_PREFIX = "revocation:session-cutoff:";
@@ -1145,7 +1160,10 @@ export class InferenceAdmissionGate {
     }
     // A new lease decided under a superseded policy generation never reaches
     // the provider. Replays of an existing lease above keep their identity.
-    if (!observePolicyGeneration(ledger, request.policyGeneration)) {
+    if (
+      !(await this.policyFenceAdmits(request.policyGeneration)) ||
+      !observePolicyGeneration(ledger, request.policyGeneration)
+    ) {
       await this.save(ledger);
       return policyStale();
     }
@@ -1354,7 +1372,10 @@ export class InferenceAdmissionGate {
       });
       return Response.json({ dispatched: true, duplicate: true });
     }
-    if (!policyGenerationIsCurrent(ledger, lease.policyGeneration)) {
+    if (
+      !policyGenerationIsCurrent(ledger, lease.policyGeneration) ||
+      !(await this.policyFenceAdmits(lease.policyGeneration))
+    ) {
       return policyStale();
     }
     const dispatched: ActiveLease = {
@@ -1875,6 +1896,75 @@ export class InferenceAdmissionGate {
     return Response.json({ committed: true });
   }
 
+  /**
+   * True when no policy mutation is open and the caller's generation is not
+   * older than the newest committed mutation this gate has been told about.
+   */
+  private async policyFenceAdmits(
+    generation: string | undefined,
+  ): Promise<boolean> {
+    const [pending, floor] = await Promise.all([
+      this.state.storage.get<Record<string, number>>(POLICY_FENCE_PENDING_KEY),
+      this.state.storage.get<string>(POLICY_FENCE_GENERATION_KEY),
+    ]);
+    const now = Date.now();
+    if (pending && Object.values(pending).some((until) => until > now)) {
+      return false;
+    }
+    if (floor === undefined || generation === undefined) return true;
+    const leased = balanceRevision(generation);
+    const committed = balanceRevision(floor);
+    return leased !== null && committed !== null && leased >= committed;
+  }
+
+  private async policyFence(
+    path: string,
+    request: PolicyFenceRequest,
+  ): Promise<Response> {
+    if (
+      !validTrimmedId(request.mutationId) ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null)
+    ) {
+      return jsonError("Invalid inference policy fence request", 400);
+    }
+    const now = Date.now();
+    const stored =
+      (await this.state.storage.get<Record<string, number>>(
+        POLICY_FENCE_PENDING_KEY,
+      )) ?? {};
+    const pending = Object.fromEntries(
+      Object.entries(stored).filter(([, until]) => until > now),
+    );
+    if (path === "/policy-fence/begin") {
+      pending[request.mutationId] = now + POLICY_FENCE_MAX_PENDING_MS;
+      await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
+      return Response.json({ blocked: true });
+    }
+    delete pending[request.mutationId];
+    await this.state.storage.put(POLICY_FENCE_PENDING_KEY, pending);
+    if (path === "/policy-fence/commit" && request.policyGeneration) {
+      const floor = await this.state.storage.get<string>(
+        POLICY_FENCE_GENERATION_KEY,
+      );
+      const incoming = balanceRevision(request.policyGeneration)!;
+      const current = floor === undefined ? null : balanceRevision(floor);
+      if (current === null || incoming > current) {
+        await this.state.storage.put(
+          POLICY_FENCE_GENERATION_KEY,
+          request.policyGeneration,
+        );
+      }
+      const existing = await this.load();
+      if (existing) {
+        const ledger = cloneLedger(existing);
+        observePolicyGeneration(ledger, request.policyGeneration);
+        await this.save(ledger);
+      }
+    }
+    return Response.json({ committed: true });
+  }
+
   private async setOrganizationActive(
     request: OrganizationStateRequest,
   ): Promise<Response> {
@@ -1951,6 +2041,7 @@ export class InferenceAdmissionGate {
       | SessionRevokeRequest
       | SessionBindingStateRequest
       | OrganizationStateRequest
+      | PolicyFenceRequest
       | RateLimitCutoverRequest;
     try {
       body = (await request.json()) as
@@ -1969,6 +2060,7 @@ export class InferenceAdmissionGate {
         | SessionRevokeRequest
         | SessionBindingStateRequest
         | OrganizationStateRequest
+        | PolicyFenceRequest
         | RateLimitCutoverRequest;
     } catch {
       // error-policy:J3 malformed request bodies are rejected explicitly.
@@ -1983,15 +2075,13 @@ export class InferenceAdmissionGate {
     ) {
       const funded = this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
       // Mutation fences stay served whenever either lane may have enrolled an
-      // organization; rate-only admission additionally needs the revocation
-      // registry that its credential check reads.
+      // organization.
       const ratePolicy = this.env.INFERENCE_RATE_POLICY_ADMISSION === "true";
       if (
         path.startsWith("/budget/")
           ? !funded
           : path.startsWith("/rate-policy/")
-            ? !ratePolicy ||
-              this.env.INFERENCE_STRONG_REVOCATION_ENABLED !== "true"
+            ? !ratePolicy
             : !(funded || ratePolicy)
       )
         return jsonError("Inference policy admission is not enabled", 503);
@@ -2104,6 +2194,15 @@ export class InferenceAdmissionGate {
     if (path === "/session/set-binding-active") {
       return await this.serializeRevocation(() =>
         this.setSessionBindingActive(body as SessionBindingStateRequest),
+      );
+    }
+    if (
+      path === "/policy-fence/begin" ||
+      path === "/policy-fence/commit" ||
+      path === "/policy-fence/abort"
+    ) {
+      return await this.serialize(() =>
+        this.policyFence(path, body as PolicyFenceRequest),
       );
     }
     if (path === "/organization/set-active") {

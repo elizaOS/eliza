@@ -121,9 +121,6 @@ ${
 
 import android.os.Bundle;
 import android.content.Intent;
-import android.view.ViewGroup;
-import android.webkit.RenderProcessGoneDetail;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.view.WindowManager;
 
@@ -132,18 +129,14 @@ import androidx.core.view.WindowCompat;
 ${navigationInsetsImport}import androidx.core.view.WindowInsetsControllerCompat;
 ${launcherImports}
 
-import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.WebViewListener;
+import ai.eliza.plugins.browsersurface.ElizaBridgeActivity;
 
 import ${androidPackage}.BuildConfig;
 
-public class MainActivity extends BridgeActivity {
+// ElizaBridgeActivity owns the shared WebView lifecycle: no mixed content,
+// renderer-death recovery and the stopped-page pause.
+public class MainActivity extends ElizaBridgeActivity {
 ${launcherConstants}
-    // Set when Android ends the WebView renderer. The dead WebView is never
-    // used again; the activity is recreated with a new one on its next start.
-    private boolean rendererGone;
-    private boolean started;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // The launch theme's postSplashScreenTheme is applied only when the
@@ -183,30 +176,6 @@ ${launcherSetup}
             systemBars.setAppearanceLightStatusBars(false);
 ${navigationBarPolicy}
         }
-
-        if (getBridge() != null && getBridge().getWebView() != null) {
-            WebSettings settings = getBridge().getWebView().getSettings();
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-            // Android can end the renderer for memory while the screen is off.
-            // An unhandled renderer death makes WebView kill the whole app
-            // process, and any foreground service in it. Remove and destroy
-            // the dead WebView instead, and recreate the activity when it is
-            // next started (at once if it is on screen), so a new renderer
-            // does not start into the same memory pressure.
-            getBridge().addWebViewListener(new WebViewListener() {
-                @Override
-                public boolean onRenderProcessGone(
-                        WebView view, RenderProcessGoneDetail detail) {
-                    rendererGone = true;
-                    if (view.getParent() instanceof ViewGroup) {
-                        ((ViewGroup) view.getParent()).removeView(view);
-                    }
-                    view.destroy();
-                    if (started) recreate();
-                    return true;
-                }
-            });
-        }
     }
 
     @Override
@@ -217,34 +186,6 @@ ${navigationBarPolicy}
 ${launcherMethods}
 ${resumeHandler}
 ${focusHandler}
-
-    // Screen off stops the activity but can leave its window visible, so the
-    // page would keep document.visibilityState "visible". WebView.onPause marks
-    // the page hidden; JavaScript keeps running. Use onStop, not onPause, so a
-    // permission dialog over the visible app does not hide the page.
-    @Override
-    public void onStart() {
-        super.onStart();
-        started = true;
-        if (rendererGone) {
-            recreate();
-            return;
-        }
-        if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().onResume();
-        }
-    }
-
-    @Override
-    public void onStop() {
-        started = false;
-        if (!rendererGone
-                && getBridge() != null
-                && getBridge().getWebView() != null) {
-            getBridge().getWebView().onPause();
-        }
-        super.onStop();
-    }
 
     private void keepScreenAwake() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

@@ -294,7 +294,7 @@ public class ElizaAgentService extends Service {
         new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
     private long admittedCredentialShutdownEpoch = -1;
 
-    private static void invalidateCredentialShutdown() { credentialShutdown.beforeStart(); }
+    private static void invalidateCredentialShutdown() { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); credentialShutdown.beforeStart(); }
 
     /** Native credential writers retain this exact request through their durable commit. */
     public static long stopForCredentialChange(Context context) {
@@ -2324,6 +2324,8 @@ public class ElizaAgentService extends Service {
                     }
                     synchronized (processLock) {
                         if (shuttingDown || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
+                        try { ai.eliza.plugins.agent.updater.RuntimeUpdatePause.beforeStart(); }
+                        catch (IllegalStateException updating) { currentStatus="stopping"; return; }
                         ensureBionicVoiceHost();
                         if (restartFirst && !stopAgentProcessOrPreserve(false)) {
                             // The prior resident still owns the runtime; never start a second one.

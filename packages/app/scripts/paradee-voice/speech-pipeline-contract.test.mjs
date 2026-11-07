@@ -42,7 +42,20 @@ const skipUnlessJsonJarInstalled =
     ? false
     : "Set ELIZA_JSON_JAR or install the pinned Gradle org.json dependency";
 
-function run(classes, fixture, expected, { json = false } = {}) {
+// Host-JVM doubles of the Android types OnDeviceRecognizer uses (speech-pipeline/android-api).
+const androidApi = path.join(fixtures, "android-api");
+const javaFiles = (directory) =>
+  fs
+    .readdirSync(directory, { recursive: true })
+    .filter((name) => name.endsWith(".java"))
+    .map((name) => path.join(directory, name));
+
+function run(
+  classes,
+  fixture,
+  expected,
+  { json = false, android = false } = {},
+) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-pipeline-"));
   const classpath = json ? ["-cp", jsonJar] : [];
   try {
@@ -56,6 +69,7 @@ function run(classes, fixture, expected, { json = false } = {}) {
         temp,
         ...classes.map((name) => path.join(voice, `${name}.java`)),
         path.join(fixtures, `${fixture}.java`),
+        ...(android ? javaFiles(androidApi) : []),
       ],
       { stdio: "pipe", timeout: 120000 },
     );
@@ -132,6 +146,38 @@ test("speech request gate admits one request, drains cancellation and refuses af
     ["SpeechRequestGate"],
     "SpeechRequestGateTest",
     /^PASS speech request gate/,
+  ));
+test("recognizer availability keeps answers, retries unanswered probes and holds demotes", () =>
+  run(
+    ["RecognizerAvailability"],
+    "RecognizerAvailabilityTest",
+    /^PASS recognizer availability/,
+  ));
+test("the on-device recognizer keeps a late answer and never reads an unanswered probe as no model", () =>
+  run(
+    [
+      "OnDeviceRecognizer",
+      "RecognizerAvailability",
+      "RecognizerUnavailable",
+      "NativeAsr",
+      "VoiceNative",
+    ],
+    "OnDeviceRecognizerProbeTest",
+    /^PASS on-device recognizer probe wiring/,
+    { android: true },
+  ));
+test("the on-device recognizer hears fed speech before finish and keeps its timeout and cancel meaning", () =>
+  run(
+    [
+      "OnDeviceRecognizer",
+      "RecognizerAvailability",
+      "RecognizerUnavailable",
+      "NativeAsr",
+      "VoiceNative",
+    ],
+    "OnDeviceRecognizerSessionTest",
+    /^PASS on-device recognizer session/,
+    { android: true },
   ));
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
@@ -256,6 +302,73 @@ test("the shared speech library compiles against Android 36", () => {
   }
 });
 
+test("a host subclasses the inference transport through its hooks, against Android 36", () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const transport = path.resolve(
+    here,
+    "../../../../plugins/plugin-local-inference/native/android/capacitor/src/main/java/ai/eliza/voice",
+  );
+  const javaFiles = (directory) =>
+    fs
+      .readdirSync(directory, { recursive: true })
+      .filter((name) => name.endsWith(".java"))
+      .map((name) => path.join(directory, name));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "inference-host-"));
+  try {
+    // A host in its own package overrides admit, configure, describe, hear and the idle
+    // release, and calls cancelAll; compile-only Capacitor signatures, nothing runs.
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        sdk,
+        "-d",
+        temp,
+        ...javaFiles(voice),
+        ...javaFiles(transport),
+        ...javaFiles(path.join(fixtures, "capacitor-api")),
+        ...javaFiles(path.join(fixtures, "host-inference")),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+  const source = fs
+    .readFileSync(path.join(transport, "ElizaInferencePlugin.java"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  // The default transcription never selects a platform recognizer.
+  assert.doesNotMatch(source, /OnDeviceRecognizer|SpeechRecognizer/);
+  assert.match(
+    source,
+    /result\.put\("text", transcription\.asr\(\)\.trim\(\)\);/,
+  );
+  // The host's admission runs on the worker for every request, also one that waited in the queue.
+  assert.match(
+    source,
+    /request\.check\(\);\s*if \(models\.pressure\)[^\n]*\n\s*admit\(call\);\s*lane\.active = request;\s*JSObject result = operation\.run\(request\);/,
+  );
+  // Transcription has its own worker and client: it never waits behind synthesis in the queue.
+  assert.match(
+    source,
+    /submit\(call, "HEARING_FAILED", models\.hearing, request ->/,
+  );
+  assert.match(
+    source,
+    /submit\(call, "SPEECH_FAILED", models\.speech, request ->/,
+  );
+  assert.match(
+    source,
+    /final Lane hearing = new Lane\(Executors\.newSingleThreadExecutor\(\)\);/,
+  );
+});
+
 test("live capture uses the shared session's VAD and never a platform recognizer", () => {
   const strip = (name) =>
     fs
@@ -306,11 +419,6 @@ test("the product-subclassable speech bridge compiles with the library against A
   assert.ok(fs.existsSync(sdk), "Android 36 platform required");
   // Compile-only Capacitor signatures (speech-pipeline/capacitor-api); no Capacitor code runs.
   const capacitor = path.join(fixtures, "capacitor-api");
-  const javaFiles = (directory) =>
-    fs
-      .readdirSync(directory, { recursive: true })
-      .filter((name) => name.endsWith(".java"))
-      .map((name) => path.join(directory, name));
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
   try {
     execFileSync(

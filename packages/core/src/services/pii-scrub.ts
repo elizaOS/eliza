@@ -19,11 +19,7 @@ import {
 	EncryptedCachePseudonymMapStore,
 	type PseudonymMapStore,
 } from "../security/pii-pseudonym-map-store.js";
-import {
-	getScrubMarker,
-	isScrubDone,
-	markScrubDone,
-} from "../security/pii-scrub-markers.js";
+import { isScrubDone, markScrubDone } from "../security/pii-scrub-markers.js";
 import {
 	PiiScrubFabricationError,
 	scrubWithEscalation,
@@ -59,7 +55,8 @@ export class PiiScrubService extends Service {
 		"Runs the corpus PII scrub asynchronously on the core task queue (content-hash idempotent, non-blocking)";
 
 	private batchQueue: BatchQueue<PiiScrubQueueItem> | null = null;
-	private isDisabled = false;
+	private readonly scrubRequestHandler = (payload: PiiScrubRequestPayload) =>
+		this.handleScrubRequest(payload);
 
 	private static readonly SCRUB_DRAIN_TASK = "PII_SCRUB_DRAIN";
 
@@ -74,10 +71,6 @@ export class PiiScrubService extends Service {
 	}
 
 	async initialize(): Promise<void> {
-		if (this.isDisabled) {
-			return;
-		}
-
 		this.runtime.logger.info(
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Initializing PII scrub service",
@@ -85,7 +78,7 @@ export class PiiScrubService extends Service {
 
 		this.runtime.registerEvent(
 			EventType.PII_SCRUB_REQUESTED,
-			this.handleScrubRequest.bind(this),
+			this.scrubRequestHandler,
 		);
 
 		// Same drain/retry/priority model as the embedding service - the task
@@ -123,7 +116,7 @@ export class PiiScrubService extends Service {
 	private async handleScrubRequest(
 		payload: PiiScrubRequestPayload,
 	): Promise<void> {
-		if (this.isDisabled || !this.batchQueue) {
+		if (!this.batchQueue) {
 			return;
 		}
 
@@ -380,7 +373,11 @@ export class PiiScrubService extends Service {
 			{ src: SRC, agentId: this.runtime.agentId },
 			"Stopping PII scrub service",
 		);
-		if (this.isDisabled || !this.batchQueue) {
+		this.runtime.unregisterEvent(
+			EventType.PII_SCRUB_REQUESTED,
+			this.scrubRequestHandler,
+		);
+		if (!this.batchQueue) {
 			return;
 		}
 		const remaining = this.batchQueue.size;
@@ -416,11 +413,6 @@ export class PiiScrubService extends Service {
 
 	clearQueue(): void {
 		this.batchQueue?.clear();
-	}
-
-	/** Test/audit helper: read the done-marker for a piece of content. */
-	async getMarker(content: string, rulesetVersion: string) {
-		return getScrubMarker(this.runtime, content, rulesetVersion);
 	}
 }
 

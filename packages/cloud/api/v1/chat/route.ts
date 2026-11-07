@@ -31,10 +31,7 @@ import {
   resolveAiProviderSource,
 } from "@elizaos/cloud-shared/lib/providers/language-model";
 import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
-import {
-  AiPricingCacheUnavailableError,
-  AiPricingCacheWarmingError,
-} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import { AiPricingCacheUnavailableError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import {
   type AnonymousChatGateCredential,
   type AnonymousChatGateLease,
@@ -58,7 +55,7 @@ import { generationsService } from "@elizaos/cloud-shared/lib/services/generatio
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@elizaos/cloud-shared/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import { InferenceBillingUnavailableError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
@@ -154,9 +151,9 @@ async function getRequestApiKey(
   return validated ? { id: validated.id } : undefined;
 }
 
-function retryableWarmingResponse(c: AppContext, area: string): Response {
+function retryableUnavailableResponse(c: AppContext, area: string): Response {
   return c.json(
-    { error: `${area} authorization is warming. Retry shortly.` },
+    { error: `${area} authorization is unavailable. Retry shortly.` },
     503,
     { "Retry-After": "1" },
   );
@@ -208,15 +205,8 @@ app.post("/", async (c) => {
       typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
     // error-policy:J4 Hono intentionally throws outside Workers; local tools
-    // retain compatibility, while enabled Worker admission fails closed below.
+    // keep the synchronous primary admission.
     executionCtx = undefined;
-  }
-  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
-    logger.error(
-      "chat-api",
-      "Worker execution context is unavailable for cache-only inference",
-    );
-    return retryableWarmingResponse(c, "Inference");
   }
 
   let settleReservation:
@@ -273,12 +263,8 @@ app.post("/", async (c) => {
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
-        cacheOnly: true,
         deferStrongCredentialCheck: requestIsValid,
       });
-      if (authResolution.kind === "warming") {
-        return retryableWarmingResponse(c, "Authentication");
-      }
       if (authResolution.kind === "suspended") {
         const denial = resolveInferenceAuthStandingDenial(authResolution, {
           route: "chat",
@@ -330,13 +316,9 @@ app.post("/", async (c) => {
         if (invalidRequestResponse) return invalidRequestResponse;
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
-          executionCtx,
         );
         if (anonymousResolution.kind === "missing") {
           return c.json({ error: "Authentication required" }, 401);
-        }
-        if (anonymousResolution.kind === "warming") {
-          return retryableWarmingResponse(c, "Anonymous session");
         }
         if (anonymousResolution.kind === "rejected") {
           return c.json(
@@ -345,7 +327,7 @@ app.post("/", async (c) => {
           );
         }
         if (anonymousResolution.kind === "unavailable") {
-          return retryableWarmingResponse(c, "Anonymous session");
+          return retryableUnavailableResponse(c, "Anonymous session");
         }
         if (anonymousResolution.blocked) {
           return c.json(
@@ -410,13 +392,12 @@ app.post("/", async (c) => {
           },
         );
       } catch (error) {
-        // error-policy:J1 the dashboard protocol exposes a cold policy cache as
-        // retryable unavailability and never falls through to database policy.
+        // error-policy:J1 the dashboard protocol exposes an unprovable policy
+        // as retryable unavailability.
         if (error instanceof OrgRateLimitCacheNotReadyError) {
           return c.json(
             {
-              error:
-                "Rate-limit authorization cache is warming. Retry shortly.",
+              error: "Rate-limit authorization is unavailable. Retry shortly.",
               retryable: true,
             },
             503,
@@ -492,11 +473,8 @@ app.post("/", async (c) => {
           requestId,
           executionCtx,
         );
-        if (
-          leaseResolution.kind === "warming" ||
-          leaseResolution.kind === "unavailable"
-        ) {
-          return retryableWarmingResponse(c, "Anonymous quota");
+        if (leaseResolution.kind === "unavailable") {
+          return retryableUnavailableResponse(c, "Anonymous quota");
         }
         if (leaseResolution.kind === "rejected") {
           return c.json(
@@ -614,11 +592,10 @@ app.post("/", async (c) => {
         }
         if (
           error instanceof InferenceAdmissionUnavailableError ||
-          error instanceof InferenceBalanceCacheWarmingError ||
-          error instanceof AiPricingCacheWarmingError ||
+          error instanceof InferenceBillingUnavailableError ||
           error instanceof AiPricingCacheUnavailableError
         ) {
-          return retryableWarmingResponse(c, "Billing");
+          return retryableUnavailableResponse(c, "Billing");
         }
         throw error;
       }
@@ -921,7 +898,7 @@ app.post("/", async (c) => {
     }
     if (
       error instanceof InferenceAdmissionUnavailableError ||
-      error instanceof InferenceBalanceCacheWarmingError
+      error instanceof InferenceBillingUnavailableError
     ) {
       logger.error("chat-api", "Provider dispatch admission failed closed", {
         ...providerLogContext,
@@ -932,7 +909,7 @@ app.post("/", async (c) => {
             ? `${error.cause.name}: ${error.cause.message}`
             : undefined,
       });
-      return retryableWarmingResponse(c, "Billing");
+      return retryableUnavailableResponse(c, "Billing");
     }
     logger.error("chat-api", "Error processing chat", {
       error: error instanceof Error ? error.message : String(error),

@@ -4,9 +4,16 @@ import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
+import { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 import { createMailboxReadPort } from "./mailbox-read-port.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
 import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
+import {
+  normalizeSubscriptionCode,
+  redeemedSubscriptionGrant,
+  redeemFailureCode,
+  subscriptionGrantFromSnapshot,
+} from "./subscription-grant.mjs";
 import { projectRenewalReview } from "./subscription-review.mjs";
 import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
@@ -15,53 +22,6 @@ const speechLanguageCode = (value) =>
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
-// Read a small, structured refusal without retaining or exposing provider text.
-async function speechWarmingDelay(response, signal) {
-  const reader = response.body?.getReader();
-  if (!reader) return null;
-  const abort = () => {
-    void reader.cancel().catch(() => {});
-  };
-  signal.addEventListener("abort", abort, { once: true });
-  const chunks = [];
-  let size = 0;
-  try {
-    signal.throwIfAborted();
-    for (;;) {
-      const part = await reader.read();
-      signal.throwIfAborted();
-      if (part.done) break;
-      size += part.value.length;
-      if (size > 16384) return null;
-      chunks.push(part.value);
-    }
-    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (
-      body?.code !== "auth_cache_warming" &&
-      body?.error?.code !== "auth_cache_warming"
-    )
-      return null;
-    const value = response.headers.get("retry-after");
-    if (value !== null) {
-      if (/^\d+$/.test(value)) return Number(value) * 1000;
-      if (
-        !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
-          value,
-        )
-      )
-        return null;
-      const date = Date.parse(value);
-      return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
-    }
-    return 1000;
-  } catch {
-    signal.throwIfAborted();
-    return null;
-  } finally {
-    signal.removeEventListener("abort", abort);
-    await reader.cancel().catch(() => {});
-  }
-}
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
 function invoiceProjection(value, id) {
   if (
@@ -235,6 +195,7 @@ const googleScopes = (value) =>
 const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+const GMAIL_METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
 const GOOGLE_IDENTITY_SCOPES = new Set([
   "openid",
   "email",
@@ -242,37 +203,57 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ]);
+// What a Google grant means on a host, checked on the raw scope list, so an
+// unrecognized entry also makes the grant wider. `no-read`: nothing reads
+// messages (identity or metadata only, or no gmail.readonly). `too-broad`: a
+// scope this host never asks for. `read-only`, `part-write` and `write`: the
+// grant reads mail and holds none, some or all of the write scopes. Only a
+// host with `writes` asks for any write scope (gmail.modify, gmail.send).
+const gmailGrant = (scopes, writes) => {
+  const list = Array.isArray(scopes) ? scopes : [];
+  const wanted = writes ? [GMAIL_MODIFY_SCOPE, GMAIL_SEND_SCOPE] : [];
+  if (
+    list.every(
+      (scope) =>
+        scope === GMAIL_METADATA_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+    )
+  )
+    return "no-read";
+  if (
+    !list.every(
+      (scope) =>
+        scope === GMAIL_READ_ONLY_SCOPE ||
+        GOOGLE_IDENTITY_SCOPES.has(scope) ||
+        wanted.includes(scope),
+    )
+  )
+    return "too-broad";
+  if (!list.includes(GMAIL_READ_ONLY_SCOPE)) return "no-read";
+  const held = wanted.filter((scope) => list.includes(scope)).length;
+  return held === 0
+    ? "read-only"
+    : held === wanted.length
+      ? "write"
+      : "part-write";
+};
+const readsMail = (grant) =>
+  grant === "read-only" || grant === "part-write" || grant === "write";
 // By default this host asks Google for read-only Gmail (`google.gmail.triage`,
 // which Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
 // through a grant that is exactly that. A wider grant (gmail.modify,
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
-// Checked on the raw list: an unrecognized entry also makes the grant wider.
 // Agent task reads (`googleForAccount`) use this grant unless the host opts
 // in to the owner write grant below.
 const gmailReadOnlyGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+  gmailGrant(scopes, false) === "read-only";
 // A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
 // own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
 // mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
 // full mail access or another product's scope is still refused. Agent task
 // reads may then run under this grant too: their port only sends GET reads, so
 // the wider grant gives a task no write path.
-const gmailOwnerWriteGrant = (scopes) =>
-  Array.isArray(scopes) &&
-  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
-  scopes.every(
-    (scope) =>
-      scope === GMAIL_READ_ONLY_SCOPE ||
-      scope === GMAIL_MODIFY_SCOPE ||
-      scope === GMAIL_SEND_SCOPE ||
-      GOOGLE_IDENTITY_SCOPES.has(scope),
-  );
+const gmailOwnerWriteGrant = (scopes) => readsMail(gmailGrant(scopes, true));
 // The owner's reviewed mail effects this host relays to Cloud's inbox-v1
 // operations. Drafts are not offered here.
 const OWNER_MAIL_EFFECTS = new Set([
@@ -314,6 +295,27 @@ const googleReadFailure = (code) =>
     code,
   });
 const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
+// A subscription code refusal: its HTTP status and the host message key.
+const REDEEM_REFUSALS = {
+  invalid: [400, "subscriptionCodeInvalid"],
+  "signed-out": [401, "subscriptionCodeSignedOut"],
+  account: [403, "subscriptionCodeAccount"],
+  "already-redeemed": [409, "subscriptionCodeAlreadyRedeemed"],
+  "paid-plan-active": [409, "subscriptionCodePaidPlanActive"],
+  ended: [409, "subscriptionCodeEnded"],
+  "rate-limited": [429, "subscriptionCodeRateLimited"],
+  unavailable: [503, "subscriptionCodeUnavailable"],
+};
+// A bounded JSON body from Cloud; null when it is too large or not JSON.
+async function boundedJson(response, maximum) {
+  try {
+    const value = await bytes(response.body ?? [], maximum);
+    return JSON.parse(value.toString("utf8"));
+  } catch {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
+}
 function send(res, status, value) {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -543,9 +545,21 @@ export function createCloudRoutes({
   verifiedAccountStore,
   credentialGate,
   pendingCredentialStore,
+  // A host that records why the account signed out. `onRevoked({ key })` runs
+  // when Cloud refuses the stored key at the identity check: inside the
+  // credential critical section, before the key is cleared. `status()` gives
+  // `{ revoked, localDataPending }` for each signed-out access answer.
+  credentialRevocation,
   // false: the host has its own sign-in. `/cloud/login` and its status route answer
   // 404, and no Cloud web origin (cloudSiteBase) is used.
   browserSignIn = true,
+  // false: the host offers no Google account link. Every
+  // `/cloud/account/methods/google/*` route answers 404.
+  accountGoogleLink = true,
+  // false: only the host starts and finishes Google sign-in, through the
+  // enrollment it built. `/cloud/native/start` with `method: "google"` and
+  // `/cloud/native/google/return` answer 404.
+  googleSignInRoutes = true,
 } = {}) {
   const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
@@ -592,8 +606,19 @@ export function createCloudRoutes({
   const ownerGmailGrant = ownerWrites
     ? gmailOwnerWriteGrant
     : gmailReadOnlyGrant;
+  // Off unless the host opts in: subscription code redemption
+  // (`POST /cloud/account/subscription/redeem`) and the account's grant from
+  // the billing snapshot, given to `projectAccountAccess` as `{ grant }`.
+  const subscriptionCodes = hostPolicy.subscriptionCodes === true;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
+  // A sign-in route this host turned off. The answer is the same before and
+  // after any request, so nothing is read, cleared or sent to Cloud.
+  const refuseSignInRoute = (res, key) =>
+    send(res, 404, {
+      error: hostPolicy.messages?.[key] ?? "Cloud route not available",
+      code: "internal_sign_in_only",
+    });
   const site = browserSignIn ? origin(cloudSiteBase) : null,
     api = origin(cloudApiBase);
   const verifiedRequired = () =>
@@ -601,6 +626,12 @@ export function createCloudRoutes({
       status: 409,
       code: "VERIFIED_ACCOUNT_REQUIRED",
     });
+  if (
+    credentialRevocation !== undefined &&
+    (typeof credentialRevocation?.onRevoked !== "function" ||
+      typeof credentialRevocation.status !== "function")
+  )
+    throw new TypeError("Credential revocation port must be host functions");
   if (
     verifiedAccountStore !== undefined &&
     (!verifiedAccountStore ||
@@ -811,70 +842,6 @@ export function createCloudRoutes({
     responseEpoch.set(response, epoch);
     return response;
   }
-  // Only this pre-admission auth refusal is safe to replay. Keep retries out of
-  // the generic request helper used by billing and other stateful operations.
-  async function speechRequest(path, options) {
-    // Freeze the wire bytes once, as well as the captured credential and owner.
-    const requestOptions = options.json
-      ? {
-          ...options,
-          json: undefined,
-          rawBody: JSON.stringify(options.json),
-          headers: { "Content-Type": "application/json", ...options.headers },
-        }
-      : options;
-    const epoch = options.authorityGeneration;
-    const deadline = performance.now() + 10000;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, controller.signal])
-      : controller.signal;
-    try {
-      for (let attempt = 0; ; attempt++) {
-        options.signal?.throwIfAborted();
-        if (attempt > 0) signal.throwIfAborted();
-        current(epoch);
-        // Preserve the original first-request/stream lifetime. The retry deadline
-        // bounds warming reads, backoff and repeat headers, never admitted audio.
-        const response = await request(
-          path,
-          attempt === 0 ? requestOptions : { ...requestOptions, signal },
-        );
-        if (
-          response.status !== 503 ||
-          !response.headers
-            .get("content-type")
-            ?.toLowerCase()
-            .startsWith("application/json")
-        )
-          return response;
-        const delay = await speechWarmingDelay(response, signal);
-        signal.throwIfAborted();
-        current(epoch);
-        if (
-          delay === null ||
-          attempt >= 2 ||
-          !Number.isFinite(delay) ||
-          delay >= deadline - performance.now()
-        )
-          return response;
-        await new Promise((resolve, reject) => {
-          const abort = () => {
-            clearTimeout(wait);
-            reject(signal.reason);
-          };
-          const wait = setTimeout(() => {
-            signal.removeEventListener("abort", abort);
-            resolve();
-          }, delay);
-          signal.addEventListener("abort", abort, { once: true });
-        });
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-  }
   async function parse(response) {
     if (!response.ok)
       throw fail(
@@ -903,6 +870,17 @@ export function createCloudRoutes({
       return null;
     return authority;
   }
+  /** The signed-out answer, with the host's revocation when it has one. */
+  async function signedOut() {
+    const status = await credentialRevocation?.status();
+    return status?.revoked === true
+      ? {
+          state: "signed_out",
+          revoked: true,
+          localDataPending: status.localDataPending === true,
+        }
+      : { state: "signed_out" };
+  }
   async function accountAccess() {
     if (!billingEnabled)
       throw fail("Account billing is unavailable in this host", 404);
@@ -925,11 +903,16 @@ export function createCloudRoutes({
     }
     const key = await usableCredential();
     current(epoch);
-    if (!key) return { state: "signed_out" };
+    if (!key) return signedOut();
+    // Only a refusal at the identity check names the stored key as revoked.
+    let identityRefused = false;
     try {
       const user = await parse(
         await request("/api/v1/user", { key, authorityGeneration: epoch }),
-      );
+      ).catch((error) => {
+        identityRefused = error.status === 401;
+        throw error;
+      });
       const snapshot = await parse(
         await request("/api/v1/billing/limits", {
           key,
@@ -937,19 +920,116 @@ export function createCloudRoutes({
         }),
       );
       current(epoch);
-      return projectAccountAccess(user, snapshot);
+      if (!subscriptionCodes) return projectAccountAccess(user, snapshot);
+      return projectAccountAccess(user, snapshot, {
+        grant: subscriptionGrantFromSnapshot(snapshot, {
+          planKeys: hostPolicy.planKeys,
+        }),
+      });
     } catch (error) {
       current(epoch);
       if (error.status === 401) {
+        let recorded = true;
         await mutateCredential(async () => {
           current(epoch);
+          if (
+            identityRefused &&
+            credentialRevocation &&
+            (await store.read().catch(() => null)) === key
+          ) {
+            try {
+              await credentialRevocation.onRevoked({ key });
+            } catch {
+              recorded = false;
+              return;
+            }
+          }
           await store.clear();
         });
         current(epoch);
-        return { state: "signed_out" };
+        // The host could not record it: the key stays, and the next check
+        // tries again.
+        if (!recorded) return { state: "unavailable" };
+        return signedOut();
       }
       return { state: "unavailable" };
     }
+  }
+  /**
+   * Redeems a subscription grant code for the saved sign-in. The idempotency
+   * key comes from the code, so a retry after a lost answer, on this or
+   * another device, replays the original grant. A transport failure (the
+   * request may have arrived) is replayed once with the same key; HTTP
+   * refusals are never retried. The grant is reported only if the same
+   * sign-in is still saved. The code is never logged, stored or returned.
+   */
+  async function redeemSubscriptionCode(req, res, signal) {
+    const refuse = (code, extra = {}) => {
+      const [status, key] = REDEEM_REFUSALS[code];
+      send(res, status, { error: message(key), code, ...extra });
+    };
+    // An oversized, non-JSON or unexpected body is the same "invalid" answer.
+    const input = await body(req, 4096).catch(() => null);
+    const code =
+      input && Object.keys(input).every((field) => field === "code")
+        ? normalizeSubscriptionCode(input.code)
+        : null;
+    if (!code) return refuse("invalid");
+    await credentialWrites;
+    const epoch = generation;
+    // A pending disconnect is signed out.
+    const key = await usableCredential().catch((error) => {
+      if (error.status === 401) return null;
+      throw error;
+    });
+    current(epoch);
+    if (!key) return refuse("signed-out");
+    const idempotencyKey = `redeem:${createHash("sha256")
+      .update(`subscription-redeem\0${code}`)
+      .digest("hex")
+      .slice(0, 40)}`;
+    let response;
+    for (let attempt = 0; !response; attempt++) {
+      const timeout = AbortSignal.timeout(20000);
+      try {
+        response = await request("/api/v1/subscription/redeem", {
+          key,
+          method: "POST",
+          json: { code, idempotencyKey },
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+          authorityGeneration: epoch,
+        });
+      } catch {
+        signal?.throwIfAborted();
+        current(epoch);
+        if (attempt >= 1) return refuse("unavailable");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        current(epoch);
+      }
+    }
+    const data = await boundedJson(response, 65536);
+    current(epoch);
+    if (!response.ok) {
+      const failure = redeemFailureCode(response.status, data) ?? "signed-out";
+      const wait = response.headers.get("retry-after");
+      return refuse(
+        failure,
+        failure === "rate-limited" && /^\d{1,6}$/.test(wait ?? "")
+          ? { retryAfter: Number(wait) }
+          : {},
+      );
+    }
+    // A grant is reported only to the sign-in that asked for it.
+    await credentialWrites;
+    current(epoch);
+    if ((await usableCredential().catch(() => null)) !== key)
+      throw fail(message("accountSessionChanged"), 409);
+    const answer = redeemedSubscriptionGrant(data, {
+      planKeys: hostPolicy.planKeys,
+    });
+    if (!answer) return refuse("unavailable");
+    if (answer.status === "ended") return refuse("ended");
+    send(res, 200, { replayed: answer.replayed, grant: answer.grant });
   }
   function speechInput(input) {
     if (
@@ -1005,7 +1085,7 @@ export function createCloudRoutes({
     assertOwner: checkSpeechOwner,
     open: async (input, signal, owner) => {
       const { epoch, key } = await checkSpeechOwner(owner);
-      const response = await speechRequest("/api/v1/voice/tts", {
+      const response = await request("/api/v1/voice/tts", {
         method: "POST",
         json: { ...input, withTimestamps: true },
         key,
@@ -1052,12 +1132,26 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
-      if (
-        (!billingEnabled && path.startsWith("/cloud/account/")) ||
-        (!browserSignIn &&
-          (path === "/cloud/login" || path === "/cloud/login/status"))
-      ) {
+      if (!billingEnabled && path.startsWith("/cloud/account/")) {
         send(res, 404, { error: "Cloud route not available" });
+        return true;
+      }
+      if (
+        !browserSignIn &&
+        (path === "/cloud/login" || path === "/cloud/login/status")
+      ) {
+        refuseSignInRoute(res, "browserSignInUnavailable");
+        return true;
+      }
+      if (
+        !accountGoogleLink &&
+        path.startsWith("/cloud/account/methods/google/")
+      ) {
+        refuseSignInRoute(res, "accountGoogleLinkUnavailable");
+        return true;
+      }
+      if (!googleSignInRoutes && path === "/cloud/native/google/return") {
+        refuseSignInRoute(res, "googleSignInRoutesUnavailable");
         return true;
       }
       let method = req.method,
@@ -1108,6 +1202,14 @@ export function createCloudRoutes({
       );
       if (method === "GET" && path === "/cloud/account/access") {
         send(res, 200, await accountAccess());
+        return true;
+      }
+      if (
+        subscriptionCodes &&
+        method === "POST" &&
+        path === "/cloud/account/subscription/redeem"
+      ) {
+        await redeemSubscriptionCode(req, res, signal);
         return true;
       }
       if (method === "GET" && path === "/cloud/account/plans") {
@@ -1670,10 +1772,21 @@ export function createCloudRoutes({
                 : [];
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedSignInFields"));
+        if (
+          !googleSignInRoutes &&
+          operation === "start" &&
+          input.method === "google"
+        ) {
+          refuseSignInRoute(res, "googleSignInRoutesUnavailable");
+          return true;
+        }
         if (operation === "cancel") {
           advanceGeneration();
           attempts.clear();
-          send(res, 200, await nativeAuth.cancel({ disconnect: true }));
+          // Drops only the sign-in in progress. A key the host already holds,
+          // or one a finished sign-in just reported, stays: `/cloud/logout`
+          // is the disconnect.
+          send(res, 200, await nativeAuth.cancel());
           return true;
         }
         send(res, 200, await nativeAuth.handle(operation, input));
@@ -1839,10 +1952,12 @@ export function createCloudRoutes({
                 "applyTextNormalization",
               ]
             : operation === "pull"
-              ? ["streamId", "cursor"]
+              ? ["streamId", "cursor", "batch"]
               : ["streamId", "requestId"];
         if (Object.keys(input).some((field) => !fields.includes(field)))
           throw fail("Unexpected speech stream fields");
+        if (input.batch !== undefined && input.batch !== true)
+          throw fail("Invalid speech stream batch");
         const result =
           operation === "start"
             ? await speechStreams.start({
@@ -1854,6 +1969,7 @@ export function createCloudRoutes({
               ? await speechStreams.pull({
                   streamId: input.streamId,
                   cursor: input.cursor,
+                  batch: input.batch === true,
                   owner,
                 })
               : await speechStreams.cancel({
@@ -1867,7 +1983,7 @@ export function createCloudRoutes({
       }
       if (method === "POST" && path === "/voice/tts") {
         const input = speechInput(await body(req));
-        const response = await speechRequest("/api/v1/voice/tts", {
+        const response = await request("/api/v1/voice/tts", {
           method: "POST",
           json: input,
           key,
@@ -1959,7 +2075,7 @@ export function createCloudRoutes({
           ),
         ]);
         const value = await parse(
-          await speechRequest("/api/v1/voice/stt", {
+          await request("/api/v1/voice/stt", {
             method: "POST",
             rawBody: multipart,
             headers: {
@@ -2031,6 +2147,9 @@ export function createCloudRoutes({
           // only through an exactly read-only grant (gmailReadOnlyGrant), or
           // the owner write grant when the host opts in.
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
+          // This host's policy and its verdict on the grant, on every answer.
+          ownerWrites,
+          grant: gmailGrant(connected ? value.grantedScopes : [], ownerWrites),
           canReadMessages: connected && ownerGmailGrant(value.grantedScopes),
           // Reported only by a host that opts in to owner mail writes.
           ...(ownerWrites
@@ -2231,7 +2350,10 @@ export function createCloudRoutes({
         else
           send(res, error.status || 502, {
             error: error.status ? error.message : "Cloud service unavailable",
-            ...(error.code === "VERIFIED_ACCOUNT_REQUIRED"
+            // The enrollment's sign-in conflict codes let the app tell a busy
+            // host from an account that must be disconnected first.
+            ...(error.code === "VERIFIED_ACCOUNT_REQUIRED" ||
+            (error.status === 409 && /^sign_in_[a-z_]+$/.test(error.code ?? ""))
               ? { code: error.code }
               : {}),
             // The wait the account service gave, in seconds, so the app can
@@ -2379,9 +2501,12 @@ export function createCloudRoutes({
           if (!error?.googleConflict) throw error;
           // Name the Google conflict from the connection's current status:
           // gone or replaced, metadata-only, or a token that needs reconnect.
+          // Cloud also answers 409 when Google's token endpoint is down. Only
+          // a refused grant changes the status, so a status that still names
+          // this connected grant means Google is unavailable.
           if ((await currentAccountId(googleEpoch)) !== grantId)
             throw googleReadFailure("account_changed");
-          throw googleReadFailure("reauth_required");
+          throw googleReadFailure("unavailable");
         }
       },
     });
@@ -2522,6 +2647,13 @@ export function createCloudRoutes({
         throw writeFailure("account_changed", 409);
       return value;
     };
+    const recipients = (review) => {
+      const lists = [review.to, review.cc, review.bcc].map((list) =>
+        mailAddresses(list),
+      );
+      const count = lists.reduce((sum, list) => sum + (list?.length ?? 0), 0);
+      return lists.every(Boolean) && count > 0 && count <= 50;
+    };
     const receipt = (value, requestId) => {
       if (
         value?.requestId !== requestId ||
@@ -2543,6 +2675,11 @@ export function createCloudRoutes({
         reviewDigest: value.reviewDigest,
         state: value.state,
         providerResult,
+        // A change's labels after it, reduced as the mailbox read port does.
+        mailbox:
+          value.kind !== "send" && Array.isArray(providerResult?.labelIds)
+            ? mailboxState(providerResult.labelIds, providerResult.historyId)
+            : null,
         rejectionCode:
           typeof value.rejectionCode === "string" ? value.rejectionCode : null,
       };
@@ -2584,18 +2721,33 @@ export function createCloudRoutes({
           false,
         );
         const prepared = receipt(value?.receipt, requestId);
+        const review = value.review;
         if (
           prepared.kind !== effect.kind ||
-          !value.review ||
-          typeof value.review !== "object" ||
-          Array.isArray(value.review)
+          !review ||
+          typeof review !== "object" ||
+          Array.isArray(review) ||
+          // A send review names what the owner confirms: who it is from and
+          // to (1 to 50 recipients in to, cc and bcc, as Cloud allows), the
+          // subject and the names of the files.
+          (effect.kind === "send" &&
+            (review.kind !== "send" ||
+              !mailAddress(review.from) ||
+              !recipients(review) ||
+              typeof review.subject !== "string" ||
+              ![review.attachments, review.forwardedAttachments].every(
+                (files) =>
+                  files === undefined ||
+                  (Array.isArray(files) &&
+                    files.every((file) => typeof file?.name === "string")),
+              )))
         )
           throw fail(message("invalidCloudResponse"), 502);
         return {
           version: 1,
           accountId,
           receipt: prepared,
-          review: value.review,
+          review,
         };
       },
       /** Performs the reviewed effect once; a repeat returns the same receipt. */
@@ -2630,6 +2782,53 @@ export function createCloudRoutes({
           throw writeFailure("outcome_unknown", 503);
         }
         return { version: 1, accountId, receipt: confirmed };
+      },
+      /** Cloud's limits on the files that one sent message can carry. */
+      async capabilities() {
+        let value;
+        try {
+          value = await call(
+            `/api/v1/eliza/google/gmail/inbox-v1/capabilities?grantId=${encodeURIComponent(accountId)}`,
+            undefined,
+            undefined,
+            false,
+          );
+        } catch (error) {
+          // This route reads no review: Cloud answers 409 when it cannot get
+          // a Google token and 403 when the grant is gone. A grant that is
+          // still current makes it an outage.
+          if (!["review_changed", "insufficient_scope"].includes(error?.code))
+            throw error;
+          await authority();
+          throw writeFailure("unavailable", 503);
+        }
+        const policy = value?.attachmentPolicy;
+        const count = (number) => Number.isSafeInteger(number) && number > 0;
+        if (
+          !Array.isArray(policy?.mimeTypes) ||
+          policy.mimeTypes.length > 100 ||
+          !policy.mimeTypes.every(
+            (type) =>
+              typeof type === "string" &&
+              /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/.test(
+                type,
+              ),
+          ) ||
+          !count(policy.maximumBytes) ||
+          !count(policy.maximumOutgoing) ||
+          !count(policy.maximumTotalBytes)
+        )
+          throw fail(message("invalidCloudResponse"), 502);
+        return {
+          version: 1,
+          accountId,
+          attachmentPolicy: {
+            mimeTypes: [...policy.mimeTypes],
+            maximumBytes: policy.maximumBytes,
+            maximumOutgoing: policy.maximumOutgoing,
+            maximumTotalBytes: policy.maximumTotalBytes,
+          },
+        };
       },
       /** The canonical receipt of an earlier prepare or dispatch. */
       async observe(input) {
@@ -2749,4 +2948,5 @@ export function createFileCredentialStore(path) {
 
 export { createDocumentImageDescriber } from "./document-image-describer.mjs";
 export { loadDocumentRuntime } from "./document-runtime.mjs";
+export { mailAddress, mailAddresses, mailboxState } from "./mail-fields.mjs";
 export { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";

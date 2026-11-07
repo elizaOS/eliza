@@ -154,7 +154,7 @@ public abstract class AddressBookPlugin extends Plugin {
     status(call);
   }
 
-  /** One bounded page; `query` at most 128 characters, `limit` 1 to 200. */
+  /** One bounded page; `query` at most 128 characters, `limit` 1 to 200, and `cursor` the previous page's `next`. */
   @PluginMethod
   public void list(PluginCall call) {
     if (!readable()) {
@@ -168,7 +168,7 @@ public abstract class AddressBookPlugin extends Plugin {
       worker.execute(() -> {
         try {
           if (!readable() || cancel.isCanceled() || ticket != generation.get()) throw new SecurityException();
-          JSObject result = new ContactsCatalog(getContext()).list(call.getString("query", ""), call.getInt("limit", 50), cancel);
+          JSObject result = new ContactsCatalog(getContext()).list(call.getString("query", ""), call.getInt("limit", 50), call.getString("cursor"), cancel);
           android.app.Activity activity = getActivity();
           if (activity == null) {
             call.reject(closedMessage());
@@ -178,6 +178,8 @@ public abstract class AddressBookPlugin extends Plugin {
             if (readable() && !cancel.isCanceled() && ticket == generation.get()) call.resolve(result);
             else call.reject("Contacts access changed. Refresh after unlocking.");
           });
+        } catch (ContactsCatalog.StaleCursor changed) {
+          call.reject("Contacts changed. Refresh the list.");
         } catch (Exception unavailable) {
           call.reject("Contacts could not be read. Check access and refresh.");
         } finally {

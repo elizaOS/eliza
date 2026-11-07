@@ -21,7 +21,7 @@
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> \
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
- *     [--model-cache <dir>] [--python <python with torch>]
+ *     [--model-cache <dir>] [--python <python with torch>] [--ffi-exports-only]
  *
  *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
  *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
@@ -33,6 +33,10 @@
  * CI matrix stage the product voice stack this way. Files already in place
  * and matching their pins are kept. Desktop speaks English only, so this mode
  * never builds the Spanish voice.
+ *
+ * --ffi-exports-only builds libelizainference with only the eliza_inference_*
+ * FFI exported and unreached code dropped (stage-elizavoice-lib.ts); the JNI
+ * bridge this library ships calls nothing else.
  *
  * --workspace holds downloads and build trees. --out defaults to
  * plugins/plugin-local-inference/native/android/native. --model-cache is
@@ -97,7 +101,7 @@ function fail(message) {
   process.exit(1);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = {
     workspace: "",
     out: path.join(moduleDir, "native"),
@@ -105,11 +109,16 @@ function parseArgs(argv) {
     modelCache: "",
     python: "python3",
     modelsOnly: false,
+    ffiExportsOnly: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
     if (argv[i] === "--models-only") {
       args.modelsOnly = true;
+      continue;
+    }
+    if (argv[i] === "--ffi-exports-only") {
+      args.ffiExportsOnly = true;
       continue;
     }
     if (argv[i] === "--workspace") args.workspace = path.resolve(value);
@@ -406,21 +415,25 @@ export async function buildModels(args, pins, bundle, withSpanish = false) {
   }
 }
 
+/** stage-elizavoice-lib.ts arguments for one ABI. */
+export function stageLibArgs(args, abi, espeakDir) {
+  return [
+    path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
+    "--abi",
+    abi,
+    "--out",
+    path.join(args.out, "jniLibs", abi),
+    "--espeak-dir",
+    espeakDir,
+    ...(args.ffiExportsOnly ? ["--ffi-exports-only"] : []),
+  ];
+}
+
 function buildInference(args, espeakDir) {
   for (const abi of args.abis) {
-    run(
-      "node",
-      [
-        path.join(repoRoot, "packages/app/scripts/stage-elizavoice-lib.ts"),
-        "--abi",
-        abi,
-        "--out",
-        path.join(args.out, "jniLibs", abi),
-        "--espeak-dir",
-        espeakDir,
-      ],
-      { env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION } },
-    );
+    run("node", stageLibArgs(args, abi, espeakDir), {
+      env: { ...process.env, ELIZA_NDK_VERSION: NDK_VERSION },
+    });
     // The library's own CMake build packages libc++_shared.so from the same
     // NDK; a second copy in jniLibs would collide during APK merge.
     rmSync(path.join(args.out, "jniLibs", abi, "libc++_shared.so"), {

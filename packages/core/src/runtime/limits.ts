@@ -71,7 +71,7 @@ export interface ChainingLoopConfig {
 	maxTrajectoryPromptTokens: number;
 }
 
-export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
+const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: Number.POSITIVE_INFINITY,
 	maxRepeatedFailures: 2,
 	maxRequiredToolMisses: 3,
@@ -162,7 +162,7 @@ export interface FailureLike {
 	failureProvenance?: ActionFailureProvenance;
 }
 
-export function getFailureSignature(failure: FailureLike): string | null {
+function getFailureSignature(failure: FailureLike): string | null {
 	if (failure.success !== false && failure.error == null) {
 		return null;
 	}
@@ -182,24 +182,6 @@ export function getFailureSignature(failure: FailureLike): string | null {
 	return `${toolName}:${normalizedError}`;
 }
 
-export function countRepeatedFailures(
-	failures: readonly FailureLike[],
-	latestFailure: FailureLike,
-): number {
-	const latestSignature = getFailureComparisonKey(latestFailure);
-	if (!latestSignature) {
-		return 0;
-	}
-
-	let count = 0;
-	for (const failure of failures) {
-		if (getFailureComparisonKey(failure) === latestSignature) {
-			count += 1;
-		}
-	}
-	return count;
-}
-
 function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
@@ -212,7 +194,13 @@ export function assertRepeatedFailureLimit(params: {
 	latestFailure: FailureLike;
 	maxRepeatedFailures: number;
 }): void {
-	const observed = countRepeatedFailures(params.failures, params.latestFailure);
+	const latestKey = getFailureComparisonKey(params.latestFailure);
+	let observed = 0;
+	if (latestKey) {
+		for (const failure of params.failures) {
+			if (getFailureComparisonKey(failure) === latestKey) observed += 1;
+		}
+	}
 	if (observed > params.maxRepeatedFailures) {
 		throw new TrajectoryLimitExceeded({
 			kind: "repeated_failures",

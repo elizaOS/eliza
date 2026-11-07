@@ -144,6 +144,7 @@ function stripResidualBalancedDirections(input: string): string {
  * separate spans (`**a** then **b** …`) is fully consumed by one pass however
  * many spans it holds, so only nesting reaches the fail-close. */
 function stripExcessiveStarDirections(input: string): string {
+	if (!input.includes("*")) return input;
 	return input
 		.split("\n")
 		.map((line) => {
@@ -210,8 +211,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/[…]/g, "...");
 	text = text.replace(/[–—]/g, ", ");
 	// Collapse repeated punctuation BEFORE the spacing rules separate the
-	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
-	// The browser and Node hosts now share this implementation.
+	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !").
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
 	// token: spacing it makes TTS read "3. 14" as a sentence break and two
@@ -244,6 +244,7 @@ function sanitizeSpeechPunctuation(input: string): string {
 const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
 
 function normalizeCompatibilityPreservingNumero(input: string): string {
+	if (!input.includes("\u2116")) return input.normalize("NFKC");
 	return input
 		.split(NUMERO_TOKEN_PATTERN)
 		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))

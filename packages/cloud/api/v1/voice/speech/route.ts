@@ -14,31 +14,17 @@ import {
   SPEECH_RELAY_EXTEND_HEADER,
   SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RETIREMENT_HEADER,
-  SPEECH_SESSION_ID_HEADER,
-  SPEECH_SESSION_ID_UNIQUE,
 } from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
 import {
   speechRelayMaxWindows,
+  speechSessionIdForConsent,
   speechTokenDigest,
 } from "../../../src/speech-relay-coordinator";
 
 const app = new Hono<AppEnv>();
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-const UNIQUE_ID = /^[0-9a-f]{64}$/;
-/** A session is a named object (UUID) or an unnamed one (its 64-hex object ID). */
-function sessionStub(env: AppEnv["Bindings"], sessionId: string) {
-  const sessions = env.SPEECH_RELAY_SESSIONS!;
-  if (UUID.test(sessionId)) return sessions.getByName(sessionId);
-  if (!UNIQUE_ID.test(sessionId)) return null;
-  try {
-    return sessions.get(sessions.idFromString(sessionId));
-  } catch {
-    // error-policy:J3 an ID this namespace did not issue is a malformed input.
-    return null;
-  }
-}
 app.use("*", async (c, next) => {
   // This attestation is present only while no initialize request has begun.
   // Bind it to the caller's one-use consent intent to reject stale replies.
@@ -129,6 +115,21 @@ app.post("/consent", async (c) => {
     if (!prepared.ok)
       return c.json({ error: "speech_recovery_unavailable" }, 503);
     c.header("Cache-Control", "no-store");
+  } else {
+    // Start the new session object's first-touch wait now; /session reuses it.
+    // Never awaited: consent latency and its result do not depend on it.
+    const warm = c.env
+      .SPEECH_RELAY_SESSIONS!.getByName(
+        speechSessionIdForConsent(caller.user.id, consent.nonce),
+      )
+      .fetch("https://speech-relay.internal/warm", { method: "POST" })
+      .then((warmed) => warmed.body?.cancel())
+      .catch(() => {});
+    try {
+      c.executionCtx.waitUntil(warm);
+    } catch {
+      // No execution context outside Workers; the promise still settles.
+    }
   }
   return timer.apply(
     c.json({
@@ -176,17 +177,10 @@ app.post("/session", async (c) => {
     "recoverySessionId" in body ? body.recoverySessionId : undefined;
   if (recovering && (typeof recoveryId !== "string" || !UUID.test(recoveryId)))
     return c.json({ error: "invalid_speech_session" }, 400);
-  // Staging trial. Recovery and retirement sessions keep their UUID contract.
-  const unique =
-    c.env.ENVIRONMENT === "staging" &&
-    c.req.header(SPEECH_SESSION_ID_HEADER) === SPEECH_SESSION_ID_UNIQUE &&
-    !recovering &&
-    !proofVersion;
-  const sessionId = unique
-      ? c.env.SPEECH_RELAY_SESSIONS!.newUniqueId().toString()
-      : typeof recoveryId === "string"
+  const sessionId =
+      typeof recoveryId === "string"
         ? recoveryId
-        : crypto.randomUUID(),
+        : speechSessionIdForConsent(caller.user.id, consentNonce),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
       Date.now() + 60000,
@@ -200,9 +194,9 @@ app.post("/session", async (c) => {
   );
   const initialize = () =>
     timer.time("speech_directory_write", () =>
-      sessionStub(c.env, sessionId)!.fetch(
-        "https://speech-relay.internal/initialize",
-        {
+      c.env
+        .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
+        .fetch("https://speech-relay.internal/initialize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -215,8 +209,7 @@ app.post("/session", async (c) => {
             caller,
             ...(proofVersion ? { proofVersion } : {}),
           }),
-        },
-      ),
+        }),
     );
   let result: Response;
   if (proofVersion) {
@@ -254,30 +247,91 @@ app.post("/session", async (c) => {
     }),
   );
 });
+/**
+ * Staging-only measurement of first-touch cost by hosting script. Each new
+ * object answers one read-only request and stores nothing: a gate object in the
+ * lean admission Worker and a session object in the API Worker. Durations are
+ * I/O waits in this Worker, so they include any wait before the object runs.
+ */
+app.post("/hosting-probe", async (c) => {
+  if (c.env.ENVIRONMENT !== "staging")
+    return c.json({ error: "speech_unavailable" }, 404);
+  await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "standard" });
+  const gate = c.env.INFERENCE_ADMISSION_GATES?.getByName(
+    `hosting-probe:${crypto.randomUUID()}`,
+  );
+  if (!gate) return c.json({ error: "speech_unavailable" }, 503);
+  const session = c.env.SPEECH_RELAY_SESSIONS!.getByName(crypto.randomUUID());
+  const touch = async (call: () => Promise<Response>) => {
+    const started = performance.now();
+    const response = await call();
+    await response.body?.cancel();
+    return Math.round(performance.now() - started);
+  };
+  const lean = () =>
+    touch(() =>
+      gate.fetch(
+        new Request("https://inference-admission.internal/rate-limit-warm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }),
+      ),
+    );
+  const api = () =>
+    touch(() => session.fetch("https://speech-relay.internal/hosting-probe"));
+  const leanFirst = c.req.query("first") === "lean";
+  const [one, two] = leanFirst ? [lean, api] : [api, lean];
+  const first = await one();
+  const second = await two();
+  const repeatFirst = await one();
+  const repeatSecond = await two();
+  c.header("Cache-Control", "no-store");
+  return c.json(
+    leanFirst
+      ? {
+          leanNewMs: first,
+          apiNewMs: second,
+          leanLiveMs: repeatFirst,
+          apiLiveMs: repeatSecond,
+        }
+      : {
+          apiNewMs: first,
+          leanNewMs: second,
+          apiLiveMs: repeatFirst,
+          leanLiveMs: repeatSecond,
+        },
+  );
+});
 app.get("/ws", async (c) => {
   const sessionId = c.req.query("sessionId");
-  const stub = sessionId ? sessionStub(c.env, sessionId) : null;
-  if (!stub) return c.json({ error: "invalid_speech_session" }, 400);
+  if (!sessionId || !UUID.test(sessionId))
+    return c.json({ error: "invalid_speech_session" }, 400);
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     return c.json({ error: "websocket_required" }, 426);
-  return stub.fetch(new Request("https://speech-relay.internal/ws", c.req.raw));
+  return c.env
+    .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
+    .fetch(new Request("https://speech-relay.internal/ws", c.req.raw));
 });
 app.post("/session/:sessionId/revoke", async (c) => {
-  const stub = sessionStub(c.env, c.req.param("sessionId"));
-  if (!stub) return c.json({ error: "invalid_speech_session" }, 400);
+  const sessionId = c.req.param("sessionId");
+  if (!UUID.test(sessionId))
+    return c.json({ error: "invalid_speech_session" }, 400);
   // Cleanup remains available with a current same-owner credential even if
   // generation is disabled, unfunded, or the original credential was rotated.
   const user = await requireUserOrApiKeyWithOrg(c);
-  return stub.fetch("https://speech-relay.internal/revoke", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId: user.id,
-      organizationId: user.organization_id,
-      ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1"
-        ? { proofVersion: 1 }
-        : {}),
-    }),
-  });
+  return c.env
+    .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
+    .fetch("https://speech-relay.internal/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        organizationId: user.organization_id,
+        ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1"
+          ? { proofVersion: 1 }
+          : {}),
+      }),
+    });
 });
 export default app;

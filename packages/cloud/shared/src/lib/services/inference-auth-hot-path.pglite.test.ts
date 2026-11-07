@@ -10,6 +10,7 @@
  * Background work (`waitUntil`) runs only after the request returned and the
  * tripwire was disarmed.
  */
+
 import {
   afterAll,
   afterEach,
@@ -17,11 +18,11 @@ import {
   describe,
   expect,
   setDefaultTimeout,
-  spyOn,
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import { BillingHoldActiveError } from "./billing-hold";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -55,6 +56,8 @@ const OTHER_ORG = "91000000-0000-4000-8000-000000000002";
 const USER = "92000000-0000-4000-8000-000000000001";
 
 let primaryArmed = false;
+/** Count primary statements without failing them (cold-fill assertions). */
+let primaryCounting = false;
 let primaryTouches = 0;
 
 /** Any primary use while armed throws, so a decision cannot hide a query. */
@@ -70,6 +73,7 @@ function armPrimaryTripwire() {
         primaryTouches += 1;
         throw new Error(`primary ${method} on the inference hot path`);
       }
+      if (primaryCounting) primaryTouches += 1;
       return original(...args);
     };
   }
@@ -154,8 +158,6 @@ interface HotPathCall {
 
 /** One Worker request with the tripwire armed, then its background work. */
 const qualifiedBindings = {
-  INFERENCE_AUTH_CACHE_ENABLED: "true",
-  INFERENCE_STRONG_REVOCATION_ENABLED: "true",
   INFERENCE_ADMISSION_GATES: {
     getByName() {
       return {
@@ -170,9 +172,11 @@ const qualifiedBindings = {
 async function workerRequest(
   rawKey: string,
   bindings: Record<string, unknown> = qualifiedBindings,
+  primary: "trip" | "count" = "trip",
 ): Promise<HotPathCall> {
   const background: Promise<unknown>[] = [];
-  primaryArmed = true;
+  primaryArmed = primary === "trip";
+  primaryCounting = primary === "count";
   primaryTouches = 0;
   let resolution: InferenceAuthResolution;
   try {
@@ -183,7 +187,6 @@ async function workerRequest(
           headers: { Authorization: `Bearer ${rawKey}` },
         }),
         {
-          cacheOnly: true,
           executionCtx: {
             waitUntil(task) {
               background.push(task);
@@ -194,6 +197,7 @@ async function workerRequest(
     );
   } finally {
     primaryArmed = false;
+    primaryCounting = false;
   }
   return { resolution, touches: primaryTouches, background };
 }
@@ -248,61 +252,33 @@ describe("primary tripwire", () => {
   });
 });
 
-describe("hosts without a cache backend", () => {
-  test("keep the authoritative path, because a miss there could never hydrate", async () => {
+describe("hosts without the organization gate", () => {
+  test("read the primary and never consult or write the authorization cache", async () => {
     const key = await seedKey();
-    const configured = spyOn(cache, "isBackendConfigured").mockReturnValue(false);
-    let touched = 0;
-    try {
-      await workerRequest(key.rawKey);
-    } catch {
-      // error-policy:J3 the armed tripwire rejects the authoritative read;
-      // reaching it is exactly what this test asserts below.
-    } finally {
-      touched = primaryTouches;
-      configured.mockRestore();
-    }
-    expect(touched).toBeGreaterThan(0);
-    const deployed = await workerRequest(key.rawKey);
-    expect(deployed.touches).toBe(0);
-    await settle(deployed);
-  });
-});
-
-describe("Worker cache rollout eligibility", () => {
-  for (const flags of [
-    { INFERENCE_AUTH_CACHE_ENABLED: "false", INFERENCE_STRONG_REVOCATION_ENABLED: "false" },
-    { INFERENCE_AUTH_CACHE_ENABLED: "true", INFERENCE_STRONG_REVOCATION_ENABLED: "false" },
-    { INFERENCE_AUTH_CACHE_ENABLED: "false", INFERENCE_STRONG_REVOCATION_ENABLED: "true" },
-  ]) {
-    test(`cache-only does not override auth=${flags.INFERENCE_AUTH_CACHE_ENABLED}, strong=${flags.INFERENCE_STRONG_REVOCATION_ENABLED}`, async () => {
-      const key = await seedKey();
-      await seedPositiveEntry(key);
-      await getPgliteClientForTests().query("UPDATE api_keys SET is_active = false WHERE id = $1", [
-        key.id,
-      ]);
-      let trace: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
-      await expect(
-        runWithCloudBindingsAsync({ ...qualifiedBindings, ...flags }, () =>
-          resolveInferenceAuthContext(
-            new Request("https://api.eliza.app/api/v1/chat/completions", {
-              headers: { Authorization: `Bearer ${key.rawKey}` },
-            }),
-            {
-              cacheOnly: true,
-              executionCtx: { waitUntil() {} },
-              onTelemetry(value) {
-                trace = value;
-              },
+    await seedPositiveEntry(key);
+    await getPgliteClientForTests().query("UPDATE api_keys SET is_active = false WHERE id = $1", [
+      key.id,
+    ]);
+    let trace: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+    await expect(
+      runWithCloudBindingsAsync({}, () =>
+        resolveInferenceAuthContext(
+          new Request("https://api.eliza.app/api/v1/chat/completions", {
+            headers: { Authorization: `Bearer ${key.rawKey}` },
+          }),
+          {
+            executionCtx: { waitUntil() {} },
+            onTelemetry(value) {
+              trace = value;
             },
-          ),
+          },
         ),
-      ).rejects.toThrow();
-      expect(trace?.cacheRead).toBe("not_run");
-      expect(trace?.authoritative).toBe("rejected");
-      expect(trace?.cacheWrite).toBe("not_run");
-    });
-  }
+      ),
+    ).rejects.toThrow();
+    expect(trace?.cacheRead).toBe("not_run");
+    expect(trace?.authoritative).toBe("rejected");
+    expect(trace?.cacheWrite).toBe("not_run");
+  });
 });
 
 describe("Worker inference auth never queries Postgres", () => {
@@ -332,16 +308,20 @@ describe("Worker inference auth never queries Postgres", () => {
     await settle(call);
   });
 
-  test("a first-ever miss returns warming with zero primary queries and hydrates under waitUntil", async () => {
+  test("a first-ever miss is decided by the primary once and its decision is projected under waitUntil", async () => {
     const key = await seedKey();
     // The key is revoked in the primary, so the hydrated decision is a denial
     // this minimal schema can project without admission tables.
     await getPgliteClientForTests().query("UPDATE api_keys SET deleted_at = now() WHERE id = $1", [
       key.id,
     ]);
-    const cold = await workerRequest(key.rawKey);
-    expect(cold.touches).toBe(0);
-    expect(cold.resolution.kind).toBe("warming");
+    const cold = await workerRequest(key.rawKey, qualifiedBindings, "count");
+    expect(cold.touches).toBeGreaterThan(0);
+    expect(cold.resolution).toEqual({
+      kind: "rejected",
+      status: 401,
+      reason: "credential_invalid",
+    });
     expect(cold.background.length).toBeGreaterThan(0);
     await settle(cold);
 
@@ -410,13 +390,20 @@ describe("Worker inference auth never queries Postgres", () => {
     expect(denied.background).toHaveLength(0);
   });
 
-  test("writer invalidation turns the next request into warming, never a stale allow", async () => {
+  test("writer invalidation sends the next request to the primary, never a stale allow", async () => {
     const key = await seedKey();
     await seedPositiveEntry(key);
+    await getPgliteClientForTests().query("UPDATE api_keys SET is_active = false WHERE id = $1", [
+      key.id,
+    ]);
     expect(await invalidateInferenceAuthContextByKeyHash(key.keyHash)).toBe(true);
-    const call = await workerRequest(key.rawKey);
-    expect(call.touches).toBe(0);
-    expect(call.resolution.kind).toBe("warming");
+    const call = await workerRequest(key.rawKey, qualifiedBindings, "count");
+    expect(call.touches).toBeGreaterThan(0);
+    expect(call.resolution).toEqual({
+      kind: "rejected",
+      status: 403,
+      reason: "credential_inactive",
+    });
     await settle(call);
   });
 
@@ -455,51 +442,150 @@ describe("Worker inference auth never queries Postgres", () => {
       CacheTTL.inference.authContext,
       { keyClass: "inference_auth" },
     );
-    const call = await workerRequest(key.rawKey);
-    expect(call.touches).toBe(0);
-    expect(call.resolution.kind).toBe("warming");
+    // The primary decides instead: this key is revoked there.
+    await getPgliteClientForTests().query("UPDATE api_keys SET deleted_at = now() WHERE id = $1", [
+      key.id,
+    ]);
+    const call = await workerRequest(key.rawKey, qualifiedBindings, "count");
+    expect(call.touches).toBeGreaterThan(0);
+    expect(call.resolution).toMatchObject({ kind: "rejected", status: 401 });
     await settle(call);
   });
 });
 
-describe("ordinary Worker billing retains primary authority", () => {
-  for (const snapshotFlag of ["false", "true"]) {
-    test(`a cached clear hold cannot bypass primary admission with snapshot flag ${snapshotFlag}`, async () => {
-      const { admitOrganizationInference } = await import("./organization-inference-admission");
-      primaryArmed = true;
-      primaryTouches = 0;
-      try {
-        await expect(
-          runWithCloudBindingsAsync(
-            {
-              INFERENCE_DEFERRED_ADMISSION: "true",
-              INFERENCE_OPTIMISTIC_BILLING: "true",
-              INFERENCE_SNAPSHOT_ADMISSION_ENABLED: snapshotFlag,
-            },
-            () =>
-              admitOrganizationInference({
-                context: {
-                  organizationId: ORG,
-                  userId: USER,
-                  model: "openai/gpt-5-mini",
-                  provider: "openai",
-                  billingSource: "openai",
-                  requestId: crypto.randomUUID(),
-                },
-                estimatedInputTokens: 0,
-                estimatedOutputTokens: 0,
-                flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
-                executionCtx: { waitUntil() {} },
-                admissionSnapshot: admission(),
-              }),
-          ),
-        ).rejects.toThrow();
-        expect(primaryTouches).toBeGreaterThan(0);
-      } finally {
-        primaryArmed = false;
-      }
+describe("Worker credential checks include cold gate routing", () => {
+  for (const allowed of [true, false]) {
+    test(`a cold gate reply remains authoritative when allowed=${allowed}`, async () => {
+      const key = await seedKey();
+      await seedPositiveEntry(key);
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName() {
+            return {
+              async fetch(request: Request) {
+                expect(new URL(request.url).pathname).toBe("/credential/check");
+                // Production routing took about two seconds before the gate
+                // handler ran; the authorization reply still decides the result.
+                await new Promise<void>((resolve, reject) => {
+                  const abort = () => {
+                    clearTimeout(timer);
+                    reject(request.signal.reason);
+                  };
+                  const timer = setTimeout(() => {
+                    request.signal.removeEventListener("abort", abort);
+                    resolve();
+                  }, 2_000);
+                  request.signal.addEventListener("abort", abort, { once: true });
+                  if (request.signal.aborted) abort();
+                });
+                return allowed
+                  ? Response.json({ allowed: true })
+                  : Response.json(
+                      { allowed: false, reason: "credential_revoked" },
+                      { status: 403 },
+                    );
+              },
+            };
+          },
+        },
+      };
+      const result = await workerRequest(key.rawKey, bindings);
+      expect(result.touches).toBe(0);
+      expect(result.resolution).toMatchObject(
+        allowed
+          ? { kind: "authorized" }
+          : { kind: "rejected", status: 401, reason: "credential_inactive" },
+      );
+      await settle(result);
     });
   }
+
+  test("an unresponsive gate still fails closed without a primary fallback", async () => {
+    const key = await seedKey();
+    await seedPositiveEntry(key);
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: () => ({
+          fetch: (request: Request) =>
+            new Promise<Response>((_resolve, reject) => {
+              const abort = () => reject(request.signal.reason);
+              request.signal.addEventListener("abort", abort, { once: true });
+              if (request.signal.aborted) abort();
+            }),
+        }),
+      },
+    };
+    await expect(workerRequest(key.rawKey, bindings)).rejects.toMatchObject({
+      name: "InferenceCredentialRevocationUnavailableError",
+      statusCode: 503,
+    });
+    expect(primaryTouches).toBe(0);
+  }, 10_000);
+});
+
+describe("Worker billing admits from the snapshot and the organization gate only", () => {
+  const admit = async (snapshot: InferenceAdmissionSnapshot, gate: (path: string) => Response) => {
+    const { admitOrganizationInference } = await import("./organization-inference-admission");
+    return runWithCloudBindingsAsync(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName() {
+            return {
+              async fetch(request: Request) {
+                return gate(new URL(request.url).pathname);
+              },
+            };
+          },
+        },
+      },
+      () =>
+        admitOrganizationInference({
+          context: {
+            organizationId: ORG,
+            userId: USER,
+            model: "openai/gpt-5-mini",
+            provider: "openai",
+            billingSource: "openai",
+            requestId: crypto.randomUUID(),
+          },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+          executionCtx: { waitUntil() {} },
+          admissionSnapshot: snapshot,
+        }),
+    );
+  };
+
+  test("a cached hold refuses paid admission without a primary read", async () => {
+    primaryArmed = true;
+    primaryTouches = 0;
+    try {
+      await expect(
+        admit({ ...admission(), billingHold: true }, () => Response.json({ admitted: true })),
+      ).rejects.toThrow(BillingHoldActiveError);
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
+
+  test("a cached clear hold is admitted by the gate lease without a primary read", async () => {
+    primaryArmed = true;
+    primaryTouches = 0;
+    const paths: string[] = [];
+    try {
+      const result = await admit(admission(), (path) => {
+        paths.push(path);
+        return Response.json({ admitted: true, availableUsd: 9.9, requiredUsd: 0.1 });
+      });
+      expect(result.mode).toBe("durable_object_debit");
+      expect(paths[0]).toMatch(/^\/lease/);
+      expect(primaryTouches).toBe(0);
+    } finally {
+      primaryArmed = false;
+    }
+  });
 });
 
 describe("mobile lifecycle cache fences", () => {
@@ -523,8 +609,6 @@ describe("mobile lifecycle cache fences", () => {
       const calls: string[] = [];
       let unavailable = false;
       const bindings = {
-        INFERENCE_AUTH_CACHE_ENABLED: "true",
-        INFERENCE_STRONG_REVOCATION_ENABLED: "true",
         VOICE_SPEECH_RELAY_ENABLED: "false",
         INFERENCE_ADMISSION_GATES: {
           getByName(organizationId: string) {

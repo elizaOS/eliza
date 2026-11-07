@@ -269,6 +269,43 @@ describe("agent-event-bridge", () => {
 		expect(service.getCurrentSeq(RUN_ID)).toBe(0);
 	});
 
+	it("drops one-shot message sequence state but keeps the current run's", async () => {
+		const { runtime, runId } = await createCtx();
+		const service = runtime.getService(
+			ServiceType.AGENT_EVENT,
+		) as AgentEventService;
+		registerConnectorSourceMetadata("discord", {
+			aliases: ["discord"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(messagePayload(runtime));
+		expect(service.getCurrentSeq("44444444-4444-4444-4444-444444444444")).toBe(
+			0,
+		);
+
+		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+			runtime,
+			message: {
+				id: "twitch-message-seq",
+				channel: "ops",
+				text: "hi",
+				user: { userId: "twitch-user-1" },
+			},
+		});
+		expect(service.getCurrentSeq("twitch-message-seq")).toBe(0);
+
+		await bridgeMessageReceivedToStreams({
+			runtime,
+			message: {
+				id: "66666666-6666-6666-6666-666666666666",
+				roomId: ROOM_ID,
+				content: { text: "local" },
+			},
+		} as unknown as MessagePayload);
+		expect(service.getCurrentSeq(runId)).toBe(1);
+	});
+
 	it("populates the evaluator stream on EVALUATOR_STARTED / COMPLETED", async () => {
 		const { runtime, events } = await createCtx();
 		const base = {

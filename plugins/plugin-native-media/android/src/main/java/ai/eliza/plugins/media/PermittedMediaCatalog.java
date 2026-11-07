@@ -42,6 +42,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class PermittedMediaCatalog implements AutoCloseable {
   private static final int PAGE_SIZE = 24;
+  /** Bounds of a read's preview edge in pixels; never the original bytes. */
+  public static final int PREVIEW_MIN = 64, PREVIEW_MAX = 2048;
   private static final String[] FIELDS = {"_id", "width", "height", "date_added", "_size",
       MediaStore.MediaColumns.DISPLAY_NAME, "date_modified", "owner_package_name",
       "generation_added", "generation_modified", "is_favorite", "is_trashed", "date_expires"};
@@ -83,10 +85,17 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     }
   }
   private boolean observing;
+  private final PhotoLibraryAccess.Profile profile;
   public PermittedMediaCatalog(Context context, Runnable changed) {
     this(context, true, changed);
   }
   public PermittedMediaCatalog(Context context, boolean active, Runnable changed) {
+    this(context, active, changed, PhotoLibraryAccess.Profile.LIBRARY);
+  }
+  /** A catalog that reads only what {@code profile} allows. */
+  public PermittedMediaCatalog(Context context, boolean active, Runnable changed,
+      PhotoLibraryAccess.Profile profile) {
+    this.profile = profile;
     this.context = context;
     listeners.add(changed);
     resolver = context.getContentResolver();
@@ -161,22 +170,16 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
   }
   public JSObject access() {
-    boolean legacy =
-        Build.VERSION.SDK_INT < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE);
-    boolean images =
-        legacy || (Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_IMAGES));
-    boolean videos =
-        legacy || (Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_VIDEO));
-    boolean selected =
-        Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+    int sdk = Build.VERSION.SDK_INT;
+    String[] answer = PhotoLibraryAccess.access(profile, sdk,
+        sdk < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE),
+        sdk >= 33 && granted(Manifest.permission.READ_MEDIA_IMAGES),
+        sdk >= 33 && granted(Manifest.permission.READ_MEDIA_VIDEO),
+        sdk >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED));
     JSObject result = new JSObject();
-    result.put("images", images ? "full" : selected ? "selected" : "denied");
-    result.put("videos", videos ? "full" : selected ? "selected" : "denied");
-    result.put("scope",
-        images && videos       ? "full"
-            : images || videos ? "partial"
-            : selected         ? "selected"
-                               : "denied");
+    result.put("images", answer[1]);
+    result.put("videos", answer[2]);
+    result.put("scope", answer[0]);
     return result;
   }
   private void unlocked() {
@@ -246,6 +249,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
         Build.VERSION.SDK_INT >= 30 ? FIELDS : java.util.Arrays.copyOf(FIELDS, 8)));
     if (video)
       result.add(MediaStore.Video.VideoColumns.DURATION);
+    result.add(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME);
+    result.add(MediaStore.MediaColumns.DATE_TAKEN);
     return result.toArray(new String[0]);
   }
   private String revision(Cursor row, String volume) {
@@ -277,6 +282,12 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     result.put("identity",
         version(volume) + ":" + row.getLong(3)
             + (Build.VERSION.SDK_INT >= 30 ? ":" + row.getLong(8) : ""));
+    // The folder Android files the item under, and when it was taken (0 when unknown).
+    int bucket = row.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME);
+    String folder = bucket < 0 || row.isNull(bucket) ? "" : row.getString(bucket);
+    result.put("bucket", folder.substring(0, Math.min(256, folder.length())));
+    int taken = row.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN);
+    result.put("dateTaken", taken < 0 || row.isNull(taken) ? 0 : row.getLong(taken));
     return result;
   }
   public Uri uri(MediaLibraryKey key) {
@@ -317,6 +328,8 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     Runnable timeout = cancellation::cancel;
     main.postDelayed(timeout, 3000);
     try {
+      if (PhotoLibraryAccess.OWNED.equals(access().getString(video ? "videos" : "images")))
+        args = ownedOnly(args);
       // Typed collections are required for other apps' media under scoped storage.
       Uri collection = video ? MediaStore.Video.Media.getContentUri(volume)
                              : MediaStore.Images.Media.getContentUri(volume);
@@ -337,6 +350,22 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       main.removeCallbacks(timeout);
       throw failure;
     }
+  }
+  /**
+   * {@code args} narrowed to this app's own rows. Scoped storage already hides other apps' media
+   * without a grant; the explicit filter keeps the {@code owned} answer true under legacy storage.
+   */
+  private Bundle ownedOnly(Bundle args) {
+    Bundle out = new Bundle(args);
+    String where = args.getString(ContentResolver.QUERY_ARG_SQL_SELECTION);
+    String[] values = args.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS);
+    List<String> all = new ArrayList<>();
+    if (values != null) all.addAll(java.util.Arrays.asList(values));
+    all.add(context.getPackageName());
+    out.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,
+        (where == null || where.isEmpty() ? "" : "(" + where + ") AND ") + "owner_package_name=?");
+    out.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, all.toArray(new String[0]));
+    return out;
   }
   /** Provider search, not an in-memory scan of previously loaded thumbnails. */
   public JSObject list(String cursor, String search, String kind, boolean thumbnails)
@@ -456,6 +485,13 @@ public final class PermittedMediaCatalog implements AutoCloseable {
   }
   public JSObject read(String id, String expectedRevision, boolean pixels, boolean trashed)
       throws Exception {
+    return read(id, expectedRevision, pixels, trashed, 1024);
+  }
+  /** As {@link #read(String, String, boolean, boolean)} with a preview of at most {@code edge}. */
+  public JSObject read(String id, String expectedRevision, boolean pixels, boolean trashed,
+      int edge) throws Exception {
+    if (edge < PREVIEW_MIN || edge > PREVIEW_MAX)
+      throw new IllegalArgumentException("Invalid preview size");
     MediaLibraryKey key = MediaLibraryKey.parse(id);
     List<String> volumes = volumes();
     String snapshot = snapshot(volumes);
@@ -468,7 +504,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     if (expectedRevision != null && !expectedRevision.equals(revision))
       throw new IllegalStateException("Selected media changed");
     if (pixels)
-      result.put("image", thumbnail(key, 1024));
+      result.put("image", thumbnail(key, edge));
     if (!revision.equals(inspect(key, trashed).getString("revision")))
       throw new IllegalStateException("Selected media changed");
     current(snapshot, volumes);

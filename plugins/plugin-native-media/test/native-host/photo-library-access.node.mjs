@@ -58,24 +58,37 @@ test("Photos bridge rules: scope, aliases, listings, bounds and changes", {
 });
 
 test("the Photos plugins are host-registered bindings with no product names", () => {
+  const read = source("PermittedPhotosPlugin");
   const photos = source("PhotosPlugin");
   const library = source("DeviceLibraryPlugin");
-  for (const body of [photos, library]) {
+  for (const body of [read, library])
     assert.match(body, /^public abstract class \w+ extends Plugin \{/m);
+  assert.match(
+    photos,
+    /^public abstract class PhotosPlugin extends PermittedPhotosPlugin \{/m,
+  );
+  for (const body of [read, photos, library]) {
     assert.doesNotMatch(
       body,
       /^@CapacitorPlugin\(/m,
       "the host names the plugin",
     );
     assert.doesNotMatch(body, /alpha/i);
-    assert.match(body, /requireLibraryAliases\(this\)/);
   }
+  assert.match(read, /requireLibraryAliases\(this, profile\)/);
+  assert.match(library, /requireLibraryAliases\(this\)/);
+  assert.match(photos, /super\.load\(\);/);
+  // The read-only bridge owns no media names, edits, playback or WebView client.
+  assert.doesNotMatch(
+    read,
+    /mediaConfig|playbackPath|setWebViewClient|OwnedPhotoEdits|setTrashed/,
+  );
   assert.match(photos, /protected abstract OwnedMediaConfig mediaConfig\(\);/);
   assert.match(photos, /protected abstract String playbackPath\(\);/);
   assert.match(library, /protected abstract String photosPluginName\(\);/);
   // Access is requested only from the explicit control, through the launcher guard.
   assert.match(
-    photos,
+    read,
     /ask\(call, \(\) -> requestPermissionForAliases\(aliases, call, "libraryPermissionResult"\)\)/,
   );
   assert.match(
@@ -83,15 +96,19 @@ test("the Photos plugins are host-registered bindings with no product names", ()
     /requestPermissionForAliases\(aliases, call, "libraryPermissionResult"\);\n {4}\} catch \(IllegalStateException closed\)/,
   );
   // Every permitted read is published only under the ticket it started with.
-  assert.match(photos, /permitted\.publish\(call, value, ticket\)/);
+  assert.match(read, /permitted\.publish\(call, value, ticket\)/);
   assert.equal((library.match(/catalog\.publish\(call,/g) || []).length, 3);
   // Foreground cancellation: pausing cancels video copies and stops observation.
   assert.match(
     photos,
-    /handleOnPause\(\) \{\n {4}if \(videoCopies != null\) videoCopies\.cancel\(null\);\n {4}if \(permitted != null\) \{\n {6}permitted\.watch\("photos", false\);\n {6}permitted\.foreground\(false\);/,
+    /handleOnPause\(\) \{\n {4}if \(videoCopies != null\) videoCopies\.cancel\(null\);\n {4}super\.handleOnPause\(\);/,
+  );
+  assert.match(
+    read,
+    /handleOnPause\(\) \{\n {4}if \(permitted != null\) \{\n {6}permitted\.watch\("photos", false\);\n {6}permitted\.foreground\(false\);/,
   );
   // Destructive changes to other apps' media go through the native review only.
-  for (const body of [photos, library])
+  for (const body of [read, photos, library])
     assert.doesNotMatch(
       body,
       /createDeleteRequest|createTrashRequest|createFavoriteRequest/,
