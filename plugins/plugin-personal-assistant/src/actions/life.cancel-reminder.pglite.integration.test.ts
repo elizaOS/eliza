@@ -193,6 +193,51 @@ it("archives the selected reminder and preserves its plan, occurrence history, a
   ]);
 });
 
+it("a goal delete needs the goal named, not merely contained in its title", async () => {
+  const marathon = await service.createGoal({
+    title: "Ready for the marathon",
+  });
+  try {
+    // "read" is inside "Ready": a substring is a candidate to confirm, never
+    // a deletion warrant.
+    const refused = await invoke(
+      { action: "delete", target: "read" },
+      "delete my read goal",
+      ["OWNER"],
+      undefined,
+      "OWNER_GOALS",
+    );
+    expect(refused.success).toBe(false);
+    expect(refused.text).toContain('Did you mean "Ready for the marathon"?');
+    expect(
+      (await service.listGoals()).some(
+        (entry) => entry.goal.id === marathon.goal.id,
+      ),
+    ).toBe(true);
+
+    const deleted = await invoke(
+      { action: "delete", target: "Ready for the marathon" },
+      "delete my Ready for the marathon goal",
+      ["OWNER"],
+      undefined,
+      "OWNER_GOALS",
+    );
+    expect(deleted.success).toBe(true);
+    expect(
+      (await service.listGoals()).some(
+        (entry) => entry.goal.id === marathon.goal.id,
+      ),
+    ).toBe(false);
+  } finally {
+    if (
+      (await service.listGoals()).some(
+        (entry) => entry.goal.id === marathon.goal.id,
+      )
+    )
+      await service.deleteGoal(marathon.goal.id);
+  }
+});
+
 it("keeps canonical cancel separate from the recent-save delete/undo path", async () => {
   const selected = await seed("Selected cancellation reminder");
   const recent = await seed("Unrelated recent save");
