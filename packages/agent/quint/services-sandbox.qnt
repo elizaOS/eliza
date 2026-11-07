@@ -23,4 +23,9 @@ module services_sandbox {
   run retryFailedStopTest = init.then(start).then(createMain).then(createBrowser).then(ready).then(stop).then(removeBrowser).then(cleanupFailure).expect(s.phase == "degraded" and s.main).then(stop).then(removeMain).then(stopped).expect(not(s.main or s.browser))
   run failedStartIsNotReadyTest = init.then(start).then(startFail).expect(s.phase == "degraded" and s.error)
   run lostRemovalAcknowledgementCanReconcileTest = init.then(start).then(createMain).then(ready).then(stop).then(loseMainAck).then(cleanupFailure).then(stop).then(confirmMainAbsent).then(stopped).expect(not(s.main or s.mainExists))
+
+  run discardedCleanupWitnessTest = init.then(start).then(createMain)
+    .then(ready).then(stop)
+    .then(all { s.phase == "stopping", s.main, s' = s.with("phase", "stopped") })
+    .expect(not(safety))
 }

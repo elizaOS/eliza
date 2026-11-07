@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/api/wallet-key-store.ts",
+    "packages/agent/src/api/wallet-keygen.ts"
+  ],
+  "bounds": {
+    "domain": "Two opaque key values and one serialized vault write.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "api_wallet_keys",
+      "main": "api_wallet_keys",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

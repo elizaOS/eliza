@@ -25,4 +25,9 @@ module services_permissions {
   run shutdownDiscardsLateProbeTest = init.then(check).then(stop).then(stoppedProbeSettles).then(drained).expect(s.status == "unknown" and s.returned)
   run failedPersistenceRetainsDirtyStateTest = init.then(check).then(observed("denied")).then(flushFailed).expect(s.dirty and s.persistFailed).then(stop).then(flush).then(drained).expect(s.durable == "denied")
   run stopDrainsSettingsLaunchTest = init.then(openSettings).then(stop).then(settingsDone).then(drained).expect(s.returned and not(s.settings))
+
+  run lateProbeWitnessTest = init.then(check).then(stop)
+    .then(legacyLateProbe).expect(not(safety))
+  run lateSettingsWitnessTest = init.then(stop).then(drained)
+    .then(legacySettings).expect(not(safety))
 }

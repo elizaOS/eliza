@@ -21,4 +21,7 @@ module services_remote_runner {
   run failedCreateAllowsRetryTest = init.then(request).then(createFailure).then(request).then(created).then(prepareDone).expect(s.phase == "ready")
   run stopDuringCreateFencesEffectTest = init.then(request).then(stop).then(created).then(release).then(stopComplete).expect(s.stopped and s.effects == 0)
   run stopDrainsExistingOperationTest = init.then(request).then(created).then(prepareDone).then(invoke).then(stop).then(release).then(stopComplete).expect(s.stopped and s.effects == 1)
+
+  run prematureStopWitnessTest = init.then(request).then(created)
+    .then(legacyStop).expect(not(safety))
 }

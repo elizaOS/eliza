@@ -26,4 +26,3 @@ module runtime_hooks_watchdog {
   action legacyStep = any { enable, legacyDisable, idle }
   run staleHooksWitnessTest = init.then(enable).then(legacyDisable).expect(not(safety))
 }
-

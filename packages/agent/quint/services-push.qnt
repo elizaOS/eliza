@@ -27,4 +27,9 @@ module services_push {
   run concurrentLazyAttachTest = init.then(begin1).then(begin2).then(complete2).then(complete1).expect(s.listeners == 1)
   run stoppedLazyAttachNeverPublishesTest = init.then(begin1).then(begin2).then(stop).then(complete1).then(complete2).expect(s.listeners == 0 and s.stopped)
   run rejectedWriteStaysInvisibleTest = init.then(stage(true)).expect(not(s.committed)).then(persistFailure).expect(not(s.committed)).then(stage(true)).then(persistSuccess).expect(s.committed)
+
+  run duplicateListenerWitnessTest = init.then(begin1).then(begin2)
+    .then(legacyComplete1).then(legacyComplete2).expect(not(safety))
+  run stoppedAttachWitnessTest = init.then(begin1).then(stop)
+    .then(legacyComplete1).expect(not(safety))
 }

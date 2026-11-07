@@ -23,4 +23,3 @@ module runtime_retention {
   run oldStopRaceWitnessTest = init.then(start).then(stop).then(legacyFinishStop).then(legacyInstall).expect(not(safety))
   action legacyStep = any { start, stop, legacyFinishStop, legacyInstall, idle }
 }
-

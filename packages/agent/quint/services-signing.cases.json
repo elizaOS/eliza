@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/agent/src/services/signing-policy.ts",
+    "packages/agent/src/services/remote-signing-service.ts"
+  ],
+  "bounds": {
+    "domain": "One reservation, approval and signing operation with fixed policy.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_signing",
+      "main": "services_signing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

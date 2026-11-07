@@ -99,26 +99,22 @@ export async function handleAgentLifecycleRoutes(
       error(res, "Agent stop is still in progress", 409);
       return true;
     }
+    // A restart retains its old runtime until replacement is ready. Preserve
+    // the pending phase even when that runtime is still present, so a start
+    // retry cannot admit a second restart or stop the outgoing runtime.
+    if (state.agentState === "starting" || state.agentState === "restarting") {
+      json(res, {
+        ok: true,
+        status: {
+          state: state.agentState,
+          agentName: state.agentName,
+          model: state.model,
+          startedAt: state.startedAt,
+        },
+      });
+      return true;
+    }
     if (!state.runtime) {
-      // A boot is already underway (parallel-bind warming window, an
-      // in-flight restart, or the deferred fresh-install boot): starting is
-      // idempotent — report the in-progress state and let the client poll
-      // /api/status instead of racing a second boot.
-      if (
-        state.agentState === "starting" ||
-        state.agentState === "restarting"
-      ) {
-        json(res, {
-          ok: true,
-          status: {
-            state: state.agentState,
-            agentName: state.agentName,
-            model: state.model,
-            startedAt: state.startedAt,
-          },
-        });
-        return true;
-      }
       if (!ctx.onRestart) {
         error(
           res,

@@ -25,4 +25,3 @@ module runtime_trajectories {
   run foreignRecoveryCannotMutateTest = init.then(start).then(rejectForeignRecovery).expect(s.status == "active").then(confirmExit).then(recover(0)).expect(safety and s.status == "terminated")
   run abruptDeathDoesNotInventDurabilityTest = init.then(start).then(capture).then(crash).then(recover(0)).expect(safety and s.crashed and s.accepted == 1 and s.persisted == 0)
 }
-

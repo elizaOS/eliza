@@ -133,8 +133,10 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
     vi.stubEnv(key, value);
   const fixture = await createTestRuntime({ characterName: "Lifecycle model" });
   let releaseBoot!: () => void;
+  let releaseRestart!: () => void;
   let releaseStop!: () => void;
   let observeBoot!: () => void;
+  let observeRestart!: () => void;
   let observeStop!: () => void;
   const bootGate = new Promise<void>((resolve) => {
     releaseBoot = resolve;
@@ -142,11 +144,17 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
   const stopGate = new Promise<void>((resolve) => {
     releaseStop = resolve;
   });
+  const restartGate = new Promise<void>((resolve) => {
+    releaseRestart = resolve;
+  });
   const bootEntered = new Promise<void>((resolve) => {
     observeBoot = resolve;
   });
   const stopEntered = new Promise<void>((resolve) => {
     observeStop = resolve;
+  });
+  const restartEntered = new Promise<void>((resolve) => {
+    observeRestart = resolve;
   });
   let boots = 0;
   let stopped = false;
@@ -157,8 +165,13 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
       skipDeferredStartupWork: true,
       onRestart: async () => {
         boots += 1;
-        observeBoot();
-        await bootGate;
+        if (boots === 1) {
+          observeBoot();
+          await bootGate;
+        } else {
+          observeRestart();
+          await restartGate;
+        }
         return fixture.runtime;
       },
       onStop: async (runtime) => {
@@ -182,8 +195,15 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
       expect((await post(action)).status).toBe(503);
 
     const starting = post("start");
-    await bootEntered;
-    for (const action of ["pause", "resume"])
+    await Promise.race([
+      bootEntered,
+      starting.then(async (response) => {
+        throw new Error(
+          `Start returned before host boot: ${response.status} ${await response.text()}`,
+        );
+      }),
+    ]);
+    for (const action of ["pause", "resume", "restart"])
       expect((await post(action)).status).toBe(409);
     expect(await (await post("start")).json()).toMatchObject({
       status: { state: "starting" },
@@ -191,6 +211,25 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
     expect(boots).toBe(1);
     releaseBoot();
     expect((await starting).status).toBe(200);
+    const restarting = post("restart");
+    await Promise.race([
+      restartEntered,
+      restarting.then(async (response) => {
+        throw new Error(
+          `Restart returned before host restart: ${response.status} ${await response.text()}`,
+        );
+      }),
+    ]);
+    for (const action of ["pause", "resume", "stop", "restart"])
+      expect((await post(action)).status).toBe(409);
+    expect(await (await post("start")).json()).toMatchObject({
+      status: { state: "restarting" },
+    });
+    // A start retry must preserve the restart fence for subsequent mutations.
+    expect((await post("stop")).status).toBe(409);
+    expect(boots).toBe(2);
+    releaseRestart();
+    expect((await restarting).status).toBe(200);
     expect((await post("pause")).status).toBe(200);
     expect((await post("resume")).status).toBe(200);
 
@@ -203,9 +242,10 @@ it("rejects pause and resume without a live runtime or during boot and teardown 
       status: { state: "stopped" },
     });
     expect((await post("resume")).status).toBe(503);
-    expect(boots).toBe(1);
+    expect(boots).toBe(2);
   } finally {
     releaseBoot();
+    releaseRestart();
     releaseStop();
     if (server) await server.close();
     if (!stopped) await fixture.cleanup();
