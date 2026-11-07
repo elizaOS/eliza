@@ -109,6 +109,7 @@ import {
   hasUsableStoredStewardToken,
   launchStewardLogin,
 } from "./cloud-steward-login";
+import { unregisterPushToken } from "./notifications/push-registration";
 import {
   loadPersistedActiveServer,
   savePersistedFirstRunComplete,
@@ -1974,6 +1975,15 @@ export function useCloudState({
     elizaCloudDisconnectInFlightRef.current = true;
     setElizaCloudDisconnecting(true);
     try {
+      // Drop this device's push token while the credential still works:
+      // after signOut revokes it, the unregister request is refused and the
+      // signed-out account's reminders keep reaching this phone.
+      await unregisterPushToken().catch((error) => {
+        logger.warn(
+          { src: "cloud-state", error },
+          "[cloud-state] push token unregister before sign-out failed",
+        );
+      });
       await withNativeSession(port, (signal) => port.signOut(signal));
       resetCloudAccountState();
       setActionNotice(
