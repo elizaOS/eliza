@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,7 @@ if (!process.versions.bun) {
     env: process.env,
   });
   if (result.error) throw result.error;
-  assert.equal(result.signal, null, "Auth conformance process was interrupted");
+  if (result.signal) process.kill(process.pid, result.signal);
   process.exit(result.status ?? 1);
 }
 
@@ -31,6 +31,7 @@ const cli = path.join(path.dirname(quintPackage), "dist/src/cli.js");
 const model = "packages/auth/quint/AuthStorePublication.qnt";
 const output = testOutputPath("quint-auth-publication");
 await mkdir(output, { recursive: true });
+const traceDirectory = await mkdtemp(path.join(output, "traces-"));
 const run = spawnSync(
   "node",
   [
@@ -44,12 +45,13 @@ const run = spawnSync(
     "--n-traces=100",
     "--max-steps=80",
     "--invariant=invariant",
-    `--out-itf=${path.join(output, "trace-{seq}.itf.json")}`,
+    `--out-itf=${path.join(traceDirectory, "trace-{seq}.itf.json")}`,
     "--verbosity=0",
   ],
   { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
 );
 if (run.error) throw run.error;
+if (run.signal) process.kill(process.pid, run.signal);
 assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
 
 function decode(value) {
@@ -71,7 +73,7 @@ function decode(value) {
   );
 }
 
-const traces = (await readdir(output)).filter((file) =>
+const traces = (await readdir(traceDirectory)).filter((file) =>
   /^trace-\d+\.itf\.json$/.test(file),
 );
 assert.equal(traces.length, 100);
@@ -81,8 +83,11 @@ const outcomes = new Set();
 const originalNow = Date.now;
 try {
   for (const file of traces) {
-    const trace = JSON.parse(await readFile(path.join(output, file), "utf8"));
+    const trace = JSON.parse(
+      await readFile(path.join(traceDirectory, file), "utf8"),
+    );
     assert.equal(trace.vars.length, 1);
+    assert.equal(trace.states.length, 81);
     const states = trace.states.map((state) => decode(state[trace.vars[0]]));
     let logicalTime = 0;
     Date.now = () => 1_000_000 + logicalTime * 1_000;

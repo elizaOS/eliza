@@ -11,12 +11,10 @@ import (
 	"time"
 )
 
-// A differential test of the real code against a hand port of the
-// OtaFreshAdmission TLA+ model's predicates: Decide, Remembered and LoadCheck,
-// and the commit and recovery checks of its fixed configuration (recheck,
-// required refresh, fix forward), written out below. It does not run the TLA+
-// state machine, so an error made the same way in the model port and in the
-// code would pass. To check the model's own commit guard, t <= refreshedAt + F,
+// A differential test of the real code against the admission predicates and
+// commit/recovery checks written out below. OtaFreshAdmission.qnt models these
+// state transitions, and TestQuintFreshAdmission replays its generated traces
+// through the real implementation. To check the commit guard, t <= refreshedAt + F,
 // every eligible commit with both bounds set must also satisfy it with
 // F = commitByUpperMs - refreshedAfterLowerMs. Every ratchet sequence of the
 // model's descriptor table runs through the real functions, and each result
@@ -417,4 +415,110 @@ func mustPolicy(t *testing.T, data []byte) admissionPolicy {
 		t.Fatal(err)
 	}
 	return policy
+}
+
+// Generated trace replay keeps the executable Quint model connected to the
+// existing descriptor fixtures and the real persisted admission functions.
+func TestQuintFreshAdmission(t *testing.T) {
+	name := os.Getenv("OTA_FRESH_QUINT_VECTORS")
+	if name == "" {
+		t.Skip("run bun run test:quint OtaFreshAdmission for generated trace replay")
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type traceState struct {
+		Floors         map[string]int   `json:"floors"`
+		Refreshed      map[string]int64 `json:"refreshed"`
+		Operation      string           `json:"operation"`
+		Release        int              `json:"release"`
+		Device         int              `json:"device"`
+		Policy         int              `json:"policy"`
+		Fetched        int64            `json:"fetched"`
+		After          int64            `json:"after"`
+		By             int64            `json:"by"`
+		GlobalSecurity int64            `json:"globalSecurity"`
+		Outcome        string           `json:"outcome"`
+	}
+	var traces [][]traceState
+	if err := json.Unmarshal(data, &traces); err != nil {
+		t.Fatal(err)
+	}
+	if len(traces) != 40 {
+		t.Fatalf("Quint supplied %d traces, expected 40", len(traces))
+	}
+	bound := func(value int64) int64 {
+		if value < 0 {
+			return 0
+		}
+		return freshMillis(value)
+	}
+	f := newFreshFixture(t)
+	steps := 0
+	for ti, trace := range traces {
+		if len(trace) != 21 {
+			t.Fatalf("Quint trace %d contains %d states, expected 21", ti, len(trace))
+		}
+		directory := privateDir(t)
+		if err := InitializeAdmissionState(directory, "example-org/example-app", "launcher"); err != nil {
+			t.Fatal(err)
+		}
+		for si, state := range trace {
+			got := ""
+			switch state.Operation {
+			case "init":
+			case "remember":
+				result, err := evaluateRememberedRelease(directory, f.descriptors[state.Release], f.devices[state.Device], mustPolicy(t, f.policies[state.Policy]), bound(state.Fetched))
+				if err != nil {
+					got = err.Error()
+				} else if result.Decision == "defer" {
+					got = result.Reason
+				} else {
+					got = result.Decision
+				}
+			case "commit":
+				p := freshPolicies[state.Policy]
+				policy, err := json.Marshal(commitPolicy{Lower: freshMillis(p.lo), Upper: freshMillis(p.up), SecurityFloor: p.sec, RefreshedAfter: bound(state.After), CommitBy: bound(state.By)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err = EvaluatePreparedForCommit(f.prepared, directory, f.ids[state.Release], policy)
+				if err != nil {
+					got = "error"
+				}
+			case "recover":
+				d := freshTable[state.Release]
+				var err error
+				got, err = EvaluatePreparedRecovery(f.prepared, directory, f.ids[state.Release], freshHex(d.cand), d.cand, freshHex(d.rec), d.rec, f.signer, state.GlobalSecurity)
+				if err != nil {
+					got = "error"
+				}
+			default:
+				t.Fatalf("unknown Quint operation %q", state.Operation)
+			}
+			if got != state.Outcome {
+				t.Fatalf("trace %d step %d %s: real %q, Quint %q", ti, si, state.Operation, got, state.Outcome)
+			}
+			for lane, channel := range []string{"stable", "beta"} {
+				key := fmt.Sprint(lane)
+				index, found := state.Floors[key]
+				if !found {
+					t.Fatalf("Quint omitted lane %s", key)
+				}
+				want := freshFloor{revoked: []int64{}}
+				if index >= 0 {
+					d := freshTable[index]
+					want = freshFloor{seq: d.seq, rev: d.rev, sec: d.sec, core: d.core(), rollout: d.rollout(), revoked: sortedCodes(d.revoked), refreshed: bound(state.Refreshed[key])}
+				}
+				if real := f.lane(t, directory, channel); !sameFloor(real, want) {
+					t.Fatalf("trace %d step %d lane %s: real %+v, Quint %+v", ti, si, channel, real, want)
+				}
+			}
+			if state.Operation != "init" {
+				steps++
+			}
+		}
+	}
+	t.Logf("%d Quint traces, %d real admission transitions, 0 differences", len(traces), steps)
 }
