@@ -1129,6 +1129,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     // webhook secrets — reads disclose them, writes plant persistent
     // actions the owner's agent later invokes.
     under("/api/custom-actions") ||
+    // Billing proxy: every call goes upstream with the owner's cloud
+    // key, so a guest could link the owner's account to an affiliate
+    // code (a permanent markup on the owner's top-ups) or read the
+    // owner's ledger and payment methods. All-method.
+    under("/api/cloud/billing") ||
     // Character experiences: distilled episodic records learned
     // from the owner's conversations (context, outcome, learning,
     // source rooms/messages). The write section gates /api/character
@@ -1206,7 +1211,7 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         // Eliza Cloud connection mutations: disconnect deletes the
         // owner's persisted cloud API key, and login/persist writes a
         // caller-supplied key into it. Exact paths only, not the whole
-        // /api/cloud prefix — billing, relay, and container routes are
+        // /api/cloud prefix — relay and container routes are
         // a separate surface, and the GET login-status poll stays open
         // (it requires a session id only a gated POST can mint).
         pathname === "/api/cloud/disconnect" ||
