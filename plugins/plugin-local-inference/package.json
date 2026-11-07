@@ -139,12 +139,12 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.6.3",
+		"@biomejs/biome": "2.6.4",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.5",
+		"vitest": "^5.1.0",
 		"@elizaos/testing": "workspace:*",
 		"@elizaos/plugin-sqlite": "workspace:*"
 	},

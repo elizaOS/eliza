@@ -113,7 +113,7 @@
     "tldts": "7.4.16"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.1",
+    "@tailwindcss/vite": "^4.3.4",
     "tailwindcss": "^4.3.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@electric-sql/pglite": "^0.4.0",
@@ -129,7 +129,7 @@
     "tsup": "^9.0.0",
     "react-dom": "*",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*"
   },

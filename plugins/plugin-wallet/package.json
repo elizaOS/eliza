@@ -120,7 +120,7 @@
     "react-dom": "^19.3.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

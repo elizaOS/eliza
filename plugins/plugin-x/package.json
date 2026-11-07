@@ -44,15 +44,15 @@
     "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.4",
     "@types/node": "^22.19.17",
     "@types/twitter-text": "3.1.10",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/coverage-v8": "^5.1.0",
     "dotenv": "^17.2.3",
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/testing": "workspace:*"
   },
