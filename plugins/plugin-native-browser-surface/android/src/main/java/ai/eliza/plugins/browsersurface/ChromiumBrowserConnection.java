@@ -7,14 +7,13 @@ import android.os.Handler;
 import android.os.Build;
 import android.os.Looper;
 import android.util.Log;
-import java.util.ArrayList;
-import java.util.List;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
 
 /**
  * Keeps the authorized native browser reachable while its agent runs as a foreground service:
  * always after {@link #start()}, or only while a {@link Lease} is open and for an idle delay after.
+ * The hold, retry, release and ready rules are {@link ChromiumBindingDemand}'s. Main thread only.
  */
 public final class ChromiumBrowserConnection implements AutoCloseable {
     private static final String TAG = "ElizaChromiumBinding";
@@ -23,14 +22,7 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
     public static final long DEFAULT_IDLE_RELEASE_MILLIS = 60000;
     private final Context context;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable reconnect = this::bind;
-    private final Runnable idleRelease = this::releaseWhenIdle;
     private final ChromiumBindingDemand demand;
-    private final List<Runnable> readyCallbacks = new ArrayList<>();
-    private boolean bound;
-    private boolean ready;
-    private boolean closed;
-    private long retryMillis = 1000;
 
     public ChromiumBrowserConnection(Context foregroundService) {
         this(foregroundService, DEFAULT_IDLE_RELEASE_MILLIS);
@@ -38,20 +30,40 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
 
     public ChromiumBrowserConnection(Context foregroundService, long idleReleaseMillis) {
         context = foregroundService;
-        demand = new ChromiumBindingDemand(idleReleaseMillis);
+        demand = new ChromiumBindingDemand(idleReleaseMillis, new ChromiumBindingDemand.Host() {
+            @Override public ChromiumBindingDemand.BindResult bind() { return bindService(); }
+
+            @Override public void unbind() {
+                context.unbindService(connection);
+                Log.i(TAG, "Chromium binding released");
+            }
+
+            @Override public void schedule(Runnable task, long delayMillis) {
+                handler.postDelayed(task, delayMillis);
+            }
+
+            @Override public void cancel(Runnable task) { handler.removeCallbacks(task); }
+        });
     }
 
-    /** One holder's need for the browser; {@link #close()} lets it go. Main thread only. */
+    /** One holder's need for the browser; {@link #close()} lets it go. Idempotent. */
     public final class Lease implements AutoCloseable {
-        private boolean open = true;
+        private final ChromiumBindingDemand.Hold hold;
 
-        private Lease() {}
+        private Lease(ChromiumBindingDemand.Hold hold) { this.hold = hold; }
 
-        @Override public void close() {
-            if (!open) return;
-            open = false;
-            apply(demand.release());
-        }
+        /** False once closed, and from the start when the connection was already closed. */
+        public boolean isOpen() { return hold.isOpen(); }
+
+        /**
+         * Runs {@code callback} once the verified, warmed service is connected: now when it
+         * already is, otherwise on the next verified connection while this lease is open. It is
+         * dropped when this lease or the connection closes, and never runs when the browser
+         * refuses the binding or is untrusted, so keep a deadline and close the lease at it.
+         */
+        public void whenReady(Runnable callback) { hold.whenReady(callback); }
+
+        @Override public void close() { hold.close(); }
     }
 
     private boolean isTrustedBrowser() {
@@ -63,123 +75,72 @@ public final class ChromiumBrowserConnection implements AutoCloseable {
 
     private final CustomTabsServiceConnection connection = new CustomTabsServiceConnection() {
         @Override public void onCustomTabsServiceConnected(ComponentName name, CustomTabsClient client) {
-            if (closed || !bound) return;
+            if (!demand.awaitingConnection()) return;
             if (!BROWSER.equals(name.getPackageName()) || !isTrustedBrowser()) {
-                Log.e(TAG, "Connected browser identity failed verification; releasing binding");
-                close();
+                Log.e(TAG, "Connected browser identity failed verification; closing the connection for good");
+                demand.close();
                 return;
             }
-            retryMillis = 1000;
             // Initializes the browser without opening an activity, tab, URL, or debugging port.
             boolean warmed = client.warmup(0);
             Log.i(TAG, "Verified Chromium service connected; warmup accepted=" + warmed);
-            ready = true;
-            List<Runnable> waiting = new ArrayList<>(readyCallbacks);
-            readyCallbacks.clear();
-            for (Runnable callback : waiting) callback.run();
+            demand.connected();
         }
 
         @Override public void onServiceDisconnected(ComponentName name) {
-            ready = false;
+            demand.disconnected();
             // Android retains this AUTO_CREATE binding and reconnects the restarted service.
             Log.w(TAG, "Chromium service disconnected; waiting for Android to reconnect");
         }
 
-        @Override public void onBindingDied(ComponentName name) { release(); retry(); }
+        @Override public void onBindingDied(ComponentName name) { demand.bindingLost(); }
 
         @Override public void onNullBinding(ComponentName name) {
             Log.w(TAG, "Chromium rejected its service binding");
-            release();
-            retry();
+            demand.bindingLost();
         }
     };
 
     /** Holds the binding until {@link #stop()} or {@link #close()}. */
-    public void start() { apply(demand.pin()); }
+    public void start() { demand.pin(); }
 
     /** Ends {@link #start()}'s hold; the binding is released after the idle delay unless a lease is open. */
-    public void stop() { apply(demand.unpin()); }
+    public void stop() { demand.unpin(); }
 
-    /** Holds the binding, binding and warming the browser now if it is not bound. */
+    /**
+     * Holds the binding, binding and warming the browser now if it is not bound. After
+     * {@link #close()}, including the close a failed browser identity check makes, it returns a
+     * lease that is already closed and binds nothing; check {@link Lease#isOpen()}.
+     */
     public Lease acquire() {
-        if (closed) throw new IllegalStateException("Chromium connection is closed");
-        Lease lease = new Lease();
-        apply(demand.acquire());
-        return lease;
+        if (demand.isClosed()) Log.w(TAG, "Chromium connection is closed; lease refused");
+        return new Lease(demand.acquire());
     }
 
     /** Whether the verified browser service is connected and warmed now. */
-    public boolean isReady() { return ready; }
+    public boolean isReady() { return demand.isReady(); }
 
-    /**
-     * Runs {@code callback} on the main thread once the verified browser service is connected:
-     * now when it already is. It never runs when the binding is refused or the connection
-     * closes, so a caller that must not wait forever keeps its own deadline.
-     */
-    public void whenReady(Runnable callback) {
-        if (closed) return;
-        if (ready) callback.run();
-        else readyCallbacks.add(callback);
-    }
+    /** Whether the connection is closed for good: by {@link #close()} or a failed identity check. */
+    public boolean isClosed() { return demand.isClosed(); }
 
-    private void apply(ChromiumBindingDemand.Step step) {
-        if (closed) return;
-        if (step == ChromiumBindingDemand.Step.BIND) {
-            handler.removeCallbacks(idleRelease);
-            bind();
-        } else if (step == ChromiumBindingDemand.Step.RELEASE_LATER) {
-            handler.removeCallbacks(idleRelease);
-            handler.postDelayed(idleRelease, demand.idleMillis());
-        }
-    }
-
-    private void releaseWhenIdle() {
-        if (closed || !demand.idleExpired()) return;
-        handler.removeCallbacks(reconnect);
-        retryMillis = 1000;
-        release();
-        Log.i(TAG, "Chromium binding released after its idle delay");
-    }
-
-    private void bind() {
-        if (closed || bound || !demand.wanted()) return;
+    private ChromiumBindingDemand.BindResult bindService() {
         if (!isTrustedBrowser()) {
             Log.w(TAG, "Chromium background service unavailable: package or signing certificate does not match provisioning");
-            return;
+            return ChromiumBindingDemand.BindResult.UNTRUSTED;
         }
         try {
             // Ordinary AndroidX binding uses WAIVE_PRIORITY, which allows the browser to freeze.
             // PreservePriority uses AUTO_CREATE: inherit the existing FGS's importance, no new permissions.
-            bound = CustomTabsClient.bindCustomTabsServicePreservePriority(context, BROWSER, connection);
-            if (!bound) {
-                Log.w(TAG, "Chromium Custom Tabs service binding was not accepted");
-                retry();
-            }
+            if (CustomTabsClient.bindCustomTabsServicePreservePriority(context, BROWSER, connection))
+                return ChromiumBindingDemand.BindResult.ACCEPTED;
+            Log.w(TAG, "Chromium Custom Tabs service binding was not accepted");
+            return ChromiumBindingDemand.BindResult.REFUSED;
         } catch (SecurityException error) {
             // error-policy:J1 Denied binding stays unavailable; do not broaden permissions or launch an activity.
             Log.e(TAG, "Chromium background service binding was denied", error);
+            return ChromiumBindingDemand.BindResult.DENIED;
         }
     }
 
-    private void retry() {
-        if (closed || !demand.wanted()) return;
-        handler.removeCallbacks(reconnect);
-        handler.postDelayed(reconnect, retryMillis);
-        retryMillis = Math.min(retryMillis * 2, 30000);
-    }
-
-    private void release() {
-        ready = false;
-        if (!bound) return;
-        bound = false;
-        context.unbindService(connection);
-    }
-
-    @Override public void close() {
-        closed = true;
-        readyCallbacks.clear();
-        handler.removeCallbacks(reconnect);
-        handler.removeCallbacks(idleRelease);
-        release();
-    }
+    @Override public void close() { demand.close(); }
 }

@@ -290,8 +290,19 @@ A host that needs the browser only for some work calls `acquire()` instead of
 `start()` and closes the returned lease when that work ends; `stop()` ends a
 `start()`. With no `start()` or open lease, the binding is released after the
 idle delay (the constructor's second argument, 60 s by default), so Android can
-freeze or reclaim the browser. `whenReady(callback)` runs once the verified
-service is connected; it never runs on refusal, so callers keep a deadline.
+freeze or reclaim the browser. That trades resident memory for latency: the
+next `acquire()` after a release may cold-start Chromium and warm it again
+before it is ready. The memory saving has not been measured on a device yet
+(compare `dumpsys meminfo` and `oom_adj` of the browser with the host idle).
+`lease.whenReady(callback)` runs once the verified, warmed service is
+connected, and is dropped when the lease closes. It never runs when the
+browser refuses the binding or fails its package or certificate check, so a
+host puts its own deadline around it and closes the lease at that deadline.
+A browser that fails verification after connecting closes the connection for
+good: `isClosed()` turns true and `acquire()` returns a lease that is already
+closed (`isOpen()` is false) and binds nothing. The hold, retry, release and
+ready rules live in the plain-JVM `ChromiumBindingDemand`, which a host that
+stages the connection stages beside it.
 
 Android `presentBrowser()` foregrounds the certificate-pinned browser without a
 URL or new website tab. Invoke it from an explicit user interaction before a
