@@ -418,6 +418,11 @@ export async function registerDomain(
   };
 }
 
+/** The registrar holds no registration for the domain (status lookup 404). */
+export function isRegistrationNotFound(error: unknown): boolean {
+  return error instanceof CloudflareApiError && error.status === 404;
+}
+
 export async function getRegistrationStatus(domain: string): Promise<RegistrationStatus> {
   const cfg = config();
   ensureConfigured(cfg);
@@ -609,7 +614,7 @@ function stubAvailability(domain: string): AvailabilityResult {
 
 function stubRegister(domain: string): RegistrationStartResult {
   logger.info("[Cloudflare Registrar:STUB] register", { domain });
-  if (domain.startsWith("fail-")) {
+  if (domain.startsWith("fail-") || domain.startsWith("reject-")) {
     throw new CloudflareApiError(400, [
       { code: 1300, message: "stub: simulated registration failure" },
     ]);
@@ -622,6 +627,12 @@ function stubRegister(domain: string): RegistrationStartResult {
 }
 
 function stubStatus(domain: string): RegistrationStatus {
+  // `reject-`: the registrar refused the start and holds no registration.
+  if (domain.startsWith("reject-")) {
+    throw new CloudflareApiError(404, [
+      { code: 1404, message: "stub: no registration for this domain" },
+    ]);
+  }
   if (domain.startsWith("fail-")) {
     return {
       domain,
