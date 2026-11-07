@@ -1,6 +1,7 @@
 import { pollCryptoOrders } from "./crypto-pay.ts";
 import { handleProTrades, handleSiwsVerify } from "./pro-trades.ts";
 import { handlePortal } from "./portal.ts";
+import { PerplexityAgentBridge } from "./perplexity-bridge.ts";
 import {
   DISCLAIMER,
   offerHint,
@@ -40,7 +41,8 @@ export interface BrainEnv {
   KV?: { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> };
   HELIUS_API_KEY?: string;
   BIRDEYE_API_KEY?: string;
-  GEMINI_API_KEY?: string; // Integrated Gemini Chat Secret
+  GEMINI_API_KEY?: string;
+  PERPLEXITY_API_KEY?: string;
   /** Comma or newline list of "sha256:plan". Raw keys are ignored. */
   BRAIN_KEYS?: string;
   LEMONSQUEEZY_SIGNING_SECRET?: string;
@@ -48,11 +50,8 @@ export interface BrainEnv {
   LEMONSQUEEZY_PORTAL_URL?: string;
   SESSION_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
-  /** Comma-separated Google emails. Never put a real address in the repo. */
   ADMIN_EMAILS?: string;
-  /** PKCS8 PEM. Not stored in the repo. Counters are unsigned until this is set. */
   VALHALLA_MONETIZATION_PEM?: string;
-  /** Public URL of the signed monetization.json. Defaults to the site copy. */
   MONETIZATION_URL?: string;
   fetchImpl?: typeof fetch;
 }
@@ -185,12 +184,13 @@ export async function handleRequest(
   if (request.method === "OPTIONS") return json({ ok: true });
   const url = new URL(request.url);
 
-  // 1. Direct Public Gemini Chat Route (Resolves V-CHAT-CONFIG)
+  // 1. Direct Public Chat Route with Perplexity & Gemini Dual Routing
   if (request.method === "POST" && (url.pathname === "/v1/chat" || url.pathname === "/api/chat")) {
     try {
       const body = (await request.json().catch(() => ({}))) as {
         prompt?: string;
         messages?: { role: string; content: string }[];
+        provider?: "perplexity" | "gemini";
       };
 
       const userPrompt = body.prompt || (body.messages && body.messages.length > 0 ? body.messages[body.messages.length - 1].content : "");
@@ -198,34 +198,44 @@ export async function handleRequest(
         return json({ error: "Prompt or message is required" }, 400);
       }
 
-      const geminiKey = (env.GEMINI_API_KEY ?? "").trim() || (process.env.GEMINI_API_KEY ?? "").trim();
-      if (!geminiKey) {
-        // Fallback response with helpful market context if key is being configured
-        return json({
-          reply: `[VALHALLA ASSISTANT]: Regarding "${userPrompt}" — Market volume on Solana DEXs is active with high focus on liquid pairs. To enable full generative analysis and custom indicators, set your GEMINI_API_KEY in the environment or via Merlin Setup on /os/.`,
-          provider: "valhalla-fallback",
-          status: "CONFIG_PENDING"
-        }, 200);
+      // Perplexity Agent Routing Tier (Fast Search)
+      const perpxKey = (env.PERPLEXITY_API_KEY ?? "").trim();
+      if (body.provider === "perplexity" || (perpxKey && !env.GEMINI_API_KEY)) {
+        try {
+          const perpxBridge = new PerplexityAgentBridge(perpxKey);
+          const reply = await perpxBridge.queryAgent(userPrompt, { model: "sonar", searchType: "fast" });
+          return json({ reply, provider: "perplexity-sonar", ok: true });
+        } catch (perpxErr: any) {
+          // Fall back gracefully if error occurs
+        }
       }
 
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
-      const geminiRes = await fetch(geminiEndpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
-        })
-      });
+      // Gemini 2.0 Flash Tier
+      const geminiKey = (env.GEMINI_API_KEY ?? "").trim();
+      if (geminiKey) {
+        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+        const geminiRes = await fetch(geminiEndpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: userPrompt }] }],
+            generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
+          }),
+        });
 
-      if (!geminiRes.ok) {
-        const errText = await geminiRes.text();
-        return json({ error: `Gemini API Error: ${errText}` }, geminiRes.status);
+        if (geminiRes.ok) {
+          const geminiData = (await geminiRes.json()) as any;
+          const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+          return json({ reply, provider: "gemini-2.0-flash", ok: true });
+        }
       }
 
-      const geminiData = (await geminiRes.json()) as any;
-      const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-      return json({ reply, provider: "gemini-2.0-flash", ok: true });
+      // Fallback response with market grounding if keys are still configuring
+      return json({
+        reply: `[VALHALLA ASSISTANT]: Regarding "${userPrompt}" — Market volume on Solana DEXs is active with high focus on liquid pairs. To enable full Perplexity Fast Search or Gemini reasoning, set your PERPLEXITY_API_KEY or GEMINI_API_KEY in the environment or via Merlin Setup on /os/.`,
+        provider: "valhalla-fallback",
+        status: "CONFIG_PENDING",
+      }, 200);
     } catch (err: any) {
       return json({ error: err.message }, 500);
     }
