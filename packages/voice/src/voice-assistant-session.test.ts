@@ -1537,3 +1537,103 @@ describe("splitSpokenSentences and timing", () => {
     ).toThrow(RangeError);
   });
 });
+
+describe("VoiceAssistantSession streamed replies", () => {
+  it("plays the first complete sentence while the reply streams; the confirmed reply supplies the rest once", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.say("what should I cook tonight");
+    await h.clock.advance(longGapMs);
+    expect(h.log.sends).toHaveLength(1);
+    const { input } = at(h.replies, 0);
+    input.onText?.("How about a simple pasta");
+    await flush();
+    expect(h.speeches).toHaveLength(0);
+    input.onText?.(
+      "How about a simple pasta with garlic and lemon? It takes twenty",
+    );
+    await flush();
+    expect(h.speeches.map((s) => s.input.text)).toEqual([
+      "How about a simple pasta with garlic and lemon?",
+    ]);
+    at(h.speeches, 0).input.onStarted();
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    h.answer(
+      0,
+      "How about a simple pasta with garlic and lemon? It takes twenty minutes and uses pantry staples.",
+    );
+    await flush();
+    expect(h.speeches.map((s) => s.input.text)).toEqual([
+      "How about a simple pasta with garlic and lemon?",
+      "It takes twenty minutes and uses pantry staples.",
+    ]);
+    expect(at(h.speeches, 1).input.replyId).toBe("a-0");
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("listening");
+    expect(h.log.heard.at(-1)).toMatchObject({
+      heard:
+        "How about a simple pasta with garlic and lemon? It takes twenty minutes and uses pantry staples.",
+      interrupted: false,
+    });
+  });
+
+  it("keeps spoken sentences counted when the confirmed text differs; the rest follows the confirmed reply", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.say("tell me something");
+    await h.clock.advance(longGapMs);
+    const { input } = at(h.replies, 0);
+    input.onText?.("Here is a first thought for you. And more");
+    await flush();
+    input.onText?.("A rewritten opening. And more");
+    await flush();
+    expect(h.speeches.map((s) => s.input.text)).toEqual([
+      "Here is a first thought for you.",
+    ]);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    h.answer(
+      0,
+      "Something else entirely, said differently. Then a second sentence here.",
+    );
+    await flush();
+    expect(h.speeches.map((s) => s.input.text)).toEqual([
+      "Here is a first thought for you.",
+      "Then a second sentence here.",
+    ]);
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.phase()).toBe("listening");
+  });
+
+  it("Stop speaking during a streamed sentence cancels the unconfirmed reply and plays nothing more", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.say("read me the news");
+    await h.clock.advance(longGapMs);
+    const { input } = at(h.replies, 0);
+    input.onText?.("First headline here. Second headline follows. Third");
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.speeches.map((s) => s.input.text)).toEqual([
+      "First headline here.",
+      "Second headline follows.",
+    ]);
+    expect(h.session.interruptSpeech()).toBe(true);
+    await flush();
+    expect(at(h.replies, 0).input.signal.aborted).toBe(true);
+    input.onText?.(
+      "First headline here. Second headline follows. Third headline. Fourth",
+    );
+    await flush();
+    expect(h.speeches).toHaveLength(2);
+    // No confirmed reply id yet: nothing is recorded as heard for this turn.
+    expect(h.log.heard).toHaveLength(0);
+    expect(h.phase()).toBe("listening");
+  });
+});
