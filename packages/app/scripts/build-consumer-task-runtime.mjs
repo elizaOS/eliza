@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +18,27 @@ const SOURCE_PATHS = [
   "packages/ui/src/components/chat/TaskChoice.tsx",
   "packages/os/browser/src",
 ];
+
+/** Replace a file with complete bytes: write a sibling temporary file, then
+ * rename it over the destination. A reader sees the old file or the new one,
+ * never a partial write. A concurrent builder that already published the same
+ * bytes is not an error.
+ * @param {string} file
+ * @param {string|Uint8Array} contents
+ */
+function publishFile(file, contents) {
+  const bytes = Buffer.from(contents);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}-${randomUUID()}.tmp`;
+  fs.writeFileSync(temporary, bytes);
+  try {
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    if (!fs.existsSync(file) || !fs.readFileSync(file).equals(bytes))
+      throw error;
+  }
+}
 
 /** @param {string} file */
 const readProvenance = (file) =>
@@ -161,9 +182,10 @@ export function buildTaskRuntime(
         )
           ? "\nexport * from './plugins/plugin-browser/src/native-surface-target.ts';"
           : "") +
-        `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';`,
+        `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';\nexport { transitionInteractiveTask } from './packages/core/src/messaging/interactive-task.ts';`,
     );
-    fs.mkdirSync(path.dirname(output), { recursive: true });
+    // Each output is built in the temporary tree and published whole; the
+    // provenance record is published last, after the files it describes.
     execFileSync(
       "bun",
       [
@@ -172,15 +194,14 @@ export function buildTaskRuntime(
         "--target=node",
         "--minify",
         "--outfile",
-        path.resolve(output),
+        "out.mjs",
       ],
       { cwd: temporary, stdio: "pipe" },
     );
-    const provenance = { ...spec, bundleSha256: hash(fs.readFileSync(output)) };
-    fs.writeFileSync(
-      `${output}.json`,
-      `${JSON.stringify(provenance, null, 2)}\n`,
-    );
+    const bundle = fs.readFileSync(path.join(temporary, "out.mjs"));
+    publishFile(output, bundle);
+    const provenance = { ...spec, bundleSha256: hash(bundle) };
+    publishFile(`${output}.json`, `${JSON.stringify(provenance, null, 2)}\n`);
     if (browserSource) {
       /** @type {Record<string,string>} */
       const files = {};
@@ -201,23 +222,19 @@ export function buildTaskRuntime(
               : path.join("packages/core/src", name);
         const bytes = fs.readFileSync(path.join(temporary, source));
         const destination = path.join(browserSource, name);
-        fs.mkdirSync(path.dirname(destination), { recursive: true });
         if (
           !fs.existsSync(destination) ||
           !fs.readFileSync(destination).equals(bytes)
         )
-          fs.writeFileSync(destination, bytes);
+          publishFile(destination, bytes);
         files[name] = hash(bytes);
       }
-      fs.writeFileSync(
+      publishFile(
         path.join(browserSource, "provenance.json"),
         `${JSON.stringify({ ...spec, files }, null, 2)}\n`,
       );
     }
     if (commandSource) {
-      const commandDirectory = path.resolve(commandSource);
-      const commandOutput = path.join(commandDirectory, "command-handler.mjs");
-      fs.mkdirSync(commandDirectory, { recursive: true });
       execFileSync(
         "bun",
         [
@@ -225,17 +242,17 @@ export function buildTaskRuntime(
           "packages/os/browser/src/command-handler.mjs",
           "--target=node",
           "--outfile",
-          commandOutput,
+          "command-handler.mjs",
         ],
         { cwd: temporary, stdio: "pipe" },
       );
-      fs.writeFileSync(
-        path.join(commandDirectory, "provenance.json"),
-        JSON.stringify(
-          { ...spec, bundleSha256: hash(fs.readFileSync(commandOutput)) },
-          null,
-          2,
-        ) + "\n",
+      const command = fs.readFileSync(
+        path.join(temporary, "command-handler.mjs"),
+      );
+      publishFile(path.join(commandSource, "command-handler.mjs"), command);
+      publishFile(
+        path.join(commandSource, "provenance.json"),
+        `${JSON.stringify({ ...spec, bundleSha256: hash(command) }, null, 2)}\n`,
       );
     }
     return provenance;

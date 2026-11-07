@@ -7,6 +7,8 @@ import {
   speechServerTimings,
 } from "../test/speech-relay-live-report";
 
+// Literal: the protected workflow runs this file with Bun and no installed packages.
+const RETIREMENT_HEADERS = { "X-Eliza-Speech-Retirement-Version": "1" };
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
   environment === "staging"
@@ -52,6 +54,60 @@ async function bounded<T>(
   }
 }
 
+/** A request helper that retries the structured cold-cache refusal, like the client. */
+function speechJson(
+  base: string,
+  headers: Record<string, string>,
+  serverTimings: Record<string, number>,
+) {
+  return async function json(
+    path: string,
+    body?: unknown,
+    timingRoute?: "consent" | "session",
+    extraHeaders: Record<string, string> = {},
+  ) {
+    let response: Response | undefined;
+    // Like the shipped client, retry the structured warming refusal a cold
+    // auth or billing cache answers with while it hydrates; nothing else.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await fetch(`${base}${path}`, {
+          method: body === undefined ? "GET" : "POST",
+          headers: { ...headers, ...extraHeaders },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          signal: AbortSignal.timeout(20_000),
+        });
+      } catch {
+        throw new Error("SPEECH_HTTP_UNAVAILABLE");
+      }
+      if (response.status !== 503) break;
+      const refusal = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as Record<string, unknown> | null;
+      const nested = refusal?.error as Record<string, unknown> | undefined;
+      const warming =
+        (typeof nested?.code === "string" &&
+          nested.code.endsWith("_cache_warming")) ||
+        refusal?.code === "auth_cache_warming";
+      if (!warming) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
+    check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+    if (timingRoute)
+      Object.assign(
+        serverTimings,
+        speechServerTimings(timingRoute, response.headers.get("Server-Timing")),
+      );
+    try {
+      return (await response.json()) as Record<string, unknown>;
+    } catch {
+      throw new Error("SPEECH_HTTP_JSON_INVALID");
+    }
+  };
+}
+
 maybe(
   "deployed speech relays provider PCM, final Ink text, and owner revocation",
   reportedSpeechRelayTest(async (stage) => {
@@ -68,54 +124,7 @@ maybe(
       "Content-Type": "application/json",
     };
     const serverTimings: Record<string, number> = {};
-    async function json(
-      path: string,
-      body?: unknown,
-      timingRoute?: "consent" | "session",
-    ) {
-      let response: Response | undefined;
-      // Like the shipped client, retry the structured warming refusal a cold
-      // auth or billing cache answers with while it hydrates; nothing else.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch(`${base}${path}`, {
-            method: body === undefined ? "GET" : "POST",
-            headers,
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-            signal: AbortSignal.timeout(20_000),
-          });
-        } catch {
-          throw new Error("SPEECH_HTTP_UNAVAILABLE");
-        }
-        if (response.status !== 503) break;
-        const refusal = (await response
-          .clone()
-          .json()
-          .catch(() => null)) as Record<string, unknown> | null;
-        const nested = refusal?.error as Record<string, unknown> | undefined;
-        const warming =
-          (typeof nested?.code === "string" &&
-            nested.code.endsWith("_cache_warming")) ||
-          refusal?.code === "auth_cache_warming";
-        if (!warming) break;
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-      }
-      if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
-      check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
-      if (timingRoute)
-        Object.assign(
-          serverTimings,
-          speechServerTimings(
-            timingRoute,
-            response.headers.get("Server-Timing"),
-          ),
-        );
-      try {
-        return (await response.json()) as Record<string, unknown>;
-      } catch {
-        throw new Error("SPEECH_HTTP_JSON_INVALID");
-      }
-    }
+    const json = speechJson(base, headers, serverTimings);
     stage("health");
     const health = await json("/api/health");
     check(
@@ -316,6 +325,148 @@ maybe(
           );
         } catch {}
       }
+      socket.close();
+    }
+  }),
+  60_000,
+);
+
+// Staging only: first-touch cost of a new object in each Worker script. Rounds
+// alternate which script goes first. This file must import no packages: the
+// protected workflow runs it with Bun alone.
+(environment === "staging" ? maybe : test.skip)(
+  "new objects in the lean and API Worker scripts answer a first request",
+  reportedSpeechRelayTest(async (stage) => {
+    check(target, "SPEECH_CONFIGURATION_INVALID");
+    const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
+    const key = process.env.ELIZAOS_CLOUD_API_KEY;
+    check(base === target.api && key, "SPEECH_CONFIGURATION_INVALID");
+    stage("session");
+    for (let round = 0; round < 6; round++) {
+      const response = await fetch(
+        `${base}/api/v1/voice/speech/hosting-probe?first=${round % 2 ? "api" : "lean"}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+      console.info(
+        JSON.stringify({
+          phase: "speech-relay-live",
+          status: "passed",
+          ...((await response.json()) as Record<string, number>),
+        }),
+      );
+    }
+  }),
+  120_000,
+);
+
+// The retirement protocol a proof-capable client (Alpha) requires before it
+// opens the microphone: proof-bound consent and mint, a ready socket, and an
+// owner revocation that returns a confirmed retirement for that session.
+maybe(
+  "deployed speech confirms retirement of a proof-bound session",
+  reportedSpeechRelayTest(async (stage) => {
+    check(target, "SPEECH_CONFIGURATION_INVALID");
+    const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
+    const key = process.env.ELIZAOS_CLOUD_API_KEY;
+    const commit = process.env.ELIZA_VOICE_CLOUD_COMMIT;
+    check(
+      base === target.api && key && /^[a-f0-9]{40}$/.test(commit ?? ""),
+      "SPEECH_CONFIGURATION_INVALID",
+    );
+    const headers = {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    };
+    const json = speechJson(base, headers, {});
+    stage("health");
+    const health = await json("/api/health");
+    check(
+      health.commit === commit && health.environment === environment,
+      "SPEECH_RELEASE_MISMATCH",
+    );
+    stage("consent");
+    const consent = await json(
+      "/api/v1/voice/speech/consent",
+      {},
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(consent.retirementProofVersion === 1, "SPEECH_RETIREMENT_CONSENT");
+    stage("session");
+    const minted = await json(
+      "/api/v1/voice/speech/session",
+      { consentNonce: consent.consentNonce },
+      undefined,
+      RETIREMENT_HEADERS,
+    );
+    check(
+      minted.retirementProofVersion === 1 &&
+        typeof minted.sessionId === "string" &&
+        typeof minted.token === "string" &&
+        typeof minted.wsUrl === "string",
+      "SPEECH_RETIREMENT_MINT",
+    );
+    stage("websocket");
+    const socket = new WebSocket(minted.wsUrl);
+    const ready = deferred<void>();
+    socket.addEventListener("open", () => {
+      stage("ready");
+      socket.send(JSON.stringify({ t: "hello", token: minted.token }));
+    });
+    socket.addEventListener("error", () =>
+      ready.reject(new Error("SPEECH_SOCKET_FAILED")),
+    );
+    socket.addEventListener("close", () =>
+      ready.reject(new Error("SPEECH_SOCKET_CLOSED")),
+    );
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") return;
+      const frame = JSON.parse(event.data) as { t?: unknown };
+      if (frame.t === "ready") ready.resolve();
+      else if (frame.t === "error")
+        ready.reject(new Error("SPEECH_PROVIDER_REFUSED"));
+    });
+    let retired = false;
+    try {
+      await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+      stage("revocation");
+      const revokeAt = performance.now();
+      const revoked = await json(
+        `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+        {},
+        undefined,
+        RETIREMENT_HEADERS,
+      );
+      retired = true;
+      const proof = revoked.retirement as Record<string, unknown> | undefined;
+      check(
+        revoked.revoked === true &&
+          proof?.version === 1 &&
+          proof.sessionId === minted.sessionId &&
+          proof.state === "confirmed",
+        "SPEECH_RETIREMENT_UNCONFIRMED",
+      );
+      console.info(
+        JSON.stringify({
+          phase: "speech-relay-live",
+          status: "passed",
+          retirement: "confirmed",
+          revokeMs: Math.round(performance.now() - revokeAt),
+        }),
+      );
+    } finally {
+      if (!retired)
+        await json(
+          `/api/v1/voice/speech/session/${minted.sessionId}/revoke`,
+          {},
+          undefined,
+          RETIREMENT_HEADERS,
+        ).catch(() => {});
       socket.close();
     }
   }),

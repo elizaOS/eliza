@@ -220,7 +220,7 @@ export class CliAuthSessionsRepository {
    */
   async reapExpiredSessions(now: Date = new Date()): Promise<{
     deletedSessions: number;
-    revokedOrphanKeys: { id: string; key_hash: string }[];
+    revokedOrphanKeys: { id: string; key_hash: string; organization_id: string }[];
   }> {
     return await dbWrite.transaction(async (tx) => {
       const orphanKeyIds = tx
@@ -244,7 +244,11 @@ export class CliAuthSessionsRepository {
             isNull(apiKeys.deleted_at),
           ),
         )
-        .returning({ id: apiKeys.id, key_hash: apiKeys.key_hash });
+        .returning({
+          id: apiKeys.id,
+          key_hash: apiKeys.key_hash,
+          organization_id: apiKeys.organization_id,
+        });
 
       const deleted = await tx
         .delete(cliAuthSessions)

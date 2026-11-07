@@ -563,50 +563,6 @@ export function projectModelCallDiagnosticValue(
 }
 
 /**
- * Protected-trajectory projection for a complete model call. Unlike the log
- * diagnostic variant, this never replaces deep subtrees; it preserves schema
- * identifiers, redacts credentials, and rejects cycles explicitly.
- */
-export function projectCompleteModelCallValue(
-	value: Record<string, unknown>,
-	redactText: ToolDiagnosticTextRedactor,
-): Record<string, unknown> {
-	const projected = projectCompleteToolValueForModel(
-		value,
-		redactText,
-	) as Record<string, unknown>;
-	let next = projected;
-	for (const schemaKey of ["responseSchema", "response_schema"] as const) {
-		if (!(schemaKey in value)) continue;
-		const projectedSchema = projectJsonSchemaNode(
-			value[schemaKey],
-			redactText,
-			new WeakSet<object>(),
-			0,
-			true,
-		);
-		if (projectedSchema !== projected[schemaKey]) {
-			if (next === projected) next = { ...projected };
-			next[schemaKey] = projectedSchema;
-		}
-	}
-	if ("tools" in value) {
-		const projectedTools = projectModelToolDefinition(
-			value.tools,
-			redactText,
-			new WeakSet<object>(),
-			0,
-			true,
-		);
-		if (projectedTools !== projected.tools) {
-			if (next === projected) next = { ...projected };
-			next.tools = projectedTools;
-		}
-	}
-	return next;
-}
-
-/**
  * Projects a protected trajectory call without treating runtime-only
  * diagnostics as model input. The request/response fields are complete and
  * cycle-rejecting; unrelated metadata keeps the bounded diagnostic policy so

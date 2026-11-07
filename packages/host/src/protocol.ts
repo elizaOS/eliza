@@ -275,6 +275,7 @@ export {
   firstWinningEnvString,
   isAndroidMobile,
   isDevApiWatchEnabled,
+  isElizaOsAndroidRuntime,
   isIosMobile,
   isMobilePlatform,
   isNullOriginAllowed,

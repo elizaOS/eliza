@@ -8,6 +8,7 @@ import { ElizaError } from "../errors";
 import type { InteractionBlock, InteractionKind } from "../types/interactions";
 import { stableStringify } from "../utils/deterministic.js";
 import { stringToUuid } from "../utils/string-to-uuid.js";
+import { utf8ByteLength } from "../utils/unicode";
 
 export const INTERACTION_PROFILE_VERSION = 1 as const;
 export const INTERACTION_BLOCK_KINDS = [
@@ -450,7 +451,7 @@ export interface InteractionNegotiationContext {
 const OPAQUE_CALLBACK_WIRE_BYTES = 36;
 
 function utf8Bytes(value: string | undefined): number {
-	return value ? new TextEncoder().encode(value).length : 0;
+	return value ? utf8ByteLength(value) : 0;
 }
 
 function nativeBlockLimitations(

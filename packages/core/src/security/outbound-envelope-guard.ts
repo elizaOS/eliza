@@ -20,8 +20,7 @@
  * Streaming coverage: the message-service chunk seam holds a per-stream latch
  * ({@link createOutboundEnvelopeStreamLatch}) that stops chunk forwarding
  * (user stream callback + `model_stream_chunk` hook re-emission) once the
- * accumulated text reads as envelope material, and the first-sentence TTS
- * path refuses to synthesize or attach an envelope echo. KNOWN-OPEN seams:
+ * accumulated text reads as envelope material. KNOWN-OPEN seams:
  * chunks forwarded before the needle completes are already delivered (a
  * stream cannot be recalled), and `useModel`'s own `model_stream_chunk`
  * emission (`source: "use_model"`, runtime.ts) fires upstream of the latch
@@ -91,10 +90,10 @@ export function guardOutboundEnvelopeText(
 }
 
 /**
- * Gate attachment text at a delivery seam. Both voice paths in
- * `services/message.ts` deliver the spoken sentence as `attachment.text` on a
- * callback whose top-level `text` is empty — a text-only guard waves the
- * armor through inside the attachment. Attachments whose text carries
+ * Gate attachment text at a delivery seam. A callback can carry text only in
+ * `attachment.text` (for example a voice attachment) while its top-level
+ * `text` is empty — a text-only guard waves the armor through inside the
+ * attachment. Attachments whose text carries
  * envelope material are dropped (there is no honest partial form of a leaked
  * attachment) and each drop is reported; clean input returns the same array
  * reference so callers can cheaply detect "nothing blocked".

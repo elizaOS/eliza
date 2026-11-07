@@ -2665,6 +2665,16 @@ public class ElizaAgentService extends Service {
                 "ELIZA_ANDROID_APP_DATA_DIR",
                 canonicalAppDataDir
             );
+            // Live ASR needs the voice bundle before any text model loads, and
+            // this app's manifest names its own bundle directory.
+            try {
+                agentEnv.put(
+                    "ELIZA_ANDROID_VOICE_BUNDLE_DIR",
+                    ai.eliza.voice.VoiceBundleAssets.bundleRoot(this).getAbsolutePath()
+                );
+            } catch (IOException error) {
+                Log.w(TAG, "Voice bundle directory unavailable for live ASR", error);
+            }
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");

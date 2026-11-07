@@ -11,7 +11,10 @@
 
 import type { PinnedLookupFetchLike } from "../network/fetch-guard.js";
 import type { LookupFn } from "../network/ssrf.js";
-import { DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES } from "./attachments.ts";
+import {
+	DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+	type ResolvedAttachmentBytes,
+} from "./attachments.ts";
 import {
 	type FetchLike,
 	fetchRemoteMedia,
@@ -20,13 +23,6 @@ import {
 } from "./fetch.ts";
 import { trustedLocalMediaUrl } from "./local-store.ts";
 import { extensionForMime } from "./mime.ts";
-
-/** Bytes plus metadata a connector can upload without touching the original URL. */
-export interface ResolvedOutboundAttachmentBytes {
-	buffer: Buffer;
-	contentType: string;
-	fileName?: string;
-}
 
 /** DNS, transport, and size injection for outbound attachment resolution. */
 export type ResolveOutboundAttachmentOptions = {
@@ -78,7 +74,7 @@ export function summarizeOutboundAttachmentUrl(url: string): {
 async function decodeDataUrl(
 	url: string,
 	maxBytes: number,
-): Promise<ResolvedOutboundAttachmentBytes> {
+): Promise<ResolvedAttachmentBytes> {
 	const comma = url.indexOf(",");
 	if (!isDataUrl(url) || comma < 0) {
 		throw new MediaFetchError("fetch_failed", "malformed data URL");
@@ -136,7 +132,7 @@ async function fetchLocalMediaStoreBytes(
 	opts: ResolveOutboundAttachmentOptions,
 	maxBytes: number,
 	timeoutMs: number,
-): Promise<ResolvedOutboundAttachmentBytes> {
+): Promise<ResolvedAttachmentBytes> {
 	const fetcher = opts.localFetch ?? globalThis.fetch;
 	if (typeof fetcher !== "function") {
 		throw new MediaFetchError(
@@ -183,7 +179,7 @@ async function fetchLocalMediaStoreBytes(
 export async function resolveOutboundAttachmentBytes(
 	url: string,
 	opts: ResolveOutboundAttachmentOptions = {},
-): Promise<ResolvedOutboundAttachmentBytes> {
+): Promise<ResolvedAttachmentBytes> {
 	const trimmed = url.trim();
 	if (!trimmed) {
 		throw new MediaFetchError(

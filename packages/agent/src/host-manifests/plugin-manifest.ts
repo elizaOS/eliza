@@ -74,12 +74,8 @@ export interface PluginPackageManifest {
   };
 }
 /**
- * Minimal candidate shape for the autoEnable manifest evaluator.
- *
- * This is intentionally narrower than `PluginCandidate` in @elizaos/core —
- * the manifest evaluator only needs the package name and root dir; the richer
- * `PluginCandidate` shape with `idHint`, `source`, `origin`, etc. is for the
- * full plugin discovery / loading pipeline.
+ * Minimal candidate shape for the autoEnable manifest evaluator: only the
+ * package name and root dir are needed.
  */
 export interface PluginManifestCandidate {
   /** npm package name (e.g. "@elizaos/plugin-anthropic"). */

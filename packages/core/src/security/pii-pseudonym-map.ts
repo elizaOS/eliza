@@ -115,8 +115,7 @@ function randomSalt(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): the salt
 	// seeds deterministic pseudonym minting, so a predictable Math.random()
 	// fallback would let an observer reproduce corpus surrogates.
-	const bytes = BufferUtils.randomBytes(16);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	return BufferUtils.toHex(BufferUtils.randomBytes(16));
 }
 
 function identityKey(identity: PseudonymClusterIdentity): string {
