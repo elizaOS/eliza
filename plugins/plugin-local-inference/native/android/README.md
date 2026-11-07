@@ -181,8 +181,10 @@ transport is for downstream consumers without that server.
   A product that only admits English can instead build with `--languages en`
   and set `ext.elizaParadeeLanguages = 'en'` before applying `consumer.gradle`.
   This excludes the Spanish model, notices and eSpeak language data without
-  changing another product's default. The build receipt records `productLanguages`;
-  Gradle rejects a different selection, extra voices or changed pinned bytes.
+  changing another product's default. The build receipt records `productLanguages`.
+  Gradle rejects a different selection, assets outside the bundle, unselected
+  models or eSpeak data, and changed pinned bytes. A Spanish bundle must
+  include the Delibes license and notices.
   `--languages en,es` requires Spanish to be enabled by the pinned inputs.
   With no explicit selection, the existing pinned language set remains the default.
   Language selection does not grant model approval or device qualification.
@@ -279,8 +281,9 @@ and applies `consumer.gradle`. Optional properties: `elizaParadeeNativeDir`,
 library packages only its JNI bridge; both runtime libraries remain the host's
 responsibility. This also excludes CMake's implicit copies, avoiding duplicate
 runtime selection during APK merging. The default still packages both runtime
-libraries for standalone consumers such as Sense. The build fails if a generated
-file differs from `native/build-record.json`.
+libraries for standalone consumers such as Sense. Put Node on Gradle's `PATH`
+when packaging voice assets so it can check the product language selection.
+The build fails if a generated file differs from `native/build-record.json`.
 
 The APK may compress the voice models and lexicon. `VoiceBundleAssets` streams them
 to private storage and checks their hashes before native code memory-maps the
