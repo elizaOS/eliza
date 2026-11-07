@@ -62,6 +62,12 @@ export interface PlatformAdapter {
     rawBody: string,
     config?: WebhookConfig,
   ): Promise<ChatEvent | null>;
+  /**
+   * Every message in one provider notification, for providers that batch
+   * several messages into one delivery. Without it the handler admits the one
+   * event `extractEvent` returns.
+   */
+  extractEvents?(rawBody: string, config?: WebhookConfig): Promise<ChatEvent[]>;
   sendReply(
     config: WebhookConfig,
     event: ChatEvent,

@@ -96,6 +96,9 @@ const envKeys = [
   "ELIZA_APP_TWILIO_ACCOUNT_SID",
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
+  "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+  "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+  "ELIZA_APP_WHATSAPP_APP_SECRET",
   "ELIZA_APP_WEBHOOK_PROJECT",
 ] as const;
 const savedEnv = new Map<string, string | undefined>();
@@ -788,6 +791,107 @@ function whatsappBodies(): string[] {
     String((call.body.text as { body: string }).body),
   );
 }
+
+const WHATSAPP_APP_SECRET = "whatsapp-app-secret";
+
+/** One Meta notification carrying several text messages from one sender. */
+function whatsappBatchedInbound(messageIds: string[]): Request {
+  const body = JSON.stringify({
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "wa-business-1",
+        changes: [
+          {
+            field: "messages",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: {
+                display_phone_number: "15559990001",
+                phone_number_id: "1090001",
+              },
+              contacts: [{ wa_id: "15551234567", profile: { name: "Ada" } }],
+              messages: messageIds.map((id, index) => ({
+                id,
+                from: "15551234567",
+                timestamp: String(1_700_000_000 + index),
+                type: "text",
+                text: { body: `message ${index + 1}` },
+              })),
+            },
+          },
+        ],
+      },
+    ],
+  });
+  return new Request("http://gateway.test/webhook/eliza-app/whatsapp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-hub-signature-256": `sha256=${createHmac("sha256", WHATSAPP_APP_SECRET)
+        .update(body)
+        .digest("hex")}`,
+    },
+    body,
+  });
+}
+
+/** Records every delivery claim, which the background turn may later settle. */
+class ClaimRecordingRedis extends MemoryRedis {
+  readonly claims: string[] = [];
+  override async set(
+    key: string,
+    value: string,
+    options: { nx?: boolean } = {},
+  ): Promise<unknown> {
+    if (options.nx) this.claims.push(key);
+    return super.set(key, value, options);
+  }
+}
+
+describe("WhatsApp batched inbound", () => {
+  beforeEach(() => {
+    process.env.ELIZA_APP_WHATSAPP_ACCESS_TOKEN = "whatsapp-access-token";
+    process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID = "1090001";
+    process.env.ELIZA_APP_WHATSAPP_APP_SECRET = WHATSAPP_APP_SECRET;
+  });
+
+  test("every text message in one Meta notification is admitted before the acknowledgement", async () => {
+    const cloud = startCloud({ reply: "" });
+    const redis = new ClaimRecordingRedis();
+
+    const response = await handleWebhook(
+      whatsappBatchedInbound(["wamid.batch1", "wamid.batch2"]),
+      whatsappAdapter,
+      deps(cloud.origin, redis),
+      "eliza-app",
+    );
+
+    // Meta never redelivers an acknowledged notification, so a message that
+    // was not claimed here is lost for good.
+    expect(response.status).toBe(200);
+    expect(redis.claims).toEqual([
+      "webhook:whatsapp:wamid.batch1",
+      "webhook:whatsapp:wamid.batch2",
+    ]);
+  });
+
+  test("the adapter lists every text message and keeps the first as its single event", async () => {
+    const rawBody = await whatsappBatchedInbound([
+      "wamid.batch1",
+      "wamid.batch2",
+    ]).text();
+
+    const events = await whatsappAdapter.extractEvents?.(rawBody);
+    expect(events?.map((event) => [event.messageId, event.text])).toEqual([
+      ["wamid.batch1", "message 1"],
+      ["wamid.batch2", "message 2"],
+    ]);
+    expect((await whatsappAdapter.extractEvent(rawBody))?.messageId).toBe(
+      "wamid.batch1",
+    );
+  });
+});
 
 describe("WhatsApp reply egress", () => {
   test("a reply over the 4096-character text limit is sent as ordered parts", async () => {
