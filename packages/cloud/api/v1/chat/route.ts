@@ -80,6 +80,64 @@ import {
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
 
+type ChatBillingContext = Parameters<typeof billUsage>[0];
+
+/**
+ * Settle a stream the client closed before the provider finished. The client
+ * already holds every delivered token. When it received more output than the
+ * admission reserved, bill the input estimate plus the delivered output, the
+ * way /v1/chat/completions settles an abort. Otherwise keep the admitted
+ * estimate, which covers provider work that was not delivered (for example
+ * reasoning before the first visible token). Billing at the estimate alone
+ * let a client read any amount of output and pay for 500 tokens.
+ */
+async function settleChatStreamAbort(params: {
+  billingContext: ChatBillingContext;
+  estimatedInputTokens: number;
+  /** Output tokens the admission reserved for this request. */
+  admittedOutputTokens: number;
+  deliveredText: string;
+  billingReservation: CreditReservation | undefined;
+  settleReservation:
+    | ((actualCost: number) => Promise<unknown>)
+    | null
+    | undefined;
+  settleUnknown: (() => Promise<unknown>) | null | undefined;
+}): Promise<void> {
+  const outputTokens = estimateTokens(params.deliveredText);
+  if (
+    outputTokens <= params.admittedOutputTokens ||
+    !params.settleReservation
+  ) {
+    await params.settleUnknown?.();
+    return;
+  }
+  try {
+    const billing = await billUsage(
+      params.billingContext,
+      {
+        inputTokens: params.estimatedInputTokens,
+        outputTokens,
+        totalTokens: params.estimatedInputTokens + outputTokens,
+      },
+      params.billingReservation,
+    );
+    await params.settleReservation(billing.totalCost);
+  } catch (error) {
+    // error-policy:J2 the delivered-text charge could not be computed; keep
+    // the admitted unknown-outcome settlement rather than leaving the hold.
+    logger.error("chat-api", "Delivered-text abort billing failed", {
+      requestId: params.billingContext.requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await params.settleUnknown?.();
+  }
+}
+
+export const __chatStreamSettlementTestHooks = {
+  settleChatStreamAbort,
+} as const;
+
 const ROUTE_MAX_DURATION = 800;
 const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
 const VALID_MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
@@ -617,8 +675,49 @@ app.post("/", async (c) => {
     await markProviderDispatched?.();
     await markAnonymousMessageSlotDispatched?.();
     providerDispatchStarted = true;
+    let deliveredText = "";
+    const abortBillingContext: ChatBillingContext = {
+      organizationId: user.organization_id || "anonymous",
+      userId: user.id,
+      apiKeyId: apiKey?.id,
+      model: selectedModel,
+      provider,
+      billingSource,
+      affiliateCode,
+      requestId,
+    };
+    const settleAbortedStream = () =>
+      settleChatStreamAbort({
+        billingContext: abortBillingContext,
+        estimatedInputTokens,
+        admittedOutputTokens: estimatedOutputTokens,
+        deliveredText,
+        billingReservation,
+        settleReservation,
+        settleUnknown: settleUnknownReservation,
+      });
+    // One terminal decision for an abort, a provider error mid-stream and a
+    // stream teardown: a known refusal releases the hold; otherwise bill the
+    // delivered output when it is larger than the reservation, else keep the
+    // admitted estimate. The settlers are first-call-wins, so every terminal
+    // must make the same decision or the first one to run freezes a wrong one.
+    const settleStreamTerminal = (error?: unknown) =>
+      settleOffResponsePath(executionCtx, async () => {
+        if (error !== undefined && isKnownUnacceptedProviderError(error)) {
+          await refundAnonymousMessageSlot?.();
+          await settleReservation?.(0);
+        } else {
+          await commitAnonymousMessageSlot?.();
+          await settleAbortedStream();
+        }
+      });
     const result = streamText({
       model: languageModel,
+      onChunk: ({ chunk }) => {
+        // Reasoning streams to the client and is billed as output too.
+        if (chunk.type === "text-delta" || chunk.type === "reasoning-delta")
+          deliveredText += chunk.text;
+      },
       system:
         "Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.",
       messages: modelMessages,
@@ -770,10 +869,7 @@ app.post("/", async (c) => {
         });
       },
       onAbort: async () => {
-        await settleOffResponsePath(executionCtx, async () => {
-          await commitAnonymousMessageSlot?.();
-          await settleUnknownReservation?.();
-        });
+        await settleStreamTerminal();
         logger.info("chat-api", "Aborted chat stream", {
           requestId,
           userId: user.id,
@@ -781,15 +877,7 @@ app.post("/", async (c) => {
         });
       },
       onError: async ({ error }: { error: unknown }) => {
-        await settleOffResponsePath(executionCtx, async () => {
-          if (isKnownUnacceptedProviderError(error)) {
-            await refundAnonymousMessageSlot?.();
-            await settleReservation?.(0);
-          } else {
-            await commitAnonymousMessageSlot?.();
-            await settleUnknownReservation?.();
-          }
-        });
+        await settleStreamTerminal(error);
         logger.error("chat-api", "Stream provider error", {
           requestId,
           userId: user.id,
@@ -811,18 +899,6 @@ app.post("/", async (c) => {
     // Every settler here is first-call-wins idempotent and the anonymous
     // commit/refund is single-flighted, so a callback that already settled
     // makes this a no-op.
-    const settleStreamTeardown = (error?: unknown) =>
-      settleOffResponsePath(executionCtx, async () => {
-        if (error !== undefined && isKnownUnacceptedProviderError(error)) {
-          await refundAnonymousMessageSlot?.();
-          await settleReservation?.(0);
-        } else {
-          // Same terminal decision as onAbort/ambiguous onError: delivered
-          // provider work with unknown cost retains the admitted estimate.
-          await commitAnonymousMessageSlot?.();
-          await settleUnknownReservation?.();
-        }
-      });
     const upstreamReader = streamResponse.body.getReader();
     const guardedBody = new ReadableStream<Uint8Array>({
       async pull(controller) {
@@ -834,7 +910,7 @@ app.post("/", async (c) => {
             controller.enqueue(next.value);
           }
         } catch (error) {
-          await settleStreamTeardown(error);
+          await settleStreamTerminal(error);
           logger.error("chat-api", "UI-message stream failed mid-flight", {
             requestId,
             error: error instanceof Error ? error.message : String(error),
@@ -848,7 +924,7 @@ app.post("/", async (c) => {
         try {
           await upstreamReader.cancel(reason);
         } finally {
-          await settleStreamTeardown();
+          await settleStreamTerminal();
         }
       },
     });
