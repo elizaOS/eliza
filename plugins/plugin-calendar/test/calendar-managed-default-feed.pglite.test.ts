@@ -58,6 +58,7 @@ let pg: PGlite;
 let runtime: IAgentRuntime;
 let shown = new Set<string>();
 const feedReads: string[] = [];
+const standardGoogleAccounts = vi.fn(async () => []);
 
 function event(calendarId: string, externalId: string, title: string) {
   const hour = externalId === "standup" ? 9 : 14;
@@ -179,7 +180,7 @@ function service(
 function calendarService(): CalendarService {
   const calendar = new CalendarService(runtime);
   calendar.setGate({
-    getGoogleConnectorAccounts: async () => [],
+    getGoogleConnectorAccounts: standardGoogleAccounts,
     createReminderPlan: async () => {},
     updateReminderPlan: async () => {},
     deleteReminderPlan: async () => {},
@@ -218,6 +219,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   feedReads.length = 0;
+  standardGoogleAccounts.mockClear();
   shown = new Set(["owner@example.test", "team@group.calendar.google.com"]);
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
@@ -236,6 +238,25 @@ afterAll(async () => {
 describe("managed owner calendars in the aggregate feed", {
   timeout: 30_000,
 }, () => {
+  it("reads an exact managed grant without looking up standard Google accounts", async () => {
+    const calendar = service();
+    const feed = await calendar.getCalendarFeed(INTERNAL_URL, {
+      ...WINDOW,
+      grantId: GRANT,
+      calendarId: "owner@example.test",
+    });
+
+    expect(feed.events.map((entry) => entry.title).sort()).toEqual([
+      "Launch review",
+      "Standup",
+    ]);
+    expect(feedReads).toEqual(["owner@example.test"]);
+    expect(standardGoogleAccounts).not.toHaveBeenCalled();
+
+    await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+  });
+
   it("merges the built-in calendar with every calendar the host shows, once each", async () => {
     const calendar = service();
     await calendar.createCalendarEvent(INTERNAL_URL, {

@@ -3775,11 +3775,18 @@ export class CalendarService extends Service {
     signal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
     const side = normalizeOptionalConnectorSide(request?.side, "side");
-    const targetsNonGoogleProvider =
+    const managedCalendar = this.managedCalendar;
+    const exactManagedGrant =
+      !!request?.grantId && managedCalendar?.acceptsGrantId(request.grantId);
+    // A managed grant belongs to the owner broker's own namespace. The
+    // standard connector catalog cannot supply it, but an aggregate read
+    // still discovers both sources.
+    const skipStandardGoogle =
+      exactManagedGrant ||
       isMicrosoftCalendarGrantId(request?.grantId) ||
       isAppleCalendarGrant(request?.grantId) ||
       isElizaCalendarGrant(request?.grantId);
-    const statuses = targetsNonGoogleProvider
+    const statuses = skipStandardGoogle
       ? []
       : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
           this.gate.getGoogleConnectorAccounts(requestUrl, side),
@@ -3979,7 +3986,10 @@ export class CalendarService extends Service {
         );
       }
     }
-    if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
+    if (
+      !exactManagedGrant &&
+      shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })
+    ) {
       const icsSources = await timeInferenceSpan(
         "calendar:discovery:ics-sources",
         () => this.repo.listIcsCalendarSources(this.agentId()),
@@ -3992,7 +4002,6 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
-    const managedCalendar = this.managedCalendar;
     if (
       managedCalendar?.acceptsGrantId(request?.grantId) &&
       side !== "agent" &&
