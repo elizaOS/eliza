@@ -933,6 +933,67 @@ describe("Notes capabilities", () => {
     ]);
   });
 
+  it("appends the first item to a checklist created without items", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const runtime = await runtimeFor(service);
+    // NotesEditor.begin("list") drafts { kind: "list", data: {} }; this is its first save.
+    const created = await serverInteract(
+      "create-note",
+      {
+        forceNew: true,
+        content: "Groceries",
+        color: "yellow",
+        format: { kind: "list", data: {} },
+      },
+      { runtime },
+    );
+    expect(created).toMatchObject({ success: true });
+    const noteId = service.listNotes()[0]?.id;
+    if (!noteId) throw new Error("Created note id is required.");
+
+    const appended = await serverInteract(
+      "update-note",
+      {
+        id: noteId,
+        authoredEdit: { field: "checklist", action: "append", text: "milk" },
+        expectedRevision: service.snapshot().revision,
+      },
+      { runtime },
+    );
+    expect(appended).toMatchObject({ success: true });
+    expect(service.getNote(noteId).format).toEqual({
+      kind: "list",
+      data: { items: [{ t: "milk", done: false }] },
+    });
+
+    // A list whose items field is not an array still refuses the append.
+    await serverInteract(
+      "create-note",
+      { content: "Broken", format: { kind: "list", data: { items: "milk" } } },
+      { runtime },
+    );
+    const broken = service.listNotes().find((note) => note.title === "Broken");
+    if (!broken) throw new Error("Broken list note is required.");
+    await expect(
+      serverInteract(
+        "update-note",
+        {
+          id: broken.id,
+          authoredEdit: { field: "checklist", action: "append", text: "eggs" },
+          expectedRevision: service.snapshot().revision,
+        },
+        { runtime },
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_EDIT_CONFLICT" },
+    });
+    expect(service.getNote(broken.id).format).toEqual({
+      kind: "list",
+      data: { items: "milk" },
+    });
+  });
+
   it("drives full note CRUD against the durable service", async () => {
     const service = await serviceFor(await temporaryStateFile());
 
