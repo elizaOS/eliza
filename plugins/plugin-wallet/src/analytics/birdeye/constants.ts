@@ -20,6 +20,9 @@ export const RETRY_DELAY_MS = 2_000;
 
 export const DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS = 10_000;
 
+/** How long a cached Birdeye answer is served before it is fetched again. */
+export const DEFAULT_BIRDEYE_CACHE_TTL_MS = 30_000;
+
 export const BIRDEYE_ENDPOINTS = {
   defi: {
     networks: "/defi/networks", // https://docs.birdeye.so/reference/get_defi-networks
