@@ -640,7 +640,11 @@ function hasCodexSubscriptionAuth(): boolean {
   const authPath = path.join(getUserHomeDir(), ".codex", "auth.json");
   const auth = readJsonFile(authPath);
   if (!auth || typeof auth !== "object" || Array.isArray(auth)) return false;
-  const key = (auth as Record<string, unknown>).OPENAI_API_KEY;
+  const record = auth as Record<string, unknown>;
+  // A ChatGPT login keeps OPENAI_API_KEY null and stores its OAuth tokens
+  // under `tokens`; older CLIs stored an exchanged key at the top level.
+  if (extractOauthAccessToken(record.tokens)) return true;
+  const key = record.OPENAI_API_KEY;
   return typeof key === "string" && key.trim().length > 0;
 }
 
