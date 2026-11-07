@@ -114,6 +114,8 @@ export class MapPlane {
   private disposeCopyright?: () => void;
   private refreshCopyright?: () => void;
   private destroyed = false;
+  /** Set by MapLibre's one-shot "load"; from then on the style accepts sources and layers. */
+  private styleReady = false;
   constructor(
     container: HTMLElement,
     region: MapBasemap,
@@ -411,6 +413,7 @@ export class MapPlane {
     }
     this.map.on("load", () => {
       if (this.destroyed) return;
+      this.styleReady = true;
       container.dataset.mapReady = "true";
       this.refreshCopyright?.();
       this.update(this.requested, this.requestedRoute, this.requestedOverlay);
@@ -533,7 +536,8 @@ export class MapPlane {
     this.requested = selected;
     this.requestedRoute = route;
     this.requestedOverlay = overlay;
-    if (!this.map.isStyleLoaded()) return;
+    // isStyleLoaded() also turns false while in-view tiles load; only wait for the first load.
+    if (!this.styleReady && !this.map.isStyleLoaded()) return;
     this.drawPins(overlay.pins || []);
     this.drawPosition(overlay.position, !!overlay.follow);
     // Leaving navigation returns the camera to a north-up overview.

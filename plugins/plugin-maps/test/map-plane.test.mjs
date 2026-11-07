@@ -288,6 +288,49 @@ test("destroy is idempotent and ignores late map callbacks and updates", () => {
   assert.equal(f.map.marker, undefined);
   assert.equal(f.container.dataset.mapReady, undefined);
 });
+test("updates wait for the style to load, then draw while tiles are still loading", () => {
+  const f = fixture(regional);
+  // MapLibre's isStyleLoaded() is false before "load" and again whenever
+  // in-view tiles load, for example after a camera move.
+  let styleLoaded = false;
+  f.map.isStyleLoaded = () => styleLoaded;
+  const place = { latitude: 43.74, longitude: 7.42 };
+  f.plane.update(place);
+  assert.equal(f.map.marker, undefined, "nothing is drawn before load");
+  styleLoaded = true;
+  f.map.events.load();
+  assert.deepEqual(Array.from(f.map.marker.point), [7.42, 43.74]);
+  styleLoaded = false;
+  f.plane.update(
+    place,
+    {
+      id: "route-1",
+      geometry: [{ latitude: 43.73, longitude: 7.41 }, place],
+    },
+    {
+      pins: [
+        {
+          id: "pin-1",
+          label: "Cafe",
+          coordinate: { latitude: 43.735, longitude: 7.415 },
+        },
+      ],
+    },
+  );
+  assert.ok(f.map.sources.route, "the route line is drawn");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(f.map.sources.route.data.geometry.coordinates)),
+    [
+      [7.41, 43.73],
+      [7.42, 43.74],
+    ],
+  );
+  assert.ok(f.map.fit, "the new route is framed");
+  const pin = f.map.markers.find(
+    (marker) => marker.element.dataset.mapPin === "pin-1",
+  );
+  assert.deepEqual(pin && Array.from(pin.point), [7.415, 43.735]);
+});
 test("explicit global style starts at world scale, permits global manual pins and retains existing ownership cleanup", () => {
   const f = fixture(global);
   assert.equal(f.map.options.style, global.styleUrl);
