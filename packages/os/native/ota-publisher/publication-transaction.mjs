@@ -102,7 +102,10 @@ function snapshot(input) {
       );
       return { name, bytes: data, sha256: hash(data) };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    // Code-unit order, not localeCompare: ICU collation depends on the host
+    // locale, so the same byte plan would hash to a different identity under
+    // a different locale and a rerun could not resume it.
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const target = hash(timestamp),
     v = version(timestamp),
     identity = hash(
