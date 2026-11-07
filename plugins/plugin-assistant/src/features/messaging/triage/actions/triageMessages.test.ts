@@ -272,6 +272,45 @@ describe("triageMessagesAction", () => {
     ]);
   });
 
+  it("caps the merged feed at `limit` when several sources each fill their page", async () => {
+    // Each connector honours `limit` for its own page, like the real ones.
+    const inbox = (source: MessageSource, receivedAt: number[]) =>
+      new RecordingListAdapter(
+        source,
+        receivedAt.map((receivedAtMs) =>
+          messageRef({
+            id: `${source}-${receivedAtMs}`,
+            source,
+            externalId: `${source}-${receivedAtMs}-external`,
+            receivedAtMs,
+          }),
+        ),
+      );
+    const gmail = inbox("gmail", [3_000, 1_000]);
+    const telegram = inbox("telegram", [3_500, 1_500]);
+    getDefaultTriageService().register(gmail);
+    getDefaultTriageService().register(telegram);
+
+    const result = await triageMessagesAction.handler(
+      createFakeRuntime(),
+      turn,
+      undefined,
+      options({ limit: 2 }),
+    );
+
+    expect(gmail.seenOptions[0]?.limit).toBe(2);
+    expect(telegram.seenOptions[0]?.limit).toBe(2);
+    expect(result.text).toBe(
+      "Fetched 2 message(s) across 2 platform(s), newest first.",
+    );
+    expect(result.data?.count).toBe(2);
+    const messages = result.data?.messages as Array<{ id: string }> | undefined;
+    expect(messages?.map((message) => message.id)).toEqual([
+      "telegram-3500",
+      "gmail-3000",
+    ]);
+  });
+
   it("uses a single requested source and preserves connector failures", async () => {
     const gmail = new RecordingListAdapter("gmail", [
       messageRef({ id: "gmail-only", externalId: "gmail-only-external" }),

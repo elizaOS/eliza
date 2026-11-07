@@ -77,13 +77,18 @@ export const triageMessagesAction: Action = {
       logger.warn(`[TriageMessages] ${unlistable}`);
       return { success: false, text: unlistable, error: unlistable };
     }
-    const ranked = await service.triage(runtime, {
+    const fetched = await service.triage(runtime, {
       sources: params.sources,
       worldIds: params.worldIds,
       channelIds: params.channelIds,
       sinceMs: params.sinceMs,
       limit: params.limit,
     });
+    // Each connector caps only its own page; the merged feed takes the cap too.
+    const ranked =
+      params.limit !== undefined && params.limit > 0
+        ? fetched.slice(0, Math.floor(params.limit))
+        : fetched;
 
     const summary =
       ranked.length === 0
