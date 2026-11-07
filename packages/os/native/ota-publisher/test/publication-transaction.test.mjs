@@ -305,3 +305,123 @@ test("publication identity is stable across host locales on resume", {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("resume tolerates a pre-upgrade locale-ordered identity, refuses a different plan", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  // The aa... / b0... shipped pair again: under da_DK collation the pair
+  // orders b0 before aa, so code written before the ordering change stored
+  // a different identity for this exact byte plan. Build that stored
+  // identity directly (explicit da-DK collator, so the test does not
+  // depend on the host locale) and write journal rows in each phase.
+  const aa = `targets/stable/aa${"0".repeat(62)}.launcher.json`,
+    b0 = `targets/stable/b0${"0".repeat(62)}.standalone.json`;
+  const deps = () => [
+    { name: b0, bytes: Buffer.from("dep b0 fixture") },
+    { name: aa, bytes: Buffer.from("dep aa fixture") },
+  ];
+  const upgradePlan = (id, v) => ({
+    id,
+    timestamp: timestamp(v),
+    dependencies: deps(),
+  });
+  const preUpgradeIdentity = (p) => {
+    const ordered = [...p.dependencies].sort((x, y) =>
+      x.name.localeCompare(y.name, "da-DK"),
+    );
+    return hash(
+      Buffer.from(
+        JSON.stringify({
+          target: hash(p.timestamp),
+          dependencies: ordered.map(({ name, bytes }) => ({
+            name,
+            sha256: hash(bytes),
+          })),
+        }),
+      ),
+    );
+  };
+  const writeRow = (journal, p, phase) => {
+    const db = new DatabaseSync(journal);
+    try {
+      db.prepare("INSERT INTO publication VALUES (?,?,?,?,?,?)").run(
+        p.id,
+        preUpgradeIdentity(p),
+        phase,
+        hash(timestamp(1)),
+        hash(p.timestamp),
+        JSON.parse(p.timestamp.toString()).signed.version,
+      );
+    } finally {
+      db.close();
+    }
+  };
+  // A 'preparing' row resumes and completes, and the journal is not
+  // wedged: a following unrelated publication still publishes.
+  await setup(async (s) => {
+    writeRow(s.journal, upgradePlan("release-2", 2), "preparing");
+    assert.equal(
+      (
+        await publishMetadataTransaction(
+          s.journal,
+          upgradePlan("release-2", 2),
+          s.ports,
+        )
+      ).status,
+      "published",
+    );
+    assert.equal(
+      (
+        await publishMetadataTransaction(
+          s.journal,
+          upgradePlan("release-3", 3),
+          s.ports,
+        )
+      ).status,
+      "published",
+    );
+  });
+  // A 'committing' row resumes the same way, with one timestamp commit.
+  await setup(async (s) => {
+    writeRow(s.journal, upgradePlan("release-2", 2), "committing");
+    assert.equal(
+      (
+        await publishMetadataTransaction(
+          s.journal,
+          upgradePlan("release-2", 2),
+          s.ports,
+        )
+      ).status,
+      "published",
+    );
+    assert.equal(s.calls.filter((c) => c === "timestamp").length, 1);
+  });
+  // A completed row reruns as published, with no new timestamp commit.
+  await setup(async (s) => {
+    writeRow(s.journal, upgradePlan("release-2", 2), "published");
+    s.objects.set("timestamp.json", timestamp(2));
+    assert.equal(
+      (
+        await publishMetadataTransaction(
+          s.journal,
+          upgradePlan("release-2", 2),
+          s.ports,
+        )
+      ).status,
+      "published",
+    );
+    assert.deepEqual(s.calls, []);
+  });
+  // Same id with different bytes still refuses: the tolerance is keyed on
+  // the stored target and version of the same timestamp, nothing else.
+  await setup(async (s) => {
+    writeRow(s.journal, upgradePlan("release-2", 2), "preparing");
+    await assert.rejects(
+      publishMetadataTransaction(
+        s.journal,
+        upgradePlan("release-2", 3),
+        s.ports,
+      ),
+      /reused/,
+    );
+  });
+});

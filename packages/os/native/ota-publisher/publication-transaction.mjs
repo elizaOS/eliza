@@ -171,10 +171,26 @@ export async function publishMetadataTransaction(
       .prepare("SELECT * FROM publication WHERE id=?")
       .get(plan.id);
     if (existing) {
-      fail(
-        existing.identity === plan.identity,
-        "publication id reused for different bytes",
-      );
+      if (existing.identity !== plan.identity) {
+        // Upgrade boundary: a row written before the ordering change can
+        // hold a locale-ordered identity for this exact byte plan. target
+        // is the sha256 of the timestamp bytes and version is read from
+        // those bytes; both were recorded at insert, so a row matching
+        // both is this publication under the other ordering, not an id
+        // reuse. Anything else keeps the refusal.
+        fail(
+          existing.target === plan.target && existing.version === plan.version,
+          "publication id reused for different bytes",
+        );
+        if (existing.phase === "published") return existing;
+        // The final publish update matches the row by identity, so move
+        // an active row to the current identity before resuming it.
+        db.prepare("UPDATE publication SET identity=? WHERE id=?").run(
+          plan.identity,
+          plan.id,
+        );
+        return db.prepare("SELECT * FROM publication WHERE id=?").get(plan.id);
+      }
       return existing;
     }
     fail(baseline !== plan.target, "untracked timestamp already published");
