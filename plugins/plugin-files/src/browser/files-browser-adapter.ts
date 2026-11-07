@@ -835,6 +835,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   }
   const reviewingPrimary = () =>
     api?.isActive?.() &&
+    (typeof document === "undefined" || !document.hidden) &&
     !(place.kind === "folder" && place.volume && place.volume !== "primary");
   const runner: FilesAgentRunner = {
     async reviewedIdentities(paths, signal) {
@@ -852,6 +853,15 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     },
     async run(op: FilesAgentOperation, signal) {
       signal.throwIfAborted();
+      const reviewRequired = {
+        status: "failed" as const,
+        summary: "Review these files again. Nothing changed.",
+      };
+      if (
+        (op.type === "files_move" || op.type === "files_trash") &&
+        (!op.reviewed || !reviewingPrimary())
+      )
+        return reviewRequired;
       if (!api)
         return {
           status: "failed",
@@ -922,11 +932,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
             };
       }
       signal.throwIfAborted();
-      if (!reviewingPrimary() || !op.reviewed)
-        return {
-          status: "failed",
-          summary: "Review these files again. Nothing changed.",
-        };
+      if (!reviewingPrimary() || !op.reviewed) return reviewRequired;
       const selection = {
         paths: op.paths,
         reviewed: op.reviewed,
