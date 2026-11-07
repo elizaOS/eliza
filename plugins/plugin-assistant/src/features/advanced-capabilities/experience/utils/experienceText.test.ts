@@ -40,3 +40,35 @@ describe("experienceText non-Latin learnings", () => {
     expect(isDuplicateLearning(KOREAN_LEARNING, decomposed)).toBe(true);
   });
 });
+
+describe("experienceText opposite learnings", () => {
+  const RUN_FIRST =
+    "Run the database migrations before starting the API server";
+
+  it("does not call a learning and its negation duplicates", () => {
+    expect(
+      isDuplicateLearning(
+        RUN_FIRST,
+        "Do not run the database migrations before starting the API server",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not call a reversed learning a duplicate", () => {
+    expect(
+      isDuplicateLearning(
+        "Use the staging token for the deploy script",
+        "No longer use the staging token for the deploy script",
+      ),
+    ).toBe(false);
+  });
+
+  it("still merges a reworded learning with the same polarity", () => {
+    expect(
+      isDuplicateLearning(
+        RUN_FIRST,
+        "Always run the database migrations before starting the API server.",
+      ),
+    ).toBe(true);
+  });
+});

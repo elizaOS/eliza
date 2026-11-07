@@ -5,11 +5,13 @@
  * text to a coarse domain; `extractExperienceKeywords` tokenizes, stems, and
  * frequency-ranks searchable terms; and `isDuplicateLearning` /
  * `findDuplicateExperienceByLearning` decide near-duplicate learnings via
- * normalized-substring, Jaccard, and containment thresholds. Consumed by
+ * normalized-substring, Jaccard, and containment thresholds, never merging two
+ * learnings of opposite polarity ("do X" / "do not X"). Consumed by
  * ExperienceService for keyword derivation and dedupe maintenance.
  */
 import { redactBasicEmails } from "@elizaos/core";
 import { tokenize } from "../../../documents/bm25.ts";
+import { factPolarityDiffers } from "../../fact-keywords.ts";
 import type { Experience } from "../types.ts";
 
 /** Minimal interface of ExperienceService used by this module. */
@@ -166,6 +168,8 @@ export async function findDuplicateExperienceByLearning(
 }
 
 export function isDuplicateLearning(a: string, b: string): boolean {
+  // Word overlap cannot see "not"/"no longer"; opposite claims never merge.
+  if (factPolarityDiffers(a, b)) return false;
   const normalizedA = normalizeTextForDuplicateComparison(a);
   const normalizedB = normalizeTextForDuplicateComparison(b);
   if (!normalizedA || !normalizedB) {
