@@ -867,9 +867,11 @@ export class VoiceScheduler {
 	/**
 	 * Hand the ring buffer to the sink. Every queued chunk is now in the sink
 	 * (played or playing), so it leaves the prefix queue: a barge-in rollback
-	 * must not write it to the sink a second time.
+	 * must not write it to the sink a second time. Callers outside the
+	 * scheduler (the first-audio filler) flush through here too, because the
+	 * ring buffer can hold queued reply audio held back by a pause.
 	 */
-	private flushRingBufferToSink(): number {
+	flushRingBufferToSink(): number {
 		const flushed = this.ringBuffer.flushToSink();
 		this.prefixQueue.clear();
 		return flushed;

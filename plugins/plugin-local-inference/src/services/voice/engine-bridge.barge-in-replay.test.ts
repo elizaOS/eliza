@@ -11,6 +11,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EngineVoiceBridge } from "./engine-bridge";
 import type { VoiceLifecycleLoaders } from "./lifecycle";
+import { FIRST_AUDIO_FILLERS } from "./phrase-cache";
 import type { MmapRegionHandle, RefCountedResource } from "./shared-resources";
 import type {
 	AudioSink,
@@ -177,6 +178,32 @@ describe("EngineVoiceBridge barge-in with streaming TTS", () => {
 		bridge.triggerBargeIn();
 
 		expect(sink.written).toBe(4 * CHUNK_SAMPLES);
+		bridge.scheduler.bargeIn.unbindVad();
+	});
+
+	it("does not replay held audio that a first-audio filler played", async () => {
+		const vad = new ManualVad();
+		bridge.scheduler.bargeIn.bindVad(vad);
+		await bridge.prewarmPhrases([FIRST_AUDIO_FILLERS[0]]);
+		await speak(["Hello", " there", "."]);
+		expect(sink.written).toBe(2 * CHUNK_SAMPLES);
+
+		// The user starts talking; the next phrase is held in the ring buffer.
+		vad.emit({ type: "speech-start", timestampMs: 1, probability: 0.9 });
+		expect(bridge.scheduler.ttsPaused).toBe(true);
+		await speak([" How", " are", " you", "?"]);
+		expect(sink.written).toBe(2 * CHUNK_SAMPLES);
+
+		// The turn controller plays the filler on a speech onset. It flushes the
+		// whole ring buffer, so the held phrase reaches the sink with it.
+		expect(bridge.playFirstAudioFiller()).toBe(FIRST_AUDIO_FILLERS[0]);
+		const written = sink.written;
+		expect(written).toBe(6 * CHUNK_SAMPLES);
+		expect(bridge.scheduler.prefixQueue.size).toBe(0);
+
+		bridge.triggerBargeIn();
+
+		expect(sink.written).toBe(written);
 		bridge.scheduler.bargeIn.unbindVad();
 	});
 
