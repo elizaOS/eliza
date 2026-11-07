@@ -23,6 +23,7 @@ import {
   type EventPayload,
   EventType,
   type HandlerCallback,
+  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Media,
@@ -2475,14 +2476,27 @@ export class MessageManager {
   ): Promise<void> {
     const service = this.runtime.getService("computeruse");
     const actorTelegramUserId = ctx.from?.id.toString();
-    if (
-      callback.ownerId &&
-      actorTelegramUserId &&
-      callback.ownerId !== actorTelegramUserId
-    ) {
+    // The approval runs an action on the owner's machine, so only the owner
+    // may approve it. The member who asked may still deny their own request.
+    const isRequester =
+      Boolean(callback.ownerId) && callback.ownerId === actorTelegramUserId;
+    // Check the sender and topic room the callback already resolved.
+    const isOwner = await hasRoleAccess(
+      this.runtime,
+      {
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: { text: "", source: "telegram" },
+      },
+      "OWNER",
+    );
+    if (!isOwner && !(isRequester && !callback.approved)) {
       try {
         await ctx.answerCbQuery(
-          "Only the requester can resolve this approval.",
+          isRequester
+            ? "Only the owner can approve this request."
+            : "Only the owner can resolve this approval.",
           {
             show_alert: true,
           },
