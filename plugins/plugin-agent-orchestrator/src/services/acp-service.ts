@@ -133,7 +133,9 @@ import {
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
+  isDeniedSpawnEnvKey,
   isDeniedSubAgentEnvKey,
+  isForwardedCloudCredentialKey,
   SUB_AGENT_SYSTEM_ENV_KEYS,
 } from "./sub-agent-env-policy.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
@@ -5431,33 +5433,21 @@ export class AcpService extends Service {
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
-    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
-    // #14118: the raw owner cloud key is broker-gated by default. When an
-    // operator opts INTO forwarding it and a key actually landed in the child
-    // env, surface it — an autonomous child now holds the owner's Cloud bearer,
-    // which the broker-first path exists to avoid.
-    if (
-      isCloudKeyForwardingEnabled() &&
-      Object.keys(env).some((key) => key.startsWith("ELIZAOS_CLOUD"))
-    ) {
-      this.log(
-        "warn",
-        "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS is set: forwarding the owner's raw ELIZAOS_CLOUD* creds into the sub-agent env (broker-first is bypassed). The child now holds the owner Cloud key — prefer the parent-agent broker (apps.create / containers.create) and the credential bridge instead.",
-        {
-          forwardedCloudKeys: Object.keys(env).filter((key) =>
-            key.startsWith("ELIZAOS_CLOUD"),
-          ),
-          childSessionId,
-        },
-      );
-    }
+    // #14118: the raw owner cloud key is broker-gated by default. The same
+    // opt-in gates all three intakes below (process.env, customCredentials,
+    // spawn env), so a caller cannot hand a child the key the opt-in withholds.
+    const forwardCloudKey = isCloudKeyForwardingEnabled();
+    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(
+      process.env,
+      forwardCloudKey,
+    );
     for (const [key, value] of Object.entries(customCredentials ?? {})) {
       if (typeof value !== "string") continue;
       // customCredentials arrive with the spawn request, not from the parent's
       // vetted process.env, so they MUST respect the same deny-list — otherwise
       // a caller could inject a secret the deny-list strips from process.env
-      // forwarding (connector bot tokens, the vault passphrase).
-      if (isDeniedSubAgentEnvKey(key)) {
+      // forwarding (connector bot tokens, the vault passphrase, a Cloud key).
+      if (isDeniedSubAgentEnvKey(key, forwardCloudKey)) {
         this.log("warn", "rejecting customCredential matching env deny-list", {
           key,
         });
@@ -5467,13 +5457,30 @@ export class AcpService extends Service {
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value !== "string") continue;
-      if (isDeniedSubAgentEnvKey(key)) {
+      // The spawn env carries the credentials this spawner mints per child
+      // (bridge token, Pi route key); every other host-only credential is
+      // denied here exactly as it is for process.env and customCredentials.
+      if (isDeniedSpawnEnvKey(key, forwardCloudKey)) {
         this.log("warn", "rejecting spawn env matching env deny-list", {
           key,
         });
         continue;
       }
       env[canonicalForwardedEnvKey(key)] = value;
+    }
+    // When an operator opts INTO forwarding and a Cloud key actually landed in
+    // the child env (from any intake), surface it — an autonomous child now
+    // holds the owner's Cloud bearer, which the broker-first path exists to
+    // avoid.
+    const forwardedCloudKeys = Object.keys(env).filter(
+      isForwardedCloudCredentialKey,
+    );
+    if (forwardCloudKey && forwardedCloudKeys.length > 0) {
+      this.log(
+        "warn",
+        "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS is set: forwarding the owner's raw ELIZAOS_CLOUD* / ELIZA_CLOUD_* creds into the sub-agent env (broker-first is bypassed). The child now holds the owner Cloud key — prefer the parent-agent broker (apps.create / containers.create) and the credential bridge instead.",
+        { forwardedCloudKeys, childSessionId },
+      );
     }
     // Runtime/caller inputs may name Go's cache variables or the internal
     // cross-module mirrors. Rebuild those values only from the boot-captured
