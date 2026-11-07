@@ -168,7 +168,12 @@ export function validateField(
 ): ValidationResult {
   // Check required first - fastest check
   if (control.required) {
-    if (value === undefined || value === null || value === "") {
+    if (
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0)
+    ) {
       return {
         valid: false,
         error: `${control.label || control.key} is required`,
@@ -177,7 +182,12 @@ export function validateField(
   }
   // Empty optional fields are valid
   // WHY: No need to validate undefined/null/empty for optional fields
-  if (value === undefined || value === null || value === "") {
+  if (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
     return { valid: true };
   }
   // Check custom type handler first
@@ -280,6 +290,20 @@ export function testControlPattern(
  * Applies: pattern, minLength, maxLength, enum
  */
 function validateText(
+  value: JsonValue,
+  control: FormControl,
+): ValidationResult {
+  if (control.multiple && Array.isArray(value)) {
+    for (const item of value) {
+      const result = validateSingleText(item, control);
+      if (!result.valid) return result;
+    }
+    return { valid: true };
+  }
+  return validateSingleText(value, control);
+}
+
+function validateSingleText(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
@@ -535,6 +559,34 @@ function validateSelect(
   control: FormControl,
 ): ValidationResult {
   const options = control.options ?? [];
+  const validValues = options.map((opt) => opt.value);
+
+  if (control.multiple && Array.isArray(value)) {
+    for (const item of value) {
+      if (item === undefined || item === null) {
+        return {
+          valid: false,
+          error: `${control.label || control.key} must be one of the available options`,
+        };
+      }
+      const strItem = String(item);
+      if (options.length === 0) {
+        if (control.enum && !control.enum.includes(strItem)) {
+          return {
+            valid: false,
+            error: `Must be one of: ${control.enum.join(", ")}`,
+          };
+        }
+      } else if (!validValues.includes(strItem)) {
+        return {
+          valid: false,
+          error: `${control.label || control.key} must be one of the available options`,
+        };
+      }
+    }
+    return { valid: true };
+  }
+
   if (options.length === 0) {
     // Use the declared enum when no option values are available.
     if (control.enum) {
@@ -549,7 +601,6 @@ function validateSelect(
     return { valid: true };
   }
   const strValue = String(value);
-  const validValues = options.map((opt) => opt.value);
   if (!validValues.includes(strValue)) {
     return {
       valid: false,
@@ -887,12 +938,24 @@ export function formatValue(
       // Show option label instead of value
       // WHY: User sees "United States" not "US"
       if (control.options) {
+        if (control.multiple && Array.isArray(value)) {
+          return value
+            .map((item) => {
+              const option = control.options?.find(
+                (opt) => opt.value === String(item),
+              );
+              return option ? option.label : String(item);
+            })
+            .join(", ");
+        }
         const option = control.options.find(
           (opt) => opt.value === String(value),
         );
         if (option) return option.label;
       }
-      return String(value);
+      return control.multiple && Array.isArray(value)
+        ? value.map(String).join(", ")
+        : String(value);
     case "file":
       // Show file names
       if (Array.isArray(value)) {
@@ -915,6 +978,9 @@ export function formatValue(
         ).name || "file"
       );
     default:
+      if (control.multiple && Array.isArray(value)) {
+        return value.map(String).join(", ");
+      }
       return String(value);
   }
 }
