@@ -1,0 +1,23 @@
+{
+  "sources": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserHelperEntry.kt",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/BrowserSurfacePlugin.kt"
+  ],
+  "cases": [
+    {
+      "name": "window-custody",
+      "main": "BrowserHelperEntry",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ViewCustody", "DestroyedReleases", "SafeInputRestore"],
+      "temporal": ["PermissionReconciles"],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "limitations": [
+    "The host must stop invoking plugin operations after destruction.",
+    "WindowManager and IME operations are modeled as atomic main-thread actions. Window creation refusal is modeled. Removal failures and device-level attachment behavior require Android validation.",
+    "This covers helper view custody. The browser surface, docking policy and task authority are separate state owners."
+  ]
+}

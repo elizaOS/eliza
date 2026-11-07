@@ -1,4 +1,4 @@
-/** Regression tests for the counterexamples TLC found in tla/ActionSettlement.tla. */
+/** Regression tests for the counterexamples checked in quint/ActionSettlement.qnt. */
 import { expect, it } from "vitest";
 import { settleActionHandler } from "../src/runtime/action-handler-settlement";
 import type { Action, HandlerCallback } from "../src/types/components";

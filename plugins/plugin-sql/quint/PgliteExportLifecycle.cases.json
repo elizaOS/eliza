@@ -1,0 +1,24 @@
+{
+  "sources": ["plugins/plugin-sql/src/pglite/manager.ts"],
+  "implementationTests": [
+    "plugins/plugin-sql/src/__tests__/pglite-lifecycle-serialization.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "PgliteExportLifecycle",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "NoReleaseDuringArchiveUse",
+        "QueryInsideLifecycle",
+        "ExportOwnerUnique",
+        "CloseRespectsExport",
+        "NoQueryAfterClose"
+      ],
+      "temporal": ["CloseCompletes"],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

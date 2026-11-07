@@ -1,6 +1,6 @@
 /**
- * Regression tests for counterexamples of tla/TaskService.tla and
- * tla/TaskScheduler.tla. Real TaskService, real scheduler daemon, real PGlite.
+ * Regression tests for counterexamples of quint/TaskService.qnt and
+ * quint/TaskScheduler.qnt. Real TaskService, real scheduler daemon, real PGlite.
  */
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, it, vi } from "vitest";

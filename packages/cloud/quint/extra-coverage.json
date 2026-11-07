@@ -1,0 +1,52 @@
+[
+  {
+    "id": "cloud.AccountDeletionRecovery",
+    "model": "packages/cloud/quint/AccountDeletionRecovery.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts",
+      "packages/cloud/shared/src/lib/services/account-deletion.ts"
+    ],
+    "invariants": [
+      "FencesPublishedTogether",
+      "RestoredOnlyAfterReceipts",
+      "IrreversibleCannotRestore",
+      "RevisionsAgree",
+      "ExportOnlyDuringRecovery",
+      "LateExportStaysFenced"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One account/request identity, two credential epochs and five logical clock values.",
+      "Database fence/receipt publication, recovery cancellation and late export acknowledgements are represented. External gate partial-failure reconciliation, crypto, full export content and provider mutation internals remain outside this model."
+    ],
+    "implementationTests": [
+      "packages/cloud/shared/src/db/repositories/account-deletion-reservation.pglite.test.ts"
+    ]
+  },
+  {
+    "id": "cloud.AccountDeletionOrder",
+    "model": "packages/cloud/quint/AccountDeletionOrder.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+      "packages/cloud/shared/src/lib/services/account-deletion.ts",
+      "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+    ],
+    "invariants": [
+      "CompletionHasEveryReceipt",
+      "ReceiptsStayOrdered",
+      "PurgeRequiresAuthority",
+      "ReceiptMatchesPhase",
+      "ErasureIsTerminal"
+    ],
+    "status": "partial",
+    "limitations": [
+      "All 17 ordered phase identities including export revocation, two worker lanes, three generations per phase and one injected coordination fault per trace.",
+      "Provider effects are abstract sets confirmed by canonical inspection. AccountDeletionPhase separately models before-call uncertainty and finite leases.",
+      "Guarded phase leasing now promotes owned irreversible work to processing atomically. SQL lock acquisition ordering and the complete erasure foreign-key graph still require implementation tests."
+    ],
+    "implementationTests": [
+      "packages/cloud/shared/src/lib/services/__tests__/account-deletion-lane-starvation.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/account-deletion-recovery-activation-starvation.pglite.test.ts"
+    ]
+  }
+]

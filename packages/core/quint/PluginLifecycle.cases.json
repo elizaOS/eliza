@@ -1,0 +1,113 @@
+{
+	"sources": [
+		"packages/core/src/plugin-lifecycle.ts",
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime.ts"
+	],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "services",
+			"main": "PluginLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 2,
+				"Unloaders": ["u1", "u2"],
+				"Loaders": ["l1", "l2"],
+				"Registrars": [],
+				"Stoppers": ["t1"],
+				"Rivals": ["b1"],
+				"StartsInFlight": false,
+				"InitMayFail": true,
+				"StopMayFail": true,
+				"StartMayFail": true,
+				"None": "None"
+			},
+			"deadlock": true
+		},
+		{
+			"name": "inflight",
+			"main": "PluginLifecycleInflight",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 2,
+				"Unloaders": ["u1", "u2"],
+				"Loaders": ["l1"],
+				"Registrars": [],
+				"Stoppers": ["t1"],
+				"Rivals": ["b1"],
+				"StartsInFlight": true,
+				"InitMayFail": true,
+				"StopMayFail": true,
+				"StartMayFail": true,
+				"None": "None"
+			},
+			"deadlock": true
+		},
+		{
+			"name": "register",
+			"main": "PluginLifecycleRegister",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"TeardownExclusive",
+				"StopAtMostOnce",
+				"NoOrphanInstance",
+				"StopStopsAll",
+				"ConnectorOwnedByLast",
+				"NoOrphanConnector",
+				"RegisterHonest"
+			],
+			"temporal": ["DeadlockFree", "Terminates"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"NumClasses": 0,
+				"Unloaders": [],
+				"Loaders": [],
+				"Registrars": ["r1", "r2"],
+				"Stoppers": [],
+				"Rivals": [],
+				"StartsInFlight": false,
+				"InitMayFail": true,
+				"StopMayFail": false,
+				"StartMayFail": false,
+				"None": "None"
+			},
+			"deadlock": true,
+			"propertyMapping": {
+				"Terminates": "Exactly the original fairness implication after removing universal quantifiers over empty actor sets."
+			}
+		}
+	],
+	"selection": "Set stop-order choices are nondeterministic, including every ordering the implementation can select."
+}

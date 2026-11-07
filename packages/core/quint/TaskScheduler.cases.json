@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "name": "live",
+      "main": "TaskScheduler_live",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "NoStaleDispatch",
+        "OneRunTickPerService",
+        "AttachedTickCurrent",
+        "TakenClearsDirty"
+      ],
+      "temporal": [
+        "DirtyServed",
+        "TickSettles",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskScheduler.live.cfg",
+        "constants": [
+          "Services = {s1, s2}",
+          "Adapters = {a1, a2}",
+          "Ticks = {k1, k2, k3}",
+          "MaxRestarts = 2",
+          "MaxRegs = 2",
+          "QueryCanFail = FALSE",
+          "None = None"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "NoStaleDispatch",
+          "OneRunTickPerService",
+          "AttachedTickCurrent",
+          "TakenClearsDirty"
+        ],
+        "properties": [
+          "DirtyServed",
+          "TickSettles"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    },
+    {
+      "name": "restart",
+      "main": "TaskScheduler_restart",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "NoStaleDispatch",
+        "OneRunTickPerService",
+        "AttachedTickCurrent",
+        "TakenClearsDirty"
+      ],
+      "temporal": [
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "TaskScheduler.restart.cfg",
+        "constants": [
+          "Services = {s1, s2}",
+          "Adapters = {a1, a2}",
+          "Ticks = {k1, k2, k3}",
+          "MaxRestarts = 2",
+          "MaxRegs = 2",
+          "QueryCanFail = TRUE",
+          "None = None"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "NoStaleDispatch",
+          "OneRunTickPerService",
+          "AttachedTickCurrent",
+          "TakenClearsDirty"
+        ],
+        "properties": [],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    }
+  ],
+  "sources": [
+    "packages/core/src/services/task-scheduler.ts"
+  ]
+}

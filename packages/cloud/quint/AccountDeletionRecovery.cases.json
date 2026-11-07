@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion.ts"
+  ],
+  "implementationTests": [
+    "packages/cloud/shared/src/db/repositories/account-deletion-reservation.pglite.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "safety",
+      "main": "AccountDeletionRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "FencesPublishedTogether",
+        "RestoredOnlyAfterReceipts",
+        "IrreversibleCannotRestore",
+        "RevisionsAgree",
+        "ExportOnlyDuringRecovery",
+        "LateExportStaysFenced"
+      ],
+      "temporal": [],
+      "maxSteps": 150,
+      "samples": 1000
+    }
+  ]
+}

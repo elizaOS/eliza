@@ -1,0 +1,103 @@
+{
+  "cases": [
+    {
+      "name": "late",
+      "main": "ActionSettlement_late",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "DeliveredInEmissionOrder",
+        "DeliveredOnlyEmitted",
+        "NoneAfterFailure",
+        "NoneOnReplyFailure",
+        "NoneWhilePending"
+      ],
+      "temporal": [
+        "SettleReturns",
+        "AllDelivered",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ActionSettlement.late.cfg",
+        "constants": [
+          "InHandler = 3",
+          "Late = 3",
+          "Outcomes = {\"ok\"}",
+          "MayDeny = FALSE"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "DeliveredInEmissionOrder",
+          "DeliveredOnlyEmitted",
+          "NoneAfterFailure",
+          "NoneOnReplyFailure",
+          "NoneWhilePending"
+        ],
+        "properties": [
+          "SettleReturns",
+          "AllDelivered"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    },
+    {
+      "name": "outcomes",
+      "main": "ActionSettlement_outcomes",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "DeliveredInEmissionOrder",
+        "DeliveredOnlyEmitted",
+        "NoneAfterFailure",
+        "NoneOnReplyFailure",
+        "NoneWhilePending"
+      ],
+      "temporal": [
+        "SettleReturns",
+        "AllDelivered",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ActionSettlement.outcomes.cfg",
+        "constants": [
+          "InHandler = 2",
+          "Late = 1",
+          "Outcomes = {\"ok\", \"replyFailure\", \"invalid\", \"throw\"}",
+          "MayDeny = TRUE"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "DeliveredInEmissionOrder",
+          "DeliveredOnlyEmitted",
+          "NoneAfterFailure",
+          "NoneOnReplyFailure",
+          "NoneWhilePending"
+        ],
+        "properties": [
+          "SettleReturns",
+          "AllDelivered"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    }
+  ],
+  "sources": [
+    "packages/core/src/runtime/action-handler-settlement.ts"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+	"sources": [
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime.ts",
+		"packages/core/src/plugin-lifecycle.ts"
+	],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "siblings",
+			"main": "ServiceLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"OneLivePerClass",
+				"StopAtMostOnce",
+				"NoLatePublish",
+				"NoOrphan",
+				"StatusConsistent",
+				"NoStatusWithoutClasses",
+				"StoppedNotReachable"
+			],
+			"temporal": ["DeadlockFree"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Classes": ["A", "B"],
+				"LateClasses": ["B"],
+				"Owned": ["A"],
+				"Callers": ["e1", "e2"],
+				"MaxInst": 4,
+				"MaxRetries": 1,
+				"None": "None"
+			},
+			"deadlock": true
+		},
+		{
+			"name": "liveness",
+			"main": "ServiceLifecycleLiveness",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"OneLivePerClass",
+				"StopAtMostOnce",
+				"NoLatePublish",
+				"NoOrphan",
+				"StatusConsistent",
+				"NoStatusWithoutClasses",
+				"StoppedNotReachable"
+			],
+			"temporal": ["DeadlockFree", "StopReachesAll", "CallersReturn"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Classes": ["A", "B"],
+				"LateClasses": ["B"],
+				"Owned": ["A"],
+				"Callers": ["e1", "e2"],
+				"MaxInst": 3,
+				"MaxRetries": 0,
+				"None": "None"
+			},
+			"deadlock": true
+		}
+	],
+	"sentinels": "The missing instance is encoded by integer 0. The missing class or caller remains the string none."
+}

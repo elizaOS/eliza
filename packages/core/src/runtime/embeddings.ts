@@ -2,6 +2,8 @@
 import {
 	copyEmbeddingVectorSpace,
 	getEmbeddingVectorSpace,
+	getEmbeddingVectorSpaceIdentity,
+	identifyEmbeddingVector,
 } from "../embedding-vector-space";
 import { ElizaError } from "../errors";
 import type { IDatabaseAdapter } from "../types/database.js";
@@ -250,6 +252,17 @@ export class RuntimeEmbeddings {
 			}
 			for (let index = 0; index < sources.length; index++) {
 				copyEmbeddingVectorSpace(sources[index], targets[index]);
+			}
+		} else {
+			// Preserve the representation at generation time. A later named pin
+			// must not make a pending legacy vector appear to come from that model.
+			for (const target of targets) {
+				if (
+					Array.isArray(target) &&
+					getEmbeddingVectorSpaceIdentity(target) === undefined
+				) {
+					identifyEmbeddingVector(target, null);
+				}
 			}
 		}
 	}

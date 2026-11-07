@@ -1,0 +1,91 @@
+{
+  "cases": [
+    {
+      "name": "failures",
+      "main": "ApprovalService_failures",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneCallback",
+        "ResultAgrees",
+        "SingleOwner"
+      ],
+      "temporal": [
+        "SettlesOnce",
+        "CallerSettles",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ApprovalService.failures.cfg",
+        "constants": [
+          "Selectors = {s1, s2}",
+          "CanFail = TRUE"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "AtMostOneCallback",
+          "ResultAgrees",
+          "SingleOwner"
+        ],
+        "properties": [
+          "SettlesOnce",
+          "CallerSettles"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    },
+    {
+      "name": "race",
+      "main": "ApprovalService_race",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOneCallback",
+        "ResultAgrees",
+        "SingleOwner"
+      ],
+      "temporal": [
+        "SettlesOnce",
+        "CallerSettles",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "ApprovalService.race.cfg",
+        "constants": [
+          "Selectors = {s1, s2}",
+          "CanFail = FALSE"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "AtMostOneCallback",
+          "ResultAgrees",
+          "SingleOwner"
+        ],
+        "properties": [
+          "SettlesOnce",
+          "CallerSettles"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    }
+  ],
+  "sources": [
+    "packages/core/src/services/approval.ts"
+  ]
+}

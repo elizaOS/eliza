@@ -1,0 +1,113 @@
+[
+  {
+    "id": "DraftTranscript",
+    "model": "packages/ui/quint/DraftTranscript.qnt",
+    "sources": ["packages/ui/src/voice/draft-transcript-guard.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Symbolic composed text abstracts the injected compose function. Models generation/revision admission, not text composition correctness.",
+      "Two retained callbacks and three text values.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Three generations, three user edit revisions, two retained callback slots, text values 0/1/2. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "WakeListenWindow",
+    "model": "packages/ui/quint/WakeListenWindow.qnt",
+    "sources": ["packages/ui/src/voice/wake-listen-window.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Timeouts compressed to 3/8 ticks. Clock input includes backward jumps. Unconditional eventual closure requires fair future ticks and no repeated wake events.",
+      "The React/native microphone adapter is outside this pure reducer model.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Time inputs 0..12, idle timeout 3, safety cap 8, backward ticks allowed. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "VoiceSessionProjection",
+    "model": "packages/ui/quint/VoiceSessionProjection.qnt",
+    "sources": ["packages/ui/src/voice/voice-session-state.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Projects textual payloads to empty/nonempty. Session IDs, error text and interruption reasons are stored values omitted from this control-state model.",
+      "The source accepts authoritative server events without universally rejecting stale traces. Matching guards are modeled only where present. PCM playback ownership and server session state require separate models.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Two trace IDs; transcripts projected to empty/nonempty; complete modeled event vocabulary. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "DurableDraftCAS",
+    "model": "packages/ui/quint/DurableDraftCAS.qnt",
+    "sources": ["packages/ui/src/state/durable-draft.ts"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models the exact pure row replacement contract, including clear-as-new-revision, send mark changes, stale receipts and binding mismatch. Two slots, two writers, two revisions and three symbolic text values.",
+      "Storage adapter atomicity remains outside the row helper. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
+      "Two separate finite instances. Contention has two writers and one binding. Isolation has one writer and two bindings. Each permits two revisions and three text values. The combined two-writer/two-binding graph remains unchecked.",
+      "Both finite instances have real implementation trace replay."
+    ]
+  },
+  {
+    "id": "DraftSendRecovery",
+    "model": "packages/ui/quint/DraftSendRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One send, one optional binding reopen, one newer edit, one restart and one review choice. Storage failure is before or after durable writes, with a separate too-large result.",
+      "Public calls settle between actions. Pending mark interleavings are covered separately by DraftMarkRace.",
+      "The model does not assert external message delivery. An unknown outcome is handled through the stored send mark and explicit review.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DraftMarkRace",
+    "model": "packages/ui/quint/DraftMarkRace.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One hold paused at the mark write, one intervening editor/owner/authority/external-store change, and one optional edit through a reopened peer.",
+      "Two binding instances and four write outcomes. Arbitrary longer queues and repeated account changes remain outside this instance.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DraftQueuedHandoff",
+    "model": "packages/ui/quint/DraftQueuedHandoff.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two pending binding writes, both completion orders, shared/separate stores, one flush and one mutation before either readback.",
+      "Covers stale queue/owner snapshots, failed retired writes, same-key successful-write supersession, foreign revisions, marked readback and I/O failures. Longer queues and repeated retries remain outside this instance.",
+      "Quint traces are replayed through the shipped controller and row-CAS implementation by check-draft-controller.mjs. This does not establish real filesystem durability or unbounded refinement.",
+      "Recovery assumes the storage adapter preserves the sending marker. Compatibility hosts that drop write.sending retain weaker restart protection and are outside these cases."
+    ]
+  },
+  {
+    "id": "DurableDraftControllerRemaining",
+    "model": null,
+    "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Reviewed remaining work includes consume rollback, asynchronous host restore completion, open/read retry timing, arbitrary-length queues, repeated concurrent sends, and storage-adapter durability. The three controller models cover explicitly bounded subsets."
+    ]
+  }
+]

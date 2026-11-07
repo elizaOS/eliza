@@ -1,4 +1,4 @@
-/** Regression checks for properties of tla/InteractionSession.tla that the code once broke. */
+/** Regression checks for properties of quint/InteractionSession.qnt that the code once broke. */
 import { describe, expect, it } from "vitest";
 import {
 	createOpaqueMessageInteractionReference,

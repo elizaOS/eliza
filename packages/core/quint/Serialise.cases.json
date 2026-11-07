@@ -1,0 +1,20 @@
+{
+	"sources": ["packages/core/src/utils/task-scheduling.ts"],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "calls",
+			"main": "Serialise",
+			"init": "init",
+			"step": "step",
+			"invariants": ["TypeOK", "MutualExclusion", "CallOrder"],
+			"temporal": ["DeadlockFree", "CallFinishes"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Calls": ["a", "b", "c", "d"]
+			},
+			"deadlock": true
+		}
+	]
+}

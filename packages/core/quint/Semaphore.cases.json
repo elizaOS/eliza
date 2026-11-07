@@ -1,0 +1,50 @@
+{
+	"sources": ["packages/core/src/utils/task-scheduling.ts"],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "one",
+			"main": "Semaphore",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PermitConservation",
+				"NoIdlePermitWithWaiters",
+				"WaitersQueued",
+				"FIFOGrants",
+				"CancelledNeverHolds"
+			],
+			"temporal": ["DeadlockFree", "WaiterServed"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["c1", "c2", "c3", "c4"],
+				"N": 1
+			},
+			"deadlock": true
+		},
+		{
+			"name": "two",
+			"main": "SemaphoreTwo",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PermitConservation",
+				"NoIdlePermitWithWaiters",
+				"WaitersQueued",
+				"FIFOGrants",
+				"CancelledNeverHolds"
+			],
+			"temporal": ["DeadlockFree", "WaiterServed"],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Callers": ["c1", "c2", "c3", "c4"],
+				"N": 2
+			},
+			"deadlock": true
+		}
+	]
+}

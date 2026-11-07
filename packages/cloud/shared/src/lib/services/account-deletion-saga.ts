@@ -245,6 +245,7 @@ async function processProviderPhase(input: {
   adapter: AccountDeletionProviderAdapter;
   context: AccountDeletionSubjectContext;
   now: Date;
+  irreversible?: boolean;
 }): Promise<"progressed" | "stale" | "reconciling" | "action_required"> {
   const lease = await accountDeletionRequestsRepository.leasePhase({
     requestId: input.request.id,
@@ -252,6 +253,7 @@ async function processProviderPhase(input: {
     leaseOwnerDigest: digest(randomUUID()),
     now: input.now,
     leaseMilliseconds: PHASE_LEASE_MILLISECONDS,
+    ...(input.irreversible ? { irreversibleRequest: input.context } : {}),
   });
   if (!lease) return "stale";
 
@@ -502,6 +504,7 @@ async function runIrreversiblePhase(input: {
       leaseOwnerDigest: digest(randomUUID()),
       now,
       leaseMilliseconds: PHASE_LEASE_MILLISECONDS,
+      irreversibleRequest: context,
     });
     if (!lease) return 1;
     const outcome = await processDatabaseErasure({
@@ -531,6 +534,7 @@ async function runIrreversiblePhase(input: {
     adapter: input.adapters[next.phase],
     context,
     now,
+    irreversible: true,
   });
   if (outcome === "progressed") result.progressed++;
   else if (outcome === "reconciling") result.reconciling++;

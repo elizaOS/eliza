@@ -1,0 +1,61 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/account-deletion-saga.ts",
+    "packages/cloud/shared/src/lib/services/account-deletion.ts",
+    "packages/cloud/shared/src/db/repositories/account-deletion-requests.ts"
+  ],
+  "implementationTests": [
+    "packages/cloud/shared/src/lib/services/__tests__/account-deletion-lane-starvation.pglite.test.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/account-deletion-recovery-activation-starvation.pglite.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "safety",
+      "main": "AccountDeletionOrder",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "PurgeRequiresAuthority",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": [],
+      "maxSteps": 150,
+      "samples": 1000
+    },
+    {
+      "name": "processing-progress",
+      "main": "AccountDeletionOrderProcessing",
+      "init": "init",
+      "step": "progressStep",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "PurgeRequiresAuthority",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": ["CompletesVerifiedEffects"],
+      "maxSteps": 150,
+      "samples": 1000
+    },
+    {
+      "name": "scheduled-progress",
+      "main": "AccountDeletionOrderScheduled",
+      "init": "init",
+      "step": "progressStep",
+      "invariants": [
+        "CompletionHasEveryReceipt",
+        "ReceiptsStayOrdered",
+        "PurgeRequiresAuthority",
+        "ReceiptMatchesPhase",
+        "ErasureIsTerminal"
+      ],
+      "temporal": ["CompletesVerifiedEffects"],
+      "maxSteps": 150,
+      "samples": 1000
+    }
+  ]
+}

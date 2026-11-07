@@ -1,0 +1,43 @@
+{
+	"sources": [
+		"packages/core/src/runtime.ts",
+		"packages/core/src/runtime/service-lifecycle.ts",
+		"packages/core/src/runtime/room-handler-queue.ts",
+		"packages/core/src/runtime/turn-controller.ts"
+	],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "stop",
+			"main": "RuntimeLifecycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"PrepareStopOnce",
+				"SingleAttempt",
+				"TurnsAbortedAfterStop",
+				"NoStartOnFailedInit",
+				"NoLiveAfterStopped",
+				"StoppedIsQuiet",
+				"StrictMeansQuiescent"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"StopperReturns",
+				"TurnsFinish",
+				"EagerStartSettles"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2"],
+				"Stoppers": ["s1", "s2"],
+				"MaxAttempts": 2,
+				"None": "None"
+			},
+			"deadlock": true
+		}
+	]
+}

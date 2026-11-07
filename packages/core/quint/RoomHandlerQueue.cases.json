@@ -1,0 +1,74 @@
+{
+	"sources": ["packages/core/src/runtime/room-handler-queue.ts"],
+	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+	"cases": [
+		{
+			"name": "bounded",
+			"main": "RoomHandlerQueue",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"MutualExclusion",
+				"WaitersQueued",
+				"OrderedAcquisition",
+				"Bounded",
+				"NoLeakedOwnership",
+				"WritesUnderLease"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"FreedByOwner",
+				"WaiterServed",
+				"TurnFinishes"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2", "t3"],
+				"NumRooms": 2,
+				"MaxPerRoom": 2,
+				"MaxTotal": 3,
+				"MaxRooms": 2,
+				"MaxWrites": 1,
+				"None": "None"
+			},
+			"deadlock": true
+		},
+		{
+			"name": "cycle",
+			"main": "RoomHandlerQueueCycle",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"MutualExclusion",
+				"WaitersQueued",
+				"OrderedAcquisition",
+				"Bounded",
+				"NoLeakedOwnership",
+				"WritesUnderLease"
+			],
+			"temporal": [
+				"DeadlockFree",
+				"NoAdmissionAfterClose",
+				"FreedByOwner",
+				"WaiterServed",
+				"TurnFinishes"
+			],
+			"maxSteps": 100,
+			"samples": 1000,
+			"constants": {
+				"Turns": ["t1", "t2", "t3"],
+				"NumRooms": 2,
+				"MaxPerRoom": 2,
+				"MaxTotal": 4,
+				"MaxRooms": 2,
+				"MaxWrites": 1,
+				"None": "None"
+			},
+			"deadlock": true
+		}
+	]
+}

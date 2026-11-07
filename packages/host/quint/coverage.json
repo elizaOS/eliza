@@ -1,0 +1,28 @@
+[
+  {
+    "id": "TaskOwnerFence",
+    "model": "packages/host/quint/TaskOwnerFence.qnt",
+    "sources": ["packages/host/native-host/task-owner-fence.mjs"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Models owner-fence decisions exactly. Authentication itself and asynchronous cleanup requested by revoke belong to gateway models.",
+      "Two owners, five request sequence values, arbitrary epoch offsets around the current epoch.",
+      "Quint ITF traces are replayed through the real implementation by packages/scripts/quint/check-application.ts. This checks sampled trace conformance, not unbounded refinement.",
+      "Finite verification domain. Two owner identities, epochs 0..3, sequences 0..4, started epoch current-1/current/current+1. Values beyond these bounds are outside this instance; generation and revision values never wrap."
+    ]
+  },
+  {
+    "id": "GatewayLifecycle",
+    "model": "packages/host/quint/GatewayLifecycle.qnt",
+    "sources": ["packages/host/native-host/gateway-lifecycle.mjs"],
+    "invariants": ["invariant"],
+    "status": "modeled",
+    "limitations": [
+      "Covers returned resource handles and cleanup. Factory-owned partial acquisitions must clean themselves before throwing and are outside this protocol.",
+      "Optional handles represented by presence choices; real HTTP server callbacks and all asynchronous factory implementations need integration evidence.",
+      "Finite verification domain. Four optional returned resources, one startup and cleanup lifecycle, release at most once. Values beyond these bounds are outside this instance; generation and revision values never wrap.",
+      "Returned resource acquisitions are atomic. Partial acquisitions inside factories and a close racing an unresolved factory are not represented; each factory must clean up before rejecting."
+    ]
+  }
+]

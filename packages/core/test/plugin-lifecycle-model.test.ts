@@ -1,4 +1,4 @@
-/** Regression tests for the counterexamples TLC found in tla/PluginLifecycle.tla. */
+/** Regression tests for the counterexamples found by Quint in quint/PluginLifecycle.qnt. */
 import { expect, it } from "vitest";
 import type { Plugin } from "../src/types/plugin";
 import type { IAgentRuntime } from "../src/types/runtime";

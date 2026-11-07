@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "plugins/plugin-workflow/src/services/workflow-service.ts",
+    "plugins/plugin-workflow/src/services/embedded-workflow-service.ts",
+    "plugins/plugin-workflow/src/services/workflow-approval-receipts.ts"
+  ],
+  "implementationTests": [
+    "plugins/plugin-workflow/__tests__/integration/approval-receipts-e2e.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "ReviewedApproval",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "OneCanonicalDecision",
+        "UnsupportedNeverApproved",
+        "HonestResponse",
+        "CachedHasCanonicalReceipt",
+        "LockOwnership"
+      ],
+      "temporal": [
+        "DecisionReturns"
+      ],
+      "maxSteps": 100,
+      "samples": 1000
+    }
+  ]
+}

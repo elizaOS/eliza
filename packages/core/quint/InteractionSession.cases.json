@@ -1,0 +1,118 @@
+{
+  "cases": [
+    {
+      "name": "leases",
+      "main": "InteractionSession_leases",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnce",
+        "ExactlyOnceAuthority",
+        "CompletedHasEffect",
+        "NoCommitWhileRevoked",
+        "NoLateCommit",
+        "AmbiguousRetained",
+        "ExecutorHasRecord"
+      ],
+      "temporal": [
+        "EffectOnlyByCommitter",
+        "EffectRecorded",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "InteractionSession.leases.cfg",
+        "constants": [
+          "Clients = {c1, c2, c3}",
+          "Mismatched = {c3}",
+          "MaxRuns = 2",
+          "MaxTime = 4",
+          "Expiry = 3",
+          "Ttl = 1",
+          "None = None"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "AtMostOnce",
+          "ExactlyOnceAuthority",
+          "CompletedHasEffect",
+          "NoCommitWhileRevoked",
+          "NoLateCommit",
+          "AmbiguousRetained",
+          "ExecutorHasRecord"
+        ],
+        "properties": [
+          "EffectOnlyByCommitter",
+          "EffectRecorded"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    },
+    {
+      "name": "retries",
+      "main": "InteractionSession_retries",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "AtMostOnce",
+        "ExactlyOnceAuthority",
+        "CompletedHasEffect",
+        "NoCommitWhileRevoked",
+        "NoLateCommit",
+        "AmbiguousRetained",
+        "ExecutorHasRecord"
+      ],
+      "temporal": [
+        "EffectOnlyByCommitter",
+        "EffectRecorded",
+        "DeadlockFree"
+      ],
+      "maxSteps": 60,
+      "samples": 1000,
+      "legacyConfiguration": {
+        "name": "InteractionSession.retries.cfg",
+        "constants": [
+          "Clients = {c1, c2}",
+          "Mismatched = {}",
+          "MaxRuns = 3",
+          "MaxTime = 5",
+          "Expiry = 4",
+          "Ttl = 2",
+          "None = None"
+        ],
+        "specification": [
+          "Spec"
+        ],
+        "invariants": [
+          "TypeOK",
+          "AtMostOnce",
+          "ExactlyOnceAuthority",
+          "CompletedHasEffect",
+          "NoCommitWhileRevoked",
+          "NoLateCommit",
+          "AmbiguousRetained",
+          "ExecutorHasRecord"
+        ],
+        "properties": [
+          "EffectOnlyByCommitter",
+          "EffectRecorded"
+        ],
+        "checkDeadlock": true
+      },
+      "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
+      "deadlock": true
+    }
+  ],
+  "sources": [
+    "packages/core/src/messaging/interaction-sessions.ts",
+    "packages/agent/src/services/sqlite-message-interaction-session-store.ts"
+  ]
+}

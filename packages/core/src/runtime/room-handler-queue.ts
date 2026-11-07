@@ -409,7 +409,7 @@ export class RoomHandlerQueue {
 	): Promise<T> {
 		// A nested call reuses the live lease its turn holds on this room and
 		// refuses any other room (ROOM_HANDLER_CROSS_ROOM_REENTRY), so a turn
-		// never takes rooms out of order (tla/RoomHandlerQueue.tla, Nest).
+		// never takes rooms out of order (quint/RoomHandlerQueue.qnt, Nest).
 		if (options?.lease) {
 			const lease = options.lease;
 			return await this.runInLease(roomId, lease, () => fn(lease));
