@@ -134,7 +134,7 @@ class InMemoryPromptRegistry implements MultilingualPromptRegistry {
   }
 }
 
-function isSupportedLocale(value: string): value is PromptLocale {
+export function isSupportedLocale(value: string): value is PromptLocale {
   return (SUPPORTED_LOCALES as ReadonlyArray<string>).includes(value);
 }
 
