@@ -5,7 +5,8 @@
  * agent asks again or confirms it instead of submitting it. A ready form that
  * undo leaves incomplete goes back to active, and an active form that undo
  * completes is ready again. No live model is used; the evaluator processors
- * receive the parsed model output directly.
+ * receive the parsed model output directly. An extraction that the evaluator
+ * parses from a model section with no value leaves the field as it was.
  */
 import assert from "node:assert/strict";
 import {
@@ -31,6 +32,7 @@ function requireDefined<T>(value: T | undefined, what: string): T {
 }
 
 const prepare = requireDefined(formEvaluator.prepare, "the evaluator prepare");
+const parse = requireDefined(formEvaluator.parse, "the evaluator parse");
 const intentProcessor = requireDefined(
   formEvaluator.processors?.find((p) => p.name === "formIntent"),
   "the formIntent processor",
@@ -135,6 +137,13 @@ describe("form undo through the evaluator", () => {
         evaluatorName: formEvaluator.name,
       });
     }
+  }
+
+  /** One user turn from the raw model section, read by the evaluator's parse. */
+  async function modelTurn(roomId: UUID, text: string, raw: unknown) {
+    const output = parse(raw);
+    assert(output);
+    await turn(roomId, text, output.formIntent, output.formExtractions);
   }
 
   /** The form_context_json block the provider hands to the model. */
@@ -387,5 +396,54 @@ describe("form undo through the evaluator", () => {
       status: "invalid",
       value: "ann@example",
     });
+  }, 60_000);
+
+  it("keeps a field as it was when the model gives it no value", async () => {
+    service.registerForm({
+      id: "profile",
+      name: "Profile",
+      controls: [
+        { key: "name", label: "Name", type: "text", required: true },
+        { key: "email", label: "Email", type: "email", required: true },
+        { key: "nickname", label: "Nickname", type: "text" },
+      ],
+    });
+    const roomId = await openForm("no-value", "profile");
+    // The section schema requires only field and confidence, so the model can
+    // list a field that the message does not mention without a value.
+    await modelTurn(roomId, "I'm Ann, ann@example.com", {
+      formIntent: "fill_form",
+      formExtractions: [
+        { field: "name", value: "Ann", confidence: 0.95 },
+        { field: "email", value: "ann@example.com", confidence: 0.95 },
+        { field: "nickname", confidence: 0 },
+      ],
+    });
+    await modelTurn(roomId, "Actually it's Anne", {
+      formIntent: "fill_form",
+      formExtractions: [
+        { field: "name", value: "Anne", confidence: 0.95, isCorrection: true },
+        { field: "email", value: null, confidence: 0 },
+      ],
+    });
+
+    const session = await service.getActiveSession(entityId, roomId);
+    assert(session);
+    expect(session.fields.email).toMatchObject({
+      status: "filled",
+      value: "ann@example.com",
+    });
+    expect(session.fields.nickname).toEqual({ status: "empty" });
+    expect(session.status).toBe("ready");
+    expect((await modelContext(roomId)).instruction).toBe(
+      "All required fields collected. Nudge user to submit.",
+    );
+    await turn(roomId, "Submit", "submit");
+    const submissions = await service.getSubmissions(entityId, "profile");
+    expect(
+      submissions
+        .filter((s) => s.sessionId === session.id)
+        .map((s) => s.values),
+    ).toEqual([{ name: "Anne", email: "ann@example.com" }]);
   }, 60_000);
 });
