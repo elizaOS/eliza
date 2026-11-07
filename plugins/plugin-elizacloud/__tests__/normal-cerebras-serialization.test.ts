@@ -59,29 +59,31 @@ describe("normal Cloud Cerebras request serialization", () => {
       stream: false,
       ...(options.tools
         ? {
-            tools: Array.isArray(options.tools) ? options.tools : [
-              {
-                type: "function",
-                function: {
-                  name: "bounded",
-                  strict: true,
-                  parameters: {
-                    type: "object",
-                    properties: { text: { type: "string", minLength: 1 } },
-                    required: ["text"],
-                    additionalProperties: false,
+            tools: Array.isArray(options.tools)
+              ? options.tools
+              : [
+                  {
+                    type: "function",
+                    function: {
+                      name: "bounded",
+                      strict: true,
+                      parameters: {
+                        type: "object",
+                        properties: { text: { type: "string", minLength: 1 } },
+                        required: ["text"],
+                        additionalProperties: false,
+                      },
+                    },
                   },
-                },
-              },
-              {
-                type: "function",
-                function: {
-                  name: "plain",
-                  strict: true,
-                  parameters: { type: "object", properties: {}, additionalProperties: false },
-                },
-              },
-            ],
+                  {
+                    type: "function",
+                    function: {
+                      name: "plain",
+                      strict: true,
+                      parameters: { type: "object", properties: {}, additionalProperties: false },
+                    },
+                  },
+                ],
           }
         : {
             responseSchema: {
@@ -150,13 +152,13 @@ describe("normal Cloud Cerebras request serialization", () => {
       mobileKey: true,
     });
     expect(sent).toHaveProperty("tools.0.function.strict", true);
-    expect(sent).toHaveProperty(
-      "tools.0.function.parameters.properties.intents",
-      { type: "array", items: { type: "string" } },
-    );
+    expect(sent).toHaveProperty("tools.0.function.parameters.properties.intents", {
+      type: "array",
+      items: { type: "string" },
+    });
     expect(sent).toHaveProperty(
       "tools.0.function.parameters.properties.calendarReadBindings.items.properties.filterEvidence.items.properties",
-      { query: { type: "string" }, quote: { type: "string" }, origin: filterFields.origin },
+      { query: { type: "string" }, quote: { type: "string" }, origin: filterFields.origin }
     );
     expect(filterFields.query).toEqual({ type: "string", minLength: 1, maxLength: 160 });
     expect(filterFields.quote).toEqual({ type: "string", minLength: 1, maxLength: 2048 });

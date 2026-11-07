@@ -6,8 +6,8 @@ import type {
   LifeOpsCalendarSummary,
 } from "@elizaos/contracts";
 import {
-  MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES,
   calendarReadBrokerDiagnosticHeader,
+  MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES,
 } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
