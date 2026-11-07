@@ -5204,9 +5204,10 @@ export class RemindersDomain {
                 outcome = "blocked_connector";
                 deliveryMetadata.error = result.error ?? "sms delivery failed";
                 deliveryMetadata.status = result.status;
-                if (result.sids?.length) {
-                  // Twilio accepted the earlier parts of a long body. A second
-                  // dispatch would send those parts to the recipient again.
+                if (result.sids?.length || result.deliveryUnknown) {
+                  // Twilio accepted the earlier parts of a long body, or the
+                  // request got no answer and Twilio may have sent it. A
+                  // second dispatch would text the recipient again.
                   deliveryMetadata.reason = "runtime_send_acceptance_unknown";
                   deliveryMetadata.providerMessageIds = result.sids;
                 }
@@ -5225,6 +5226,10 @@ export class RemindersDomain {
                 deliveryMetadata.error =
                   result.error ?? "voice delivery failed";
                 deliveryMetadata.status = result.status;
+                if (result.deliveryUnknown) {
+                  // Twilio may have placed the call; do not call again.
+                  deliveryMetadata.reason = "runtime_send_acceptance_unknown";
+                }
               } else {
                 deliveryMetadata.sid = result.sid ?? null;
                 deliveryMetadata.status = result.status;

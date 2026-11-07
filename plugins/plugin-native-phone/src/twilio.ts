@@ -38,6 +38,13 @@ export interface TwilioDeliveryResult {
   error?: string;
   retryCount?: number;
   billing?: TwilioSmsBillingBreakdown;
+  /**
+   * Twilio may have sent the message or placed the call, so a caller must
+   * not send it again: no answer came back (timeout, dropped connection),
+   * a 2xx came without a receipt, or Twilio answered 5xx or 408. These are
+   * the outcomes `isSafeToRetry` already refuses to replay.
+   */
+  deliveryUnknown?: boolean;
 }
 
 type TwilioTelemetrySpan = {
@@ -283,6 +290,8 @@ async function sendTwilioRequest(args: {
           status: response.status,
           error: errorMsg,
           retryCount: attempt,
+          // A 5xx or 408 does not prove the create was refused.
+          deliveryUnknown: response.status >= 500 || response.status === 408,
         };
         if (!isSafeToRetry(lastResult)) {
           return lastResult;
@@ -322,6 +331,7 @@ async function sendTwilioRequest(args: {
         status: null,
         error: errorMsg,
         retryCount: attempt,
+        deliveryUnknown: true,
       };
       // A transport failure can happen after Twilio accepted the create. The
       // provider exposes no documented client idempotency key for these

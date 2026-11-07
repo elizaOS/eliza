@@ -855,6 +855,105 @@ it("a long SMS reminder whose second part Twilio rejects is not sent again", asy
 }, 120000);
 
 it.each([
+  ["sms", "/Messages.json", "no answer", 1],
+  ["voice", "/Calls.json", "no answer", 1],
+  ["sms", "/Messages.json", 502, 1],
+  ["voice", "/Calls.json", 502, 1],
+  ["sms", "/Messages.json", 400, 3],
+] as const)(
+  "a %s reminder (%s) whose Twilio create got %s is sent %i time(s) in three ticks",
+  async (channel, endpoint, answer, expectedPosts) => {
+    const f = await createLifeOpsTestRuntime();
+    const posts: string[] = [];
+    // "no answer": the connection drops before any reply. 502: Twilio
+    // answers, but that does not prove the create was refused. Either way
+    // the message may have gone out, so it must not be sent again. A 400 is
+    // a clean refusal: nothing was sent, so later ticks retry it.
+    const twilio = createServer((request, response) => {
+      posts.push(request.url ?? "");
+      request.resume();
+      request.on("end", () => {
+        if (answer === "no answer") {
+          request.socket.destroy();
+          return;
+        }
+        response.writeHead(answer, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ message: `HTTP ${answer}` }));
+      });
+    });
+    await new Promise<void>((resolve) =>
+      twilio.listen(0, "127.0.0.1", resolve),
+    );
+    vi.stubEnv(
+      "ELIZA_MOCK_TWILIO_BASE",
+      `http://127.0.0.1:${(twilio.address() as AddressInfo).port}`,
+    );
+    vi.stubEnv("TWILIO_ACCOUNT_SID", "ACtest");
+    vi.stubEnv("TWILIO_AUTH_TOKEN", "token");
+    vi.stubEnv("TWILIO_PHONE_NUMBER", "+15550000000");
+    const model = vi
+      .spyOn(f.runtime, "useModel")
+      .mockResolvedValue("Time to stretch.");
+    try {
+      const service = new LifeOpsService(f.runtime);
+      await service.upsertChannelPolicy({
+        channelType: channel,
+        channelRef: "+15551234567",
+        allowReminders: true,
+        allowEscalation: true,
+      });
+      const due = Date.now() + 90000;
+      await service.createDefinition({
+        title: "Twilio no-answer proof",
+        kind: "habit",
+        // High urgency: the voice channel only calls for high or critical.
+        priority: 2,
+        cadence: {
+          kind: "once",
+          dueAt: new Date(due).toISOString(),
+          visibilityLeadMinutes: 0,
+        },
+        timezone: "UTC",
+        metadata: { ownerSurface: "OWNER_REMINDERS" },
+        reminderPlan: {
+          steps: [{ channel, offsetMinutes: 0, label: "Phone" }],
+        },
+      });
+      vi.setSystemTime(new Date(due));
+      await service.processReminders({
+        now: new Date(due).toISOString(),
+        scope: "definitions",
+      });
+      expect(posts.filter((url) => url.endsWith(endpoint))).toHaveLength(1);
+      const attempts = await service.repository.listReminderAttempts(
+        f.runtime.agentId,
+      );
+      const [attempt] = attempts.filter((a) => a.channel === channel);
+      expect(attempt?.outcome).toBe("blocked_connector");
+      expect(attempt?.deliveryMetadata.reason ?? null).toBe(
+        expectedPosts === 1 ? "runtime_send_acceptance_unknown" : null,
+      );
+      for (const later of [due + 60_000, due + 120_000]) {
+        vi.setSystemTime(new Date(later));
+        await service.processReminders({
+          now: new Date(later).toISOString(),
+          scope: "definitions",
+        });
+      }
+      expect(posts.filter((url) => url.endsWith(endpoint))).toHaveLength(
+        expectedPosts,
+      );
+    } finally {
+      model.mockRestore();
+      vi.unstubAllEnvs();
+      await new Promise((resolve) => twilio.close(resolve));
+      await f.cleanup();
+    }
+  },
+  120000,
+);
+
+it.each([
   [
     "a split message whose second part failed",
     {
