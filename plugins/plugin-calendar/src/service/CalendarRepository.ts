@@ -272,9 +272,27 @@ function calendarEventValues(event: LifeOpsCalendarEvent): string {
   )`;
 }
 
-/** Only locally recorded note provenance survives provider metadata replacement. */
-function retainNoteSourceMetadata(incoming: string): string {
-  return `(${incoming}::jsonb || CASE
+/**
+ * Locally recorded state survives provider metadata replacement: note
+ * provenance, and the reminder state LifeOps keeps on the event (`reminder*`
+ * keys: acknowledgement, escalation, review). A sync must not forget that the
+ * owner already acknowledged a reminder, or the reminder fires again. Incoming
+ * values still win for any reminder key the writer sets. When the event moves
+ * to a new start time, the old reminder state is dropped: the reminders for
+ * the new time have not been acknowledged.
+ */
+function retainNoteSourceMetadata(
+  incoming: string,
+  incomingStartAt: string,
+): string {
+  return `(CASE
+    WHEN (${incomingStartAt})::timestamptz IS NOT DISTINCT FROM app_calendar.life_calendar_events.start_at::timestamptz
+    THEN COALESCE((
+      SELECT jsonb_object_agg(kept.key, kept.value)
+      FROM jsonb_each(app_calendar.life_calendar_events.metadata_json::jsonb) AS kept
+      WHERE kept.key ~ '^reminder[A-Z]'
+    ), '{}'::jsonb)
+    ELSE '{}'::jsonb END || ${incoming}::jsonb || CASE
     WHEN jsonb_typeof(app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote') = 'object'
     THEN jsonb_build_object('sourceNote', app_calendar.life_calendar_events.metadata_json::jsonb -> 'sourceNote')
     ELSE '{}'::jsonb END)::text`;
@@ -373,7 +391,7 @@ export class CalendarRepository {
         attendees_json = excluded.attendees_json,
         connector_account_id = COALESCE(excluded.connector_account_id, app_calendar.life_calendar_events.connector_account_id),
         grant_id = COALESCE(excluded.grant_id, app_calendar.life_calendar_events.grant_id),
-        metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json")},
+        metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json", "excluded.start_at")},
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at
       RETURNING *`,
@@ -616,7 +634,7 @@ export class CalendarRepository {
         conference_link = ${sqlText(event.conferenceLink)},
         organizer_json = ${event.organizer ? sqlJson(event.organizer) : "NULL"},
         attendees_json = ${sqlJson(event.attendees)},
-        metadata_json = ${retainNoteSourceMetadata(sqlJson(event.metadata))},
+        metadata_json = ${retainNoteSourceMetadata(sqlJson(event.metadata), sqlQuote(event.startAt))},
         synced_at = ${sqlQuote(event.syncedAt)},
         updated_at = ${sqlQuote(event.updatedAt)}
         WHERE agent_id = ${sqlQuote(event.agentId)}
@@ -1305,7 +1323,7 @@ export class CalendarRepository {
           attendees_json = excluded.attendees_json,
           connector_account_id = excluded.connector_account_id,
           grant_id = excluded.grant_id,
-          metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json")},
+          metadata_json = ${retainNoteSourceMetadata("excluded.metadata_json", "excluded.start_at")},
           synced_at = excluded.synced_at,
           updated_at = excluded.updated_at
         WHERE
