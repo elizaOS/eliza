@@ -40,7 +40,14 @@ function renderSlot(
   const inferredTraits = Object.entries(slot.trait_sources)
     .filter(([, source]) => source === "agent_inferred")
     .map(([trait]) => trait);
-  if (inferredTraits.length > 0 || slot.source === "agent_inferred") {
+  // `source` is only the slot's last writer. Read each directive's writer when
+  // recorded; only legacy slots without it fall back to `source`.
+  const hasInferredDirective = slot.custom_directives.some((directive) =>
+    slot.directive_sources
+      ? slot.directive_sources[directive] === "agent_inferred"
+      : slot.source === "agent_inferred",
+  );
+  if (inferredTraits.length > 0 || hasInferredDirective) {
     // Name the inferred traits when per-trait provenance identifies them
     // (directive-only inference falls back to a blanket note). The model
     // should treat inferred style as an observation it can explain and
