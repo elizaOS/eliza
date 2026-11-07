@@ -1804,7 +1804,7 @@ export class MapsScreenController {
       const read =
         provider?.status === "configured"
           ? () => {
-              if (route && route.mode !== "transit")
+              if (route)
                 return {
                   kind: "map-route" as const,
                   providerId: provider.providerId,

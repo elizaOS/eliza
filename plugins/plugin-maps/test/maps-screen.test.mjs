@@ -4,6 +4,13 @@
 // GPS, local speech or physical navigation.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { validateMapsResult as validateAssistantMapsResult } from "../../plugin-assistant/src/services/device-actions/maps-contract.ts";
+import {
+  clearMapsSelection,
+  getMapsSelectedObject,
+  publishMapsSelection,
+  readMapsSelection,
+} from "../src/client/agent-context.ts";
 import { BackgroundNavigation } from "../src/client/background-navigation.ts";
 import { MapsFailure } from "../src/client/contracts.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
@@ -24,7 +31,7 @@ const config = (modes = ["drive", "walk"], alternatives = false) => ({
     placeDetails: true,
     modes,
     traffic: "none",
-    transit: "none",
+    transit: modes.includes("transit") ? "scheduled" : "none",
     offline: { map: false, search: false, routing: false },
     ...(alternatives ? { alternatives: true } : {}),
   },
@@ -211,8 +218,11 @@ function fixture(options = {}) {
     handoffReturn: () => options.handoffReturn ?? false,
     released: () => calls.released++,
     now: () => now,
-    publishContext: (kind) => calls.published.push(kind),
-    clearContext: () => {},
+    publishContext: (kind, owner, revision, read) => {
+      calls.published.push(kind);
+      publishMapsSelection(kind, owner, revision, read);
+    },
+    clearContext: () => clearMapsSelection(),
     ...(options.mapsApp ? { mapsApp: options.mapsApp } : {}),
   };
   const screen = new MapsScreenController(host);
@@ -834,4 +844,37 @@ test("coverage notices keep the coordinates of a place outside the region", asyn
   assert.match(view.status.text, /outside Monaco map coverage/);
   assert.equal(view.map.selected, undefined);
   assert.equal(view.place?.address, "48.85660, 2.35220");
+});
+
+test("a planned transit route publishes a readable map-route selection", async () => {
+  const f = fixture({ modes: ["drive", "walk", "transit"] });
+  await planned(f);
+  f.screen.setMode("transit");
+  await settle();
+  assert.equal(f.screen.view().directions?.routeReady, true);
+  const selected = getMapsSelectedObject();
+  assert.equal(selected?.kind, "map-route");
+  const result = readMapsSelection({
+    type: "maps_read_selected",
+    target: selected,
+  });
+  assert.deepEqual(result.fields, {
+    kind: "map-route",
+    providerId: "fixture",
+    providerRevision: "1",
+    attribution: "Fixture data",
+    from: ORIGIN,
+    to: END,
+    mode: "transit",
+    distanceMeters: 1200,
+    durationSeconds: 300,
+    traffic: "none",
+  });
+  assert.deepEqual(
+    validateAssistantMapsResult(
+      { type: "maps_read_selected", target: selected },
+      result,
+    ),
+    result,
+  );
 });

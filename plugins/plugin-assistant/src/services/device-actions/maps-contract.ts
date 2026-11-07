@@ -16,7 +16,7 @@ export type MapsFields = {
       kind: "map-route";
       from: Point;
       to: Point;
-      mode: "drive" | "walk" | "bicycle";
+      mode: "drive" | "walk" | "bicycle" | "transit";
       distanceMeters: number;
       durationSeconds: number;
       traffic: "none" | "approximated" | "live";
@@ -140,7 +140,10 @@ export function validateMapsResult(
     ]);
     if (
       f.kind !== target.kind ||
-      (f.mode !== "drive" && f.mode !== "walk" && f.mode !== "bicycle") ||
+      (f.mode !== "drive" &&
+        f.mode !== "walk" &&
+        f.mode !== "bicycle" &&
+        f.mode !== "transit") ||
       (f.traffic !== "none" &&
         f.traffic !== "approximated" &&
         f.traffic !== "live") ||
