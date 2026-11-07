@@ -6,6 +6,7 @@
  * that must update this test.
  */
 import { afterEach, expect, it, vi } from "vitest";
+import { shouldEnable as shouldEnableWallet } from "../../../plugins/plugin-wallet/auto-enable.ts";
 import {
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
@@ -61,4 +62,24 @@ it("honors the same request on a desktop host, so the Android result is the prof
   expect(collectPluginNames({ plugins: { allow: [WALLET] } }).has(WALLET)).toBe(
     true,
   );
+});
+
+it("does not auto-enable the wallet after the owner switches the Wallet capability off", () => {
+  const env = { EVM_PRIVATE_KEY: "0x".padEnd(66, "1") };
+  // A signing key alone auto-enables the wallet.
+  expect(shouldEnableWallet({ env, config: {} } as never)).toBe(true);
+  // Settings -> Capabilities "Enable Wallet" off (or SETTINGS toggle_capability).
+  expect(
+    shouldEnableWallet({
+      env,
+      config: { ui: { capabilities: { wallet: false } } },
+    } as never),
+  ).toBe(false);
+  // Only an explicit false disables.
+  expect(
+    shouldEnableWallet({
+      env,
+      config: { ui: { capabilities: { wallet: true } } },
+    } as never),
+  ).toBe(true);
 });
