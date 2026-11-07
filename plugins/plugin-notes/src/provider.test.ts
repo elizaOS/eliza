@@ -595,3 +595,64 @@ it("grounds named deletion history from retained Trash without exposing unrelate
   expect(restored.data?.namedDeletedNotes).toBeUndefined();
   expect(restored.data?.namedNotes).toHaveLength(1);
 });
+
+describe("NAMED_NOTES in a script that does not space its words", () => {
+  it("matches a title named inside a CJK sentence", async () => {
+    const service = await serviceWithNotes([
+      "会议记录\n季度预算待确认。",
+      "季度回顾\n另一个便签。",
+    ]);
+    const runtime = await runtimeWith(service);
+    const named = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "帮我更新一下会议记录"),
+      EMPTY_STATE,
+    );
+    expect(
+      (named.data?.namedNotes as { title?: string }[] | undefined)?.map(
+        (note) => note.title,
+      ),
+    ).toEqual(["会议记录"]);
+    expect(named.text).toContain("季度预算待确认");
+    expect(named.text).not.toContain("另一个便签");
+  });
+
+  it("matches a title that abuts a Korean particle", async () => {
+    const service = await serviceWithNotes(["회의록\n다음 안건 정리."]);
+    const runtime = await runtimeWith(service);
+    const named = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "회의록을 업데이트해줘"),
+      EMPTY_STATE,
+    );
+    expect(
+      (named.data?.namedNotes as { title?: string }[] | undefined)?.map(
+        (note) => note.title,
+      ),
+    ).toEqual(["회의록"]);
+  });
+
+  it("does not match a one-character title inside a longer word", async () => {
+    const service = await serviceWithNotes(["会\n单字标题便签。"]);
+    const runtime = await runtimeWith(service);
+    const named = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "帮我更新一下会议记录"),
+      EMPTY_STATE,
+    );
+    expect(named.text).toBe("");
+    expect(named.data).toEqual({});
+  });
+
+  it("still refuses a title that is only a prefix of a spaced word", async () => {
+    const service = await serviceWithNotes(["plan\nTrip budget details."]);
+    const runtime = await runtimeWith(service);
+    const named = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "planet watching tonight"),
+      EMPTY_STATE,
+    );
+    expect(named.text).toBe("");
+    expect(named.data).toEqual({});
+  });
+});
