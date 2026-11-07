@@ -28,17 +28,45 @@ export interface InferenceFundingBudgetSeal {
   consumedMicros: string;
   signature: string;
 }
-export function budgetConsumptionPayload(
+function consumptionPayload(
   input: Omit<InferenceFundingBudgetConsumption, "signature">,
+  tag: string,
+  compareGrantIds: (a: string, b: string) => number,
 ): string {
   return canonicalSettlementJson([
-    "inference-funding-budget-consume-v1",
+    tag,
     input.organizationId,
     input.requestId,
     input.amountMicros,
-    [...input.allocations].sort((a, b) => a.grantId.localeCompare(b.grantId)),
+    [...input.allocations].sort((a, b) => compareGrantIds(a.grantId, b.grantId)),
     input.metadata,
   ]);
+}
+export function budgetConsumptionPayload(
+  input: Omit<InferenceFundingBudgetConsumption, "signature">,
+): string {
+  // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+  // the signed payload and its request digest would vary with the host locale.
+  // The tag moved to v2 with this ordering change: v1 bytes ordered the
+  // allocations with localeCompare, so one tag must not name both byte sets.
+  return consumptionPayload(input, "inference-funding-budget-consume-v2", (a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+}
+/**
+ * The pre-v2 payload bytes: tag `inference-funding-budget-consume-v1` with
+ * allocations ordered by `localeCompare`, so the bytes depend on the host
+ * collation. Receipts recorded before the v2 change carry signatures and
+ * request digests over these bytes; the replay paths accept them so an
+ * already-recorded consumption still replays instead of failing closed.
+ * Never sign or store a new consumption with this payload.
+ */
+export function budgetConsumptionLegacyPayload(
+  input: Omit<InferenceFundingBudgetConsumption, "signature">,
+): string {
+  return consumptionPayload(input, "inference-funding-budget-consume-v1", (a, b) =>
+    a.localeCompare(b),
+  );
 }
 export function budgetSealPayload(input: Omit<InferenceFundingBudgetSeal, "signature">): string {
   return canonicalSettlementJson([
