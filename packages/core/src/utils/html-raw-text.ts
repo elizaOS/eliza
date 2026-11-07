@@ -114,7 +114,11 @@ function findScriptClosingEnd(value: string, index: number): number | null {
 
 	while (cursor < value.length) {
 		if (value.startsWith("-->", cursor)) {
-			state = "data";
+			// WHATWG script-data tokenizer: --> leaves the double-escaped
+			// state for the escaped state, not the data state. A later
+			// <script> must re-enter double-escaped, so the next </script>
+			// only leaves that state instead of closing the element.
+			state = state === "double-escaped" ? "escaped" : "data";
 			cursor += 3;
 			continue;
 		}
