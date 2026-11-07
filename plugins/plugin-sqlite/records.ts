@@ -2549,6 +2549,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
         if (memory.embedding && memory.embedding.length > 0) {
           await this.vectorIndex.add(memory.id, memory.embedding);
+        } else if ("embedding" in memory) {
+          // An explicitly cleared embedding (empty or undefined) removes the
+          // stored vector; the index entry must go too, or search keeps
+          // returning this memory ranked by a vector it no longer has.
+          await this.vectorIndex.remove(memory.id);
         }
       }
     });
@@ -2580,6 +2585,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
         if (memory.embedding && memory.embedding.length > 0) {
           await this.vectorIndex.add(id, memory.embedding);
+        } else if ("embedding" in memory) {
+          // An explicitly cleared embedding (empty or undefined) removes the
+          // stored vector; the index entry must go too, or search keeps
+          // returning this memory ranked by a vector it no longer has.
+          await this.vectorIndex.remove(id);
         }
       }
     });
