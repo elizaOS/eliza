@@ -34,6 +34,10 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import {
+  ALPHA_BROWSER_RETURN_SCRIPT,
+  alphaBrowserSignInStart,
+} from "./_alpha-browser-sign-in";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
@@ -306,7 +310,18 @@ export const NATIVE_CALLBACK_SCRUB_SCRIPT =
 // sha256 of NATIVE_CALLBACK_SCRUB_SCRIPT; the test recomputes it.
 const NATIVE_CALLBACK_SCRIPT_HASH =
   "sha256-fNxHkHlQFHRiRhxEEUudIprPl4u12pkFQlEahycnH88=";
-const NATIVE_CALLBACK_CSP = `default-src 'none'; script-src '${NATIVE_CALLBACK_SCRIPT_HASH}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+const ALPHA_BROWSER_RETURN_SCRIPT_HASH =
+  "sha256-hmfbP6kPklPFHlOdImBnChqEWvlxIfYdiEWZ52dH2i8=";
+const ALPHA_CALLBACK_PATH = "/alphaphone/auth/callback";
+const ALPHA_BROWSER_START = "/alphaphone/auth/browser-start";
+function alphaBrowserCallback(url: URL, callback: NativeAuthCallback | null) {
+  return (
+    callback?.androidPackage === "ai.elizaresearch.alphaphone" &&
+    url.pathname === ALPHA_CALLBACK_PATH &&
+    (url.origin === ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin ||
+      url.origin === ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)
+  );
+}
 
 const escapeHtml = (value: string): string =>
   value
@@ -336,6 +351,10 @@ export function nativeSignInCallbackFallback(
 ): Response {
   const href = escapeHtml(buildNativeSignInIntentUrl(url, callback));
   const appName = escapeHtml(callback.appName);
+  const alphaBrowser = alphaBrowserCallback(url, callback);
+  const scriptHashes = alphaBrowser
+    ? `'${NATIVE_CALLBACK_SCRIPT_HASH}' '${ALPHA_BROWSER_RETURN_SCRIPT_HASH}'`
+    : `'${NATIVE_CALLBACK_SCRIPT_HASH}'`;
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -358,6 +377,7 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
 <p>${appName} did not open automatically, so this sign-in was not completed. Return to ${appName} and start sign-in again.</p>
 <p>If this keeps happening, open Android Settings, then Apps, ${appName}, Open by default, and allow it to open its supported links.</p>
 <a id="open" href="${href}">Return to ${appName}</a>
+${alphaBrowser ? `<script>${ALPHA_BROWSER_RETURN_SCRIPT}</script>` : ""}
 <script>${NATIVE_CALLBACK_SCRUB_SCRIPT}</script>
 </main>
 </body>
@@ -366,7 +386,7 @@ a { display: inline-block; margin-top: 16px; padding: 14px 22px; border-radius: 
     status: 200,
     headers: {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": NATIVE_CALLBACK_CSP,
+      "Content-Security-Policy": `default-src 'none'; script-src ${scriptHashes}; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
@@ -393,10 +413,14 @@ export const onRequest = async (
     return serveAsset(context);
   }
   let callback: NativeAuthCallback | null;
+  const browserStart = url.pathname === ALPHA_BROWSER_START;
+  const callbackUrl = browserStart
+    ? new URL(ALPHA_CALLBACK_PATH, url.origin)
+    : url;
   try {
     callback = selectNativeAuthCallback(
       context.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
-      url,
+      callbackUrl,
     );
   } catch (error) {
     if (!(error instanceof NativeAuthCallbackConfigurationError)) throw error;
@@ -405,6 +429,22 @@ export const onRequest = async (
       status: 503,
       headers: { "Cache-Control": "no-store" },
     });
+  }
+  if (browserStart) {
+    if (!alphaBrowserCallback(callbackUrl, callback))
+      return new Response("Alpha browser sign-in unavailable", {
+        status: 404,
+        headers: { "Cache-Control": "no-store" },
+      });
+    const staging =
+      url.origin === ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin;
+    const contract = ELIZA_DOMAIN_CONTRACTS[staging ? "staging" : "production"];
+    return alphaBrowserSignInStart(
+      context.request,
+      callbackUrl,
+      contract.cloudApiOrigin,
+      staging ? "elizacloud-staging" : "elizacloud",
+    );
   }
   if (callback) return nativeSignInCallbackFallback(url, callback);
   // A single lookup decides both that this is a crawl asset and what type it
