@@ -1533,9 +1533,20 @@ async function resolveDefinitionForMutation(
         normalizeTitle(entry.definition.title) === normalizeTitle(title) &&
         !defs.includes(entry),
     );
+    // A delete never acts on a raw substring of the title: "Rent" must not
+    // delete "Parent-teacher conference". Only exact or whole-phrase hits.
     const byTitle = keptTitle
       ? []
-      : settle(matchByTitle(defs, title, (entry) => entry.definition.title));
+      : settle(
+          matchByTitle(defs, title, (entry) => entry.definition.title).filter(
+            (entry) =>
+              !destructive ||
+              containsInvariantPhrase(
+                normalizeTitle(entry.definition.title),
+                normalizeTitle(title),
+              ),
+          ),
+        );
     if (
       byTitle.length === 1 &&
       explicitlyNamed.length > 0 &&
@@ -1553,6 +1564,25 @@ async function resolveDefinitionForMutation(
   // a different title elsewhere in the request. Retain the existing narrow
   // target alias/substring contract, including its refusal to guess by tokens.
   if (destructive && target?.trim()) return resolveTarget(target);
+  // A target or title that is exactly one stored title names that item. It
+  // outranks a single owner-token guess below, which let "actually make that
+  // 30 minutes" move and rename "Make dinner" instead of the target "Stretch".
+  // The title may be the new name of a rename ("rename stretch to make
+  // dinner"), so it only names the item when the owner's words name at most one.
+  const exactNamed = destructive
+    ? undefined
+    : [target, explicitlyNamed.length <= 1 ? title : undefined]
+        .map((handle) =>
+          handle?.trim()
+            ? defs.filter(
+                (entry) =>
+                  normalizeTitle(entry.definition.title) ===
+                  normalizeTitle(handle),
+              )
+            : [],
+        )
+        .find((matches) => matches.length === 1)
+        ?.at(0);
   const named = settle(explicitlyNamed);
   if (named.length === 1) {
     return {
@@ -1590,7 +1620,7 @@ async function resolveDefinitionForMutation(
   // appears in the owner's text.
   if (bestMatches.length === 1 && !destructive) {
     return {
-      match: bestMatches.at(0) ?? null,
+      match: exactNamed ?? bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
