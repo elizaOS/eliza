@@ -9,7 +9,34 @@
 export const COMMIT_CONTROL =
   /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
 
-export function pageCommand(command, snapshotId, validateOnly = false) {
+/**
+ * Runs one fixed page command in the page. The browser extension and the
+ * native surface run it in an isolated world and keep its state on that
+ * world's `globalThis`.
+ *
+ * `host` is optional. A trusted host that must run this function in the
+ * page's own world (for example a development preview with no isolated
+ * world) passes `{ scope, ownedHosts }`:
+ * - `scope` is an object that the host makes and keeps in its own closure.
+ *   The state of this function (snapshot elements, page observation, effect
+ *   watch and spent commit grants) is kept on it, not on `globalThis`, so
+ *   page script cannot read or replace it. The host can find the element of a
+ *   snapshot id at `scope.__elizaBrowserControlV1.nodes.get(id).node` until
+ *   the next effect.
+ * - `ownedHosts` (optional) is a WeakSet of elements that the host draws on
+ *   the page itself. Blockers ignore them, and adding or removing one does not
+ *   make a snapshot stale. It is read when this document is first observed.
+ * A scope does not protect the browser's own objects: page script in the same
+ * world can still replace them. Where an isolated world exists, use it.
+ * Page guidance keeps its state on `globalThis`, so with a scope a task
+ * policy that names a guidance `actionId` is denied.
+ */
+export function pageCommand(
+  command,
+  snapshotId,
+  validateOnly = false,
+  host = undefined,
+) {
   const policy = command.taskPolicy;
   const denied = () => ({
     error: {
@@ -18,6 +45,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         "This action requires the person or a new authorized task observation.",
     },
   });
+  if (
+    host !== undefined &&
+    (!host ||
+      typeof host.scope !== "object" ||
+      host.scope === null ||
+      (host.ownedHosts !== undefined && !(host.ownedHosts instanceof WeakSet)))
+  )
+    return {
+      error: {
+        kind: "INVALID_REQUEST",
+        message: "A host scope must be an object the host keeps.",
+      },
+    };
+  const store = host === undefined ? globalThis : host.scope;
   if (
     policy &&
     (window !== window.top ||
@@ -47,20 +88,20 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     policy.commitGrant.selector === policy.expectedSelector &&
     Date.now() < policy.commitGrant.expiresAt &&
     !(
-      globalThis[grantKey]?.document === document &&
-      globalThis[grantKey].used.has(policy.commitGrant.grantId)
+      store[grantKey]?.document === document &&
+      store[grantKey].used.has(policy.commitGrant.grantId)
     )
       ? policy.commitGrant
       : null;
   if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
     return denied();
-  let monitor = globalThis[monitorKey];
+  let monitor = store[monitorKey];
   if (!monitor || monitor.document !== document) {
     monitor = {
       document,
       domRevision: 0,
       inputRevision: 0,
-      ownedHosts: new WeakSet(),
+      ownedHosts: host?.ownedHosts ?? new WeakSet(),
       editedFields: new WeakSet(),
     };
     monitor.recordMutations = (records) => {
@@ -106,7 +147,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       },
       true,
     );
-    globalThis[monitorKey] = monitor;
+    store[monitorKey] = monitor;
   }
   // Drain queued mutations synchronously as an effect may arrive before the
   // MutationObserver microtask. Never store or return form values in this monitor.
@@ -763,10 +804,13 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       const AGREES =
         /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm)\b/i;
       // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
-      // and is not in the way until the site shows a challenge.
+      // and is not in the way until the site shows a challenge. Its frame's
+      // address says size=invisible.
       const captchas = [...document.querySelectorAll(CAPTCHA)].filter(
         (node) =>
-          !node.matches("button,input,a,[data-size=invisible]") &&
+          !node.matches(
+            'button,input,a,[data-size=invisible],iframe[src*="size=invisible" i]',
+          ) &&
           !node.closest(".grecaptcha-badge") &&
           !owned(node) &&
           visible(node),
@@ -927,7 +971,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         (left, right) => rank[left.covers] - rank[right.covers],
       );
     })();
-    globalThis[key] = {
+    store[key] = {
       snapshotId,
       nodes,
       document,
@@ -938,9 +982,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     };
     // A submit or page change that a task fill or click set off in this
     // document, under this binding. The watch below stopped it.
-    const violation = globalThis[watchKey]?.violation;
+    const violation = store[watchKey]?.violation;
     // The commit the person said yes to, which the watch let through once.
-    const consented = globalThis[watchKey]?.consented;
+    const consented = store[watchKey]?.consented;
     // A one-shot comparison from the actual fill, kept in this isolated realm.
     // Neither the expected text nor the field value leaves the page.
     const inputReadback = monitor.inputReadback;
@@ -977,9 +1021,9 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
         ? { effectViolation: violation.kind }
         : {}),
       // For the browser host's network watch only; it never reaches a host.
-      ...(policy && globalThis[watchKey]?.scope === policy.guidanceScope
+      ...(policy && store[watchKey]?.scope === policy.guidanceScope
         ? {
-            watchHandoff: handoffOf(globalThis[watchKey]),
+            watchHandoff: handoffOf(store[watchKey]),
           }
         : {}),
       ...(policy && consented && consented.scope === policy.guidanceScope
@@ -1013,7 +1057,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       elements,
     };
   }
-  const state = globalThis[key];
+  const state = store[key];
   if (
     !state ||
     state.snapshotId !== command.snapshotId ||
@@ -1212,7 +1256,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
   }
   if (validateOnly) return { validated: true };
   if (policy?.actionId) {
-    const feedback = globalThis.__elizaPageGuidanceV1;
+    const feedback = store.__elizaPageGuidanceV1;
     if (
       !feedback?.actionReady?.(
         policy.actionId,
@@ -1224,16 +1268,16 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       return denied();
     feedback.markActed();
   }
-  delete globalThis[key];
+  delete store[key];
   if (destination) {
-    globalThis[watchKey]?.stop();
+    store[watchKey]?.stop();
     location.assign(destination.href);
     return { dispatched: true, requiresReadback: true };
   }
   if (grant) {
-    if (globalThis[grantKey]?.document !== document)
-      globalThis[grantKey] = { document, used: new Set() };
-    globalThis[grantKey].used.add(grant.grantId);
+    if (store[grantKey]?.document !== document)
+      store[grantKey] = { document, used: new Set() };
+    store[grantKey].used.add(grant.grantId);
   }
   let previousWatchHandoff;
   if (
@@ -1278,7 +1322,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     // which is reported), a second submit, another form, another origin, any
     // other own-site request and every other page change, same-document
     // address changes included, are still stopped or recorded as above.
-    const prior = globalThis[watchKey];
+    const prior = store[watchKey];
     prior?.stop();
     // What the earlier watch saw of her up to now. Her press since the last
     // snapshot reaches the network watch's earlier effect only this way.
@@ -1292,8 +1336,8 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
     const controller = new AbortController();
     const watch = {
       violation:
-        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
-          ? (globalThis[watchKey]?.violation ?? null)
+        store[watchKey]?.violation?.scope === policy.guidanceScope
+          ? (store[watchKey]?.violation ?? null)
           : null,
       // A receipt belongs to this dispatch, not an earlier approved action.
       consented: null,
@@ -1836,7 +1880,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       () => controller.abort(),
       Math.min(policy.expiresAt - Date.now(), 2 ** 31 - 1),
     );
-    globalThis[watchKey] = watch;
+    store[watchKey] = watch;
   }
   if (command.subaction === "click") {
     // Only text changed during this exact synchronous activation is eligible.
@@ -1916,7 +1960,7 @@ export function pageCommand(command, snapshotId, validateOnly = false) {
       behavior: "instant",
     });
   }
-  const effectWatch = policy ? globalThis[watchKey] : undefined;
+  const effectWatch = policy ? store[watchKey] : undefined;
   return {
     dispatched: true,
     completed: false,
