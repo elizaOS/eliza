@@ -1631,11 +1631,9 @@ export async function handleChatCompletionsPOST(
           ? appsService.getById(requestedAppId, {
               executionCtx: options.executionCtx,
             })
-          : appsService.getAuthorizedMonetizedAppForUser(
-              requestedAppId,
-              user,
-              { executionCtx: options.executionCtx },
-            )
+          : appsService.getAuthorizedMonetizedAppForUser(requestedAppId, user, {
+              executionCtx: options.executionCtx,
+            })
         ).then((app) => app ?? null)
       : Promise.resolve(null);
     const platformCredentialConfigured =
