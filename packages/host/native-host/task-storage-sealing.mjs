@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import {
   closeSync,
+  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
@@ -159,17 +160,30 @@ export const sealedEvidenceCodec = (sealer, purpose = "task-evidence") =>
     encode: (text) => sealer.seal(text, purpose),
   });
 
+/** Codes for a platform or filesystem that cannot fsync a directory handle. */
+const DIRECTORY_SYNC_UNSUPPORTED = new Set([
+  "EINVAL",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+  "EISDIR",
+]);
+
 /**
- * Syncs a directory so a rename or removal in it survives a power loss. Not
- * every platform can sync a directory handle; there it does nothing.
+ * A rename or unlink survives power loss only once its directory is synced.
+ * Only "unsupported here" is ignored: an I/O failure such as EIO means the
+ * change may not be durable, so the caller must not treat it as written.
  */
 export function syncDirectory(directory) {
   let fd;
   try {
     fd = openSync(directory, "r");
     fsyncSync(fd);
-  } catch {
-    /* Not every platform can fsync a directory handle. */
+  } catch (error) {
+    if (
+      process.platform !== "win32" &&
+      !DIRECTORY_SYNC_UNSUPPORTED.has(error?.code)
+    )
+      throw error;
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
@@ -246,5 +260,9 @@ export const sealedFilePorts = (sealer, purpose) =>
       writePrivateFileSync(path, `${sealer.seal(text, purpose)}\n`),
     readFile: (path) =>
       sealer.open(readFileSync(path, "utf8").trimEnd(), purpose),
-    removeFile: (path) => rmSync(path, { force: true }),
+    removeFile: (path) => {
+      rmSync(path, { force: true });
+      // A missing directory holds nothing to make durable.
+      if (existsSync(dirname(path))) syncDirectory(dirname(path));
+    },
   });

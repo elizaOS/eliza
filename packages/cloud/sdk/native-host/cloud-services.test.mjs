@@ -5,6 +5,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createNativeCloudAuth as createEnrollment } from "../../../auth/native-host/cloud-enrollment.mjs";
 import {
   createCloudRoutes,
   createFileCredentialStore,
@@ -478,7 +479,13 @@ for (const [checkoutPath, requestBody] of [
         await started;
         const disconnected = await post(disconnectPath, {});
         assert.equal(disconnected.status, 200);
-        assert.deepEqual(cancellations, [{ disconnect: true }]);
+        // Logout disconnects; a sign-in cancel drops only the pending sign-in.
+        assert.deepEqual(
+          cancellations,
+          disconnectPath === "/cloud/logout"
+            ? [{ disconnect: true }]
+            : [undefined],
+        );
         releaseAuthority();
         const result = await pending;
         assert.equal(result.status, 409);
@@ -1055,6 +1062,252 @@ test("a JSON-null saved pending sign-in stays benign across cloud routes", async
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// A loopback stand-in for Cloud's redeem and account routes. `answer` decides
+// each redeem reply; it may destroy the socket to lose the answer in transit.
+async function subscriptionCloud(t, answer) {
+  const redeems = [];
+  const cloud = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const reply = (status, value, headers = {}) => {
+      res.writeHead(status, { "Content-Type": "application/json", ...headers });
+      res.end(typeof value === "string" ? value : JSON.stringify(value));
+    };
+    if (req.url === "/api/v1/user") return reply(200, { data: { id: "user" } });
+    if (req.url === "/api/v1/billing/limits")
+      return reply(200, {
+        data: {
+          v2: {
+            snapshotCompletedAt: new Date().toISOString(),
+            grant: {
+              status: "available",
+              value: {
+                grantId: "grant-1",
+                planKey: "annual_team",
+                startsAt: "2026-01-01T00:00:00.000Z",
+                endsAt: "2099-01-01T00:00:00.000Z",
+                paidPlanTakesPrecedence: false,
+                allowance: { status: "unavailable" },
+              },
+            },
+          },
+        },
+      });
+    if (req.method === "POST" && req.url === "/api/v1/subscription/redeem") {
+      redeems.push({
+        authorization: req.headers.authorization,
+        body: JSON.parse(Buffer.concat(chunks).toString()),
+      });
+      return answer({ req, res, reply, attempt: redeems.length });
+    }
+    reply(404, { error: "not found" });
+  });
+  cloud.listen(0, "127.0.0.1");
+  await once(cloud, "listening");
+  t.after(() => {
+    cloud.closeAllConnections();
+    cloud.close();
+  });
+  const local = `http://127.0.0.1:${cloud.address().port}`;
+  return {
+    redeems,
+    fetchImpl: (url, init) =>
+      fetch(url.replace("https://api.eliza.app", local), init),
+  };
+}
+async function serve(t, routes) {
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return (value, path = "/cloud/account/subscription/redeem") =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof value === "string" ? value : JSON.stringify(value),
+    });
+}
+const redeemed = (grant = {}, replayed = false) => ({
+  success: true,
+  replayed,
+  grant: {
+    id: "grant-1",
+    planKey: "annual_team",
+    startsAt: "2026-01-01T00:00:00.000Z",
+    endsAt: "2099-01-01T00:00:00.000Z",
+    revoked: false,
+    paidPlanTakesPrecedence: false,
+    ...grant,
+  },
+});
+
+test("subscription code redemption and the snapshot grant stay off unless the host opts in", async (t) => {
+  const seen = [];
+  const cloud = await subscriptionCloud(t, ({ reply }) =>
+    reply(200, redeemed()),
+  );
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      projectAccountAccess: (...args) => {
+        seen.push(args.length);
+        return { state: "active" };
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: cloud.fetchImpl,
+  });
+  const post = await serve(t, routes);
+  assert.equal((await post({ code: "ABCD-EFGH-JKMN-PQRS" })).status, 404);
+  assert.equal(cloud.redeems.length, 0);
+  await routes.accountAccess();
+  assert.deepEqual(seen, [2]);
+});
+
+test("a host that opts in redeems a code once, replays a lost answer and reads the grant", async (t) => {
+  let pending = null,
+    answer = ({ res, attempt }) =>
+      attempt === 1
+        ? res.destroy()
+        : res.writeHead(200).end(JSON.stringify(redeemed()));
+  const cloud = await subscriptionCloud(t, (input) => answer(input));
+  const projected = [];
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      subscriptionCodes: true,
+      messages: {
+        subscriptionCodeInvalid: "Host words: invalid",
+        subscriptionCodePaidPlanActive: "Host words: paid plan",
+        subscriptionCodeEnded: "Host words: ended",
+        subscriptionCodeSignedOut: "Host words: signed out",
+      },
+      projectAccountAccess: (_user, _snapshot, context) => {
+        projected.push(context);
+        return { state: "active" };
+      },
+    },
+    pendingCredentialStore: { read: async () => pending },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    initialApiKey: "private-test-credential",
+    fetchImpl: cloud.fetchImpl,
+  });
+  const post = await serve(t, routes);
+
+  // The first answer is lost; one replay with the same key gets the grant.
+  const first = await post({ code: " abcd efgh jkmn pqrs " });
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), {
+    replayed: false,
+    grant: {
+      planKey: "annual_team",
+      startsAt: "2026-01-01T00:00:00.000Z",
+      endsAt: "2099-01-01T00:00:00.000Z",
+      paidPlanTakesPrecedence: false,
+    },
+  });
+  assert.equal(cloud.redeems.length, 2);
+  assert.deepEqual(cloud.redeems[0], cloud.redeems[1]);
+  assert.equal(
+    cloud.redeems[0].authorization,
+    "Bearer private-test-credential",
+  );
+  assert.equal(cloud.redeems[0].body.code, "ABCDEFGHJKMNPQRS");
+  assert.match(cloud.redeems[0].body.idempotencyKey, /^redeem:[0-9a-f]{40}$/);
+
+  // Cloud's refusals become typed codes with the host's words, never Cloud's.
+  for (const [reply, status, code, error] of [
+    [
+      [400, { code: "invalid_subscription_code", error: "Cloud words" }],
+      400,
+      "invalid",
+      "Host words: invalid",
+    ],
+    [
+      [409, { code: "subscription_grant_paid_plan_active" }],
+      409,
+      "paid-plan-active",
+      "Host words: paid plan",
+    ],
+    [
+      [409, { code: "subscription_grant_already_redeemed" }],
+      409,
+      "already-redeemed",
+    ],
+    [[403, { code: "access_denied" }], 403, "account"],
+    [[500, { code: "internal_error" }], 503, "unavailable"],
+    [
+      [200, redeemed({ revoked: true }, true)],
+      409,
+      "ended",
+      "Host words: ended",
+    ],
+    [
+      [200, redeemed({ endsAt: "2026-02-01T00:00:00.000Z" }, true)],
+      409,
+      "ended",
+    ],
+    [[200, redeemed({ planKey: "plus_monthly" })], 503, "unavailable"],
+    [[200, "x".repeat(70000)], 503, "unavailable"],
+  ]) {
+    answer = ({ reply: send }) => send(...reply);
+    const response = await post({ code: "ABCDEFGHJKMNPQRS" });
+    const value = await response.json();
+    assert.deepEqual([response.status, value.code], [status, code], code);
+    if (error) assert.equal(value.error, error);
+    assert.doesNotMatch(JSON.stringify(value), /Cloud words|ABCD/);
+  }
+  answer = ({ reply }) =>
+    reply(429, { code: "rate_limited" }, { "Retry-After": "90" });
+  const limited = await post({ code: "ABCDEFGHJKMNPQRS" });
+  assert.deepEqual(
+    [limited.status, (await limited.json()).retryAfter],
+    [429, 90],
+  );
+
+  // A body that cannot be a code, or a pending disconnect, never reaches Cloud.
+  const before = cloud.redeems.length;
+  for (const value of [
+    { code: "short" },
+    { code: "ABCDEFGHJKMNPQRS", plan: "x" },
+    "x".repeat(5000),
+  ]) {
+    const response = await post(value);
+    assert.deepEqual(
+      [response.status, (await response.json()).code],
+      [400, "invalid"],
+    );
+  }
+  pending = JSON.stringify({ kind: "revocation" });
+  const signedOut = await post({ code: "ABCDEFGHJKMNPQRS" });
+  assert.deepEqual(
+    [signedOut.status, await signedOut.json()],
+    [401, { error: "Host words: signed out", code: "signed-out" }],
+  );
+  assert.equal(cloud.redeems.length, before);
+  pending = null;
+
+  // The account check gives the host the snapshot's grant.
+  await routes.accountAccess();
+  assert.deepEqual(projected.at(-1), {
+    grant: {
+      status: "active",
+      planKey: "annual_team",
+      startsAt: "2026-01-01T00:00:00.000Z",
+      endsAt: "2099-01-01T00:00:00.000Z",
+      paidPlanTakesPrecedence: false,
+      allowance: null,
+    },
+  });
 });
 
 test("native speech rendering validates context and confirms exact provider speed", async () => {
@@ -2383,6 +2636,155 @@ test("the owner mail writer relays Cloud's reviewed two-step operation for the c
     writer.prepare({ requestId: OPERATION, proposal: archive }),
     { code: "insufficient_scope" },
   );
+});
+
+/** The routes over the real native enrollment and a fake Cloud. */
+async function enrollmentRoutes(t, { hold } = {}) {
+  const binding = {
+    clientId: "org.example.native",
+    environment: "test",
+    redirectUri: "https://example.org/native/callback",
+  };
+  const later = () => new Date(Date.now() + 300000).toISOString();
+  const revoked = [];
+  let pending = null;
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: (options) =>
+        createEnrollment({
+          ...options,
+          auth: "https://auth.example.test",
+          binding,
+          appName: "Example Native",
+        }),
+    },
+    pendingCredentialStore: {
+      read: async () => pending,
+      write: async (value) => {
+        pending = value;
+      },
+      clear: async () => {
+        pending = null;
+      },
+    },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async (url, init) => {
+      const path = new URL(url).pathname;
+      await hold?.(path);
+      if (path.endsWith("/config"))
+        return Response.json({
+          ...binding,
+          codeChallengeMethod: "S256",
+          scopes: ["cloud:user"],
+          app: { name: "Example Native" },
+        });
+      if (path === "/auth/email/send")
+        return Response.json({ ok: true, data: { expiresAt: later() } });
+      if (path === "/auth/email/code/verify")
+        return Response.json({ ok: true, token: "synthetic-session-token" });
+      if (path.endsWith("/connect"))
+        return Response.json({
+          codeType: "mobile_app_auth_code",
+          code: "synthetic-grant",
+          expiresAt: later(),
+        });
+      if (path.endsWith("/token"))
+        return Response.json({
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          secret: `eliza_mobile_${"a".repeat(64)}`,
+          tokenType: "Bearer",
+          acknowledgementRequired: true,
+          acknowledgeBy: later(),
+        });
+      if (path.endsWith("/ack"))
+        return Response.json({
+          status: "acknowledged",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          expiresAt: later(),
+        });
+      if (path === "/api/v1/api-keys/current" && init.method === "DELETE") {
+        revoked.push(init.headers.Authorization);
+        return Response.json({
+          success: true,
+          status: "revoked",
+          credentialId: "22222222-2222-4222-8222-222222222222",
+          revokedAt: new Date().toISOString(),
+        });
+      }
+      throw Error(`Unexpected provider request ${path}`);
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = (path, input = {}) =>
+    fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  const status = async () =>
+    (
+      await fetch(`http://127.0.0.1:${server.address().port}/cloud/status`)
+    ).json();
+  return { post, status, revoked };
+}
+
+test("a sign-in cancel never disconnects the account a finished sign-in reported", async (t) => {
+  const { post, status, revoked } = await enrollmentRoutes(t);
+  const begun = await (
+    await post("/cloud/native/start", { email: "synthetic@example.com" })
+  ).json();
+  const verified = await post("/cloud/native/verify", {
+    sessionId: begun.sessionId,
+    code: "123456",
+  });
+  assert.equal((await verified.json()).connected, true);
+  // A late Stop, park or Close of the set-up screen.
+  const cancelled = await post("/cloud/native/cancel");
+  assert.equal(cancelled.status, 200);
+  assert.deepEqual(revoked, []);
+  assert.equal((await status()).connected, true);
+  // Disconnecting stays its own route.
+  assert.equal((await post("/cloud/logout")).status, 200);
+  assert.equal(revoked.length, 1);
+  assert.equal((await status()).connected, false);
+});
+
+test("a sign-in request refused while the host is busy names the conflict", async (t) => {
+  let release, entered;
+  const reached = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { post } = await enrollmentRoutes(t, {
+    hold: async (path) => {
+      if (path === "/auth/email/send") {
+        entered();
+        await gate;
+      }
+    },
+  });
+  const starting = post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  await reached;
+  const busy = await post("/cloud/native/start", {
+    email: "synthetic@example.com",
+  });
+  assert.equal(busy.status, 409);
+  assert.equal((await busy.json()).code, "sign_in_busy");
+  release();
+  assert.equal((await starting).status, 200);
 });
 
 test("the owner mail writer refuses a send review it cannot show the owner", async (t) => {

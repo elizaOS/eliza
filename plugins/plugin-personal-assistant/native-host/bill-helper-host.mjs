@@ -173,10 +173,23 @@ export function createBillHelperHost({
           throw new BillHostError("Protected code resolution unavailable");
         return entry.coordinator.resolveValue(reference, task);
       };
+      // Commit grants the workflow issued for the person's own choice, by
+      // proposal: each is handed out once, for that proposal only.
+      const grants = new Map();
+      entry.grantCommit = (proposalId, grant) =>
+        grant === null
+          ? grants.delete(proposalId)
+          : grants.set(proposalId, grant);
       const actuator = new runtimeModule.NativeTaskActuator({
         ...actuatorOptions,
         ...host,
         target,
+        commitGrant: (task, proposal) => {
+          const granted = grants.get(proposal.id);
+          grants.delete(proposal.id);
+          if (granted?.taskId === task.id) return granted;
+          return actuatorOptions.commitGrant?.(task, proposal);
+        },
         ...(assistantName === undefined ? {} : { assistantName }),
         policy: (task) => policyForTask(task),
         resolveValue: async (reference, task) => {
@@ -390,6 +403,7 @@ export function createBillHelperHost({
         selectionGuidance,
         ...(assistantName === undefined ? {} : { assistantName }),
         codeCoordinator: entry.coordinator,
+        grantCommit: entry.grantCommit,
         // The receipt for a saved outcome is looked for in the same mailbox
         // scope as the bill, under the same task authorization.
         ...(billDiscovery

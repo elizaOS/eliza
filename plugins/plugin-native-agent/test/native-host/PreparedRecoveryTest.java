@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class PreparedRecoveryTest {
+  /** A plan that is still fresh: these cases are about the install, not commit freshness. */
+  static final UpdateJournal.FreshnessCheck FRESH=(plan,generation)->{};
   private static int assertions;
   private static void check(boolean value) { assertions++; if (!value) throw new AssertionError(); }
   private interface Operation { void run() throws Exception; }
@@ -24,7 +26,7 @@ public final class PreparedRecoveryTest {
   private static UpdateJournal ready(Path path) throws Exception {
     UpdateJournal j=journal(path);
     j.begin(new UpdateJournal.Plan("recovery-test","stable","launcher",OLD,CURRENT,RECOVERY),OLD,0);
-    j.committing("recovery-test",1,0);j.reconcile(CURRENT,false);j.localHealthFailed(j.read(),CURRENT);
+    j.committingWithAction("recovery-test",1,0,FRESH,()->{});j.reconcile(CURRENT,false);j.localHealthFailed(j.read(),CURRENT);
     return j;
   }
   private static PreparedRecovery.Material material() { return new PreparedRecovery.Material("launcher",new byte[]{1,2},"artifacts.example"); }

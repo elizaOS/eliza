@@ -278,6 +278,20 @@ The canonical app also copies BGE through `ElizaAgentService` before the encoder
 verifies its pinned hash. `CopiedModelAssetsInstrumentedTest` checks both actual
 APK extraction paths, model hashes and repeated file reuse on a cleared installation.
 
+To skip the copy, a host stores the models uncompressed (`noCompress` above),
+aligns those entries to 16 bytes, and sets the application meta-data
+`ai.eliza.voice.MODELS_IN_PLACE` to `true`. The installer then writes a
+libelizainference region file (`tools/file-region` in the fork) in place of each
+uncompressed `.gguf` or `.lex` under `asr/` or `tts/`. That file names the
+asset's offset and length in the APK, and the native loaders map those bytes
+directly. The installer hashes the bytes in the APK once per bundle manifest.
+After an app update with the same manifest it only rewrites the region files for
+the new APK path, since the package manager has checked the APK's signature. The
+agent's ASR check (`asr-provenance.ts`) reads the GGUF header through a region
+file too. It still copies compressed or unaligned entries, the VAD model and the
+eSpeak NG data. A region bundle needs a libelizainference built from a fork
+commit with region-file support.
+
 ## Licenses
 
 The Java and C++ sources here are MIT. Paradee-8M v1.2 weights
@@ -299,6 +313,8 @@ rules ported from them.
 ## Hosts with an existing native inference server
 
 Set `elizaParadeeAssetsOnly=true` when applying `consumer.gradle` to package only the pinned models and `VoiceBundleAssets` installer. This mode includes no inference session classes, JNI bridge or native library. The Eliza Android app uses this mode through `:voice-assets`; `ELIZA_VOICE_NATIVE_DIR` selects its generated native input directory. Explicit cloud and host-test builds omit these assets.
+
+Set `elizaParadeeApiOnly=true` to compile only the Java API (`ai.eliza.voice`, with the optional Capacitor and speech-bridge sources) for a packaging check. This mode has no NDK or CMake build, no models, no native libraries and no `build-record.json` check, so the app finds no voice bundle at run time. It cannot be combined with `elizaParadeeAssetsOnly`.
 
 Admission checks the complete asset inventory against the build record and rejects duplicate paths, extra files and symlinks. Required speech models must also match `inputs.json`; a matching record cannot substitute a different model.
 

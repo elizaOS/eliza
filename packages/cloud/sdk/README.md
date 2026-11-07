@@ -102,6 +102,21 @@ trusted list. Other values return 400 before any provider request. Omitting
 language never changes the default or another capture. Hosts without the list
 continue using their default and reject explicit language selections.
 
+Subscription grant codes are off by default. A billing host that sets
+`hostPolicy.subscriptionCodes: true` gets `POST /cloud/account/subscription/redeem`
+(`{code}` in, `{replayed, grant: {planKey, startsAt, endsAt, paidPlanTakesPrecedence}}`
+out) and its `projectAccountAccess(user, snapshot, {grant})` receives the
+account's grant from the billing snapshot (`subscriptionGrantFromSnapshot`:
+`active`, `none` or `unknown`). The route uses the saved sign-in, refuses during
+a pending disconnect, derives the idempotency key from the code, replays a lost
+answer once with the same key and reports a grant only to the same sign-in. A
+refusal is `{error, code}`: `invalid` 400, `signed-out` 401, `account` 403,
+`already-redeemed`, `paid-plan-active` or `ended` 409, `rate-limited` 429 (with
+`retryAfter` seconds when Cloud gave one) and `unavailable` 503. `error` is the
+host message `subscriptionCode<Code>` (for example `subscriptionCodePaidPlanActive`).
+The parsers are in `native-host/subscription-grant.mjs`, which has no
+dependencies; `@elizaos/cloud-sdk/subscription-entitlement` re-exports them.
+
 
 Use `@elizaos/cloud-sdk/testing` for deterministic setup-session mocks. The older
 setup-session mock exports remain compatible; the client root does not load them.

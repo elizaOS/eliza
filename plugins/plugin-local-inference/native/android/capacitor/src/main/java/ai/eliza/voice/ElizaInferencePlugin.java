@@ -80,9 +80,12 @@ public class ElizaInferencePlugin extends Plugin {
 
     /**
      * Runs on the worker once for each shared session this transport opens,
-     * before the session's first request, for example to set a speed range or
-     * {@link ParadeeVoice#setThreadCount}. A failure fails that request; the
-     * next request calls it again.
+     * before the session's first request, for example to set a speed range.
+     * A failure fails that request only: later requests use the session as it
+     * is and do not call this again. Process-wide settings that must precede
+     * the first voice load, such as {@link ParadeeVoice#setThreadCount}, do
+     * not belong here, since another consumer may already have loaded a voice;
+     * set them in the host's {@link #load} instead.
      */
     protected void configure(InferenceSession session) throws Exception {}
 
@@ -473,10 +476,18 @@ public class ElizaInferencePlugin extends Plugin {
         Models(Context context) {
             this.context = context;
             context.registerComponentCallbacks(this);
-            worker.scheduleWithFixedDelay(() -> {
-                long idle = idleMillis;
-                if (idle > 0 && hearing.active == null && SystemClock.elapsedRealtime() - lastActivity >= idle) trim();
-            }, 30, 30, TimeUnit.SECONDS);
+            worker.scheduleWithFixedDelay(this::trimIfIdle, 30, 30, TimeUnit.SECONDS);
+        }
+        /**
+         * Speech worker: the idle release. The check and the release run under
+         * this lock, which {@link #session} also takes, and the hearing worker
+         * marks its lane active before it asks for the session. So a
+         * transcription either is seen and keeps the models, or gets its client
+         * only after the release and is not fenced by it.
+         */
+        synchronized void trimIfIdle() {
+            long idle = idleMillis;
+            if (idle > 0 && hearing.active == null && SystemClock.elapsedRealtime() - lastActivity >= idle) trim();
         }
         /** Either worker. The install and the host's configure run once, under this lock. */
         synchronized InferenceSession.Client session(ElizaInferencePlugin owner, Lane lane, Request request) throws Exception {
@@ -488,8 +499,10 @@ public class ElizaInferencePlugin extends Plugin {
             if (current == null || current.isClosed()) {
                 InferenceSession next = VoiceAssets.sharedInference(context);
                 if (next != configured) {
-                    owner.configure(next);
+                    // Once per session: a failure fails this request only, and
+                    // never fails every later request on the same session.
                     configured = next;
+                    owner.configure(next);
                 }
                 current = next;
                 speech.client = null;

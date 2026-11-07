@@ -17,8 +17,13 @@ public final class HostInferencePlugin extends ElizaInferencePlugin {
         if (refusing) throw new Refusal("Speech is paused", "PAUSED");
     }
 
+    @Override public void load() {
+        // Process-wide and fixed once any voice loads, possibly by another consumer: not in configure.
+        try { ParadeeVoice.setThreadCount(2); } catch (IllegalStateException alreadyFixed) {}
+        super.load();
+    }
+
     @Override protected void configure(InferenceSession session) {
-        ParadeeVoice.setThreadCount(2);
         if (session.speechLanguages().contains("es")) session.speedRange("es", 0.5f, 1.5f);
     }
 

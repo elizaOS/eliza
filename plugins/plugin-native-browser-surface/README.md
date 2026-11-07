@@ -73,12 +73,42 @@ and does nothing by itself:
   closes; the host activity keeps running. Recreate the surface to continue.
 - `keyboardChanged`: the on-screen keyboard opened or closed, with its height.
 
+Android `pauseSurface` calls `WebView.onPause()` on one surface and `resumeSurface`
+undoes it. The page stops drawing and its timers slow to about once a second, even while
+it is shown; its state and history stay. A hidden surface is already treated this way, so
+use it for a page that stays shown under host screens. It frees no memory. A paused
+page gets no touches, focus or keyboard, its held dialogs are cancelled, and capture,
+page control, `observeHistory` and `navigateHistory` reject until `resumeSurface`;
+`goBack`, `goForward`, `navigate` and `reloadSurface` still run. `presentSurface` never
+resumes it. iOS rejects both methods with `UNSUPPORTED`.
+
 Isolated surfaces get a fresh storage profile that is cleared when the surface closes
 and deleted once Android releases it. `createSurface({ ..., profileKey })` instead
 selects one persistent profile per owner and key (for example a signed-in account), so
 website sign-ins survive. `purgeProfiles({ profileKey })` removes it at once and closes
 its surfaces (`surfaceClosed`); `purgeProfiles({ idleMs })` removes keyed profiles idle
-for that long. `clearSurfaceStorage` signs one isolated surface out of every website.
+for that long. `purgeProfiles({ all: true })` removes every surface profile of any owner,
+closes their surfaces and resolves `clean` once no purged profile holds a cookie.
+`clearSurfaceStorage` signs one isolated surface out of every website.
+
+Android `createSurface({ ..., layer: "below-host" })` draws the page under the host
+WebView instead of over it, so the host draws its own chrome, rounded corners and
+shadows over the page and nothing is cut out of the website. It improves edges and
+shadows; it saves no memory or CPU, and the transparent host is blended over the page
+each frame, so measure frame time on the device before adopting it. The host makes its
+WebView background, every view between that WebView and its nearest `FrameLayout`
+ancestor, and its page CSS over the page rect transparent. The page is clipped only to
+its outer clip's rectangle. `setOcclusionRects` then lists the host-owned rects: a
+gesture, hover, mouse or drag event that starts on the page outside them goes to the
+website until it ends; any other stays with the host. A finger added during a gesture
+follows the first finger, and a gesture on a page hidden mid-gesture is cancelled. The
+page takes no input until the first `setOcclusionRects` call, and the host awaits that
+call before it shows new interactive chrome over the page. The website gets the whole
+gesture, so its own long-press, text selection and focus (and so the keyboard) work as
+in the default layer. TalkBack reads host chrome first, then the website; host nodes
+over the page must be `aria-hidden`. Captures draw the page alone, so no host pixel is
+in them, and mask the host-owned rects and the area outside the outer clip. iOS rejects
+this layer with `UNSUPPORTED`.
 
 `captureSurface` returns a JPEG of the visible page, about 1024 px on the long edge, for
 a vision fallback. Before the copy it covers password, `cc-*`, `one-time-code` and other

@@ -34,7 +34,7 @@ test("the in-page snapshot reports blockers and never presses a control", () => 
   // read the page. It must not click, submit or focus anything it finds.
   const source = pageCommand.toString();
   const start = source.indexOf("const blockers = (() => {");
-  const end = source.indexOf("globalThis[key] = {", start);
+  const end = source.indexOf("store[key] = {", start);
   assert.ok(start > 0 && end > start);
   const pass = source.slice(start, end);
   for (const effect of [".click(", ".submit(", ".focus(", "dispatchEvent("])
