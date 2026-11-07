@@ -98,7 +98,7 @@ export class PhraseChunker {
 	private readonly firstPhraseMaxAccumulationMs: number;
 	private readonly clock: ClockMs;
 	private firstTokenAtMs = 0;
-	/** Phrases emitted since the last {@link reset}; gates the first-phrase budget. */
+	/** Phrases emitted this reply (since {@link flushPending} or {@link reset}); gates the first-phrase budget. */
 	private phrasesEmitted = 0;
 
 	constructor(
@@ -208,9 +208,14 @@ export class PhraseChunker {
 		return this.firstTokenAtMs + budget - this.clock();
 	}
 
+	/**
+	 * End of reply: flush whatever is buffered and re-arm the first-phrase
+	 * budget for the next reply, which reuses this chunker.
+	 */
 	flushPending(): Phrase | null {
-		if (this.buffer.length === 0) return null;
-		return this.flushAs("max-cap");
+		const tail = this.buffer.length === 0 ? null : this.flushAs("max-cap");
+		this.phrasesEmitted = 0;
+		return tail;
 	}
 
 	/**
