@@ -1,5 +1,5 @@
 // consume preflight, clear receipt, rollback of exactly that receipt, and review.
-// The real host restore is synchronous here; async ownership has its own model.
+// The real host restore is synchronous here. Async ownership has its own model.
 module DraftConsumeRollback {
   type State = {
     phase: int,

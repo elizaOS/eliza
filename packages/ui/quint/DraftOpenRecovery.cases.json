@@ -4,7 +4,7 @@
     "packages/ui/src/state/durable-draft.ts"
   ],
   "conformance": "packages/ui/quint/check-draft-controller.mjs",
-  "bounds": "One opening, factory/read attempts 0..2, exact 150ms/600ms retry classes, three editor values, marked/unmarked saved text, one edit, one same-key join and one retirement. Host restoration is synchronous in this case; asynchronous completion is checked separately.",
+  "bounds": "One opening, factory/read attempts 0..2, exact 150ms/600ms retry classes, three initial editor values and a distinct retired-binding text, marked/unmarked saved text, one edit, one same-key join and one retirement. Host restoration is synchronous in this case. asynchronous completion is checked separately.",
   "cases": [
     {
       "name": "bounded-opening",

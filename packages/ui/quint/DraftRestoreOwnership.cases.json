@@ -4,7 +4,7 @@
     "packages/ui/src/state/durable-draft.ts"
   ],
   "conformance": "packages/ui/quint/check-draft-controller.mjs",
-  "bounds": "One open/review/release/consume operation, one separate host application and acknowledgement (success or failure), one newer edit, one binding retirement, one consume authority revocation. Four symbolic text values. Storage completions are stable here and faulted separately. Synchronous hosts are covered by existing implementation tests. Release persistence may fail before writing or lose its acknowledgement after writing; reads succeed.",
+  "bounds": "One open/review/release/consume operation, one separate host application and acknowledgement (success or failure), one newer edit, one binding retirement, one consume authority revocation. Six symbolic editor/storage text values. Consume storage completions succeed here and are faulted in a separate case. Synchronous hosts are covered by existing implementation tests. Release persistence may fail before writing or lose its acknowledgement after writing. reads succeed.",
   "cases": [
     {
       "name": "bounded-host-ownership",
