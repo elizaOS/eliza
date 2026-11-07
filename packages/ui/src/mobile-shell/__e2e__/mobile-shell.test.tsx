@@ -887,7 +887,7 @@ describe("Home, All apps and view host", () => {
         />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Apps", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apps$/ }));
     expect(openApps).toHaveBeenCalledOnce();
     expect(screen.getByRole("dialog", { name: "Apps" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Apps" })).toBeTruthy();
