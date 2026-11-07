@@ -11,7 +11,7 @@
  *
  * Kept decoupled from the route layer: it only needs the runtime's optional
  * `sendMessageToTarget` and the origin keys the orchestrator stamps on
- * `session.metadata` at spawn time (`roomId`, `source`).
+ * `session.metadata` at spawn time (`originRoomId` or `roomId`, `source`).
  */
 
 import type {
@@ -25,6 +25,7 @@ import {
   MESSAGE_SOURCE_SUB_AGENT,
   requireConfirmedSendHandlerDelivery,
 } from "@elizaos/core";
+import { resolveOriginRoomId } from "../services/session-room-binding.js";
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
@@ -44,8 +45,9 @@ function readOrigin(
   metadata: Record<string, unknown> | undefined,
 ): CredentialPromptOrigin | null {
   if (!metadata) return null;
-  const roomId =
-    typeof metadata.roomId === "string" ? (metadata.roomId as UUID) : undefined;
+  // TASKS stamps the task room it mints on `roomId`; the user's chat is on
+  // `originRoomId`. Use the router's origin ladder so the prompt reaches it.
+  const roomId = resolveOriginRoomId(metadata);
   if (!roomId) return null;
   const source =
     typeof metadata.source === "string" && metadata.source
