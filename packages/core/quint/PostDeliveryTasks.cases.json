@@ -1,0 +1,73 @@
+{
+	"cases": [
+		{
+			"name": "ambient",
+			"main": "PostDeliveryTasks_ambient",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"ScopedAdmission",
+				"ExplicitModeEnforced",
+				"EffectsRequireInvocation",
+				"FailedDeliveryBlocksEffects",
+				"AbortedBeforeInvocationHasNoEffect",
+				"TaskIndexesAgree",
+				"CapturedSettlementRetained"
+			],
+			"temporal": [
+				"QuarantineIsFinal",
+				"NoAdmissionAfterQuarantine",
+				"RuntimeReturnsEmpty",
+				"RoomReturnsEmpty",
+				"DrainsFinish",
+				"QuarantineRetainsPending"
+			],
+			"maxSteps": 50,
+			"samples": 1000
+		},
+		{
+			"name": "explicit",
+			"main": "PostDeliveryTasks_explicit",
+			"init": "init",
+			"step": "step",
+			"invariants": [
+				"TypeOK",
+				"ScopedAdmission",
+				"ExplicitModeEnforced",
+				"EffectsRequireInvocation",
+				"FailedDeliveryBlocksEffects",
+				"AbortedBeforeInvocationHasNoEffect",
+				"TaskIndexesAgree",
+				"CapturedSettlementRetained"
+			],
+			"temporal": [
+				"QuarantineIsFinal",
+				"NoAdmissionAfterQuarantine",
+				"RuntimeReturnsEmpty",
+				"RoomReturnsEmpty",
+				"DrainsFinish",
+				"QuarantineRetainsPending"
+			],
+			"maxSteps": 50,
+			"samples": 1000
+		}
+	],
+	"sources": [
+		"packages/core/src/services/post-delivery-task-tracker.ts",
+		"packages/core/src/runtime/room-handler-queue.ts"
+	],
+	"implementationTests": [
+		"packages/core/test/post-delivery-task-conformance.test.ts"
+	],
+	"bounds": "Two unique task registrations, two rooms, one live lease identity and stale/wrong probes per room, one delivery boundary and one drain observer per room, one runtime drain. No task ID reuse.",
+	"fairness": "DrainsFinish assumes fair queued callback processing, eventual termination of every invoked callback (including tasks which ignore cancellation), settlement of every delivery, and fair drain-loop scheduling. It does not promise termination for a permanently blocked callback. The equivalent compact liveness formula uses eventual permanent observer quiescence because each bounded observer/boundary starts at most once. DrainsFinishExpanded retains the individual obligations in the model.",
+	"limitations": [
+		"Tracker-specific lease checks are modeled. Queue acquisition/generation ordering is delegated to RoomHandlerQueue.qnt.",
+		"Task effects represent callbacks that use roomDeliverySettlement and honor its boolean. Arbitrary callbacks can ignore that result.",
+		"An already invoked callback can ignore AbortSignal and perform effects after quarantine. The tracker retains it until settlement and refuses runtime reuse.",
+		"Concurrent observers of the same room drain, multiple delivery cycles, callback result values and JS garbage collection are outside these bounds.",
+		"Registration may occur while draining or after an earlier successful drain. Empty-at-return properties apply to the return transition, not forever afterward.",
+		"Conformance checks exercise named real queue/promise traces; they do not establish full bisimulation between arbitrary JavaScript schedules and the finite model."
+	]
+}
