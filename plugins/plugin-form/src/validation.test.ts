@@ -445,6 +445,115 @@ describe("validateField currency numbers", () => {
   });
 });
 
+describe("validateField text constraints on number and date", () => {
+  const numberType = getBuiltinType("number");
+  const dateType = getBuiltinType("date");
+
+  it("applies a whole-number pattern to a number answer", () => {
+    const quantity: FormControl = {
+      key: "quantity",
+      label: "Quantity",
+      type: "number",
+      min: 1,
+      pattern: "^[0-9]+$",
+    };
+    expect(validateField(2.5, quantity, numberType)).toEqual({
+      valid: false,
+      error: "Quantity has invalid format",
+    });
+    expect(validateField("2.5", quantity, numberType).valid).toBe(false);
+    expect(validateField(3, quantity, numberType)).toEqual({ valid: true });
+    // The pattern reads the number, not the typed text: "$1,200" is 1200.
+    expect(validateField("$1,200", quantity, numberType)).toEqual({
+      valid: true,
+    });
+  });
+
+  it("applies minLength and maxLength to a number answer", () => {
+    const year: FormControl = {
+      key: "year",
+      label: "Year",
+      type: "number",
+      minLength: 4,
+      maxLength: 4,
+    };
+    expect(validateField(26, year, numberType)).toEqual({
+      valid: false,
+      error: "Year must be at least 4 characters",
+    });
+    expect(validateField(20265, year, numberType)).toEqual({
+      valid: false,
+      error: "Year must be at most 4 characters",
+    });
+    expect(validateField("2026", year, numberType)).toEqual({ valid: true });
+  });
+
+  it("applies enum to a number answer", () => {
+    const seats: FormControl = {
+      key: "seats",
+      label: "Seats",
+      type: "number",
+      enum: ["2", "4", "8"],
+    };
+    expect(validateField(3, seats, numberType)).toEqual({
+      valid: false,
+      error: "Seats must be one of: 2, 4, 8",
+    });
+    expect(validateField("4", seats, numberType)).toEqual({ valid: true });
+  });
+
+  it("reads a very small or very large number as plain digits", () => {
+    // String() writes 0.0000005 as "5e-7" and 1e21 as "1e+21".
+    const rate: FormControl = {
+      key: "rate",
+      label: "Rate",
+      type: "number",
+      pattern: "^[0-9.]+$",
+      minLength: 6,
+      maxLength: 10,
+    };
+    expect(validateField("0.0000005", rate, numberType)).toEqual({
+      valid: true,
+    });
+    expect(validateField(0.00000015, rate, numberType)).toEqual({
+      valid: true,
+    });
+    expect(validateField("0.0000000001", rate, numberType)).toEqual({
+      valid: false,
+      error: "Rate must be at most 10 characters",
+    });
+    const supply: FormControl = {
+      key: "supply",
+      label: "Supply",
+      type: "number",
+      pattern: "^[0-9]+$",
+    };
+    expect(validateField("1000000000000000000000", supply, numberType)).toEqual(
+      { valid: true },
+    );
+  });
+
+  it("applies a pattern to the calendar day of a date answer", () => {
+    const billingStart: FormControl = {
+      key: "billingStart",
+      label: "Billing start",
+      type: "date",
+      pattern: "-01$",
+    };
+    expect(validateField("2026-02-14", billingStart, dateType)).toEqual({
+      valid: false,
+      error: "Billing start has invalid format",
+    });
+    expect(validateField("2026-03-01", billingStart, dateType)).toEqual({
+      valid: true,
+    });
+    // The pattern reads the calendar day, not the typed text.
+    expect(validateField("March 1, 2026", billingStart, dateType)).toEqual({
+      valid: true,
+    });
+  });
+});
+
 /**
  * Legacy type-handler override vs the built-in type switch (`validateField`).
  *
@@ -552,6 +661,73 @@ describe("legacy type-handler override (validateField)", () => {
     expect(validateField("lots", control, builtinNumber)).toEqual({
       valid: false,
       error: "Qty must be a number",
+    });
+    clearTypeHandlers();
+  });
+
+  it("checks pattern, length and enum on the value the bounds read", () => {
+    const builtinNumber = getBuiltinType("number");
+    const builtinDate = getBuiltinType("date");
+    if (!builtinNumber?.validate || !builtinDate?.validate)
+      throw new Error("built-in number/date control is missing");
+    clearTypeHandlers();
+    registerTypeHandler("number", { validate: () => ({ valid: true }) });
+    registerTypeHandler("date", { validate: () => ({ valid: true }) });
+    const quantity: FormControl = {
+      key: "quantity",
+      label: "Quantity",
+      type: "number",
+      pattern: "^[0-9]+$",
+      maxLength: 4,
+      enum: ["1200", "9000"],
+    };
+    // The typed text and the stored number get the same answer.
+    expect(validateField("$1,200", quantity, builtinNumber)).toEqual({
+      valid: true,
+    });
+    expect(validateField(1200, quantity, builtinNumber)).toEqual({
+      valid: true,
+    });
+    expect(validateField("$12,000", quantity, builtinNumber)).toEqual({
+      valid: false,
+      error: "Quantity must be at most 4 characters",
+    });
+    // parseValue stores 0.00000015 as a number, which String() writes "1.5e-7".
+    const rate: FormControl = {
+      key: "rate",
+      label: "Rate",
+      type: "number",
+      pattern: "^[0-9.]+$",
+    };
+    expect(
+      validateField(
+        parseValue("0.00000015", rate, builtinNumber),
+        rate,
+        builtinNumber,
+      ),
+    ).toEqual({ valid: true });
+    // A value the number grammar cannot read keeps its own text.
+    const amount: FormControl = {
+      key: "amount",
+      label: "Amount",
+      type: "number",
+      pattern: "^lots$",
+    };
+    expect(validateField("lots", amount, builtinNumber)).toEqual({
+      valid: true,
+    });
+    const billingStart: FormControl = {
+      key: "billingStart",
+      label: "Billing start",
+      type: "date",
+      pattern: "-01$",
+    };
+    expect(validateField("March 1, 2026", billingStart, builtinDate)).toEqual({
+      valid: true,
+    });
+    expect(validateField("March 2, 2026", billingStart, builtinDate)).toEqual({
+      valid: false,
+      error: "Billing start has invalid format",
     });
     clearTypeHandlers();
   });

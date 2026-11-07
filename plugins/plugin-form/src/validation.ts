@@ -402,7 +402,29 @@ function validateNumber(
       error: `${control.label || control.key} must be a number`,
     };
   }
-  return checkNumberBounds(numValue, control);
+  const bounds = checkNumberBounds(numValue, control);
+  if (!bounds.valid) return bounds;
+  // Also apply text validation (pattern, length, enum), to the number that
+  // parseValue stores rather than the typed text ("$1,200" is 1200).
+  return validateText(plainNumberText(numValue), control);
+}
+/**
+ * A finite number as plain decimal digits.
+ *
+ * WHY not String(): it switches to exponent notation below 1e-6 and from
+ * 1e21 ("5e-7", "1e+21"), which a digits pattern or a length limit misreads.
+ */
+function plainNumberText(value: number): string {
+  const text = String(value);
+  const exponent = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(text);
+  if (!exponent) return text;
+  const [, sign, lead, fraction = "", power] = exponent;
+  const digits = lead + fraction;
+  // Position of the decimal point within `digits`.
+  const point = 1 + Number(power);
+  return point <= 0
+    ? `${sign}0.${"0".repeat(-point)}${digits}`
+    : `${sign}${digits.padEnd(point, "0")}`;
 }
 /** Min/max for a numeric value (as numbers, not lengths). */
 function checkNumberBounds(
@@ -497,7 +519,14 @@ function validateDate(
       error: `${control.label || control.key} must be a valid date`,
     };
   }
-  return checkDateBounds(new Date(`${iso}T00:00:00.000Z`).getTime(), control);
+  const bounds = checkDateBounds(
+    new Date(`${iso}T00:00:00.000Z`).getTime(),
+    control,
+  );
+  if (!bounds.valid) return bounds;
+  // Also apply text validation (pattern, length, enum), to the calendar day
+  // that parseValue stores rather than the typed text.
+  return validateText(iso, control);
 }
 /**
  * Min/max for a date, compared as timestamps.
@@ -753,7 +782,10 @@ export function parseValue(
  * the range, the allowed options and the file limits. A bound that cannot be
  * compared against the value (a handler-accepted number or date that neither
  * the handler's `parse` nor the built-in parser can read) fails closed rather
- * than passing unchecked.
+ * than passing unchecked. Pattern, length and enum read the same value as the
+ * bounds (a number in plain digits, a date as its calendar day), so typed text
+ * and a stored value get the same answer; a value neither parser can read
+ * keeps its own text.
  */
 function validateFieldConstraints(
   value: JsonValue,
@@ -761,10 +793,11 @@ function validateFieldConstraints(
   handler: TypeHandler | ControlType | undefined,
 ): ValidationResult {
   const hasBounds = control.min !== undefined || control.max !== undefined;
+  let text: JsonValue = value;
   switch (control.type) {
     case "number": {
+      const numValue = readHandlerNumber(value, handler);
       if (hasBounds) {
-        const numValue = readHandlerNumber(value, handler);
         if (numValue === undefined) {
           return {
             valid: false,
@@ -774,11 +807,12 @@ function validateFieldConstraints(
         const bounds = checkNumberBounds(numValue, control);
         if (!bounds.valid) return bounds;
       }
+      if (numValue !== undefined) text = plainNumberText(numValue);
       break;
     }
     case "date": {
+      const iso = readHandlerDate(value, handler);
       if (hasBounds) {
-        const iso = readHandlerDate(value, handler);
         if (iso === undefined) {
           return {
             valid: false,
@@ -791,6 +825,7 @@ function validateFieldConstraints(
         );
         if (!bounds.valid) return bounds;
       }
+      if (iso !== undefined) text = iso;
       break;
     }
     case "select": {
@@ -808,7 +843,7 @@ function validateFieldConstraints(
     default:
       break;
   }
-  return validateText(value, control);
+  return validateText(text, control);
 }
 /** Read a numeric value through the owning handler's parser, then the built-in one. */
 function readHandlerNumber(
