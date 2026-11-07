@@ -17,7 +17,9 @@ import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
+// Include routing and cold activation of the organization gate, not only its
+// storage read. Keep the check bounded and require an affirmative gate reply.
+const CREDENTIAL_CHECK_TIMEOUT_MS = 5_000;
 // Lifecycle writes need time to reach the object and confirm durable
 // state; request-time credential checks retain their shorter failure budget.
 const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;

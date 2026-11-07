@@ -3,10 +3,7 @@
 import { readStewardSessionToken } from "@elizaos/cloud-shared/auth";
 import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { callMapsRequestAllowance } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
-import {
-  hasInferenceRevocationBoundary,
-  type InferenceCredentialCheck,
-} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import type { MapsOperation } from "@elizaos/cloud-shared/lib/services/maps/contract";
 import type {
   MapsAllowanceRequest,
@@ -63,12 +60,8 @@ export async function admitMapsRequest(
   caller: MapsCaller,
   operation: MapsOperation,
 ): Promise<MapsCompletion> {
-  if (
-    !hasInferenceRevocationBoundary(
-      c.env as unknown as Record<string, unknown>,
-    ) ||
-    !caller.credential
-  )
+  const namespace = c.env.INFERENCE_ADMISSION_GATES;
+  if (!namespace || !caller.credential)
     throw new MapsAdmissionError(
       503,
       "maps_allowance_unconfigured",
@@ -97,9 +90,10 @@ export async function admitMapsRequest(
   const request = await withOrganizationPolicyReadAdmission(
     caller.organization_id,
     undefined,
-    async (policy) => {
+    async (policy, transaction) => {
       const summary = await readOrganizationEntitlementSummary(
         caller.organization_id,
+        { transaction },
       );
       if (
         !policy.subscriptionFunded ||
@@ -140,7 +134,7 @@ export async function admitMapsRequest(
       };
       let response: Response;
       try {
-        response = await callMapsRequestAllowance(admission);
+        response = await callMapsRequestAllowance(namespace, admission);
       } catch {
         // error-policy:J1 acknowledgement loss is unknown and must never trigger automatic replay.
         throw new MapsAdmissionError(
@@ -184,7 +178,11 @@ export async function admitMapsRequest(
   );
   return async (outcome) => {
     if (!request) return;
-    const response = await callMapsRequestAllowance(request, outcome);
+    const response = await callMapsRequestAllowance(
+      namespace,
+      request,
+      outcome,
+    );
     if (!response.ok) throw new Error("Maps usage outcome was not recorded");
   };
 }
