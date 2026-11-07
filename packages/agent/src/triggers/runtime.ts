@@ -42,6 +42,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { triggerEventMatches } from "./event-kinds.ts";
 import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
@@ -755,7 +756,7 @@ export async function executeTriggerTask(
   if (
     options.source === "event" &&
     trigger.triggerType === "event" &&
-    trigger.eventKind !== options.event?.kind &&
+    !(options.event && triggerEventMatches(trigger.eventKind, options.event)) &&
     !options.force
   ) {
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());

@@ -197,6 +197,11 @@ export interface TriggerRouteContext extends RouteRequestContext {
   readTriggerConfig: (task: Task) => TriggerConfig | null;
   readTriggerRuns: (task: Task) => CoreTriggerRunRecord[];
   taskToTriggerSummary: (task: Task) => TriggerSummary | null;
+  /** Matches a stored event kind (form preset or bus kind) against a bus event. */
+  triggerEventMatches: (
+    triggerEventKind: string | undefined,
+    event: { kind: string; payload?: unknown }
+  ) => boolean;
   triggersFeatureEnabled: (runtime: IAgentRuntime) => boolean;
   buildTriggerConfig: (params: {
     draft: NormalizedTriggerDraft;
@@ -291,6 +296,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     getTriggerLimit,
     listTriggerTasks,
     readTriggerConfig,
+    triggerEventMatches,
     readTriggerRuns,
     taskToTriggerSummary,
     triggersFeatureEnabled,
@@ -561,7 +567,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return (
         trigger?.enabled === true &&
         trigger.triggerType === 'event' &&
-        trigger.eventKind === eventKind
+        triggerEventMatches(trigger.eventKind, { kind: eventKind, payload })
       );
     });
     const results: Array<{

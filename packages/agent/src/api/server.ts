@@ -136,6 +136,7 @@ import {
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
+import { triggerEventMatches } from "../triggers/event-kinds.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -2282,6 +2283,7 @@ async function handleRequestForViewClient(
       readTriggerConfig,
       readTriggerRuns,
       taskToTriggerSummary,
+      triggerEventMatches,
       triggersFeatureEnabled,
       buildTriggerConfig,
       buildTriggerMetadata,
