@@ -1608,10 +1608,27 @@ function findJsonValueEnd(raw: string): number | null {
 		return end === null ? null : leadingWhitespace + end;
 	}
 	for (const literal of ["true", "false", "null"]) {
-		if (value === literal.slice(0, value.length)) {
-			return value.length === literal.length
-				? leadingWhitespace + literal.length
-				: null;
+		if (value.startsWith(literal)) {
+			// A literal value ends at the literal itself: the next character
+			// must be a JSON delimiter (or the end of the input so far).
+			// Without this check a literal followed by `, "next": ...` never
+			// terminated, so the ordered drain stalled on the span and the
+			// flush discarded every later field.
+			const next = value[literal.length];
+			if (
+				next === undefined ||
+				next === "," ||
+				next === "}" ||
+				next === "]" ||
+				next === ":" ||
+				/\s/.test(next)
+			) {
+				return leadingWhitespace + literal.length;
+			}
+			return null;
+		}
+		if (literal.startsWith(value)) {
+			return null;
 		}
 	}
 	const numberMatch = value.match(
