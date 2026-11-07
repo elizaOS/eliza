@@ -55,7 +55,7 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
   {
     name: "to",
     description:
-      "Recipient identifiers, contact names, handles, channels, rooms, or recipient objects for a new outbound draft.",
+      "Recipient identifiers, contact names, handles, channels, rooms, or recipient objects for a new outbound draft. A discord draft is posted in channelId; `to` does not pick a person there.",
     required: false,
     schema: {
       type: "array" as const,
@@ -217,7 +217,10 @@ export async function outboundDraftOptionsFromMessage(
 }
 
 function previewOutboundDraft(
-  record: Pick<DraftRecord, "source" | "to" | "body" | "subject" | "worldId">,
+  record: Pick<
+    DraftRecord,
+    "source" | "to" | "body" | "subject" | "worldId" | "channelId"
+  >,
 ): string {
   const recipients = record.to
     .map((recipient) =>
@@ -227,7 +230,10 @@ function previewOutboundDraft(
     )
     .join(", ");
   const subject = record.subject ? `Subject: ${record.subject}\n` : "";
-  return `[${record.source}${record.worldId ? ` account ${record.worldId}` : ""}] To: ${recipients}\n${subject}${record.body}`;
+  // The adapter delivers a channel draft to channelId, whoever `to` names.
+  // The owner confirms this text, so the destination must be in it.
+  const channel = record.channelId ? ` in channel ${record.channelId}` : "";
+  return `[${record.source}${record.worldId ? ` account ${record.worldId}` : ""}] To: ${recipients}${channel}\n${subject}${record.body}`;
 }
 
 /**
