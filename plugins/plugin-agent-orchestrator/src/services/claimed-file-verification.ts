@@ -139,10 +139,13 @@ export function extractWriteLedger(events: ToolLedgerEvent[]): WriteLedger {
     const toolCall = isRecord(event.data.toolCall)
       ? event.data.toolCall
       : event.data;
-    if (!isMutatingCall(toolCall)) continue;
+    const callId = str(toolCall.id);
+    // A terminal update often carries only the id and the status (ACP sends
+    // the changed fields only), so it folds into a call already seen as a write.
+    if (!isMutatingCall(toolCall) && !(callId && byCall.has(callId))) continue;
     // A call without an id cannot be folded across updates; give it a unique
     // slot so its own status still classifies its paths.
-    const id = str(toolCall.id) ?? `__anonymous_${anonymousIndex++}`;
+    const id = callId ?? `__anonymous_${anonymousIndex++}`;
     const entry = byCall.get(id) ?? { paths: new Set<string>() };
     for (const path of collectCallPaths(toolCall)) entry.paths.add(path);
     const status = (str(toolCall.status) ?? "").toLowerCase();
