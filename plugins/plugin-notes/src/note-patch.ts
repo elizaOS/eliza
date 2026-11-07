@@ -32,6 +32,8 @@ export function applyNotePatch(
   existing: StickyNote,
   patch: UpdateNoteInput,
   updatedAt: string,
+  // Checks the edited note; a carrier for another contract passes its own.
+  parse: (note: StickyNote) => StickyNote = parseStickyNote,
 ): StickyNote {
   const updated: StickyNote = { ...existing, updatedAt };
   // A plain note keeps its list in text, so one new item is an exact body
@@ -47,7 +49,7 @@ export function applyNotePatch(
       : patch.textEdit;
   if (patch.authoredEdit && !textEdit) {
     try {
-      return parseStickyNote({
+      return parse({
         ...updated,
         format: editAuthoredNoteFormat(existing.format, patch.authoredEdit),
       });
@@ -101,7 +103,7 @@ export function applyNotePatch(
       // A callback keeps $&, $1 and similar text literal.
       replacement = original.replace(oldText, () => newText);
     }
-    const validated = parseStickyNote({ ...updated, [field]: replacement });
+    const validated = parse({ ...updated, [field]: replacement });
     if (validated[field] !== replacement) {
       throw new ElizaError(
         "The exact edit would require whitespace normalization; nothing changed.",

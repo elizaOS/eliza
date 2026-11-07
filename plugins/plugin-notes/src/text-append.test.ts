@@ -5,11 +5,14 @@ import path from "node:path";
 import {
   type IAgentRuntime,
   type Memory,
+  ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { createRealTestRuntime } from "@elizaos/testing/runtime";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { boundNotesRequest } from "./__tests__/helpers/bound-notes-request.ts";
 import { notesAction } from "./action.js";
+import { notesFields } from "./client/notes-contract.js";
 import { inferSelectedNotesUpdate } from "./native-note-update.js";
 import { notesPlugin } from "./plugin.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
@@ -307,4 +310,88 @@ describe("lossless Notes append", () => {
     });
     expect(calls).toBe(1);
   });
+});
+
+describe("selected native note edits within the native contract bounds", () => {
+  let real: Awaited<ReturnType<typeof createRealTestRuntime>>;
+  let reply = "";
+  beforeAll(async () => {
+    real = await createRealTestRuntime({ withLLM: false });
+    real.runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => reply,
+      "notes-native-bounds-test",
+    );
+  }, 120_000);
+  afterAll(async () => {
+    await real?.cleanup();
+  });
+  const plan = (fields: { title: string; body: string }, textEdit: unknown) => {
+    reply = JSON.stringify({
+      requiresInput: false,
+      clarification: null,
+      changes: [],
+      textEdit,
+    });
+    return runWithTrajectoryContext(
+      { trajectoryStepId: "notes-native-bounds-test" },
+      () =>
+        inferSelectedNotesUpdate({
+          runtime: real.runtime,
+          message: {
+            content: { text: "Add it to my Packing note." },
+          } as Memory,
+          // The device read result passed the native contract (256 / 32,000).
+          fields: notesFields(fields),
+          signal: new AbortController().signal,
+        }),
+    );
+  };
+  const bodyLine = { action: "append", field: "body", text: "\nBring water" };
+
+  it.each([
+    [
+      "a 21,000-character body",
+      { title: "Packing", body: "Pack a jacket.\n".repeat(1_400) },
+      bodyLine,
+      "\nBring water",
+    ],
+    [
+      "a 21,000-character list",
+      { title: "Packing", body: "- socks\n".repeat(2_625) },
+      { action: "append", field: "item", text: "water" },
+      "- water",
+    ],
+    [
+      "a 250-character title",
+      { title: "T".repeat(250), body: "Pack a jacket." },
+      bodyLine,
+      "\nBring water",
+    ],
+  ])("edits a device note with %s", async (_name, fields, textEdit, suffix) => {
+    await expect(plan(fields, textEdit)).resolves.toMatchObject({
+      fields: { title: fields.title, body: fields.body + suffix },
+    });
+  });
+
+  it.each([
+    ["body", { title: "Packing", body: "x".repeat(31_995) }, bodyLine],
+    [
+      "title",
+      { title: `Packing ${"T".repeat(240)}`, body: "Pack a jacket." },
+      {
+        action: "replace",
+        field: "title",
+        oldText: "Packing",
+        newText: "Packing list for the long weekend",
+      },
+    ],
+  ])(
+    "refuses an edit past the native %s bound with a typed error",
+    async (_name, fields, textEdit) => {
+      await expect(plan(fields, textEdit)).rejects.toMatchObject({
+        code: "NOTES_VALIDATION_FAILED",
+      });
+    },
+  );
 });

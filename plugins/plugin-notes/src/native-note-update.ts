@@ -1,6 +1,7 @@
 /** Native adaptation of the canonical Notes patch contract. No store is opened. */
 import {
   assertActiveTrajectoryForLlmCall,
+  ElizaError,
   extractUserText,
   type GenerateTextParams,
   type IAgentRuntime,
@@ -8,8 +9,10 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { notesFields } from "./client/notes-contract.js";
 import { applyNotePatch } from "./note-patch.js";
 import {
   noteTextEditSchema,
@@ -42,6 +45,31 @@ const patchSchema: NonNullable<GenerateTextParams["responseSchema"]> = {
     },
   },
 };
+/** The canonical note check with the native contract's bounds: a device note
+ * can hold a 256-character title and a 32,000-character body (notesFields),
+ * more than the 240 / 20,001 characters the Notes store keeps. */
+function parseDeviceNote(note: StickyNote): StickyNote {
+  const { title, body } = projectNoteForModel(note);
+  try {
+    notesFields({ title, body });
+  } catch (cause) {
+    throw new ElizaError("Note text must fit the native Notes contract.", {
+      code: "NOTES_VALIDATION_FAILED",
+      cause,
+      severity: "ephemeral",
+    });
+  }
+  if (!(title + body).trim())
+    throw new ElizaError("Note content must not be empty.", {
+      code: "NOTES_VALIDATION_FAILED",
+      severity: "ephemeral",
+    });
+  return {
+    ...note,
+    title: toWellFormedUnicode(note.title),
+    body: toWellFormedUnicode(note.body),
+  };
+}
 export async function inferSelectedNotesUpdate(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -132,7 +160,9 @@ export async function inferSelectedNotesUpdate(args: {
     createdAt: epoch,
     updatedAt: epoch,
   };
-  const next = projectNoteForModel(applyNotePatch(carrier, patch, epoch));
+  const next = projectNoteForModel(
+    applyNotePatch(carrier, patch, epoch, parseDeviceNote),
+  );
   const fields = { title: next.title, body: next.body };
   if (fields.title === args.fields.title && fields.body === args.fields.body)
     return {
