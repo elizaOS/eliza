@@ -73,11 +73,16 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
     from?: number;
     to?: number;
   }): Promise<Result & { entries?: StorageEntry[] }>;
+  storageReviewedIdentities?(input: {
+    paths: string[];
+    volume?: string;
+  }): Promise<Result & { reviewed?: string[] }>;
   storageTransfer(input: {
     paths: string[];
     dest: string;
     copy: boolean;
     volume?: string;
+    reviewed?: string[];
   }): Promise<Result & { outcomes?: Outcome[] }>;
   storageRename(input: {
     path: string;
@@ -92,6 +97,7 @@ export type FilesStoragePort<Selection extends FilesSelection> = {
   storageTrash(input: {
     paths: string[];
     volume?: string;
+    reviewed?: string[];
   }): Promise<Result & { outcomes?: Outcome[] }>;
   storageTrashList(input?: {
     volume?: string;
@@ -827,8 +833,25 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     repaint();
     return filterRows.length;
   }
+  const reviewingPrimary = () =>
+    api?.isActive?.() &&
+    !(place.kind === "folder" && place.volume && place.volume !== "primary");
   const runner: FilesAgentRunner = {
-    async run(op: FilesAgentOperation) {
+    async reviewedIdentities(paths, signal) {
+      signal.throwIfAborted();
+      if (!reviewingPrimary() || !storage.storageReviewedIdentities)
+        throw Error("Open Files on primary storage to review these items");
+      const result = await storage.storageReviewedIdentities({
+        paths,
+        volume: "primary",
+      });
+      signal.throwIfAborted();
+      if (!reviewingPrimary() || result.status !== "ready" || !result.reviewed)
+        throw Error("Files changed. Review them again.");
+      return result.reviewed;
+    },
+    async run(op: FilesAgentOperation, signal) {
+      signal.throwIfAborted();
       if (!api)
         return {
           status: "failed",
@@ -898,14 +921,25 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
               summary: value.message || "The folder was not created.",
             };
       }
+      signal.throwIfAborted();
+      if (!reviewingPrimary() || !op.reviewed)
+        return {
+          status: "failed",
+          summary: "Review these files again. Nothing changed.",
+        };
+      const selection = {
+        paths: op.paths,
+        reviewed: op.reviewed,
+        volume: "primary",
+      };
       const value =
         op.type === "files_move"
           ? await storage.storageTransfer({
-              paths: op.paths,
+              ...selection,
               dest: op.dest,
               copy: false,
             })
-          : await storage.storageTrash({ paths: op.paths });
+          : await storage.storageTrash(selection);
       void reload();
       if (value.status !== "ready")
         return {

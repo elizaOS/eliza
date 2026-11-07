@@ -127,6 +127,17 @@ import {
   validateLibraryResult,
 } from "./photo-library-contract.ts";
 import {
+  describeFilesOperation,
+  FILES_CAPABILITY,
+  FILES_DIRECT_TYPES,
+  type FilesAgentOperation,
+  type FilesIdentity,
+  filesContextAllowed,
+  filesNeedsIdentity,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   isReminderOperation,
   type ReminderOperation,
   type ReminderResult,
@@ -223,6 +234,7 @@ export type DeviceOperation =
   | ClockHandoffOperation
   | MapsOperation
   | LibraryAgentOperation
+  | FilesAgentOperation
   | ReminderOperation
   | NotesOperation
   | NativeNotesQueryOperation
@@ -494,6 +506,7 @@ export function validateDeviceOperation(
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
   if (isLibraryOperation(p)) return validateLibraryOperation(p);
+  if (isFilesOperation(p)) return validateFilesOperation(p);
   if (isReminderOperation(p)) return validateReminderOperation(p);
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
@@ -774,6 +787,12 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     assertClockHandoffTimeZone(operation, context.timeZone);
   if (isMapsOperation(operation)) assertMapsContext(operation, context, ports);
   if (isLibraryOperation(operation)) assertLibraryContext(context);
+  if (isFilesOperation(operation) && !filesContextAllowed(operation, context))
+    throw new ContextNotice(
+      context.sensitive
+        ? "Unlock the phone to review this action."
+        : "Open Files to review this action.",
+    );
   if (isReminderOperation(operation)) assertReminderContext(operation, context);
   if (isNativeNotesQuery(operation)) assertNotesQueryContext(context);
   if (isNotesOperation(operation)) assertNotesContext(operation, context);
@@ -1022,6 +1041,15 @@ export interface DeviceActionCoordinatorPorts<
   reminderTimingV2?: boolean;
   /** The agent negotiated reviewed reminder creation. */
   reminderCreate?: boolean;
+  /**
+   * Reads each path's identity (size, modified time) as Files sees it now, in
+   * order; rejects when a path is missing. A Files move or trash is reviewable
+   * only with it, and carries it so the phone acts only on the reviewed files.
+   */
+  filesIdentity?(
+    paths: string[],
+    signal: AbortSignal,
+  ): Promise<FilesIdentity[]>;
   profile: DeviceActionClientProfile<C, R>;
 }
 type ExecutionResult = DeviceExecutionResult & {
@@ -1038,6 +1066,10 @@ export class DeviceActionCoordinator<
   readonly session: DeviceClientSession;
   readonly credential: DeviceCredential;
   readonly scope: string;
+  private readonly filesReviews = new Map<
+    string,
+    { digest: string; identities: FilesIdentity[] }
+  >();
   private proposals = new Map<
     string,
     {
@@ -1232,6 +1264,8 @@ export class DeviceActionCoordinator<
       throw Error("Notes discovery was not negotiated with this agent");
     if (isLibraryOperation(op) && !this.capability(PHOTO_LIBRARY_CAPABILITY))
       throw Error("Device library access was not negotiated with this agent");
+    if (isFilesOperation(op) && !this.capability(FILES_CAPABILITY))
+      throw Error("Files access was not negotiated with this agent");
     if (
       isForegroundReviewOperation(op) &&
       (!foregroundReviewOperationAvailable(op, this.credential.capabilities) ||
@@ -1407,6 +1441,7 @@ export class DeviceActionCoordinator<
       };
     if (isLibraryOperation(op))
       return { ...base, ...describeLibraryOperation(op, this.profile.appName) };
+    if (isFilesOperation(op)) return { ...base, ...describeFilesOperation(op) };
     const notesDestination =
       (op.type === "notes_delete" || op.type === "notes_update") &&
       !context.sensitive &&
@@ -1477,6 +1512,8 @@ export class DeviceActionCoordinator<
     }
     this.proposals.clear();
     const pendingIds = new Set(valid.map((proposal) => proposal.id));
+    for (const id of this.filesReviews.keys())
+      if (!pendingIds.has(id)) this.filesReviews.delete(id);
     for (const id of this.browserPolicy.keys())
       if (!pendingIds.has(id)) this.browserPolicy.delete(id);
     const items: PendingReviewItem[] = [];
@@ -1516,8 +1553,58 @@ export class DeviceActionCoordinator<
         });
         continue;
       }
+      // A Files move or trash binds the identity of each file as the card shows
+      // it; whatever identity the agent sent is replaced.
+      let reviewed = proposal;
+      if (
+        isFilesOperation(proposal.operation) &&
+        filesNeedsIdentity(proposal.operation)
+      ) {
+        const op = proposal.operation;
+        let operation: FilesAgentOperation | undefined;
+        try {
+          const before = this.filesReviews.get(proposal.id);
+          const identities =
+            before?.identities ??
+            (await this.ports.filesIdentity?.(op.paths, signal));
+          signal.throwIfAborted();
+          // Once a card has been shown, a refresh must not bind its approval to replacement files.
+          const recorded = this.filesReviews.get(proposal.id);
+          if (
+            identities &&
+            (!recorded || recorded.digest === proposal.digest)
+          ) {
+            operation = validateFilesOperation({
+              ...op,
+              reviewed: recorded?.identities ?? identities,
+            });
+            if (
+              !recorded &&
+              isFilesOperation(operation) &&
+              filesNeedsIdentity(operation) &&
+              operation.reviewed
+            )
+              this.filesReviews.set(proposal.id, {
+                digest: proposal.digest,
+                identities: operation.reviewed,
+              });
+          }
+        } catch {
+          operation = undefined;
+        }
+        signal.throwIfAborted();
+        if (!operation) {
+          items.push({
+            proposalId: proposal.id,
+            proposal: null,
+            notice: `${card.title}: These files are not in Files.`,
+          });
+          continue;
+        }
+        reviewed = { ...proposal, operation };
+      }
       this.proposals.set(proposal.id, {
-        proposal,
+        proposal: reviewed,
         context: structuredClone(context),
         requestKey: browserRequestKey,
       });
@@ -1576,6 +1663,7 @@ export class DeviceActionCoordinator<
       "browser_navigate",
       "camera_capture_photo",
       "photo_library_select",
+      ...FILES_DIRECT_TYPES,
     ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
@@ -1915,6 +2003,12 @@ export class DeviceActionCoordinator<
       assertClockHandoffTimeZone(reviewed.proposal.operation, context.timeZone);
     if (isNativeNotesQuery(reviewed.proposal.operation))
       assertNotesQueryContext(context);
+    if (
+      isFilesOperation(reviewed.proposal.operation) &&
+      filesNeedsIdentity(reviewed.proposal.operation) &&
+      !reviewed.proposal.operation.reviewed
+    )
+      throw Error("Review these files again before making changes");
     const p = reviewed.proposal,
       // Minted before `busy` is taken: a context without randomUUID refuses
       // this approval instead of leaving the coordinator busy for good.

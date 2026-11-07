@@ -87,6 +87,7 @@ import {
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
+import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
 import {
   DeviceActionError,
   type DeviceActionPayload,
@@ -2053,6 +2054,7 @@ export class DeviceActionService {
         "clock_alarm",
         "create_note",
         "maps_read_selected",
+        ...FILES_OPERATION_TYPES,
         "notes_read_selected",
         "notes_query",
         "notes_update",

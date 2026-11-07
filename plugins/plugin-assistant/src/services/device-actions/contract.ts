@@ -54,6 +54,12 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
+  FILES_CAPABILITY,
+  type FilesAgentOperation,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
   type WorkflowDeviceBinding,
@@ -93,6 +99,7 @@ export type DeviceOperation =
   | ReminderCreateOperation
   | ClockOperation
   | MapsOperation
+  | FilesAgentOperation
   | ReminderOperation
   | NotesOperation
   | NativeNotesQueryOperation
@@ -121,6 +128,8 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
     return capabilities?.includes(CALENDAR_NEXT_CAPABILITY) === true;
+  if (isFilesOperation({ type }))
+    return capabilities?.includes(FILES_CAPABILITY) === true;
   if (isForegroundReviewType(type))
     return foregroundReviewCapabilityAvailable(type, capabilities);
   if (type === "notes_query")
@@ -281,6 +290,19 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError(
           "Invalid dial operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
+      }
+    case "files_filter":
+    case "files_open":
+    case "files_share":
+    case "files_move":
+    case "files_trash":
+    case "files_folder_create":
+      try {
+        return validateFilesOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Files operation: ${(error as Error).message}. Use paths on Internal storage such as "Download/lease.pdf".`,
         );
       }
     case "post_notification":

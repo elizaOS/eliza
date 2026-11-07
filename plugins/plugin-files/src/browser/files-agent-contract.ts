@@ -8,12 +8,19 @@ import {
 } from "./storage-model.ts";
 
 /** Read-only Files view actions and the host-reviewed file operations. Paths are volume-relative. */
+export type FilesIdentity = string;
+
 export type FilesAgentOperation =
   | ({ type: "files_filter" } & FilesFilter)
   | { type: "files_open"; path: string }
   | { type: "files_share"; paths: string[] }
-  | { type: "files_move"; paths: string[]; dest: string }
-  | { type: "files_trash"; paths: string[] }
+  | {
+      type: "files_move";
+      paths: string[];
+      dest: string;
+      reviewed?: FilesIdentity[];
+    }
+  | { type: "files_trash"; paths: string[]; reviewed?: FilesIdentity[] }
   | { type: "files_folder_create"; parent: string; name: string };
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES: readonly string[] = [
@@ -51,6 +58,18 @@ function paths(value: unknown): string[] {
   if (new Set(out).size !== out.length) throw Error("Duplicate files");
   return out;
 }
+function reviewedIdentities(value: unknown, count: number): FilesIdentity[] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== count ||
+    value.some(
+      (token) =>
+        typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token),
+    )
+  )
+    throw Error("Invalid reviewed files");
+  return value.slice();
+}
 export function validateFilesOperation(value: unknown): FilesAgentOperation {
   const op = bag(value);
   const allowed = (keys: string[]) => {
@@ -69,16 +88,29 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
     case "files_share":
       allowed(["type", "paths"]);
       return { type: "files_share", paths: paths(op.paths) };
-    case "files_trash":
-      allowed(["type", "paths"]);
-      return { type: "files_trash", paths: paths(op.paths) };
-    case "files_move":
-      allowed(["type", "paths", "dest"]);
+    case "files_trash": {
+      allowed(["type", "paths", "reviewed"]);
+      const selected = paths(op.paths);
+      return {
+        type: "files_trash",
+        paths: selected,
+        ...(op.reviewed === undefined
+          ? {}
+          : { reviewed: reviewedIdentities(op.reviewed, selected.length) }),
+      };
+    }
+    case "files_move": {
+      allowed(["type", "paths", "dest", "reviewed"]);
+      const selected = paths(op.paths);
       return {
         type: "files_move",
-        paths: paths(op.paths),
+        paths: selected,
         dest: validPath(op.dest, true),
+        ...(op.reviewed === undefined
+          ? {}
+          : { reviewed: reviewedIdentities(op.reviewed, selected.length) }),
       };
+    }
     case "files_folder_create": {
       allowed(["type", "parent", "name"]);
       const name = validName(op.name);
@@ -153,6 +185,10 @@ export function filesContextAllowed(
 
 /** The Files view registers the runner while it is installed (agent-adapter calls it). */
 export type FilesAgentRunner = {
+  reviewedIdentities(
+    paths: string[],
+    signal: AbortSignal,
+  ): Promise<FilesIdentity[]>;
   run(
     op: FilesAgentOperation,
     signal: AbortSignal,

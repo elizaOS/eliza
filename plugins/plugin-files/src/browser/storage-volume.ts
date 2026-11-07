@@ -313,10 +313,48 @@ export class BrowserStorageVolume {
         .catch(() => {});
     }
   }
+  private async reviewedIdentity(row: Row): Promise<string> {
+    const bytes = new TextEncoder().encode(
+      JSON.stringify([row.id, row.revision]),
+    );
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+  async reviewedIdentities(paths: unknown): Promise<string[]> {
+    if (!Array.isArray(paths) || !paths.length || paths.length > BATCH_MAX)
+      throw Error("Invalid selection");
+    return Promise.all(
+      paths.map(async (path) => {
+        const row = await this.entry(validPath(path));
+        if (!row) throw new Missing();
+        return this.reviewedIdentity(row);
+      }),
+    );
+  }
+  private reviewTokens(
+    paths: unknown[],
+    reviewed: unknown,
+  ): string[] | undefined {
+    if (reviewed === undefined) return undefined;
+    if (
+      !Array.isArray(reviewed) ||
+      reviewed.length !== paths.length ||
+      reviewed.some(
+        (token) =>
+          typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token),
+      )
+    )
+      throw Error("Invalid reviewed files");
+    return reviewed;
+  }
   async transfer(
     paths: unknown,
     dest: unknown,
     copy: boolean,
+    reviewed?: unknown,
   ): Promise<{ outcomes: { path: string; status: string; to?: string }[] }> {
     if (
       !Array.isArray(paths) ||
@@ -325,10 +363,11 @@ export class BrowserStorageVolume {
       new Set(paths).size !== paths.length
     )
       throw Error("Invalid selection");
+    const tokens = this.reviewTokens(paths, reviewed);
     const target = validPath(dest, true),
       targetId = await this.folderId(target),
       outcomes = [];
-    for (const raw of paths) {
+    for (const [index, raw] of paths.entries()) {
       let path: string;
       try {
         path = validPath(raw);
@@ -339,6 +378,10 @@ export class BrowserStorageVolume {
       const row = await this.entry(path);
       if (!row) {
         outcomes.push({ path, status: "missing" });
+        continue;
+      }
+      if (tokens && tokens[index] !== (await this.reviewedIdentity(row))) {
+        outcomes.push({ path, status: "changed" });
         continue;
       }
       if (!copy && parentOf(path) === target) {
@@ -400,6 +443,7 @@ export class BrowserStorageVolume {
   /** The origin is recorded before anything moves, so an interrupted trash never loses the way back. */
   async trash(
     paths: unknown,
+    reviewed?: unknown,
   ): Promise<{ outcomes: { path: string; status: string; to?: string }[] }> {
     if (
       !Array.isArray(paths) ||
@@ -408,9 +452,10 @@ export class BrowserStorageVolume {
       new Set(paths).size !== paths.length
     )
       throw Error("Invalid selection");
-    const trashId = await this.trashId(),
-      outcomes = [];
-    for (const raw of paths) {
+    const tokens = this.reviewTokens(paths, reviewed);
+    let trashId = tokens ? undefined : await this.trashId();
+    const outcomes = [];
+    for (const [index, raw] of paths.entries()) {
       let path: string;
       try {
         path = validPath(raw);
@@ -423,6 +468,11 @@ export class BrowserStorageVolume {
         outcomes.push({ path, status: "missing" });
         continue;
       }
+      if (tokens && tokens[index] !== (await this.reviewedIdentity(row))) {
+        outcomes.push({ path, status: "changed" });
+        continue;
+      }
+      trashId ??= await this.trashId();
       const id = crypto.randomUUID(),
         records = this.records();
       records[id] = {
@@ -650,6 +700,11 @@ export class BrowserStorageVolume {
           return { status: "ready", ...(await this.category(input.category)) };
         case "storageQuery":
           return { status: "ready", ...(await this.query()) };
+        case "storageReviewedIdentities":
+          return {
+            status: "ready",
+            reviewed: await this.reviewedIdentities(input.paths),
+          };
         case "storageTransfer":
           return {
             status: "ready",
@@ -657,6 +712,7 @@ export class BrowserStorageVolume {
               input.paths,
               input.dest ?? "",
               input.copy === true,
+              input.reviewed,
             )),
           };
         case "storageRename":
@@ -670,7 +726,10 @@ export class BrowserStorageVolume {
             ...(await this.createFolder(input.parent ?? "", input.name)),
           };
         case "storageTrash":
-          return { status: "ready", ...(await this.trash(input.paths)) };
+          return {
+            status: "ready",
+            ...(await this.trash(input.paths, input.reviewed)),
+          };
         case "storageTrashList":
           return { status: "ready", ...(await this.trashList()) };
         case "storageRestore":
