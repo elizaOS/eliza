@@ -7,6 +7,7 @@ import type {
   ConnectorAccount,
   ConnectorAccountPatch,
   IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -34,6 +35,7 @@ interface TestRuntimeShape {
   character?: unknown;
   getSetting?: (key: string) => RuntimeSetting;
   getService?: (serviceType: string) => unknown;
+  reportError?: (...args: unknown[]) => void;
 }
 
 function toRuntimeSetting(value: unknown): RuntimeSetting {
@@ -272,6 +274,7 @@ describe("GitHub account resolution", () => {
     const accounts: ConnectorAccount[] = [];
     const runtime = runtimeWithConnectorStorage({
       accounts,
+      settings: { ELIZA_ADMIN_ENTITY_ID: "owner-entity" },
       vaultValues: new Map([
         [
           vaultRef,
@@ -291,9 +294,15 @@ describe("GitHub account resolution", () => {
         : serviceType === "connector_account_storage" || serviceType === "vault"
           ? originalGetService(serviceType)
           : null) as typeof runtime.getService;
-    const { buildResolvedClient } = await import("./action-helpers");
+    const { buildResolvedClient, OWNER_GITHUB_ACCOUNT_REFUSAL } = await import(
+      "./action-helpers"
+    );
+    const owner = {
+      entityId: "owner-entity",
+      content: { text: "" },
+    } as unknown as Memory;
     expect(
-      "error" in (await buildResolvedClient(runtime, { role: "user" })),
+      "error" in (await buildResolvedClient(runtime, owner, { role: "user" })),
     ).toBe(true);
 
     // OAuth completes in the connector manager while the service runs.
@@ -308,17 +317,29 @@ describe("GitHub account resolution", () => {
     );
     const connected = await buildResolvedClient(
       runtime,
+      owner,
       { role: "user" },
       {
         refresh: "on-miss",
       },
     );
     expect("error" in connected ? null : connected.client).not.toBeNull();
+    // The same connected owner account is refused for a sender who is not the owner.
+    const member = {
+      entityId: "member-entity",
+      content: { text: "", source: "api" },
+    } as unknown as Memory;
+    expect(
+      await buildResolvedClient(runtime, member, {
+        accountId: "acc_late",
+        role: "agent",
+      }),
+    ).toEqual({ error: OWNER_GITHUB_ACCOUNT_REFUSAL });
 
     // Disconnect removes the account row.
     accounts.length = 0;
     expect(
-      "error" in (await buildResolvedClient(runtime, { role: "user" })),
+      "error" in (await buildResolvedClient(runtime, owner, { role: "user" })),
     ).toBe(true);
   });
 
@@ -696,6 +717,7 @@ function runtimeWithConnectorStorage(options: {
     agentId: "agent-1",
     character: {},
     getSetting: vi.fn((key: string) => options.settings?.[key] ?? null),
+    reportError: vi.fn(),
     getService: (serviceType: string) => {
       if (serviceType === "connector_account_storage") return storage;
       if (serviceType === "vault") {

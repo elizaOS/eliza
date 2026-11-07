@@ -10,11 +10,21 @@ import type { GitHubOctokitClient } from "../types.js";
 import { issueOpAction } from "./issue-op.js";
 import { prOpAction } from "./pr-op.js";
 
+const OWNER_ENTITY_ID = "00000000-0000-0000-0000-00000000user";
+
 function createRuntime(octokit: GitHubOctokitClient): IAgentRuntime {
   const cache = new Map<string, unknown>();
   return {
     agentId: "00000000-0000-0000-0000-00000000agent",
-    getService: () => ({ getOctokit: () => octokit }),
+    getService: () => ({
+      getOctokit: () => octokit,
+      // "owner-gh" is the owner's personal account under a custom id.
+      getAccountRole: (selection: { role: string; accountId?: string }) =>
+        selection.accountId === "owner-gh" ? "user" : selection.role,
+    }),
+    getSetting: (key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ENTITY_ID : null,
+    reportError: vi.fn(),
     getCache: async (key: string) => cache.get(key),
     setCache: async (key: string, value: unknown) => {
       cache.set(key, value);
@@ -27,8 +37,15 @@ function createRuntime(octokit: GitHubOctokitClient): IAgentRuntime {
 
 function userTurn(text: string): Memory {
   return {
-    entityId: "00000000-0000-0000-0000-00000000user",
+    entityId: OWNER_ENTITY_ID,
     content: { text },
+  } as unknown as Memory;
+}
+
+function memberTurn(text: string): Memory {
+  return {
+    entityId: "00000000-0000-0000-0000-0000000member",
+    content: { text, source: "api" },
   } as unknown as Memory;
 }
 
@@ -196,5 +213,89 @@ describe("GitHub write confirmation", () => {
     expect(addAssignees).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ success: false });
     expect(result && "error" in result ? result.error : "").toContain("[bob]");
+  });
+
+  it("does not approve a pull request as the owner for a sender who is not the owner", async () => {
+    const createReview = vi.fn().mockResolvedValue({ data: { id: 3 } });
+    const runtime = createRuntime({
+      pulls: { createReview },
+    } as unknown as GitHubOctokitClient);
+    const review = {
+      op: "review",
+      repo: "a/b",
+      number: 42,
+      review_action: "approve",
+    };
+
+    const asked = await prOpAction.handler(
+      runtime,
+      memberTurn("approve a/b#42"),
+      undefined,
+      review,
+    );
+    await prOpAction.handler(runtime, memberTurn("yes"), undefined, review);
+
+    expect(asked).toMatchObject({
+      success: false,
+      error:
+        "Only the owner can use their own GitHub account. Nothing was done.",
+    });
+    expect(createReview).not.toHaveBeenCalled();
+  });
+
+  it("names the owner's account in the preview when the owner selects it by account id", async () => {
+    const createComment = vi.fn();
+    const runtime = createRuntime({
+      issues: { createComment },
+    } as unknown as GitHubOctokitClient);
+    const prompts: string[] = [];
+
+    await issueOpAction.handler(
+      runtime,
+      userTurn("comment on a/b#5"),
+      undefined,
+      {
+        op: "comment",
+        repo: "a/b",
+        number: 5,
+        body: "LGTM",
+        as: "agent",
+        accountId: "owner-gh",
+      },
+      async (content: { text?: string }) => {
+        prompts.push(content.text ?? "");
+        return [];
+      },
+    );
+
+    expect(prompts.at(-1)).toContain("as user (owner-gh).");
+    expect(createComment).not.toHaveBeenCalled();
+  });
+
+  it("does not comment as the owner's account selected by account id for a sender who is not the owner", async () => {
+    const createComment = vi.fn().mockResolvedValue({
+      data: { id: 9, html_url: "https://github.test/a/b/issues/5#c9" },
+    });
+    const runtime = createRuntime({
+      issues: { createComment },
+    } as unknown as GitHubOctokitClient);
+    const request = {
+      op: "comment",
+      repo: "a/b",
+      number: 5,
+      body: "LGTM",
+      as: "agent",
+      accountId: "owner-gh",
+    };
+
+    await issueOpAction.handler(
+      runtime,
+      memberTurn("comment on a/b#5"),
+      undefined,
+      request,
+    );
+    await issueOpAction.handler(runtime, memberTurn("yes"), undefined, request);
+
+    expect(createComment).not.toHaveBeenCalled();
   });
 });

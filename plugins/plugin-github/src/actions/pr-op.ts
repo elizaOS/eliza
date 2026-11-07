@@ -95,11 +95,12 @@ function parseReviewAction(value: unknown): ReviewAction | null {
 
 async function runList(
   runtime: IAgentRuntime,
+  message: Memory,
   options: Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
   const selection = resolveAccountSelection(options, "agent");
-  const resolved = await buildResolvedClient(runtime, selection);
+  const resolved = await buildResolvedClient(runtime, message, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -253,7 +254,7 @@ async function runReview(
     await callback?.({ text: err });
     return { success: false, error: err };
   }
-  const resolved = await buildResolvedClient(runtime, selection);
+  const resolved = await buildResolvedClient(runtime, message, selection);
   if ("error" in resolved) {
     await callback?.({ text: resolved.error });
     return { success: false, error: resolved.error };
@@ -264,7 +265,10 @@ async function runReview(
     repo,
     number,
     body,
-    describeSelection(selection),
+    describeSelection({
+      role: resolved.identity,
+      accountId: resolved.accountId,
+    }),
   );
   const decision = await confirmPreviewedRequest({
     runtime,
@@ -391,9 +395,9 @@ export const prOpAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
   ): Promise<boolean> => {
-    const r = await buildResolvedClient(runtime, "agent", {
+    const r = await buildResolvedClient(runtime, message, "agent", {
       refresh: "on-miss",
     });
     return !("error" in r);
@@ -415,7 +419,7 @@ export const prOpAction: Action = {
 
     try {
       return op === "list"
-        ? await runList(runtime, options, callback)
+        ? await runList(runtime, message, options, callback)
         : await runReview(runtime, message, options, callback);
     } catch (err) {
       const rl = inspectRateLimit(err);
