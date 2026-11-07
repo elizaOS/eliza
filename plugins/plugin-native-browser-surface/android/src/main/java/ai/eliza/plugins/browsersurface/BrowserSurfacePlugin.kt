@@ -2289,7 +2289,9 @@ internal class OccludingSurfaceLayout(
     fun setOcclusions(rects: List<RoundedOcclusionRect>) {
         if (occlusions == rects) return
         occlusions = rects
-        invalidate()
+        // A below-host page draws the same whatever its occlusions, so only input and capture
+        // read them and nothing needs redrawing.
+        if (layer != SurfaceLayer.BELOW_HOST) invalidate()
     }
 
     /**
