@@ -173,12 +173,24 @@ function parsePositiveInt(raw: unknown): number | undefined {
   return undefined;
 }
 
+function isFractionalNumber(raw: unknown): boolean {
+  return (
+    typeof raw === "number" && Number.isFinite(raw) && !Number.isInteger(raw)
+  );
+}
+
 // Relative-delay reminders ("remind me in 90 seconds / 5 minutes") arrive as a
 // count, not an absolute time. `delaySeconds` wins over `delayMinutes` when both
-// are present. Returns undefined when neither is a positive number.
+// are present. Returns undefined when neither is a positive whole number: a
+// supplied fractional count is unusable, not absent, so it never floors to a
+// shorter delay and a fractional winning `delaySeconds` never falls back to
+// `delayMinutes` — the same reading as LifeOps' `readRelativeUpdateDelay`.
+// The callers turn undefined into INVALID_DELAY / INVALID_UPDATE.
 function readRelativeDelayMs(p: TriggerParameters): number | undefined {
+  if (isFractionalNumber(p.delaySeconds)) return undefined;
   const seconds = parsePositiveInt(p.delaySeconds);
   if (seconds !== undefined) return seconds * 1000;
+  if (isFractionalNumber(p.delayMinutes)) return undefined;
   const minutes = parsePositiveInt(p.delayMinutes);
   if (minutes !== undefined) return minutes * 60_000;
   return undefined;
