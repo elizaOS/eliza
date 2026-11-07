@@ -9,7 +9,7 @@ import {
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
-import { and, asc, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import {
   createPublicClient,
   createWalletClient,
@@ -50,6 +50,11 @@ import {
   payerProofSchemeForNetwork,
   verifyDirectWalletPayerProof,
 } from "./direct-wallet-payer-proof";
+import {
+  EvmSweepDeferredError,
+  prepareAndPersistEvmSweep,
+  signedEvmSweepIdentity,
+} from "./evm-sweep-authority";
 import { invoicesService } from "./invoices";
 import { settlementDigest } from "./settlement-digest";
 
@@ -1105,6 +1110,7 @@ type PreparedSweepMetadata =
       network: "base" | "bsc";
       sweepTo: string;
       nonce: string;
+      sender?: string;
     }
   | {
       network: "solana";
@@ -1120,6 +1126,7 @@ interface PreparedSweep {
 }
 
 async function prepareEvmSweep(params: {
+  nonce: number;
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   tokenAddress: Hex | null;
@@ -1141,9 +1148,10 @@ async function prepareEvmSweep(params: {
   const wallet = createWalletClient({
     account,
     chain: params.cfg.network === "base" ? base : bsc,
-    transport: http(params.cfg.rpcUrl),
+    transport: http(params.cfg.rpcUrl, { timeout: 10_000, retryCount: 0 }),
   });
   const request = await wallet.prepareTransactionRequest({
+    nonce: params.nonce,
     to: params.tokenAddress,
     data: encodeFunctionData({
       abi: erc20Abi,
@@ -1164,6 +1172,7 @@ async function prepareEvmSweep(params: {
       network: params.cfg.network === "base" ? "base" : "bsc",
       sweepTo: params.sweepTo,
       nonce: String(request.nonce),
+      sender: account.address.toLowerCase(),
     },
   };
 }
@@ -1172,25 +1181,45 @@ async function submitPreparedEvmSweep(
   cfg: DirectWalletNetworkConfig,
   prepared: PreparedSweep,
 ): Promise<void> {
+  if (prepared.metadata.network === "solana") throw new Error("Expected EVM sweep metadata");
+  const identity = await signedEvmSweepIdentity({ ...prepared, metadata: prepared.metadata });
+  if (
+    identity.chainId !== BigInt(cfg.chainId ?? 0) ||
+    !cfg.receiveAddress ||
+    identity.sender !== getAddress(cfg.receiveAddress).toLowerCase()
+  )
+    throw new Error("Prepared EVM sweep no longer matches the configured receive wallet");
   const client = createPublicClient({
     chain: cfg.network === "base" ? base : bsc,
-    transport: http(cfg.rpcUrl),
+    transport: http(cfg.rpcUrl, { timeout: 10_000, retryCount: 0 }),
   });
+  let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>> | undefined;
   try {
-    const existing = await client.getTransaction({
-      hash: prepared.transactionHash as Hex,
-    });
-    if (existing.hash.toLowerCase() === prepared.transactionHash.toLowerCase()) return;
+    receipt = await client.getTransactionReceipt({ hash: prepared.transactionHash as Hex });
   } catch {
-    // error-policy:J4 Absence or a transient lookup error is safe because the
-    // dispatcher resends the exact same signed bytes and therefore the same hash.
+    /* error-policy:J4 Missing receipt or RPC failure cannot release nonce ownership. */
   }
-  const submitted = await client.sendRawTransaction({
-    serializedTransaction: prepared.rawTransaction as Hex,
-  });
-  if (submitted.toLowerCase() !== prepared.transactionHash.toLowerCase()) {
-    throw new Error("EVM provider returned a different sweep transaction hash");
+  if (receipt) {
+    if (receipt.transactionHash.toLowerCase() !== prepared.transactionHash.toLowerCase())
+      throw new Error("EVM provider returned a different sweep receipt");
+    if (receipt.status !== "success") throw new Error("EVM sweep transaction failed on chain");
+    return;
   }
+  let known = false;
+  try {
+    const existing = await client.getTransaction({ hash: prepared.transactionHash as Hex });
+    known = existing.hash.toLowerCase() === prepared.transactionHash.toLowerCase();
+  } catch {
+    /* error-policy:J4 Exact signed bytes retain their immutable nonce identity. */
+  }
+  if (!known) {
+    const submitted = await client.sendRawTransaction({
+      serializedTransaction: prepared.rawTransaction as Hex,
+    });
+    if (submitted.toLowerCase() !== prepared.transactionHash.toLowerCase())
+      throw new Error("EVM provider returned a different sweep transaction hash");
+  }
+  throw new EvmSweepDeferredError("EVM sweep submitted and awaiting its confirmed receipt");
 }
 
 function solanaKeypairFromEnv(env: Bindings): Keypair | null {
@@ -1396,6 +1425,7 @@ function preparedSweepFromRow(value: {
         network: metadata.network,
         sweepTo: metadata.sweepTo,
         nonce: metadata.nonce,
+        ...(typeof metadata.sender === "string" ? { sender: metadata.sender } : {}),
       },
     };
   }
@@ -2173,33 +2203,37 @@ export class DirectWalletPaymentsService {
     hooks?: { afterExternalSweep?: () => Promise<void> },
   ): Promise<boolean> {
     const claimToken = crypto.randomUUID();
-    const now = new Date();
     const claimed = await dbWrite.transaction(async (tx) => {
       const [candidate] = await tx
         .select()
         .from(cryptoSweepOutbox)
-        .where(eq(cryptoSweepOutbox.payment_id, paymentId))
+        .where(
+          and(
+            eq(cryptoSweepOutbox.payment_id, paymentId),
+            lte(cryptoSweepOutbox.next_attempt_at, sql`clock_timestamp()`),
+            or(
+              eq(cryptoSweepOutbox.state, "pending"),
+              and(
+                eq(cryptoSweepOutbox.state, "processing"),
+                or(
+                  isNull(cryptoSweepOutbox.lease_expires_at),
+                  lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),
+                ),
+              ),
+            ),
+          ),
+        )
         .for("update")
         .limit(1);
-      if (!candidate || candidate.state === "delivered" || candidate.state === "terminal") {
-        return null;
-      }
-      if (
-        candidate.state === "processing" &&
-        candidate.lease_expires_at &&
-        candidate.lease_expires_at > now
-      ) {
-        return null;
-      }
-      if (candidate.next_attempt_at > now) return null;
+      if (!candidate) return null;
       const [row] = await tx
         .update(cryptoSweepOutbox)
         .set({
           state: "processing",
           claim_token: claimToken,
-          lease_expires_at: new Date(now.getTime() + 120_000),
+          lease_expires_at: sql`clock_timestamp()+interval '120 seconds'`,
           attempts: candidate.attempts + 1,
-          updated_at: now,
+          updated_at: sql`clock_timestamp()`,
         })
         .where(eq(cryptoSweepOutbox.id, candidate.id))
         .returning();
@@ -2208,8 +2242,10 @@ export class DirectWalletPaymentsService {
     if (!claimed) return false;
 
     let externalSweepReturned = false;
+    let replayableEvm = false;
     try {
       const payload = directSweepPayload(claimed.payload);
+      replayableEvm = payload.network !== "solana";
       if (settlementDigest(payload) !== claimed.payload_digest) {
         throw new Error("Crypto sweep outbox payload digest mismatch");
       }
@@ -2237,13 +2273,35 @@ export class DirectWalletPaymentsService {
             tokenDecimals: payload.tokenDecimals,
           });
         }
-        return prepareEvmSweep({
-          env,
-          cfg,
-          tokenAddress: payload.tokenAddress,
-          tokenDecimals: payload.tokenDecimals,
-          units,
-          sweepTo: payload.sweepTo,
+        const key = evmPrivateKey(env, cfg.network);
+        if (!key || !payload.tokenAddress) return null;
+        const account = privateKeyToAccount(key);
+        const client = createPublicClient({
+          chain: cfg.network === "base" ? base : bsc,
+          transport: http(cfg.rpcUrl, { timeout: 10_000, retryCount: 0 }),
+        });
+        return prepareAndPersistEvmSweep({
+          outboxId: claimed.id,
+          claimToken,
+          network: cfg.network === "base" ? "base" : "bsc",
+          sender: account.address,
+          chainId: cfg.chainId!,
+          readNonce: (blockTag) =>
+            client.getTransactionCount({ address: account.address, blockTag }),
+          prepare: async (nonce) => {
+            const result = await prepareEvmSweep({
+              nonce,
+              env,
+              cfg,
+              tokenAddress: payload.tokenAddress,
+              tokenDecimals: payload.tokenDecimals,
+              units,
+              sweepTo: payload.sweepTo!,
+            });
+            if (!result || result.metadata.network === "solana")
+              throw new Error("EVM sweep was not prepared");
+            return { ...result, metadata: result.metadata };
+          },
         });
       };
       const persistPrepared = async (
@@ -2274,7 +2332,7 @@ export class DirectWalletPaymentsService {
       };
       if (!prepared) {
         prepared = await prepare();
-        if (prepared) await persistPrepared(prepared, null);
+        if (prepared?.metadata.network === "solana") await persistPrepared(prepared, null);
       }
       if (prepared) {
         if (payload.network === "solana") {
@@ -2341,18 +2399,19 @@ export class DirectWalletPaymentsService {
     } catch (error) {
       // error-policy:J4 the outbox retains the failure and bounded retry state;
       // the payment and credit settlement remain committed and observable.
-      // Once the provider returned a submission result, an acknowledgement
-      // failure is outcome-unknown. Never submit again automatically: doing so
-      // could sweep a later deposit with the same balance-based transfer.
-      const terminal = externalSweepReturned || claimed.attempts >= 12;
+      // EVM retries retain exact signed bytes and can recover a confirmed
+      // receipt after a local acknowledgement failure. Solana keeps its existing
+      // terminal policy because expired blockhash replacement changes identity.
+      const deferred = error instanceof EvmSweepDeferredError;
+      const terminal =
+        !deferred && ((!replayableEvm && externalSweepReturned) || claimed.attempts >= 12);
       await dbWrite
         .update(cryptoSweepOutbox)
         .set({
           state: terminal ? "terminal" : "pending",
-          terminal_at: terminal ? new Date() : null,
-          next_attempt_at: new Date(
-            Date.now() + Math.min(3_600_000, 2 ** claimed.attempts * 1_000),
-          ),
+          ...(deferred ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
+          terminal_at: terminal ? sql`clock_timestamp()` : null,
+          next_attempt_at: sql`clock_timestamp()+(${deferred ? 30_000 : Math.min(3_600_000, 2 ** claimed.attempts * 1_000)} * interval '1 millisecond')`,
           claim_token: null,
           lease_expires_at: null,
           last_error: error instanceof Error ? error.message : String(error),
@@ -2375,12 +2434,12 @@ export class DirectWalletPaymentsService {
       .from(cryptoSweepOutbox)
       .where(
         and(
-          lte(cryptoSweepOutbox.next_attempt_at, new Date()),
+          lte(cryptoSweepOutbox.next_attempt_at, sql`clock_timestamp()`),
           or(
             eq(cryptoSweepOutbox.state, "pending"),
             and(
               eq(cryptoSweepOutbox.state, "processing"),
-              lte(cryptoSweepOutbox.lease_expires_at, new Date()),
+              lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),
             ),
           ),
         ),
