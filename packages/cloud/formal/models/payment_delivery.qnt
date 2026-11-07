@@ -6,7 +6,9 @@
 // SSRF/HMAC validation and transaction isolation require implementation tests.
 // Wire attempts are at-least-once: recipient side effects are not modeled as
 // exactly-once. Historical failure delivery after settlement is observable, not
-// classified as invalid. Negative actions retain pre-fix expiry/ownership witnesses.
+// classified as invalid. The guarded credit increment abstracts the atomic
+// payment/credit transaction; SQL isolation still requires implementation tests.
+// Negative actions retain missing-credit-guard and pre-fix lease witnesses.
 module payment_delivery {
   type Job = { event: int, phase: str, deadline: int }
   type State = {
@@ -34,13 +36,16 @@ module payment_delivery {
       if (s.payment == "settled" and s.states.get(0) != "dispatched") "superseded"
       else if (s.states.get(0) == "absent") "pending" else s.states.get(0)))
 
-  action providerSuccess = s' = s.with("payment", "settled").with("credits", 1)
+  action settleProviderSuccess(guarded: bool): bool = s' = s.with("payment", "settled")
+    .with("credits", s.credits + (if (not(guarded) or s.payment != "settled") 1 else 0))
     .with("states", s.states.set(1,
       if (s.states.get(1) == "absent") "pending" else s.states.get(1))
       .set(0, if (eligible(0)) "superseded" else s.states.get(0)))
     .with("until", if (eligible(0)) s.until.set(0, -1) else s.until)
     .with("due", if (eligible(0)) s.due.set(0, -1) else s.due)
     .with("owners", if (eligible(0)) s.owners.set(0, -1) else s.owners)
+
+  action providerSuccess = settleProviderSuccess(true)
 
   action claim(worker: int, event: int): bool = all {
     s.jobs.get(worker).phase == "idle", eligible(event),
@@ -120,6 +125,8 @@ module payment_delivery {
 
   run duplicatePaymentDoesNotCreditTwiceTest = init.then(providerSuccess)
     .then(providerSuccess).expect(safety and s.credits == 1)
+  run missingPaymentGuardNegativeWitnessTest = init.then(providerSuccess)
+    .then(settleProviderSuccess(false)).expect(not(safety) and s.credits == 2)
   run retryDeliveryTest = init.then(providerSuccess).then(claim(0, 1))
     .then(send(0)).then(complete(0, false)).then(tick).then(tick).then(claim(1, 1))
     .then(send(1)).then(complete(1, true))
