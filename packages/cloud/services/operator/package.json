@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/operator",
   "version": "0.0.1",
+  "private": true,
   "description": "elizaOS Server Operator",
   "type": "module",
   "engines": {
