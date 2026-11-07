@@ -944,6 +944,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     switch (command.getMode) {
       case "attr":
         if (!command.attribute) throw new Error("attr lookups require attribute");
+        if (isPrivateControl(element) && command.attribute.toLowerCase() === "value") return null;
         return element.getAttribute(command.attribute);
       case "box":
         return element.getBoundingClientRect();

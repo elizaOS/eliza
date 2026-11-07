@@ -134,6 +134,18 @@ it("never copies password or hidden input values out of the page in either backe
         }),
       ),
     ).toEqual({ value: null });
+    for (const selector of ["#pw", "#csrf"]) {
+      expect(
+        dom.window.eval(
+          createDesktopBrowserWorkspaceCommandScript({
+            subaction: "get",
+            getMode: "attr",
+            attribute: "value",
+            selector,
+          }),
+        ),
+      ).toEqual({ value: null });
+    }
   } finally {
     dom.window.close();
   }
@@ -163,6 +175,20 @@ it("never copies password or hidden input values out of the page in either backe
       (
         await executeBrowserWorkspaceCommand(
           { id: tab.id, subaction: "get", getMode: "value", selector },
+          env,
+        )
+      ).value,
+    ).toBe(value);
+    expect(
+      (
+        await executeBrowserWorkspaceCommand(
+          {
+            id: tab.id,
+            subaction: "get",
+            getMode: "attr",
+            attribute: "value",
+            selector,
+          },
           env,
         )
       ).value,
