@@ -67,6 +67,8 @@ import {
 import {
   decodeBase64ForPreview,
   decodeSignableMessage,
+  describeEvmCallData,
+  describeSolanaTransaction,
   formatAddressForDisplay,
   formatWeiForDisplay,
   truncateMessageForDisplay,
@@ -1553,9 +1555,10 @@ function BrowserWorkspaceForAuthority({
                     : tx.value
                   : "0";
               const to = typeof tx.to === "string" ? tx.to : "";
+              const callLines = describeEvmCallData(tx.data);
               const allowed = await walletActionConfirm({
                 title: `${domain} wants to send a transaction`,
-                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nTo: ${formatAddressForDisplay(to)}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}\n\nAllow this transaction?`,
+                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nTo: ${formatAddressForDisplay(to)}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}${callLines.length ? `\n\n${callLines.join("\n")}` : ""}\n\nAllow this transaction?`,
                 confirmLabel: "Send",
                 cancelLabel: "Reject",
               });
@@ -1708,9 +1711,11 @@ function BrowserWorkspaceForAuthority({
                   ? `Chain: ${chain.trim()}`
                   : null,
               ].filter(Boolean);
+              const transactionLines =
+                await describeSolanaTransaction(transactionBase64);
               const allowed = await walletActionConfirm({
                 title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
-                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}${transactionLines.length ? `\n\n${transactionLines.join("\n")}\n` : ""}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
                 confirmLabel: willBroadcast ? "Send" : "Sign",
                 cancelLabel: "Reject",
               });

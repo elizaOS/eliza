@@ -1205,4 +1205,26 @@ for (const viewport of [
     await expect.poll(() => effects.length).toBe(2);
     expect(effects[1]).toEqual({ message: " \t0X4869\n" });
     await expect(dialog).toBeHidden();
+    // A token transfer hides behind "Value: 0 ETH": the dialog must show the
+    // recipient and amount the call data carries before anything is signed.
+    const recipient = "1111111111111111111111111111111111111111";
+    await send(6, "eth_sendTransaction", [
+      {
+        to: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        value: "0x0",
+        chainId: "0x1",
+        data: `0xa9059cbb${recipient.padStart(64, "0")}${5_000_000n.toString(16).padStart(64, "0")}`,
+      },
+    ]);
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Value: 0 ETH");
+    await expect(dialog).toContainText("Token transfer from this contract");
+    await expect(dialog).toContainText(`Recipient: 0x${recipient}`);
+    await expect(dialog).toContainText("Amount: 5000000 (token base units)");
+    await page.screenshot({
+      path: info.outputPath(`${viewport.name}-token-transfer.png`),
+    });
+    await dialog.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(effects).toHaveLength(2);
   });
