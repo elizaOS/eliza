@@ -1053,6 +1053,12 @@ export class DiscordService extends Service implements IDiscordService {
 
 	private createDiscordJsClient(accountId: string): DiscordJsClient {
 		const client = new DiscordJsClient({
+			// Outbound agent text is untrusted model/user text: never let it
+			// parse mass or role mentions. Only user mentions parse, and
+			// repliedUser must be set: once an allowed_mentions object is
+			// present, Discord defaults replied_user to false, so without
+			// it replies would silently stop pinging their author.
+			allowedMentions: { parse: ["users"], repliedUser: true },
 			intents: [
 				GatewayIntentBits.Guilds,
 				GatewayIntentBits.GuildMembers,
