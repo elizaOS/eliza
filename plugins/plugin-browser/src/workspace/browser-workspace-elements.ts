@@ -16,53 +16,80 @@ import type {
   BrowserWorkspaceRuntimeState,
 } from "./browser-workspace-types.js";
 
+/**
+ * Selector for one element. A bare id, test id, name, type, or nth-of-type
+ * matches every similar control in the document. Snapshot refs store this
+ * string and later resolve it with querySelector, so an ambiguous selector
+ * fills or clicks the first control instead of the one the ref named.
+ * This function is copied into the desktop page script via toString().
+ * Keep it free of closed-over helpers.
+ */
 export function buildBrowserWorkspaceElementSelector(element: Element): string {
-  const escapeFn = (
-    globalThis as { CSS?: { escape?: (value: string) => string } }
-  ).CSS?.escape;
-  const escapedId =
-    typeof escapeFn === "function"
-      ? escapeFn(element.id)
-      : element.id.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-
+  const cssEscape = (value: string): string => {
+    const escapeFn = (
+      globalThis as { CSS?: { escape?: (input: string) => string } }
+    ).CSS?.escape;
+    if (typeof escapeFn === "function") return escapeFn(value);
+    return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  };
+  const attributeLiteral = (value: string): string => JSON.stringify(value);
+  const ownerDocument = element.ownerDocument;
+  // `label:` and `title:` are also semantic selector spellings. A structural
+  // path that starts with one of them is read as a text search, not CSS.
+  const semanticPrefix =
+    /^(?:alt|css|data-testid|testid|label|placeholder|role|text|title)\s*[:=]/i;
+  const matchesOnly = (selector: string): boolean => {
+    if (!ownerDocument || semanticPrefix.test(selector)) return false;
+    try {
+      const found = ownerDocument.querySelectorAll(selector);
+      return found.length === 1 && found[0] === element;
+    } catch {
+      return false;
+    }
+  };
+  const tagName = element.tagName.toLowerCase();
   if (element.id) {
-    return `#${escapedId}`;
+    const idSelector = `#${cssEscape(element.id)}`;
+    if (matchesOnly(idSelector)) return idSelector;
   }
-
   const testId = element.getAttribute("data-testid")?.trim();
   if (testId) {
-    return `[data-testid=${buildBrowserWorkspaceCssStringLiteral(testId)}]`;
+    const selector = `[data-testid=${attributeLiteral(testId)}]`;
+    if (matchesOnly(selector)) return selector;
   }
-
   const name = element.getAttribute("name")?.trim();
   if (name) {
-    return `${element.tagName.toLowerCase()}[name=${buildBrowserWorkspaceCssStringLiteral(name)}]`;
+    const selector = `${tagName}[name=${attributeLiteral(name)}]`;
+    if (matchesOnly(selector)) return selector;
   }
-
   const type = element.getAttribute("type")?.trim();
   if (type) {
-    return `${element.tagName.toLowerCase()}[type=${buildBrowserWorkspaceCssStringLiteral(type)}]`;
+    const selector = `${tagName}[type=${attributeLiteral(type)}]`;
+    if (matchesOnly(selector)) return selector;
   }
-
-  const parent = element.parentElement;
-  if (!parent) {
-    return element.tagName.toLowerCase();
-  }
-
-  const siblings = parent.children;
-  let index = 1;
-  for (let cursor = 0; cursor < siblings.length; cursor += 1) {
-    const sibling = siblings.item(cursor);
-    if (!sibling || sibling.tagName !== element.tagName) {
-      continue;
+  const parts: string[] = [];
+  let current: Element | null = element;
+  while (current?.tagName) {
+    const currentTag = current.tagName.toLowerCase();
+    if (current.id) {
+      const candidate = [`#${cssEscape(current.id)}`, ...parts].join(" > ");
+      if (matchesOnly(candidate)) return candidate;
     }
-    if (sibling === element) {
+    if (currentTag === "html") {
+      parts.unshift("html");
       break;
     }
-    index += 1;
+    let index = 1;
+    let previous = current.previousElementSibling;
+    while (previous) {
+      if (previous.tagName === current.tagName) index += 1;
+      previous = previous.previousElementSibling;
+    }
+    parts.unshift(`${currentTag}:nth-of-type(${index})`);
+    if (matchesOnly(parts.join(" > "))) return parts.join(" > ");
+    current = current.parentElement;
   }
-
-  return `${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+  return parts.join(" > ");
 }
 
 export function createBrowserWorkspaceElementSummary(
