@@ -134,6 +134,24 @@ function relativeCountToNumber(token: string): number | null {
   return RELATIVE_NUMBER_WORDS[token] ?? null;
 }
 
+const RELATIVE_COUNT_SOURCE = String.raw`\d{1,3}|a|an|one|two|three|four|five|six|seven|eight|nine|ten`;
+
+/**
+ * "a week from Friday" / "3 days from Monday". The count and unit are peeled
+ * off before the anchor is parsed: the weekday, month, and "tomorrow"
+ * branches return as soon as they see the anchor, which used to drop the
+ * offset and land the request on the anchor day.
+ */
+const RELATIVE_FROM_ANCHOR = new RegExp(
+  String.raw`\b(${RELATIVE_COUNT_SOURCE}) (day|days|week|weeks) from\s+(\S.*)$`,
+);
+
+function relativeSpanDays(countToken: string, unit: string): number | null {
+  const count = relativeCountToNumber(countToken);
+  if (count === null || count <= 0) return null;
+  return unit.startsWith("week") ? count * 7 : count;
+}
+
 function parseRelativeDayOffset(text: string): number | null {
   if (/\bday after tomorrow\b/.test(text)) return 2;
   if (/\bday before yesterday\b/.test(text)) return -2;
@@ -171,6 +189,16 @@ export function parseExplicitLocalDate(
 ): { year: number; month: number; day: number } | null {
   const normalized = normalizeText(value);
   const localToday = getZonedDateParts(now, timeZone);
+
+  const fromAnchor = RELATIVE_FROM_ANCHOR.exec(normalized);
+  if (fromAnchor?.[1] && fromAnchor[2] && fromAnchor[3]) {
+    const span = relativeSpanDays(fromAnchor[1], fromAnchor[2]);
+    const anchor =
+      span === null
+        ? null
+        : parseExplicitLocalDate(fromAnchor[3], timeZone, now);
+    if (anchor && span !== null) return addDaysToLocalDate(anchor, span);
+  }
 
   const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (isoMatch) {
