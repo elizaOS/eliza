@@ -9,7 +9,7 @@ import type {
   ResponseHandlerEvaluator,
   ResponseHandlerPatch,
 } from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/core";
+import { getUserMessageText, hasRoleAccess } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
@@ -91,14 +91,6 @@ const TRAVEL_PREFERENCE_CONTEXT =
   /\b(?:travel|booking|bookings|trip|trips|flight|flights|hotel|hotels)\b/iu;
 const TRAVEL_PREFERENCE_DETAILS =
   /\b(?:aisle|window|seat|seats|checked\s+bag|checked\s+bags|carry-?on|luggage|hotel|hotels|budget|\$\d|venue|venues|mile|miles|night|nights)\b/iu;
-
-function messageText(value: unknown): string {
-  if (!value || typeof value !== "object") return "";
-  const content = (value as { content?: unknown }).content;
-  if (!content || typeof content !== "object") return "";
-  const text = (content as { text?: unknown }).text;
-  return typeof text === "string" ? text : "";
-}
 
 function collectFactHints(text: string, facts: OwnerFactsPatch): void {
   for (const entry of FACT_PATTERNS) {
@@ -332,14 +324,14 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
       return false;
     }
     return hasExtraction(
-      extractProfileDetails(messageText(message), new Date()),
+      extractProfileDetails(getUserMessageText(message), new Date()),
     );
   },
   async evaluate({
     runtime,
     message,
   }): Promise<ResponseHandlerPatch | undefined> {
-    const text = messageText(message);
+    const text = getUserMessageText(message);
     const now = new Date();
     const extraction = extractProfileDetails(text, now);
     if (!hasExtraction(extraction)) {
