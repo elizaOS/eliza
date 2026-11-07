@@ -1,0 +1,85 @@
+[
+  {
+    "id": "auth.NativeEnrollmentRecovery",
+    "model": "packages/auth/quint/NativeEnrollmentRecovery.qnt",
+    "sources": ["packages/auth/native-host/cloud-enrollment.mjs"],
+    "invariants": [
+      "ActivateOnlyAcknowledged",
+      "DurableCancelCannotResume",
+      "ConfirmedCancellationClearsTarget",
+      "ClearedCancellationHasReceipt",
+      "RefusedResumeHasNoEffects",
+      "RestartPreservesDurableState"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One host and one already-saved credential receipt. Public operations are modeled at quiescent boundaries, with failures before and after durable/remote effects and five explicit cancel-versus-resume await cuts. Other asynchronous interleavings remain outside this projection.",
+      "Real implementation conformance replays generated Quint traces through private filesystem receipts, loopback HTTP and the actual native-host module. Server proof verification and atomic acknowledgement/revocation are assumed. Restart reconstructs the host against unchanged persisted data; process death, fsync and multi-process coordination are outside this checker.",
+      "Progress assumes weak fairness of a successful complete cancellation retry. Permanent outages, missing retries and expired unacknowledged enrollment have no completion guarantee.",
+      "Initial challenge/PKCE issuance, MFA, Google OAuth, verified-owner activation, billing authority, account methods, and replacement credentials need separate models. A default cancel after the activation receipt has been cleared preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
+    ]
+  },
+  {
+    "id": "auth.NativeEnrollmentAdmissionAndAuthority",
+    "model": null,
+    "sources": [
+      "packages/auth/native-host/cloud-enrollment.mjs",
+      "packages/auth/native-host/account-methods.mjs"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Enrollment challenge/MFA and Google state/PKCE single-use redemption, verified owner activation, ephemeral account/billing authority, one-use account mutation reviews and replacement credentials remain to be modeled."
+    ]
+  },
+  {
+    "id": "auth.AccountCredentialStorage",
+    "model": null,
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Storage ownership and generation, per-account refresh compare-and-swap, reset/deletion preflight and commit, encrypted legacy upgrade and process mutation lock are not covered by RefreshMutex."
+    ]
+  },
+  {
+    "id": "auth.AccountPoolSelection",
+    "model": null,
+    "sources": [
+      "packages/auth/src/accounts/account-pool.ts",
+      "packages/auth/src/accounts/account-selection.ts",
+      "packages/auth/src/accounts/account-usage.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Eligibility, affinity retry limits, selection strategies, in-flight account snapshots, usage refresh, cooldown and health mutation need source-specific models."
+    ]
+  },
+  {
+    "id": "auth.ConsumerQuotaSettlement",
+    "model": null,
+    "sources": ["packages/auth/src/accounts/account-pool-consumer-metering.ts"],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Consumer key revocation, durable quota reservations, settlement, restart and cross-process file locking need source-specific models."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidEnrollment",
+    "model": null,
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Android pending state/expiry, acknowledgement retry budget, credential-slot ownership, cancellation and activity recreation are not covered by the Node native-host projection."
+    ]
+  }
+]
