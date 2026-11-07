@@ -20,6 +20,7 @@ import {
   applyGroundedActionReply,
   MemoryType as CoreMemoryType,
   ElizaError,
+  extractUserText,
   getActionReplyOwner,
   getRelatedEntityIds,
   inflectionTermKeys,
@@ -1696,10 +1697,14 @@ function mutationQueryFromMessage(
   // The user's actual words, not the external-content security envelope that
   // wraps connector messages: the envelope's warning text matched nothing and
   // turned a plain "forget my favorite tea" into a hard miss (live 2026-09-12).
+  // Chat augmentation can also wrap the request in a document-augmentation
+  // envelope whose instruction lines and document fragments would otherwise
+  // become the query and fail the every-term match the same way, so strip
+  // that envelope too before any term matching runs.
   // Drop platform mention tokens ("Eliza (@1490833…)" / "<@1490833…>"): they
   // are addressing, not content, and their name and id would have to match
   // the stored fact for the every-term rule (live 2026-09-12, harness room).
-  const raw = unwrapUserMessageText(message);
+  const raw = extractUserText(unwrapUserMessageText(message));
   const addressed = MENTION_MARKER_PATTERN.test(raw);
   MENTION_MARKER_PATTERN.lastIndex = 0;
   let text = raw
