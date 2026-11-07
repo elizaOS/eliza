@@ -13,6 +13,7 @@ import {
   setAutofillAllowed,
   setSavedLogin,
 } from "../src/vault/credentials.js";
+import { createManager } from "../src/vault/manager.js";
 
 let test: TestVault;
 
@@ -315,5 +316,95 @@ describe("credentials — domain scoping", () => {
       "amazon.com.au/alice@example.com",
       "amazon.com/alice@example.com",
     ]);
+  });
+});
+
+describe("credentials — domain entered as a URL or host:port", () => {
+  // The in-house identifier is `<domain>:<username>` and autofill looks a
+  // login up by `location.hostname`, so the saved domain must be a hostname.
+  it.each([
+    ["https://GitHub.com/login", "github.com"],
+    ["localhost:3000", "localhost"],
+    ["http://user@intranet.example:8080/sso?next=/", "intranet.example"],
+    ["example.com.", "example.com"],
+  ])(
+    "saves %s as %s so it can be revealed, autofilled and deleted",
+    async (entered, hostname) => {
+      await setSavedLogin(test.vault, {
+        domain: entered,
+        username: "alice",
+        password: "pw-1",
+      });
+      const manager = createManager({
+        vault: test.vault,
+        exec: async () => {
+          throw new Error("external password managers are not used here");
+        },
+      });
+      const { logins } = await manager.listAllSavedLogins();
+      const entry = logins.find((login) => login.source === "in-house");
+      expect(entry).toMatchObject({
+        identifier: `${hostname}:alice`,
+        domain: hostname,
+      });
+      if (!entry) throw new Error("Saved login missing from the list");
+
+      const reveal = await manager.revealSavedLogin(
+        "in-house",
+        entry.identifier,
+      );
+      expect(reveal).toMatchObject({ username: "alice", password: "pw-1" });
+
+      // The browser autofill request carries `location.hostname`.
+      const candidates = await listSavedLogins(test.vault, hostname);
+      expect(candidates.map((login) => login.username)).toEqual(["alice"]);
+
+      // The Logins tab deletes by splitting the identifier at its first colon.
+      const colon = entry.identifier.indexOf(":");
+      await deleteSavedLogin(
+        test.vault,
+        entry.identifier.slice(0, colon),
+        entry.identifier.slice(colon + 1),
+      );
+      expect(await getSavedLogin(test.vault, hostname, "alice")).toBeNull();
+    },
+  );
+
+  it("still rejects a domain with no hostname", async () => {
+    await expect(
+      setSavedLogin(test.vault, {
+        domain: "https:///login",
+        username: "alice",
+        password: "pw-1",
+      }),
+    ).rejects.toThrow("setSavedLogin: domain required");
+  });
+
+  // A domain that keeps a colon would save `<domain>:<username>` under an
+  // identifier the Logins tab splits at the wrong colon, so nothing could
+  // reveal or delete it. Refuse it and store nothing.
+  it.each([
+    "::1",
+    "[::1]:3000",
+    "http://[::1]/admin",
+    "github.com:abc",
+    "[127.0.0.1]:3000",
+    "[github.com]:443",
+  ])("rejects %s instead of saving an undeletable login", async (entered) => {
+    await expect(
+      setSavedLogin(test.vault, {
+        domain: entered,
+        username: "alice",
+        password: "pw-1",
+      }),
+    ).rejects.toThrow("setSavedLogin: domain must be a hostname");
+    const manager = createManager({
+      vault: test.vault,
+      exec: async () => {
+        throw new Error("external password managers are not used here");
+      },
+    });
+    const { logins } = await manager.listAllSavedLogins();
+    expect(logins.filter((login) => login.source === "in-house")).toEqual([]);
   });
 });

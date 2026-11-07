@@ -508,13 +508,22 @@ async function handleSavedLoginsRoute(
       sendJsonError(res, 400, "`notes` must be a string when provided");
       return true;
     }
-    await setSavedLogin(vault, {
-      domain: p.domain,
-      username: p.username,
-      password: p.password,
-      ...(typeof p.otpSeed === "string" ? { otpSeed: p.otpSeed } : {}),
-      ...(typeof p.notes === "string" ? { notes: p.notes } : {}),
-    });
+    try {
+      await setSavedLogin(vault, {
+        domain: p.domain,
+        username: p.username,
+        password: p.password,
+        ...(typeof p.otpSeed === "string" ? { otpSeed: p.otpSeed } : {}),
+        ...(typeof p.notes === "string" ? { notes: p.notes } : {}),
+      });
+    } catch (err) {
+      // A domain that does not reduce to a hostname is a caller error.
+      if (err instanceof TypeError) {
+        sendJsonError(res, 400, err.message);
+        return true;
+      }
+      throw err;
+    }
     sendJson(res, 200, { ok: true });
     return true;
   }
