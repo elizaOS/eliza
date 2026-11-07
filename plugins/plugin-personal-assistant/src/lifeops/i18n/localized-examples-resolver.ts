@@ -12,21 +12,17 @@
  */
 
 import type { LocalizedActionExampleResolver } from "@elizaos/core";
-import type {
-  MultilingualPromptRegistry,
-  PromptLocale,
+import {
+  isSupportedLocale,
+  type MultilingualPromptRegistry,
+  type PromptLocale,
 } from "./prompt-registry.js";
 
-const SUPPORTED_REGISTRY_LOCALES: ReadonlySet<PromptLocale> = new Set([
-  "en",
-  "es",
-  "fr",
-  "ja",
+// Core's `detectLocaleFromText` tags Han text "zh-Hans"; the registry keys
+// Chinese as "zh-CN".
+const REGISTRY_LOCALE_ALIASES: ReadonlyMap<string, PromptLocale> = new Map([
+  ["zh-Hans", "zh-CN"],
 ]);
-
-function isSupportedRegistryLocale(value: string): value is PromptLocale {
-  return SUPPORTED_REGISTRY_LOCALES.has(value as PromptLocale);
-}
 
 export interface LocalizedExamplesResolverOptions {
   registry: MultilingualPromptRegistry;
@@ -48,10 +44,10 @@ export interface LocalizedExamplesResolverOptions {
 export function createLocalizedExamplesResolver(
   opts: LocalizedExamplesResolverOptions,
 ): LocalizedActionExampleResolver {
-  if (!isSupportedRegistryLocale(opts.locale)) {
+  const locale = REGISTRY_LOCALE_ALIASES.get(opts.locale) ?? opts.locale;
+  if (!isSupportedLocale(locale)) {
     return () => null;
   }
-  const locale = opts.locale;
   const registry = opts.registry;
 
   return ({ actionName, exampleIndex }) => {
