@@ -224,8 +224,9 @@ const TEAMS_URL_RE =
 	/^https?:\/\/(?:[\w-]+\.)?teams\.(?:microsoft|live)\.com\/(?:v2\/)?(?:l\/)?meetup-join\/([^?\s]+)/i;
 const TEAMS_SHORT_RE =
 	/^https?:\/\/teams\.(?:microsoft|live)\.com\/meet\/(\d+)(?:[/?#]|$)/i;
+// Zoom's launch page appends "#success" to the link once it has opened the app.
 const ZOOM_URL_RE =
-	/^https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|w|wc)\/(?:join\/)?(\d{9,12})(?:[/?]|$)/i;
+	/^https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|w|wc)\/(?:join\/)?(\d{9,12})(?:[/?#]|$)/i;
 const ZOOM_APP_RE = /^https?:\/\/app\.zoom\.us\/wc\/(\d{9,12})\/join/i;
 
 /**
