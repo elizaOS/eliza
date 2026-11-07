@@ -292,8 +292,11 @@ export async function verifyGroundTruth(
   const mismatch =
     files.changedButNotClaimed.length > 0 ||
     files.claimedButNotChanged.length > 0;
-  const redRequired = checks.items.filter(
-    (check) => check.required && check.state === "red",
+  // Judge red checks over the same set as the rollup: every check when the
+  // base branch requires none, as the pending case below already does.
+  const anyRequired = checks.items.some((check) => check.required);
+  const redGating = checks.items.filter(
+    (check) => (check.required || !anyRequired) && check.state === "red",
   );
   const hardFailReasons: string[] = [];
   if (remote.state !== "open") {
@@ -312,9 +315,9 @@ export async function verifyGroundTruth(
   } else if (checks.state === "pending") {
     hardFailReasons.push("Pull request checks are still pending.");
   }
-  if (redRequired.length > 0) {
+  if (redGating.length > 0) {
     hardFailReasons.push(
-      `Required checks are red: ${redRequired.map((check) => check.name).join(", ")}.`,
+      `${anyRequired ? "Required checks" : "Pull request checks"} are red: ${redGating.map((check) => check.name).join(", ")}.`,
     );
   }
   const hardFail =
