@@ -37,6 +37,7 @@ import {
   meetingArtifactToTranscriptSegments,
   parseMeetingUrl,
   parsePositiveInteger,
+  stripZoomRegistrantToken,
   type Transcript,
   type TranscriptSegment,
 } from "@elizaos/core/protocol";
@@ -309,10 +310,13 @@ export class MeetingService extends Service {
       },
     });
     const writer = new MeetingTranscriptWriter(this.runtime);
+    // Only the bot's config gets a Zoom registrant token; the session, room and
+    // transcript keep the link without it.
+    const storedMeetingUrl = stripZoomRegistrantToken(parsed.meetingUrl);
     const session: InternalSession = {
       id: sessionId,
       platform: parsed.platform,
-      meetingUrl: parsed.meetingUrl,
+      meetingUrl: storedMeetingUrl,
       nativeMeetingId: parsed.nativeMeetingId,
       botName,
       status: "requested",
@@ -347,7 +351,7 @@ export class MeetingService extends Service {
         type: ChannelType.GROUP,
         channelId: parsed.nativeMeetingId,
         worldId,
-        metadata: { meetingUrl: parsed.meetingUrl, sessionId },
+        metadata: { meetingUrl: storedMeetingUrl, sessionId },
       });
       await writer.start({
         sessionId,
@@ -356,7 +360,7 @@ export class MeetingService extends Service {
         entityId: this.runtime.agentId,
         title: `${MEETING_PLATFORM_LABELS[parsed.platform]} meeting ${parsed.nativeMeetingId}`,
         platform: parsed.platform,
-        meetingUrl: parsed.meetingUrl,
+        meetingUrl: storedMeetingUrl,
         nativeMeetingId: parsed.nativeMeetingId,
         consentState: "not_required",
       });

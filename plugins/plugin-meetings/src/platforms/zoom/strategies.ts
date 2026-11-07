@@ -16,7 +16,10 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { MeetingEndReason } from "@elizaos/core/protocol";
+import {
+  type MeetingEndReason,
+  stripZoomRegistrantToken,
+} from "@elizaos/core/protocol";
 import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
 import type {
@@ -151,7 +154,10 @@ export function createZoomStrategies(
   return {
     async join(page: Page, session: MeetingBotSession): Promise<void> {
       const { meetingUrl, botName } = session.config;
-      logger.info({ meetingUrl }, `${TAG} navigating to Zoom web client`);
+      logger.info(
+        { meetingUrl: stripZoomRegistrantToken(meetingUrl) },
+        `${TAG} navigating to Zoom web client`,
+      );
 
       // Host-not-started retry loop: the /wc/ URL serves "Error - Zoom" /
       // "This meeting link is invalid (3,001)" until the host starts.

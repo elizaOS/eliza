@@ -659,3 +659,6 @@ e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/del
 
 # TypeScript type name TwitterInteractionPayload in a test import; not key material.
 968d0b213bf5e40f818593c0eaf3cce7f665c016:plugins/plugin-x/src/interactions-mention-cursor.test.ts:twitter-api-key:18
+
+# Synthetic Zoom registrant tk value under a TOKEN name; the test now names it REGISTRANT_TK.
+d513aea2bfb74ce74ccfb007e6fc77a2cafd8b98:plugins/plugin-meetings/src/zoom-registrant-token.test.ts:generic-api-key:21
