@@ -61,6 +61,7 @@ import {
   getContainerExecutorDeps,
 } from "../lib/services/container-job-service";
 import { readContainerProvisionJobData } from "../lib/services/container-jobs-data";
+import { retireContainerInTransaction } from "../lib/services/container-retirement";
 import { dispatchContainerStopJob } from "../lib/services/container-stop-job-service";
 import {
   configureElizaLifecycleTransaction,
@@ -2069,6 +2070,11 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
+            // A provision that started the container but never passed the
+            // reachability gate left the row `running`, which the daily
+            // container billing charges. The deployment failed, so the
+            // container is retired with the app's failure.
+            await retireContainerInTransaction(tx, containerId, row.organizationId);
             logger.warn(
               "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
               { jobId: job.id, containerId, appId },

@@ -168,6 +168,21 @@ async function lockContainer(
   return row;
 }
 
+/**
+ * Retire a container inside the caller's transaction: lock the row, move it
+ * to `deleting` and own a CONTAINER_DELETE job, committed with the caller's
+ * other writes.
+ */
+export async function retireContainerInTransaction(
+  tx: DbTransaction,
+  containerId: string,
+  organizationId: string,
+): Promise<ContainerRetirementResult> {
+  const row = await lockContainer(tx, containerId, organizationId);
+  if (!row) return { containerId, outcome: "missing" };
+  return retireLockedContainer(tx, row);
+}
+
 /** Commit the non-quota-counting state and durable teardown ownership together. */
 export async function retireContainerWithDeleteJob(
   containerId: string,
