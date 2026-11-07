@@ -33,7 +33,7 @@
     ]
   },
   {
-    "id": "auth.AccountCredentialStorage",
+    "id": "auth.AccountStorageOwnershipAndReset",
     "model": null,
     "sources": [
       "packages/auth/src/auth/account-storage.ts",
@@ -42,7 +42,7 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Storage ownership and generation, per-account refresh compare-and-swap, reset/deletion preflight and commit, encrypted legacy upgrade and process mutation lock are not covered by RefreshMutex."
+      "Storage ownership and reset generations, conditional metadata admission, deletion preflight/commit atomicity, encrypted legacy upgrade and cross-process mutation lock recovery still need models. AccountCredentialGeneration covers the separate refresh compare-and-swap contract."
     ]
   },
   {
@@ -80,6 +80,51 @@
     "status": "unmodeled",
     "limitations": [
       "Android pending state/expiry, acknowledgement retry budget, credential-slot ownership, cancellation and activity recreation are not covered by the Node native-host projection."
+    ]
+  },
+  {
+    "id": "auth.AccountCredentialGeneration",
+    "model": "packages/auth/quint/AccountCredentialGeneration.qnt",
+    "sources": ["packages/auth/src/auth/account-storage.ts"],
+    "invariants": [
+      "FreshGenerations",
+      "StaleRefreshCannotReplace",
+      "RefreshCannotResurrect",
+      "RefreshPreservesCurrentLabel",
+      "MissingIdTokenIsCarriedForward",
+      "MetadataPreservesCredentials",
+      "ProviderIsolation"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two provider namespaces share an account id. Two one-shot refresh callers and one explicit save bound fresh generations. Atomic storage API operations and unique generation UUIDs are assumed.",
+      "Generated traces replay public APIs against actual encrypted account files. Metadata changes and deletion/replacement interleave with held refresh generations. Root ownership, process locking, storage failures, reset, conditional metadata and legacy migration require separate models.",
+      "Refresh progress assumes weak fairness of completed provider responses and the refresh commit API. Permanent provider failure is outside this projection."
+    ]
+  },
+  {
+    "id": "auth.NativeSignInAttemptOwnership",
+    "model": null,
+    "sources": ["packages/auth/src/auth/native-cloud-sign-in.ts"],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Native attempt/request-id ownership, credential write-intent reservation, scoped cancellation, replacement-attempt fencing and browser pending restoration require a separate model. NativeEnrollmentRecovery covers the private host durable receipt after issuance."
+    ]
+  },
+  {
+    "id": "auth.OAuthAndEnrollmentAuthority",
+    "model": null,
+    "sources": [
+      "packages/auth/src/auth/oauth-flow.ts",
+      "packages/auth/src/server/auth/oauth.ts",
+      "packages/auth/src/server/auth/agent-enroll.ts",
+      "packages/auth/src/server/api/services/oauth-link-pkce.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "OAuth state/PKCE and redirect binding, single-use enrollment claims, identity-link ownership and session/token issuance require protocol models beyond AuthStorePublication atomic storage. External provider cryptography and remote service semantics need explicit assumptions."
     ]
   }
 ]

@@ -3,8 +3,8 @@
   "conformance": "packages/auth/quint/check-native-enrollment.mjs",
   "bounds": {
     "domain": "One saved credential, one host, original acknowledgement deadline 2, logical time 0..3. Six initial states cover acknowledged/unacknowledged, active/inactive, matching/mismatching binding.",
-    "transitions": "Quiescent public resume/cancel/disconnect/restart operations, eight resume and nine cancellation outcomes, plus cancellation at five explicit resume await boundaries. Storage failures before/after atomic commit and remote effects with lost replies are distinct.",
-    "assumptions": "Receipt is already durably saved. Atomic authenticated server acknowledgement/revocation, atomic local file replacement, cooperative activation guard, no concurrent host process or new credential replacement. Cryptography, issuance, verified-owner callback and external storage durability are separate contracts.",
+    "transitions": "Quiescent public resume/cancel/disconnect/restart operations, eight resume and nine cancellation outcomes, plus cancellation at five explicit resume await boundaries. Storage failures before/after atomic commit and remote effects with lost replies are distinct. The five race transitions assume cancellation itself succeeds.",
+    "assumptions": "Receipt is already durably saved. Atomic authenticated server acknowledgement/revocation, atomic local file replacement, cooperative activation guard, no concurrent host process or new credential replacement. Cryptography, issuance, verified-owner callback and external storage durability are separate contracts. The acknowledged key remains unexpired through the model horizon.",
     "progress": "RetriedCancellationCompletes assumes weak fairness of a complete successful cancellation retry, including eventual network and storage success. No completion claim for permanent outage, expired unacknowledged enrollment, or absent retry."
   },
   "cases": [
