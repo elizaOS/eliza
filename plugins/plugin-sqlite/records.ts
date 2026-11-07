@@ -656,6 +656,10 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const memory of embeddedMemories) {
       const id = memory.id as UUID | undefined;
       if (!id || !memory.embedding) continue;
+      // Match plugin-sql: only this agent's memories are in scope. A row
+      // owned by another agent must keep its embedding: the boot re-embed
+      // path refuses foreign rows, so stripping one destroys its vector.
+      if ((memory.agentId ?? this.agentId) !== this.agentId) continue;
       if (memory.embedding.length === this.embeddingDimension) {
         await this.vectorIndex.add(id, memory.embedding);
         continue;
