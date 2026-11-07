@@ -182,6 +182,11 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
     const { runtime, adapter } = await makeRuntime();
     await seed(adapter, botExchangeRows(runtime.agentId, 3));
     const message = botInbound(GROUP_ROOM, ChannelType.GROUP);
+    message.content.mentionContext = {
+      isMention: true,
+      isReply: false,
+      isThread: false,
+    };
     expect(
       await runBotGroupAddressGate({
         runtime,
@@ -197,6 +202,35 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
         explicitlyAddressesAgent: true,
       }),
     ).toMatchObject({ ignored: false, reason: "directly_addressed" });
+  });
+
+  it("stops a bot exchange carried only by reply references at the depth limit", async () => {
+    const { runtime, adapter } = await makeRuntime();
+    await seed(adapter, botExchangeRows(runtime.agentId, 3));
+    // Two agents answering each other: each answer carries a reply reference
+    // to the other agent's message, with no mention and no name.
+    const message = botInbound(GROUP_ROOM, ChannelType.GROUP);
+    message.content.mentionContext = {
+      isMention: false,
+      isReply: true,
+      isThread: false,
+    };
+    // The reply is still addressed: the agent may answer it once.
+    expect(
+      await runBotGroupAddressGate({
+        runtime,
+        message,
+        explicitlyAddressesAgent: true,
+      }),
+    ).toEqual({ ignored: false, reason: "directly_addressed" });
+    // But it does not lift the loop limit.
+    expect(
+      await runBotLoopGate({
+        runtime,
+        message,
+        explicitlyAddressesAgent: true,
+      }),
+    ).toMatchObject({ ignored: true, agentTurnsSinceLastHuman: 3 });
   });
 
   it("does not suppress human text that spoofs a bot speaker label", async () => {
