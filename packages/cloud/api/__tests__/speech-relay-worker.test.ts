@@ -16,7 +16,7 @@ beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
     [
       /\/services\/inference-billing-fast-path\.ts$/,
-      `export class InferenceBalanceCacheWarmingError extends Error {}`,
+      `export class InferenceBillingUnavailableError extends Error {}`,
     ],
     [
       /\/inference-admission-recovery\.ts$/,
@@ -136,7 +136,6 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
       HYPERDRIVE: {
         connectionString: "postgres://boundary-test.invalid/not-used",
       },
-      INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
       // No account rate: subscription speech sizes reservations at the
@@ -1563,4 +1562,50 @@ test("complete STT drain charges exact PCM once and zero for the unused renewed 
   } finally {
     f.socket.close();
   }
+});
+
+test("a consent warm instantiates the session object without a ledger, and one mint owns it", async () => {
+  const session = "44444444-4444-8444-8444-444444444444";
+  const at = async (path: string, body?: unknown) => {
+    const result = await worker.dispatchFetch(
+      `https://speech-relay.internal${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-session": session,
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      },
+    );
+    // Consume each response before Bun/Miniflare reuses its loopback connection.
+    await result.arrayBuffer();
+    return result;
+  };
+  const warmed = await at("/warm");
+  expect(warmed.status).toBe(200);
+  // The warm stored nothing: the object still has no session to revoke.
+  expect(
+    (
+      await at("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(404);
+  const mint = (token: string) =>
+    at("/initialize", {
+      sessionId: session,
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 60000,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+      },
+    });
+  expect((await mint("first-capability")).status).toBe(200);
+  // A replayed consent derives the same name; its new capability is refused.
+  expect((await mint("replayed-capability")).status).toBe(409);
 });

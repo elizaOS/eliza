@@ -254,4 +254,63 @@ describe("bundle ASR artifacts", () => {
 			readGgufArchitecture(path.join(tmpdir(), "eliza-absent.gguf")),
 		).toBeNull();
 	});
+
+	describe("region files (Android in-place models)", () => {
+		/** A container with `model` at `offset`, and a region file naming it. */
+		function regionBundle(
+			model: Buffer,
+			offset: number,
+			length = model.length,
+		): { root: string; container: string; region: string } {
+			const root = writeManifest({});
+			const container = path.join(root, "base.apk");
+			writeFileSync(
+				container,
+				Buffer.concat([Buffer.alloc(offset, 0x6a), model, Buffer.from("tail")]),
+			);
+			const region = path.join(root, "asr", "phonon-2-fv5.gguf");
+			writeFileSync(
+				region,
+				`eliza-file-region v1\noffset=${offset}\nlength=${length}\npath=${container}\n`,
+			);
+			return { root, container, region };
+		}
+
+		it("reads a Parakeet header through a region file at an offset", () => {
+			const { root, region } = regionBundle(gguf("parakeet-tdt"), 4112);
+			expect(readGgufArchitecture(region)).toBe("parakeet-tdt");
+			expect(bundleHasAsrModelFiles(root)).toBe(true);
+		});
+
+		it("does not treat a region over non-GGUF bytes as a model", () => {
+			const { root } = regionBundle(Buffer.alloc(64, 0x6a), 4096);
+			expect(bundleHasAsrModelFiles(root)).toBe(false);
+		});
+
+		it("treats a region past the end of its container as unreadable", () => {
+			const model = gguf("parakeet-tdt");
+			const { root, region } = regionBundle(model, 4112, model.length + 4096);
+			expect(() => readGgufArchitecture(region)).toThrow(
+				/failed to read GGUF header/,
+			);
+			expect(() => bundleHasAsrModelFiles(root)).toThrow(
+				/failed to read GGUF header/,
+			);
+		});
+
+		it("treats a region whose container is gone as unreadable, not absent", () => {
+			const { container, region } = regionBundle(gguf("parakeet-tdt"), 4112);
+			rmSync(container);
+			expect(() => readGgufArchitecture(region)).toThrow(
+				/failed to read GGUF header/,
+			);
+		});
+
+		it("rejects an unaligned region offset", () => {
+			const { region } = regionBundle(gguf("parakeet-tdt"), 4100);
+			expect(() => readGgufArchitecture(region)).toThrow(
+				/failed to read GGUF header/,
+			);
+		});
+	});
 });

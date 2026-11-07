@@ -4,6 +4,11 @@
  * and persistence policy while adapting this transport-neutral representation.
  */
 import { z } from "zod";
+import {
+	appSessionSchema,
+	appSupportsSchema,
+	appViewerSchema,
+} from "./schema.js";
 
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
@@ -34,24 +39,8 @@ const appSchema = z
 		runtimePlugin: z.string().optional(),
 		bridgeExport: z.string().optional(),
 		uiExtension: z.object({ detailPanelId: z.string() }).optional(),
-		viewer: z
-			.object({
-				url: z.string(),
-				embedParams: z.record(z.string(), z.string()).optional(),
-				postMessageAuth: z.boolean().optional(),
-				sandbox: z.string().optional(),
-			})
-			.optional(),
-		session: z
-			.object({
-				mode: z.enum(["viewer", "spectate-and-steer", "external"]),
-				features: z
-					.array(
-						z.enum(["commands", "telemetry", "pause", "resume", "suggestions"]),
-					)
-					.optional(),
-			})
-			.optional(),
+		viewer: appViewerSchema.optional(),
+		session: appSessionSchema.optional(),
 		viewKind: z.enum(["system", "release", "developer", "preview"]).optional(),
 		visibleInAppStore: z.boolean().optional(),
 		mainTab: z.boolean().optional(),
@@ -81,7 +70,7 @@ export const runtimeRegistryEntrySchema = z
 				v2CoreRange: nullableString,
 			})
 			.passthrough(),
-		supports: z.object({ v0: z.boolean(), v1: z.boolean(), v2: z.boolean() }),
+		supports: appSupportsSchema,
 		description: z.string().optional(),
 		homepage: nullableString,
 		topics: z.array(z.string()).optional(),
@@ -231,18 +220,6 @@ export interface RegistrySearchable {
 	stars: number;
 }
 
-export interface RegistrySearchPolicy {
-	popularityBonuses: readonly [number, number, number];
-}
-
-export const AGENT_REGISTRY_SEARCH_POLICY: RegistrySearchPolicy = {
-	popularityBonuses: [3, 3, 4],
-};
-
-export const CORE_REGISTRY_SEARCH_POLICY: RegistrySearchPolicy = {
-	popularityBonuses: [5, 5, 5],
-};
-
 /** Score and deterministically order registry entries using one host-neutral policy. */
 export function searchRegistryEntries<T extends RegistrySearchable>(
 	entries: Iterable<T>,
@@ -250,7 +227,6 @@ export function searchRegistryEntries<T extends RegistrySearchable>(
 	limit: number,
 	extraNames: (entry: T) => string[] = () => [],
 	extraTerms: (entry: T) => string[] = () => [],
-	policy: RegistrySearchPolicy = AGENT_REGISTRY_SEARCH_POLICY,
 ): Array<{ entry: T; score: number }> {
 	const normalizedQuery = query.trim().toLowerCase();
 	if (!normalizedQuery || limit <= 0) return [];
@@ -260,6 +236,7 @@ export function searchRegistryEntries<T extends RegistrySearchable>(
 		const name = entry.name.toLowerCase();
 		const description = entry.description.toLowerCase();
 		const aliases = extraNames(entry).map((value) => value.toLowerCase());
+		const topics = entry.topics.map((topic) => topic.toLowerCase());
 		let score = 0;
 		if (
 			name === normalizedQuery ||
@@ -273,21 +250,20 @@ export function searchRegistryEntries<T extends RegistrySearchable>(
 		)
 			score += 50;
 		if (description.includes(normalizedQuery)) score += 30;
-		for (const topic of entry.topics)
-			if (topic.toLowerCase().includes(normalizedQuery)) score += 25;
+		for (const topic of topics)
+			if (topic.includes(normalizedQuery)) score += 25;
 		for (const term of extraTerms(entry))
 			if (term.toLowerCase().includes(normalizedQuery)) score += 25;
 		for (const term of terms) {
 			if (name.includes(term) || aliases.some((alias) => alias.includes(term)))
 				score += 15;
 			if (description.includes(term)) score += 10;
-			for (const topic of entry.topics)
-				if (topic.toLowerCase().includes(term)) score += 8;
+			for (const topic of topics) if (topic.includes(term)) score += 8;
 		}
 		if (score > 0) {
-			if (entry.stars > 100) score += policy.popularityBonuses[0];
-			if (entry.stars > 500) score += policy.popularityBonuses[1];
-			if (entry.stars > 1000) score += policy.popularityBonuses[2];
+			if (entry.stars > 100) score += 3;
+			if (entry.stars > 500) score += 3;
+			if (entry.stars > 1000) score += 4;
 			results.push({ entry, score });
 		}
 	}

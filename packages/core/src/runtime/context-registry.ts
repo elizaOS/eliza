@@ -2,14 +2,15 @@
  * Registry of the agent's context taxonomy. Stores normalized `ContextDefinition`
  * records, validates on every mutation that parent and subcontext edges reference
  * known contexts and form no cycles, and supports idempotent registration plus
- * role-gated listing for prompt rendering. Exports an empty default registry; hosts and plugins register their taxonomy.
+ * role-gated listing for prompt rendering. Hosts and plugins register their taxonomy.
  */
+
+import { satisfiesRoleGate } from "../access-control/role-primitives.js";
 import type {
 	AgentContext,
 	ContextDefinition,
 	RoleGateRole,
 } from "../types/contexts";
-import { satisfiesRoleGate } from "./context-gates";
 import {
 	normalizeContextId,
 	normalizeContextList,
@@ -33,7 +34,7 @@ export class ContextRegistryError extends Error {
 }
 
 export class ContextRegistry {
-	readonly #definitions = new Map<AgentContext, ContextDefinition>();
+	#definitions = new Map<AgentContext, ContextDefinition>();
 
 	constructor(definitions: readonly ContextDefinition[] = []) {
 		this.registerMany(definitions);
@@ -68,10 +69,7 @@ export class ContextRegistry {
 		}
 		assertNoUnknownEdges(next);
 		assertNoContextCycles(next);
-		this.#definitions.clear();
-		for (const [id, definition] of next) {
-			this.#definitions.set(id, definition);
-		}
+		this.#definitions = next;
 	}
 
 	/**
@@ -138,14 +136,6 @@ export class ContextRegistry {
 		return this.list().filter((definition) =>
 			satisfiesRoleGate(normalizedRoles, definition.roleGate),
 		);
-	}
-
-	normalize(context: AgentContext): AgentContext {
-		return normalizeContextId(context);
-	}
-
-	normalizeList(contexts: readonly AgentContext[] | undefined): AgentContext[] {
-		return normalizeContextList(contexts);
 	}
 }
 
@@ -231,5 +221,3 @@ function assertNoContextCycles(
 		visit(id, []);
 	}
 }
-
-export const defaultContextRegistry = new ContextRegistry();

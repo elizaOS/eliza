@@ -86,6 +86,25 @@ export function speechRelayMaxWindows(
 export function speechTokenDigest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
+/**
+ * The session object name for one consent. /consent warms this object while
+ * the client asks for /session, so the first-touch wait of a new object in
+ * this Worker overlaps the client round trip instead of following it. The
+ * nonce is single-use and secret to its user, and the token still gates the
+ * socket, so a predictable name grants nothing. A replayed nonce reaches the
+ * existing ledger, whose identity check refuses a second initialization.
+ */
+export function speechSessionIdForConsent(
+  userId: string,
+  consentNonce: string,
+): string {
+  const hex = createHash("sha256")
+    .update(`speech-session:v1:${userId}:${consentNonce}`)
+    .digest("hex");
+  // RFC 9562 version 8 (custom) with the RFC variant bits.
+  const variant = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
 const response = (status: number, code: string) =>
   Response.json({ error: code }, { status });
 
@@ -330,6 +349,9 @@ export class SpeechRelayCoordinator {
           !(url.pathname === "/revoke" && request.method === "POST")
         )
           return response(404, "speech_unavailable");
+        // Instantiates this object ahead of /initialize. It reads and stores nothing.
+        if (url.pathname === "/warm" && request.method === "POST")
+          return new Response(null, { status: 200 });
         if (
           (url.pathname === "/prepare" || url.pathname === "/initialize") &&
           request.method === "POST"

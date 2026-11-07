@@ -1154,24 +1154,6 @@ export class CacheClient {
     }
   }
 
-  async popQueueTail(key: string): Promise<string | null> {
-    const redis = await this.getRedisClient();
-    if (!redis) return null;
-
-    try {
-      const value = await redis.rpop(this.pk(key));
-      this.resetFailures();
-      return value;
-    } catch (error) {
-      this.recordFailure();
-      logger.error("[Cache] queue pop failed", {
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  }
-
   async getQueueLength(key: string): Promise<number> {
     const redis = await this.getRedisClient();
     if (!redis) return 0;

@@ -17,6 +17,39 @@ import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
 import { initdbSnapshotPath, readInitdbSnapshot } from "./initdb-snapshot";
+import { isMemoryDataDir, withMemorySettings } from "./memory-settings";
+
+// User tables to VACUUM, and whether each has an HNSW or IVFFlat index.
+const MAINTENANCE_TABLES_SQL = `
+SELECT format('%I.%I', n.nspname, c.relname) AS name,
+  EXISTS (
+    SELECT 1 FROM pg_index i
+    JOIN pg_class ic ON ic.oid = i.indexrelid
+    JOIN pg_am am ON am.oid = ic.relam
+    WHERE i.indrelid = c.oid AND am.amname IN ('hnsw', 'ivfflat')
+  ) AS ann
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast%'
+  AND n.nspname NOT LIKE 'pg_temp%'
+ORDER BY 1`;
+
+const textEncoder = new TextEncoder();
+
+/**
+ * Sends one statement as a protocol message. PGlite's query() and exec()
+ * wait for the query lock, so they cannot be used inside runExclusive.
+ */
+async function execSimple(client: PGlite, sql: string): Promise<void> {
+  const body = textEncoder.encode(`${sql}\0`);
+  const message = new Uint8Array(5 + body.length);
+  message[0] = 0x51; // 'Q'
+  new DataView(message.buffer).setInt32(1, 4 + body.length);
+  message.set(body, 5);
+  await client.execProtocol(message);
+}
 
 type PglitePidFileStatus =
   | "missing"
@@ -110,6 +143,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   // bounding the false-positive blast radius. See isLockActive.
   private static readonly LOCK_STALE_MS = 7 * 24 * 60 * 60 * 1000;
   private static readonly PID_REUSE_GRACE_MS = 5_000;
+  // Single-user Postgres never checkpoints by itself, so an in-memory WAL
+  // grows until close. Check it once a minute; act after one WAL segment.
+  private static readonly MEMORY_MAINTENANCE_INTERVAL_MS = 60_000;
+  private static readonly MEMORY_MAINTENANCE_WAL_BYTES = 16 * 1024 * 1024;
 
   private client: PGlite;
   private options: PGliteOptions;
@@ -127,6 +164,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     | undefined;
   private lockFd: number | null = null;
   private lockPath: string | null = null;
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private maintenanceRunning = false;
 
   constructor(options: PGliteOptions) {
     this.options = options;
@@ -140,6 +179,76 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       // same-process retry would self-deadlock on its own (still-running) PID.
       this.releaseDataDirLock();
       throw err;
+    }
+    if (this.isMemoryDatabase()) {
+      this.maintenanceTimer = setInterval(() => {
+        void this.runMemoryMaintenance().catch((error) => {
+          // A tick that overlaps close() fails on the closed client.
+          if (this.shuttingDown) return;
+          logger.warn(
+            { src: "plugin:sql", error: this.getErrorText(error) },
+            "pglite: in-memory maintenance failed"
+          );
+        });
+      }, PGliteClientManager.MEMORY_MAINTENANCE_INTERVAL_MS);
+      this.maintenanceTimer.unref?.();
+    }
+  }
+
+  private isMemoryDatabase(): boolean {
+    const dataDir = (this.options as { dataDir?: unknown }).dataDir;
+    return dataDir === ":memory:" || isMemoryDataDir(dataDir);
+  }
+
+  /**
+   * For an in-memory database: once a WAL segment has been written since the
+   * last checkpoint, VACUUM the user tables so deleted rows (retention sweeps)
+   * can be reused, then CHECKPOINT so the old WAL segments are freed. Returns
+   * whether it ran. It skips the pass while a transaction is open.
+   */
+  public async runMemoryMaintenance(): Promise<boolean> {
+    if (!this.isMemoryDatabase() || this.shuttingDown || this.maintenanceRunning) {
+      return false;
+    }
+    this.maintenanceRunning = true;
+    try {
+      const client = this.client;
+      await client.waitReady;
+      if (client.isInTransaction()) return false;
+      const { rows } = await client.query<{ bytes: number | string | bigint }>(
+        "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), redo_lsn)::bigint AS bytes FROM pg_control_checkpoint()"
+      );
+      if (Number(rows[0]?.bytes ?? 0) < PGliteClientManager.MEMORY_MAINTENANCE_WAL_BYTES) {
+        return false;
+      }
+      const tables = await client.query<{ name: string; ann: boolean }>(MAINTENANCE_TABLES_SQL);
+      const started = performance.now();
+      // Hold PGlite's query lock for the whole pass so no statement from the
+      // agent can open a transaction in the middle of it.
+      const ran = await client.runExclusive(async () => {
+        if (this.shuttingDown || client.isInTransaction()) return false;
+        for (const { name, ann } of tables.rows) {
+          // Cleaning an HNSW index after deletes can take tens of seconds and
+          // blocks every query, so tables with one skip index cleanup. Their
+          // heap space is still freed.
+          await execSimple(client, `VACUUM ${ann ? "(INDEX_CLEANUP OFF) " : ""}${name}`);
+        }
+        await execSimple(client, "CHECKPOINT");
+        return true;
+      });
+      if (ran) {
+        logger.debug(
+          {
+            src: "plugin:sql",
+            tables: tables.rows.length,
+            ms: Math.round(performance.now() - started),
+          },
+          "pglite: in-memory maintenance pass"
+        );
+      }
+      return ran;
+    } finally {
+      this.maintenanceRunning = false;
     }
   }
 
@@ -291,6 +400,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   public async close(): Promise<void> {
     if (!this.closePromise) {
       this.shuttingDown = true;
+      if (this.maintenanceTimer) {
+        clearInterval(this.maintenanceTimer);
+        this.maintenanceTimer = null;
+      }
       this.closePromise = this.withLifecycleLock(async () => {
         await this.closeInternal();
       });
@@ -340,6 +453,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       options = { ...options, loadDataDir: snapshot };
       logger.debug({ src: "plugin:sql" }, "pglite: starting from the bundled initdb snapshot");
     }
+    options = withMemorySettings(options);
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);
     }

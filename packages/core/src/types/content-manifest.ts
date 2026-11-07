@@ -4,6 +4,7 @@
  * never source text, native paths, credentials, or ambient authorization.
  */
 
+import { utf8ByteLength } from "../utils/unicode";
 import {
 	type ContentReference,
 	READ_RANGE_UNITS,
@@ -278,7 +279,7 @@ export function validateCompactionContentManifest(
 		pendingProcesses,
 	};
 	if (
-		new TextEncoder().encode(JSON.stringify(manifest)).byteLength >
+		utf8ByteLength(JSON.stringify(manifest)) >
 		COMPACTION_CONTENT_MANIFEST_MAX_BYTES
 	) {
 		throw new TypeError("content manifest exceeds its serialized byte bound");

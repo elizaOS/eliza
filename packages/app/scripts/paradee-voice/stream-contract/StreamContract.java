@@ -3,6 +3,7 @@ import java.io.File;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 public final class StreamContract {
     /** VAD under the same owner: own context and lock, unfenced by cancel, kept by trim, retired by close. */
@@ -141,6 +142,28 @@ public final class StreamContract {
             check(seen[0] > 0);
             session.trimMemory();
             check(VoiceNative.loadedVoice == null);
+            // A host's speed range for one language is kept by the session: the slot takes it
+            // when it loads, again after a trim, and at once when it is already loaded.
+            VoiceNative.rangedVoice = null;
+            session.speedRange("es", 0.5f, 1.5f);
+            check(VoiceNative.rangedVoice == null);
+            session.client().prepareVoice("es");
+            check("es".equals(VoiceNative.loadedVoice) && "es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0.5f && VoiceNative.rangeMax == 1.5f);
+            session.trimMemory();
+            VoiceNative.rangedVoice = null;
+            session.synthesize("hola", 1, "es");
+            check("es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0.5f);
+            session.speedRange("es", 0.75f, 1.25f);
+            check(VoiceNative.rangeMin == 0.75f && VoiceNative.rangeMax == 1.25f);
+            try { session.speedRange("fr", 0.5f, 1.5f); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+            try { session.speedRange("es", 1.1f, 1.5f); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+            check(VoiceNative.rangeMin == 0.75f);
+            // The English voice alone, or recognition alone, loads for a readiness check.
+            session.trimMemory();
+            session.client().prepareRecognition();
+            check(!session.isSpeechLoaded() && VoiceNative.loadedVoice == null);
+            session.client().prepareVoice("en");
+            check(session.isSpeechLoaded() && VoiceNative.loadedVoice == null);
         } finally { session.close(); spanish.delete(); }
         File other = File.createTempFile("delibes", ".gguf");
         try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
@@ -160,13 +183,142 @@ public final class StreamContract {
         } finally { other.delete(); }
         check(ParadeeVoice.infoField("{\"a\":\"x\",\"sample_rate\":24000}", "sample_rate").equals("24000"));
     }
+    /**
+     * Batch calls: a cancel that lands after a call began, before the library cleared its cancel
+     * flag, still ends that call cancelled, as does a cancel while it waits for the lock. The
+     * next call is not hit.
+     */
+    static void batchCancelContract(File root, File model, File lexicon) throws Exception {
+        try (ParadeeVoice voice = new ParadeeVoice(model, lexicon, null); NativeAsr asr = new NativeAsr(root)) {
+            try {
+                VoiceNative.entering = voice::cancel;
+                cancelled(() -> voice.synthesize("lost", 1));
+                cancelled(() -> voice.synthesizePhonemes("lost", 1));
+                VoiceNative.entering = asr::cancel;
+                cancelled(() -> asr.transcribe(new float[]{0.1f}));
+            } finally { VoiceNative.entering = null; }
+            check(voice.synthesize("next", 1).samples.length == 1);
+            check(voice.synthesizePhonemes("next", 1).samples.length == 1);
+            check(asr.transcribe(new float[]{0.1f}).equals(VoiceNative.heard));
+            queuedCancelled(voice::cancel, () -> voice.synthesize("call", 1));
+            queuedCancelled(voice::cancel, () -> voice.synthesizePhonemes("call", 1));
+            queuedCancelled(asr::cancel, () -> asr.transcribe(new float[]{0.1f}));
+        }
+        // A loaded voice slot (nativeParadeeSynthesizeVoice) is fenced the same way.
+        File other = File.createTempFile("delibes", ".gguf");
+        try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
+            try {
+                VoiceNative.entering = voice::cancel;
+                cancelled(() -> voice.synthesize("lost", 1));
+            } finally { VoiceNative.entering = null; }
+            check(voice.synthesize("next", 1).samples.length > 0);
+            queuedCancelled(voice::cancel, () -> voice.synthesize("call", 1));
+        } finally { other.delete(); }
+    }
+    /**
+     * Per-request cancellation on one voice: cancelling a waiting request never runs it and never
+     * interrupts the running one; cancelling the running request interrupts only it, and the
+     * request waiting behind it still speaks. A cancel at native entry still ends that call
+     * cancelled; a cancelled request stays cancelled; the voice's own cancel still fences a request.
+     */
+    static void requestCancelContract(File model, File lexicon) throws Exception {
+        try (ParadeeVoice voice = new ParadeeVoice(model, lexicon, null)) {
+            requestPair(voice, false, (text, request) -> voice.synthesize(text, 1, request));
+            requestPair(voice, true, (text, request) -> voice.synthesize(text, 1, request));
+            requestPair(voice, false, (text, request) -> voice.synthesizePhonemes(text, 1, request));
+            requestPair(voice, true, (text, request) -> voice.synthesizePhonemes(text, 1, request));
+            ParadeeVoice.Request entering = new ParadeeVoice.Request();
+            try {
+                VoiceNative.entering = entering::cancel;
+                cancelled(() -> voice.synthesize("lost", 1, entering));
+            } finally { VoiceNative.entering = null; }
+            check(entering.isCancelled());
+            int cancels = VoiceNative.ttsCancels, calls = nativeCalls(voice, entering);
+            check(calls == 0 && VoiceNative.ttsCancels == cancels);
+            check(voice.synthesize("next", 1, new ParadeeVoice.Request()).samples.length == 1);
+            check(voice.synthesize("plain", 1, null).samples.length == 1);
+            ParadeeVoice.Request fenced = new ParadeeVoice.Request();
+            queuedCancelled(voice::cancel, () -> voice.synthesize("call", 1, fenced));
+            check(!fenced.isCancelled());
+        }
+        File other = File.createTempFile("delibes", ".gguf");
+        try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
+            requestPair(voice, false, (text, request) -> voice.synthesize(text, 1, request));
+            requestPair(voice, true, (text, request) -> voice.synthesize(text, 1, request));
+        } finally { other.delete(); }
+    }
+    interface RequestCall { ParadeeVoice.Audio run(String text, ParadeeVoice.Request request); }
+    /** Native calls a cancelled request reaches: none. */
+    static int nativeCalls(ParadeeVoice voice, ParadeeVoice.Request request) {
+        AtomicInteger calls = new AtomicInteger();
+        VoiceNative.entering = calls::incrementAndGet;
+        try { cancelled(() -> voice.synthesize("again", 1, request)); } finally { VoiceNative.entering = null; }
+        return calls.get();
+    }
+    /**
+     * Request one runs in native code and request two waits for the voice. Cancels one of them and
+     * checks that only that one ends cancelled, and that only a running request is interrupted.
+     */
+    static void requestPair(ParadeeVoice voice, boolean cancelRunning, RequestCall call) throws Exception {
+        ParadeeVoice.Request running = new ParadeeVoice.Request(), waiting = new ParadeeVoice.Request();
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger nativeCalls = new AtomicInteger();
+        VoiceNative.entering = () -> { if (nativeCalls.incrementAndGet() == 1) { entered.countDown(); await(release); } };
+        AtomicReference<Object> first = new AtomicReference<>(), second = new AtomicReference<>();
+        try {
+            Thread active = new Thread(() -> { try { first.set(call.run("first", running)); } catch (Throwable error) { first.set(error); } });
+            active.start(); await(entered);
+            Thread queued = new Thread(() -> { try { second.set(call.run("second", waiting)); } catch (Throwable error) { second.set(error); } });
+            queued.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+            check(queued.getState() == Thread.State.BLOCKED);
+            int cancels = VoiceNative.ttsCancels;
+            (cancelRunning ? running : waiting).cancel();
+            check(VoiceNative.ttsCancels == cancels + (cancelRunning ? 1 : 0));
+            release.countDown(); join(active); join(queued);
+        } finally { VoiceNative.entering = null; }
+        Object cancelledResult = cancelRunning ? first.get() : second.get();
+        Object spoken = cancelRunning ? second.get() : first.get();
+        check(cancelledResult instanceof CancellationException);
+        check(spoken instanceof ParadeeVoice.Audio && ((ParadeeVoice.Audio) spoken).samples.length > 0);
+        check(nativeCalls.get() == (cancelRunning ? 2 : 1));
+    }
+    /**
+     * One call runs in native code and a second waits for the lock; a cancel then ends both
+     * cancelled, and the waiting call never reaches native code.
+     */
+    static void queuedCancelled(Runnable cancel, Runnable call) throws Exception {
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger nativeCalls = new AtomicInteger();
+        VoiceNative.entering = () -> { nativeCalls.incrementAndGet(); entered.countDown(); await(release); };
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            Thread active = new Thread(() -> { try { cancelled(call); } catch (Throwable error) { failure.set(error); } });
+            active.start(); await(entered);
+            Thread queued = new Thread(() -> { try { cancelled(call); } catch (Throwable error) { failure.set(error); } });
+            queued.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+            check(queued.getState() == Thread.State.BLOCKED);
+            cancel.run(); release.countDown(); join(active); join(queued);
+        } finally { VoiceNative.entering = null; }
+        check(failure.get() == null && nativeCalls.get() == 1);
+    }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     static void await(CountDownLatch latch) { try { check(latch.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); } }
     static void join(Thread thread) throws Exception { thread.join(5000); check(!thread.isAlive()); }
     static void cancelled(Runnable task) { try { task.run(); throw new AssertionError("Expected cancellation"); } catch (CancellationException expected) {} }
     public static void main(String[] args) throws Exception {
+        // The speech thread count is set before the first voice loads, and is fixed after it.
+        try { ParadeeVoice.setThreadCount(0); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+        ParadeeVoice.setThreadCount(3);
+        ParadeeVoice.setThreadCount(2);
+        check(VoiceNative.speechThreads == 2);
         File model = File.createTempFile("paradee", ".gguf"), lexicon = File.createTempFile("paradee", ".lex");
         try (ParadeeVoice voice = new ParadeeVoice(model, lexicon, null)) {
+            try { ParadeeVoice.setThreadCount(4); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            check(VoiceNative.speechThreads == 2);
             int[] seen = {0};
             voice.synthesizeStream("hello", 1, (pcm, complete) -> { check(complete ? pcm.length == 0 : pcm.length == 2); seen[0]++; return true; });
             check(seen[0] == 2);
@@ -256,6 +408,8 @@ public final class StreamContract {
         vadContract(root, model, lexicon);
         clientContract(root, model, lexicon);
         languageContract(root, model, lexicon);
+        batchCancelContract(root, model, lexicon);
+        requestCancelContract(model, lexicon);
         model.delete(); lexicon.delete(); asrDir.delete(); root.delete();
         System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }

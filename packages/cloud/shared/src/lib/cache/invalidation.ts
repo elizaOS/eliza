@@ -9,6 +9,25 @@ import { cache } from "./client";
 import { CacheKeys } from "./keys";
 import { memoryCache } from "./memory-cache";
 
+async function republishInferenceAdmission(organizationId: string): Promise<void> {
+  // Loaded lazily: the admission projection depends on services that import
+  // this module.
+  const { republishInferenceAdmissionAfterCreditMutation } = await import(
+    "../services/inference-admission-snapshot"
+  );
+  try {
+    await republishInferenceAdmissionAfterCreditMutation(organizationId);
+  } catch (error) {
+    // error-policy:J7 the balance change has committed. The failed republish
+    // already dropped the shared projection; an aged snapshot refills before
+    // it can refuse, and the next fill republishes to the gate.
+    logger.error("[Cache Invalidation] Inference admission republish failed", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /**
  * Static methods for cache invalidation based on data mutations.
  */
@@ -32,10 +51,13 @@ export class CacheInvalidation {
       cache.del(CacheKeys.eliza.orgBalance(organizationId)),
     ];
     if (!options.preserveInferenceBalanceHint) {
-      // Best-effort early eviction after a top-up, refund, or non-inference
-      // debit. The admission hint's short TTL and safety margin remain the
-      // correctness backstop when KV propagation or deletion is delayed.
-      invalidations.push(cache.del(CacheKeys.inference.orgBalance(organizationId)));
+      // A top-up, refund, or non-inference debit: the inference settlement
+      // fence did not see it, so publish the committed balance to the
+      // organization admission gate before the next lease.
+      invalidations.push(
+        cache.del(CacheKeys.inference.orgBalance(organizationId)),
+        republishInferenceAdmission(organizationId),
+      );
     }
     await Promise.all(invalidations);
   }

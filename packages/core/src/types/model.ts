@@ -155,126 +155,6 @@ export function isTextGenerationModelType(
 }
 
 /**
- * Model configuration setting keys used in character settings.
- * These constants define the keys for accessing model parameters
- * from character configuration with support for per-model-type settings.
- *
- * Setting Precedence (highest to lowest):
- * 1. Parameters passed directly to useModel()
- * 2. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
- * 3. Default settings (e.g., DEFAULT_TEMPERATURE)
- *
- * Example character settings:
- * ```
- * settings: {
- * DEFAULT_TEMPERATURE: 0.7, // Applies to all models
- * TEXT_SMALL_TEMPERATURE: 0.5, // Overrides default for TEXT_SMALL
- * TEXT_LARGE_MAX_TOKENS: 4096, // Specific to TEXT_LARGE
- * TEXT_NANO_TEMPERATURE: 0.3, // Specific to TEXT_NANO
- * }
- * ```
- */
-export const MODEL_SETTINGS = {
-	// Default settings - apply to all model types unless overridden
-	DEFAULT_MAX_TOKENS: "DEFAULT_MAX_TOKENS",
-	DEFAULT_TEMPERATURE: "DEFAULT_TEMPERATURE",
-	DEFAULT_TOP_P: "DEFAULT_TOP_P",
-	DEFAULT_TOP_K: "DEFAULT_TOP_K",
-	DEFAULT_MIN_P: "DEFAULT_MIN_P",
-	DEFAULT_SEED: "DEFAULT_SEED",
-	DEFAULT_REPETITION_PENALTY: "DEFAULT_REPETITION_PENALTY",
-	DEFAULT_FREQUENCY_PENALTY: "DEFAULT_FREQUENCY_PENALTY",
-	DEFAULT_PRESENCE_PENALTY: "DEFAULT_PRESENCE_PENALTY",
-
-	// TEXT_SMALL specific settings
-	TEXT_SMALL_MAX_TOKENS: "TEXT_SMALL_MAX_TOKENS",
-	TEXT_SMALL_TEMPERATURE: "TEXT_SMALL_TEMPERATURE",
-	TEXT_SMALL_TOP_P: "TEXT_SMALL_TOP_P",
-	TEXT_SMALL_TOP_K: "TEXT_SMALL_TOP_K",
-	TEXT_SMALL_MIN_P: "TEXT_SMALL_MIN_P",
-	TEXT_SMALL_SEED: "TEXT_SMALL_SEED",
-	TEXT_SMALL_REPETITION_PENALTY: "TEXT_SMALL_REPETITION_PENALTY",
-	TEXT_SMALL_FREQUENCY_PENALTY: "TEXT_SMALL_FREQUENCY_PENALTY",
-	TEXT_SMALL_PRESENCE_PENALTY: "TEXT_SMALL_PRESENCE_PENALTY",
-
-	// TEXT_NANO specific settings
-	TEXT_NANO_MAX_TOKENS: "TEXT_NANO_MAX_TOKENS",
-	TEXT_NANO_TEMPERATURE: "TEXT_NANO_TEMPERATURE",
-	TEXT_NANO_TOP_P: "TEXT_NANO_TOP_P",
-	TEXT_NANO_TOP_K: "TEXT_NANO_TOP_K",
-	TEXT_NANO_MIN_P: "TEXT_NANO_MIN_P",
-	TEXT_NANO_SEED: "TEXT_NANO_SEED",
-	TEXT_NANO_REPETITION_PENALTY: "TEXT_NANO_REPETITION_PENALTY",
-	TEXT_NANO_FREQUENCY_PENALTY: "TEXT_NANO_FREQUENCY_PENALTY",
-	TEXT_NANO_PRESENCE_PENALTY: "TEXT_NANO_PRESENCE_PENALTY",
-
-	// TEXT_MEDIUM specific settings
-	TEXT_MEDIUM_MAX_TOKENS: "TEXT_MEDIUM_MAX_TOKENS",
-	TEXT_MEDIUM_TEMPERATURE: "TEXT_MEDIUM_TEMPERATURE",
-	TEXT_MEDIUM_TOP_P: "TEXT_MEDIUM_TOP_P",
-	TEXT_MEDIUM_TOP_K: "TEXT_MEDIUM_TOP_K",
-	TEXT_MEDIUM_MIN_P: "TEXT_MEDIUM_MIN_P",
-	TEXT_MEDIUM_SEED: "TEXT_MEDIUM_SEED",
-	TEXT_MEDIUM_REPETITION_PENALTY: "TEXT_MEDIUM_REPETITION_PENALTY",
-	TEXT_MEDIUM_FREQUENCY_PENALTY: "TEXT_MEDIUM_FREQUENCY_PENALTY",
-	TEXT_MEDIUM_PRESENCE_PENALTY: "TEXT_MEDIUM_PRESENCE_PENALTY",
-
-	// TEXT_LARGE specific settings
-	TEXT_LARGE_MAX_TOKENS: "TEXT_LARGE_MAX_TOKENS",
-	TEXT_LARGE_TEMPERATURE: "TEXT_LARGE_TEMPERATURE",
-	TEXT_LARGE_TOP_P: "TEXT_LARGE_TOP_P",
-	TEXT_LARGE_TOP_K: "TEXT_LARGE_TOP_K",
-	TEXT_LARGE_MIN_P: "TEXT_LARGE_MIN_P",
-	TEXT_LARGE_SEED: "TEXT_LARGE_SEED",
-	TEXT_LARGE_REPETITION_PENALTY: "TEXT_LARGE_REPETITION_PENALTY",
-	TEXT_LARGE_FREQUENCY_PENALTY: "TEXT_LARGE_FREQUENCY_PENALTY",
-	TEXT_LARGE_PRESENCE_PENALTY: "TEXT_LARGE_PRESENCE_PENALTY",
-
-	// TEXT_MEGA specific settings
-	TEXT_MEGA_MAX_TOKENS: "TEXT_MEGA_MAX_TOKENS",
-	TEXT_MEGA_TEMPERATURE: "TEXT_MEGA_TEMPERATURE",
-	TEXT_MEGA_TOP_P: "TEXT_MEGA_TOP_P",
-	TEXT_MEGA_TOP_K: "TEXT_MEGA_TOP_K",
-	TEXT_MEGA_MIN_P: "TEXT_MEGA_MIN_P",
-	TEXT_MEGA_SEED: "TEXT_MEGA_SEED",
-	TEXT_MEGA_REPETITION_PENALTY: "TEXT_MEGA_REPETITION_PENALTY",
-	TEXT_MEGA_FREQUENCY_PENALTY: "TEXT_MEGA_FREQUENCY_PENALTY",
-	TEXT_MEGA_PRESENCE_PENALTY: "TEXT_MEGA_PRESENCE_PENALTY",
-
-	// RESPONSE_HANDLER specific settings
-	RESPONSE_HANDLER_TEMPERATURE: "RESPONSE_HANDLER_TEMPERATURE",
-	RESPONSE_HANDLER_TOP_P: "RESPONSE_HANDLER_TOP_P",
-	RESPONSE_HANDLER_TOP_K: "RESPONSE_HANDLER_TOP_K",
-	RESPONSE_HANDLER_MIN_P: "RESPONSE_HANDLER_MIN_P",
-	RESPONSE_HANDLER_SEED: "RESPONSE_HANDLER_SEED",
-	RESPONSE_HANDLER_REPETITION_PENALTY: "RESPONSE_HANDLER_REPETITION_PENALTY",
-	RESPONSE_HANDLER_FREQUENCY_PENALTY: "RESPONSE_HANDLER_FREQUENCY_PENALTY",
-	RESPONSE_HANDLER_PRESENCE_PENALTY: "RESPONSE_HANDLER_PRESENCE_PENALTY",
-
-	// ACTION_PLANNER specific settings
-	ACTION_PLANNER_MAX_TOKENS: "ACTION_PLANNER_MAX_TOKENS",
-	ACTION_PLANNER_TEMPERATURE: "ACTION_PLANNER_TEMPERATURE",
-	ACTION_PLANNER_TOP_P: "ACTION_PLANNER_TOP_P",
-	ACTION_PLANNER_TOP_K: "ACTION_PLANNER_TOP_K",
-	ACTION_PLANNER_MIN_P: "ACTION_PLANNER_MIN_P",
-	ACTION_PLANNER_SEED: "ACTION_PLANNER_SEED",
-	ACTION_PLANNER_REPETITION_PENALTY: "ACTION_PLANNER_REPETITION_PENALTY",
-	ACTION_PLANNER_FREQUENCY_PENALTY: "ACTION_PLANNER_FREQUENCY_PENALTY",
-	ACTION_PLANNER_PRESENCE_PENALTY: "ACTION_PLANNER_PRESENCE_PENALTY",
-
-	// TEXT_COMPLETION specific settings
-	TEXT_COMPLETION_MAX_TOKENS: "TEXT_COMPLETION_MAX_TOKENS",
-	TEXT_COMPLETION_TEMPERATURE: "TEXT_COMPLETION_TEMPERATURE",
-	TEXT_COMPLETION_TOP_P: "TEXT_COMPLETION_TOP_P",
-	TEXT_COMPLETION_TOP_K: "TEXT_COMPLETION_TOP_K",
-	TEXT_COMPLETION_MIN_P: "TEXT_COMPLETION_MIN_P",
-	TEXT_COMPLETION_SEED: "TEXT_COMPLETION_SEED",
-	TEXT_COMPLETION_REPETITION_PENALTY: "TEXT_COMPLETION_REPETITION_PENALTY",
-	TEXT_COMPLETION_FREQUENCY_PENALTY: "TEXT_COMPLETION_FREQUENCY_PENALTY",
-	TEXT_COMPLETION_PRESENCE_PENALTY: "TEXT_COMPLETION_PRESENCE_PENALTY",
-} as const;
-
-/**
  * A segment of prompt content with stability metadata for provider-level prompt caching.
  * Providers may use `stable: true` segments for caching (Anthropic cache_control,
  * OpenAI/Gemini prefix caching). Only mark content stable when it is identical across
@@ -403,7 +283,7 @@ export type ResponseSkeletonSpanKind =
  * One ordered span of a forced response skeleton.
  *
  * A {@link ResponseSkeleton} is a flat, ordered list of these. The engine
- * (W4) walks the list: it emits every `literal` span's `value` directly, and
+ * walks the list: it emits every `literal` span's `value` directly, and
  * for every non-literal span it samples the value under whatever constraint
  * the kind implies, then emits the next `literal` (the `,\n` / next-key glue)
  * and continues. `key` is informational for the producer/consumer; the actual
@@ -426,7 +306,7 @@ export interface ResponseSkeletonSpan {
 	enumValues?: string[];
 	/**
 	 * Optional GBNF non-terminal name the engine should pin this span's free
-	 * value to (lets W8 reuse a shared sub-grammar, e.g. an action's parameter
+	 * value to (lets the producer reuse a shared sub-grammar, e.g. an action's parameter
 	 * schema). When unset the engine uses the kind's default rule.
 	 */
 	rule?: string;
@@ -434,7 +314,7 @@ export interface ResponseSkeletonSpan {
 
 /**
  * A structured description of the response JSON envelope to in-fill, produced
- * by W8's `buildResponseGrammar(...)` and consumed by W4's local llama-server
+ * by `buildResponseGrammar(...)` and consumed by the local llama-server
  * backend. It is the engine-neutral form of the per-turn structure-forcing
  * contract: which keys appear, in what order, which positions are sampled vs
  * literal, and the allowed values for enums. The engine may compile this to a
@@ -445,8 +325,8 @@ export interface ResponseSkeletonSpan {
  * Cloud adapters ignore it entirely — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them.
  *
- * Producer: `@elizaos/core` `buildResponseGrammar` (W8).
- * Consumer: local-inference `ffi-streaming-backend.ts` (W4).
+ * Producer: `@elizaos/core` `buildResponseGrammar`.
+ * Consumer: local-inference `ffi-streaming-backend.ts`.
  */
 export interface ResponseSkeleton {
 	/**
@@ -457,7 +337,7 @@ export interface ResponseSkeleton {
 	spans: ResponseSkeletonSpan[];
 	/**
 	 * Optional opaque identifier the engine can use as a cache key for a
-	 * compiled grammar (W8 sets it from the action/evaluator set + contexts so
+	 * compiled grammar (the producer sets it from the action/evaluator set + contexts so
 	 * grammars are reused across turns when the structure is unchanged).
 	 */
 	id?: string;
@@ -499,7 +379,7 @@ export interface SpanSamplerOverride {
  * argmax winner.
  *
  * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
- * Consumer: local-inference engine (W4) → llama-server fork extension
+ * Consumer: local-inference engine → llama-server fork extension
  * `eliza_span_samplers` body field. Eliza Cloud fork extension
  * `x-eliza-span-samplers` header.
  */
@@ -527,7 +407,7 @@ export interface SpanSamplerPlan {
  *
  * **Local structure-forcing fields** (`prefill`, `responseSkeleton`, `grammar`,
  * `streamStructured`, `spanSamplerPlan`): honoured only by the local llama-server
- * engine (W4) — and, on the cloud path, the Eliza Cloud fork of llama-server
+ * engine — and, on the cloud path, the Eliza Cloud fork of llama-server
  * that backs the hosted `eliza-1` deployments. Cloud / HTTP adapters that can't
  * act on them simply leave them unread — there is no fallback branch; the
  * request still works, just without forcing.
@@ -648,12 +528,12 @@ export interface GenerateTextParams {
 	 * rather than starting fresh. For chat-completion shapes this is appended as
 	 * a partial trailing assistant message; for native tool-call shapes it is a
 	 * partial tool-call arguments string the model continues. The local engine
-	 * (W4) uses this for the "shouldRespond shortcut" and "in-fill the next
+	 * uses this for the "shouldRespond shortcut" and "in-fill the next
 	 * param key on `,\n`" flows — once the structure up to `"replyText": "` is
 	 * known it splices that in and resumes generation. Cloud adapters ignore it.
 	 *
-	 * Producer: `@elizaos/core` message service / W8 grammar emitter.
-	 * Consumer: local-inference engine (W4).
+	 * Producer: `@elizaos/core` message service / grammar emitter.
+	 * Consumer: local-inference engine.
 	 */
 	prefill?: string;
 	/**
@@ -663,33 +543,51 @@ export interface GenerateTextParams {
 	 * single-value enums collapse to literals; the multi-call boundary loop is
 	 * the fallback. Cloud adapters ignore it.
 	 *
-	 * Producer: `@elizaos/core` `buildResponseGrammar` (W8).
-	 * Consumer: local-inference engine (W4).
+	 * Producer: `@elizaos/core` `buildResponseGrammar`.
+	 * Consumer: local-inference engine.
 	 */
 	responseSkeleton?: ResponseSkeleton;
 	/**
 	 * A GBNF grammar string — an alternative or companion to
 	 * {@link responseSkeleton}. The engine may compile `responseSkeleton` to
-	 * GBNF itself, or a caller (W8) may supply a pre-built grammar directly. If
+	 * GBNF itself, or a caller may supply a pre-built grammar directly. If
 	 * both are present the explicit `grammar` wins. Cloud adapters ignore it.
 	 *
-	 * Producer: W8 grammar emitter (or W4 by compiling `responseSkeleton`).
-	 * Consumer: local-inference engine (W4) → llama-server `grammar` / `grammar_lazy`.
+	 * Producer: grammar emitter (or the engine by compiling `responseSkeleton`).
+	 * Consumer: local-inference engine → llama-server `grammar` / `grammar_lazy`.
 	 */
 	grammar?: string;
 	/**
 	 * When true the call streams its result and is parsed incrementally with
 	 * per-field start/done events ({@link import("./streaming").StructuredFieldEventCallbacks}).
-	 * The runtime wires safe fields to downstream consumers and the
-	 * forced-skeleton emitter (W8). Stage-1 `replyText` is deliberately held
-	 * until routing and effect validation complete; adapters that cannot stream
-	 * ignore the flag and return the result whole. Distinct from `stream` (raw
-	 * token stream) — `streamStructured` is "stream + structured field tracking".
+	 * The runtime releases only the caller's {@link streamFields} to downstream
+	 * consumers, subject to {@link streamFieldGate}; every other envelope byte
+	 * stays inside the runtime. Adapters that cannot stream ignore the flag and
+	 * return the result whole. Distinct from `stream` (raw token stream) —
+	 * `streamStructured` is "stream + structured field tracking".
 	 *
-	 * Producer: `@elizaos/core` message service (Stage-1 call).
+	 * Producer: Stage-1 message handler (RESPONSE_HANDLER call).
 	 * Consumer: local-inference engine (W4) + the runtime's field-event plumbing.
 	 */
 	streamStructured?: boolean;
+	/**
+	 * The user-visible top-level fields of a {@link streamStructured} envelope.
+	 * Each streams to chunk consumers as it is generated when the
+	 * {@link responseSkeleton} declares it a free string, or, with `partKinds`,
+	 * when its value is an ordered `[{kind, value}]` parts array (only parts of
+	 * those kinds stream, and the first other part ends the attempt's stream).
+	 * Without it a structured call streams nothing. Each attempt carries its
+	 * own `streamRevision`; the caller's final result stays authoritative.
+	 */
+	streamFields?: readonly StructuredStreamField[];
+	/**
+	 * Decides per attempt whether {@link streamFields} may stream, from the
+	 * complete envelope fields generated before the first of them (`null` for
+	 * unstructured prose output). An allowed attempt streams only that first
+	 * top-level value. Lets a caller stream only answers whose routing is
+	 * already settled. Runtime-only: never sent to providers.
+	 */
+	streamFieldGate?: StructuredStreamGate;
 	/**
 	 * Per-span sampler overrides for the {@link responseSkeleton}. Derived from
 	 * the skeleton's per-position kinds (every `enum` / `number` / `boolean` span
@@ -703,13 +601,28 @@ export interface GenerateTextParams {
 	 * that don't ignore it entirely — the grammar still constrains to the same
 	 * tokens, we just lose the per-span argmax determinism guarantee.
 	 *
-	 * Producer: `@elizaos/core` `buildSpanSamplerPlan` (W8).
-	 * Consumer: local-inference engine (W4) → llama-server fork
+	 * Producer: `@elizaos/core` `buildSpanSamplerPlan`.
+	 * Consumer: local-inference engine → llama-server fork
 	 * `eliza_span_samplers` body field. Eliza Cloud llama-server fork
 	 * via the `x-eliza-span-samplers` header.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
 }
+
+/** A user-visible field of a structured stream (see `streamFields`). */
+export interface StructuredStreamField {
+	field: string;
+	/** Part kinds whose `value` streams when the field is a parts array. */
+	partKinds?: readonly string[];
+}
+
+/**
+ * Decides whether structured stream fields may start, from the complete
+ * top-level envelope fields that precede them (`null` for unstructured prose).
+ */
+export type StructuredStreamGate = (
+	preceding: Readonly<Record<string, unknown>> | null,
+) => boolean;
 
 /** Shared only by dispatches within one useModel call, including router delegates. */
 export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(
@@ -754,15 +667,6 @@ export interface TokenUsage {
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
 	reasoningTokens?: number;
-}
-
-/**
- * Represents a single chunk in a text stream.
- * Each chunk contains a piece of the generated text.
- */
-export interface TextStreamChunk {
-	text: string;
-	done: boolean;
 }
 
 /**
@@ -849,24 +753,6 @@ export interface AudioStreamResult {
 	bytes: Promise<Uint8Array>;
 	/** MIME type of the audio (e.g. "audio/mpeg", "audio/wav", "audio/pcm"). */
 	mimeType: string;
-}
-
-/**
- * Duck-types an {@link AudioStreamResult} off a model result so consumers can
- * branch between the streamed and buffered TTS shapes.
- */
-export function isAudioStreamResult(
-	value: unknown,
-): value is AudioStreamResult {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"audioStream" in value &&
-		"bytes" in value &&
-		"mimeType" in value &&
-		typeof (value as AudioStreamResult).audioStream?.[Symbol.asyncIterator] ===
-			"function"
-	);
 }
 
 /**
@@ -966,9 +852,7 @@ export interface BatchTextEmbeddingParams {
  * scrub call-site passes ONLY the assignments relevant to the current chunk
  * (`the cluster→pseudonym slice relevant to this chunk`), never the whole secret
  * map — a model must never receive the full mapping table (it is a secret
- * artifact). The `value` is the real value; it is present because the LLM-pass
- * needs it to reason coherently over the chunk, but it is scoped to what this
- * chunk already contains.
+ * artifact).
  */
 export interface PiiPseudonymAssignment {
 	/** Stable id of the entity cluster this assignment covers. */
@@ -1191,8 +1075,6 @@ export interface VideoProcessingParams {
 	voiceControl?: boolean;
 	signal?: AbortSignal;
 }
-
-// Research Model Types (Deep Research)
 
 /**
  * Research tool configuration for web search
@@ -1433,21 +1315,6 @@ export interface ResearchResult {
 export type { JSONSchema } from "./schema";
 
 /**
- * Parameters for object generation models
- * @template T - The expected return type, inferred from schema if provided
- */
-export interface ObjectGenerationParams {
-	prompt: string;
-	output?: string;
-	temperature?: number;
-	maxTokens?: number;
-	schema?: JSONSchema;
-	modelType?: ModelTypeName;
-	enumValues?: string[];
-	stopSequences?: string[];
-}
-
-/**
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
@@ -1523,17 +1390,7 @@ export interface ModelResultMap {
 /**
  * Models that support streaming - their handlers can return either string or TextStreamResult
  */
-export type StreamableModelType =
-	| typeof ModelType.TEXT_NANO
-	| typeof ModelType.TEXT_SMALL
-	| typeof ModelType.TEXT_MEDIUM
-	| typeof ModelType.TEXT_LARGE
-	| typeof ModelType.TEXT_MEGA
-	| typeof ModelType.RESPONSE_HANDLER
-	| typeof ModelType.ACTION_PLANNER
-	| typeof ModelType.TEXT_REASONING_SMALL
-	| typeof ModelType.TEXT_REASONING_LARGE
-	| typeof ModelType.TEXT_COMPLETION;
+export type StreamableModelType = TextGenerationModelType;
 
 /**
  * Model types whose handlers may return a streamed-audio result.
@@ -1550,13 +1407,6 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
 		: K extends StreamableAudioModelType
 			? ModelResultMap[K] | AudioStreamResult
 			: ModelResultMap[K];
-
-/**
- * Type guard to check if a model type supports streaming.
- */
-const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set(
-	TEXT_GENERATION_MODEL_TYPES,
-);
 
 // A chain is consulted only after the requested registration failed with a
 // failover-class error (rate limit, 5xx, timeout, provider warming budget); a
@@ -1607,31 +1457,12 @@ const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 	],
 };
 
-export function getModelFallbackChain(modelType: ModelTypeName): string[] {
-	const modelKey = String(modelType);
-	const seen = new Set<string>();
-	const chain = MODEL_FALLBACK_CHAINS[modelKey] ?? [modelKey];
-	const resolved: string[] = [];
-
-	for (const candidate of chain) {
-		if (!candidate || seen.has(candidate)) {
-			continue;
-		}
-		seen.add(candidate);
-		resolved.push(candidate);
-	}
-
-	if (resolved.length === 0) {
-		resolved.push(modelKey);
-	}
-
-	return resolved;
-}
-
-export function isStreamableModelType(
+/** Static per-type failover order; callers must not mutate the returned chain. */
+export function getModelFallbackChain(
 	modelType: ModelTypeName,
-): modelType is StreamableModelType {
-	return STREAMABLE_MODEL_TYPES.has(modelType);
+): readonly string[] {
+	const modelKey = String(modelType);
+	return MODEL_FALLBACK_CHAINS[modelKey] ?? [modelKey];
 }
 
 /**

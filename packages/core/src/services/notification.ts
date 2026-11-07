@@ -42,6 +42,8 @@ import {
 import { asUUID, type UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { Service, ServiceType } from "../types/service.ts";
+import { utf8ByteLength } from "../utils/unicode.ts";
+import { validateUuid } from "../utils/uuid.ts";
 
 const RECOVERY_BASE_DELAY_MS = 1_000;
 const RECOVERY_MAX_DELAY_MS = 30_000;
@@ -148,6 +150,31 @@ function isEventBus(value: unknown): value is EventBusLike {
 		value !== null &&
 		typeof (value as EventBusLike).emit === "function"
 	);
+}
+
+const UUID_LOWER_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Presentation routes a native record may carry; producer URLs never cross. */
+const NATIVE_DEEP_LINKS: ReadonlySet<string> = new Set([
+	"/chat",
+	"/automations",
+	"/clock",
+	"/notes",
+	"/calendar",
+	"/reminders",
+	"/tasks",
+	"/apps/tasks",
+]);
+function jsonByteLength(value: unknown): number {
+	return utf8ByteLength(JSON.stringify(value));
+}
+
+function hasControlCharacter(value: string): boolean {
+	for (let index = 0; index < value.length; index++) {
+		const code = value.charCodeAt(index);
+		if (code < 32 || code === 127) return true;
+	}
+	return false;
 }
 
 /** Generate a fresh notification id. */
@@ -409,9 +436,7 @@ export class NotificationService extends Service {
 		if (
 			state.version !== 2 ||
 			typeof state.nativeEpoch !== "string" ||
-			!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
-				state.nativeEpoch,
-			) ||
+			!UUID_LOWER_PATTERN.test(state.nativeEpoch) ||
 			!Number.isSafeInteger(state.nativeSequence) ||
 			state.nativeSequence < 0 ||
 			!Array.isArray(state.notifications) ||
@@ -475,6 +500,8 @@ export class NotificationService extends Service {
 		try {
 			await this.reconcilePersistFailure();
 		} catch (reconcileCause) {
+			// error-policy:J2 preserve both the write ambiguity and failed
+			// authoritative reconciliation for the receipt-owning caller.
 			throw new AggregateError(
 				[cause, reconcileCause],
 				"notification persistence and reconciliation failed",
@@ -523,10 +550,16 @@ export class NotificationService extends Service {
 		input: NotificationInput,
 		coalesceGroup: boolean,
 	): Promise<AgentNotification> {
-		const previousNotifications = this.snapshot();
 		const title = input.title?.trim();
 		if (!title) {
 			throw new Error("[NotificationService] notification.title is required");
+		}
+		if (this.nativeSequence >= Number.MAX_SAFE_INTEGER) {
+			throw new NotificationNativeError(
+				"NOTIFICATION_SEQUENCE_EXHAUSTED",
+				"Notification sequence exhausted",
+				503,
+			);
 		}
 
 		const category = input.category ?? DEFAULT_NOTIFICATION_CATEGORY;
@@ -590,14 +623,6 @@ export class NotificationService extends Service {
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
-		if (this.nativeSequence >= Number.MAX_SAFE_INTEGER) {
-			this.restore(previousNotifications);
-			throw new NotificationNativeError(
-				"NOTIFICATION_SEQUENCE_EXHAUSTED",
-				"Notification sequence exhausted",
-				503,
-			);
-		}
 		this.nativeSequences = {
 			...this.nativeSequences,
 			[notification.id]: ++this.nativeSequence,
@@ -607,17 +632,7 @@ export class NotificationService extends Service {
 		try {
 			await this.persist();
 		} catch (error) {
-			try {
-				await this.reconcilePersistFailure();
-			} catch (reconcileError) {
-				// error-policy:J2 preserve both the write ambiguity and failed
-				// authoritative reconciliation for the receipt-owning caller.
-				throw new AggregateError(
-					[error, reconcileError],
-					"notification persistence and reconciliation failed",
-				);
-			}
-			throw error;
+			await this.failAfterMutationPersistence(error);
 		}
 		// Durable inbox state is authoritative. Fan out only after persistence so
 		// a failed write cannot expose a ghost success to live clients.
@@ -717,19 +732,7 @@ export class NotificationService extends Service {
 			nativeSequence: this.nativeSequences[n.id],
 		};
 		// Navigation is a closed presentation route; producer URLs and credentials never cross.
-		if (
-			n.deepLink &&
-			[
-				"/chat",
-				"/automations",
-				"/clock",
-				"/notes",
-				"/calendar",
-				"/reminders",
-				"/tasks",
-				"/apps/tasks",
-			].includes(n.deepLink)
-		)
+		if (n.deepLink && NATIVE_DEEP_LINKS.has(n.deepLink))
 			record.deepLink = n.deepLink;
 		if (n.groupKey != null) record.groupKey = n.groupKey;
 		const data: NonNullable<NativeNotification["data"]> = {};
@@ -740,14 +743,8 @@ export class NotificationService extends Service {
 		)
 			data.ownerType = n.data.ownerType;
 		for (const field of ["conversationId", "messageId"] as const) {
-			const id = n.data?.[field];
-			if (
-				typeof id === "string" &&
-				/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
-					id,
-				)
-			)
-				data[field] = id;
+			const id = validateUuid(n.data?.[field]);
+			if (id) data[field] = id;
 		}
 		if (Object.keys(data).length) record.data = data;
 		if (
@@ -757,11 +754,8 @@ export class NotificationService extends Service {
 			record.body.includes("\0") ||
 			(record.groupKey != null &&
 				(record.groupKey.length > 512 ||
-					[...record.groupKey].some(
-						(char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
-					))) ||
-			new TextEncoder().encode(JSON.stringify(record)).byteLength >
-				NATIVE_NOTIFICATION_RECORD_BYTES
+					hasControlCharacter(record.groupKey))) ||
+			jsonByteLength(record) > NATIVE_NOTIFICATION_RECORD_BYTES
 		) {
 			throw new NotificationNativeError(
 				"NATIVE_NOTIFICATION_RECORD_TOO_LARGE",
@@ -828,10 +822,7 @@ export class NotificationService extends Service {
 			const projected = this.projectNative(n);
 			page.notifications.push(projected);
 			// Include the complete envelope in the encoded budget, not just the row array.
-			if (
-				new TextEncoder().encode(JSON.stringify(page)).byteLength + 1 >
-				NATIVE_NOTIFICATION_PAGE_BYTES
-			) {
+			if (jsonByteLength(page) + 1 > NATIVE_NOTIFICATION_PAGE_BYTES) {
 				page.notifications.pop();
 				if (!page.notifications.length)
 					throw new NotificationNativeError(
@@ -858,9 +849,7 @@ export class NotificationService extends Service {
 	/** List notifications, newest first, with optional filtering. */
 	list(query: NotificationQuery = {}): AgentNotification[] {
 		const now = Date.now();
-		let result = [...this.notifications]
-			.filter((n) => !isExpired(n, now))
-			.reverse();
+		let result = this.notifications.filter((n) => !isExpired(n, now)).reverse();
 		if (query.unreadOnly) {
 			result = result.filter((n) => !n.readAt);
 		}
@@ -879,9 +868,9 @@ export class NotificationService extends Service {
 	 * user-facing inbox reads should continue to call {@link list}.
 	 */
 	listIncludingExpired(): AgentNotification[] {
-		return [...this.notifications]
-			.reverse()
-			.map((n) => this.withNativeCoordinates(n));
+		return this.notifications
+			.map((n) => this.withNativeCoordinates(n))
+			.reverse();
 	}
 
 	/** The lossless inbox has no item-count capacity boundary. */

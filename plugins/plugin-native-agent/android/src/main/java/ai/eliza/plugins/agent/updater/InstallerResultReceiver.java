@@ -37,6 +37,19 @@ public abstract class InstallerResultReceiver extends BroadcastReceiver {
   // Includes success, all failure codes and unknown future statuses. Never
   // launch EXTRA_INTENT or treat delivery itself as installation evidence.
   boolean pendingSession=PackageInstallCoordinator.hasPendingSession(context,target,session);
-  journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked);
+  journal.reconcileInstallerResult(transaction,session,PackageInstallCoordinator.installed(context,target),pendingSession,blocked,failure(status));
+ }
+ /** Default: statuses that show the candidate itself cannot install on this
+  * device. They quarantine it, even when reported while the session is listed. */
+ public static final java.util.Set<Integer> CANDIDATE_REJECTED_STATUSES=java.util.Set.of(
+  PackageInstaller.STATUS_FAILURE_INVALID,PackageInstaller.STATUS_FAILURE_CONFLICT,PackageInstaller.STATUS_FAILURE_INCOMPATIBLE);
+ /** Default: faults of the moment, which release the plan for a later attempt. */
+ public static final java.util.Set<Integer> RETRYABLE_STATUSES=java.util.Set.of(
+  PackageInstaller.STATUS_FAILURE_ABORTED,PackageInstaller.STATUS_FAILURE_STORAGE,PackageInstaller.STATUS_FAILURE_TIMEOUT);
+ /** Success, the generic failure and unknown statuses report nothing. */
+ public static UpdateJournal.InstallerFailure failure(int status) {
+  if(CANDIDATE_REJECTED_STATUSES.contains(status))return UpdateJournal.InstallerFailure.CANDIDATE_REJECTED;
+  if(RETRYABLE_STATUSES.contains(status))return UpdateJournal.InstallerFailure.RETRYABLE;
+  return null;
  }
 }

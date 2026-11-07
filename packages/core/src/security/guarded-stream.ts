@@ -181,6 +181,8 @@ export class GuardedStreamScanner {
 		if (cut > n) cut = n;
 		if (cut <= 0) return 0;
 
+		// Sessions only change in transform(), so one snapshot serves the fixpoint.
+		const keys = this.tokenKeys();
 		for (let iterations = 0; iterations <= n + 2; iterations += 1) {
 			let next = this.snapToWhitespace(cut);
 			next = Math.min(next, this.groupedNumberRunStart(next));
@@ -188,7 +190,7 @@ export class GuardedStreamScanner {
 			next = Math.min(next, this.bip39RunStart(next));
 			next = Math.min(next, this.openerTailStart(next));
 			next = Math.min(next, this.openArmorStart(next));
-			next = Math.min(next, this.knownTokenCrossingStart(next));
+			next = Math.min(next, this.knownTokenCrossingStart(next, keys));
 			next = this.snapToWhitespace(next);
 			if (next >= cut) break;
 			cut = next;
@@ -445,9 +447,11 @@ export class GuardedStreamScanner {
 	 * a seed phrase, a PEM value). Iterates to a local fixpoint since moving the cut
 	 * can expose another straddling key.
 	 */
-	private knownTokenCrossingStart(cut: number): number {
+	private knownTokenCrossingStart(
+		cut: number,
+		keys: readonly string[],
+	): number {
 		const p = this.pending;
-		const keys = this.tokenKeys();
 		let result = cut;
 		let moved = true;
 		while (moved) {

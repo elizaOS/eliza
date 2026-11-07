@@ -16,7 +16,6 @@ import {
 	optionalNumber,
 	optionalString,
 	optionalStringRecord,
-	paramsToDetails,
 	requireBoolean,
 	requireFileStatArray,
 	requireGitOperation,
@@ -111,6 +110,27 @@ import {
 	type TerminalRunResult,
 } from "./protocol.js";
 
+/** Copy the named fields of `params` that are set, in the given order. */
+function definedFields<T extends object>(
+	params: T,
+	keys: readonly (keyof T & string)[],
+): JsonObject {
+	const fields: JsonObject = {};
+	for (const key of keys) {
+		const value = params[key];
+		if (value !== undefined) fields[key] = value as JsonValue;
+	}
+	return fields;
+}
+
+const FILE_LIST_DETAIL_KEYS = [
+	"path",
+	"rootId",
+	"limit",
+	"includeHidden",
+	"ignore",
+] as const satisfies readonly (keyof FileListParams)[];
+
 export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 	readonly fs: FileCapability;
 	readonly pty: TerminalCapability;
@@ -124,7 +144,11 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 	) {
 		this.fs = {
 			list: (params) =>
-				this.unavailable("fs", "fs.list", paramsToDetails(params)),
+				this.unavailable(
+					"fs",
+					"fs.list",
+					definedFields<FileListParams>(params ?? {}, FILE_LIST_DETAIL_KEYS),
+				),
 			readText: (params) =>
 				this.unavailable("fs", "fs.readText", { path: params.path }),
 			writeText: (params) =>
@@ -155,7 +179,7 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 				this.unavailable(
 					"plugin",
 					"plugin.modules.list",
-					paramsToDetails(params),
+					definedFields<FileListParams>(params ?? {}, FILE_LIST_DETAIL_KEYS),
 				),
 			invokeAction: (params) =>
 				this.unavailable("plugin", "plugin.action.invoke", {
@@ -371,21 +395,19 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	}
 
 	private async list(params: FileListParams = {}): Promise<FileListResult> {
-		const result = await this.request("fs", "fs.list", {
-			...(params.path === undefined ? {} : { path: params.path }),
-			...(params.rootId === undefined ? {} : { rootId: params.rootId }),
-			...(params.limit === undefined ? {} : { limit: params.limit }),
-			...(params.includeHidden === undefined
-				? {}
-				: { includeHidden: params.includeHidden }),
-			...(params.ignore === undefined ? {} : { ignore: params.ignore }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
-		});
+		const result = await this.request(
+			"fs",
+			"fs.list",
+			definedFields(params, [
+				"path",
+				"rootId",
+				"limit",
+				"includeHidden",
+				"ignore",
+				"traceSessionId",
+				"endpointId",
+			]),
+		);
 		const object = requireObject(result, "fs.list");
 		return {
 			root: requireObject(object.root, "fs.list.root"),
@@ -401,13 +423,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	): Promise<FileReadTextResult> {
 		const result = await this.request("fs", "fs.readText", {
 			path: params.path,
-			...(params.maxBytes === undefined ? {} : { maxBytes: params.maxBytes }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, ["maxBytes", "traceSessionId", "endpointId"]),
 		});
 		const object = requireObject(result, "fs.readText");
 		if (requireBoolean(object, "truncated", "fs.readText")) {
@@ -432,18 +448,12 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		const result = await this.request("fs", "fs.writeText", {
 			path: params.path,
 			text: params.text,
-			...(params.createDirectories === undefined
-				? {}
-				: { createDirectories: params.createDirectories }),
-			...(params.overwrite === undefined
-				? {}
-				: { overwrite: params.overwrite }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, [
+				"createDirectories",
+				"overwrite",
+				"traceSessionId",
+				"endpointId",
+			]),
 		});
 		const object = requireObject(result, "fs.writeText");
 		const requestedPath = optionalString(
@@ -463,18 +473,14 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	): Promise<TerminalRunResult> {
 		const result = await this.request("pty", "pty.command.run", {
 			command: params.command,
-			...(params.args === undefined ? {} : { args: params.args }),
-			...(params.cwd === undefined ? {} : { cwd: params.cwd }),
-			...(params.env === undefined ? {} : { env: params.env }),
-			...(params.timeoutMs === undefined
-				? {}
-				: { timeoutMs: params.timeoutMs }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, [
+				"args",
+				"cwd",
+				"env",
+				"timeoutMs",
+				"traceSessionId",
+				"endpointId",
+			]),
 		});
 		const object = requireObject(result, "pty.command.run");
 		const workspaceExecution = optionalJsonObject(
@@ -562,12 +568,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async gitStatus(params: GitStatusParams): Promise<GitStatusResult> {
 		const result = await this.request("git", "git.status", {
 			cwd: params.root,
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, ["traceSessionId", "endpointId"]),
 		});
 		const object = requireObject(result, "git.status");
 		const branch = optionalString(object, "branch", "git.status");
@@ -586,14 +587,12 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async gitDiff(params: GitDiffParams): Promise<GitDiffResult> {
 		const result = await this.request("git", "git.diff", {
 			cwd: params.root,
-			...(params.path === undefined ? {} : { path: params.path }),
-			...(params.staged === undefined ? {} : { staged: params.staged }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, [
+				"path",
+				"staged",
+				"traceSessionId",
+				"endpointId",
+			]),
 		});
 		const object = requireObject(result, "git.diff");
 		return {
@@ -607,12 +606,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		const result = await this.request("git", "git.command.run", {
 			cwd: params.root,
 			args: params.args,
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
+			...definedFields(params, ["traceSessionId", "endpointId"]),
 		});
 		const object = requireObject(result, "git.command.run");
 		return {
@@ -626,14 +620,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async modelStatus(
 		params: LocalModelStatusParams = {},
 	): Promise<LocalModelStatusResult> {
-		const result = await this.request("model", "model.status", {
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
-		});
+		const result = await this.request(
+			"model",
+			"model.status",
+			definedFields(params, ["traceSessionId", "endpointId"]),
+		);
 		const object = requireObject(result, "model.status");
 		const provider = optionalString(object, "provider", "model.status");
 		return {
@@ -646,14 +637,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async listPluginModules(
 		params: PluginListModulesParams = {},
 	): Promise<PluginListModulesResult> {
-		const result = await this.request("plugin", "plugin.modules.list", {
-			...(params.endpointId === undefined
-				? {}
-				: { endpointId: params.endpointId }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-		});
+		const result = await this.request(
+			"plugin",
+			"plugin.modules.list",
+			definedFields(params, ["endpointId", "traceSessionId"]),
+		);
 		const object = requireObject(result, "plugin.modules.list");
 		return {
 			modules: requireRemotePluginModuleArray(
@@ -681,11 +669,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			action: params.action,
-			...(params.content === undefined ? {} : { content: params.content }),
-			...(params.options === undefined ? {} : { options: params.options }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["content", "options", "traceSessionId"]),
 		});
 		return requirePluginActionResult(result, "plugin.action.invoke");
 	}
@@ -707,10 +691,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			provider: params.provider,
-			...(params.state === undefined ? {} : { state: params.state }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["state", "traceSessionId"]),
 		});
 		return requirePluginProviderResult(result, "plugin.provider.get");
 	}
@@ -741,12 +722,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			moduleId: params.moduleId,
 			method: params.method,
 			path: params.path,
-			...(params.body === undefined ? {} : { body: params.body }),
-			...(params.query === undefined ? {} : { query: params.query }),
-			...(params.headers === undefined ? {} : { headers: params.headers }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["body", "query", "headers", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.route.call");
 		const headers = optionalStringRecord(
@@ -779,9 +755,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			path: params.path,
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.asset.get");
 		const integrity = optionalString(object, "integrity", "plugin.asset.get");
@@ -823,12 +797,12 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
-			...(params.message === undefined ? {} : { message: params.message }),
-			...(params.state === undefined ? {} : { state: params.state }),
-			...(params.options === undefined ? {} : { options: params.options }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, [
+				"message",
+				"state",
+				"options",
+				"traceSessionId",
+			]),
 		});
 		const object = requireObject(result, "plugin.evaluator.shouldRun");
 		return {
@@ -857,12 +831,12 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
-			...(params.message === undefined ? {} : { message: params.message }),
-			...(params.state === undefined ? {} : { state: params.state }),
-			...(params.options === undefined ? {} : { options: params.options }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, [
+				"message",
+				"state",
+				"options",
+				"traceSessionId",
+			]),
 		});
 		const object = requireObject(result, "plugin.evaluator.prepare");
 		return object.prepared === undefined ? {} : { prepared: object.prepared };
@@ -885,13 +859,13 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
-			...(params.message === undefined ? {} : { message: params.message }),
-			...(params.state === undefined ? {} : { state: params.state }),
-			...(params.options === undefined ? {} : { options: params.options }),
-			...(params.prepared === undefined ? {} : { prepared: params.prepared }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, [
+				"message",
+				"state",
+				"options",
+				"prepared",
+				"traceSessionId",
+			]),
 		});
 		const object = requireObject(result, "plugin.evaluator.prompt");
 		return {
@@ -916,14 +890,14 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
-			...(params.message === undefined ? {} : { message: params.message }),
-			...(params.state === undefined ? {} : { state: params.state }),
-			...(params.options === undefined ? {} : { options: params.options }),
-			...(params.prepared === undefined ? {} : { prepared: params.prepared }),
-			...(params.output === undefined ? {} : { output: params.output }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, [
+				"message",
+				"state",
+				"options",
+				"prepared",
+				"output",
+				"traceSessionId",
+			]),
 		});
 		const object = requireObject(result, "plugin.evaluator.process");
 		const processorResult = optionalJsonObject(
@@ -954,10 +928,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				...endpointSelection(params),
 				moduleId: params.moduleId,
 				evaluator: params.evaluator,
-				...(params.context === undefined ? {} : { context: params.context }),
-				...(params.traceSessionId === undefined
-					? {}
-					: { traceSessionId: params.traceSessionId }),
+				...definedFields(params, ["context", "traceSessionId"]),
 			},
 		);
 		const object = requireObject(
@@ -993,10 +964,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				...endpointSelection(params),
 				moduleId: params.moduleId,
 				evaluator: params.evaluator,
-				...(params.context === undefined ? {} : { context: params.context }),
-				...(params.traceSessionId === undefined
-					? {}
-					: { traceSessionId: params.traceSessionId }),
+				...definedFields(params, ["context", "traceSessionId"]),
 			},
 		);
 		const object = requireObject(
@@ -1031,10 +999,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				...endpointSelection(params),
 				moduleId: params.moduleId,
 				field: params.field,
-				...(params.context === undefined ? {} : { context: params.context }),
-				...(params.traceSessionId === undefined
-					? {}
-					: { traceSessionId: params.traceSessionId }),
+				...definedFields(params, ["context", "traceSessionId"]),
 			},
 		);
 		const object = requireObject(
@@ -1070,11 +1035,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				...endpointSelection(params),
 				moduleId: params.moduleId,
 				field: params.field,
-				...(params.context === undefined ? {} : { context: params.context }),
-				...(params.value === undefined ? {} : { value: params.value }),
-				...(params.traceSessionId === undefined
-					? {}
-					: { traceSessionId: params.traceSessionId }),
+				...definedFields(params, ["context", "value", "traceSessionId"]),
 			},
 		);
 		const object = requireObject(
@@ -1112,12 +1073,12 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				...endpointSelection(params),
 				moduleId: params.moduleId,
 				field: params.field,
-				...(params.context === undefined ? {} : { context: params.context }),
-				...(params.value === undefined ? {} : { value: params.value }),
-				...(params.parsed === undefined ? {} : { parsed: params.parsed }),
-				...(params.traceSessionId === undefined
-					? {}
-					: { traceSessionId: params.traceSessionId }),
+				...definedFields(params, [
+					"context",
+					"value",
+					"parsed",
+					"traceSessionId",
+				]),
 			},
 		);
 		const object = requireObject(
@@ -1154,11 +1115,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			hook: params.hook,
-			...(params.config === undefined ? {} : { config: params.config }),
-			...(params.context === undefined ? {} : { context: params.context }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["config", "context", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.lifecycle.call");
 		return {
@@ -1183,10 +1140,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			eventName: params.eventName,
-			...(params.payload === undefined ? {} : { payload: params.payload }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["payload", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.event.handle");
 		return {
@@ -1211,10 +1165,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			modelType: params.modelType,
-			...(params.params === undefined ? {} : { params: params.params }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["params", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.model.invoke");
 		if (!Object.hasOwn(object, "result")) {
@@ -1244,10 +1195,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			moduleId: params.moduleId,
 			serviceType: params.serviceType,
 			method: params.method,
-			...(params.args === undefined ? {} : { args: params.args }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["args", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.service.call");
 		return Object.hasOwn(object, "result") ? { result: object.result } : {};
@@ -1271,10 +1219,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
 			hook: params.hook,
-			...(params.context === undefined ? {} : { context: params.context }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
+			...definedFields(params, ["context", "traceSessionId"]),
 		});
 		const object = requireObject(result, "plugin.appBridge.call");
 		return Object.hasOwn(object, "result") ? { result: object.result } : {};

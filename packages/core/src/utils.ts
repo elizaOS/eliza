@@ -7,11 +7,15 @@ import { renderStoredEnvelopesForPrompt } from "./security/external-content";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
 import type { ModelRegistrationMetadata } from "./types/model";
-import { type Content, ContentType, type JsonValue } from "./types/primitives";
+import { ContentType, type JsonValue } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
-import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
-import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
+import { formatTimestamp } from "./utils/time-format";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+	utf8ByteLength,
+} from "./utils/unicode.js";
 
 // Text Utils
 
@@ -41,6 +45,13 @@ export const addHeader = (header: string, body: string) => {
 };
 
 /**
+ * Prefix of the RECENT_MESSAGES conversation block heading. The post-turn
+ * evaluator uses it to recognise that the complete room conversation is
+ * already rendered in provider context and must not be embedded a second time.
+ */
+export const CONVERSATION_MESSAGES_HEADER_PREFIX = "# Conversation Messages (";
+
+/**
  * Canonical header for a rendered recent-conversation block.
  *
  * The parenthetical is load-bearing: it tells the model the visible dialogue
@@ -50,17 +61,7 @@ export const addHeader = (header: string, body: string) => {
  * provider and the conversation compactors — must emit the header through
  * this helper; rebuilding from a bare "# Conversation Messages" constant
  * silently strips the disclosure.
- *
- * @param {number} visibleCount - Number of messages rendered in the block.
- * @returns {string} The annotated section header.
  */
-/**
- * Prefix of the RECENT_MESSAGES conversation block heading. The post-turn
- * evaluator uses it to recognise that the complete room conversation is
- * already rendered in provider context and must not be embedded a second time.
- */
-export const CONVERSATION_MESSAGES_HEADER_PREFIX = "# Conversation Messages (";
-
 export const conversationMessagesHeader = (visibleCount: number): string =>
 	`${CONVERSATION_MESSAGES_HEADER_PREFIX}${visibleCount} retained)`;
 
@@ -189,13 +190,13 @@ export const formatMessageSegments = ({
 			continue;
 		}
 
-		const rawMessageText = (message.content as Content).text;
+		const rawMessageText = message.content.text;
 		const messageText = rawMessageText
 			? renderStoredEnvelopesForPrompt(rawMessageText)
 			: rawMessageText;
-		const reactedMessageText = (message.content as Content).reactedMessageText;
-		const messageActions = (message.content as Content).actions;
-		const messageThought = (message.content as Content).thought;
+		const reactedMessageText = message.content.reactedMessageText;
+		const messageActions = message.content.actions;
+		const messageThought = message.content.thought;
 		const foundEntity = entityById.get(message.entityId);
 		const foundEntityNames = foundEntity?.names;
 		const baseName = foundEntityNames?.[0] || "Unknown User";
@@ -214,7 +215,7 @@ export const formatMessageSegments = ({
 				?.fromBot === true;
 		const formattedName = senderIsBot ? `${baseName} (bot)` : baseName;
 
-		const attachments = (message.content as Content).attachments;
+		const attachments = message.content.attachments;
 		const visibleAttachments = attachments ?? [];
 
 		const attachmentString =
@@ -297,7 +298,7 @@ export const formatMessages = (params: {
 	entities: Entity[];
 }): string => formatMessageSegments(params).join("\n");
 
-export const formatTimestamp = formatTimestampBase;
+export { formatTimestamp };
 
 function parseStructuredResponseFence(text: string): string {
 	const trimmed = text.trim();
@@ -425,10 +426,9 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	if (children === null) return null;
 	const result: Record<string, unknown> = {};
 	for (const { key, value } of children) {
-		if (key === "actions" || key === "providers" || key === "evaluators") {
-			const singularTag = key.replace(/s$/, "");
-			const hasXmlTags =
-				value && new RegExp(`<${singularTag}[\\s>/]`).test(value);
+		const listItemTag = XML_LIST_ITEM_TAGS[key];
+		if (listItemTag) {
+			const hasXmlTags = value && listItemTag.test(value);
 			result[key] = hasXmlTags
 				? value
 				: value
@@ -453,9 +453,18 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 const MAX_XML_INPUT_BYTES = 1024 * 1024;
 const MAX_XML_BODY_BYTES = 256 * 1024;
 
+/** List-valued keys whose body may instead hold one XML element per item. */
+const XML_LIST_ITEM_TAGS: Record<string, RegExp | undefined> = {
+	actions: /<action[\s>/]/,
+	providers: /<provider[\s>/]/,
+	evaluators: /<evaluator[\s>/]/,
+};
+
+/** UTF-8 length check (lone surrogates count as U+FFFD) without encoding a copy. */
 function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
+	// Each UTF-16 unit encodes to 1-3 bytes; a surrogate pair to 4 bytes.
 	if (value.length > maxBytes) return false;
-	return new TextEncoder().encode(value).byteLength <= maxBytes;
+	return value.length * 3 <= maxBytes || utf8ByteLength(value) <= maxBytes;
 }
 
 function findFirstXmlBlock(
@@ -540,22 +549,25 @@ function extractDirectXmlChildren(
 	return pairs;
 }
 
+/** `[A-Za-z0-9_-]` */
+function isXmlTagNameCode(code: number): boolean {
+	return (
+		(code >= 0x61 && code <= 0x7a) ||
+		(code >= 0x41 && code <= 0x5a) ||
+		(code >= 0x30 && code <= 0x39) ||
+		code === 0x5f ||
+		code === 0x2d
+	);
+}
+
 function readXmlStartTag(
 	input: string,
 	openIdx: number,
 ): { tag: string; end: number; selfClosing: boolean } | null {
 	let j = openIdx + 1;
-	let tag = "";
-	while (j < input.length) {
-		const ch = input[j];
-		if (/^[A-Za-z0-9_-]$/.test(ch)) {
-			tag += ch;
-			j += 1;
-			continue;
-		}
-		break;
-	}
-	if (!tag) return null;
+	while (j < input.length && isXmlTagNameCode(input.charCodeAt(j))) j += 1;
+	if (j === openIdx + 1) return null;
+	const tag = input.slice(openIdx + 1, j);
 	const end = input.indexOf(">", j);
 	if (end === -1) return null;
 	return {
@@ -566,9 +578,9 @@ function readXmlStartTag(
 }
 
 /** Honest key-value XML is a handful of tags. A prefix-extended walk
- * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. */
-/** Direct-child walk and close-tag matching share this visit budget. Hitting
- * it is a parse failure (`null`), never a silently truncated object. */
+ * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. The
+ * direct-child walk and close-tag matching share this visit budget; hitting it
+ * is a parse failure (`null`), never a silently truncated object. */
 const MAX_XML_CLOSE_VISITS = 64;
 const MAX_XML_NEST_DEPTH = 32;
 
@@ -680,13 +692,11 @@ export async function splitChunks(
 	const characterstoTokens = 3.5;
 
 	const textSplitter = new RecursiveCharacterTextSplitter({
-		chunkSize: Number(Math.floor(chunkSize * characterstoTokens)),
-		chunkOverlap: Number(Math.floor(bleed * characterstoTokens)),
+		chunkSize: Math.floor(chunkSize * characterstoTokens),
+		chunkOverlap: Math.floor(bleed * characterstoTokens),
 	});
 
-	const chunks = await textSplitter.splitText(content);
-
-	return chunks;
+	return textSplitter.splitText(content);
 }
 
 /**
@@ -703,15 +713,18 @@ export function parseBooleanFromText(
 ): boolean {
 	if (value === undefined || value === null) return false;
 	if (typeof value === "boolean") return value;
-
-	const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
-	const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
-
-	const normalizedText = value.trim().toUpperCase();
-	if (affirmative.includes(normalizedText)) return true;
-	if (negative.includes(normalizedText)) return false;
-	return false;
+	return AFFIRMATIVE_BOOLEAN_TEXT.has(value.trim().toUpperCase());
 }
+
+const AFFIRMATIVE_BOOLEAN_TEXT = new Set([
+	"YES",
+	"Y",
+	"TRUE",
+	"T",
+	"1",
+	"ON",
+	"ENABLE",
+]);
 
 export const getContentTypeFromMimeType = (
 	mimeType: string,
