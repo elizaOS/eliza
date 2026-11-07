@@ -89,11 +89,17 @@ export const triageMessagesAction: Action = {
       params.limit !== undefined && params.limit > 0
         ? fetched.slice(0, Math.floor(params.limit))
         : fetched;
+    // The cap trims what is returned; platform coverage still reports the sweep.
+    const platformCount = new Set(fetched.map((m) => m.source)).size;
+    const returned =
+      ranked.length < fetched.length
+        ? `${ranked.length} of ${fetched.length}`
+        : `${ranked.length}`;
 
     const summary =
       ranked.length === 0
         ? "No new messages across connected platforms."
-        : `Fetched ${ranked.length} message(s) across ${new Set(ranked.map((m) => m.source)).size} platform(s), newest first.`;
+        : `Fetched ${returned} message(s) across ${platformCount} platform(s), newest first.`;
 
     logger.info(`[TriageMessages] ${summary}`);
 

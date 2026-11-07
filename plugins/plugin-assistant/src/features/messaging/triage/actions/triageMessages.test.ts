@@ -288,8 +288,11 @@ describe("triageMessagesAction", () => {
       );
     const gmail = inbox("gmail", [3_000, 1_000]);
     const telegram = inbox("telegram", [3_500, 1_500]);
+    // Discord's only message falls under the cap; the sweep still covered it.
+    const discord = inbox("discord", [2_000]);
     getDefaultTriageService().register(gmail);
     getDefaultTriageService().register(telegram);
+    getDefaultTriageService().register(discord);
 
     const result = await triageMessagesAction.handler(
       createFakeRuntime(),
@@ -300,8 +303,9 @@ describe("triageMessagesAction", () => {
 
     expect(gmail.seenOptions[0]?.limit).toBe(2);
     expect(telegram.seenOptions[0]?.limit).toBe(2);
+    expect(discord.seenOptions[0]?.limit).toBe(2);
     expect(result.text).toBe(
-      "Fetched 2 message(s) across 2 platform(s), newest first.",
+      "Fetched 2 of 5 message(s) across 3 platform(s), newest first.",
     );
     expect(result.data?.count).toBe(2);
     const messages = result.data?.messages as Array<{ id: string }> | undefined;
