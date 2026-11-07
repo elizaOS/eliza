@@ -13,6 +13,7 @@ import type {
   EffectReceipt,
   HandlerOptions,
   IAgentRuntime,
+  LongTermMemory,
   Memory,
   UUID,
 } from "@elizaos/core";
@@ -35,6 +36,7 @@ import {
   factClaimsEquivalent,
   readStoredFactKeywords,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import type { MemoryService } from "../features/advanced-memory/services/memory-service.ts";
 import { resolveMessageTimeZone } from "../features/basic-capabilities/providers/currentTime.ts";
 
 const MEMORY_OPS = ["create", "search", "count", "update", "delete"] as const;
@@ -1845,6 +1847,26 @@ async function doDelete(
  * fact, so "forget that I play guitar" may only remove the asking user's own
  * rows. Cross-entity deletes must go through action:search + delete by memoryId.
  */
+/**
+ * Long-term memories about `entityId` that meet the forget bar for `query`.
+ * The long-term evaluator stores its own summaries of claims from the
+ * conversation, and the LONG_TERM_MEMORY provider renders them into later
+ * prompts, so "forget X" has to clear them with the stored facts.
+ */
+async function matchingLongTermMemories(
+  runtime: IAgentRuntime,
+  entityId: UUID | undefined,
+  query: string,
+): Promise<{ service: MemoryService; memories: LongTermMemory[] } | null> {
+  if (!entityId) return null;
+  const service = runtime.getService("memory") as MemoryService | null;
+  if (!service) return null;
+  const memories = (await service.getLongTermMemories(entityId)).filter(
+    (memory) => scoreText(memory.content, query) >= 1,
+  );
+  return { service, memories };
+}
+
 async function doDeleteByQuery(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1883,8 +1905,13 @@ async function doDeleteByQuery(
       (c.memory.content as { text?: string } | undefined)?.text ?? "";
     return scoreText(text, query) >= 1;
   });
+  // An explicit type narrows the request to that table.
+  const longTerm = type
+    ? null
+    : await matchingLongTermMemories(runtime, scopeEntityId, query);
+  const longTermMatched = longTerm?.memories ?? [];
 
-  if (matched.length === 0) {
+  if (matched.length === 0 && longTermMatched.length === 0) {
     return fail(
       `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
       "MEMORY_NOT_FOUND",
@@ -1975,6 +2002,18 @@ async function doDeleteByQuery(
     if (!id) continue;
     await runtime.deleteMemory(id);
     deleted.push(toListItem(c.memory, c.type));
+  }
+  for (const memory of longTermMatched) {
+    await longTerm?.service.deleteLongTermMemory(memory.id, memory.entityId);
+    deleted.push({
+      id: memory.id,
+      type: "memories",
+      text: memory.content,
+      entityId: memory.entityId,
+      roomId: null,
+      agentId: memory.agentId,
+      createdAt: new Date(memory.createdAt).getTime(),
+    });
   }
 
   const forgottenAt = new Date().toISOString();
