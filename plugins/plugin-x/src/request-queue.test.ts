@@ -3,7 +3,10 @@
  * reject `add()` on the first failure and skip retry/backoff. The queue now
  * retries, then rejects only after the budget is exhausted.
  */
+import { Agent as HttpsAgent } from "node:https";
+import { connect, createServer, type Socket } from "node:net";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { ApiRequestError, TwitterApi } from "twitter-api-v2";
 import { describe, expect, it } from "vitest";
 import {
   ClientBase,
@@ -11,8 +14,14 @@ import {
   RETRY_TRANSIENT_X_READ,
   RequestQueue,
 } from "./base";
+import type { TwitterAuth } from "./client/auth";
+import { getTweet } from "./client/tweets";
 import type { TwitterClientState } from "./types";
-import { TwitterError, TwitterErrorType } from "./utils/error-handler";
+import {
+  normalizeTwitterProviderError,
+  TwitterError,
+  TwitterErrorType,
+} from "./utils/error-handler";
 
 function makeClient(): ClientBase {
   const client = new ClientBase(
@@ -121,6 +130,62 @@ describe("RequestQueue retries provider failures", () => {
       }, RETRY_TRANSIENT_X_READ),
     ).resolves.toBe("ok");
     expect(calls).toBe(2);
+  });
+
+  it("retries a twitter-api-v2 read whose connection was reset before a response", async () => {
+    // A local socket stands in for api.x.com: the first connection is reset
+    // before any HTTP response, the second one answers with the tweet.
+    const body = JSON.stringify({ data: { id: "1", text: "hello" } });
+    let connections = 0;
+    const server = createServer((socket: Socket) => {
+      connections += 1;
+      if (connections === 1) {
+        socket.resetAndDestroy();
+        return;
+      }
+      socket.once("data", () => {
+        socket.end(
+          `HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`,
+        );
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    class LocalAgent extends HttpsAgent {
+      override createConnection(): Socket {
+        return connect(port, "127.0.0.1");
+      }
+    }
+    const api = new TwitterApi("bearer-token", {
+      httpAgent: new LocalAgent(),
+    });
+    const auth = { getV2Client: async () => api } as unknown as TwitterAuth;
+    const queue = new RequestQueue({
+      backoff: async () => undefined,
+      jitter: async () => undefined,
+    });
+
+    try {
+      await expect(
+        queue.add(() => getTweet("1", auth), RETRY_TRANSIENT_X_READ),
+      ).resolves.toMatchObject({ id: "1", text: "hello" });
+      expect(connections).toBe(2);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("leaves a twitter-api-v2 request error without a transient network code untyped", () => {
+    // twitter-api-v2 builds this error when its own request timeout fires.
+    const timedOut = new ApiRequestError("Request failed.", {
+      request: undefined as never,
+      error: new Error("Request timeout."),
+    });
+
+    expect(normalizeTwitterProviderError(timedOut)).toBeNull();
   });
 
   it("does not retry an untyped error that merely resembles a transient failure", async () => {
