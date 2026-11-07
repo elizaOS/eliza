@@ -17,6 +17,7 @@
 
 import {
 	type Content,
+	ElizaError,
 	type IAgentRuntime,
 	inspectSendHandlerResult,
 	logger,
@@ -134,6 +135,19 @@ interface DiscordDraftContext {
 	/** Discord message id the draft answers; sent as the reply reference. */
 	readonly replyToExternalMessageId?: string;
 	readonly preview: string;
+	readonly createdAtMs: number;
+	/**
+	 * A send Discord did not confirm (transport failure, 5xx, no receipt).
+	 * The next send looks the channel up first so the message is not posted
+	 * twice.
+	 */
+	readonly outcomeUnknown?: true;
+}
+
+/** An HTTP 4xx from Discord: the request was refused and nothing was posted. */
+function isExplicitDiscordRejection(error: unknown): boolean {
+	const status = (error as { status?: unknown } | null)?.status;
+	return typeof status === "number" && status >= 400 && status < 500;
 }
 
 /**
@@ -354,7 +368,8 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				? original.metadata.accountId
 				: undefined;
 		this.draftCounter += 1;
-		const draftId = `discord-draft:${channelId}:${Date.now()}:${this.draftCounter}`;
+		const createdAtMs = Date.now();
+		const draftId = `discord-draft:${channelId}:${createdAtMs}:${this.draftCounter}`;
 		const preview = toWellFormedUnicode(draft.body);
 		this.draftCache.set(draftId, {
 			request: draft,
@@ -364,6 +379,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				? { replyToExternalMessageId: original.externalId }
 				: {}),
 			preview,
+			createdAtMs,
 		});
 		return { draftId, preview };
 	}
@@ -389,7 +405,34 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				? { replyToExternalMessageId: draft.replyToExternalMessageId }
 				: {}),
 		};
-		const sent = await service.handleSendMessage(runtime, target, content);
+		if (draft.outcomeUnknown) {
+			const delivered = await this.findPostedDraft(runtime, service, draft);
+			if (delivered) {
+				this.draftCache.delete(draftId);
+				return { externalId: delivered };
+			}
+		}
+		const outcomeUnknown = (reason: string, cause?: unknown): ElizaError => {
+			this.draftCache.set(draftId, { ...draft, outcomeUnknown: true });
+			return new ElizaError(
+				`Discord did not confirm draft ${draftId} (${reason}); it may have been posted. Confirming the same draft again checks the channel before posting it again.`,
+				{
+					code: "DISCORD_SEND_OUTCOME_UNKNOWN",
+					...(cause === undefined ? {} : { cause }),
+					context: { draftId, channelId: draft.channelId },
+				},
+			);
+		};
+		let sent: Awaited<ReturnType<typeof service.handleSendMessage>>;
+		try {
+			sent = await service.handleSendMessage(runtime, target, content);
+		} catch (error) {
+			// A 4xx is a refusal and nothing was posted. Anything else (socket
+			// reset, timeout, 5xx after Discord created the message) may have
+			// reached the channel.
+			if (isExplicitDiscordRejection(error)) throw error;
+			throw outcomeUnknown("transport error", error);
+		}
 		const disposition = inspectSendHandlerResult(sent);
 		if (disposition.kind === "not_delivered") {
 			throw new Error(
@@ -397,18 +440,14 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			);
 		}
 		if (disposition.kind === "in_flight") {
-			throw new Error(
-				`[DiscordTriageAdapter] Discord delivery for draft ${draftId} is still in flight.`,
-			);
+			throw outcomeUnknown("delivery still in flight");
 		}
 		if (disposition.kind === "unknown") {
-			throw new Error(
-				`[DiscordTriageAdapter] Discord returned no delivery evidence for draft ${draftId}.`,
-			);
+			throw outcomeUnknown("no delivery evidence");
 		}
 		if (disposition.kind === "partially_delivered") {
-			throw new Error(
-				`[DiscordTriageAdapter] Discord partially delivered draft ${draftId}; do not retry blindly. Provider messages: ${disposition.receipt.providerMessageIds.join(", ")}.`,
+			throw outcomeUnknown(
+				`partially delivered, provider messages ${disposition.receipt.providerMessageIds.join(", ")}`,
 			);
 		}
 		const externalId = disposition.providerMessageId;
@@ -437,6 +476,28 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		return {
 			externalId,
 		};
+	}
+
+	/** The agent's own message with the draft's text posted to the draft's channel since the draft was created. */
+	private async findPostedDraft(
+		runtime: IAgentRuntime,
+		service: DiscordTriageCapableService,
+		draft: DiscordDraftContext,
+	): Promise<string | undefined> {
+		const memories = await service.fetchConnectorMessages(
+			{ runtime },
+			{ channelId: draft.channelId, limit: DISCORD_HISTORY_PAGE },
+		);
+		const body = toWellFormedUnicode(draft.request.body.trim());
+		for (const memory of memories) {
+			if (memory.entityId !== runtime.agentId) continue;
+			if ((memory.createdAt ?? 0) < draft.createdAtMs) continue;
+			if (toWellFormedUnicode(memory.content?.text?.trim() ?? "") !== body)
+				continue;
+			const ref = mapDiscordMemoryToRef(memory);
+			if (ref) return ref.externalId;
+		}
+		return undefined;
 	}
 
 	private requireService(runtime: IAgentRuntime): DiscordTriageCapableService {
