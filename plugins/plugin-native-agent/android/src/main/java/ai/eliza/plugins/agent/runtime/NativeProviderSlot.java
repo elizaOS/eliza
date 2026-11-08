@@ -260,7 +260,9 @@ public final class NativeProviderSlot {
       throw new IllegalStateException("Save a Text key first");
     String selection = directSelection(previous, null, null);
     store.assertCurrent();
-    if (store.compareExchangeProvider(previous, selection) == null) throw new IllegalStateException("Provider changed");
+    String committed = store.compareExchangeProvider(previous, selection);
+    store.assertCurrent();
+    if (committed == null || !committed.equals(store.readProvider())) throw new IllegalStateException("Provider change unconfirmed");
   }
 
   /** Deletes the provider slot and confirms by reading it back; returns the unconfigured identity. */

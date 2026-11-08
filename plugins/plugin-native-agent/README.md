@@ -23,7 +23,14 @@ update journaling, qualified-clock projection and cancellable job ownership.
 Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
 `ResidentCredentialStore` shares provider admission, conditional removal and
-credential ownership over the host's protected slots. It composes the generic
+credential ownership over the host's protected slots. `NativeProviderSlot` keeps saved Text and Voice
+keys in that same encrypted slot while the selected route changes. Missing edit fields preserve
+keys; only per-key removal deletes them. Status exposes presence, mode and an opaque credential-
+authority revision. A mode selection requires the current revision and native intent. Cloud
+account rotation preserves local key ownership and retires old requests; it does not choose a
+mode. Unbinding keeps keys but disables routing until explicit selection. Hosts must restrict
+management to their foreground, unlocked owner surface and reveal only through a protected native
+surface, never a credential-bearing bridge response. Cloud service credentials remain separate. It composes the generic
 mutation conductor in `plugin-native-secure-store`. `CredentialShutdownLease`
 retains the service start fence after exact stop acknowledgement until its owner
 releases it after commit or proven pre-commit cancellation. Failed stop or uncertain
