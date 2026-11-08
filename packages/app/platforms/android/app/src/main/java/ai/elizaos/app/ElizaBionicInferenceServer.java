@@ -43,8 +43,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <pre>
  *   [int32 big-endian byte length N][N bytes UTF-8 JSON]
  * </pre>
- * Request JSON: {@code {op:"generate", bundleDir, prompt, maxTokens,
- * stopSequences?}}.
+ * Request JSON: {@code {op:"generate", bundleDir, prompt | promptSegments,
+ * maxTokens, stopSequences?}}. {@code promptSegments} is a list of
+ * {@code {text, special}}: only special segments (template markers) are
+ * tokenized with control-token parsing, so message text cannot forge a turn.
  * Response JSON: {@code {ok, text?, error?, tokens?, ms?, tokS?}} — for the
  * buffered first slice this is exactly the JSON {@link ElizaVoiceNative#nativeLlmSelfTest}
  * already returns, so the GPU decode loop runs entirely server-side and the
@@ -54,7 +56,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code embed}, {@code tts} ({@code {text | phonemes, language:"en-US", speed}}
  * spoken by Paradee-8M with native misaki G2P), {@code asr}, {@code image},
  * {@code tts_cancel} and {@code asr_cancel}. Speech logs carry sizes only,
- * never text or transcripts.
+ * never text or transcripts. {@code capabilities} reports what a bundle's
+ * files can serve ({@code text, embedding, vision, asr, tts}) without loading
+ * a model.
+ *
+ * <p>A buffered {@code generate} ends its connection after the response; while
+ * it decodes, the host watches the connection and stops at the next native
+ * step once the caller hangs up.
  *
  * <p>Streaming ASR ({@code asr_stream_supported / open / feed / partial /
  * finish / close / cancel}) keeps one connection open per stream; see
@@ -543,6 +551,10 @@ final class ElizaBionicInferenceServer {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                     continue;
                 }
+                if ("generate".equals(op)) {
+                    generateRequest(sock, in, out, requestJson);
+                    break;
+                }
                 String responseJson;
                 if (BionicAsrStreams.isStreamOp(op)) {
                     responseJson = handleAsrStream(asrClient, op, requestJson);
@@ -560,7 +572,8 @@ final class ElizaBionicInferenceServer {
                 out.flush();
                 // Every op (generate/embed/tts/asr/image) touches the shared
                 // resident context — refresh the idle clock on completion (#11760).
-                if (!"networkPolicy".equals(op) && !"nativeSourceRead".equals(op)) {
+                if (!"networkPolicy".equals(op) && !"nativeSourceRead".equals(op)
+                        && !"capabilities".equals(op)) {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                 }
             }
@@ -575,6 +588,45 @@ final class ElizaBionicInferenceServer {
                     asrStreams.closeClient(asrClient);
                 }
                 Log.i(TAG, "ASR stream closed on client disconnect");
+            }
+        }
+    }
+
+    /**
+     * One buffered generate. The caller sends nothing more on this connection,
+     * so a reader on its input sees only the hang-up, and the decode checks
+     * that between native steps instead of finishing a turn nobody will read.
+     * The reader owns the input afterwards, so the connection then ends.
+     */
+    private void generateRequest(LocalSocket sock, DataInputStream in, DataOutputStream out,
+                                 String requestJson) throws IOException {
+        final AtomicBoolean peerGone = new AtomicBoolean(false);
+        final Thread watch = new Thread(() -> {
+            try {
+                while (in.read() >= 0) {
+                    // Nothing is expected; the read only waits for EOF.
+                }
+            } catch (IOException closed) {
+                // Treated as the peer going away.
+            }
+            peerGone.set(true);
+        }, "eliza-bionic-infer-peer");
+        watch.setDaemon(true);
+        watch.start();
+        try {
+            final String responseJson = handleRequest(requestJson, peerGone::get);
+            if (peerGone.get()) {
+                Log.i(TAG, "generate client went away; reply dropped");
+                return;
+            }
+            writeFrame(out, responseJson);
+            out.flush();
+        } finally {
+            lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
+            try {
+                sock.shutdownInput();
+            } catch (IOException ignored) {
+                // The socket is closing anyway.
             }
         }
     }
@@ -607,6 +659,10 @@ final class ElizaBionicInferenceServer {
     }
 
     private String handleRequest(String requestJson) {
+        return handleRequest(requestJson, null);
+    }
+
+    private String handleRequest(String requestJson, BionicDecodeLoop.Liveness liveness) {
         try {
             JSONObject req = new JSONObject(requestJson);
             String op = req.optString("op", "generate");
@@ -621,6 +677,9 @@ final class ElizaBionicInferenceServer {
             }
             if ("tts_cancel".equals(op) || "asr_cancel".equals(op)) {
                 return cancelVoice("tts_cancel".equals(op));
+            }
+            if ("capabilities".equals(op)) {
+                return capabilities(bundleDir);
             }
             if ("embed".equals(op)) {
                 return embed(confined(req.getString("bundleDir"), "bundleDir"), req.getString("text"),
@@ -641,7 +700,8 @@ final class ElizaBionicInferenceServer {
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
-            String prompt = req.optString("prompt", "");
+            final List<PromptSegment> segments = readPromptSegments(req);
+            String prompt = promptText(req, segments);
             String drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
             int maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             List<String> stopSequences = readStopSequences(req);
@@ -660,8 +720,8 @@ final class ElizaBionicInferenceServer {
             // ELIZA_BIONIC_RESIDENT=0 to force the old path).
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
-                    String r = generateResident(
-                        bundleDir, drafterPath, prompt, maxTokens, stopSequences);
+                    String r = generateResident(bundleDir, drafterPath, prompt, segments,
+                        maxTokens, stopSequences, liveness);
                     Log.i(TAG, "GENERATE result (resident): " + generateLogSummary(r));
                     return r;
                 } catch (CancellationException stopping) {
@@ -694,11 +754,13 @@ final class ElizaBionicInferenceServer {
      * the full 256-token JNI buffer before the Java cap check ever ran).
      */
     private String generateResident(String bundleDir, String drafterPath, String prompt,
-                                    int maxTokens, List<String> stopSequences) throws Exception {
+                                    List<PromptSegment> segments, int maxTokens,
+                                    List<String> stopSequences,
+                                    BionicDecodeLoop.Liveness liveness) throws Exception {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            resetAndPrefillResident(prompt, drafterPath);
+            resetAndPrefillResident(prompt, segments, drafterPath);
             // Buffered callers still need bounded native steps: stop markers
             // are visible only after nativeLlmStreamNext returns, so decoding
             // the whole turn in one call would trim the marker but still pay
@@ -706,7 +768,7 @@ final class ElizaBionicInferenceServer {
             // overshoot while keeping JNI round trips inexpensive.
             final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                 this::residentStreamStep, maxTokens,
-                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null);
+                DEFAULT_STREAM_STEP_TOKENS, stopSequences, null, liveness);
             final long ms = android.os.SystemClock.elapsedRealtime() - t0;
             final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
             Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
@@ -760,6 +822,7 @@ final class ElizaBionicInferenceServer {
         String bundleDir = defaultBundleDir;
         String drafterPath = "";
         String prompt = "";
+        List<PromptSegment> segments = null;
         int maxTokens = residentStreamGenerationBoundary();
         int streamStep = 0;
         List<String> stopSequences = Collections.emptyList();
@@ -770,7 +833,8 @@ final class ElizaBionicInferenceServer {
                 bundleDir = defaultBundleDir;
             }
             drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
-            prompt = req.optString("prompt", "");
+            segments = readPromptSegments(req);
+            prompt = promptText(req, segments);
             maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             streamStep = req.optInt("streamStep", 0);
             stopSequences = readStopSequences(req);
@@ -778,8 +842,8 @@ final class ElizaBionicInferenceServer {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(
-            bundleDir, drafterPath, prompt, maxTokens, streamStep, stopSequences, out);
+        generateStream(bundleDir, drafterPath, prompt, segments, maxTokens, streamStep,
+            stopSequences, out);
     }
 
     /**
@@ -891,7 +955,8 @@ final class ElizaBionicInferenceServer {
      * decoded inside ONE {@code nativeLlmStreamNext}, so the "stream" was a
      * single giant frame and TTFT equaled full-turn latency.
      */
-    private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
+    private void generateStream(String bundleDir, String drafterPath, String prompt,
+                                List<PromptSegment> segments, int maxTokens,
                                 int requestedStreamStep, List<String> stopSequences,
                                 DataOutputStream out) throws IOException {
         final int streamStep = resolveStreamStepTokens(
@@ -905,7 +970,7 @@ final class ElizaBionicInferenceServer {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                resetAndPrefillResident(prompt, drafterPath);
+                resetAndPrefillResident(prompt, segments, drafterPath);
                 final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
                     this::residentStreamStep, maxTokens, streamStep, stopSequences,
                     text -> {
@@ -1014,7 +1079,8 @@ final class ElizaBionicInferenceServer {
      * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
      * residentLock.
      */
-    private void resetAndPrefillResident(String prompt, String drafterPath) {
+    private void resetAndPrefillResident(String prompt, List<PromptSegment> segments,
+                                         String drafterPath) {
         final String effectiveDrafterPath = drafterPath == null ? "" : drafterPath;
         if (residentStream != 0L && !effectiveDrafterPath.equals(residentDrafterPath)) {
             ElizaVoiceNative.nativeLlmStreamClose(residentStream);
@@ -1031,7 +1097,7 @@ final class ElizaBionicInferenceServer {
             residentDrafterPath = effectiveDrafterPath;
             residentPrevTokens = null;
         }
-        final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        final int[] toks = tokenizePrompt(prompt, segments);
         // Longest common token prefix with the previous turn, capped so at least
         // one new token is prefilled (the decode samples from the last prefilled
         // position's logits, so the suffix must be non-empty).
@@ -1072,6 +1138,82 @@ final class ElizaBionicInferenceServer {
             Log.i(TAG, "resident prefill reuse: kept " + applied + "/" + toks.length
                 + " prefix tokens, prefilled " + suffix.length + " delta");
         }
+    }
+
+    /** One {@code promptSegments} entry: template markers are {@code special}. */
+    static final class PromptSegment {
+        final String text;
+        final boolean special;
+
+        PromptSegment(String text, boolean special) {
+            this.text = text;
+            this.special = special;
+        }
+    }
+
+    /** The request's {@code promptSegments}, or null when it sent a plain prompt. */
+    static List<PromptSegment> readPromptSegments(JSONObject request) throws org.json.JSONException {
+        final JSONArray values = request.optJSONArray("promptSegments");
+        if (values == null) return null;
+        final ArrayList<PromptSegment> segments = new ArrayList<>(values.length());
+        for (int i = 0; i < values.length(); i++) {
+            final JSONObject value = values.getJSONObject(i);
+            segments.add(new PromptSegment(
+                value.getString("text"), value.optBoolean("special", false)));
+        }
+        return segments;
+    }
+
+    /** The whole prompt as text, for logs and the reload-per-call fallback. */
+    static String promptText(JSONObject request, List<PromptSegment> segments) {
+        if (segments == null) return request.optString("prompt", "");
+        final StringBuilder text = new StringBuilder();
+        for (PromptSegment segment : segments) text.append(segment.text);
+        return text.toString();
+    }
+
+    /**
+     * Token ids for the prompt. Segments are tokenized one at a time and
+     * concatenated: BOS only on the first, control tokens parsed only in
+     * special segments. A plain prompt keeps the old whole-string parse.
+     */
+    private int[] tokenizePrompt(String prompt, List<PromptSegment> segments) {
+        if (segments == null) {
+            return ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
+        }
+        final ArrayList<int[]> parts = new ArrayList<>(segments.size());
+        int total = 0;
+        for (int i = 0; i < segments.size(); i++) {
+            final PromptSegment segment = segments.get(i);
+            final int[] part = ElizaVoiceNative.nativeTokenize(
+                residentCtx, segment.text, i == 0, segment.special);
+            parts.add(part);
+            total += part.length;
+        }
+        final int[] toks = new int[total];
+        int at = 0;
+        for (int[] part : parts) {
+            System.arraycopy(part, 0, toks, at, part.length);
+            at += part.length;
+        }
+        return toks;
+    }
+
+    /**
+     * What a bundle's files can serve, without loading anything or taking the
+     * resident lock. Embeddings use the agent's own BGE bundle per request.
+     */
+    static String capabilities(String bundleDir) throws org.json.JSONException {
+        final File bundle = new File(bundleDir);
+        final File paradee = new File(bundle, PARADEE_DIR);
+        return new JSONObject().put("ok", true).put("capabilities", new JSONObject()
+            .put("text", firstMatch(new File(bundle, "text"), ".gguf") != null)
+            .put("embedding", true)
+            .put("vision", firstMatch(new File(bundle, "vision"), ".gguf") != null)
+            .put("asr", firstMatch(new File(bundle, "asr"), ".gguf") != null)
+            .put("tts", new File(paradee, PARADEE_MODEL).isFile()
+                && new File(paradee, MISAKI_LEXICON).isFile()))
+            .toString();
     }
 
     /** Uses the isolated canonical encoder; failures never route to chat weights. */
