@@ -692,14 +692,15 @@
     "model": "packages/agent/quint/services-signing.qnt",
     "sources": [
       "packages/agent/src/services/signing-policy.ts",
-      "packages/agent/src/services/remote-signing-service.ts"
+      "packages/agent/src/services/remote-signing-service.ts",
+      "packages/agent/test/sandbox-audit-durability.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "One reservation, approval and signing operation with fixed policy.",
-      "Cryptography, HTTP authentication, policy replacement and concurrent principal budgets remain external.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "One in-flight request, two payload values, one policy epoch change and a bounded approval clock. Models submission audit, policy invalidation, detached input/listing snapshots, signer failure and final evidence.",
+      "Concrete policy evaluation, multiple simultaneous requests/principal budgets, external signer unknown outcomes and signer cryptography remain separate obligations. Dispatch linearizes authority; later policy change does not retract it.",
+      "Real SQLite/ethers scenario conformance is automatic. It does not establish equivalence for every abstract schedule. Progress assumes weakly fair dependency settlement and human decision."
     ]
   },
   {
@@ -773,6 +774,29 @@
       "One bounded request is projected through accumulated byte increments. Arbitrary byte/chunk boundaries, dynamic route caps and multi-request sequencing are outside this instance.",
       "Normal server close follows request drain and local response flush. HTTP deadlines, handler failures, peer receipt and other transport close policies are excluded.",
       "The real HTTP test checks oversized chunked rejection followed by a valid keep-alive request. Authentication and route-selection authority remain external guards."
+    ]
+  },
+  {
+    "id": "AgentAuditOutbox",
+    "model": "packages/agent/quint/AuditOutbox.qnt",
+    "sources": [
+      "packages/agent/src/security/audit-log.ts",
+      "packages/agent/test/sandbox-audit-durability.test.ts"
+    ],
+    "invariants": [
+      "CapturedFactsStayOwned",
+      "ResolvedMeetsRequirements",
+      "CommittedRowsWereRecorded",
+      "SinkOrderIsRecordOrder",
+      "CrashPreservesCommittedRows",
+      "OneDeliveryAtATime"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two one-shot entries and two sinks with all durable/required flag combinations, one process restart and separate pre/post-commit append failure. Models serial delivery, attachment, outbox drain and private snapshot ownership.",
+      "Real file-backed SQLite tests check queue/drain/failure/fallback, committed-row restart and caller/observer mutation. The tests are scenario conformance, not an all-schedule implementation refinement.",
+      "Backend atomicity and trusted sink configuration are assumptions. More records/sinks, retries/idempotency, power loss, storage corruption, arbitrary sink internals and bounded feed and runtime-log retention are outside this instance.",
+      "Progress assumes available durable sink attachment when required plus weak fairness of append and delivery settlement. Without a possible durable sink, queued entries can remain waiting."
     ]
   }
 ]

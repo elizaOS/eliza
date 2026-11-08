@@ -1,11 +1,16 @@
 {
   "sources": [
     "packages/agent/src/services/signing-policy.ts",
-    "packages/agent/src/services/remote-signing-service.ts"
+    "packages/agent/src/services/remote-signing-service.ts",
+    "packages/agent/test/sandbox-audit-durability.test.ts"
   ],
+  "conformance": "packages/agent/quint/check-signing-audit.mjs",
   "bounds": {
-    "domain": "One reservation, approval and signing operation with fixed policy.",
-    "scope": "Finite protocol safety; no temporal/fairness claim."
+    "domain": "One request operation in flight, two payload values, one policy replacement, clock 0..3 and approval lifetime two ticks. Retains the previous reservation, single-use approval, signer-failure and final-audit obligations.",
+    "boundary": "The policy must still match after submission evidence commits and before dispatch. Policy changes retire pending approval. A change after signer dispatch cannot retract an already dispatched signature.",
+    "assumptions": "Provider cryptography, authorization at HTTP boundaries, concrete policy values, multiple concurrent request/reservation budgets and external signer unknown outcomes remain outside this projection. A rejected signer operation is assumed not to have produced a usable signature.",
+    "progress": "Weak fairness of audit settlement, human decision and signer settlement ensures the current request returns or fails. No progress is asserted for an absent decision or permanently unavailable dependency.",
+    "conformance": "The actual SQLite/ethers suite checks immutable admitted payload, repeated approval, pending-policy invalidation, policy replacement while submission audit waits, durable audit failures and recovery. Scenario conformance does not prove all abstract schedules."
   },
   "cases": [
     {
@@ -14,7 +19,7 @@
       "init": "init",
       "step": "step",
       "invariants": ["safety"],
-      "temporal": [],
+      "temporal": ["RequestEventuallySettles"],
       "maxSteps": 50,
       "samples": 1000
     }
