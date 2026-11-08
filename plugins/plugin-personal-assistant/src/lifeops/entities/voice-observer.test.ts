@@ -264,6 +264,9 @@ describe("extractSelfNameClaim", () => {
     // An initial or a title keeps its period.
     expect(extractSelfNameClaim("I'm J. R. Smith")).toBe("J. R. Smith");
     expect(extractSelfNameClaim("This is Dr. Smith")).toBe("Dr. Smith");
+    expect(extractSelfNameClaim("This is Capt. Smith. Nice to meet you.")).toBe(
+      "Capt. Smith",
+    );
   });
 });
 
@@ -399,6 +402,19 @@ describe("extractSelfAffiliationClaim", () => {
       extractSelfAffiliationClaim("I work at the Dept. of Health")
         ?.organization,
     ).toBe("Dept. of Health");
+    expect(
+      extractSelfAffiliationClaim("I work at Mass. General Hospital")
+        ?.organization,
+    ).toBe("Mass. General Hospital");
+    expect(
+      extractSelfAffiliationClaim("I work at Cal. Poly State University")
+        ?.organization,
+    ).toBe("Cal. Poly State University");
+    // A suffix ends the organization, so its period still ends the sentence.
+    expect(
+      extractSelfAffiliationClaim("I work at Acme Inc. It's great.")
+        ?.organization,
+    ).toBe("Acme Inc");
   });
 
   it("rejects non-affiliation phrasing", () => {

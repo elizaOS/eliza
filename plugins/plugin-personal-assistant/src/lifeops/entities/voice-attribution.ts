@@ -37,9 +37,11 @@ const NAME_PATTERN = `${NAME_TOKEN_PATTERN}(?:\\s+${NAME_TOKEN_PATTERN}){0,2}`;
 // ("J. R. Smith", "Dr. Smith", "U.S. Navy"), so a capture can run into the
 // next sentence of a punctuated transcript ("I'm Jill. Nice to meet you." →
 // "Jill. Nice"). A period before a capitalized word ends the sentence unless
-// it closes an initial or a title.
+// it closes an initial, a title or a place abbreviation that opens a name
+// ("Capt. Smith", "Mass. General Hospital"). Suffixes such as "Inc." end the
+// name, so they are not listed.
 const SENTENCE_BREAK =
-  /(?<!(?:^|[\s.])(?:[A-Z]|Mr|Mrs|Ms|Dr|Prof|St|Mt))\.\s+(?=[A-Z])/;
+  /(?<!(?:^|[\s.])(?:[A-Z]|Mr|Mrs|Ms|Dr|Prof|Capt|Col|Gov|Rev|Hon|St|Mt|Ave|Blvd|Mass|Cal|Mich|Va|Pa|Wash))\.\s+(?=[A-Z])/;
 // A curly apostrophe is outside the name class, so "Jill’s" ends the name
 // at Jill. Reject possessives and prevent fallback to a shorter name prefix.
 const NAME_CLAIM_PATTERNS: RegExp[] = [
