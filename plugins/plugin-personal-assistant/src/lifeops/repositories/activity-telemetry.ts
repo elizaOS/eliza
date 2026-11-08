@@ -549,6 +549,16 @@ export class ActivityTelemetryRepository {
     return rows.map(parseSleepEpisode);
   }
 
+  async deleteOpenSleepEpisode(agentId: string, id: string): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_sleep_episodes
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+          AND end_at IS NULL`,
+    );
+  }
+
   async listScreenTimeDaily(
     agentId: string,
     date: string,

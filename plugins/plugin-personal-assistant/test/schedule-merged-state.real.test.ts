@@ -241,6 +241,89 @@ describe("merged schedule state", () => {
     }
   });
 
+  it("drops an open sleep episode that a later tick no longer reports", async () => {
+    const fixture = await createFixture("lifeops-superseded-open-sleep");
+    try {
+      const agentId = String(fixture.runtime.agentId);
+      const openRows = async (nowIso: string) =>
+        (
+          await fixture.service.repository.listSleepEpisodesBetween(
+            agentId,
+            "2026-04-18T00:00:00.000Z",
+            nowIso,
+            { includeOpen: true },
+          )
+        )
+          .filter((row) => row.endAt === null)
+          .map((row) => row.startAt);
+      await fixture.service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.test.evening",
+        displayName: "Evening",
+        startAt: "2026-04-18T18:00:00.000Z",
+        endAt: "2026-04-18T23:00:00.000Z",
+        durationSeconds: 5 * 60 * 60,
+        metadata: {},
+      });
+      await fixture.service.captureActivitySignal({
+        source: "mobile_device",
+        platform: "mobile_app",
+        state: "locked",
+        observedAt: "2026-04-18T23:05:00.000Z",
+        idleState: "locked",
+        idleTimeSeconds: 0,
+        onBattery: false,
+        metadata: {},
+      });
+      // 2.5 hours into the gap the tick saves it as current sleep.
+      await fixture.service.refreshLocalMergedScheduleState({
+        timezone: "UTC",
+        now: new Date("2026-04-19T01:30:00.000Z"),
+      });
+      expect(await openRows("2026-04-19T01:30:00.000Z")).toEqual([
+        "2026-04-18T23:00:00.000Z",
+      ]);
+
+      // The owner checks the phone at 01:45, which ends that gap short of the
+      // 3 hours a completed sleep needs, then sleeps until 07:00.
+      for (const [startAt, endAt] of [
+        ["2026-04-19T01:45:00.000Z", "2026-04-19T01:50:00.000Z"],
+        ["2026-04-19T07:00:00.000Z", "2026-04-19T07:25:00.000Z"],
+      ]) {
+        await fixture.service.recordScreenTimeEvent({
+          source: "app",
+          identifier: "com.test.phone",
+          displayName: "Phone",
+          startAt,
+          endAt,
+          durationSeconds: 5 * 60,
+          metadata: {},
+        });
+      }
+      await fixture.service.refreshLocalMergedScheduleState({
+        timezone: "UTC",
+        now: new Date("2026-04-19T07:30:00.000Z"),
+      });
+
+      expect(await openRows("2026-04-19T07:30:00.000Z")).toEqual([]);
+      const summary = await fixture.service.readScheduleSummary({
+        timezone: "UTC",
+        now: new Date("2026-04-19T12:00:00.000Z"),
+      });
+      expect(
+        summary.sleepEpisodes.map((episode) => [
+          episode.startAt,
+          episode.endAt,
+          episode.current,
+        ]),
+      ).toEqual([
+        ["2026-04-19T01:50:00.000Z", "2026-04-19T07:00:00.000Z", false],
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("prefers a fresh cloud merged schedule state in overview and reminder reads", async () => {
     const fixture = await createFixture("lifeops-cloud-merged-state-agent");
     try {

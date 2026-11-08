@@ -8,7 +8,7 @@
  * unchanged; the factory is reproduced byte-identically.
  *
  * The `SleepEpisodeRepository` interface narrows `LifeOpsRepository` to the
- * two methods `sleep-episode-store.ts` calls. app-lifeops' `LifeOpsRepository`
+ * methods `sleep-episode-store.ts` calls. app-lifeops' `LifeOpsRepository`
  * is structurally compatible with this interface, so no adapter is needed at
  * the call site.
  */
@@ -45,6 +45,7 @@ export interface SleepEpisodeRepository {
     endAt: string,
     opts?: { includeOpen?: boolean; limit?: number },
   ): Promise<LifeOpsSleepEpisodeRecord[]>;
+  deleteOpenSleepEpisode(agentId: string, id: string): Promise<void>;
 }
 
 export function createLifeOpsSleepEpisode(

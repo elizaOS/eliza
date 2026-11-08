@@ -48,7 +48,9 @@ function toIso(value: number | null): string | null {
 export async function persistSleepEpisodes(
   args: PersistSleepEpisodesArgs,
 ): Promise<void> {
+  const reportedStartMs = new Set<number>();
   for (const episode of args.episodes) {
+    reportedStartMs.add(episode.startMs);
     const endAt = toIso(episode.endMs);
     const record = createLifeOpsSleepEpisode({
       agentId: args.agentId,
@@ -75,6 +77,26 @@ export async function persistSleepEpisodes(
       ],
     });
     await args.repository.upsertSleepEpisode(record);
+  }
+  // An open row is closed only by a later analysis that reports the same
+  // start. When the analysis drops that sleep (a gap that ended short of a
+  // completed sleep), nothing else closes the row and it reads as current
+  // sleep forever, so remove it.
+  const nowIso = new Date(args.nowMs).toISOString();
+  const stored = await args.repository.listSleepEpisodesBetween(
+    args.agentId,
+    nowIso,
+    nowIso,
+    { includeOpen: true },
+  );
+  for (const row of stored) {
+    if (
+      row.endAt === null &&
+      row.source !== "manual" &&
+      !reportedStartMs.has(Date.parse(row.startAt))
+    ) {
+      await args.repository.deleteOpenSleepEpisode(args.agentId, row.id);
+    }
   }
 }
 

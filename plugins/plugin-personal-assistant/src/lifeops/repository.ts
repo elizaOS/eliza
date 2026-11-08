@@ -1302,6 +1302,11 @@ export class LifeOpsRepository {
   ): ReturnType<ActivityTelemetryRepository["listSleepEpisodesBetween"]> {
     return this.activityTelemetry.listSleepEpisodesBetween(...args);
   }
+  deleteOpenSleepEpisode(
+    ...args: Parameters<ActivityTelemetryRepository["deleteOpenSleepEpisode"]>
+  ): ReturnType<ActivityTelemetryRepository["deleteOpenSleepEpisode"]> {
+    return this.activityTelemetry.deleteOpenSleepEpisode(...args);
+  }
   upsertScheduleObservation(
     ...args: Parameters<
       ScheduleProjectionRepository["upsertScheduleObservation"]
