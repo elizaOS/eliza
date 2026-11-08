@@ -2,7 +2,7 @@
 
 Android media and selected-document primitives for Eliza hosts: the host's own published media,
 the full permitted device photo/video library, exact-byte selections and reviewed changes. Nothing
-here uploads media, builds a remote index or rewrites an original; outbound use of any bytes is a
+here uploads media or builds a remote index; an original is rewritten only through reviewed Replace; outbound use of any bytes is a
 separate, explicit host action.
 
 Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
@@ -15,7 +15,11 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   crop and filters, previewed at most 1024 px, saved as a new owned PNG copy. Each save has a UUID
   operation identity, a receipt journal and a deterministic display name, so a crash between
   publish and receipt resolves to `saved` or `failed`, never a duplicate. The session aborts if
-  the source changes (MediaStore generation and SHA-256 of the snapshot).
+  the source changes (MediaStore generation and SHA-256 of the snapshot). Explicit Replace keeps
+  the original and encoded edit durably before writing. Recovery requires current access, the same
+  target and unchanged readback; it restores recorded damage or a prefix proven by the encoded edit.
+  An interrupted restore also requires its durable phase record. Unproven bytes and backups remain
+  untouched. A complete edit or original settles the receipt without replaying the edit.
 - `VideoCopyEdits` / `VideoEditSpec` – trim, quarter-turn rotation and centered crop of an admitted
   video with Media3 Transformer, saved as a new owned MP4. The encoder reads a frozen private
   snapshot; publication rechecks the source bytes, access and provider revision; each save has
