@@ -1,0 +1,55 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/org-storage-mutations.ts",
+    "packages/cloud/shared/src/db/schemas/org-storage-mutations.ts",
+    "packages/cloud/shared/src/lib/services/storage/native-storage-put.ts",
+    "packages/cloud/shared/src/db/repositories/__tests__/org-storage-mutations.pglite.test.ts",
+    "packages/cloud/shared/src/db/migrations/0257_org_storage_native_put_operations.sql",
+    "packages/cloud/quint/check-native-storage-put-recovery.mjs"
+  ],
+  "bounds": "One immutable tenant/object generation and request digest, two workers, four nonreused lease tokens and logical time 0..9. Grace and quarantine are two ticks, lease duration one. At most one pending provider application is retained as a possible external effect.",
+  "cases": [
+    {
+      "name": "reconciliation-and-terminal-receipt",
+      "main": "NativeStoragePutRecovery",
+      "init": "init",
+      "step": "step",
+      "invariants": ["Safety"],
+      "temporal": ["DurableAuthority", "FairCallsSettle", "CallsSettle"],
+      "maxSteps": 60,
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "DurableAuthority",
+          "expect": "holds",
+          "assumptions": [
+            "No scheduler fairness. Lease claims and terminal receipt preservation are checked on every reachable step."
+          ]
+        },
+        {
+          "property": "FairCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of finishWork for each worker. An active worker eventually reads HEAD, settles its authorized work, or abandons its local claim on cancellation or failure.",
+            "Completing local work can leave durable recovery pending. No eventual provider or database success is assumed."
+          ]
+        },
+        {
+          "property": "CallsSettle",
+          "expect": "counterexample",
+          "assumptions": [
+            "No scheduler fairness. A worker can remain pending with a stalled provider or database call."
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One immutable tenant and operation identity, one positive-priced PUT and its exact provider generation. Quota and credit amounts are projected into ownership states. Cross-tenant authorization, digest validation, funding arithmetic, other writers, deletion, and GC remain separate.",
+    "SQL transitions are atomic and check current lease token equality. Claim expiry and grace comparisons are strict. The first absence quarantine uses the timestamp captured for the reconciliation claim. Recovery after a provider attempt requires a fresh claim and a second strong absence result.",
+    "A claim and its possible provider dispatch are compressed into one step. A strong HEAD result reports presence of the exact generation with valid integrity metadata. A failed probe or interrupted worker can leave the lease, quota, and credit held.",
+    "A late provider write can create an unpublished orphan after a refund. The catalog and terminal receipt stay fenced. Provider orphan cleanup, exact-retry attachment to an already claimed row, provider I/O durations, and database availability remain outside the model.",
+    "The PGlite suite exercises actual repository transactions, including races and terminal replay. It uses no R2 bucket. The projected HEAD and late provider behavior are checked by Quint scenarios."
+  ],
+  "conformance": "packages/cloud/quint/check-native-storage-put-recovery.mjs"
+}
