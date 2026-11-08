@@ -2524,7 +2524,7 @@ async function resolveApprovalRequest(
         ? "There are no pending approval requests."
         : appendInteractionBlock(
             pending.length === 1 && onlyPending
-              ? `The only ${retrying ? "failed" : "pending"} request is: ${onlyPending.reason}. Is that the one?`
+              ? `The only ${retrying ? "failed" : "pending"} request is: ${onlyPending.reason.trim().replace(/[.!?]+$/u, "")}. Is that the one?`
               : "Which request?",
             buildResolveRequestChoice(retrying ? "retry" : intent, pending),
           );

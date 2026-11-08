@@ -8,7 +8,8 @@
  *
  * `POST /api/approvals/:id/resolve` applies the owner's tap in a review dialog.
  * The body names the decision and the revision the owner reviewed; the row
- * must still be pending at that revision. The server gate makes it owner-only.
+ * must be unchanged since, and still pending or retryable. The server gate
+ * makes it owner-only.
  * Only Calendar approvals resolve here today.
  */
 

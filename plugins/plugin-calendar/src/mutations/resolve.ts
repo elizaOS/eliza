@@ -106,8 +106,9 @@ export async function resolveCalendarApproval(
 }
 /**
  * Resolution for a caller the host already authenticated as the owner. With
- * `isReviewed`, the decision applies only while the row is still pending and
- * unchanged from what the owner reviewed; any other state is a 409.
+ * `isReviewed`, the decision applies only while the row is unchanged from what
+ * the owner reviewed and still open: pending, or approved/retryable after a
+ * refused attempt the owner may retry. Any other state is a 409.
  */
 export async function resolveOwnerCalendarApproval(
   runtime: IAgentRuntime,
@@ -151,7 +152,8 @@ export async function resolveOwnerCalendarApproval(
     );
   if (
     input.isReviewed &&
-    (request.state !== "pending" || !input.isReviewed(request))
+    (!["pending", "approved", "retryable"].includes(request.state) ||
+      !input.isReviewed(request))
   )
     throw stale();
   // The queue transitions with a compare-and-set on state, so a concurrent

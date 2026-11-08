@@ -126,11 +126,11 @@ it("refuses a reviewed decision when the row changed since the review", async ()
   expect(s.queue.approve).not.toHaveBeenCalled();
   expect(s.execute).not.toHaveBeenCalled();
 });
-it("refuses a reviewed decision once the row left pending", async () => {
+it("refuses a reviewed decision once the row is settled", async () => {
   s.queue.byId.mockResolvedValue({
     id: "review",
     action: "schedule_event",
-    state: "approved",
+    state: "done",
   });
   const port = { preflight() {}, execute() {} };
   await expect(
@@ -140,6 +140,20 @@ it("refuses a reviewed decision once the row left pending", async () => {
     ),
   ).rejects.toMatchObject({ status: 409 });
   expect(s.execute).not.toHaveBeenCalled();
+});
+it("retries a reviewed row that a refused attempt left retryable", async () => {
+  s.queue.byId.mockResolvedValue({
+    id: "review",
+    action: "schedule_event",
+    state: "retryable",
+  });
+  const port = { preflight() {}, execute() {} };
+  await resolveOwnerCalendarApproval(
+    { agentId: "agent", getService: () => port } as never,
+    reviewed(() => true),
+  );
+  expect(s.queue.approve).not.toHaveBeenCalled();
+  expect(s.execute).toHaveBeenCalledTimes(1);
 });
 it("reports a lost approval race on a reviewed row as stale", async () => {
   s.queue.approve.mockRejectedValue(new Error("lost race"));
