@@ -33,11 +33,12 @@ public class ListenerControlProvider extends ContentProvider {
    ListenerPolicy.State state=Listener.state(getContext());
    Bundle out=new Bundle();
    out.putString("state",state.name());
-   out.putString("label",ListenerStore.storageFailed()?"Listening is off. Settings could not be saved; reopen listener settings.":ListenerPolicy.label(state));
+   out.putString("label",ListenerStore.storageFailed()?ConsentActivity.STORAGE_FAILED:ListenerPolicy.label(state));
    out.putBoolean("saved",resetSaved&&!ListenerStore.storageFailed());
    out.putBoolean("consented",ListenerPolicy.consented(store.consentVersion()));
    out.putBoolean("listening",ListenerPolicy.processesAudio(state));
-   out.putBoolean("microphoneOpen",ListenerPolicy.holdsMicrophone(state));
+   // What the service holds, not what the policy permits: a state can allow capture before the service starts.
+   out.putBoolean("microphoneOpen",Listener.microphoneHeld);
    return out;
   }finally{Binder.restoreCallingIdentity(identity);}
  }

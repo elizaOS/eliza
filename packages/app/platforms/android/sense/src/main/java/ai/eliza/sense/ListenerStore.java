@@ -63,6 +63,14 @@ final class ListenerStore {
  long pausedUntil(){return ListenerPolicy.effectivePause(prefs.getLong(PAUSED_UNTIL,0),prefs.getLong(PAUSE_BOOT,-1),bootCount(context));}
  long consentAt(){return prefs.getLong(CONSENT_AT,0);}
 
+ /**
+  * Listening was on when the last process ended, but this process has no opt-in yet. Withdrawing
+  * consent or turning listening off clears it on disk.
+  */
+ boolean lapsedAfterRestart(){
+  return !processConsent&&!storageFailed&&ListenerPolicy.consented(prefs.getInt(CONSENT,0))&&prefs.getBoolean(ENABLED,false);
+ }
+
  /** Records the explicit opt-in shown in {@link ConsentActivity} and turns listening on. */
  boolean grantConsent(long now,long generation){
   synchronized(CONSENT_LOCK){
