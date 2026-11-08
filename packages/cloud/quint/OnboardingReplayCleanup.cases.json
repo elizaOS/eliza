@@ -1,0 +1,44 @@
+{
+  "sources": [
+    "packages/cloud/api/src/onboarding-session-coordinator.ts",
+    "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts",
+    "packages/cloud/api/test/fixtures/onboarding-route-worker.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-onboarding-coordinator.mjs",
+  "bounds": "One serialized coordinator, three ordered replay keys, page size one, logical clock 0..9 and deadlines 1..5. After the final time bucket, scheduled pages remain due. Models durable atomic writes of replay state, cursor and alarms. Real pages have 128 entries. The Workerd case seeds the durable state of a completed page and runs an actual turn before the next alarm. Multiple coordinators, storage failures and transcript migration are separate.",
+  "cases": [
+    {
+      "name": "interleaved-replay-expiry",
+      "main": "OnboardingReplayCleanup",
+      "init": "init",
+      "step": "step",
+      "invariants": ["AlarmOwnsReplay"],
+      "maxSteps": 35,
+      "samples": 1000,
+      "temporal": ["FreshEntriesSurvive", "FairExpiry", "ExpiresEventually"],
+      "temporalChecks": [
+        {
+          "property": "FreshEntriesSurvive",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Cleanup observes the database at one logical time and only removes already expired replay records."
+          ]
+        },
+        {
+          "property": "FairExpiry",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of time advance and alarm execution. A scheduled alarm eventually runs and commits. Writes and keys are finite and the clock horizon exceeds the final write deadline."
+          ]
+        },
+        {
+          "property": "ExpiresEventually",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The platform can fail to run a due alarm indefinitely."
+          ]
+        }
+      ]
+    }
+  ]
+}

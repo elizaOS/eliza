@@ -10,9 +10,11 @@ const root = path.resolve(import.meta.dirname, "../../..");
 const model = path.resolve(root, process.argv[2] ?? "");
 assert.equal(path.dirname(model), import.meta.dirname);
 assert(
-  ["OnboardingGreetingLease.qnt", "OnboardingContinuationClaim.qnt"].includes(
-    path.basename(model),
-  ),
+  [
+    "OnboardingGreetingLease.qnt",
+    "OnboardingContinuationClaim.qnt",
+    "OnboardingReplayCleanup.qnt",
+  ].includes(path.basename(model)),
   "Expected an onboarding coordinator model",
 );
 const suite =
@@ -23,6 +25,7 @@ const expected = [
   "an expired lease can be replaced and its delayed acknowledgement has no effect",
   "continuation pins the original lineage and account through exact completion",
   "continuation rejects invalid sessions and recovers a retained completed claim",
+  "replay created behind the cleanup cursor keeps an expiry alarm",
 ];
 const output = testOutputPath("quint-onboarding-coordinator");
 mkdirSync(output, { recursive: true });
