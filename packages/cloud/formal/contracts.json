@@ -330,6 +330,33 @@
       "maxSteps": 20
     },
     {
+      "id": "tokenizer-cache",
+      "file": "tokenizer_cache.qnt",
+      "sources": [
+        "plugins/plugin-elizacloud/src/models/tokenization.ts",
+        "plugins/plugin-elizacloud/__tests__/lazy-tokenizer.test.ts",
+        "plugins/plugin-openai/utils/tokenization.ts",
+        "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts",
+        "packages/cloud/formal/conformance/tokenizer-cache.ts",
+        "packages/scripts/vitest/source-aliases.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/agent/src/api/server-boot-graph.test.ts",
+        "packages/agent/src/api/model-config-routes.ts",
+        "packages/agent/src/api/todo-cutover-import.ts",
+        "plugins/plugin-openai/build.ts",
+        "plugins/plugin-wallet/build.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+        "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+        "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook. The hook also checks the real API-server import graph.",
+        "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved."
+      ],
+      "maxSteps": 20,
+      "conformance": "packages/cloud/formal/conformance/tokenizer-cache.ts"
+    },
+    {
       "id": "job-time-authority",
       "file": "job_time_authority.qnt",
       "sources": [
@@ -349,8 +376,7 @@
         "Renewal waits may outlive their transaction-start lease. The new expiry is sampled after acquiring the job row; another generation cannot be overwritten.",
         "No scheduler fairness, eventual execution, provider quiescence, unbounded clock behavior, DST transition semantics or TypeScript/SQL refinement is proved. Real PostgreSQL tests separately cover process and database timezone matrices and lock waits."
       ],
-      "maxSteps": 35,
-      "conformance": "packages/cloud/formal/conformance/job-time.ts"
+      "maxSteps": 35
     }
   ],
   "pendingDomains": [
