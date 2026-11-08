@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
-import { spawn } from 'node:child_process';
+import { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import {
@@ -18,57 +18,56 @@ import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-se
 import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 import { WorkflowService } from '../../src/services/workflow-service';
 
-// The baseline must be reconstructed from the exact base + patches0001–0012,
-// with its bridge fixture checkpointed after the applied Notes read. The process
-// group is killed without service.stop(), simulating an actual interrupted host.
-const baseline = process.env.ELIZA_WORKFLOW_UPGRADE_BASELINE;
-(baseline ? test : test.skip)(
-  'persisted0012 process upgrade retains pinned read receipt and finishes old run before protocol2 run',
-  async () => {
-    const artifacts = await mkdtemp(join(tmpdir(), 'workflow-upgrade-'));
-    const checkpoint = join(artifacts, 'checkpoint.json');
+// Each fixture is a run persisted by an earlier build and interrupted while it
+// waits after an applied Notes read (scripts/capture-upgrade-checkpoint.ts).
+// The current runtime must resume and finish it, then run a new protocol2
+// workflow. With only a fixture captured by the current persisted protocol this
+// proves a same-version resume, not an upgrade; it becomes the upgrade test
+// once the protocol changes and a new fixture is captured beside the old one.
+const fixtures = join(import.meta.dir, '../fixtures/upgrade-checkpoint');
+const repoRoot = resolve(import.meta.dir, '../../../..');
+
+/** Restores the Smithers run store at this checkout's paths. */
+async function restoreRuns(fixture: string, state: any): Promise<string> {
+  const directory = resolveSmithersWorkflowDir(state.agentId, state.saved.workflowId);
+  await rm(directory, { recursive: true, force: true });
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const file = join(directory, 'runs.sqlite');
+  await writeFile(file, Bun.gunzipSync(await readFile(join(fixture, 'runs.sqlite.gz'))));
+  const runs = new Database(file);
+  const tables = runs
+    .query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%'"
+    )
+    .all() as { name: string }[];
+  for (const { name } of tables)
+    for (const { name: column, type } of runs.query(`PRAGMA table_info("${name}")`).all() as {
+      name: string;
+      type: string;
+    }[])
+      if (/text/i.test(type))
+        for (const [from, to] of [
+          [state.smithersDirectory, directory],
+          [state.repoRoot, repoRoot],
+        ])
+          runs.run(`UPDATE "${name}" SET "${column}"=replace("${column}",?,?)`, [from, to]);
+  runs.close();
+  return directory;
+}
+
+for (const name of readdirSync(fixtures).sort())
+  test(`persisted run from ${name} keeps its applied read receipt and finishes before a protocol2 run`, async () => {
+    const fixture = join(fixtures, name);
+    const state = JSON.parse(await readFile(join(fixture, 'state.json'), 'utf8'));
     let db: PGlite | undefined,
       embedded: EmbeddedWorkflowService | undefined,
       server: http.Server | undefined;
-    let state: any;
-    const owned: string[] = [];
-    const child = spawn(
-      process.execPath,
-      [
-        '--conditions=eliza-source',
-        'test',
-        'plugins/plugin-workflow/__tests__/integration/device-bridge-e2e.test.ts',
-      ],
-      {
-        cwd: baseline,
-        detached: true,
-        env: { ...process.env, ALPHA_UPGRADE_CHECKPOINT: checkpoint },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }
-    );
-    let childLog = '';
-    child.stdout.on('data', (data) => {
-      childLog += String(data);
-    });
-    child.stderr.on('data', (data) => {
-      childLog += String(data);
-    });
-    const killed = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    const owned: string[] = [state.saved.workflowId];
     try {
-      for (let i = 0; i < 360; i++) {
-        try {
-          state = JSON.parse(await readFile(checkpoint, 'utf8'));
-          break;
-        } catch {}
-        if (child.exitCode !== null)
-          throw new Error(`Baseline exited before checkpoint: ${childLog}`);
-        await Bun.sleep(250);
-      }
-      expect(state).toBeDefined();
-      process.kill(-child.pid!, 'SIGKILL');
-      await killed;
-      db = new PGlite(state.directory);
-      owned.push(state.saved.workflowId);
+      db = await PGlite.create({
+        loadDataDir: new Blob([await readFile(join(fixture, 'pglite-datadir.gz'))]),
+      });
+      await restoreRuns(fixture, state);
       let facade: WorkflowService | undefined, bridge: WorkflowDeviceBridgeService | undefined;
       const runtime: any = {
         agentId: state.agentId,
@@ -243,20 +242,13 @@ const baseline = process.env.ELIZA_WORKFLOW_UPGRADE_BASELINE;
       }
       expect((await devices.list(state.credential)).length).toBe(approvedCount);
     } finally {
-      if (child.exitCode === null && child.signalCode === null) {
-        process.kill(-child.pid!, 'SIGKILL');
-        await killed;
-      }
       await embedded?.stop();
-      if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
-      await db?.close();
-      if (state) {
-        await rm(state.directory, { recursive: true, force: true });
-        for (const id of owned)
-          await rm(resolveSmithersWorkflowDir(state.agentId, id), { recursive: true, force: true });
+      if (server) {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server!.close(() => resolve()));
       }
-      await rm(artifacts, { recursive: true, force: true });
+      await db?.close();
+      for (const id of owned)
+        await rm(resolveSmithersWorkflowDir(state.agentId, id), { recursive: true, force: true });
     }
-  },
-  240000
-);
+  }, 240000);

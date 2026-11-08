@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -219,6 +219,25 @@ test('typed workflow HTTP and real SQL canonical device approval bridge binds No
       expect(proposal).toBeDefined();
       expect(proposal.state).toBe('pending');
       expect((await call(`/executions/${runId}`)).body.execution.status).toBe('waiting-approval');
+      // scripts/capture-upgrade-checkpoint.ts sets this, then kills this process
+      // without service.stop() while the run waits after its applied Notes read.
+      if (stepId === 'calendar' && process.env.ELIZA_WORKFLOW_CHECKPOINT_PATH) {
+        await writeFile(
+          process.env.ELIZA_WORKFLOW_CHECKPOINT_PATH,
+          JSON.stringify({
+            directory,
+            smithersDirectory: resolveSmithersWorkflowDir(agentId, saved.workflowId),
+            agentId,
+            owner,
+            credential,
+            spec,
+            saved,
+            runId,
+            last,
+          })
+        );
+        await new Promise(() => {});
+      }
       expect(proposal.payload.workflow.specDigest).toBe(saved.specDigest);
       const duplicates = await Promise.all(
         Array.from({ length: 4 }, () =>
