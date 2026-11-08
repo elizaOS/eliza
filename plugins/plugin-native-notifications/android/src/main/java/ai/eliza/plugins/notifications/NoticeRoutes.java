@@ -1,5 +1,6 @@
 package ai.eliza.plugins.notifications;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -17,6 +18,14 @@ import org.json.JSONObject;
  * owner is current. Routes live in host storage (commit before return); all callers share one lock. */
 public class NoticeRoutes {
  public static final class UnknownTap extends Exception {}
+ /** No room for another route, even after NoticeCoordinator retired settled ones. */
+ public static final class Full extends IllegalStateException {Full(){super("Notification routes full");}}
+ /** Routes stay below this many UTF-8 bytes: under the 256 KiB host slot, with room for tap writes. */
+ public static final int MAX_BYTES=192*1024;
+ /** A route row's bytes besides its route: ID, binding, token, state, order, time and a question flag. */
+ private static final int ROW_BYTES=384;
+ /** Rows a sweep frees beyond the one being added, so posts near the bound do not sweep every time. */
+ private static final int SPARE_ROWS=16;
  /** Immutable host inputs. Keep deployed slot names and route fields when adopting the shared ledger. */
  public static final class Config {
   final String routeSlot,ownerSlot;final NoticeDelivery.Config delivery;final Set<String> fields,identifiers;
@@ -64,23 +73,38 @@ public class NoticeRoutes {
   JSONObject exact=route(input);if(!ownerMatches(exact))throw new IllegalStateException("Notification owner changed");JSONObject rows=ledger(),row=rows.optJSONObject(id);
   if(row!=null){if(!binding.equals(row.getString("binding"))||!same(exact,route(row.getJSONObject("route"))))throw new IllegalStateException("Notification route changed");return row.getString("token");}
   if(rows.has(id))throw new IllegalStateException("Notification routes full");
-  long now=clock.getAsLong();
-  if(rows.length()>=NoticeDelivery.MAX_RECEIPTS){
-   // Retire the oldest routes whose notice is settled past the recovery window and has no pending tap.
-   String raw=storage.read(config.delivery.noticeSlot);JSONObject receipts=raw==null?new JSONObject():new JSONObject(raw);List<String> retiring=new ArrayList<>();
-   for(String key:keys(rows)){JSONObject candidate=rows.getJSONObject(key);if(retirable(key,candidate,receipts.optJSONObject(key),now))retiring.add(key);}
-   retiring.sort((a,b)->Long.compare(NoticeDelivery.createdAt(rows.optJSONObject(a)),NoticeDelivery.createdAt(rows.optJSONObject(b))));
-   for(int i=0;i<retiring.size()&&rows.length()>=NoticeDelivery.MAX_RECEIPTS;i++)rows.remove(retiring.get(i));
-   if(rows.length()>=NoticeDelivery.MAX_RECEIPTS)throw new IllegalStateException("Notification routes full");
-  }
-  String token=UUID.randomUUID().toString();rows.put(id,new JSONObject().put("binding",binding).put("route",exact).put("token",token).put("state","new").put("order",0).put("at",now));storage.write(config.routeSlot,rows.toString());return token;
+  if(!fits(rows,1,bytes(exact)+ROW_BYTES))throw new Full();
+  String token=UUID.randomUUID().toString();rows.put(id,new JSONObject().put("binding",binding).put("route",exact).put("token",token).put("state","new").put("order",0).put("at",clock.getAsLong()));storage.write(config.routeSlot,rows.toString());return token;
  }}
- /** Approval routes are released by {@link #forget}. A result route goes once its receipt can go, or, with no
-  * receipt (never posted), once it is as old; a pending tap always keeps it. */
- private static boolean retirable(String id,JSONObject row,JSONObject receipt,long now){
-  if(NoticeDelivery.approvalId(id)||"pending".equals(row.optString("state")))return false;
-  return receipt!=null?NoticeDelivery.retirable(receipt,now):!row.has("at")||now-row.optLong("at")>=NoticeDelivery.RETENTION_MS;
- }
+ private static int bytes(JSONObject value){return value.toString().getBytes(StandardCharsets.UTF_8).length;}
+ private static boolean fits(JSONObject rows,int more,int rowBytes){return rows.length()+more<=NoticeDelivery.MAX_RECEIPTS&&bytes(rows)+more*rowBytes<=MAX_BYTES;}
+ private static JSONObject slot(String raw)throws Exception{return raw==null?new JSONObject():new JSONObject(raw);}
+ /** Frees room before notice `keep` is prepared. The caller holds NoticeDelivery's lock, so no other post sits
+  * between its prepare and publish. Oldest first (rows without a time predate retention), it retires a route
+  * with its receipt when the receipt is succeeded, failed or withdrawn, Android no longer shows the notice and
+  * the route holds no pending tap; a route whose notice was never recorded; and an approval route without a
+  * receipt. Applying and unknown receipts and pending taps always stay. The route goes before its receipt. */
+ int retire(String keep,JSONObject incoming,java.util.function.Predicate<String> shown)throws Exception{synchronized(LOCK){
+  JSONObject receipts=slot(storage.read(config.delivery.noticeSlot));int rowBytes=bytes(route(incoming))+ROW_BYTES;
+  // Most posts have room: check without validating every row.
+  if(fits(slot(storage.read(config.routeSlot)),1,rowBytes)&&receipts.length()<NoticeDelivery.MAX_RECEIPTS)return 0;
+  JSONObject rows=ledger(),approvals=slot(storage.read(config.delivery.approvalSlot));long size=bytes(rows);
+  Set<String> ids=keys(rows);ids.addAll(keys(receipts));ids.remove(keep);List<String> oldest=new ArrayList<>(ids);
+  oldest.sort((a,b)->Long.compare(NoticeDelivery.createdAt(receipts.has(a)?receipts.optJSONObject(a):rows.optJSONObject(a)),NoticeDelivery.createdAt(receipts.has(b)?receipts.optJSONObject(b):rows.optJSONObject(b))));
+  int retired=0;boolean receiptsChanged=false;
+  for(String id:oldest){
+   if(rows.length()+1+SPARE_ROWS<=NoticeDelivery.MAX_RECEIPTS&&size+(1+SPARE_ROWS)*rowBytes<=MAX_BYTES&&receipts.length()+SPARE_ROWS<NoticeDelivery.MAX_RECEIPTS)break;
+   JSONObject row=rows.optJSONObject(id);if(row!=null&&"pending".equals(row.getString("state")))continue;
+   // An approval route goes only without a receipt; a result goes when never recorded, or settled and no longer shown.
+   if(NoticeDelivery.approvalId(id)?row==null||approvals.has(id):receipts.has(id)&&(!NoticeDelivery.retirable(receipts.optJSONObject(id))||shown.test(id)))continue;
+   if(row!=null){size-=bytes(new JSONObject().put(id,row))-1;rows.remove(id);}
+   if(receipts.remove(id)!=null)receiptsChanged=true;
+   retired++;
+  }
+  if(retired>0)storage.write(config.routeSlot,rows.toString());
+  if(receiptsChanged)storage.write(config.delivery.noticeSlot,receipts.toString());
+  return retired;
+ }}
  /** Frees a result route prepared for a notice that was never recorded (a refused publish). */
  public void release(String id)throws Exception{synchronized(LOCK){
   if(NoticeDelivery.approvalId(id))throw new IllegalArgumentException("Approval routes are released by forget");
@@ -88,6 +112,8 @@ public class NoticeRoutes {
   String raw=storage.read(config.delivery.noticeSlot);if(raw!=null&&new JSONObject(raw).has(id))return;
   rows.remove(id);storage.write(config.routeSlot,rows.toString());
  }}
+ /** The notice ID a tap token belongs to, or null. */
+ public String operation(String token)throws Exception{synchronized(LOCK){JSONObject rows=ledger();for(String id:keys(rows))if(rows.getJSONObject(id).getString("token").equals(token))return id;return null;}}
  public String token(String id)throws Exception{synchronized(LOCK){JSONObject row=ledger().optJSONObject(id);return row==null?null:row.getString("token");}}
  /** Persists the current owner (or explicit sign-out) before any notice is withdrawn or reposted. */
  public void owner(JSONObject owner)throws Exception{synchronized(LOCK){storage.write(config.ownerSlot,new JSONObject().put("owner",owner==null?JSONObject.NULL:NoticeOwner.identity(owner)).toString());}}
@@ -122,10 +148,20 @@ public class NoticeRoutes {
    return;
   }throw new UnknownTap();
  }}
- /** The newest pending tap of the current owner, or an empty object. */
+ /** Whether a tap's notice can never open again: its receipt is withdrawn, failed or gone. Applying, unknown
+  * and suspended receipts can still settle, so their taps stay. */
+ private boolean ended(String id)throws Exception{
+  JSONObject receipt=slot(storage.read(NoticeDelivery.approvalId(id)?config.delivery.approvalSlot:config.delivery.noticeSlot)).optJSONObject(id);
+  return receipt==null||Set.of("withdrawn","failed").contains(receipt.optString("status"));
+ }
+ /** The newest pending tap of the current owner, or an empty object. A pending tap whose notice ended is
+  * settled here, so it never hides older taps. */
  public JSONObject pending()throws Exception{synchronized(LOCK){
-  JSONObject rows=ledger(),selected=null;String selectedId=null;long order=-1;
-  for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(ownerMatches(row.getJSONObject("route"))&&"pending".equals(row.getString("state"))&&row.getLong("order")>order){selected=row;selectedId=id;order=row.getLong("order");}}
+  JSONObject rows=ledger(),selected=null;String selectedId=null;long order=-1;boolean settled=false;
+  for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!ownerMatches(row.getJSONObject("route"))||!"pending".equals(row.getString("state")))continue;
+   if(ended(id)){row.put("state","consumed");row.remove("question");settled=true;continue;}
+   if(row.getLong("order")>order){selected=row;selectedId=id;order=row.getLong("order");}}
+  if(settled)storage.write(config.routeSlot,rows.toString());
   if(selected==null)return new JSONObject();
   JSONObject result=route(selected.getJSONObject("route"));if(selected.optBoolean("question"))result.put("question",true);
   return result.put("token",selected.getString("token")).put("operationId",selectedId).put("bindingHash",selected.getString("binding")).put("retained",confirmed(selectedId,selected));
@@ -134,6 +170,15 @@ public class NoticeRoutes {
   JSONObject rows=ledger();for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!Objects.equals(token,row.getString("token")))continue;
    if(!"pending".equals(row.getString("state"))||!confirmed(id,row))throw new IllegalStateException("Notification tap changed");
    row.put("state","consumed");storage.write(config.routeSlot,rows.toString());return;
+  }throw new UnknownTap();
+ }}
+ /** Settles a pending tap the renderer found definitively unavailable (its target is gone) or whose notice
+  * ended. A tap whose receipt is still applying, unknown or suspended stays. Returns the notice ID to cancel. */
+ public String discard(String token)throws Exception{synchronized(LOCK){
+  JSONObject rows=ledger();for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!Objects.equals(token,row.getString("token")))continue;
+   if(!"pending".equals(row.getString("state"))||!ownerMatches(row.getJSONObject("route")))throw new IllegalStateException("Notification tap changed");
+   if(!ended(id)&&!confirmed(id,row,false))throw new IllegalStateException("Notification receipt unsettled");
+   row.put("state","consumed");row.remove("question");storage.write(config.routeSlot,rows.toString());return id;
   }throw new UnknownTap();
  }}
  /** Settles a pending Ask tap without consuming its notice: `untapped` returns it to "new" (explicit Cancel),

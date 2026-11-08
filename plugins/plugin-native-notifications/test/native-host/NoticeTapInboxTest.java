@@ -27,6 +27,7 @@ public final class NoticeTapInboxTest {
   public void postApproval(String id,String title,String body,long timeout){active.put(id,title+"\n"+body);}
   public void cancel(String id){active.remove(id);}
   public boolean matches(String id,String title,String body){return Objects.equals(active.get(id),title+"\n"+body);}
+  public String[] shownText(String id){String shown=active.get(id);return shown==null?null:shown.split("\n",2);}
  }
  static final String OPEN="example.OPEN_NOTICE",ASK="example.ASK_NOTICE",PREFIX="example-notice:";
  static final NoticeDelivery.Config DELIVERY=new NoticeDelivery.Config("host-notices:v1","host-approvals:v1","Step waiting for approval","Open the app to review it.",7L*86400000);
@@ -97,6 +98,20 @@ public final class NoticeTapInboxTest {
   for(int i=0;i<512;i++){last=new Intent(OPEN,PREFIX+t1);check(bounded.retain(last,INTENTS)!=null);}
   Intent overflow=new Intent(OPEN,PREFIX+t1);check(bounded.retain(overflow,INTENTS)==null);
   bounded.release(last,t1);check(bounded.retain(overflow,INTENTS)!=null);
+  // A tap on a shown notice whose receipt stayed unknown (the post was not seen listed in time) rechecks the
+  // shown notice and opens; without the recheck, or once the notice is gone, the tap stays retained.
+  String third=routes.prepare("step-3",binding,route("run-4"));check("succeeded".equals(delivery.publish("step-3",binding,"Third","Body")));
+  JSONObject receipts=new JSONObject(store.values.get("host-notices:v1"));receipts.getJSONObject("step-3").put("status","unknown");store.values.put("host-notices:v1",receipts.toString());
+  NoticeTapInbox<Intent> plain=new NoticeTapInbox<>(routes,OPEN,ASK,PREFIX);Intent uncertain=new Intent(OPEN,PREFIX+third);
+  check(plain.offer(plain.retain(uncertain,INTENTS),uncertain,(intent,captured)->{})==1);
+  NoticeTapInbox<Intent> rechecking=new NoticeTapInbox<>(routes,OPEN,ASK,PREFIX,captured->{String id=routes.operation(captured);if(id!=null)delivery.recheck(id);});
+  poster.active.put("step-3","Third\nOther body");Intent changed=new Intent(OPEN,PREFIX+third);
+  check(rechecking.offer(rechecking.retain(changed,INTENTS),changed,(intent,captured)->{})==1&&"unknown".equals(delivery.recheck("step-3")));
+  poster.active.put("step-3","Third\nBody");Intent shown=new Intent(OPEN,PREFIX+third);
+  check(rechecking.offer(rechecking.retain(shown,INTENTS),shown,(intent,captured)->{})==0);
+  check(new JSONObject(store.values.get("host-notices:v1")).getJSONObject("step-3").getString("status").equals("succeeded"));
+  JSONObject opened=rechecking.pending((intent,captured)->{},none);check(third.equals(opened.getString("token"))&&opened.getBoolean("retained"));
+  check("step-3".equals(rechecking.discard(third))&&routes.pending().length()==0);
   System.out.println(checks+" assertions passed");
  }
 }

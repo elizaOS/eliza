@@ -81,6 +81,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  /** The poster for workflow notices on the host's channels. */
  protected HostNoticePoster poster(){NoticeRoutes routes=routes();return new HostNoticePoster(getContext(),posterConfig(),routes::token);}
  protected NoticeDelivery delivery(){return new NoticeDelivery(deliveryConfig(),noticeStorage(),poster());}
+ /** Posts and sweeps through one receipt ledger and its routes. */
+ protected NoticeCoordinator coordinator(){return new NoticeCoordinator(delivery(),routes());}
 
  private final Handler noticeMain=new Handler(Looper.getMainLooper());
  private final ForegroundNoticeGate noticeGate=new ForegroundNoticeGate(new ForegroundNoticeGate.MainThread(){
@@ -114,8 +116,13 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @Override public void load(){
   super.load();
   HostNoticePoster.Config poster=posterConfig();
-  workflowInbox=new NoticeTapInbox<>(routes(),poster.openAction,poster.askAction,poster.routePrefix);
-  captureWorkflowTap(getActivity().getIntent());
+  NoticeRoutes routes=routes();
+  workflowInbox=new NoticeTapInbox<>(routes,poster.openAction,poster.askAction,poster.routePrefix,token->{String id=routes.operation(token);if(id!=null)delivery().recheck(id);});
+  Intent launch=getActivity().getIntent();
+  // A relaunch from Recents, also after process death, replays the original notice Intent. Its tap was
+  // captured then and may have been settled since (a cancelled Ask), so it must not queue again.
+  if(launch!=null&&(launch.getFlags()&Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)!=0&&workflowInbox.token(launch,INTENTS)!=null)launch.setData(null);
+  else captureWorkflowTap(launch);
  }
  @Override protected void handleOnDestroy(){noticeGate.destroy();super.handleOnDestroy();}
  @Override protected void handleOnNewIntent(Intent intent){super.handleOnNewIntent(intent);captureWorkflowTap(intent);}
@@ -147,9 +154,10 @@ public abstract class NotificationsHostPlugin extends Plugin {
   String failure="Workflow notification link unavailable; retry after unlocking.";
   noticeMain.post(()->{try{foreground();captureWorkflowTap(getActivity().getIntent());noticeWork(call,failure,()->call.resolve(new JSObject(workflowInbox.pending(clearCapturedIntent,this::addQuestionNotice).toString())));}catch(Exception unavailable){call.reject(failure);}});
  }
- /** Completes the renderer's handling of the exact pending tap; a completed approval Ask keeps its notice and tap. */
+ /** Completes the renderer's handling of the exact pending tap; a completed approval Ask keeps its notice and tap.
+  * `unavailable` settles a tap whose target is definitively gone, unless its receipt is still uncertain. */
  @PluginMethod public void consumeWorkflowTap(PluginCall call){noticeWork(call,"Workflow notification link was retained; retry.",()->{
-  String opened=workflowInbox.consume(call.getString("token"),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getString("noticeRevision"),this::addQuestionNotice,this::requireNoticeForeground);
+  String opened=Boolean.TRUE.equals(call.getBoolean("unavailable",false))?workflowInbox.discard(call.getString("token")):workflowInbox.consume(call.getString("token"),Boolean.TRUE.equals(call.getBoolean("discard",false)),call.getString("noticeRevision"),this::addQuestionNotice,this::requireNoticeForeground);
   if(opened!=null)manager().cancel(posterConfig().tagPrefix+opened,0);
   call.resolve();
  });}
@@ -171,10 +179,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  }
  /** Records and posts one workflow notice at most once; resolves the ledger status. */
  @PluginMethod public void postWorkflow(PluginCall call){noticeWork(call,"Workflow notification could not be confirmed. It will not be repeated automatically.",()->{
-  String operation=call.getString("operationId");routes().prepare(operation,call.getString("bindingHash"),call.getObject("route"));
-  String status;
-  try{requireNoticeForeground();status=delivery().publish(operation,call.getString("bindingHash"),call.getString("title"),call.getString("body"));}
-  catch(Exception refused){try{routes().release(operation);}catch(Exception kept){/* A retained route is retired later. */}throw refused;}
+  String status=coordinator().postStep(call.getString("operationId"),call.getString("bindingHash"),call.getObject("route"),call.getString("title"),call.getString("body"),this::requireNoticeForeground);
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
  /** The retained receipt for an exact notice (never posts). */
