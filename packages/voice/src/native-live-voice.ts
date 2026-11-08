@@ -128,8 +128,16 @@ const level = (value: unknown) =>
     : undefined;
 const sessionChanged = () =>
   Object.assign(Error("The agent session changed."), { status: 409 });
+const fellBehind = () =>
+  Object.assign(Error("Native transcription fell behind."), {
+    code: "live-asr",
+    reason: "backlog",
+  });
 
-/** Most finals a native capture may hold undelivered, and finished turn ids it remembers. */
+/**
+ * Most finals a native capture may hold undelivered (more ends it as fallen behind), and finished
+ * turn ids it remembers to drop duplicate finals and stale partials (the oldest is evicted).
+ */
 export const NATIVE_PENDING_FINALS = 8;
 export const NATIVE_FINISHED_TURNS = 512;
 
@@ -272,18 +280,26 @@ export async function openNativeResidentCapture(
         if (event.error) {
           if (event.error === "ASR_FAILED") {
             if (pending.length >= NATIVE_PENDING_FINALS) {
-              lose(Error("Voice input fell behind. Start again."));
+              lose(fellBehind());
               return;
             }
             pending.push(null);
             drain();
-          } else lose(Error("Native transcription unavailable."));
+          } else
+            lose(
+              Object.assign(Error("Native transcription unavailable."), {
+                code: "live-asr",
+                ...(typeof event.error === "string"
+                  ? { reason: event.error }
+                  : {}),
+              }),
+            );
           return;
         }
         const final = parseLiveFinal(event.final);
         if (!final || finished.has(final.turnId)) return;
         if (pending.length >= NATIVE_PENDING_FINALS) {
-          lose(Error("Voice input fell behind. Start again."));
+          lose(fellBehind());
           return;
         }
         // Finals arrive in VAD order, so dropping the oldest id keeps the
