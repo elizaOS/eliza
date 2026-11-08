@@ -5,6 +5,7 @@ module RunnerCancellation {
     cancelledAt: int, cancelled: bool, forwarded: bool }
   action init = s' = { phase: "not-started", passed: true, worker: false, checker: false,
     completed: 0, cancelledAt: 0, cancelled: false, forwarded: false }
+  action inventory = s' = s
   action start = all {
     s.phase == "not-started",
     s' = { ...s, phase: "running", passed: false, worker: true },
@@ -46,7 +47,7 @@ module RunnerCancellation {
     s' = { ...s, phase: "done", worker: false },
   }
   action step = any { start, launch, checkFinishes, finish, cancel,
-    forward, cooperativeExit, force, reap, s' = s }
+    forward, cooperativeExit, force, reap, inventory }
   val NoCheckerAfterClose = (s.phase == "done").implies(not(s.worker or s.checker))
   val CancelledNeverPasses = s.cancelled.implies(not(s.passed))
   val NoLaterCaseAfterCancellation = s.cancelled.implies(s.completed == s.cancelledAt)
@@ -59,4 +60,7 @@ module RunnerCancellation {
     .then(force).then(reap).expect(NoCheckerAfterClose and CancelledNeverPasses)
   run laterCaseIsNotStartedTest = init.then(start).then(launch).then(checkFinishes)
     .then(cancel).then(forward).then(reap).expect(NoLaterCaseAfterCancellation)
+  run inventoryPreservesReceiptTest = init.then(inventory).expect(s.passed)
+    .then(start).then(launch).then(cancel).then(inventory)
+    .expect(CancelledNeverPasses and s.checker)
 }

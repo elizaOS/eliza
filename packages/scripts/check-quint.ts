@@ -368,13 +368,15 @@ export async function main(
     }
   }
   const simulate = args.includes("--simulate");
-  rmSync(
-    path.join(
-      outputDirectory,
-      simulate ? "simulation.json" : "verification.json",
-    ),
-    { force: true },
-  );
+  if (!args.includes("--inventory")) {
+    rmSync(
+      path.join(
+        outputDirectory,
+        simulate ? "simulation.json" : "verification.json",
+      ),
+      { force: true },
+    );
+  }
   const repositorySha256 = quintRepositoryFingerprint(directory);
   const allModels = loadQuintModels(directory);
   const models = selectQuintModels(

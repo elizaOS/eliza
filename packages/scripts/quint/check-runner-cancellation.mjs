@@ -1,4 +1,4 @@
-/** Exercises the normal CLI cancellation boundary with real processes. */
+/** Exercises evidence retention, source binding and CLI process ownership. */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -28,7 +28,6 @@ const result = spawnSync(
     process.execPath,
     "--test",
     "--test-reporter=tap",
-    "--test-name-pattern=CLI cancellation",
     path.join(root, "packages/scripts/check-quint.node.test.ts"),
   ],
   { cwd: root, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
@@ -42,9 +41,14 @@ if (
   !/^ok \d+ - CLI cancellation reaps checker descendants and retains incomplete evidence$/m.test(
     output,
   ) ||
-  !/^# tests 1$/m.test(output) ||
-  !/^# pass 1$/m.test(output) ||
-  !/^# fail 0$/m.test(output)
+  !/^ok \d+ - child cancellation stops later cases and remains visible in evidence$/m.test(
+    output,
+  ) ||
+  !/^# tests 17$/m.test(output) ||
+  !/^# pass 17$/m.test(output) ||
+  !/^# fail 0$/m.test(output) ||
+  !/^# skipped 0$/m.test(output) ||
+  !/^# cancelled 0$/m.test(output)
 ) {
   throw new Error(`Runner cancellation conformance failed. Report ${report}`);
 }

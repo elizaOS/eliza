@@ -326,6 +326,21 @@ test("the normal simulation entry point records one unchanged snapshot", async (
         !result.repositoryChanged,
     ),
   );
+  const simulationReceipt = readFileSync(path.join(output, "simulation.json"));
+  const verificationReceipt =
+    '{"completed":true,"previousVerification":true}\n';
+  writeFileSync(path.join(output, "verification.json"), verificationReceipt);
+  for (const args of [["--inventory"], ["--inventory", "--simulate"]]) {
+    await main(args, directory, output);
+    assert.equal(
+      readFileSync(path.join(output, "verification.json"), "utf8"),
+      verificationReceipt,
+    );
+    assert.deepEqual(
+      readFileSync(path.join(output, "simulation.json")),
+      simulationReceipt,
+    );
+  }
 });
 
 test("the normal entry point rejects an unlisted dependency changed during conformance", async () => {
