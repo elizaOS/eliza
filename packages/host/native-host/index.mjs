@@ -19,3 +19,4 @@ export * from "./task-storage-sealing.mjs";
 export * from "./task-trace-capture.mjs";
 export * from "./trace-queue.mjs";
 export * from "./trace-transport.mjs";
+export * from "./provider-key-session.mjs";
