@@ -62,6 +62,7 @@ import {
   verifyCalendarCardApproval,
 } from "../lifeops/calendar-card.js";
 import {
+  CalendarMutationLedger,
   createLifeOpsCalendarMutationPort,
   executeCalendarMutationApproval,
 } from "../lifeops/calendar-mutations/index.js";
@@ -631,12 +632,20 @@ async function completeResolveRequestResult(args: {
   const idempotencyKey = proof?.idempotencyKey ?? requestId;
 
   if (args.result.success !== true) {
+    const outcomeUnknown =
+      data.deliveryUnknown === true ||
+      data.state === "executing" ||
+      data.state === "reconciliation_required" ||
+      error.includes("AMBIGUOUS") ||
+      error === "APPROVAL_RECONCILIATION_REQUIRED";
     const result =
       typeof args.result.text === "string" && args.result.text.trim().length > 0
         ? args.result
         : {
             ...args.result,
-            text: `The approval request was not changed (${error}).`,
+            text: outcomeUnknown
+              ? `Request ${requestId} may have gone through (${error}). I will not retry it until you confirm what happened.`
+              : `The approval request was not changed (${error}).`,
           };
     const observedAt = new Date().toISOString();
     return completeLifeOpsEffect(
@@ -652,10 +661,7 @@ async function completeResolveRequestResult(args: {
         failure: {
           code: error,
           retryable: data.safeToRetry === true,
-          acceptance:
-            error.includes("AMBIGUOUS") || data.state === "executing"
-              ? "unknown"
-              : "rejected",
+          acceptance: outcomeUnknown ? "unknown" : "rejected",
         },
       }),
     );
@@ -1023,7 +1029,7 @@ async function executeApprovedCalendarMutation(args: {
   if (result.kind === "blocked") {
     const ambiguous = result.reason === "ambiguous";
     const text = ambiguous
-      ? `Calendar request ${args.request.id} has an unknown provider outcome from an earlier attempt. I will not retry it automatically; reconcile the provider calendar first.`
+      ? `Calendar request ${args.request.id} has an unknown provider outcome from an earlier attempt. I will not retry it automatically. Check the calendar, then tell me whether the change was made.`
       : `Calendar request ${args.request.id} is already executing. I did not start a second provider mutation.`;
     await args.callback?.({ text });
     return {
@@ -1034,8 +1040,9 @@ async function executeApprovedCalendarMutation(args: {
           ? "CALENDAR_MUTATION_OUTCOME_AMBIGUOUS"
           : "CALENDAR_MUTATION_IN_FLIGHT",
         requestId: args.request.id,
-        state: "executing",
-        executed: false,
+        state: ambiguous ? "reconciliation_required" : "executing",
+        executed: ambiguous ? null : false,
+        deliveryUnknown: ambiguous,
         safeToRetry: false,
         attempt: result.attempt,
       },
@@ -1050,7 +1057,7 @@ async function executeApprovedCalendarMutation(args: {
       data: {
         error: result.failure.code,
         requestId: args.request.id,
-        state: result.phase === "provider" ? "executing" : "approved",
+        state: result.phase === "provider" ? "retryable" : args.request.state,
         executed: false,
         safeToRetry: true,
         phase: result.phase,
@@ -1189,13 +1196,15 @@ export async function executeApprovedRequest(args: {
   }
   if (scheduling) {
     const deliveryStore = new SchedulingDeliveryStore(args.runtime);
+    const invalidatable =
+      args.request.state === "approved" || args.request.state === "retryable";
     const revalidation = await revalidateSchedulingApproval({
       runtime: args.runtime,
       request: args.request,
       correlation: scheduling.correlation,
     });
     if (!revalidation.ok) {
-      if (args.request.state === "approved") {
+      if (invalidatable) {
         await deliveryStore.invalidateApproved(
           args.request,
           scheduling.correlation,
@@ -1211,8 +1220,7 @@ export async function executeApprovedRequest(args: {
           error: revalidation.error,
           detail: revalidation.detail,
           requestId: args.request.id,
-          state:
-            args.request.state === "approved" ? "expired" : args.request.state,
+          state: invalidatable ? "expired" : args.request.state,
           sent: false,
           scheduling: scheduling.correlation,
         },
@@ -1222,7 +1230,7 @@ export async function executeApprovedRequest(args: {
     const registry = getChannelRegistry(args.runtime);
     const channel = registry?.get(scheduling.correlation.transportChannel);
     if (!channel?.send || channel.receiptContract !== "provider_receipt_id") {
-      if (args.request.state === "approved") {
+      if (invalidatable) {
         await deliveryStore.invalidateApproved(
           args.request,
           scheduling.correlation,
@@ -1240,8 +1248,7 @@ export async function executeApprovedRequest(args: {
         data: {
           error: "SCHEDULING_PROVIDER_RECEIPT_UNSUPPORTED",
           requestId: args.request.id,
-          state:
-            args.request.state === "approved" ? "expired" : args.request.state,
+          state: invalidatable ? "expired" : args.request.state,
           sent: false,
           channel: scheduling.correlation.transportChannel,
           scheduling: scheduling.correlation,
@@ -1254,7 +1261,7 @@ export async function executeApprovedRequest(args: {
       (args.request.payload.threadId !== null ||
         (args.request.payload.replyToMessageId ?? null) !== null)
     ) {
-      if (args.request.state === "approved") {
+      if (invalidatable) {
         await deliveryStore.invalidateApproved(
           args.request,
           scheduling.correlation,
@@ -1273,8 +1280,7 @@ export async function executeApprovedRequest(args: {
         data: {
           error: "SCHEDULING_EMAIL_ENVELOPE_UNSUPPORTED",
           requestId: args.request.id,
-          state:
-            args.request.state === "approved" ? "expired" : args.request.state,
+          state: invalidatable ? "expired" : args.request.state,
           sent: false,
           scheduling: scheduling.correlation,
         },
@@ -1334,7 +1340,10 @@ export async function executeApprovedRequest(args: {
         data: {
           error,
           requestId: args.request.id,
-          state: "executing",
+          state:
+            claim.reason === "ambiguous"
+              ? "reconciliation_required"
+              : "executing",
           sent: false,
           attempt: claim.attempt,
         },
@@ -1468,7 +1477,7 @@ export async function executeApprovedRequest(args: {
           ? "SCHEDULING_DELIVERY_NOT_ACCEPTED"
           : "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
         requestId: args.request.id,
-        state: retryable ? "approved" : "executing",
+        state: retryable ? "approved" : "reconciliation_required",
         sent: false,
         safeToRetry: retryable,
         attempt: persistedAttempt,
@@ -2380,6 +2389,82 @@ export async function resolveExplicitOwnerApproval(
   );
 }
 
+/**
+ * Applies an owner's reconciliation. Calendar and scheduling rows move their
+ * own attempt record in the same transaction, so a not-delivered outcome can
+ * be retried; every other executor uses the approval queue alone.
+ */
+async function reconcileApprovalExecution(args: {
+  runtime: IAgentRuntime;
+  queue: ApprovalQueue;
+  request: ApprovalRequest;
+  execution: NonNullable<ApprovalRequest["execution"]>;
+  delivered: boolean;
+  reconciledBy: string;
+  reason: string;
+  providerReceiptId: string | null;
+}): Promise<ApprovalRequest> {
+  const providerReceipt = args.providerReceiptId
+    ? { provider: args.execution.provider, receiptId: args.providerReceiptId }
+    : undefined;
+  const reread = async () => {
+    const latest = await args.queue.byId(
+      args.request.id,
+      args.request.subjectUserId,
+    );
+    if (!latest) throw new ApprovalNotFoundError(args.request.id);
+    return latest;
+  };
+  const ledger = new CalendarMutationLedger(args.runtime);
+  if (
+    (args.request.action === "schedule_event" ||
+      args.request.action === "modify_event" ||
+      args.request.action === "cancel_event") &&
+    (await ledger.byApprovalRequestId(args.request.id))?.id ===
+      args.execution.attemptId
+  ) {
+    await ledger.reconcile(
+      args.request.id,
+      args.delivered
+        ? {
+            outcome: "applied",
+            receipt: null,
+            reconciledBy: args.reconciledBy,
+            reason: args.reason,
+          }
+        : {
+            outcome: "not_applied",
+            reconciledBy: args.reconciledBy,
+            reason: args.reason,
+          },
+    );
+    return reread();
+  }
+  const deliveryStore = new SchedulingDeliveryStore(args.runtime);
+  if (
+    verifySchedulingApprovalContent(args.request.payload) &&
+    (await deliveryStore.byApprovalRequestId(args.request.id))?.id ===
+      args.execution.attemptId
+  ) {
+    await deliveryStore.reconcile(args.request.id, {
+      outcome: args.delivered ? "sent" : "not_sent",
+      reconciledBy: args.reconciledBy,
+      reason: args.reason,
+      ...(providerReceipt ? { providerReceipt } : {}),
+    });
+    return reread();
+  }
+  return args.queue.reconcileExecution({
+    requestId: args.request.id,
+    subjectUserId: args.request.subjectUserId,
+    attemptId: args.execution.attemptId,
+    outcome: args.delivered ? "delivered" : "not_delivered",
+    reconciledBy: args.reconciledBy,
+    reconciliationReason: args.reason,
+    providerReceipt,
+  });
+}
+
 async function settleApprovalRequest(
   runtime: IAgentRuntime,
   queue: ApprovalQueue,
@@ -2475,23 +2560,19 @@ async function settleApprovalRequest(
             callback,
           );
         }
-        const reconciled = await queue.reconcileExecution({
-          requestId: current.id,
-          subjectUserId: current.subjectUserId,
-          attemptId: current.execution.attemptId,
-          outcome:
-            intent === "reconcile_delivered" ? "delivered" : "not_delivered",
+        const reconciled = await reconcileApprovalExecution({
+          runtime,
+          queue,
+          request: current,
+          execution: current.execution,
+          delivered: intent === "reconcile_delivered",
           reconciledBy: subjectUserId,
-          reconciliationReason:
-            extracted.reason ?? `owner ${intent.replace("_", " ")}`,
-          providerReceipt:
+          reason: extracted.reason ?? `owner ${intent.replace("_", " ")}`,
+          providerReceiptId:
             typeof params.providerReceiptId === "string" &&
             params.providerReceiptId.trim().length > 0
-              ? {
-                  provider: current.execution.provider,
-                  receiptId: params.providerReceiptId.trim(),
-                }
-              : undefined,
+              ? params.providerReceiptId.trim()
+              : null,
         });
         const text =
           reconciled.state === "done"
@@ -2514,7 +2595,10 @@ async function settleApprovalRequest(
         );
       }
 
-      if (current.state === "executing") {
+      // A running row without execution metadata belongs to the calendar
+      // ledger or the scheduling delivery store, which classify it on the
+      // execution path below; generic recovery would misread it.
+      if (current.state === "executing" && current.execution) {
         current = await recoverInterruptedApproval(
           queue,
           current,
@@ -2523,6 +2607,22 @@ async function settleApprovalRequest(
       }
       const settled = classifySettledDecision(intent, current);
       if (settled) return returnSettledDecision(settled, callback);
+      if (intent === "reject" && current.state === "executing") {
+        const text = `Request ${current.id} is still running, so I did not reject it.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: {
+            error: "APPROVAL_DECISION_CONFLICT",
+            requestId: current.id,
+            state: current.state,
+            action: current.action,
+            attempted: intent,
+            executed: null,
+          },
+        };
+      }
 
       if (capacityTarget) {
         if (!authenticatedOwnerSelfApproval) {
@@ -2638,7 +2738,9 @@ async function settleApprovalRequest(
       }
 
       const approved =
-        current.state === "approved" || current.state === "retryable"
+        current.state === "approved" ||
+        current.state === "retryable" ||
+        current.state === "executing"
           ? current
           : await queue.approve(current.id, current.subjectUserId, resolution);
       // The tracking wrapper captures the last row the executor persisted so the

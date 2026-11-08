@@ -116,9 +116,13 @@ export async function resolveOwnerCalendarApproval(
         )
       : request;
   if (
-    !["approved", "executing", "done", "reconciliation_required"].includes(
-      approved.state,
-    )
+    ![
+      "approved",
+      "executing",
+      "retryable",
+      "done",
+      "reconciliation_required",
+    ].includes(approved.state)
   )
     throw new CalendarServiceError(
       409,

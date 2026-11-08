@@ -588,6 +588,22 @@ export async function runBookTravelHandler(
 // Callback invoked by the approval queue once an owner approves a queued
 // book_travel request. The resolve-request action dispatches here after
 // a request transitions from pending -> approved.
+function travelOutcomeUnknownText(error: Error): string {
+  const receipt =
+    error instanceof ApprovalAmbiguousDeliveryError
+      ? error.providerReceipt
+      : null;
+  const orderId = typeof receipt?.orderId === "string" ? receipt.orderId : null;
+  if (!orderId) {
+    return "I don't know whether the flight was booked or charged. Don't book it again until you have checked; I won't retry it.";
+  }
+  const reference =
+    typeof receipt?.bookingReference === "string"
+      ? ` (booking reference ${receipt.bookingReference})`
+      : "";
+  return `Duffel created order ${orderId}${reference} and you may have been charged, but I could not finish recording it. Don't book it again; I won't retry it.`;
+}
+
 export async function executeApprovedBookTravel(args: {
   runtime: IAgentRuntime;
   queue: ApprovalQueue;
@@ -615,7 +631,7 @@ export async function executeApprovedBookTravel(args: {
   const status = service.getTravelConnectorStatus();
   if (!status.connected) {
     return {
-      text: "",
+      text: "The travel connector is not connected, so nothing was booked.",
       success: false,
       data: {
         error: "TRAVEL_CONNECTOR_NOT_CONNECTED",
@@ -636,7 +652,7 @@ export async function executeApprovedBookTravel(args: {
       calendarGrantId = grant.id;
     } catch (error) {
       return {
-        text: "",
+        text: "I could not reach your calendar to add this trip, so nothing was booked.",
         success: false,
         data: {
           error: "TRAVEL_CALENDAR_PREFLIGHT_FAILED",
@@ -708,8 +724,14 @@ export async function executeApprovedBookTravel(args: {
   });
   if (outcome.kind !== "delivered") {
     const reconciliationRequired = outcome.kind === "reconciliation_required";
+    const text = reconciliationRequired
+      ? travelOutcomeUnknownText(outcome.error)
+      : outcome.error instanceof ApprovalKnownNonDeliveryError
+        ? outcome.error.message
+        : "The booking did not go through and nothing was charged. You can approve it again.";
+    await args.callback?.({ text });
     return {
-      text: "",
+      text,
       success: false,
       data: {
         error: reconciliationRequired
