@@ -671,6 +671,11 @@ export class PseudonymSession {
 	/** Lowercased surrogates in use, for O(1) collision checks when minting. */
 	private readonly usedSurrogatesLower = new Set<string>();
 	/**
+	 * Lowercased surrogates replaced by {@link remintEntry}. Text from an earlier
+	 * call (a model reply echoed into the next prompt) can still carry them.
+	 */
+	private readonly retiredSurrogatesLower = new Set<string>();
+	/**
 	 * Every swappable real value ever learned, lowercased. The value namespace and
 	 * the surrogate namespace are kept mutually exclusive: a surrogate is never
 	 * minted equal to a known value, and — because `learn()` is called once per
@@ -737,8 +742,9 @@ export class PseudonymSession {
 	/**
 	 * Run the configured recognizer over `text` and learn every accepted span.
 	 * This is the single async step; call it once per model call on the assembled
-	 * prompt text before the (synchronous) substitution passes. Idempotent: text
-	 * already learned re-uses existing mappings.
+	 * prompt text before the (synchronous) substitution passes. Text already
+	 * learned re-uses existing mappings, and spans that are this session's own
+	 * surrogates are skipped, so learning substituted text adds nothing.
 	 */
 	async learn(text: string): Promise<void> {
 		if (!this.recognizer || !text) return;
@@ -759,6 +765,7 @@ export class PseudonymSession {
 		for (const span of spans) {
 			const value = span.value.trim();
 			if (!this.isSwappable(value, span.kind)) continue;
+			if (this.isOnlySurrogate(value)) continue;
 			this.knownValuesLower.add(value.toLowerCase());
 			if (!this.valueToEntry.has(value))
 				incoming.push({ value, kind: span.kind });
@@ -772,6 +779,34 @@ export class PseudonymSession {
 		}
 		// 3. Mint entries for the new values.
 		for (const { value, kind } of incoming) this.entryForValue(value, kind);
+	}
+
+	/**
+	 * True when `value` is a current or retired surrogate, alone or with only
+	 * whitespace or punctuation around it. Learning one would mint a surrogate
+	 * for a surrogate, and restore would then return fictional text. A span with
+	 * other text around a surrogate is still learned so that text stays masked.
+	 */
+	private isOnlySurrogate(value: string): boolean {
+		const lower = value.toLowerCase();
+		if (
+			this.usedSurrogatesLower.has(lower) ||
+			this.retiredSurrogatesLower.has(lower)
+		) {
+			return true;
+		}
+		let remainder = lower;
+		for (const surrogates of [
+			this.usedSurrogatesLower,
+			this.retiredSurrogatesLower,
+		]) {
+			for (const surrogate of surrogates) {
+				if (remainder.includes(surrogate)) {
+					remainder = remainder.split(surrogate).join(" ");
+				}
+			}
+		}
+		return remainder !== lower && /^[\s\p{P}]*$/u.test(remainder);
 	}
 
 	/** True when a value/kind pair is eligible for swapping. */
@@ -821,9 +856,22 @@ export class PseudonymSession {
 			...entries.map((e) => ({ from: e.value, to: e.surrogate })),
 			...entries.map((e) => ({ from: e.surrogate, to: e.surrogate })),
 		]);
-		this.restoreReplacer = compileReplacer(
-			entries.map((e) => ({ from: e.surrogate, to: e.value })),
-		);
+		const restorePairs = entries.map((e) => ({
+			from: e.surrogate,
+			to: e.value,
+		}));
+		// A learned value can contain an earlier surrogate (a model reply echoed
+		// into a later prompt, e.g. "<surrogate> Apt 4"). Restore that inner
+		// surrogate too, so restore always yields the user's real text.
+		const inner = compileReplacer(restorePairs);
+		this.restoreReplacer =
+			inner &&
+			compileReplacer(
+				restorePairs.map(({ from, to }) => ({
+					from,
+					to: to.replace(inner.regex, (m) => inner.map.get(m) ?? m),
+				})),
+			);
 		this.replacersDirty = false;
 	}
 
@@ -867,6 +915,7 @@ export class PseudonymSession {
 		if (fresh.toLowerCase() === entry.surrogate.toLowerCase()) return;
 		this.surrogateToEntry.delete(entry.surrogate);
 		this.usedSurrogatesLower.delete(entry.surrogate.toLowerCase());
+		this.retiredSurrogatesLower.add(entry.surrogate.toLowerCase());
 		const next: PseudonymEntry = {
 			value: entry.value,
 			surrogate: fresh,
