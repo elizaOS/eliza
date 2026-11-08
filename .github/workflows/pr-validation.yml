@@ -168,7 +168,6 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
-
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
@@ -944,6 +943,14 @@ jobs:
       - name: Build core conformance dependencies
         if: steps.changes.outputs.run == 'true'
         run: bun run build:core
+      - name: Install local Redis for protocol conformance
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
         env:

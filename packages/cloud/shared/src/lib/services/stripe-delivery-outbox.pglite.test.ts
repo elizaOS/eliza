@@ -1,6 +1,6 @@
 /** Runs the Stripe delivery outbox on PGlite with the real migration: leases, crash recovery, retry budget, dead-letter revival, retention and adoption of the pre-outbox queue. */
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type Stripe from "stripe";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
@@ -25,6 +25,7 @@ beforeAll(async () => {
     "0555_stripe_delivery_outbox",
     "0556_stripe_delivery_outbox_due_index",
     "0557_stripe_delivery_lease_check_validate",
+    "0564_stripe_legacy_adoption_cursors",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -256,7 +257,7 @@ test("deliveries left on the pre-outbox queue are moved into the outbox and deli
     event_id: legacy.eventId,
     provider: "stripe",
     event_type: legacy.eventType,
-    payload_hash: "b".repeat(64),
+    payload_hash: createHash("sha256").update(JSON.stringify(legacy.event)).digest("hex"),
   });
   // Work whose marker the old dead-letter path had released.
   const released = message();

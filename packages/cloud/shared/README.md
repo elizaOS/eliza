@@ -398,3 +398,9 @@ deletion retains unconfirmed signed sweeps until their original receipt is
 recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
+
+Stripe legacy queue adoption requires migration 0564. Durable cursors only select
+bounded work; matching SQL payload or terminal receipts authorize queue removal.
+Unknown receipts and malformed entries remain intact. Stop old KV queue writers
+before cleanup; current writers reject KV queue pushes. Each list has its own work
+budget, while reading the complete legacy KV array can still exceed that budget.

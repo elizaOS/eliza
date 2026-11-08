@@ -13,6 +13,11 @@
  * consumer re-checks every downstream write, so a repeat run is safe.
  */
 
+import { createHash } from "node:crypto";
+import {
+  finishLegacyStripeAdoptionSelection,
+  selectLegacyStripeAdoptionDigests,
+} from "../../db/repositories/stripe-legacy-adoption-cursors";
 import {
   type ClaimedStripeDelivery,
   webhookEventsRepository,
@@ -20,6 +25,7 @@ import {
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { cache } from "../cache/client";
 import { type DrainResult, retryDelayMs } from "../redis-queue";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
 /**
@@ -33,6 +39,7 @@ const LEGACY_STRIPE_QUEUE_KEYS = [
   "stripe-events:processing",
   "stripe-events:dlq",
 ] as const;
+const LEGACY_STRIPE_ADOPTION_WORK_MS = 1_000;
 
 export interface StripeOutboxDrainOptions {
   /** Max deliveries to claim in one drain (default 25). */
@@ -147,24 +154,62 @@ async function drainStripeOutbox(
   return stats;
 }
 
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 /**
  * Moves deliveries left on the pre-outbox queue lists into the outbox. Each one
- * is written to its row before it is removed from the list, so a failure in
- * between only repeats the adoption, which changes nothing. An entry whose
- * adoption fails stays on its list for the next run.
+ * is confirmed in its own SQL row before removal. Cursor reservations only
+ * select work; failures and malformed entries keep their complete original raw.
+ * Each list has a separate work budget so one poisoned list cannot monopolize
+ * the others. The full legacy KV-array read remains outside any hard time bound.
  */
 async function adoptLegacyStripeQueue(): Promise<number> {
   let adopted = 0;
   for (const key of LEGACY_STRIPE_QUEUE_KEYS) {
-    const raws = await cache.listQueue(key);
-    // No reachable cache means no legacy list to read.
-    if (raws === null) return adopted;
-    for (const raw of raws) {
+    const started = performance.now();
+    let entries: Map<string, string>;
+    let selection: { digests: string[]; revision: bigint };
+    let sourceKey: string;
+    try {
+      const raws = await cache.listQueue(key);
+      if (!raws?.length) continue;
+      entries = new Map();
+      let nonStringEntries = 0;
+      for (const raw of raws) {
+        if (typeof raw !== "string") {
+          nonStringEntries++;
+          continue;
+        }
+        entries.set(sha256Hex(raw), raw);
+      }
+      if (nonStringEntries)
+        logger.error("[Stripe Outbox] Non-string legacy values retained", {
+          code: "stripe_legacy_invalid_list_values",
+          key,
+          count: nonStringEntries,
+        });
+      const environment = getCloudAwareEnv().ENVIRONMENT || "local";
+      sourceKey = `${cache.getBackendKind()}:${environment}:${key}`;
+      const reserved = await selectLegacyStripeAdoptionDigests(sourceKey, [...entries.keys()]);
+      if (!reserved) continue;
+      selection = reserved;
+    } catch (error) {
+      logger.error("[Stripe Outbox] Legacy selection unavailable; work retained", {
+        code: "stripe_legacy_selection_failed",
+        key,
+        failureType: error instanceof Error ? error.name : "unknown",
+      });
+      continue;
+    }
+    let lastAttempted: string | null = null;
+    for (const [index, digest] of selection.digests.entries()) {
+      // Always try the first reservation. Advancing only to that digest keeps
+      // later entries reachable even when every call exhausts its time budget.
+      if (index > 0 && performance.now() - started >= LEGACY_STRIPE_ADOPTION_WORK_MS) break;
+      lastAttempted = digest;
+      const raw = entries.get(digest)!;
       let body: StripeEventMessage | undefined;
       try {
         body = (JSON.parse(raw) as { body?: StripeEventMessage }).body;
@@ -173,22 +218,52 @@ async function adoptLegacyStripeQueue(): Promise<number> {
       }
       if (body?.kind === "stripe.event") {
         try {
-          await webhookEventsRepository.adoptLegacyStripeDelivery(
+          const receipt = await webhookEventsRepository.adoptLegacyStripeDelivery(
             body,
-            await sha256Hex(JSON.stringify(body.event)),
+            sha256Hex(JSON.stringify(body.event)),
           );
+          if (receipt.kind === "conflict" || receipt.kind === "unavailable") {
+            logger.error("[Stripe Outbox] Legacy receipt unavailable; work retained", {
+              code: `stripe_legacy_${receipt.kind}`,
+              reason: receipt.reason,
+              key,
+              digest,
+            });
+            continue;
+          }
         } catch (error) {
           // error-policy:J7 one bad entry must not stop the rest; it stays listed and is logged.
           logger.error("[Stripe Outbox] Legacy queue entry not adopted; kept for the next run", {
+            code: "stripe_legacy_adoption_failed",
             key,
-            eventId: body.eventId,
-            error: error instanceof Error ? error.message : String(error),
+            digest,
+            failureType: error instanceof Error ? error.name : "unknown",
           });
           continue;
         }
         adopted++;
-      } else logger.error("[Stripe Outbox] Dropping an unreadable legacy queue entry", { key });
+      } else {
+        logger.error("[Stripe Outbox] Unrecognized legacy entry retained", {
+          code: "stripe_legacy_unrecognized",
+          key,
+          digest,
+        });
+        continue;
+      }
+      // KV list removal is a read/modify/write. All old queue producers must
+      // be quiescent; concurrent removers can only resurrect adopted entries.
       await cache.removeQueueValue(key, raw);
+    }
+    if (lastAttempted && lastAttempted !== selection.digests[0]) {
+      try {
+        await finishLegacyStripeAdoptionSelection(sourceKey, selection.revision, lastAttempted);
+      } catch (error) {
+        logger.warn("[Stripe Outbox] Legacy progress hint unavailable; original work retained", {
+          code: "stripe_legacy_cursor_completion_failed",
+          key,
+          failureType: error instanceof Error ? error.name : "unknown",
+        });
+      }
     }
   }
   return adopted;
@@ -209,7 +284,7 @@ export async function drainStripeDeliveries(
   } catch (error) {
     // error-policy:J7 the cutover is best effort; what it leaves stays on its list for the next run.
     logger.error("[Stripe Outbox] Legacy queue adoption failed; draining the outbox anyway", {
-      error: error instanceof Error ? error.message : String(error),
+      failureType: error instanceof Error ? error.name : "unknown",
     });
   }
   return { ...(await drainStripeOutbox(handler, options)), legacyAdopted };

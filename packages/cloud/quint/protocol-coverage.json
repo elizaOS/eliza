@@ -779,7 +779,8 @@
       "The OAuth callback route creates a private process-local bus without a recorder or a registered subscriber. Its OAuth intent SQL settlement and the independent Stripe durable outbox have separate models.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Durable recording precedes terminal acknowledgement | Retry retains original event identity | Cross-process observers have a defined delivery mechanism",
-      "Abstract states: subscribed, recorded, published, acknowledged, timed-out, failed"
+      "Abstract states: subscribed, recorded, published, acknowledged, timed-out, failed",
+      "StripeLegacyAdoption now models bounded legacy handoff and exact SQL receipt requirements under the existing Stripe cron. The listed OAuth/approval buses have no discovered record hook or subscriber; sensitive bus and in-memory recorder have no discovered active caller. Their cross-process delivery remains an explicit gap."
     ]
   },
   {
@@ -1764,6 +1765,41 @@
       "Measure served-route latency separately from the demonstrated unnecessary cache misses.",
       "Required flow invariants: Replacing a live key does not evict unrelated live keys. | A read or replacement promotes the key to most recent. | New-key insertion retains the existing capacity and eviction policy.",
       "Abstract states: absent, live, refreshed, evicted, cleared"
+    ]
+  },
+  {
+    "id": "cloud-protocol-stripe-legacy-adoption",
+    "model": "packages/cloud/quint/StripeLegacyAdoption.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+      "packages/cloud/shared/src/db/repositories/webhook-events.ts",
+      "packages/cloud/shared/src/db/repositories/stripe-legacy-adoption-cursors.ts",
+      "packages/cloud/shared/src/db/schemas/webhook-events.ts",
+      "packages/cloud/shared/src/db/schemas/stripe-legacy-adoption-cursors.ts",
+      "packages/cloud/shared/src/db/migrations/0564_stripe_legacy_adoption_cursors.sql",
+      "packages/cloud/shared/src/db/migrations/meta/_journal.json",
+      "packages/cloud/scripts/admin/canonical-migration-ledger.ts",
+      "packages/cloud/shared/src/lib/cache/client.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/kv-cache-adapter.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts",
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.pglite.test.ts",
+      "packages/cloud/api/cron/process-stripe-queue/route.ts",
+      "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.postgres.integration.test.ts",
+      "packages/cloud/quint/check-stripe-legacy-adoption.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two concurrent adoption calls, three retained entries (two valid and one malformed), a two-entry batch and digest ranks rather than cryptographic strings. The conflict case uses an unmatched receipt to represent provider, event, payload or historical digest conflicts.",
+      "The producer is quiescent: current KV push/pop methods reject queue writes. Old deployed producers must be stopped before KV list removal. Without this assumption a stale KV read/modify/write can erase newly appended work; the negative witness demonstrates that excluded behavior.",
+      "KV list removal may restore already-adopted entries under concurrent removers. The model allows stale removal snapshots; matching durable SQL receipts prevent reopening completed work. KV eventual visibility and durability are external assumptions, not proved by the local namespace fixture.",
+      "The SQL transaction and exact payload/terminal receipt predicates are abstracted as matching, absent or unavailable. PGlite exercises real SQL; PostgreSQL checks actual row-lock waiting and concurrent cursor reservation. The production KV and isolated loopback Redis adapters exercise removal; TypeScript refinement and production provider behavior are not proved.",
+      "Cursor reservations advance only selection hints. Losing a cursor reply or a progress CAS cannot authorize removal. The SQL receipt, not cursor position, is required before LREM. Scope includes the configured backend/environment and one legacy queue.",
+      "Production limits attempts to 25 per list and uses a separate one-second per-list work budget. The model abstracts this as one or two attempted entries. Full KV-array reads and hashing remain unbounded by the work timer, and a single in-flight SQL or cache call can outlive it.",
+      "The serial progress case assumes a fixed three-entry snapshot, available SQL, three fair cron invocations and returning operations. It establishes transfer of the two valid entries despite a permanent poison entry and one-attempt budgets; it does not promise unconditional backlog clearance or resolution of unavailable historical receipts.",
+      "Outbox handler effects, Stripe signature verification, billing idempotency and retention are separate protocols. StripeDeliveryOutbox retains its existing lease model; a durable handoff here is not proof of end-to-end external delivery.",
+      "Identical raw multiplicity and SHA256 collisions are outside the set abstraction. Actual tests preserve identical copies until a matching receipt and remove them individually; collision resistance is assumed. Unknown or malformed raws remain retained for operator reconciliation with payload-free diagnostics."
     ]
   }
 ]
