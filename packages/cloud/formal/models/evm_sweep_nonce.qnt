@@ -1,25 +1,26 @@
 // Repair contract for direct-wallet-payments.ts prepareEvmSweep,
-// processSweepForPayment and submitPreparedEvmSweep. Not current implementation.
+// processSweepForPayment and submitPreparedEvmSweep, plus the deletion trigger.
 // One wallet/network; two durable outboxes; chain nonces 0..2; one unrelated
 // pending transaction. Signed bytes are immutable and their identity is the
 // (outbox, nonce) pair. A chain receipt is trusted only when its hash matches.
 // Signing+persisting under the wallet transaction is atomic; before-commit
 // crashes have no durable or provider effect. After-commit crashes retain bytes.
 // No throughput/liveness, arbitrary reorg, RPC honesty, cryptography or byte-level
-// TypeScript refinement proof. Account deletion/purge is not modeled. The legacy nonce collision is an excluded witness.
+// TypeScript refinement proof. One receipt establishes nonce consumption; arbitrary
+// reorgs and safe repeat sweeps of a reverted transaction remain outside this model.
 module evm_sweep_nonce {
   pure val jobs=Set(0,1)
   type State={phase:int->str,nonce:int->int,submitted:Set[int],mined:Set[int],
-    chainNonce:int,rpcPending:int,walletOwner:int}
+    chainNonce:int,rpcPending:int,walletOwner:int,alive:Set[int],stopped:Set[int]}
   var s:State
   action init=s'={phase:jobs.mapBy(_=>"pending"),nonce:jobs.mapBy(_=> -1),
-    submitted:Set(),mined:Set(),chainNonce:0,rpcPending:0,walletOwner:-1}
-  def canPrepare(i:int):bool=s.phase.get(i)=="pending" and s.walletOwner == -1
+    submitted:Set(),mined:Set(),chainNonce:0,rpcPending:0,walletOwner:-1,alive:jobs,stopped:Set()}
+  def canPrepare(i:int):bool=s.alive.contains(i) and s.phase.get(i)=="pending" and s.walletOwner == -1
     and s.rpcPending==s.chainNonce and s.chainNonce<2
   action persist(i:int):bool=all{canPrepare(i),
     s'=s.with("phase",s.phase.set(i,"prepared")).with("nonce",s.nonce.set(i,s.chainNonce))
       .with("walletOwner",i)}
-  action send(i:int):bool=all{s.walletOwner==i,s.phase.get(i)=="prepared",
+  action send(i:int):bool=all{s.walletOwner==i,s.phase.get(i)=="prepared",not(s.stopped.contains(i)),
     s'=s.with("submitted",s.submitted.union(Set(i)))
       .with("rpcPending",if(s.nonce.get(i)==s.chainNonce) s.chainNonce+1 else s.rpcPending)}
   action mine(i:int):bool=all{s.submitted.contains(i),not(s.mined.contains(i)),s.nonce.get(i)==s.chainNonce,
@@ -34,9 +35,15 @@ module evm_sweep_nonce {
     s'=s.with("chainNonce",s.chainNonce+1)}
   action unrelatedDropped=all{s.walletOwner == -1,s.rpcPending>s.chainNonce,
     s'=s.with("rpcPending",s.chainNonce)}
+  def canPurge(i:int):bool=s.alive.contains(i) and s.phase.get(i)!="prepared"
+  action erase(i:int):bool=all{s.alive.contains(i),
+    s'=s.with("alive",s.alive.exclude(Set(i))).with("phase",s.phase.set(i,"erased"))
+      .with("walletOwner",if(s.walletOwner==i)-1 else s.walletOwner)}
+  action purge(i:int):bool=all{canPurge(i),erase(i)}
+  action stopRetries(i:int):bool=all{s.phase.get(i)=="prepared",s'=s.with("stopped",s.stopped.union(Set(i)))}
   action idle=s'=s
   action step={nondet i=jobs.oneOf();any{persist(i),send(i),mine(i),acknowledge(i),crash,
-    unrelatedPending,unrelatedMined,unrelatedDropped,idle}}
+    unrelatedPending,unrelatedMined,unrelatedDropped,purge(i),stopRetries(i),idle}}
   val uniqueNonce=jobs.forall(i=>jobs.forall(j=>i==j or s.nonce.get(i) == -1
     or s.nonce.get(j) == -1 or s.nonce.get(i)!=s.nonce.get(j)))
   val safety=uniqueNonce
@@ -55,7 +62,15 @@ module evm_sweep_nonce {
     .expect(safety and s.nonce.get(0)==1)
   run droppedUnrelatedPendingCreatesNoGapTest=init.then(unrelatedPending).then(unrelatedDropped).then(persist(0))
     .expect(safety and s.nonce.get(0)==0)
-  // Current code selects a pending nonce independently per outbox. No shared
+  run deletionCannotForgetUnconfirmedBytesTest=init.then(persist(0)).then(send(0))
+    .expect(safety and not(canPurge(0)))
+  run confirmedReceiptAllowsDeletionTest=init.then(persist(0)).then(send(0)).then(mine(0))
+    .then(acknowledge(0)).then(purge(0)).then(persist(1)).expect(safety and s.nonce.get(1)==1)
+  run terminalRetriesCanReconcileWithoutAnotherSendTest=init.then(persist(0)).then(send(0))
+    .then(stopRetries(0)).then(mine(0)).then(acknowledge(0)).expect(safety)
+  run missingDeletionGuardNegativeWitnessTest=init.then(persist(0)).then(erase(0)).then(persist(1))
+    .expect(not(uniqueNonce))
+  // Legacy code selects a pending nonce independently per outbox. No shared
   // wallet owner is recorded, so two prepared byte identities can collide.
   action legacyPersist(i:int):bool=all{s.phase.get(i)=="pending",
     s'=s.with("phase",s.phase.set(i,"prepared")).with("nonce",s.nonce.set(i,s.rpcPending))}

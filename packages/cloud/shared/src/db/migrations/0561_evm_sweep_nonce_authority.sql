@@ -24,6 +24,25 @@ CREATE INDEX crypto_sweep_outbox_evm_legacy_idx ON crypto_sweep_outbox((prepared
 --> statement-breakpoint
 CREATE FUNCTION crypto_sweep_evm_authority_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+ IF TG_OP='DELETE' THEN
+  IF OLD.prepared_transaction IS NOT NULL
+   AND (OLD.evm_sender IS NOT NULL OR OLD.prepared_metadata->>'network' IN ('base','bsc'))
+   AND OLD.evm_confirmed_at IS NULL THEN
+    RAISE EXCEPTION 'Unconfirmed EVM sweep authority cannot be erased';
+  END IF;
+  RETURN OLD;
+ END IF;
+ IF NEW.payment_id IS DISTINCT FROM OLD.payment_id OR NEW.payload IS DISTINCT FROM OLD.payload
+  OR NEW.payload_digest IS DISTINCT FROM OLD.payload_digest OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+   RAISE EXCEPTION 'Crypto sweep intent is immutable';
+ END IF;
+ IF OLD.prepared_transaction IS NOT NULL
+  AND (OLD.evm_sender IS NOT NULL OR OLD.prepared_metadata->>'network' IN ('base','bsc'))
+  AND (NEW.prepared_transaction IS DISTINCT FROM OLD.prepared_transaction
+   OR NEW.sweep_transaction_hash IS DISTINCT FROM OLD.sweep_transaction_hash
+   OR NEW.prepared_metadata IS DISTINCT FROM OLD.prepared_metadata) THEN
+   RAISE EXCEPTION 'Prepared EVM sweep authority is immutable';
+ END IF;
  IF OLD.evm_sender IS NOT NULL AND (
    NEW.evm_sender IS DISTINCT FROM OLD.evm_sender OR NEW.evm_chain_id IS DISTINCT FROM OLD.evm_chain_id
    OR NEW.evm_nonce IS DISTINCT FROM OLD.evm_nonce
@@ -45,5 +64,11 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-CREATE TRIGGER crypto_sweep_evm_authority_guard BEFORE UPDATE ON crypto_sweep_outbox
+CREATE TRIGGER crypto_sweep_evm_authority_guard BEFORE UPDATE OR DELETE ON crypto_sweep_outbox
  FOR EACH ROW EXECUTE FUNCTION crypto_sweep_evm_authority_guard();
+
+--> statement-breakpoint
+CREATE INDEX crypto_sweep_outbox_evm_recovery_due_idx
+ ON crypto_sweep_outbox(next_attempt_at,created_at)
+ WHERE state IN ('delivered','terminal') AND evm_confirmed_at IS NULL
+  AND prepared_transaction IS NOT NULL AND prepared_metadata->>'network' IN ('base','bsc');

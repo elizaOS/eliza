@@ -39,6 +39,8 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, account_lifecycle_state text NOT NULL DEFAULT 'active');
     CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE crypto_payments (id uuid PRIMARY KEY, organization_id uuid, user_id uuid);
+    CREATE TABLE crypto_sweep_outbox (id uuid PRIMARY KEY, payment_id uuid, prepared_transaction text, prepared_metadata jsonb, evm_sender text, evm_confirmed_at timestamptz);
     CREATE TABLE org_storage_quota (organization_id uuid PRIMARY KEY REFERENCES organizations(id), bytes_used bigint NOT NULL DEFAULT 0, bytes_limit bigint NOT NULL DEFAULT 5368709120);
     CREATE TABLE agent_sandboxes (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id));
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, CONSTRAINT credit_transactions_id_org_idx UNIQUE(id, organization_id));
@@ -474,5 +476,24 @@ describe("account deletion restrictive-grant terminal absence", () => {
         resolution: "Provider replay inspected and resolved",
       },
     ]);
+  });
+  test("unconfirmed EVM sweep blocks account erasure inspection", async () => {
+    const paymentId = crypto.randomUUID(),
+      sweepId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO crypto_payments(id,organization_id,user_id) VALUES (${paymentId},${ORGANIZATION_ID},${USER_ID})`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO crypto_sweep_outbox(id,payment_id,prepared_transaction,prepared_metadata) VALUES (${sweepId},${paymentId},'signed-bytes','{"network":"base"}'::jsonb)`,
+    );
+    const adapter = createAccountDeletionProviderAdapters().other_grants;
+    expect(await adapter.inspect(context)).toEqual({
+      state: "action_required",
+      errorCode: "ACCOUNT_DELETION_EVM_SWEEP_UNCONFIRMED",
+    });
+    await dbWrite.execute(
+      sql`UPDATE crypto_sweep_outbox SET evm_confirmed_at=now() WHERE id=${sweepId}`,
+    );
+    expect(await adapter.inspect(context)).toMatchObject({ state: "complete" });
   });
 });

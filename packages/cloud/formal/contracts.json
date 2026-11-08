@@ -134,6 +134,23 @@
         "No fairness, operating-system process termination or cleanup of remote provider effects is proved."
       ],
       "maxSteps": 25
+    },
+    {
+      "id": "evm-sweep-nonce",
+      "file": "evm_sweep_nonce.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
+        "packages/cloud/shared/src/lib/services/evm-sweep-authority.ts",
+        "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
+        "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One wallet/network, two durable outboxes, chain nonces zero through two, and one unrelated pending transaction. Signed bytes and transaction identity remain immutable.",
+        "Signing and persistence commit atomically under the wallet lock. One matching successful chain receipt is trusted as nonce consumption; arbitrary reorgs, RPC dishonesty and cryptography are excluded.",
+        "Account deletion preserves unconfirmed signed authority. Terminal recovery observes the original receipt without another send. The model does not establish TypeScript/SQL refinement, safe retry of reverted sweeps, or liveness."
+      ],
+      "maxSteps": 40
     }
   ],
   "pendingDomains": [
