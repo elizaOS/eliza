@@ -163,8 +163,8 @@ const tenantAuditQueues = new Map<string, Promise<void>>();
  * wait on each other through a JS promise Postgres cannot see, which wedges
  * both requests and their pool connections forever. The advisory lock already
  * serializes the chain there and is re-entrant for its holder, and Postgres
- * detects real lock cycles, so the queue is kept only where the lock is not
- * taken (PGLite).
+ * detects real lock cycles, so the queue is skipped there. PGLite (no advisory
+ * lock) and standalone Postgres appends still use it.
  */
 function auditQueueBypassed(): boolean {
   return (
