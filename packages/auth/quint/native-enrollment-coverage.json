@@ -46,7 +46,7 @@
     ],
     "status": "partial",
     "limitations": [
-      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. AccountProviderDeletion covers provider-wide deletion under separate bounds. Explicit account-list deletion, encrypted legacy upgrade, remaining pool-metadata persistence and route orchestration stay outside these cases.",
+      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. AccountProviderDeletion and AccountStorageMigration cover provider-wide deletion and per-file migration under separate bounds. Explicit account-list deletion, remaining pool-metadata persistence and route orchestration stay outside these cases.",
       "AccountStorageLock and AccountStorageReset own cross-process lock and reset recovery. This case assumes atomic locked storage calls and does not cover filesystem failures."
     ]
   },
@@ -72,6 +72,32 @@
       "The lock prevents other authorized readers and writers during validation, unlinks and rollback. The stat tuple is an opaque fingerprint. The modeled atomic replacement changes that tuple. Restoration preserves ciphertext, while file identity may change.",
       "The failure branch injects an error on the second unlink after one successful unlink, with successful restoration. Directory sync failure, rollback failure, process death and reset interleavings are outside this bound.",
       "Explicit account-list plans, nonregular paths, multi-provider plans, byte changes with equal stat tuples and malicious filesystem mutation are separate cases. Cryptographic correctness is assumed. An unsubmitted plan can be abandoned without writing."
+    ]
+  },
+  {
+    "id": "auth.AccountStorageMigration",
+    "model": "packages/auth/quint/AccountStorageMigration.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/vault/crypto.ts",
+      "packages/auth/src/vault/master-key.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "PreservesContentsAndExistingGeneration",
+      "InvalidRecordsStayUntouched",
+      "OneCanonicalRewritePerFile",
+      "FailedReadHasNoResult",
+      "ReturnedRecordsAreCanonical",
+      "FailurePreservesPublicationBoundary",
+      "EarlierListRewriteSurvives"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two present files in one provider, at most two locked load or list calls, and one fixed list order. The finite file kinds represent plaintext, canonical and legacy authenticated envelopes, corrupt bytes and authenticated wrong identity. Initial generation can be absent or present.",
+      "Cryptographic correctness, lock ownership, key availability and atomic rename are assumptions. Credentials and metadata are opaque identities. The first published generation is symbolic, and unobserved candidates discarded before rename are outside generation uniqueness.",
+      "A failure before rename preserves original bytes. A directory sync failure after rename returns an error with the canonical file visible in this process. Earlier files in a list stay migrated if a later file rejects. Filesystem power loss, failed lock release and process death stay outside this model.",
+      "Missing files, arbitrary list lengths, multiple providers, key rotation, explicit writes and reset interleavings are outside this bound. Named scenarios use actual encrypted bytes and controlled filesystem faults. Windows skips the directory sync error scenario because the implementation omits that sync there."
     ]
   },
   {
@@ -128,7 +154,7 @@
     "status": "partial",
     "limitations": [
       "Two providers share an account id. Two one-shot refresh or metadata callers and one explicit save bound replacement generations. Atomic storage calls and unique generation UUIDs are assumed.",
-      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. AccountProviderDeletion covers provider-wide deletion plans separately. Explicit account-list plans and legacy migration remain gaps.",
+      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. AccountProviderDeletion and AccountStorageMigration separately cover provider-wide deletion and per-file migration. Explicit account-list deletion plans remain a gap.",
       "Progress assumes weak fairness of completion and eventual access to the storage commit. Caller cancellation and permanent provider or storage failure remain outside this projection."
     ]
   },
