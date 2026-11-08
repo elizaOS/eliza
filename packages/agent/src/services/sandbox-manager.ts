@@ -2,7 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import {
   createEngine,
   detectBestEngine,
@@ -248,6 +248,30 @@ export class SandboxManager {
     await this.engine.removeContainer(containerId);
   }
 
+  private async cleanupOwnedContainers(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const field of ["browserContainerId", "containerId"] as const) {
+      try {
+        await this.cleanupContainer(this[field]);
+        this[field] = null;
+      } catch (err) {
+        // error-policy:J6 Attempt every resource, retaining failed ownership for retry.
+        failures.push(err);
+        this.emitEvent({
+          timestamp: Date.now(),
+          type: "error",
+          detail: `Sandbox cleanup error: ${String(err)}`,
+        });
+      }
+    }
+    if (failures.length > 0) {
+      throw new ElizaError("Sandbox cleanup was not confirmed", {
+        code: "SANDBOX_CLEANUP_FAILED",
+        cause: new AggregateError(failures),
+      });
+    }
+  }
+
   private setState(newState: SandboxState): void {
     const oldState = this.state;
     this.state = newState;
@@ -376,10 +400,7 @@ export class SandboxManager {
 
       try {
         const config = this.getMainContainerConfig();
-        await this.cleanupContainer(this.containerId);
-        await this.cleanupContainer(this.browserContainerId);
-        this.containerId = null;
-        this.browserContainerId = null;
+        await this.cleanupOwnedContainers();
 
         const orphans = this.engine.listContainers(config.containerPrefix);
         for (const id of orphans) {
@@ -402,6 +423,7 @@ export class SandboxManager {
           detail: `Recovery failed: ${String(err)}`,
         });
         this.setState("degraded");
+        throw err;
       }
     });
   }
@@ -420,16 +442,11 @@ export class SandboxManager {
       this.setState("stopping");
 
       try {
-        await this.cleanupContainer(this.browserContainerId);
-        await this.cleanupContainer(this.containerId);
-        this.browserContainerId = null;
-        this.containerId = null;
+        await this.cleanupOwnedContainers();
       } catch (err) {
-        this.emitEvent({
-          timestamp: Date.now(),
-          type: "error",
-          detail: `Sandbox stop error: ${String(err)}`,
-        });
+        // error-policy:J2 Keep failed cleanup retryable and visible to the caller.
+        this.setState("degraded");
+        throw err;
       }
 
       this.setState("stopped");

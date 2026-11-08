@@ -250,6 +250,28 @@ export async function handleAgentLifecycleRoutes(
     return true;
   }
 
+  if (
+    method === "POST" &&
+    (pathname === "/api/agent/pause" || pathname === "/api/agent/resume")
+  ) {
+    if (
+      state.runtimeStopPromise ||
+      state.agentState === "starting" ||
+      state.agentState === "restarting"
+    ) {
+      error(res, "Agent lifecycle transition is still in progress", 409);
+      return true;
+    }
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available; start the agent first", 503);
+      return true;
+    }
+    if (state.agentState !== "running" && state.agentState !== "paused") {
+      error(res, "Agent must be running or paused for this operation", 409);
+      return true;
+    }
+  }
+
   if (method === "POST" && pathname === "/api/agent/pause") {
     state.agentState = "paused";
     json(res, {
