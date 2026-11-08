@@ -46,9 +46,31 @@
     "status": "modeled",
     "limitations": [
       "Models the exact pure row replacement contract, including clear-as-new-revision, send mark changes, stale receipts and binding mismatch. Two slots, two writers, two revisions and three symbolic text values.",
-      "Storage adapter atomicity remains outside the row helper. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
+      "Storage adapter atomicity remains outside the row helper. BrowserDraftStorage covers the IndexedDB adapter. DraftSendRecovery, DraftMarkRace and DraftQueuedHandoff separately cover bounded controller protocols.",
       "Two separate finite instances. Contention has two writers and one binding. Isolation has one writer and two bindings. Each permits two revisions and three text values. The combined two-writer/two-binding graph remains unchecked.",
       "Both finite instances have real implementation trace replay."
+    ]
+  },
+  {
+    "id": "BrowserDraftStorage",
+    "model": "packages/ui/quint/BrowserDraftStorage.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft.ts",
+      "packages/ui/src/platform/browser-document-store.ts",
+      "packages/ui/src/platform/__e2e__/run-browser-document-store.mjs"
+    ],
+    "invariants": [
+      "ExactReceiptAtCommit",
+      "StagedTransactionIsExclusive",
+      "SavedReceiptRequiresCommit",
+      "OnlyCommittedBytesVisible",
+      "ReopenReadsCommittedBytes"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One key, two writers, one external reset and one reopened reader. Browser readwrite transaction ordering and fresh document receipts are assumptions. The draft caller can receive AbortError after the raw write commits.",
+      "The owning browser command runs the real draft and IndexedDB adapters across tabs. It checks exact receipt replacement, staged abort, retry, late cancellation and reload. The strict Quint lane has no installed browser engine and does not launch this command.",
+      "Disk crash and eviction, upgrades, Web Locks editing, raw byte restoration outside the draft protocol and generated trace replay are separate. Native and transactional JSON draft adapters need independent persistence coverage."
     ]
   },
   {
