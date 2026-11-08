@@ -36,10 +36,22 @@ import {
   validateNotesOperation,
 } from "./notes-contract.ts";
 import {
+  isNotesOrganizeType,
+  NOTES_ORGANIZE_CAPABILITY,
+  type NotesOrganizeOperation,
+  validateNotesOrganizeOperation,
+} from "./notes-organize-contract.ts";
+import {
   PHONE_DIAL_CAPABILITY,
   type PhoneDialOperation,
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
+import {
+  isPhotosViewType,
+  type PhotosViewOperation,
+  photosViewCapabilityAvailable,
+  validatePhotosViewOperation,
+} from "./photos-view-contract.ts";
 import {
   type ReminderOperation,
   validateReminderOperation,
@@ -53,6 +65,12 @@ import {
   type SmsSendOperation,
   validateSmsSend,
 } from "./sms-contract.ts";
+import {
+  FILES_CAPABILITY,
+  type FilesAgentOperation,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
 import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,
@@ -93,10 +111,13 @@ export type DeviceOperation =
   | ReminderCreateOperation
   | ClockOperation
   | MapsOperation
+  | FilesAgentOperation
   | ReminderOperation
   | NotesOperation
+  | NotesOrganizeOperation
   | NativeNotesQueryOperation
   | CalendarOperation
+  | PhotosViewOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -121,6 +142,8 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
     return capabilities?.includes(CALENDAR_NEXT_CAPABILITY) === true;
+  if (isFilesOperation({ type }))
+    return capabilities?.includes(FILES_CAPABILITY) === true;
   if (isForegroundReviewType(type))
     return foregroundReviewCapabilityAvailable(type, capabilities);
   if (type === "notes_query")
@@ -128,6 +151,13 @@ export function deviceOperationSupportedByCapabilities(
       capabilities?.includes(NOTES_QUERY_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isNotesOrganizeType(type))
+    return (
+      capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
+      capabilities.includes("notes.local-record.v1")
+    );
+  if (isPhotosViewType(type))
+    return photosViewCapabilityAvailable(capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -242,6 +272,29 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid Notes operation");
       }
+    case "notes_filter":
+    case "notes_move":
+    case "notes_folder_create":
+    case "notes_restore":
+    case "notes_record":
+      try {
+        return validateNotesOrganizeOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Notes operation: ${(error as Error).message}`,
+        );
+      }
+    case "photos_filter":
+    case "photos_open":
+    case "photos_album_create":
+    case "photos_share":
+      try {
+        return validatePhotosViewOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Photos operation: ${(error as Error).message}`,
+        );
+      }
     case "calendar_create_local":
     case "calendar_read_next":
     case "calendar_create":
@@ -281,6 +334,19 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError(
           "Invalid dial operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
+      }
+    case "files_filter":
+    case "files_open":
+    case "files_share":
+    case "files_move":
+    case "files_trash":
+    case "files_folder_create":
+      try {
+        return validateFilesOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Files operation: ${(error as Error).message}. Use paths on Internal storage such as "Download/lease.pdf".`,
         );
       }
     case "post_notification":
