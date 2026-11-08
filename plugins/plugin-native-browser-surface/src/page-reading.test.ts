@@ -74,6 +74,58 @@ describe("credential refusal", () => {
       ),
     ).toBe(false);
   });
+
+  it("ignores sign-in chrome and long navigation, but not credential inputs or codes in the article", () => {
+    const element = (
+      tagName: string,
+      attributes: Record<string, string>,
+      children: Node[] = [],
+    ) =>
+      ({
+        nodeType: 1,
+        tagName,
+        getAttribute: (name: string) => attributes[name] ?? null,
+        childNodes: children,
+      }) as unknown as Node;
+    const text = (value: string) =>
+      ({ nodeType: 3, nodeValue: value, childNodes: [] }) as unknown as Node;
+    const page = (main: Node[], footer: Node[] = []) =>
+      element("HTML", {}, [
+        element("BODY", {}, [
+          element("HEADER", { class: "site-header" }, [
+            element("A", { href: "/login", class: "login-button" }, [
+              text("Sign in"),
+            ]),
+          ]),
+          element("NAV", {}, [text("Section ".repeat(10000))]),
+          element("MAIN", {}, main),
+          element("FOOTER", {}, footer),
+        ]),
+      ]);
+    expect(sensitiveReadingDocument(page([text("Garden journal 2027")]))).toBe(
+      false,
+    );
+    expect(
+      sensitiveReadingDocument(
+        page(
+          [text("Garden journal")],
+          [element("INPUT", { type: "password", name: "pw" })],
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      sensitiveReadingDocument(
+        page(
+          [text("Garden journal")],
+          [element("INPUT", { autocomplete: "one-time-code" })],
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      sensitiveReadingDocument(page([text("Your verification code is ready")])),
+    ).toBe(true);
+    expect(sensitiveReadingDocument(page([text("Code 48213907")]))).toBe(true);
+  });
 });
 
 describe("reading support probe", () => {

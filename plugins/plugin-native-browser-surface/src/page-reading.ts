@@ -77,18 +77,64 @@ export function sensitiveReadingUrl(address: string): boolean {
   }
 }
 
-/** The same whole-document scan as the native extraction, for a parsed document. */
+/** A password, one-time-code or similar credential input, by its type, autocomplete or label. */
+const credentialField =
+  /(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa)(?:$|[^a-z0-9])|password|passcode|one[\s_-]*time|verification[\s_-]*code|security[\s_-]*code|auth(?:entication)?[\s_-]*code/i;
+const SKIPPED = ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"];
+/** Page chrome and links: their sign-in wording is not page content. */
+const CHROME = ["NAV", "HEADER", "FOOTER", "A"];
+
+/**
+ * The same scan as the native extraction, for a parsed document: the whole
+ * document is searched for credential inputs (password, one-time-code and
+ * similar fields); credential prose, unlabelled short codes and the size
+ * budget apply only to the selected article (`article`, `main`,
+ * `[role="main"]`, else `body`), without nav, header, footer or links.
+ */
 export function sensitiveReadingDocument(root: Node): boolean {
   const pending: Node[] = [root];
   let inspected = 0;
-  let characters = 0;
-  let text = "";
+  let article: Node | undefined;
+  let body: Node | undefined;
   while (pending.length) {
     if (++inspected > 12000) return true;
     const node = pending.pop() as Node;
+    if (node.nodeType !== 1) continue;
+    const element = node as Element;
+    const tag = element.tagName.toUpperCase();
+    if (SKIPPED.includes(tag)) continue;
+    if (tag === "INPUT") {
+      const type = (element.getAttribute("type") || "").toLowerCase();
+      const labels = ["autocomplete", "id", "name", "aria-label", "placeholder"]
+        .map((attr) => normalize(element.getAttribute(attr) || ""))
+        .join(" ");
+      if (type === "password" || credentialField.test(labels)) return true;
+    }
+    if (
+      !article &&
+      (tag === "ARTICLE" ||
+        tag === "MAIN" ||
+        element.getAttribute("role") === "main")
+    )
+      article = node;
+    if (!body && tag === "BODY") body = node;
+    if (node.childNodes.length + pending.length > 12000) return true;
+    for (let i = node.childNodes.length - 1; i >= 0; i--)
+      pending.push(node.childNodes[i]);
+  }
+  pending.push(article ?? body ?? root);
+  let characters = 0;
+  let text = "";
+  while (pending.length) {
+    const node = pending.pop() as Node;
     if (node.nodeType === 1) {
       const element = node as Element;
-      if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(element.tagName))
+      const tag = element.tagName.toUpperCase();
+      if (
+        SKIPPED.includes(tag) ||
+        CHROME.includes(tag) ||
+        element.getAttribute("role") === "navigation"
+      )
         continue;
       for (const attr of [
         "type",
@@ -115,7 +161,6 @@ export function sensitiveReadingDocument(root: Node): boolean {
       if (value.length > 20000 || characters > 65536) return true;
       text += ` ${normalize(value)}`;
     }
-    if (node.childNodes.length + pending.length > 12000) return true;
     for (let i = node.childNodes.length - 1; i >= 0; i--)
       pending.push(node.childNodes[i]);
   }
