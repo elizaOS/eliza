@@ -32,7 +32,10 @@ Each name in a case's `temporal` list also needs a `temporalChecks` entry with
 State explicitly when no fairness is assumed. Safety and positive temporal
 properties run together; negative properties run separately. Expected negative checks pass only on a TLC
 temporal counterexample with a loop, never on a tool error or safety violation.
-Reports retain each expectation, assumption and observed result. The shutdown
+Reports retain each expectation, assumption and observed result. TLC may check
+always-state and always-action properties without printing a liveness-graph
+pass. A positive result requires both TLC completion and the successful Quint
+verifier receipt. The shutdown
 liveness case checks both necessary timer fairness conditions and a fair failed
 shutdown; it does not assume provider success or prove a wall-clock deadline.
 
