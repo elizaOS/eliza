@@ -1344,6 +1344,59 @@ describe("linked reconciler races and missing sides", () => {
     expect(remote.current()?.event.title).toBe("Later");
     expect(memory.current.state).toBe("clean");
   });
+  it("keeps a link paused when it is paused while a Google edit is pulled", async () => {
+    const store = new MemoryStore(linked());
+    const local = eliza({ eventId: "local-1", revision: 1, event: baseEvent });
+    const apply = local.port.applyProviderEvent;
+    local.port.applyProviderEvent = async (eventId, event, expected) => {
+      const applied = await apply(eventId, event, expected);
+      store.mutate({ state: "paused", pendingOperation: null });
+      return applied;
+    };
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g2"',
+      event: edit("Google edit"),
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        local.port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("pulled");
+    expect(store.current).toMatchObject({
+      state: "paused",
+      providerEtag: '"g2"',
+    });
+  });
+
+  it("pauses a deleted Eliza event whose Google event is already cancelled", async () => {
+    const store = new MemoryStore(
+      linked({
+        state: "dirty",
+        pendingOperation: "delete",
+        providerEtag: null,
+      }),
+    );
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g3"',
+      event: { ...baseEvent, deleted: true },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        eliza(null).port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("pushed");
+    expect(remote.calls).toEqual([]);
+    expect(store.current).toMatchObject({
+      state: "paused",
+      lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+    });
+  });
 });
 
 describe("all-day reconciliation", () => {

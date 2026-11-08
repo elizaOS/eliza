@@ -223,7 +223,8 @@ export class LinkedCalendarReconciler<
       if (record.pendingOperation === "delete") {
         const provider = await this.provider.get(record);
         let pending = record;
-        if (provider) {
+        // A Google event that is already cancelled needs no delete.
+        if (provider && !provider.event.deleted) {
           // A fresh ETag only absorbs non-semantic Google changes. After a
           // semantic Google edit the stored ETag makes the delete fail as a
           // conflict instead of removing the owner's edit.
@@ -279,7 +280,7 @@ export class LinkedCalendarReconciler<
         await this.checkpointLanded(
           pending,
           {
-            providerEventId: pending.providerEventId,
+            providerEventId: provider?.eventId ?? pending.providerEventId,
             providerEtag: null,
             lastCommonSemanticHash: pending.lastCommonSemanticHash,
           },
@@ -753,6 +754,7 @@ export class LinkedCalendarReconciler<
         const fresh = await this.repository.reload(pending);
         if (!fresh) throw failure;
         const unchanged =
+          fresh.state === pending.state &&
           fresh.localRevision === expectedRevision &&
           fresh.pendingOperation === expectedOperation;
         try {
