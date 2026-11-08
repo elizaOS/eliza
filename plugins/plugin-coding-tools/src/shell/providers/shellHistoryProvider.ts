@@ -14,6 +14,8 @@ import {
   type Provider,
   type State,
 } from "@elizaos/core";
+import type { SessionCwdService } from "../../services/session-cwd-service.js";
+import { SESSION_CWD_SERVICE } from "../../types.js";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { redactShellText } from "../redaction";
 import type { ShellService } from "../services/shellService";
@@ -74,9 +76,15 @@ export const shellHistoryProvider: Provider = {
         };
       }
       const history = shellService.getCommandHistory(conversationId);
+      // SHELL runs in the per-conversation session cwd, which WORKTREE
+      // enter/exit moves; ShellService's own directory does not follow it.
+      const sessionCwd =
+        runtime.getService<SessionCwdService>(SESSION_CWD_SERVICE);
       const cwd = redactShellText(
         runtime,
-        shellService.getCurrentDirectory(conversationId),
+        sessionCwd
+          ? sessionCwd.getCwd(String(conversationId))
+          : shellService.getCurrentDirectory(conversationId),
       );
       const allowedDir = redactShellText(
         runtime,
