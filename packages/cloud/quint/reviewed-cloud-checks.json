@@ -190,7 +190,13 @@
         "changed original invoice on replay cannot overwrite retained evidence",
         "database ownership failure rolls back the newly inserted receipt",
         "observation storage rejects direct mutation and deletion",
-        "receipt input cannot borrow another organization's observation"
+        "receipt input cannot borrow another organization's observation",
+        "platform command dispatch refuses stale or foreign authority and preserves its first fence",
+        "platform command failure replay requires the original generation and exact terminal evidence",
+        "platform command supersession retires only a prepared intent with exact replay",
+        "platform checkout application requires matching retained history and replays only its original result",
+        "platform cancel and resume require their dedicated dispatch protocol",
+        "platform command original provider identity is protected by the database"
       ]
     },
     {

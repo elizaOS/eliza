@@ -4,7 +4,10 @@
     "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
     "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
     "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
-    "packages/cloud/quint/check-platform-subscription-command.ts"
+    "packages/cloud/quint/check-platform-subscription-command.ts",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
   ],
   "conformance": "packages/cloud/quint/check-platform-subscription-command.ts",
   "bounds": "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes.",
