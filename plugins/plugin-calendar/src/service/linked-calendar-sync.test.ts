@@ -1200,10 +1200,64 @@ describe("GoogleLinkedCalendarProviderPort", () => {
     expect(updated.event.recurrence).toEqual(["RRULE:FREQ=WEEKLY"]);
   });
 
+  it("keeps the Eliza event when the linked Google calendar itself is gone", async () => {
+    // Google answers 404 for an event in a calendar that was deleted or is no
+    // longer shared with the account. That is not a deleted event.
+    const google = {
+      async getEvent() {
+        throw { status: 404 };
+      },
+      async listCalendars() {
+        return [
+          {
+            calendarId: "owner@example.com",
+            summary: "Personal",
+            primary: true,
+            accessRole: "owner",
+          },
+        ];
+      },
+    } as unknown as IGoogleWorkspaceService;
+    const store = new MemoryStore(
+      record({
+        state: "clean",
+        pendingOperation: null,
+        providerCalendarId: "team-calendar@group.calendar.google.com",
+        providerEventId: "google-event-1",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: linkedCalendarSemanticHash(baseEvent),
+      }),
+    );
+    const before = store.current;
+    const testPorts = ports({});
+
+    await expect(
+      new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        new GoogleLinkedCalendarProviderPort(google),
+      ).reconcile(store.current),
+    ).rejects.toMatchObject({
+      code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+    });
+    expect(testPorts.local()).not.toBeNull();
+    expect(store.current).toEqual(before);
+  });
+
   it("maps provider 410 to an absent snapshot for watch/full-resync reconciliation", async () => {
     const google = {
       async getEvent() {
         throw { status: 410 };
+      },
+      async listCalendars() {
+        return [
+          {
+            calendarId: "owner@example.com",
+            summary: "Personal",
+            primary: true,
+            accessRole: "owner",
+          },
+        ];
       },
     } as unknown as IGoogleWorkspaceService;
     const port = new GoogleLinkedCalendarProviderPort(google);

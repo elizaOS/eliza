@@ -575,11 +575,39 @@ export class GoogleLinkedCalendarProviderPort
       );
     } catch (error) {
       const status = providerErrorStatus(error);
-      // error-policy:J1 A provider 404/410 is an authoritative absent snapshot;
-      // all transport and permission failures retain their error outcome.
-      if (status === 404 || status === 410) return null;
-      throw error;
+      if (status !== 404 && status !== 410) throw error;
+      // error-policy:J1 A 404/410 is an absent event only while the calendar is
+      // still on the account. Google answers the same way for a calendar that
+      // was deleted or unshared, and that must not delete the Eliza event.
+      await this.requireCalendar(record);
+      return null;
     }
+  }
+
+  private async requireCalendar(
+    record: LinkedCalendarEventRecord,
+  ): Promise<void> {
+    const calendars = await this.google.listCalendars({
+      accountId: record.connectorAccountId,
+    });
+    const present = calendars.some(
+      (calendar) =>
+        calendar.deleted !== true &&
+        (calendar.calendarId === record.providerCalendarId ||
+          (record.providerCalendarId === "primary" &&
+            calendar.primary === true)),
+    );
+    if (!present)
+      throw new ElizaError(
+        "The linked Google calendar is no longer available to this account. Review the calendar link before syncing.",
+        {
+          code: "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+          context: {
+            connectorAccountId: record.connectorAccountId,
+            providerCalendarId: record.providerCalendarId,
+          },
+        },
+      );
   }
 
   async create(
