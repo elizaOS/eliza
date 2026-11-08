@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import type { LifeOpsCalendarSummary } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1002,14 +1003,26 @@ describe("linked Google change dispatch", { timeout: 30_000 }, () => {
     const service = new CalendarService(runtime);
     const internals = service as unknown as {
       activeLinkedCalendarTarget: () => Promise<typeof destination>;
+      storedLinkedCalendarTarget: () => Promise<typeof destination | null>;
       linkedReconciler: (
         account: string,
         onProviderMutation?: () => void,
       ) => LinkedCalendarReconciler;
+      kickLinkedCalendarDrain: (
+        mode: "dirty" | "all",
+        cleanLocalEventIds?: readonly string[],
+      ) => void;
+      linkedCalendarDrain: Promise<void> | null;
+      scheduleLinkedCalendarWindowPull: (
+        calendar: LifeOpsCalendarSummary,
+        timeMin: string,
+        timeMax: string,
+      ) => void;
+      repo: { listCalendarEvents: (...args: unknown[]) => Promise<unknown> };
     };
-    vi.spyOn(internals, "activeLinkedCalendarTarget").mockResolvedValue(
-      destination,
-    );
+    const verify = vi
+      .spyOn(internals, "activeLinkedCalendarTarget")
+      .mockResolvedValue(destination);
     vi.spyOn(internals, "linkedReconciler").mockImplementation(
       (_account, onProviderMutation) =>
         new LinkedCalendarReconciler(
@@ -1019,8 +1032,206 @@ describe("linked Google change dispatch", { timeout: 30_000 }, () => {
           onProviderMutation,
         ),
     );
-    return { h, links, locals, local, link, service, runtime };
+    /** Runs one coalesced background drain to completion. */
+    const drain = async (
+      mode: "dirty" | "all",
+      cleanLocalEventIds?: readonly string[],
+    ) => {
+      internals.kickLinkedCalendarDrain(mode, cleanLocalEventIds);
+      while (internals.linkedCalendarDrain) await internals.linkedCalendarDrain;
+    };
+    return {
+      h,
+      links,
+      locals,
+      local,
+      link,
+      service,
+      runtime,
+      internals,
+      verify,
+      drain,
+    };
   }
+
+  const unexpected = {
+    async create(): Promise<LinkedCalendarProviderSnapshot> {
+      throw Error("Unexpected create");
+    },
+    async delete() {
+      throw Error("Unexpected delete");
+    },
+  };
+
+  it("settles a quarantine that sent nothing so the next link still pushes", async () => {
+    const updates: string[] = [];
+    const f = await dispatchFixture({
+      ...unexpected,
+      async get(record) {
+        return record.providerEventId === "google-a"
+          ? {
+              eventId: "google-a",
+              etag: '"g2"',
+              event: { ...event, recurrence: ["RRULE:FREQ=WEEKLY"] },
+            }
+          : { eventId: "google-b", etag: '"g1"', event };
+      },
+      async update(record, next) {
+        updates.push(record.providerEventId ?? "");
+        return { eventId: "google-b", etag: '"g2"', event: next };
+      },
+    });
+    const first = await f.link("local-a", "google-a");
+    const second = await f.link("local-b", "google-b");
+    f.local.casError = Object.assign(
+      new Error("Repeating events stay in Google"),
+      {
+        code: "LINKED_CALENDAR_RECURRENCE_UNSUPPORTED",
+      },
+    );
+    f.locals.set("local-b", {
+      eventId: "local-b",
+      revision: 2,
+      event: { ...event, title: "Local edit" },
+    });
+    await f.links.markLocalDirty({
+      agentId: second.agentId,
+      localEventId: "local-b",
+      localRevision: 2,
+    });
+
+    await f.drain("all");
+    expect((await f.links.getById(first.agentId, first.id))?.state).toBe(
+      "quarantined",
+    );
+    expect(updates).toEqual(["google-b"]);
+    expect((await f.links.getById(second.agentId, second.id))?.state).toBe(
+      "clean",
+    );
+    expect((await f.h.controls().read()).dispatch).toBeNull();
+  });
+
+  it("keeps the dispatch when a Google write has an unknown outcome", async () => {
+    const f = await dispatchFixture({
+      ...unexpected,
+      async get() {
+        return { eventId: "google-a", etag: '"g1"', event };
+      },
+      async update() {
+        throw Error("Socket closed after send");
+      },
+    });
+    const row = await f.link("local-a", "google-a");
+    f.locals.set("local-a", {
+      eventId: "local-a",
+      revision: 2,
+      event: { ...event, title: "Local edit" },
+    });
+    await f.links.markLocalDirty({
+      agentId: row.agentId,
+      localEventId: "local-a",
+      localRevision: 2,
+    });
+
+    await f.drain("dirty");
+    expect((await f.links.getById(row.agentId, row.id))?.state).toBe(
+      "quarantined",
+    );
+    expect((await f.h.controls().read()).dispatch?.linkId).toBe(row.id);
+  });
+
+  it("drains only dirty links after a local edit and verifies the destination once", async () => {
+    const reads: string[] = [];
+    const f = await dispatchFixture({
+      ...unexpected,
+      async get(record) {
+        reads.push(record.providerEventId ?? "");
+        return record.providerEventId === "google-c"
+          ? {
+              eventId: "google-c",
+              etag: '"g2"',
+              event: { ...event, title: "Google edit" },
+            }
+          : { eventId: record.providerEventId ?? "", etag: '"g1"', event };
+      },
+      async update(record, next) {
+        return {
+          eventId: record.providerEventId ?? "",
+          etag: '"g2"',
+          event: next,
+        };
+      },
+    });
+    for (const id of ["a", "b"]) {
+      const row = await f.link(`local-${id}`, `google-${id}`);
+      f.locals.set(`local-${id}`, {
+        eventId: `local-${id}`,
+        revision: 2,
+        event: { ...event, title: `Edit ${id}` },
+      });
+      await f.links.markLocalDirty({
+        agentId: row.agentId,
+        localEventId: `local-${id}`,
+        localRevision: 2,
+      });
+    }
+    await f.link("local-c", "google-c");
+
+    await f.drain("dirty");
+    expect(reads.sort()).toEqual(["google-a", "google-b"]);
+    expect(f.verify).toHaveBeenCalledTimes(1);
+    expect(f.locals.get("local-c")?.event.title).toBe(event.title);
+  });
+
+  it("pulls clean links in a viewed destination window at most once per five minutes", async () => {
+    const f = await dispatchFixture({
+      ...unexpected,
+      async get() {
+        return {
+          eventId: "google-a",
+          etag: '"g2"',
+          event: { ...event, title: "Google edit" },
+        };
+      },
+      async update() {
+        throw Error("Unexpected update");
+      },
+    });
+    await f.link("local-a", "google-a");
+    const list = vi
+      .spyOn(f.internals.repo, "listCalendarEvents")
+      .mockResolvedValue([{ id: "local-a" }]);
+    const stored = f.internals.storedLinkedCalendarTarget.bind(f.service);
+    const targets: Promise<unknown>[] = [];
+    vi.spyOn(f.internals, "storedLinkedCalendarTarget").mockImplementation(
+      () => {
+        const target = stored();
+        targets.push(target);
+        return target;
+      },
+    );
+    const view = async (calendarId: string) => {
+      f.internals.scheduleLinkedCalendarWindowPull(
+        {
+          connectorAccountId: destination.connectorAccountId,
+          calendarId,
+        } as LifeOpsCalendarSummary,
+        "2026-09-01T00:00:00.000Z",
+        "2026-09-02T00:00:00.000Z",
+      );
+      await Promise.all(targets);
+      await new Promise((resolve) => setImmediate(resolve));
+      while (f.internals.linkedCalendarDrain)
+        await f.internals.linkedCalendarDrain;
+    };
+
+    await view(destination.providerCalendarId);
+    expect(f.locals.get("local-a")?.event.title).toBe("Google edit");
+    await view(destination.providerCalendarId);
+    await view("another-calendar");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(f.verify).toHaveBeenCalledTimes(1);
+  });
 
   it("settles the dispatch when a local edit races a landed Google update", async () => {
     let remote: LinkedCalendarProviderSnapshot = {

@@ -280,6 +280,8 @@ const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 /** Managed owner feeds one service reads at once, across every overlapping
  * aggregate read. Each one verifies the owner over the private broker. */
 const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
+/** Minimum spacing of viewed-window pulls for one linked destination. */
+const LINKED_CALENDAR_WINDOW_PULL_MS = 5 * 60_000;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -1414,7 +1416,9 @@ export class CalendarService extends Service {
   private readonly linkedControl: LinkedCalendarControlRepository;
   private readonly activeLinkedDispatches = new Set<string>();
   private linkedCalendarDrain: Promise<void> | null = null;
-  private linkedCalendarDrainRequested = false;
+  private linkedCalendarDrainMode: "dirty" | "all" | null = null;
+  private readonly linkedCalendarDrainCleanEvents = new Set<string>();
+  private readonly linkedCalendarWindowPulls = new Map<string, number>();
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
@@ -1642,14 +1646,37 @@ export class CalendarService extends Service {
     return control.destination;
   }
 
+  /** The stored, unpaused destination; verification happens at dispatch. */
+  private async storedLinkedCalendarTarget(): Promise<{
+    connectorAccountId: string;
+    providerCalendarId: string;
+  } | null> {
+    const control = await this.linkedControl.read();
+    return control.paused || !control.destination ? null : control.destination;
+  }
+
   private async runLinkedCalendarOperation(
     record: LinkedCalendarEventRecord,
     strategy?: "keep_eliza" | "keep_google",
+    verifiedTarget?: {
+      connectorAccountId: string;
+      providerCalendarId: string;
+    },
   ) {
     if (record.state === "local_only") return "paused" as const;
     const control = await this.linkedControl.read();
     if (control.paused || control.dispatch) return "paused" as const;
-    if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
+    if (verifiedTarget) {
+      // A drain verified the destination once; only confirm it is unchanged.
+      if (
+        control.destination?.connectorAccountId !==
+          verifiedTarget.connectorAccountId ||
+        control.destination.providerCalendarId !==
+          verifiedTarget.providerCalendarId
+      )
+        return "paused" as const;
+    } else if (!(await this.activeLinkedCalendarTarget()))
+      return "paused" as const;
     let providerMutationAttempted = false;
     const reconciler = this.linkedReconciler(record.connectorAccountId, () => {
       providerMutationAttempted = true;
@@ -1669,7 +1696,9 @@ export class CalendarService extends Service {
       const outcome = strategy
         ? await reconciler.resolveConflict(record, strategy)
         : await reconciler.reconcile(record);
-      if (outcome !== "quarantined") {
+      // A quarantine raised before any provider write (a local CAS or
+      // unsupported recurrence) sent nothing, so it must not block other links.
+      if (outcome !== "quarantined" || !providerMutationAttempted) {
         await this.linkedControl.settleDispatch(token);
       }
       return outcome;
@@ -1691,7 +1720,7 @@ export class CalendarService extends Service {
     let link = await this.linkedRepo.getByLocalEvent(this.agentId(), event.id);
     if (!link) {
       if (operation === "delete") return;
-      const target = await this.activeLinkedCalendarTarget();
+      const target = await this.storedLinkedCalendarTarget();
       if (!target) return;
       link = await this.linkedRepo.create({
         agentId: this.agentId(),
@@ -1701,7 +1730,7 @@ export class CalendarService extends Service {
         localRevision: Number(event.metadata.version),
       });
     } else if (link.state === "paused" && operation !== "delete") {
-      const target = await this.activeLinkedCalendarTarget();
+      const target = await this.storedLinkedCalendarTarget();
       if (!target || target.connectorAccountId !== link.connectorAccountId) {
         return;
       }
@@ -1724,19 +1753,50 @@ export class CalendarService extends Service {
             ? "update"
             : "create",
     });
-    this.kickLinkedCalendarDrain();
+    this.kickLinkedCalendarDrain("dirty");
   }
 
-  private kickLinkedCalendarDrain(): void {
-    if (this.linkedCalendarDrain) {
-      this.linkedCalendarDrainRequested = true;
-      return;
+  /**
+   * Admits a committed built-in write to linked sync. The local write already
+   * succeeded, so an admission failure is reported instead of thrown; boot
+   * re-admits unlinked events.
+   */
+  private async admitBuiltInCalendarMutation(
+    event: LifeOpsCalendarEvent,
+    operation: "create" | "update" | "delete",
+  ): Promise<void> {
+    try {
+      await this.enqueueBuiltInCalendarMutation(event, operation);
+    } catch (error) {
+      // error-policy:J7 The saved local event stays authoritative.
+      this.runtime.reportError("calendar:linked-sync-admission", error, {
+        eventId: event.id,
+      });
     }
+  }
+
+  /**
+   * Coalesces drain requests. "dirty" pushes local edits (plus the clean links
+   * of `cleanLocalEventIds`, pulled from a viewed window); "all" also pulls
+   * every clean link and is used at boot.
+   */
+  private kickLinkedCalendarDrain(
+    mode: "dirty" | "all",
+    cleanLocalEventIds: readonly string[] = [],
+  ): void {
+    this.linkedCalendarDrainMode =
+      mode === "all" || this.linkedCalendarDrainMode === "all" ? "all" : mode;
+    for (const id of cleanLocalEventIds)
+      this.linkedCalendarDrainCleanEvents.add(id);
+    if (this.linkedCalendarDrain) return;
     this.linkedCalendarDrain = (async () => {
-      do {
-        this.linkedCalendarDrainRequested = false;
-        await this.drainLinkedCalendarQueue();
-      } while (this.linkedCalendarDrainRequested);
+      while (this.linkedCalendarDrainMode) {
+        const next = this.linkedCalendarDrainMode;
+        const cleanIds = [...this.linkedCalendarDrainCleanEvents];
+        this.linkedCalendarDrainMode = null;
+        this.linkedCalendarDrainCleanEvents.clear();
+        await this.drainLinkedCalendarQueue(next, cleanIds);
+      }
     })()
       .catch((error) => {
         // error-policy:J7 The durable queue remains authoritative after a
@@ -1745,13 +1805,47 @@ export class CalendarService extends Service {
       })
       .finally(() => {
         this.linkedCalendarDrain = null;
+        // A request that arrived after the loop's last check still runs.
+        if (this.linkedCalendarDrainMode)
+          this.kickLinkedCalendarDrain(this.linkedCalendarDrainMode);
       });
   }
 
-  private async drainLinkedCalendarQueue(): Promise<void> {
-    for (const record of await this.linkedRepo.listActionable(this.agentId())) {
+  private async drainLinkedCalendarQueue(
+    mode: "dirty" | "all",
+    cleanLocalEventIds: readonly string[],
+  ): Promise<void> {
+    const records =
+      mode === "all"
+        ? await this.linkedRepo.listActionable(this.agentId())
+        : [
+            ...(await this.linkedRepo.listActionable(this.agentId(), [
+              "dirty",
+            ])),
+            ...(await this.linkedRepo.listActionableForLocalEvents(
+              this.agentId(),
+              cleanLocalEventIds,
+              ["clean"],
+            )),
+          ];
+    if (records.length === 0) return;
+    let target: Awaited<
+      ReturnType<CalendarService["activeLinkedCalendarTarget"]>
+    >;
+    try {
+      target = await this.activeLinkedCalendarTarget();
+    } catch (error) {
+      // error-policy:J7 Queued rows stay dirty until the destination verifies.
+      this.runtime.reportError(
+        "calendar:linked-active-sync-destination",
+        error,
+      );
+      return;
+    }
+    if (!target) return;
+    for (const record of records) {
       try {
-        await this.runLinkedCalendarOperation(record);
+        await this.runLinkedCalendarOperation(record, undefined, target);
       } catch (error) {
         // error-policy:J7 Durable linked-calendar work remains queued for the
         // next boot or feed refresh; one provider failure must not stop peers.
@@ -1786,7 +1880,50 @@ export class CalendarService extends Service {
         await this.enqueueBuiltInCalendarMutation(event, "create");
       }
     }
-    this.kickLinkedCalendarDrain();
+    this.kickLinkedCalendarDrain("all");
+  }
+
+  /**
+   * Pulls Google edits for the linked events in a window the owner just read
+   * from the linked destination, at most once per five minutes. Never awaited
+   * by the feed request and never changes its response.
+   */
+  private scheduleLinkedCalendarWindowPull(
+    calendar: LifeOpsCalendarSummary,
+    timeMin: string,
+    timeMax: string,
+  ): void {
+    void (async () => {
+      const target = await this.storedLinkedCalendarTarget();
+      if (
+        !target ||
+        calendar.connectorAccountId !== target.connectorAccountId ||
+        calendar.calendarId !== target.providerCalendarId
+      )
+        return;
+      const key = `${target.connectorAccountId}\u0000${target.providerCalendarId}`;
+      const now = Date.now();
+      const last = this.linkedCalendarWindowPulls.get(key);
+      if (last !== undefined && now - last < LINKED_CALENDAR_WINDOW_PULL_MS)
+        return;
+      this.linkedCalendarWindowPulls.set(key, now);
+      const events = await this.repo.listCalendarEvents(
+        this.agentId(),
+        ELIZA_CALENDAR_PROVIDER,
+        timeMin,
+        timeMax,
+        "owner",
+        ELIZA_CALENDAR_GRANT_ID,
+      );
+      if (events.length > 0)
+        this.kickLinkedCalendarDrain(
+          "dirty",
+          events.map((event) => event.id),
+        );
+    })().catch((error) => {
+      // error-policy:J7 A missed pull is retried on a later read or at boot.
+      this.runtime.reportError("calendar:linked-window-pull", error);
+    });
   }
 
   private requireCurrentLinkedRecord(
@@ -5882,6 +6019,7 @@ export class CalendarService extends Service {
         let feed: LifeOpsCalendarFeed;
         if ("feed" in read) {
           feed = read.feed;
+          this.scheduleLinkedCalendarWindowPull(calendar, timeMin, timeMax);
         } else {
           const { error } = read;
           const sourceError = calendarSourceError(error);
@@ -6660,7 +6798,7 @@ export class CalendarService extends Service {
       const receipt = await this.repo.insertCalendarEventIfAbsent(event);
       const persisted = receipt.event;
       if (receipt.inserted) {
-        await this.enqueueBuiltInCalendarMutation(persisted, "create");
+        await this.admitBuiltInCalendarMutation(persisted, "create");
         await this.syncCalendarReminderPlans([persisted]);
         await reconcileMeetingAutoJoin({
           runtime: this.runtime,
@@ -7026,7 +7164,7 @@ export class CalendarService extends Service {
         "PROVIDER_PRECONDITION_FAILED",
       );
     }
-    await this.enqueueBuiltInCalendarMutation(persisted, "update");
+    await this.admitBuiltInCalendarMutation(persisted, "update");
     await this.syncCalendarReminderPlans([persisted]);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
@@ -7081,7 +7219,7 @@ export class CalendarService extends Service {
         "PROVIDER_PRECONDITION_FAILED",
       );
     }
-    await this.enqueueBuiltInCalendarMutation(event, "delete");
+    await this.admitBuiltInCalendarMutation(event, "delete");
     await this.deleteAvailabilityReservationsForParentIds([event.id]);
     await this.deleteCalendarReminderPlansForEvents([event.id]);
     await reconcileMeetingAutoJoin({

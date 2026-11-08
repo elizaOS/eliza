@@ -424,11 +424,33 @@ export class LinkedCalendarRepository {
     return rows[0] ? parseRecord(rows[0]) : null;
   }
 
-  async listActionable(agentId: string): Promise<LinkedCalendarEventRecord[]> {
+  async listActionable(
+    agentId: string,
+    states: readonly ("dirty" | "clean")[] = ["dirty", "clean"],
+  ): Promise<LinkedCalendarEventRecord[]> {
+    if (states.length === 0) return [];
     const rows = await executeRawSql(
       this.runtime,
       `SELECT * FROM app_calendar.linked_calendar_events
-       WHERE agent_id = ${sqlQuote(agentId)} AND state IN ('dirty', 'clean')
+       WHERE agent_id = ${sqlQuote(agentId)}
+         AND state IN (${states.map((state) => sqlQuote(state)).join(", ")})
+       ORDER BY updated_at, id`,
+    );
+    return rows.map(parseRecord);
+  }
+
+  async listActionableForLocalEvents(
+    agentId: string,
+    localEventIds: readonly string[],
+    states: readonly ("dirty" | "clean")[] = ["dirty", "clean"],
+  ): Promise<LinkedCalendarEventRecord[]> {
+    if (localEventIds.length === 0 || states.length === 0) return [];
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_calendar.linked_calendar_events
+       WHERE agent_id = ${sqlQuote(agentId)}
+         AND state IN (${states.map((state) => sqlQuote(state)).join(", ")})
+         AND local_event_id IN (${localEventIds.map((id) => sqlQuote(id)).join(", ")})
        ORDER BY updated_at, id`,
     );
     return rows.map(parseRecord);

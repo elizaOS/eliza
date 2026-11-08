@@ -2022,6 +2022,64 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       .toBe("delete");
   });
 
+  it("saves a built-in event when the linked destination cannot be verified or admitted", async () => {
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const initial = await controls.read();
+    const selected = await controls.selectDestination(initial.revision, {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    });
+    await controls.resume(selected.revision);
+    const reportError = vi.fn();
+    const scoped = new CalendarService({
+      ...runtime,
+      reportError,
+    } as unknown as IAgentRuntime);
+    // The disconnected gate makes destination verification fail at dispatch.
+    scoped.setGate(gate());
+    const created = await scoped.createCalendarEventMutation(INTERNAL_URL, {
+      title: "School pickup",
+      startAt: "2026-08-12T19:00:00.000Z",
+      endAt: "2026-08-12T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "school-pickup-unverified",
+    });
+    expect(created.event?.title).toBe("School pickup");
+    expect(reminderPlans).toHaveLength(1);
+    expect(
+      (
+        await pg.query(
+          "SELECT pending_operation FROM app_calendar.linked_calendar_events",
+        )
+      ).rows,
+    ).toEqual([{ pending_operation: "create" }]);
+    await expect
+      .poll(() => reportError.mock.calls.map(([scope]) => scope))
+      .toContain("calendar:linked-active-sync-destination");
+
+    const admission = vi
+      .spyOn(LinkedCalendarRepository.prototype, "getByLocalEvent")
+      .mockRejectedValueOnce(new Error("Linked table unavailable"));
+    try {
+      const second = await scoped.createCalendarEventMutation(INTERNAL_URL, {
+        title: "Dentist",
+        startAt: "2026-08-13T19:00:00.000Z",
+        endAt: "2026-08-13T20:00:00.000Z",
+        timeZone: "America/New_York",
+        idempotencyKey: "dentist-admission-failure",
+      });
+      expect(second.event?.title).toBe("Dentist");
+      expect(reminderPlans).toHaveLength(2);
+      expect(reportError).toHaveBeenCalledWith(
+        "calendar:linked-sync-admission",
+        expect.any(Error),
+        { eventId: second.event?.id },
+      );
+    } finally {
+      admission.mockRestore();
+    }
+  });
+
   it.each(["read", "write"])(
     "handles a %s failure without losing dispatch safety",
     async (failureAt) => {
