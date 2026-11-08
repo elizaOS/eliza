@@ -1,0 +1,30 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+    "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/agent-backup-restore-coordinator.pglite.test.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-restore-cleanup.mjs",
+  "bounds": "Three fixed terminal operations, page size two, and two completed cycles; two operations lack proof permanently and the third can settle.",
+  "limitations": [
+    "Row locks select distinct operations and the database clock places selected operations after existing unselected work before remote I/O.",
+    "No unbounded backlog, new arrivals, worker availability, unbounded progress or implementation refinement is proved."
+  ],
+  "cases": [
+    {
+      "name": "bounded-rotation",
+      "main": "restore_cleanup_rotation",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "temporal": [
+        "RecoverableOperationFinishes"
+      ],
+      "maxSteps": 20,
+      "samples": 1000
+    }
+  ],
+  "fairness": "The finite fixed backlog completes when page selection, each selected failure/success action and cycle completion are weakly fair. The existing database-clock ordering assumption is required."
+}
