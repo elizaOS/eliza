@@ -261,7 +261,6 @@ async function hydrateVertexTuningJob(job: VertexTuningJobRecord): Promise<Verte
   const remote = requireVertexObservation(payload, job.vertex_job_name);
   const identity = requireVertexJobName(remote.name);
   if (
-    identity.project !== job.project_id ||
     identity.region !== job.region ||
     remote.state !== job.status ||
     (job.provider_update_time !== null &&
@@ -395,10 +394,12 @@ export class VertexModelRegistryService {
     const owner = normalizeScopeOwner(input);
     const remote = requireVertexObservation(input.remoteJob, input.vertexJobName);
     const identity = requireVertexJobName(remote.name);
-    if (identity.project !== input.projectId || identity.region !== input.region)
+    // This trusted coordinator supplies the provider-assigned name. projectId
+    // is immutable request provenance, not proof of ID/number alias equality.
+    if (identity.region !== input.region)
       return vertexObservationError(
         "VERTEX_OBSERVATION_IDENTITY",
-        "Submitted Vertex job differs from its original project",
+        "Submitted Vertex job differs from its original region",
       );
     if (
       input.recommendedModelId &&
@@ -504,10 +505,12 @@ export class VertexModelRegistryService {
       .limit(1);
     if (!job) return null;
     const identity = requireVertexJobName(job.vertex_job_name);
-    if (identity.project !== job.project_id || identity.region !== job.region)
+    // Refresh the exact saved provider name; project_id retains the original
+    // request spelling and remains part of the owner CAS below.
+    if (identity.region !== job.region)
       return vertexObservationError(
         "VERTEX_RECEIPT_INTEGRITY",
-        "Stored Vertex job has inconsistent project authority",
+        "Stored Vertex job has inconsistent region authority",
       );
     // Read the immutable current generation before taking the SQL lock. Reuse
     // it only if the locked receipt still matches; legacy/changed rows recover

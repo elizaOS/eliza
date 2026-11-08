@@ -268,10 +268,12 @@ export async function createTuningJob(config: VertexTuningConfig): Promise<Creat
     );
   const job = requireVertexObservation(raw, raw.name);
   const identity = requireVertexJobName(job.name);
-  if (identity.project !== config.projectId || identity.region !== region)
+  // The authenticated response to this project's POST assigns the canonical
+  // job name. Google can use a project number where configuration used its ID.
+  if (identity.region !== region)
     return vertexObservationError(
       "VERTEX_OBSERVATION_IDENTITY",
-      "Created Vertex job differs from the requested project or region",
+      "Created Vertex job differs from the requested region",
     );
 
   return {

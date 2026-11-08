@@ -2,6 +2,8 @@
 // precede the locked applyObservation transaction; strict hydration follows it.
 // Versions are exact provider update timestamp ranks, including sub-millisecond order.
 // completion identifies the first terminal observation, not provider endTime.
+// Resource tokens denote the exact provider-associated names. Their association
+// with the requested job is trusted, not inferred from project ID/number spelling.
 module VertexJobObservation {
   const ForeignModel: bool
   type Observation = { version: int, state: str, resource: int }

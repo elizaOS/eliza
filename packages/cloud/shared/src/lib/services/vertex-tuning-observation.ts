@@ -92,7 +92,7 @@ export function vertexTunedResources(job: TuningJob): {
   endpoint: string | null;
   model: string | null;
 } {
-  const owner = requireVertexJobName(job.name);
+  requireVertexJobName(job.name);
   const endpoint = job.tunedModel?.endpoint ?? job.tunedModelEndpointName ?? null;
   const model = job.tunedModel?.model ?? null;
   if (
@@ -104,29 +104,23 @@ export function vertexTunedResources(job: TuningJob): {
       "VERTEX_OBSERVATION_INVALID",
       "Conflicting Vertex endpoint identities",
     );
-  const prefix = `projects/${owner.project}/locations/${owner.region}/`;
+  // The authenticated exact-job response establishes resource association.
+  // Neither project ID/number spelling nor the default upload region proves
+  // that association. Retain the full names without guessing or rewriting.
   if (
     endpoint !== null &&
-    (!endpoint.startsWith(`${prefix}endpoints/`) ||
-      !/^projects\/[A-Za-z0-9_-]+\/locations\/[A-Za-z0-9_-]+\/endpoints\/[A-Za-z0-9_-]+$/.test(
-        endpoint,
-      ))
+    !/^projects\/[A-Za-z0-9_-]+\/locations\/[A-Za-z0-9_-]+\/endpoints\/[A-Za-z0-9_-]+$/.test(
+      endpoint,
+    )
   )
-    return vertexObservationError(
-      "VERTEX_OBSERVATION_INVALID",
-      "Vertex endpoint differs from the original job authority",
-    );
+    return vertexObservationError("VERTEX_OBSERVATION_INVALID", "Invalid Vertex endpoint identity");
   if (
     model !== null &&
-    (!model.startsWith(`${prefix}models/`) ||
-      !/^projects\/[A-Za-z0-9_-]+\/locations\/[A-Za-z0-9_-]+\/models\/[A-Za-z0-9_-]+(?:@[A-Za-z0-9_-]+)?$/.test(
-        model,
-      ))
+    !/^projects\/[A-Za-z0-9_-]+\/locations\/[A-Za-z0-9_-]+\/models\/[A-Za-z0-9_-]+(?:@[A-Za-z0-9_-]+)?$/.test(
+      model,
+    )
   )
-    return vertexObservationError(
-      "VERTEX_OBSERVATION_INVALID",
-      "Vertex model differs from the original job authority",
-    );
+    return vertexObservationError("VERTEX_OBSERVATION_INVALID", "Invalid Vertex model identity");
   return { endpoint, model };
 }
 

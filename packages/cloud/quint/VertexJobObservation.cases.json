@@ -26,11 +26,13 @@
     "recordSubmittedJob has no discovered live caller; its original identity/replay guard is tested, while remote job creation, assignment activation and deletion of the resulting model are outside this refresh model.",
     "Provider updateTime orders observations. completed_at records first local terminal acceptance using the primary database clock; completed_provider_time remains null until an actual provider endTime is retained, and keeps its full nanosecond precision. The model completion rank denotes first terminal acceptance, not a fabricated provider completion time.",
     "Updated service writers own the observation revision protocol. The schema checks receipt shape but does not fence legacy deployed writers; coordinate their rollout before claiming this authority. Normal refresh reuses a pre-read immutable receipt only after the locked revision/version/digest/pointer tuple matches; legacy or changed receipts are reread under the lock.",
-    "Only SUCCEEDED, FAILED, CANCELLED and EXPIRED are absorbing terminal states, following the TuningJob endTime contract. PARTIALLY_SUCCEEDED is retained verbatim and remains non-absorbing; it does not publish a model or establish completion."
+    "Only SUCCEEDED, FAILED, CANCELLED and EXPIRED are absorbing terminal states, following the TuningJob endTime contract. PARTIALLY_SUCCEEDED is retained verbatim and remains non-absorbing; it does not publish a model or establish completion.",
+    "The exact provider-assigned job name and createTime bind observations. project_id is immutable original request provenance, not proof that a project ID and number are equivalent. Resource association comes from the authenticated response to that exact job request (or the trusted submission coordinator); resource syntax and the original job region are checked; assigned resource locations are retained without inventing a same-region requirement, and terminal/published names are retained exactly. Google provider truth and project alias mapping are not proved, no alias rewriting or extra permissions/API calls are added, and early nonterminal resource identities are not assumed immutable."
   ],
   "providerContract": [
     "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/projects.locations.tuningJobs",
-    "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/JobState"
+    "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/JobState",
+    "https://google.aip.dev/cloud/2510"
   ],
   "cases": [
     {

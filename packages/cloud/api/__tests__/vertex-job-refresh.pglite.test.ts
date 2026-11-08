@@ -9,9 +9,13 @@ import {
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { testOutputPath } from "../../../scripts/lib/test-output";
+import { createTuningJob } from "../../shared/src/lib/services/vertex-tuning";
 import { requireVertexObservation } from "../../shared/src/lib/services/vertex-tuning-observation";
 import {
   type RuntimeR2Bucket,
@@ -52,6 +56,18 @@ const epoch = Date.parse("2026-11-01T00:00:00Z");
 let jobId = "";
 let provider: () => Promise<Response>;
 const fetchSpy = spyOn(globalThis, "fetch");
+
+function setControlledFetch(
+  implementation: (...args: Parameters<typeof fetch>) => Promise<Response>,
+) {
+  fetchSpy.mockImplementation(
+    Object.assign(implementation, {
+      preconnect: () => {
+        throw new Error("NETWORK_FORBIDDEN");
+      },
+    }),
+  );
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -412,9 +428,11 @@ test("invalid provider identity, timestamp and unknown state leave the stored jo
     { state: "JOB_STATE_SUCCEEDED", tunedModel: {} },
     {
       tunedModel: {
-        endpoint: "projects/foreign/locations/us-central1/endpoints/wrong",
+        endpoint:
+          "projects/controlled/locations/us-central1/endpoints/wrong/extra",
       },
     },
+    { tunedModel: { endpoint: "https://unrelated.invalid/endpoint" } },
   ]) {
     provider = async () =>
       Response.json(await raw("JOB_STATE_RUNNING", 1, extra));
@@ -624,4 +642,161 @@ test("submitted job replay preserves original ownership and rejects replacement 
   expect(
     (await dbWrite.select().from(vertexTuningJobs))[0].organization_id,
   ).toBe(user.organization_id);
+});
+
+test("canonical job names retain configured project provenance during refresh", async () => {
+  const canonicalName =
+    "projects/123456789012/locations/us-central1/tuningJobs/original";
+  const initial = await raw("JOB_STATE_RUNNING", 0, { name: canonicalName });
+  await dbWrite
+    .update(vertexTuningJobs)
+    .set({
+      vertex_job_name: canonicalName,
+      last_remote_payload: initial,
+    })
+    .where(eq(vertexTuningJobs.id, jobId));
+  const observation = await raw("JOB_STATE_RUNNING", 1, {
+    name: canonicalName,
+  });
+  setControlledFetch(async (input) => {
+    expect(String(input)).toBe(
+      `https://aiplatform.googleapis.com/v1/${canonicalName}`,
+    );
+    return Response.json(observation);
+  });
+
+  const result = await app.request(`/jobs?jobId=${jobId}`);
+  expect(result.status).toBe(200);
+  const body = record(await result.json());
+  expect(body.job).toEqual(observation);
+  expect(record(body.jobRecord).project_id).toBe("controlled");
+  expect(record(body.jobRecord).vertex_job_name).toBe(canonicalName);
+});
+
+test("provider-associated numeric resources bind once to the exact ID-form job", async () => {
+  const resources = {
+    endpoint:
+      "projects/123456789012/locations/europe-west1/endpoints/provider-endpoint",
+    model:
+      "projects/123456789012/locations/europe-west1/models/provider-model@1",
+  };
+  const observation = await raw("JOB_STATE_SUCCEEDED", 1, {
+    tunedModel: resources,
+  });
+  provider = async () => Response.json(observation);
+  const first = await registry.syncJobStatus({ jobId, viewer });
+  expect(first?.job.vertex_job_name).toBe(jobName);
+  expect(first?.job.project_id).toBe("controlled");
+  expect(first?.tunedModel?.vertex_model_id).toBe(resources.endpoint);
+  expect(first?.job.last_remote_payload).toEqual(observation);
+
+  provider = async () =>
+    Response.json(
+      await raw("JOB_STATE_SUCCEEDED", 2, {
+        tunedModel: {
+          ...resources,
+          endpoint: `${resources.endpoint}-replacement`,
+        },
+      }),
+    );
+  await expect(registry.syncJobStatus({ jobId, viewer })).rejects.toMatchObject(
+    {
+      code: "VERTEX_TERMINAL_CONFLICT",
+    },
+  );
+  expect(
+    (await dbWrite.select().from(vertexTuningJobs))[0].last_remote_payload,
+  ).toEqual(observation);
+  expect(
+    (await dbWrite.select().from(vertexTunedModels))[0].vertex_model_id,
+  ).toBe(resources.endpoint);
+});
+
+test("submitted canonical names preserve immutable request project provenance", async () => {
+  const canonicalName =
+    "projects/123456789012/locations/us-central1/tuningJobs/canonical-submission";
+  const submission = {
+    vertexJobName: canonicalName,
+    projectId: "controlled",
+    region: "us-central1",
+    displayName: "controlled-model",
+    baseModel: "controlled-base-model",
+    slot: "response" as const,
+    scope: "organization" as const,
+    organizationId: user.organization_id,
+    createdByUserId: user.id,
+    trainingDataPath: "controlled-training.jsonl",
+    remoteJob: requireVertexObservation(
+      await raw("JOB_STATE_RUNNING", 0, { name: canonicalName }),
+      canonicalName,
+    ),
+  };
+  const first = await registry.recordSubmittedJob(submission);
+  expect(first.job.vertex_job_name).toBe(canonicalName);
+  expect(first.job.project_id).toBe("controlled");
+  expect((await registry.recordSubmittedJob(submission)).job.id).toBe(
+    first.job.id,
+  );
+  await expect(
+    registry.recordSubmittedJob({
+      ...submission,
+      projectId: "different-request-project",
+    }),
+  ).rejects.toMatchObject({ code: "VERTEX_SUBMISSION_CONFLICT" });
+  await expect(
+    registry.recordSubmittedJob({ ...submission, region: "europe-west1" }),
+  ).rejects.toMatchObject({ code: "VERTEX_OBSERVATION_IDENTITY" });
+});
+
+test("creation retains the provider-assigned name from the configured project request", async () => {
+  const directory = testOutputPath("vertex-create-boundary");
+  await mkdir(directory, { recursive: true });
+  const temporary = await mkdtemp(path.join(directory, "run-"));
+  const trainingDataPath = path.join(temporary, "training.jsonl");
+  const training =
+    '{"contents":[{"role":"user","parts":[{"text":"complete training record"}]}]}\n';
+  await writeFile(trainingDataPath, training);
+  const canonicalName =
+    "projects/123456789012/locations/us-central1/tuningJobs/created";
+  let observation = await raw("JOB_STATE_PENDING", 0, {
+    name: canonicalName,
+  });
+  const requests: string[] = [];
+  setControlledFetch(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url.href);
+    expect(init?.method).toBe("POST");
+    if (url.hostname === "storage.googleapis.com") {
+      expect(url.pathname).toBe("/upload/storage/v1/b/controlled-bucket/o");
+      expect(await new Response(init?.body).text()).toBe(training);
+      return Response.json({});
+    }
+    expect(url.href).toBe(
+      "https://us-central1-aiplatform.googleapis.com/v1/projects/controlled/locations/us-central1/tuningJobs",
+    );
+    return Response.json(observation);
+  });
+  try {
+    const config: Parameters<typeof createTuningJob>[0] = {
+      projectId: "controlled",
+      region: "us-central1",
+      gcsBucket: "controlled-bucket",
+      baseModel: "gemini-2.5-flash",
+      trainingDataPath,
+      displayName: "controlled-model",
+      accessToken: "controlled-create-token",
+    };
+    const created = await createTuningJob(config);
+    expect(created.job.name).toBe(canonicalName);
+    expect(requests).toHaveLength(2);
+    observation = await raw("JOB_STATE_PENDING", 0, {
+      name: "projects/123456789012/locations/europe-west1/tuningJobs/created",
+    });
+    await expect(createTuningJob(config)).rejects.toMatchObject({
+      code: "VERTEX_OBSERVATION_IDENTITY",
+    });
+    expect(requests).toHaveLength(4);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
 });

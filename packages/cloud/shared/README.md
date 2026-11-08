@@ -406,3 +406,6 @@ The local terminal marker and optional provider end time remain separate. Existi
 provider creation and assignment authorization remain separate protocols.
 Coordinate all deployed Vertex writers before relying on the new observation
 authority; the migration does not fence an old deployed writer.
+The exact provider-assigned job name binds refreshes. The configured project stays
+request provenance; project ID/number spelling is not an alias proof. Associated
+resources come from that job's authenticated response and terminal names stay exact.
