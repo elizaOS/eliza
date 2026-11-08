@@ -16,20 +16,30 @@
       "One host and one already-saved credential receipt. Public operations are modeled at quiescent boundaries, with failures before and after durable/remote effects and five explicit cancel-versus-resume await cuts. Other asynchronous interleavings remain outside this projection.",
       "Real implementation conformance replays generated Quint traces through private filesystem receipts, loopback HTTP and the actual native-host module. Server proof verification and atomic acknowledgement/revocation are assumed. Restart reconstructs the host against unchanged persisted data; process death, fsync and multi-process coordination are outside this checker.",
       "Progress assumes weak fairness of a successful complete cancellation retry. Permanent outages, missing retries and expired unacknowledged enrollment have no completion guarantee.",
-      "Initial challenge/PKCE issuance, MFA, Google OAuth, verified-owner activation, billing authority, account methods, and replacement credentials need separate models. A default cancel after the activation receipt has been cleared preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
+      "NativeGoogleAdmission covers the bounded Google callback and exchange boundary. Email and phone challenge issuance, MFA completion, verified-owner activation, billing authority, account methods and replacement credentials need separate models. A default cancel after activation receipt removal preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
     ]
   },
   {
     "id": "auth.NativeEnrollmentAdmissionAndAuthority",
-    "model": null,
+    "model": "packages/auth/quint/NativeGoogleAdmission.qnt",
     "sources": [
       "packages/auth/native-host/cloud-enrollment.mjs",
       "packages/auth/native-host/account-methods.mjs"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "TypeOK",
+      "OneExchangePerAttempt",
+      "InvalidShapeOrStateKeepsChallenge",
+      "MatchedFailuresConsumeWithoutDispatch",
+      "ExchangeUsesOwnVerifier",
+      "CancelledExchangeCannotRestoreChallenge"
+    ],
+    "status": "partial",
     "limitations": [
-      "Enrollment challenge/MFA and Google state/PKCE single-use redemption, verified owner activation, ephemeral account/billing authority, one-use account mutation reviews and replacement credentials remain to be modeled."
+      "Two Google attempts, one host, one in-flight exchange and one cancellation. Start represents a successful app configuration and an empty active/pending credential slot. State and verifier are opaque identities. Expiry is an explicit event before exchange dispatch.",
+      "Malformed return shape, foreign state, matched malformed code, matched failure link and matched valid code represent native callback branches. The model ends at exchange failure or MFA admission. Browser navigation, provider code cryptography, MFA completion, account methods, billing authority and credential activation are separate.",
+      "Native host tests check the parser and attempt behavior. The loopback check verifies the PKCE binding and the typed cancellation fence after a real HTTP exchange is already pending. The model does not prove provider token validation.",
+      "Email and phone challenge issuance, verified-owner activation, ephemeral account and billing authority, one-use account mutation reviews and replacement credentials remain separate."
     ]
   },
   {
