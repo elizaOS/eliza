@@ -17,8 +17,8 @@ The root package pins Quint 0.33.1. Install with `bun install`. Full checking
 requires Java 21. Reports and counterexamples go to `test-results/quint/`.
 See the [model workflow](../../scripts/quint/README.md).
 
-CLI and mobile authentication, job execution and container authority conformance
-require a real PostgreSQL database. Set
+CLI and mobile authentication, job execution, container authority and document
+publication conformance require a real PostgreSQL database. Set
 `INFERENCE_POLICY_TEST_POSTGRES_URL` to an existing isolated loopback database
 with a `qa_*` role, or start a dedicated local container.
 
@@ -31,8 +31,10 @@ bun run test:quint
 docker stop eliza-quint-postgres
 ```
 
-The checks create and remove their own schemas. Missing database configuration
-fails authentication conformance. PR and develop Quint jobs provide this service.
+The authentication checks create and remove their own schemas. Document checks
+create and drop unique `quint_document_*` databases, so their QA role needs
+`CREATEDB`. Missing database configuration fails these conformance checks.
+PR and develop Quint jobs provide this service.
 
 These finite models do not establish TypeScript refinement, provider correctness
 or whole-backend coverage. Each sidecar states its safety properties, supported

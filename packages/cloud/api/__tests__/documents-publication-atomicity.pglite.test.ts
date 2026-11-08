@@ -5,8 +5,20 @@ import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
+const postgresDatabase = process.env.DOCUMENT_PUBLICATION_TEST_POSTGRES_URL;
+if (postgresDatabase) {
+  const parsed = new URL(postgresDatabase);
+  if (
+    !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) ||
+    !parsed.username.startsWith("qa_") ||
+    !/^\/quint_document_[a-f0-9]+$/.test(parsed.pathname)
+  )
+    throw new Error(
+      "Document PostgreSQL tests require an isolated local qa_* quint_document_* database",
+    );
+}
+process.env.DATABASE_URL = postgresDatabase ?? "pglite://memory";
+process.env.TEST_DATABASE_URL = postgresDatabase ?? "pglite://memory";
 process.env.NODE_ENV = "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
@@ -203,3 +215,17 @@ test("a foreign document scope cannot delete the parent or its fragments", async
   ).toBe(false);
   expect(await graph()).toEqual(before);
 });
+
+// The PostgreSQL interleaving suite reuses these exact six tests and the same
+// production route/repository fixture. Authentication remains a supplied owner.
+export {
+  app,
+  createDocumentRecord,
+  dbWrite,
+  graph,
+  input,
+  memoriesRepository,
+  memoryTable,
+  scope,
+  user,
+};

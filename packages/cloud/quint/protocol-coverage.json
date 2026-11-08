@@ -869,7 +869,9 @@
       "packages/cloud/api/v1/documents/_worker-documents.ts",
       "packages/cloud/api/__tests__/documents-publication-atomicity.pglite.test.ts",
       "packages/cloud/quint/check-document-publication.mjs",
-      "packages/scripts/lib/junit-summary.ts"
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
+      "plugins/plugin-sql/src/schema/memory.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -879,7 +881,8 @@
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Content address matches complete bytes | Publication follows durable object commit | Untrusted reads preserve SSRF and owner boundaries",
       "Abstract states: admitted, uploading, validated, committed, published, deleted, failed",
-      "The document parent/fragment publication and deletion subprotocol has a bounded transactional model and real database regressions. Object-provider uploads, exact-read completion, multipart cancellation/settlement, account deletion and BLOB cleanup remain separate unmodeled protocols."
+      "The document parent/fragment publication and deletion subprotocol has a bounded transactional model and real database regressions. Object-provider uploads, exact-read completion, multipart cancellation/settlement, account deletion and BLOB cleanup remain separate unmodeled protocols.",
+      "Selected real PostgreSQL interleavings use independent backend connections; the Quint proof still abstracts committed transactions and does not establish the full database-lock graph."
     ]
   },
   {
@@ -1885,7 +1888,9 @@
       "packages/cloud/api/v1/documents/[id]/route.ts",
       "packages/cloud/api/__tests__/documents-publication-atomicity.pglite.test.ts",
       "packages/cloud/quint/check-document-publication.mjs",
-      "packages/scripts/lib/junit-summary.ts"
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
+      "plugins/plugin-sql/src/schema/memory.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -1894,7 +1899,8 @@
       "Document and fragment publication or deletion commit atomically. Rollback preserves every previously committed row. PostgreSQL transaction isolation and the parent row lock are assumed; general TypeScript/SQL refinement is not proved.",
       "The caller has authenticated and resolved the scope. This model does not prove authentication, account deletion fencing, R2 upload/cleanup, SSRF, indexing consumers, arbitrary text bytes or multi-document request atomicity.",
       "Real PGlite tests exercise complete text and retained metadata, rollback after a prior fragment batch, throwing/suppressed parent deletion failures, HTTP deletion and foreign-scope refusal. They do not establish the full PostgreSQL lock graph.",
-      "Pending database transactions settle only under weak fairness of their commit/rollback continuations. No provider, scheduler or network availability is assumed."
+      "Pending database transactions settle only under weak fairness of their commit/rollback continuations. No provider, scheduler or network availability is assumed.",
+      "Selected real PostgreSQL interleavings use independent backend connections; the Quint proof still abstracts committed transactions and does not establish the full database-lock graph."
     ]
   }
 ]
