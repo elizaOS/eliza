@@ -140,9 +140,9 @@ identifiers, channels, icon and launch actions:
   tap", an Ask whose notice is gone settles into a plain open, and consumption needs the exact pending
   tap and the foreground. Retain/release run on the UI thread; everything else on one storage worker.
   A capture refused for an applying or unknown receipt first rechecks the shown notice
-  (`NoticeDelivery.recheck`), since a tap proves delivery. A pending tap whose notice was withdrawn,
-  failed or is gone settles on its own, and `discard(token)` settles one whose target is
-  definitively unavailable, so neither hides older taps. `NotificationsHostPlugin` does not
+  (`NoticeDelivery.recheck`), since a tap proves delivery; a tap still refused is dropped. A
+  pending tap whose notice was withdrawn, failed or is gone settles on its own, and
+  `discard(token)` settles one whose target is definitively unavailable, so neither hides older taps. `NotificationsHostPlugin` does not
   capture a launch intent replayed from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), so a
   cancelled Ask never reopens after process death; `consumeWorkflowTap({ token, unavailable: true })`
   calls `discard`.

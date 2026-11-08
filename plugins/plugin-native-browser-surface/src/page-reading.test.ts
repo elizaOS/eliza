@@ -194,6 +194,22 @@ describe("credential refusal", () => {
         ),
       ),
     ).toBe(true);
+    // pageSourceText passes a parsed fragment: its footer inputs still refuse.
+    const fragment = (children: Node[]) =>
+      ({ nodeType: 11, childNodes: children }) as unknown as Node;
+    expect(
+      sensitiveReadingDocument(
+        fragment([
+          element("MAIN", {}, [text("Garden journal")]),
+          element("FOOTER", {}, [element("INPUT", { type: "password" })]),
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      sensitiveReadingDocument(
+        fragment([element("MAIN", {}, [text("Garden journal")])]),
+      ),
+    ).toBe(false);
     expect(
       sensitiveReadingDocument(page([text("Your verification code is ready")])),
     ).toBe(true);

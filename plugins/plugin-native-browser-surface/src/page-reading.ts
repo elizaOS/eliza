@@ -113,25 +113,33 @@ export function sensitiveReadingDocument(root: Node): boolean {
   while (pending.length) {
     if (++inspected > 12000) return true;
     const node = pending.pop() as Node;
-    if (node.nodeType !== 1) continue;
-    const element = node as Element;
-    const tag = element.tagName.toUpperCase();
-    if (SKIPPED.includes(tag)) continue;
-    if (tag === "INPUT") {
-      const type = (element.getAttribute("type") || "").toLowerCase();
-      const labels = ["autocomplete", "id", "name", "aria-label", "placeholder"]
-        .map((attr) => normalize(element.getAttribute(attr) || ""))
-        .join(" ");
-      if (type === "password" || credentialField.test(labels)) return true;
+    // A document or fragment root is walked into; text has no children.
+    if (node.nodeType === 1) {
+      const element = node as Element;
+      const tag = element.tagName.toUpperCase();
+      if (SKIPPED.includes(tag)) continue;
+      if (tag === "INPUT") {
+        const type = (element.getAttribute("type") || "").toLowerCase();
+        const labels = [
+          "autocomplete",
+          "id",
+          "name",
+          "aria-label",
+          "placeholder",
+        ]
+          .map((attr) => normalize(element.getAttribute(attr) || ""))
+          .join(" ");
+        if (type === "password" || credentialField.test(labels)) return true;
+      }
+      if (
+        !article &&
+        (tag === "ARTICLE" ||
+          tag === "MAIN" ||
+          element.getAttribute("role") === "main")
+      )
+        article = node;
+      if (!body && tag === "BODY") body = node;
     }
-    if (
-      !article &&
-      (tag === "ARTICLE" ||
-        tag === "MAIN" ||
-        element.getAttribute("role") === "main")
-    )
-      article = node;
-    if (!body && tag === "BODY") body = node;
     if (node.childNodes.length + pending.length > 12000) return true;
     for (let i = node.childNodes.length - 1; i >= 0; i--)
       pending.push(node.childNodes[i]);
