@@ -222,7 +222,10 @@ export function consumePlanRequest(
   let state = buckets.get(key);
   if (state) {
     buckets.delete(key);
-    const elapsed = Math.max(0, now - state.at) / 1_000;
+    // Retain the last refill boundary when the wall clock moves backwards.
+    // Reusing the earlier timestamp would credit that interval a second time.
+    const refillAt = Math.max(now, state.at);
+    const elapsed = (refillAt - state.at) / 1_000;
     state.burst = Math.min(
       limits.burst.capacity,
       state.burst + elapsed * limits.burst.refillPerSecond,
@@ -231,7 +234,7 @@ export function consumePlanRequest(
       limits.sustained.capacity,
       state.sustained + elapsed * limits.sustained.refillPerSecond,
     );
-    state.at = now;
+    state.at = refillAt;
   } else {
     if (buckets.size >= MAX_BUCKETS) {
       const oldest = buckets.keys().next().value;
@@ -253,7 +256,7 @@ export function consumePlanRequest(
     allowed: false,
     plan,
     bucket,
-    retryAfterMs: Math.max(burstWait, sustainedWait),
+    retryAfterMs: Math.max(0, state.at - now) + Math.max(burstWait, sustainedWait),
     limit: limits[bucket],
     selected: config.selected,
   };

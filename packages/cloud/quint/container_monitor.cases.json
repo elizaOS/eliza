@@ -5,7 +5,9 @@
     "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql",
     "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",
     "packages/cloud/shared/src/db/migrations/0265_compute_billing_recovery.sql",
-    "packages/cloud/quint/container-conformance.mjs"
+    "packages/cloud/quint/container-conformance.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/scripts/lib/junit-summary.ts"
   ],
   "bounds": {
     "assumptions": [
@@ -39,5 +41,5 @@
       ]
     }
   ],
-  "conformance": "packages/cloud/quint/check-container-monitor.mjs"
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs"
 }
