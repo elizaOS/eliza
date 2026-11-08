@@ -346,8 +346,8 @@
     ],
     "status": "partial",
     "limitations": [
-      "Two port identities, two replacements, two reads, two serial sign-out attempts and one teardown. The proof covers current read success or failure, late replies, sign-out refusal and acknowledgement, and host reply fairness.",
-      "The mounted implementation suite controls the native port and runs the actual account hook. A delayed regular read error reproduces the before-fix availability regression.",
+      "Two port identities, two replacements, two reads, two serial sign-out attempts and one teardown. The proof covers current read success or failure, late replies, sign-out refusal and acknowledgement, and the gap between host acknowledgement and renderer publication.",
+      "The mounted implementation suite controls the native port and runs the actual account hook. A delayed read error and an owner replacement queued between the sign-out ownership check and publication reproduce the before-fix regressions.",
       "Web and remote verification, explicit activation and event delivery, native credential persistence, poll interval scheduling and unbounded histories remain separate."
     ]
   }

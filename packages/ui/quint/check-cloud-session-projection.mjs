@@ -15,6 +15,7 @@ const scenarios = [
   "does not publish a late account read from a replaced native owner",
   "does not mark a verified replacement account unavailable when the previous read rejects",
   "retains account state when native retirement refuses and clears it only after acknowledgement",
+  "does not publish an old sign-out acknowledgement across a queued owner replacement",
   "routes sign-in activation through the supplied installed credential owner",
 ];
 
