@@ -4,8 +4,8 @@
  * state — from the local agent API or the runtime's own stores — and formats a
  * compact, agent-readable brief for a given `ConversationScope`.
  *
- * A leaf module by design: it depends only on `@elizaos/core`, `@elizaos/core`,
- * and API-layer types, never on providers or services. Both the page-scoped
+ * A leaf module by design: it depends only on `@elizaos/core`, API-layer types
+ * and the self-API caller, never on providers or services. Both the page-scoped
  * context provider (`page-scoped-context.ts`) and the proactive-interaction
  * decider (`../services/proactive-interaction-decider.ts`) consume it, so keeping
  * it a leaf avoids a providers ↔ services import cycle (#13587).
@@ -28,10 +28,7 @@ import {
   type RegistryAppInfo,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import {
-  createSelfApiRequestHeaders,
-  resolveSelfApiBaseUrl,
-} from "@elizaos/host/protocol";
+import { callSelfApi } from "../api/self-api.ts";
 
 async function renderCharacterLiveState(
   runtime: IAgentRuntime,
@@ -57,23 +54,29 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 async function fetchLocalJson<T>(
+  runtime: IAgentRuntime,
   path: string,
   timeoutMs = 1500,
 ): Promise<T | null> {
-  // The bearer goes only to this process's own listener, never to guessed
-  // candidate ports where an unrelated local process could capture it.
-  const url = `${resolveSelfApiBaseUrl(process.env)}${path}`;
+  // Over HTTP only to this process's own listener; with no listener the
+  // route runs in process, so the bearer never reaches a port another app
+  // could have bound. The page-scoped provider is OWNER-gated and the
+  // proactive judge is internal, which is what the root bearer granted.
   try {
-    const response = await fetch(url, {
-      headers: createSelfApiRequestHeaders(),
-      signal: AbortSignal.timeout(timeoutMs),
+    const response = await callSelfApi({
+      runtime,
+      path,
+      isAuthorized: () => true,
+      timeoutMs,
     });
-    if (response.ok) return (await response.json()) as T;
+    if (response.status >= 200 && response.status < 300) {
+      return response.body as T;
+    }
   } catch (err) {
     // error-policy:J4 local-API unavailability — an unreachable self-API
     // returns null, which every caller renders as an explicit "unavailable
     // from the … API" line (agent-visible, not silence).
-    logger.debug({ err, url }, "[PageScopedLiveState] local API unreachable");
+    logger.debug({ err, path }, "[PageScopedLiveState] local API unreachable");
   }
   return null;
 }
@@ -130,9 +133,13 @@ async function renderBrowserLiveState(
     return null;
   }
 }
-async function renderAppsLiveState(): Promise<string | null> {
-  const catalogApps =
-    await fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps");
+async function renderAppsLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  const catalogApps = await fetchLocalJson<RegistryAppInfo[]>(
+    runtime,
+    "/api/catalog/apps",
+  );
   if (!catalogApps) {
     return "Live apps state: unavailable from the Apps API.";
   }
@@ -170,11 +177,13 @@ function hasPositiveAmount(value: string | null | undefined): boolean {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed > 0;
 }
-async function renderWalletLiveState(): Promise<string | null> {
+async function renderWalletLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
   const [config, balances, nfts] = await Promise.all([
-    fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
-    fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
-    fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+    fetchLocalJson<WalletConfigStatus>(runtime, "/api/wallet/config"),
+    fetchLocalJson<WalletBalancesResponse>(runtime, "/api/wallet/balances"),
+    fetchLocalJson<WalletNftsResponse>(runtime, "/api/wallet/nfts"),
   ]);
   if (!config && !balances && !nfts) {
     return "Live wallet state: unavailable from the Wallet API.";
@@ -426,13 +435,13 @@ export async function renderLiveStateForScope(
     case "automation-draft":
       return renderAutomationsLiveState(runtime);
     case "page-apps":
-      return renderAppsLiveState();
+      return renderAppsLiveState(runtime);
     case "page-connectors":
     case "page-plugins":
     case "page-settings":
       return null;
     case "page-wallet":
-      return renderWalletLiveState();
+      return renderWalletLiveState(runtime);
     default:
       return null;
   }

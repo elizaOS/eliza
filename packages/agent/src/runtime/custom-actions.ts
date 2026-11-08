@@ -31,10 +31,16 @@ import {
 } from "@elizaos/host";
 import {
   createSelfApiRequestHeaders,
+  isMobilePlatform,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
 
 import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
+import {
+  hasSelfApiTcpListener,
+  resolveSelfApiTcpBaseUrl,
+  SELF_API_UNREACHABLE_TEXT,
+} from "../api/self-api-endpoint.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { loadElizaConfig } from "../config/config.ts";
 
@@ -93,6 +99,13 @@ export function customActionExecutionBlockReason(
   }
   if (shellEnabled === false) {
     return `${handlerType} custom actions need shell access, which is turned off.`;
+  }
+  if (handlerType === "shell") {
+    if (isMobilePlatform()) {
+      return "Shell custom actions are not available on this device.";
+    }
+    // Shell runs through this process's own terminal route over HTTP.
+    if (!hasSelfApiTcpListener()) return SELF_API_UNREACHABLE_TEXT;
   }
   return null;
 }
@@ -1040,25 +1053,26 @@ function buildHandler(
         const timeoutMs =
           resolveTerminalRunLimits().maxDurationMs +
           CUSTOM_ACTION_SHELL_TRANSPORT_GRACE_MS;
+        // No listener of ours: the bearer must not go to a port another app owns.
+        const base = resolveSelfApiTcpBaseUrl(process.env);
+        if (base === null)
+          return { ok: false, output: SELF_API_UNREACHABLE_TEXT };
         let text: string;
         let status: number;
         try {
-          const response = await fetch(
-            `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...createSelfApiRequestHeaders(),
-              },
-              body: JSON.stringify({
-                command,
-                clientId: "runtime-shell-action",
-                captureOutput: true,
-              }),
-              signal: AbortSignal.timeout(timeoutMs),
+          const response = await fetch(`${base}/api/terminal/run`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...createSelfApiRequestHeaders(),
             },
-          );
+            body: JSON.stringify({
+              command,
+              clientId: "runtime-shell-action",
+              captureOutput: true,
+            }),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
           status = response.status;
           text = await readCompleteBodyWithinByteLimit(
             response,

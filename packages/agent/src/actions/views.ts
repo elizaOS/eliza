@@ -16,6 +16,7 @@ import {
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
 import { dispatchApiRoute } from "../api/in-process-api.ts";
+import { hasSelfApiTcpListener } from "../api/self-api-endpoint.ts";
 import { listViews, type ViewRegistryEntry } from "../api/views-registry.ts";
 import { getViewClientScope } from "../runtime/view-client-context.ts";
 import {
@@ -66,10 +67,8 @@ async function deliverViewNavigation({
   const scope = getViewClientScope();
   // Cost: the same owned kernel, no loopback RPC or root-credential identity change.
   // An expired scoped request fails closed in the dispatcher; it never falls back.
-  if (
-    scope?.request ||
-    process.env.ELIZA_LOCAL_AGENT_TRANSPORT === "filesystem-v1"
-  ) {
+  // Without a listener of our own, never send the bearer to the loopback port.
+  if (scope?.request || !hasSelfApiTcpListener()) {
     const response = await dispatchApiRoute({
       runtime,
       inProcess: true,
