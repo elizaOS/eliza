@@ -52,9 +52,13 @@ Full permitted library (other apps' media, as far as Android grants it):
   version and generation; a changed library or revoked access refuses the read instead of
   returning stale rows. Observation runs only while a host view watches.
 - `PermittedMediaReview` – one-shot native review of favorite, Recently deleted and permanent
-  removal for 1–20 items: a native dialog naming every item, then Android's MediaStore write
-  request. Changes apply only to the reviewed revisions after the activity resumes; recreation
-  discards authority and never replays a write. Hosts inject their launch gate.
+  removal for 1–20 items. The owner's own favorite, trash or restore goes straight to Android's
+  favorite or trash request, which names the action and items, and is read back after Android
+  applies it. Permanent removal and agent requests first show a native dialog naming every item,
+  then Android's MediaStore write request, and apply only to the reviewed revisions after the
+  activity resumes. Revisions are checked before Android is asked; recreation discards authority
+  and never replays a write. Hosts inject their launch gate. Revisions carry a SHA-256 digest of
+  the opaque MediaStore version, so their shape is the same on every provider build.
 - `SelectedPhotoCopy` – exact provider-readable bytes of one selected still photo (PNG, JPEG,
   WebP, at most 5 MiB) whose revision survives the whole copy; never a thumbnail and never an
   unredacted-location request.

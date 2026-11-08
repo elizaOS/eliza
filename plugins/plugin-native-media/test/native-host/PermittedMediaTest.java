@@ -1,8 +1,12 @@
 import ai.eliza.plugins.media.MediaLibraryKey;
 import ai.eliza.plugins.media.OwnedMediaConfig;
+import ai.eliza.plugins.media.PermittedMediaChange;
 import ai.eliza.plugins.media.VideoEditSpec;
 
-/** JVM tests of permitted-library identities, video copy rules and host placement. No Android. */
+/**
+ * JVM tests of permitted-library identities and revisions, change review, video copy rules and host
+ * placement. No Android.
+ */
 public final class PermittedMediaTest {
   private static int checks;
   private static void check(boolean value, String label) {
@@ -58,6 +62,47 @@ public final class PermittedMediaTest {
           IllegalArgumentException.class, () -> MediaLibraryKey.parse(invalid), "key " + invalid);
     rejects(IllegalArgumentException.class,
         () -> new MediaLibraryKey("external", 1, false), "aggregate volume");
+
+    // Revisions keep one colon-free prefix whatever MediaStore.getVersion returns. The pattern is
+    // PERMITTED_REVISION in plugin-assistant's photo-library-contract.ts.
+    String permittedRevision = "[a-zA-Z0-9_-]{1,128}(?::[0-9]{1,19}){3,5}";
+    for (String version : new String[] {"17:3f2c9a6e-1b4d-4c8a-9e2f-5a6b7c8d9e0f",
+             "a1b2c3d4e5f60708", "\u00e9:/+="}) {
+      String prefix = MediaLibraryKey.revisionPrefix(version);
+      check(prefix.length() == 43, "digest length " + version);
+      check((prefix + ":1700000000:2048:1700000001:10:11").matches(permittedRevision),
+          "revision shape " + version);
+    }
+    check(!("17:3f2c9a6e-1b4d-4c8a-9e2f-5a6b7c8d9e0f:1700000000:2048:1700000001")
+              .matches(permittedRevision),
+        "a raw version:uuid prefix does not fit the wire shape");
+    String same = MediaLibraryKey.revisionPrefix("17:a");
+    check(same.equals(MediaLibraryKey.revisionPrefix("17:a"))
+            && !same.equals(MediaLibraryKey.revisionPrefix("18:a")),
+        "a new provider version changes the revision");
+
+    // Change review: the owner's reversible change goes straight to Android's request, which names
+    // the action and items; permanent deletion and agent requests keep the app's review.
+    check(!PermittedMediaChange.appReview(false, false), "owner reversible change skips dialog");
+    check(PermittedMediaChange.appReview(false, true), "agent change keeps app dialog");
+    check(PermittedMediaChange.appReview(true, false), "delete forever keeps app dialog");
+    check(PermittedMediaChange.title(3, true, true, false).equals("Favorite 3 items?"), "favorite");
+    check(PermittedMediaChange.title(1, true, false, false).equals("Unfavorite 1 item?"),
+        "unfavorite");
+    check(PermittedMediaChange.title(3, false, true, false)
+              .equals("Move 3 items to Recently deleted?"),
+        "trash");
+    check(PermittedMediaChange.title(3, false, false, false).equals("Restore 3 items?"), "restore");
+    check(PermittedMediaChange.title(1, false, true, true).equals("Delete 1 item forever?"),
+        "delete forever");
+    String reversible = PermittedMediaChange.message("1. a.jpg\n", false);
+    check(reversible.startsWith("1. a.jpg\n")
+            && reversible.contains("Only these items, as they are now, will be changed.")
+            && !reversible.contains("revision"),
+        "reversible body");
+    check(PermittedMediaChange.message("1. a.jpg\n", true)
+              .contains("permanently deleted and cannot be recovered"),
+        "permanent warning");
 
     // Video copy range and geometry rules.
     long duration = 10_040;

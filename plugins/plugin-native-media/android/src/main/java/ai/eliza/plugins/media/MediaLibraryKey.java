@@ -27,6 +27,20 @@ public final class MediaLibraryKey {
       throw new IllegalArgumentException("Invalid media identity");
     return new MediaLibraryKey(parts[1], Long.parseLong(parts[3]), parts[2].equals("v"));
   }
+  /**
+   * Revision prefix for a MediaStore version. The provider documents the version as opaque, and
+   * some builds return {@code version:uuid}; the SHA-256 digest, base64url without padding (43
+   * characters), keeps a revision one colon-free prefix followed by numbers on every build.
+   */
+  public static String revisionPrefix(String providerVersion) {
+    try {
+      return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+          java.security.MessageDigest.getInstance("SHA-256").digest(
+              providerVersion.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    } catch (java.security.NoSuchAlgorithmException missing) {
+      throw new IllegalStateException(missing);
+    }
+  }
   @Override
   public String toString() {
     return "m:" + volume + ":" + (video ? "v" : "i") + ":" + id;

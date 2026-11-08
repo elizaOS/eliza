@@ -262,7 +262,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
         }
         List<PhotoLibraryAccess.Reviewed> items =
             PhotoLibraryAccess.reviewed(call.getArray("items"), PhotoLibraryAccess.REVIEWED);
-        review.request(call, PhotoLibraryAccess.ids(items), PhotoLibraryAccess.revisions(items), change[0], change[1], true);
+        review.request(call, PhotoLibraryAccess.ids(items), PhotoLibraryAccess.revisions(items), change[0], change[1], true, true);
       } catch (Exception unavailable) {
         call.reject("Select current permitted items before review.");
       }

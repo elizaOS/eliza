@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -116,6 +117,28 @@ describe("photo library contract", () => {
     expect(libraryKindOf("m:external_primary:v:7")).toBe("video");
     expect(isLibraryId("m:external:i:7")).toBe(false);
     expect(isLibraryId("content://media/external/images/media/7")).toBe(false);
+  });
+
+  it("accepts permitted revisions whose provider version is digested", () => {
+    // Some MediaProvider builds return getVersion as version:uuid; the host digests it the way
+    // MediaLibraryKey.revisionPrefix does, so the revision keeps one colon-free prefix.
+    const legacy = "17:3f2c9a6e-1b4d-4c8a-9e2f-5a6b7c8d9e0f";
+    const prefix = createHash("sha256").update(legacy).digest("base64url");
+    expect(prefix).toHaveLength(43);
+    const row = {
+      id: "m:external_primary:i:7",
+      kind: "image",
+      revision: `${prefix}:1700000000:2048:1700000001:10:11`,
+    };
+    expect(parseItem(row).revision).toBe(row.revision);
+    expect(
+      parsePage({ scope: "full", items: [row], next: "" }).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([row.id]);
+    expect(() =>
+      parseItem({ ...row, revision: `${legacy}:1700000000:2048:1700000001` }),
+    ).toThrow("Invalid library item");
   });
 
   it("validates agent operations field by field", () => {

@@ -16,9 +16,12 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to 1–20
- * permitted library items. The owner confirms a native dialog naming every item, then Android's own
- * MediaStore write request; the change is applied only to the reviewed revisions after the activity
- * resumes. Activity recreation discards authority; it never replays a write.
+ * permitted library items. An owner's favorite, unfavorite, trash or restore goes straight to
+ * Android's own favorite or trash request, which names the action and the items, and Android
+ * applies it. Permanent removal and agent requests first show a native dialog naming every item,
+ * then Android's write request, and the change is applied only to the reviewed revisions after the
+ * activity resumes. Every request checks the selected revisions before Android is asked. Activity
+ * recreation discards authority; it never replays a write.
  */
 public final class PermittedMediaReview implements AutoCloseable {
   /** Launches an activity request. False, after rejecting the call, when the launcher is gone. */
@@ -50,10 +53,13 @@ public final class PermittedMediaReview implements AutoCloseable {
   private static final class Request {
     final PluginCall call;
     final List<String> ids, revisions;
-    final boolean favorite, desired, batch, permanent;
+    final boolean favorite, desired, batch, permanent, appReview;
+    /** Identity and flag of each item when Android was asked; read back after Android applies. */
+    final List<String> identities = new ArrayList<>();
+    final List<Boolean> before = new ArrayList<>();
     final long until = SystemClock.elapsedRealtime() + 120000;
     Request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
-        boolean desired, boolean batch, boolean permanent) {
+        boolean desired, boolean batch, boolean permanent, boolean agent) {
       this.call = call;
       this.ids = List.copyOf(ids);
       this.revisions = List.copyOf(revisions);
@@ -61,6 +67,7 @@ public final class PermittedMediaReview implements AutoCloseable {
       this.desired = desired;
       this.batch = batch;
       this.permanent = permanent;
+      this.appReview = PermittedMediaChange.appReview(permanent, agent);
     }
   }
   public PermittedMediaReview(Bridge bridge, PermittedMediaCatalog catalog, Executor worker) {
@@ -122,16 +129,23 @@ public final class PermittedMediaReview implements AutoCloseable {
       request.call.reject("Photos closed before dispatch. Review the selection again.");
     }
   }
+  /** A change the agent asked for: the owner sees the app's review before Android's. */
   public void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
       boolean desired, boolean batch) {
-    request(call, ids, revisions, favorite, desired, batch, false);
+    request(call, ids, revisions, favorite, desired, batch, true);
+  }
+  /** {@code agent} false: the owner's own change in Photos, reviewed only by Android. */
+  public void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
+      boolean desired, boolean batch, boolean agent) {
+    request(call, ids, revisions, favorite, desired, batch, false, agent);
   }
   public void deleteTrashed(PluginCall call, List<String> ids, List<String> revisions) {
-    request(call, ids, revisions, false, true, true, true);
+    request(call, ids, revisions, false, true, true, true, false);
   }
   private void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
-      boolean desired, boolean batch, boolean permanent) {
-    Request request = new Request(call, ids, revisions, favorite, desired, batch, permanent);
+      boolean desired, boolean batch, boolean permanent, boolean agent) {
+    Request request =
+        new Request(call, ids, revisions, favorite, desired, batch, permanent, agent);
     if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > 20
         || new HashSet<>(ids).size() != ids.size() || ids.size() != revisions.size()) {
       call.reject("Select 1–20 distinct permitted items.");
@@ -149,31 +163,33 @@ public final class PermittedMediaReview implements AutoCloseable {
         if (favorite && Boolean.TRUE.equals(row.getBoolean("trashed"))
             || permanent && !Boolean.TRUE.equals(row.getBoolean("trashed")))
           throw new IllegalStateException();
+        request.identities.add(row.getString("identity"));
+        request.before.add(Boolean.TRUE.equals(row.getBoolean(favorite ? "favorite" : "trashed")));
         uris.add(catalog.uri(MediaLibraryKey.parse(ids.get(i))));
         names.append(i + 1)
             .append(". ")
             .append(row.getString("name").replaceAll("[\\p{Cntrl}]", " "))
             .append('\n');
       }
-      android.app.PendingIntent grant =
-          MediaStore.createWriteRequest(bridge.getContext().getContentResolver(), uris);
+      android.content.ContentResolver resolver = bridge.getContext().getContentResolver();
+      // Android's favorite and trash requests apply the change themselves once the owner allows it.
+      android.app.PendingIntent grant = request.appReview
+          ? MediaStore.createWriteRequest(resolver, uris)
+          : favorite ? MediaStore.createFavoriteRequest(resolver, uris, desired)
+                     : MediaStore.createTrashRequest(resolver, uris, desired);
       bridge.getActivity().runOnUiThread(() -> {
         if (closed || pending.get() != request || !bridge.getActivity().hasWindowFocus()
             || request.until < SystemClock.elapsedRealtime()) {
           cancel(request, "Return to Photos to review this change.", DECLINED);
           return;
         }
-        String action = permanent ? "Delete forever"
-            : favorite            ? (desired ? "Favorite" : "Unfavorite")
-                                  : (desired ? "Move to Recently deleted" : "Restore");
+        if (!request.appReview) {
+          launch(request, grant);
+          return;
+        }
         new AlertDialog.Builder(bridge.getActivity())
-            .setTitle(action + " " + ids.size() + " item" + (ids.size() == 1 ? "" : "s") + "?")
-            .setMessage(names
-                + (permanent ? "\nThese items will be permanently deleted and cannot be recovered. "
-                               + "Android will ask for access. Items restored or changed elsewhere "
-                               + "will be skipped."
-                             : "\nAndroid will ask for access. Only these selected revisions will "
-                               + "be changed; items changed elsewhere will be skipped."))
+            .setTitle(PermittedMediaChange.title(ids.size(), favorite, desired, permanent))
+            .setMessage(PermittedMediaChange.message(names.toString(), permanent))
             .setNegativeButton("Cancel",
                 (dialog, which)
                     -> cancel(
@@ -187,18 +203,21 @@ public final class PermittedMediaReview implements AutoCloseable {
                     cancel(request, "Photo review expired.", DECLINED);
                     return;
                   }
-                  if (!gate.ask(call,
-                          ()
-                              -> launcher.launch(
-                                  new IntentSenderRequest.Builder(grant.getIntentSender())
-                                      .build())))
-                    pending.compareAndSet(request, null);
+                  launch(request, grant);
                 })
             .show();
       });
     } catch (Exception unavailable) {
       cancel(request, "Selected media changed or is unavailable. Refresh Photos.", STALE);
     }
+  }
+  private void launch(Request request, android.app.PendingIntent grant) {
+    PluginCall call = request.call;
+    if (!gate.ask(call,
+            ()
+                -> launcher.launch(
+                    new IntentSenderRequest.Builder(grant.getIntentSender()).build())))
+      pending.compareAndSet(request, null);
   }
   /**
    * Error codes: nothing was dispatched because the owner or Android declined, or because a
@@ -220,6 +239,9 @@ public final class PermittedMediaReview implements AutoCloseable {
           throw new IllegalStateException("unverified");
         JSObject row = request.permanent
             ? catalog.deleteTrashed(request.ids.get(i), request.revisions.get(i))
+            : !request.appReview
+            ? catalog.confirmFlag(request.ids.get(i), request.identities.get(i), request.favorite,
+                  request.desired, request.before.get(i))
             : catalog.changeFlag(
                   request.ids.get(i), request.revisions.get(i), request.favorite, request.desired);
         outcome.put("status", row.getString("status"));

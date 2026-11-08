@@ -249,8 +249,10 @@ public final class PermittedMediaCatalog implements AutoCloseable {
     return result.toArray(new String[0]);
   }
   private String revision(Cursor row, String volume) {
-    // The provider version rejects recycled row IDs after a database rebuild.
-    return version(volume) + ":" + row.getLong(3) + ":" + row.getLong(4) + ":" + row.getLong(6)
+    // The provider version rejects recycled row IDs after a database rebuild. It is opaque, so
+    // it is digested to keep the revision's wire shape.
+    return MediaLibraryKey.revisionPrefix(version(volume)) + ":" + row.getLong(3) + ":"
+        + row.getLong(4) + ":" + row.getLong(6)
         + (Build.VERSION.SDK_INT >= 30 ? ":" + row.getLong(8) + ":" + row.getLong(9) : "");
   }
   private JSObject metadata(Cursor row, String volume, boolean video) {
@@ -659,6 +661,27 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       throw new IllegalStateException("unverified");
     after.put("status",
         favorite ? (desired ? "favorited" : "unfavorited") : (desired ? "trashed" : "restored"));
+    invalidate();
+    return after;
+  }
+  /**
+   * Readback after Android itself applied the owner's favorite or trash request. {@code identity}
+   * and {@code was} are the item's identity and flag when Android was asked.
+   */
+  public JSObject confirmFlag(String id, String identity, boolean favorite, boolean desired,
+      boolean was) throws Exception {
+    MediaLibraryKey key = MediaLibraryKey.parse(id);
+    if (!volumes().contains(key.volume))
+      throw new SecurityException("Media volume unavailable");
+    JSObject after = inspect(key, true);
+    if (!identity.equals(after.getString("identity")))
+      throw new IllegalStateException("stale");
+    if (Boolean.TRUE.equals(after.getBoolean(favorite ? "favorite" : "trashed")) != desired)
+      throw new IllegalStateException("unverified");
+    after.put("status",
+        was == desired ? "unchanged"
+            : favorite ? (desired ? "favorited" : "unfavorited")
+                       : (desired ? "trashed" : "restored"));
     invalidate();
     return after;
   }

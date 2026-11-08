@@ -36,11 +36,16 @@ function run(t, sources, main) {
   });
 }
 
-test("permitted-library identities, video copy rules and host placement", (t) => {
+test("permitted-library identities, change review, video copy rules and host placement", (t) => {
   assert.match(
     run(
       t,
-      ["MediaLibraryKey", "VideoEditSpec", "OwnedMediaConfig"],
+      [
+        "MediaLibraryKey",
+        "PermittedMediaChange",
+        "VideoEditSpec",
+        "OwnedMediaConfig",
+      ],
       "PermittedMediaTest",
     ),
     /^\d+ assertions passed/,

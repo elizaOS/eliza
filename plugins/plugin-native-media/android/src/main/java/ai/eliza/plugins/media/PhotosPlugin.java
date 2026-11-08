@@ -91,6 +91,8 @@ public abstract class PhotosPlugin extends Plugin {
   private OwnedMediaLibrary owned;
   private OwnedAlbums albums;
   private volatile boolean destroyed;
+  /** What the Photos grid last asked of watchLibrary; a pause stops watching, resume restores it. */
+  private volatile boolean photosWatchRequested;
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
   /** Runs a launcher-backed request; a launcher that is already gone rejects instead of throwing. */
@@ -190,7 +192,8 @@ public abstract class PhotosPlugin extends Plugin {
   /** Photos grid enter/leave. The agent album watches the same catalog under its own name. */
   @PluginMethod
   public void watchLibrary(PluginCall call) {
-    boolean active = call.getBoolean("active", false) && !destroyed;
+    photosWatchRequested = call.getBoolean("active", false);
+    boolean active = photosWatchRequested && !destroyed;
     permitted.watch("photos", active);
     JSObject out = new JSObject();
     out.put("active", active);
@@ -285,7 +288,10 @@ public abstract class PhotosPlugin extends Plugin {
 
   @Override
   protected void handleOnResume() {
-    if (permitted != null) permitted.foreground(true);
+    if (permitted != null) {
+      permitted.foreground(true);
+      permitted.watch("photos", photosWatchRequested && !destroyed);
+    }
     diagnostic(Diagnostic.LIBRARY_CHANGED_RESUME);
     notifyListeners("libraryChanged", new JSObject());
   }
@@ -604,7 +610,7 @@ public abstract class PhotosPlugin extends Plugin {
         if (desired == null) throw new IllegalArgumentException();
         String key = call.getString("id", "");
         if (PhotoLibraryAccess.permitted(key)) {
-          mediaReview.request(call, List.of(key), List.of(call.getString("revision")), favorite, desired, false);
+          mediaReview.request(call, List.of(key), List.of(call.getString("revision")), favorite, desired, false, false);
           return;
         }
         call.resolve(owned.changeFlag(call.getString("id"), call.getString("revision"), favorite, desired));
@@ -638,7 +644,7 @@ public abstract class PhotosPlugin extends Plugin {
         List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED);
         if (PhotoLibraryAccess.anyPermitted(reviewed)) {
           mediaReview.request(call, PhotoLibraryAccess.ids(reviewed), PhotoLibraryAccess.revisions(reviewed),
-              change[0], change[1], true);
+              change[0], change[1], true, false);
           return;
         }
         call.resolve(owned.changeMany(operation, items, () -> destroyed));
