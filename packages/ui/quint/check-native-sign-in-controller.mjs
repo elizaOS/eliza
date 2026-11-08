@@ -8,9 +8,7 @@ import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.t
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const ui = path.join(root, "packages/ui");
-const file =
-  "src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts";
-const names = [
+const controllerNames = [
   "shared native sign-in owner accepts a late positive readiness result only for its current unchanged chooser",
   "shared native sign-in owner rejects late readiness after owner changes",
   "shared native sign-in owner rejects late readiness after operation changes",
@@ -29,9 +27,31 @@ const names = [
   "native cancellation request correlation keeps a newer native request when the old teardown reaches native late",
 ];
 
+const suites = {
+  NativeSignInController: {
+    file: "src/android-cloud/__e2e__/native-cloud-sign-in-controller.test.ts",
+    names: controllerNames,
+  },
+  NativeSignInResend: {
+    file: "src/android-cloud/__e2e__/native-cloud-sign-in-resend.test.ts",
+    names: [
+      "native sign-in resend ownership accepts verification for the displayed code after a rejected resend",
+      "native sign-in resend ownership correlates a retained verification to the admitted displayed attempt",
+      "native sign-in resend ownership retires both candidates when the resend is rejected and leaves no usable code",
+      "native sign-in resend ownership retires both candidates when the resend is admitted and leaves no usable code",
+      "native sign-in resend ownership retires both candidates before a held resend reply can publish",
+      "native sign-in resend ownership retries only the unacknowledged scope and holds the owner until it settles",
+    ],
+  },
+};
+const model = path.basename(process.argv[2] ?? "", ".qnt");
+const suite = suites[model];
+assert(suite, `Unknown native sign-in model ${model}`);
+const { file, names } = suite;
+
 assert.equal(
   path.resolve(root, process.argv[2] ?? ""),
-  path.join(ui, "quint/NativeSignInController.qnt"),
+  path.join(ui, "quint", `${model}.qnt`),
 );
 const output = testOutputPath("quint-native-sign-in-controller");
 mkdirSync(output, { recursive: true });
