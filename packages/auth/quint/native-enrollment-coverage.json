@@ -34,15 +34,20 @@
   },
   {
     "id": "auth.AccountStorageDeletionAndMigration",
-    "model": null,
+    "model": "packages/auth/quint/AccountCredentialGeneration.qnt",
     "sources": [
       "packages/auth/src/auth/account-storage.ts",
       "packages/auth/src/auth/credentials.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
+      "ProviderIsolation"
+    ],
+    "status": "partial",
     "limitations": [
-      "Conditional metadata admission, deletion preflight/commit atomicity, encrypted legacy upgrade and pool-metadata persistence still need models. AccountStorageLock and AccountStorageReset now cover cross-process lock ownership and reset generation recovery. AccountCredentialGeneration covers the separate refresh compare-and-swap contract."
+      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. Deletion preflight and commit, encrypted legacy upgrade, remaining pool-metadata persistence and route orchestration stay outside this model.",
+      "AccountStorageLock and AccountStorageReset own cross-process lock and reset recovery. This case assumes atomic locked storage calls and does not cover filesystem failures."
     ]
   },
   {
@@ -93,13 +98,14 @@
       "RefreshPreservesCurrentLabel",
       "MissingIdTokenIsCarriedForward",
       "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
       "ProviderIsolation"
     ],
     "status": "partial",
     "limitations": [
-      "Two provider namespaces share an account id. Two one-shot refresh callers and one explicit save bound fresh generations. Atomic storage API operations and unique generation UUIDs are assumed.",
-      "Generated traces replay public APIs against actual encrypted account files. Metadata changes and deletion/replacement interleave with held refresh generations. AccountStorageLock and AccountStorageReset cover their bounded ownership/recovery protocols. Conditional metadata, deletion plans and legacy migration remain separate gaps.",
-      "Refresh progress assumes weak fairness of completed provider responses and the refresh commit API. Permanent provider failure is outside this projection."
+      "Two providers share an account id. Two one-shot refresh or metadata callers and one explicit save bound replacement generations. Atomic storage calls and unique generation UUIDs are assumed.",
+      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. Transactional deletion plans and legacy migration remain separate gaps.",
+      "Progress assumes weak fairness of completion and eventual access to the storage commit. Caller cancellation and permanent provider or storage failure remain outside this projection."
     ]
   },
   {
