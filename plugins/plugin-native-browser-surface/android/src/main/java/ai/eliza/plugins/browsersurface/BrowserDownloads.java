@@ -28,6 +28,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -112,6 +114,8 @@ public final class BrowserDownloads {
   private final ExecutorService io = Executors.newSingleThreadExecutor();
   /** Signed-in downloads fetched by the host, one at a time; progress and cancellation by entry id. */
   private final ExecutorService network = Executors.newSingleThreadExecutor();
+  /** Reads the open list's DownloadManager and MediaStore rows off the main thread. */
+  private final ExecutorService statusReader = Executors.newSingleThreadExecutor();
   private final Map<Long, Long> received = new ConcurrentHashMap<>();
   private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
   private AlertDialog pending, listing;
@@ -237,8 +241,8 @@ public final class BrowserDownloads {
       message("Finish the current download review first.");
       return false;
     }
-    if (history.full()) {
-      message("Download history is full. Remove an entry from Downloads first.");
+    if (!history.hasRoom(this::osActive)) {
+      message("All 50 downloads in the list are still in progress. Wait for one to finish or cancel one in Downloads.");
       return false;
     }
     return true;
@@ -288,10 +292,9 @@ public final class BrowserDownloads {
     String name = safeName(raw, disposition, mime);
     String origin = BrowserWebOrigin.of(raw);
     boolean signedIn = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true);
-    String details = "From: " + origin + "\nFile: " + name + "\nAdvertised size: " + size(length)
-        + "\n\nSave to Downloads? The final size may differ. "
-        + (signedIn ? "Your sign-in for this site is used for this download only."
-                    : "Website sign-in is not shared with other sites.")
+    String details = "From: " + origin + "\nFile: " + name + "\nAdvertised size: "
+        + (length < 0 ? "unknown" : size(length) + " (may differ)")
+        + (signedIn ? "\n\nYour sign-in for this site is used for this download only." : "")
         + privateNote(source.priv)
         + (signedIn && source.priv ? " Closing this tab before the download finishes cancels it." : "");
     review(source.tab, "Download file?", details, () -> {
@@ -319,7 +322,7 @@ public final class BrowserDownloads {
         }
         // No sign-in: DownloadManager never receives a Cookie header.
         long id = manager.enqueue(request);
-        if (!history.add(entry(id, name, origin, source))) {
+        if (!history.add(entry(id, name, origin, source), this::osActive)) {
           message("Download started. It is not shown in this list.");
           return;
         }
@@ -369,7 +372,7 @@ public final class BrowserDownloads {
     }
     String origin = source.pageOrigin == null ? "this page" : source.pageOrigin;
     String details = "From: " + origin + " (file created by the page)\nFile: " + name + "\nSize: "
-        + size(file.length()) + "\n\nSave to Downloads?" + privateNote(source.priv);
+        + size(file.length()) + privateNote(source.priv);
     boolean[] used = {false};
     review(source.tab, "Download file?", details, () -> {
       used[0] = true;
@@ -395,8 +398,9 @@ public final class BrowserDownloads {
             message(error);
             return;
           }
-          // Reviews are refused while the list is full; a result that still finds it full is saved but unlisted.
-          if (!history.add(entry(--localSequence, name, origin, source).finished(result.toString()))) {
+          // A full list retires its oldest finished row; only a list of 50 downloads still in
+          // progress leaves the saved file unlisted.
+          if (!history.add(entry(--localSequence, name, origin, source).finished(result.toString()), this::osActive)) {
             message("Saved to Downloads.");
             return;
           }
@@ -440,8 +444,10 @@ public final class BrowserDownloads {
    */
   private void fetchSignedIn(String start, String name, String mime, String origin, Source source, String cookie) {
     long id = --localSequence;
-    if (!history.add(entry(id, name, origin, source).started()))
+    if (!history.add(entry(id, name, origin, source).started(), this::osActive))
       throw new IllegalStateException("Download history is full");
+    // A retired row is forgotten now, not only when this fetch ends.
+    persist();
     received.put(id, 0L);
     work(network, () -> {
       Uri saved = null;
@@ -618,21 +624,35 @@ public final class BrowserDownloads {
       listing.dismiss();
       listing = null;
     }
-    LinearLayout rows = new LinearLayout(context);
-    rows.setOrientation(LinearLayout.VERTICAL);
+    LinearLayout layout = new LinearLayout(context);
+    layout.setOrientation(LinearLayout.VERTICAL);
     int padding = (int) (16 * context.getResources().getDisplayMetrics().density);
-    rows.setPadding(padding, padding, padding, padding);
+    layout.setPadding(padding, padding, padding, padding);
     ScrollView scroll = new ScrollView(context);
-    scroll.addView(rows);
+    scroll.addView(layout);
     listing = new AlertDialog.Builder(context).setTitle("Downloads").setView(scroll).setPositiveButton("Close", null).create();
     AlertDialog list = listing;
+    Rows rows = new Rows(layout);
+    // Provider queries run on a worker; only the main thread touches the rows.
     Runnable poll = new Runnable() {
       public void run() {
         if (listing != list)
           return;
-        render(rows);
         handler.removeCallbacks(this);
-        handler.postDelayed(this, 1000);
+        List<BrowserDownloadPolicy.Entry> entries = history.all();
+        Runnable next = this;
+        work(statusReader, () -> {
+          Map<Long, Status> read = new HashMap<>();
+          for (BrowserDownloadPolicy.Entry entry : entries)
+            read.put(entry.id, status(entry));
+          handler.post(() -> {
+            if (listing != list)
+              return;
+            render(rows, entries, read);
+            handler.removeCallbacks(next);
+            handler.postDelayed(next, 1000);
+          });
+        }, () -> {});
       }
     };
     list.setOnDismissListener(dialog -> {
@@ -645,6 +665,63 @@ public final class BrowserDownloads {
     update = poll;
     list.show();
     poll.run();
+  }
+
+  /** One list row's text and whether its transfer is still in progress. */
+  private static final class Status {
+    final String text;
+    final boolean active;
+
+    Status(String text, boolean active) {
+      this.text = text;
+      this.active = active;
+    }
+  }
+
+  /** The open list's row views, keyed by entry id so a refresh updates them in place. */
+  private static final class Rows {
+    final LinearLayout layout;
+    final Map<Long, TextView> texts = new HashMap<>();
+    final Map<Long, Button> controls = new HashMap<>();
+    final Set<Long> active = new HashSet<>();
+    List<Long> shown;
+
+    Rows(LinearLayout layout) {
+      this.layout = layout;
+    }
+  }
+
+  /** Whether an OS transfer is still pending, running or paused. An unreadable row counts as in progress. */
+  private boolean osActive(BrowserDownloadPolicy.Entry entry) {
+    if (entry.id < 0 || manager == null)
+      return false;
+    try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(entry.id))) {
+      if (cursor == null || !cursor.moveToFirst())
+        return false;
+      int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+      return status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_RUNNING
+          || status == DownloadManager.STATUS_PAUSED;
+    } catch (Exception unavailable) {
+      return true;
+    }
+  }
+
+  /** DownloadManager's reason for a paused or failed transfer, in plain words. */
+  private static String reasonLabel(int status, int reason) {
+    if (status == DownloadManager.STATUS_PAUSED) {
+      switch (reason) {
+        case DownloadManager.PAUSED_WAITING_FOR_NETWORK: return "Waiting for network";
+        case DownloadManager.PAUSED_QUEUED_FOR_WIFI: return "Waiting for Wi-Fi";
+        case DownloadManager.PAUSED_WAITING_TO_RETRY: return "Waiting to retry";
+        default: return "Waiting";
+      }
+    }
+    switch (reason) {
+      case DownloadManager.ERROR_INSUFFICIENT_SPACE: return "Failed · Storage full";
+      case DownloadManager.ERROR_HTTP_DATA_ERROR:
+      case DownloadManager.ERROR_CANNOT_RESUME: return "Failed · Download interrupted";
+      default: return reason >= 400 && reason < 600 ? "Failed · Server refused the file" : "Failed";
+    }
   }
 
   private String localLabel(BrowserDownloadPolicy.Entry entry) {
@@ -661,70 +738,115 @@ public final class BrowserDownloads {
     return "Removed from Android downloads";
   }
 
-  private void render(LinearLayout rows) {
-    rows.removeAllViews();
-    List<BrowserDownloadPolicy.Entry> entries = history.all();
-    if (entries.isEmpty()) {
-      TextView empty = new TextView(context);
-      empty.setText("No downloads yet.");
-      rows.addView(empty);
-      return;
-    }
-    for (BrowserDownloadPolicy.Entry entry : entries) {
-      long id = entry.id;
-      int status = 0, reason = 0;
-      long bytes = 0, total = -1;
-      String label;
-      if (id < 0)
-        label = localLabel(entry);
-      else {
-        try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(id))) {
-          if (cursor != null && cursor.moveToFirst()) {
-            status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-            reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
-            bytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
-            total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
-          }
-        } catch (Exception unavailable) {
-          status = -1;
+  /** Reads one entry's status from DownloadManager or MediaStore; runs on the status worker. */
+  private Status status(BrowserDownloadPolicy.Entry entry) {
+    long id = entry.id;
+    int status = 0, reason = 0;
+    long bytes = 0, total = -1;
+    String label;
+    if (id < 0)
+      label = localLabel(entry);
+    else {
+      try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(id))) {
+        if (cursor != null && cursor.moveToFirst()) {
+          status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+          reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
+          bytes = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+          total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
         }
-        switch (status) {
-          case DownloadManager.STATUS_SUCCESSFUL: label = "Complete · " + size(bytes); break;
-          case DownloadManager.STATUS_FAILED: label = "Failed · Android reason " + reason; break;
-          case DownloadManager.STATUS_PAUSED: label = "Waiting · Android reason " + reason; break;
-          case DownloadManager.STATUS_RUNNING: label = "Downloading · " + size(bytes) + " / " + size(total); break;
-          case DownloadManager.STATUS_PENDING: label = "Queued"; break;
-          case -1: label = "Status unavailable"; break;
-          default: label = "Removed from Android downloads";
-        }
+      } catch (Exception unavailable) {
+        status = -1;
       }
-      if (entry.ephemeral)
-        label += " · Private tab";
-      TextView text = new TextView(context);
-      text.setText(entry.name + "\n" + (entry.origin == null ? "" : entry.origin) + "\n" + label);
-      text.setPadding(0, 12, 0, 8);
-      rows.addView(text);
-      boolean active = (id < 0 && entry.running)
-          || (id > 0 && (status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED));
-      Button control = new Button(context);
-      control.setText(active ? "Cancel download" : "Remove entry");
-      control.setContentDescription((active ? "Cancel download " : "Remove download entry ") + entry.name);
-      control.setOnClickListener(view -> {
-        try {
-          if (active) {
-            if (id > 0)
-              manager.remove(id);
-            else
-              cancelled.add(id);
-          }
-          history.remove(id);
-          persist();
-          render(rows);
-        } catch (Exception error) {
-          message("Android could not cancel this download. Try again.");
-        }
-      });
-      rows.addView(control);
+      switch (status) {
+        case DownloadManager.STATUS_SUCCESSFUL: label = "Complete · " + size(bytes); break;
+        case DownloadManager.STATUS_FAILED:
+        case DownloadManager.STATUS_PAUSED: label = reasonLabel(status, reason); break;
+        case DownloadManager.STATUS_RUNNING: label = "Downloading · " + size(bytes) + " / " + size(total); break;
+        case DownloadManager.STATUS_PENDING: label = "Queued"; break;
+        case -1: label = "Status unavailable"; break;
+        default: label = "Removed from Android downloads";
+      }
+    }
+    if (entry.ephemeral)
+      label += " · Private tab";
+    boolean active = (id < 0 && entry.running)
+        || (id > 0 && (status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED));
+    return new Status(entry.name + "\n" + (entry.origin == null ? "" : entry.origin) + "\n" + label, active);
+  }
+
+  /**
+   * Applies statuses read from {@code entries}. Rows are rebuilt only when the set of entries
+   * changes; otherwise their text and button change in place, so a press or screen-reader focus
+   * survives a refresh. Entries removed since the read are skipped.
+   */
+  private void render(Rows rows, List<BrowserDownloadPolicy.Entry> entries, Map<Long, Status> read) {
+    List<Long> ids = new ArrayList<>();
+    for (BrowserDownloadPolicy.Entry entry : entries)
+      if (history.get(entry.id) != null)
+        ids.add(entry.id);
+    if (!ids.equals(rows.shown)) {
+      rows.shown = ids;
+      rows.layout.removeAllViews();
+      rows.texts.clear();
+      rows.controls.clear();
+      rows.active.clear();
+      if (ids.isEmpty()) {
+        TextView empty = new TextView(context);
+        empty.setText("No downloads yet.");
+        rows.layout.addView(empty);
+        return;
+      }
+      for (long id : ids) {
+        TextView text = new TextView(context);
+        text.setPadding(0, 12, 0, 8);
+        rows.layout.addView(text);
+        rows.texts.put(id, text);
+        Button control = new Button(context);
+        control.setOnClickListener(view -> removeFromList(id, rows.active.contains(id)));
+        rows.layout.addView(control);
+        rows.controls.put(id, control);
+      }
+    }
+    for (long id : ids) {
+      Status status = read.get(id);
+      BrowserDownloadPolicy.Entry entry = history.get(id);
+      TextView text = rows.texts.get(id);
+      if (!status.text.contentEquals(text.getText()))
+        text.setText(status.text);
+      if (status.active)
+        rows.active.add(id);
+      else
+        rows.active.remove(id);
+      String action = status.active ? "Cancel download" : "Remove entry";
+      Button control = rows.controls.get(id);
+      if (!action.contentEquals(control.getText())) {
+        control.setText(action);
+        control.setContentDescription((status.active ? "Cancel download " : "Remove download entry ") + entry.name);
+      }
+    }
+  }
+
+  /**
+   * A row's button. A transfer shown as in progress is cancelled only if it still is; one that
+   * finished meanwhile keeps its file and loses only its row.
+   */
+  private void removeFromList(long id, boolean shownActive) {
+    BrowserDownloadPolicy.Entry entry = history.get(id);
+    if (entry == null)
+      return;
+    try {
+      if (shownActive) {
+        if (id > 0 && osActive(entry))
+          manager.remove(id);
+        else if (id < 0 && entry.running)
+          cancelled.add(id);
+      }
+      history.remove(id);
+      persist();
+      if (update != null)
+        update.run();
+    } catch (Exception error) {
+      message("Android could not cancel this download. Try again.");
     }
   }
 
@@ -749,6 +871,7 @@ public final class BrowserDownloads {
     cancelled.addAll(received.keySet());
     io.shutdown();
     network.shutdown();
+    statusReader.shutdown();
   }
 
   /** Where blob: and data: captures are written before review. */

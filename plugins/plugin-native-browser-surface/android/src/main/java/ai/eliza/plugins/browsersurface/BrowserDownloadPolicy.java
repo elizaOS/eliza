@@ -241,11 +241,37 @@ public final class BrowserDownloadPolicy {
       return entries.size() >= MAX_ENTRIES;
     }
 
-    /** Adds an entry; false when the list is full (the host asks the user to remove one). */
+    /** The oldest entry that a full list may retire: not running and not {@code busy}, or null. */
+    private Entry retirable(Predicate<Entry> busy) {
+      for (Entry entry : entries.values())
+        if (!entry.running && !busy.test(entry))
+          return entry;
+      return null;
+    }
+
+    /** Whether {@link #add(Entry, Predicate)} can admit a new entry now. */
+    public boolean hasRoom(Predicate<Entry> busy) {
+      return !full() || retirable(busy) != null;
+    }
+
+    /** Adds an entry, retiring the oldest finished one when the list is full. */
     public boolean add(Entry entry) {
+      return add(entry, finished -> false);
+    }
+
+    /**
+     * Adds an entry. A full list retires its oldest entry that is neither running nor {@code busy}
+     * (an OS transfer still in progress); only the row goes, never the saved file. False only when
+     * every listed entry is still in progress.
+     */
+    public boolean add(Entry entry, Predicate<Entry> busy) {
       Objects.requireNonNull(entry);
-      if (!entries.containsKey(entry.id) && full())
-        return false;
+      if (!entries.containsKey(entry.id) && full()) {
+        Entry oldest = retirable(busy);
+        if (oldest == null)
+          return false;
+        entries.remove(oldest.id);
+      }
       entries.put(entry.id, entry);
       return true;
     }

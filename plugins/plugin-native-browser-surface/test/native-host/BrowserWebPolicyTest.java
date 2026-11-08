@@ -201,8 +201,22 @@ public final class BrowserWebPolicyTest {
     for (int i = 0; i < History.MAX_ENTRIES; i++)
       restored.add(new Entry(100 + i, "n", "https://example.com", false, null));
     check(restored.full(), "bounded");
-    check(!restored.add(new Entry(999, "n", "https://example.com", false, null)),
-        "full list refuses");
+    check(restored.add(new Entry(999, "n", "https://example.com", false, null)),
+        "a full list of finished entries admits a new one");
+    equal(History.MAX_ENTRIES, restored.all().size(), "by retiring one row");
+    check(restored.get(100) == null && restored.get(101) != null && restored.get(999) != null,
+        "the oldest finished row is the one retired");
+    check(restored.add(new Entry(998, "n", "https://example.com", false, null), entry -> entry.id == 101),
+        "a busy OS transfer is skipped");
+    check(restored.get(101) != null && restored.get(102) == null, "the next finished row goes instead");
+    check(!restored.hasRoom(entry -> true), "every row in progress leaves no room");
+    check(!restored.add(new Entry(997, "n", "https://example.com", false, null), entry -> true),
+        "a list of fifty transfers in progress refuses");
+    History active = new History();
+    for (int i = 0; i < History.MAX_ENTRIES; i++)
+      active.add(new Entry(-100 - i, "r", "https://example.com", false, null).started());
+    check(!active.hasRoom(entry -> false) && !active.add(new Entry(-1, "n", "https://example.com", false, null)),
+        "running host transfers are never retired");
     List<Entry> retained = new java.util.ArrayList<>();
     for (int i = 0; i < 75; i++)
       retained.add(new Entry(1000 + i, "saved", "https://example.com", false, null));
