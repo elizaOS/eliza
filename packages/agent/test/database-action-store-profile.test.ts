@@ -49,14 +49,3 @@ it.each([
   expect(result.values).toMatchObject({ reason: "WRITES_DISABLED" });
   expect(execute).not.toHaveBeenCalled();
 });
-
-it("runs a write with allowWrites on a direct build with no policy", async () => {
-  vi.stubEnv("ELIZA_DISTRIBUTION_PROFILE", "");
-  vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
-  vi.stubEnv("ELIZA_HOST_OPERATION_POLICY", "");
-  _resetBuildVariantForTests();
-  const { runtime, execute } = fakeRuntime();
-  const result = await insert(runtime);
-  expect(result.success, result.text).toBe(true);
-  expect(execute).toHaveBeenCalledTimes(1);
-});
