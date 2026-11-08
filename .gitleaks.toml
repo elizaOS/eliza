@@ -437,3 +437,13 @@ condition = "AND"
 paths = ['''^packages/cloud/shared/src/lib/services/organization-upgrade-preview\.pglite\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''^sk_test_upgradepreview$''']
+
+# The EVM signing test uses the same public ERC-20 contract address as the
+# payment service. This is a 20-byte contract identifier, not signing material.
+# Keep the exception restricted to this exact value in this one test file.
+[[allowlists]]
+description = "Public ERC-20 contract address in EVM sweep regression"
+condition = "AND"
+paths = ['''^packages/cloud/shared/src/lib/services/evm-sweep-authority\.pglite\.test\.ts$''']
+regexTarget = "secret"
+regexes = ['''(?i)^(?:0x)?833589fcd6edb6e08f4c7c32d4f71b54bda02913$''']
