@@ -295,6 +295,39 @@
         "Scheduling fairness, exact metric bytes, disk failures, GPU readiness and Python refinement are not proved."
       ],
       "maxSteps": 30
+    },
+    {
+      "id": "exact-restore-recovery",
+      "file": "exact_restore_recovery.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts",
+        "packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One fixed terminal restore and immutable S0 attempt, one counted slot, two concurrent trusted coordinator turns and two node occurrences.",
+        "One-shot Docker creation may finish after lease expiry and tombstone. Exact ID or producer quiescence is required before proof.",
+        "Database settlement is atomic. Provider receipt validity, SSH authentication, cryptographic digests and immutable source authority are assumptions exercised separately by integration tests.",
+        "The original operation never leaves failed_terminal; unavailable node or daemon proof retains quarantine. No liveness, arbitrary backlog fairness or TypeScript refinement is proved."
+      ],
+      "maxSteps": 35
+    },
+    {
+      "id": "restore-cleanup-rotation",
+      "file": "restore_cleanup_rotation.qnt",
+      "sources": [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Three fixed terminal operations, page size two, and two completed cycles; two operations lack proof permanently and the third can settle.",
+        "Row locks select distinct operations and the database clock places selected operations after existing unselected work before remote I/O.",
+        "No unbounded backlog, new arrivals, worker availability, general liveness or implementation refinement is proved."
+      ],
+      "maxSteps": 20
     }
   ],
   "pendingDomains": [
