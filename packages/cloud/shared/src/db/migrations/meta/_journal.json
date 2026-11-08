@@ -3697,6 +3697,20 @@
       "when": 1796083200175,
       "tag": "0557_stripe_delivery_lease_check_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1796083200178,
+      "tag": "0558_container_placement_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1796083200176,
+      "tag": "0559_stripe_checkout_provider_started_at",
+      "breakpoints": true
     }
   ]
 }

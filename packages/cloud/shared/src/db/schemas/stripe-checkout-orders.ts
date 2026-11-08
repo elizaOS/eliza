@@ -57,6 +57,8 @@ export const stripeCheckoutOrders = pgTable(
       onDelete: "restrict",
     }),
     status: text("status").$type<StripeCheckoutOrderStatus>().notNull().default("quoted"),
+    // Null on historical rows whose first dispatch cannot be reconstructed safely.
+    provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_error_code: text("provider_error_code"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
