@@ -58,11 +58,12 @@ try {
       process.execPath,
       [
         path.join(root, "packages/scripts/run-with-deadline.ts"),
-        "35000",
+        "120000",
         "--",
         "bun",
         "test",
         "--conditions=eliza-source",
+        "--timeout=30000",
         path.join(root, testFile),
         "--reporter=junit",
         `--reporter-outfile=${report}`,

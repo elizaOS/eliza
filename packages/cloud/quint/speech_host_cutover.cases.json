@@ -8,8 +8,10 @@
     ".github/workflows/cloud-cf-release.yml",
     "packages/cloud/scripts/speech-host-cutover-admission.mjs",
     "packages/cloud/scripts/speech-host-cutover-admission.test.ts",
-    "packages/cloud/api/__tests__/speech-relay-worker.test.ts"
+    "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+    "packages/cloud/api/__tests__/speech-worker-contract.test.ts"
   ],
+  "conformance": "packages/cloud/quint/check-evm-speech-conformance.ts",
   "bounds": {
     "assumptions": [
       "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",

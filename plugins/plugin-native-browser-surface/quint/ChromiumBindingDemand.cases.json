@@ -1,0 +1,55 @@
+{
+  "sources": [
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBindingDemand.java",
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface/ChromiumBrowserConnection.java",
+    "plugins/plugin-native-browser-surface/test/native-host/ChromiumBindingDemandTest.java",
+    "plugins/plugin-native-browser-surface/quint/ChromiumBindingDemandReplay.java"
+  ],
+  "conformance": "plugins/plugin-native-browser-surface/quint/check-chromium-binding.mjs",
+  "bounds": {
+    "scope": [
+      "Two once-acquired holds and one ready registration each, one standing pin, both queue orders, five callback effects and all six production backoff values. Main-thread operations and synchronous callback draining are atomic.",
+      "The proof projects trace-only event labels to a constant. The trace module retains those labels for comparison against real Java after every operation.",
+      "The JVM hook executes the production demand owner with controlled platform bind results and timers. It excludes Android Handler thread marshalling, actual Binder/service identity checks, warmup, device power behavior, callback exceptions and arbitrary callback reentrancy beyond modeled close/disconnect effects."
+    ]
+  },
+  "cases": [
+    {
+      "name": "holds-retries-and-callbacks",
+      "main": "ChromiumBindingDemandCheck",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [
+        "ConditionalReady",
+        "ConditionalIdleRelease",
+        "UnfairRelease"
+      ],
+      "temporalChecks": [
+        {
+          "property": "ConditionalReady",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of an accepted pending retry and strong fairness of verified connection delivery. Strong fairness covers repeated binding loss that can interrupt continuous connection enablement. Withdrawal, closure or terminal rejection cancels the readiness obligation. Provider availability is an explicit assumption."
+          ]
+        },
+        {
+          "property": "ConditionalIdleRelease",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the pending idle timer. New demand or closure may discharge the release obligation. No wall-clock deadline is proved."
+          ]
+        },
+        {
+          "property": "UnfairRelease",
+          "expect": "counterexample",
+          "assumptions": [
+            "No timer fairness is assumed. A pending idle timer may remain unfired forever."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}

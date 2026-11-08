@@ -2081,10 +2081,12 @@ export function deleteAccount(
  * the one the caller started from (another writer replaced the record, even
  * when credential values are identical) and carries that current record so the caller can act on it.
  */
-export type AccountCredentialUpdateOutcome =
-  | { kind: "updated"; record: AccountCredentialRecord }
+export type AccountCredentialUpdateOutcome<
+  Record extends AccountCredentialRecord = AccountCredentialRecord,
+> =
+  | { kind: "updated"; record: Record }
   | { kind: "missing" }
-  | { kind: "changed"; record: AccountCredentialRecord };
+  | { kind: "changed"; record: Record };
 
 /**
  * Keeps the stored OIDC id_token when a token grant re-issues access and
@@ -2116,7 +2118,7 @@ export function updateAccountCredentialsIfUnchanged(
   expectedGeneration: string,
   credentials: OAuthCredentials,
   policy: AccountStoragePolicy,
-): AccountCredentialUpdateOutcome {
+): AccountCredentialUpdateOutcome<LoadedAccountCredentialRecord> {
   assertCanonicalAccountId(accountId);
   if (
     typeof expectedGeneration !== "string" ||
@@ -2136,7 +2138,7 @@ export function updateAccountCredentialsIfUnchanged(
     if (existing.credentialGeneration !== expectedGeneration) {
       return { kind: "changed", record: existing };
     }
-    const next: AccountCredentialRecord = {
+    const next: LoadedAccountCredentialRecord = {
       ...existing,
       credentials: carryForwardIdToken(existing.credentials, credentials),
       credentialGeneration: randomUUID(),

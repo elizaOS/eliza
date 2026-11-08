@@ -2,26 +2,32 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { pushSchema } from "drizzle-kit/api";
-import { eq, sql } from "drizzle-orm";
+import { eq, is, SQL, sql } from "drizzle-orm";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { Client } from "pg";
 import { resolveAccountDeletionTestDatabase } from "../../../db/account-deletion-test-database";
 
-// The Quint hook creates and removes this one-suite database with a QA role.
-const quintUrl = process.env.INFERENCE_POLICY_TEST_POSTGRES_URL;
-const quintDatabase = quintUrl ? new URL(quintUrl) : undefined;
-const isolatedQuintDatabase =
-  !!quintDatabase &&
-  ["127.0.0.1", "localhost", "[::1]"].includes(quintDatabase.hostname) &&
-  quintDatabase.username.startsWith("qa_") &&
-  /^\/quint_provisioning_[a-f0-9]{32}$/.test(quintDatabase.pathname) &&
-  process.env.TEST_DATABASE_URL === quintUrl;
-const testDatabase = resolveAccountDeletionTestDatabase();
-if (!testDatabase && !isolatedQuintDatabase)
-  throw new Error("Provisioning tests require an isolated local database");
-const realPostgres = isolatedQuintDatabase || testDatabase === "loopback-postgres";
-process.env.DATABASE_URL = realPostgres
-  ? (process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL)
-  : "pglite://memory";
+const conformanceUrl = process.env.INFERENCE_POLICY_TEST_POSTGRES_URL;
+const conformanceSchema = `provisioning_authority_${randomUUID().replaceAll("-", "_")}`;
+const testDatabase = conformanceUrl ? "loopback-postgres" : resolveAccountDeletionTestDatabase();
+if (!testDatabase) throw new Error("Provisioning tests require an isolated local database");
+const realPostgres = testDatabase === "loopback-postgres";
+if (conformanceUrl) {
+  const parsed = new URL(conformanceUrl);
+  if (
+    !["postgres:", "postgresql:"].includes(parsed.protocol) ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname) ||
+    !parsed.username.startsWith("qa_")
+  )
+    throw new Error("Provisioning conformance requires a loopback PostgreSQL qa_* role");
+  parsed.searchParams.set("options", `-c search_path=${conformanceSchema},pg_catalog`);
+  process.env.DATABASE_URL = parsed.toString();
+  process.env.TEST_DATABASE_URL = parsed.toString();
+} else {
+  process.env.DATABASE_URL = realPostgres
+    ? (process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL)
+    : "pglite://memory";
+}
 if (realPostgres) process.env.DISABLE_LOCAL_PGLITE_FALLBACK = "true";
 process.env.NODE_ENV = "test";
 process.env.MOCK_REDIS = "1";
@@ -38,13 +44,84 @@ import { users } from "../../../db/schemas/users";
 
 let db: typeof import("../../../db/client").dbWrite;
 let close: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
+let schemaClient: Client | undefined;
+let schemaCreated = false;
+
+function columnDefault(value: unknown, type: string): string {
+  if (value === undefined) return "";
+  if (is(value, SQL)) {
+    const query = new PgDialect().sqlToQuery(value);
+    if (query.params.length) throw new Error("Fixture defaults require literal production DDL");
+    return ` DEFAULT ${query.sql}`;
+  }
+  if (value === null) return " DEFAULT NULL";
+  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean")
+    return ` DEFAULT ${String(value)}`;
+  if (typeof value === "string") return ` DEFAULT '${value.replaceAll("'", "''")}'`;
+  if (type === "jsonb" || type === "json")
+    return ` DEFAULT '${JSON.stringify(value).replaceAll("'", "''")}'::${type}`;
+  throw new Error(`Unsupported fixture default for ${type}`);
+}
+
 beforeAll(async () => {
+  if (conformanceUrl) {
+    schemaClient = new Client({ connectionString: conformanceUrl });
+    await schemaClient.connect();
+    await schemaClient.query(
+      `CREATE SCHEMA ${conformanceSchema}; SET search_path TO ${conformanceSchema},pg_catalog`,
+    );
+    schemaCreated = true;
+    const enums = new Set<string>();
+    for (const table of [
+      organizations,
+      users,
+      apiKeys,
+      generations,
+      usageRecords,
+      jobs,
+      jobExecutionLeases,
+    ]) {
+      const config = getTableConfig(table);
+      for (const column of config.columns) {
+        const enumeration = (
+          column as unknown as { enum?: { enumName: string; enumValues: string[] } }
+        ).enum;
+        if (enumeration && !enums.has(enumeration.enumName)) {
+          await schemaClient.query(
+            `CREATE TYPE "${enumeration.enumName}" AS ENUM (${enumeration.enumValues.map((value) => `'${value.replaceAll("'", "''")}'`).join(",")})`,
+          );
+          enums.add(enumeration.enumName);
+        }
+      }
+      await schemaClient.query(
+        `CREATE TABLE "${config.name}" (${config.columns
+          .map(
+            (column) =>
+              `"${column.name}" ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}${column.notNull ? " NOT NULL" : ""}${columnDefault(column.default, column.getSQLType())}`,
+          )
+          .join(",")})`,
+      );
+    }
+    await schemaClient.query(
+      "ALTER TABLE job_execution_leases ADD FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE",
+    );
+  }
   ({ dbWrite: db, closeDatabaseConnectionsForTests: close } = await import("../../../db/client"));
-  const { apply } = await pushSchema(
-    { organizations, users, apiKeys, generations, usageRecords, jobs, jobExecutionLeases } as never,
-    db as never,
-  );
-  await apply();
+  if (!conformanceUrl) {
+    const { apply } = await pushSchema(
+      {
+        organizations,
+        users,
+        apiKeys,
+        generations,
+        usageRecords,
+        jobs,
+        jobExecutionLeases,
+      } as never,
+      db as never,
+    );
+    await apply();
+  }
   await db.execute(CONTAINER_DDL);
   await db.execute(
     "CREATE TABLE docker_nodes(node_id text PRIMARY KEY,allocated_count integer NOT NULL DEFAULT 0,capacity integer NOT NULL,enabled boolean NOT NULL DEFAULT true,placement_state text NOT NULL DEFAULT 'open',updated_at timestamp NOT NULL DEFAULT now())",
@@ -52,7 +129,17 @@ beforeAll(async () => {
   await db.execute("INSERT INTO docker_nodes(node_id,capacity) VALUES('witness-node',10)");
 }, 120000);
 afterAll(async () => {
-  await close();
+  try {
+    if (close) await close();
+  } finally {
+    if (schemaClient) {
+      try {
+        if (schemaCreated) await schemaClient.query(`DROP SCHEMA ${conformanceSchema} CASCADE`);
+      } finally {
+        await schemaClient.end();
+      }
+    }
+  }
 });
 
 async function fixture() {
@@ -121,15 +208,15 @@ async function fixture() {
     deploymentGeneration: appGeneration,
     createdAtSnapshot: snapshot.createdAtSnapshot,
   };
-  const recover = async () => {
-    await db
-      .update(jobExecutionLeases)
-      .set({ expires_at: sql`clock_timestamp() - interval '1 minute'` })
-      .where(eq(jobExecutionLeases.job_id, job.id));
-    await db
-      .update(jobs)
-      .set({ started_at: sql`clock_timestamp() - interval '2 minutes'` })
-      .where(eq(jobs.id, job.id));
+  const recover = async (nextOwner = ownerB) => {
+    // Claims and leases use the database clock. Keep fixture aging on that
+    // clock even when the local PostgreSQL session is outside UTC.
+    await db.execute(
+      sql`UPDATE job_execution_leases SET expires_at=clock_timestamp()-interval '1 minute' WHERE job_id=${job.id}`,
+    );
+    await db.execute(
+      sql`UPDATE jobs SET started_at=clock_timestamp()-interval '2 minutes' WHERE id=${job.id}`,
+    );
     const result = await jobsRepository.recoverInProgressJobsStartedBefore({
       type: "container_provision",
       organizationId: orgId,
@@ -141,7 +228,7 @@ async function fixture() {
       type: "container_provision",
       organizationId: orgId,
       limit: 1,
-      executionOwnerId: ownerB,
+      executionOwnerId: nextOwner,
       executionLeaseMs: 60000,
     });
     if (!claimB) throw new Error("Recovery claim missing");
@@ -276,6 +363,52 @@ test("expired lease fails dependent writes before any takeover", async () => {
   const [row] = await db.select().from(containers).where(eq(containers.id, f.containerId));
   expect(row!.status).toBe("deploying");
   expect(row!.metadata.hostContainerId).toBeUndefined();
+});
+
+test("job tenant, owner and generation each fence dependent publication", async () => {
+  const f = await fixture();
+  const authority = f.authority(f.claimA, f.ownerA);
+  for (const invalid of [
+    { ...authority, organizationId: randomUUID() },
+    { ...authority, executionOwnerId: randomUUID() },
+    { ...authority, executionGeneration: randomUUID() },
+  ]) {
+    await expect(
+      f
+        .store(invalid)
+        .markRunning(
+          f.containerId,
+          { hostContainerId: "foreign", hostPort: 12, network: "n" },
+          f.publication,
+        ),
+    ).rejects.toHaveProperty("name", "StaleJobExecutionError");
+  }
+  const [row] = await db.select().from(containers).where(eq(containers.id, f.containerId));
+  expect(row!.status).toBe("deploying");
+  expect(row!.metadata.hostContainerId).toBeUndefined();
+});
+
+test("the same worker owner cannot reuse a stale execution generation", async () => {
+  const f = await fixture();
+  const replacement = await f.recover(f.ownerA);
+  await expect(
+    f
+      .store(f.authority(f.claimA, f.ownerA))
+      .markRunning(
+        f.containerId,
+        { hostContainerId: "old-generation", hostPort: 12, network: "n" },
+        f.publication,
+      ),
+  ).rejects.toHaveProperty("name", "StaleJobExecutionError");
+  await f
+    .store(f.authority(replacement, f.ownerA))
+    .markRunning(
+      f.containerId,
+      { hostContainerId: "new-generation", hostPort: 13, network: "n" },
+      f.publication,
+    );
+  const [row] = await db.select().from(containers).where(eq(containers.id, f.containerId));
+  expect(row!.metadata.hostContainerId).toBe("new-generation");
 });
 
 test("all dependent failure, release and deletion writes reject a superseded claim", async () => {
@@ -449,6 +582,77 @@ test.skipIf(!realPostgres)(
       await control.end();
     }
   },
+);
+
+test.skipIf(!realPostgres)(
+  "an admitted dependent transaction retains its locks through lease expiry",
+  async () => {
+    const f = await fixture();
+    const { containersRepository } = await import("../../../db/repositories/containers");
+    const { ContainerRepoAppContainerStore } = await import("../app-container-store");
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const control = new Client({ connectionString: process.env.DATABASE_URL });
+    await control.connect();
+    const store = new ContainerRepoAppContainerStore({
+      readDatabase: db as never,
+      writeDatabase: db as never,
+      executionAuthority: f.authority(f.claimA, f.ownerA),
+      repository: {
+        tryReleaseNodeSlot: containersRepository.tryReleaseNodeSlot.bind(containersRepository),
+        updateStatus: containersRepository.updateStatus.bind(containersRepository),
+        async update(...args: Parameters<typeof containersRepository.update>) {
+          entered.resolve();
+          await release.promise;
+          return await containersRepository.update(...args);
+        },
+      },
+      errorFactory: (message, options) => Object.assign(new Error(message), options),
+    });
+    await db.execute(
+      sql`UPDATE job_execution_leases SET expires_at=clock_timestamp()+interval '2 seconds' WHERE job_id=${f.job.id}`,
+    );
+    const publication = store.markRunning(
+      f.containerId,
+      { hostContainerId: "admitted-docker", hostPort: 12000, network: "n" },
+      f.publication,
+    );
+    try {
+      await Promise.race([entered.promise, publication]);
+      await expect(
+        control.query("SELECT id FROM jobs WHERE id=$1 FOR UPDATE NOWAIT", [f.job.id]),
+      ).rejects.toHaveProperty("code", "55P03");
+      await expect(
+        control.query("SELECT job_id FROM job_execution_leases WHERE job_id=$1 FOR UPDATE NOWAIT", [
+          f.job.id,
+        ]),
+      ).rejects.toHaveProperty("code", "55P03");
+      await expect(
+        control.query("SELECT id FROM containers WHERE id=$1 FOR UPDATE NOWAIT", [f.containerId]),
+      ).rejects.toHaveProperty("code", "55P03");
+      const deadline = Date.now() + 10000;
+      let expired = false;
+      while (!expired && Date.now() < deadline) {
+        const result = await control.query(
+          "SELECT clock_timestamp()>=expires_at AS expired FROM job_execution_leases WHERE job_id=$1",
+          [f.job.id],
+        );
+        expired = result.rows[0].expired;
+        if (!expired) await Bun.sleep(10);
+      }
+      expect(expired).toBe(true);
+      release.resolve();
+      await publication;
+      const [row] = await db.select().from(containers).where(eq(containers.id, f.containerId));
+      expect(row!.status).toBe("running");
+      expect(row!.metadata.hostContainerId).toBe("admitted-docker");
+    } finally {
+      release.resolve();
+      await publication.catch(() => {});
+      await control.end();
+    }
+  },
+  30000,
 );
 
 const CONTAINER_DDL = `CREATE TABLE containers (

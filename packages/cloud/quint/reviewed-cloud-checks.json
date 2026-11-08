@@ -12,7 +12,9 @@
         "status ABA cannot validate an older observation",
         "a recreated row with the same millisecond cannot accept the original row probe",
         "placement metadata ABA cannot validate an older observation",
-        "bookkeeping metadata keeps its revision but still invalidates a sampled snapshot"
+        "bookkeeping metadata keeps its revision but still invalidates a sampled snapshot",
+        "a starting runtime leaves the current deployment pending",
+        "a failed health request leaves the current deployment pending"
       ]
     }
   ],
@@ -61,7 +63,10 @@
         "a live job cannot change a terminal container back to failed",
         "expired execution rejects each container provider entry point before dispatch",
         "retirement beats a live claim's delayed publication without losing its delete receipt",
-        "publication rechecks the database lease clock after waiting for its resource lock"
+        "publication rechecks the database lease clock after waiting for its resource lock",
+        "job tenant, owner and generation each fence dependent publication",
+        "the same worker owner cannot reuse a stale execution generation",
+        "an admitted dependent transaction retains its locks through lease expiry"
       ]
     }
   ],
