@@ -14,11 +14,17 @@ assert.equal(
 );
 const repository = "packages/cloud/shared/src/db/repositories";
 const suites = new Map([
-  [`${repository}/subscription-billing-operations.pglite.test.ts`, 15],
+  [`${repository}/subscription-billing-operations.pglite.test.ts`, 21],
   [`${repository}/subscription-lifecycle-finalization.pglite.test.ts`, 26],
   [`${repository}/subscription-reconciliation.pglite.test.ts`, 20],
 ]);
 const required = [
+  "platform command dispatch refuses stale or foreign authority and preserves its first fence",
+  "platform command failure replay requires the original generation and exact terminal evidence",
+  "platform command supersession retires only a prepared intent with exact replay",
+  "platform checkout application requires matching retained history and replays only its original result",
+  "platform cancel and resume require their dedicated dispatch protocol",
+  "platform command original provider identity is protected by the database",
   "deduplicates exact provider events and lease-CAS applies one revision",
   "commits lifecycle, current projection and receipt before billing admission sees Free",
   "notice insertion failure rolls back source, projection, receipt, generation and audit together",
