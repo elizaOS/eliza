@@ -27,7 +27,7 @@ public final class DeferredDeletionJournal {
 
  /** Terminal receipts kept after a new stage retires older ones. */
  public static final int RETAINED_TERMINAL = 127;
- /** Rows at which staging refuses until uncertain history is reviewed. */
+ /** Rows at which staging refuses once no terminal receipt is left to retire. */
  public static final int MAX_ROWS = 500;
  /** Bytes kept free within a 4 MiB native slot for dispatch and outcome metadata. */
  public static final int MAX_STAGED_BYTES = 3 * 1024 * 1024;
@@ -110,15 +110,20 @@ public final class DeferredDeletionJournal {
    String key = i.next(), phase = records.getJSONObject(key).getString("phase");
    if ("deleted".equals(phase) || "undone".equals(phase) || "conflict".equals(phase)) terminal.add(key);
   }
-  terminal.sort((a, b) -> Long.compare(records.optJSONObject(a).optJSONObject("deadline").optLong("createdElapsed"), records.optJSONObject(b).optJSONObject("deadline").optLong("createdElapsed")));
-  for (int i = 0; i < terminal.size() - RETAINED_TERMINAL; i++) records.remove(terminal.get(i));
-  if (records.length() >= MAX_ROWS) throw new IllegalStateException("Pending deletion history requires review");
+  // Oldest first by wall-clock expiry, which survives a reboot; elapsed time only breaks ties.
+  terminal.sort((a, b) -> {
+   JSONObject x = records.optJSONObject(a).optJSONObject("deadline"), y = records.optJSONObject(b).optJSONObject("deadline");
+   int order = Long.compare(x.optLong("expiresAt"), y.optLong("expiresAt"));
+   return order != 0 ? order : Long.compare(x.optLong("createdElapsed"), y.optLong("createdElapsed"));
+  });
+  int retired = 0;
+  while (retired < terminal.size() && (retired < terminal.size() - RETAINED_TERMINAL || records.length() >= MAX_ROWS)) records.remove(terminal.get(retired++));
+  if (records.length() >= MAX_ROWS) throw new IllegalStateException("Too many unresolved deletions. Resolve pending deletions before deleting more.");
   JSONObject row = new JSONObject().put("version", 1).put("id", id).put("owner", copy(owner)).put("target", copy(target)).put("phase", "queued")
    .put("deadline", new JSONObject().put("continuity", deadline.continuity).put("createdElapsed", deadline.createdElapsed).put("expiresElapsed", deadline.expiresElapsed).put("expiresAt", deadline.expiresAt));
   records.put(id, row);
   // Count alone is insufficient when a retained event has a large description.
   String encoded = data.toString();
-  int retired = 0;
   while (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_STAGED_BYTES && retired < terminal.size()) { records.remove(terminal.get(retired++)); encoded = data.toString(); }
   if (encoded.getBytes(StandardCharsets.UTF_8).length > MAX_STAGED_BYTES) throw new IllegalStateException("Active deletion history requires review");
   store.save(encoded);

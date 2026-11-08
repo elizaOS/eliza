@@ -189,7 +189,8 @@ public final class ActionJournal {
 
  /**
   * Moves an entry to its single terminal state. An identical replay of the terminal state is
-  * returned unchanged; a different one is refused. Success requires a recorded dispatch.
+  * returned unchanged; a different one is refused. Success requires a recorded dispatch. An entry
+  * with a native dispatch claim can only finish as {@code unknown}: its receipt settles it later.
   */
  public JSONObject finish(String scope, String id, String status, String summary, JSONObject result) throws Exception {
   if (!STATUSES.contains(status) || summary == null || summary.length() > configuration.maxSummaryChars) throw new IllegalArgumentException("Invalid terminal status");
@@ -197,6 +198,7 @@ public final class ActionJournal {
    JSONObject entry = readEntry(scope(scope), id(id));
    if (entry == null) throw new Refused("Entry is not journaled");
    policy.check(entry, status, result);
+   if (entry.has("nativeDispatchClaim") && !"terminal".equals(entry.getString("phase")) && !"unknown".equals(status)) throw new Refused("Claimed deletion settles through its receipt");
    if ("terminal".equals(entry.getString("phase"))) {
     if (!status.equals(entry.getString("status")) || !summary.equals(entry.getString("summary")) || !sameJson(result, entry.optJSONObject("result"))) throw new Refused("Entry already finished differently");
     return entry;

@@ -21,6 +21,11 @@ public abstract class CalendarPlugin extends Plugin {
 
  /** Opt-in host persistence after native review. The default engine keeps its existing behavior. */
  protected boolean deferReviewedDeletion(){return false;}
+ /**
+  * Persists one reviewed deletion. Once a host has written a native dispatch claim for it, a later
+  * failure must return status {@code unknown} instead of throwing: the action journal refuses to
+  * finish a claimed entry any other way, and its receipt settles it.
+  */
  protected JSObject enqueueReviewedDeletion(org.json.JSONObject target,String operationId)throws Exception{throw new UnsupportedOperationException("Deletion journal unavailable");}
  private org.json.JSONObject deletionTarget(CalendarEventGuard.Snapshot snapshot)throws Exception{return new org.json.JSONObject().put("sourceId",Long.toString(snapshot.calendarId)).put("sourceRevision",snapshot.sourceRevision).put("eventId",Long.toString(snapshot.id)).put("revision",snapshot.revision).put("scope","single-local-event").put("fields",agentFields(snapshot));}
  /** Exact provider revision and source are checked again immediately before one atomic batch.

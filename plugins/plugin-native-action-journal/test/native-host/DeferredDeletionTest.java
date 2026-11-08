@@ -156,6 +156,30 @@ public final class DeferredDeletionTest {
   for (int n = 0; n < largeRows.length(); n++) retainedUnknown |= largeRows.getJSONObject(n).getString("id").equals("keep_unknown");
   check(retainedUnknown);
   check(largeRows.length() < 20);
+  // Retirement keeps the newest receipts by wall-clock expiry, even when a reboot reset elapsed time.
+  DeferredDeletionJournal rebooted = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < 10; n++) { String id = "before_" + n; rebooted.stage(id, owner, target, new DeletionDeadline("boot:1", 1000000 + n, n + 1)); rebooted.undo(id, owner, "boot:1", 1000000 + n); }
+  for (int n = 0; n < DeferredDeletionJournal.RETAINED_TERMINAL; n++) { String id = "after_" + n; rebooted.stage(id, owner, target, new DeletionDeadline("boot:2", n + 1, 1000000 + n)); rebooted.undo(id, owner, "boot:2", n + 1); }
+  rebooted.stage("latest", owner, target, new DeletionDeadline("boot:2", 500, 2000000));
+  JSONArray retainedRows = rebooted.list("boot:2", 600);
+  check(retainedRows.length() == DeferredDeletionJournal.RETAINED_TERMINAL + 1);
+  for (int n = 0; n < retainedRows.length(); n++) check(!retainedRows.getJSONObject(n).getString("id").startsWith("before_"));
+  // A full journal retires terminal receipts before refusing; only unresolved rows refuse.
+  DeferredDeletionJournal crowded = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < 20; n++) { String id = "kept_" + n; crowded.stage(id, owner, target, new DeletionDeadline("boot", n + 1, n + 1)); crowded.undo(id, owner, "boot", n + 1); }
+  for (int n = 0; n < DeferredDeletionJournal.MAX_ROWS - 20; n++) crowded.stage("open_" + n, owner, target, new DeletionDeadline("boot", 100 + n, 100 + n));
+  check(crowded.list("boot", 200).length() == DeferredDeletionJournal.MAX_ROWS);
+  crowded.stage("one_more", owner, target, new DeletionDeadline("boot", 1000, 1000));
+  JSONArray crowdedRows = crowded.list("boot", 1000);
+  check(crowdedRows.length() == DeferredDeletionJournal.MAX_ROWS);
+  boolean staged = false, oldestKept = false;
+  for (int n = 0; n < crowdedRows.length(); n++) { String id = crowdedRows.getJSONObject(n).getString("id"); staged |= id.equals("one_more"); oldestKept |= id.equals("kept_0"); }
+  check(staged && !oldestKept);
+  DeferredDeletionJournal unresolved = new DeferredDeletionJournal(new Store());
+  for (int n = 0; n < DeferredDeletionJournal.MAX_ROWS; n++) unresolved.stage("open_" + n, owner, target, new DeletionDeadline("boot", n + 1, n + 1));
+  checks++;
+  try { unresolved.stage("refused", owner, target, new DeletionDeadline("boot", 1000, 1000)); throw new AssertionError("Check " + checks + " should have been refused"); }
+  catch (IllegalStateException full) { if (!"Too many unresolved deletions. Resolve pending deletions before deleting more.".equals(full.getMessage())) throw new AssertionError("Check " + checks + ": " + full); }
  }
 
  static void claimAndRecovery() throws Exception {
@@ -218,7 +242,7 @@ public final class DeferredDeletionTest {
  static final class Ports implements DeferredDeletionCoordinator.Slots, DeferredDeletionCoordinator.Clock, DeferredDeletionCoordinator.Owners, DeferredDeletionCoordinator.Reminders, DeferredDeletionCoordinator.CalendarDeletions, DeferredDeletionCoordinator.Scheduler {
   final Map<String, String> slots = new HashMap<>();
   String boot = "boot:1"; long elapsed = 1000;
-  JSONObject identity; String fence = "fence-1"; boolean offline; int identityReads;
+  JSONObject identity; String fence = "fence-1"; boolean offline; int identityReads; long identityDelay;
   DeferredDeletionCoordinator coordinator;
   final List<Long> scheduled = new ArrayList<>();
   final List<String> dispatched = new ArrayList<>();
@@ -238,6 +262,7 @@ public final class DeferredDeletionTest {
    identityReads++;
    if (coordinator != null && Thread.holdsLock(coordinator)) throw new AssertionError("Owner route read under the coordinator lock");
    if (offline) throw new java.io.IOException("owner offline");
+   elapsed += identityDelay;
    return new JSONObject(identity.toString());
   }
   /** The fence names the current session, so an owner captured in an older session is stale. */
@@ -356,8 +381,10 @@ public final class DeferredDeletionTest {
   check(c.receipt("calendar", "op_agent").getString("phase").equals("paused"));
   check(c.receipt("calendar", "op_agent").getString("blocked").equals("owner-unavailable"));
   check(ports.dispatched.size() == 2);
-  final DeferredDeletionCoordinator offline = c;
+  // A fresh process that never authenticated the owner cannot confirm an offline Undo.
+  final DeferredDeletionCoordinator offline = coordinator(ports);
   refuses(SecurityException.class, () -> offline.undo("calendar", "op_agent"));
+  c = coordinator(ports);
   ports.offline = false;
   // A new session of the same enrolled owner sees and can undo the paused row.
   ports.identity.put("sessionId", "s2");
@@ -411,5 +438,56 @@ public final class DeferredDeletionTest {
   check(!ports.settled.contains("op_reminder_agent:false"));
   ports.offline = false;
   refuses(SecurityException.class, () -> reminders.undo("reminder", "missing"));
+
+  // Pending effects of a settled reminder survive a rotated review fence; an unavailable owner retries.
+  JSONObject rotated = c.agentOwner();
+  ports.reminderRows.put("op_effects", new JSONObject().put("id", "op_effects").put("owner", rotated.toString()).put("target", reminder("r4")).put("phase", "deleted").put("effects", "pending"));
+  ports.fence = "fence-2";
+  check(!c.reconcile());
+  check(ports.settled.contains("op_effects:false"));
+  ports.settled.clear();
+  ports.offline = true;
+  check(c.reconcile());
+  check(ports.settled.isEmpty());
+  ports.offline = false;
+  ports.fence = "fence-1";
+  ports.reminderRows.remove("op_effects");
+  undoArrival();
+  ownerReadsOnce();
+ }
+
+ /** Undo is judged at the tap's arrival, and a cached authenticated owner needs no owner read. */
+ static void undoArrival() throws Exception {
+  Ports ports = new Ports();
+  DeferredDeletionCoordinator c = coordinator(ports);
+  JSONObject agent = c.agentOwner();
+  c.stageCalendar(event("31"), agent, "op_cached");
+  c.stageCalendar(event("32"), agent, "op_slow");
+  int reads = ports.identityReads;
+  check(c.undo("calendar", "op_cached").getString("phase").equals("undone"));
+  check(ports.identityReads == reads);
+  // A fresh process reads the owner; the read outlasts the window but the tap arrived inside it.
+  ports.elapsed += DeletionDeadline.WINDOW_MS - 10;
+  ports.identityDelay = 1000;
+  DeferredDeletionCoordinator fresh = coordinator(ports);
+  check(fresh.undo("calendar", "op_slow").getString("phase").equals("undone"));
+  check(ports.identityReads == reads + 1 && ports.elapsed >= 1000 + DeletionDeadline.WINDOW_MS);
+ }
+
+ /** A failed owner read is not repeated once per row while the notice lists them. */
+ static void ownerReadsOnce() throws Exception {
+  Ports ports = new Ports();
+  DeferredDeletionCoordinator c = coordinator(ports);
+  JSONObject agent = c.agentOwner();
+  for (int n = 0; n < 5; n++) c.stageCalendar(event("4" + n), agent, "op_hidden_" + n);
+  ports.offline = true;
+  int reads = ports.identityReads;
+  check(c.pending().length() == 0);
+  check(ports.identityReads == reads + 1);
+  check(c.pending().length() == 0);
+  check(ports.identityReads == reads + 1);
+  ports.offline = false;
+  ports.elapsed += 5000;
+  check(c.pending().length() == 5);
  }
 }

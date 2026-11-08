@@ -77,6 +77,8 @@ public final class DeferredDeletionCoordinator {
  private final CalendarDeletions calendarDeletions;
  private final Scheduler scheduler;
  private final DeferredDeletionJournal calendar;
+ /** The last agent owner the route authenticated in this process; lets Undo skip a network read. */
+ private volatile JSONObject lastAuthenticatedOwner;
 
  public DeferredDeletionCoordinator(Configuration configuration, Slots slots, Clock clock, Owners owners, Reminders reminders, CalendarDeletions calendarDeletions, Scheduler scheduler) {
   this.configuration = configuration;
@@ -110,7 +112,9 @@ public final class DeferredDeletionCoordinator {
  /** The authenticated agent owner with its current review fence. May block on the owner route. */
  public JSONObject agentOwner() throws Exception {
   JSONObject identity = owners.identity();
-  return new JSONObject().put("kind", "agent").put("identity", identity).put("reviewFence", owners.reviewFence(identity));
+  JSONObject owner = new JSONObject().put("kind", "agent").put("identity", identity).put("reviewFence", owners.reviewFence(identity));
+  lastAuthenticatedOwner = owner;
+  return owner;
  }
 
  private static String ownerKey(JSONObject value) { return value.toString(); }
@@ -206,7 +210,7 @@ public final class DeferredDeletionCoordinator {
 
  private final Object visibilityLock = new Object();
  private JSONObject visibleOwner;
- private long visibleUntil;
+ private long visibleUntil, visibleFailedUntil;
 
  static boolean stableOwner(JSONObject a, JSONObject b) throws Exception {
   if (!a.getString("kind").equals(b.getString("kind"))) return false;
@@ -221,11 +225,16 @@ public final class DeferredDeletionCoordinator {
   try {
    if ("manual".equals(owner.getString("kind"))) return stageOwnerCurrent(owner);
    synchronized (visibilityLock) {
+    // A failed owner read hides agent rows for the cache period instead of repeating per row.
+    if (clock.elapsed() < visibleFailedUntil) return false;
     boolean valid = false;
     try { valid = visibleOwner != null && clock.elapsed() < visibleUntil && stageOwnerCurrent(visibleOwner); } catch (Exception changed) {}
     if (!valid) {
      visibleOwner = null;
-     JSONObject authenticated = agentOwner();
+     JSONObject authenticated;
+     try { authenticated = agentOwner(); }
+     catch (Exception unavailable) { visibleFailedUntil = clock.elapsed() + OWNER_CACHE_MS; return false; }
+     visibleFailedUntil = 0;
      visibleUntil = clock.elapsed() + OWNER_CACHE_MS;
      visibleOwner = authenticated;
     }
@@ -241,8 +250,9 @@ public final class DeferredDeletionCoordinator {
  private JSONObject agentOwnerFor(String kind, String id) {
   try {
    JSONObject row = receipt(kind, id);
-   if (row == null) return null;
-   return agentKind(rowOwner(kind, row)) ? agentOwnerOrNull() : null;
+   if (row == null || !agentKind(rowOwner(kind, row))) return null;
+   JSONObject cached = lastAuthenticatedOwner;
+   return cached != null && stableOwner(rowOwner(kind, row), cached) ? cached : agentOwnerOrNull();
   } catch (Exception unavailable) { return null; }
  }
 
@@ -272,11 +282,15 @@ public final class DeferredDeletionCoordinator {
   }
  }
 
- /** Keeps the item while the window is open or paused. A settled deletion is refused, never reported as kept. */
+ /**
+  * Keeps the item while the window is open or paused. A settled deletion is refused, never
+  * reported as kept. The window is judged at the tap's arrival, before any owner read; an owner
+  * authenticated earlier in this process is enough because Undo only keeps data.
+  */
  public JSONObject undo(String kind, String id) throws Exception {
+  JSONObject time = time();
   JSONObject agent = agentOwnerFor(kind, id);
   synchronized (this) {
-   JSONObject time = time();
    if ("calendar".equals(kind)) {
     JSONArray rows = calendar.list(time.getString("continuity"), time.getLong("elapsed"));
     for (int i = 0; i < rows.length(); i++) {
@@ -335,9 +349,11 @@ public final class DeferredDeletionCoordinator {
       String phase = row.getString("phase");
       if (!"queued".equals(phase)) {
        if (!"pending".equals(row.optString("effects"))) continue;
-       boolean owned;
-       try { owned = admitted(new JSONObject(row.getString("owner")), agent); } catch (Exception unavailable) { owned = false; }
-       if (owned) reminders.settleDeletion(row.getString("id"), row.getString("owner"), time, "undone".equals(phase));
+       // Settled effects are local and idempotent: a rotated session or review fence of the
+       // same enrolled owner must not strand them. An unavailable owner retries with backoff.
+       JSONObject owner = new JSONObject(row.getString("owner"));
+       if (agentKind(owner) && agent == null) { failed = true; continue; }
+       if (stableOwner(owner, agentKind(owner) ? agent : manualOwner())) reminders.settleDeletion(row.getString("id"), row.getString("owner"), time, "undone".equals(phase));
        continue;
       }
       if (!continuity.equals(row.getString("continuity")) || elapsed < row.getLong("createdElapsed")) continue;

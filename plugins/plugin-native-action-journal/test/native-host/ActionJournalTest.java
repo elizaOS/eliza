@@ -143,7 +143,13 @@ public final class ActionJournalTest {
   check(journal.get(SCOPE, "p2") == null && journal.get(SCOPE, "p3") != null);
   journal.markApplying(SCOPE, "p3", "attempt-3");
   journal.update(SCOPE, "p3", entry -> entry.put("nativeDispatchClaim", new JSONObject().put("kind", "deletion")));
-  journal.finish(SCOPE, "p3", "succeeded", "Done", new JSONObject().put("ok", true));
+  // A claimed deletion finishes as unknown; only its receipt (through update) settles it.
+  for (String status : new String[] {"succeeded", "failed", "cancelled"})
+   refusesWith("Claimed deletion settles through its receipt", () -> journal.finish(SCOPE, "p3", status, "Done", new JSONObject().put("ok", true)));
+  check("applying".equals(journal.get(SCOPE, "p3").getString("phase")));
+  check("unknown".equals(journal.finish(SCOPE, "p3", "unknown", "Queued", null).getString("status")));
+  journal.update(SCOPE, "p3", entry -> entry.put("status", "succeeded").put("summary", "Recovered").put("result", new JSONObject().put("ok", true)));
+  check("succeeded".equals(journal.get(SCOPE, "p3").getString("status")));
   journal.finish(SCOPE, "p4", "unknown", "Lost", null);
   // Reserved (p5), unknown (p4) and claimed (p3) entries fill the journal: a definite refusal.
   writes = store.writes;
