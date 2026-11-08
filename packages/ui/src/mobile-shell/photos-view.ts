@@ -90,6 +90,32 @@ export function mergeWindow<T extends ViewRow>(
   return newestFirst([...byId.values()]).slice(0, Math.max(0, limit));
 }
 
+/** Reads the library window. Paging (`more`) reads one page after `cursor`; a reload re-reads from the
+ * top as many rows as were loaded (bounded by `limit`), so a row the owner scrolled to, selected or
+ * opened is still in the window after an unrelated library change (FixPatch). */
+export async function readWindow<T extends ViewRow>(
+  list: (options: { before?: string }) => Promise<{ items: T[]; next: string }>,
+  options: { more: boolean; cursor: string; loaded: number; limit: number },
+  current: () => boolean = () => true,
+): Promise<{ rows: T[]; next: string } | undefined> {
+  const want = options.more
+      ? 1
+      : Math.min(Math.max(options.loaded, 1), options.limit),
+    rows: T[] = [];
+  let cursor = options.more ? options.cursor : "";
+  const visited = new Set<string>();
+  do {
+    if (visited.has(cursor))
+      throw new Error("Photo library pagination repeated a cursor");
+    visited.add(cursor);
+    const result = await list(cursor ? { before: cursor } : {});
+    if (!current()) return undefined;
+    rows.push(...result.items);
+    cursor = result.next;
+  } while (cursor && !options.more && rows.length < want);
+  return { rows, next: cursor };
+}
+
 /** Replace changed rows in place; a row that left this list (trashed/restored/deleted) is removed. Never reorders. */
 export function patchRows<T extends ViewRow>(
   rows: readonly T[],
@@ -143,6 +169,78 @@ export function batches<T>(items: readonly T[], size: number): T[][] {
   const out: T[][] = [];
   for (let at = 0; at < items.length; at += Math.max(1, size))
     out.push(items.slice(at, at + Math.max(1, size)));
+  return out;
+}
+
+/** Which loaded rows hold a thumbnail: at most `keep` rows around the rendered range [from, to) of
+ * `rows` keep (or fetch again) their image; every other row drops it, so a long scroll does not hold
+ * thousands of thumbnail strings. Returns the ids to drop and the ids to fetch, in row order. */
+export function thumbnailPlan<T extends ViewRow & { image?: string }>(
+  rows: readonly T[],
+  from: number,
+  to: number,
+  keep: number,
+): { drop: string[]; fetch: string[] } {
+  const start = Math.max(0, Math.min(from, rows.length)),
+    end = Math.max(start, Math.min(to, rows.length));
+  const margin = Math.max(
+    0,
+    Math.floor((Math.max(keep, end - start) - (end - start)) / 2),
+  );
+  const low = Math.max(0, start - margin),
+    high = Math.min(rows.length, end + margin);
+  const drop: string[] = [],
+    fetch: string[] = [];
+  rows.forEach((row, index) => {
+    const kept = index >= low && index < high;
+    if (!kept && row.image) drop.push(row.id);
+    else if (kept && index >= start && index < end && !row.image)
+      fetch.push(row.id);
+  });
+  return { drop, fetch };
+}
+
+/** How a favorite, trash or restore selection is sent: owned items in internal batches of `owned`;
+ * permitted library items (ids `m:…`) in reviewed requests of up to `permitted`, each one Android
+ * confirmation, so a large selection is not one confirmation per 20 items. */
+export function changeBatches<T>(
+  items: readonly T[],
+  id: (row: T) => string,
+  sizes: { owned: number; permitted: number },
+): T[][] {
+  const permitted =
+    items.length > 0 && items.every((row) => id(row).startsWith("m:"));
+  return batches(items, permitted ? sizes.permitted : sizes.owned);
+}
+
+export type BatchRun<T, R> = {
+  batch: T[];
+  receipt?: R;
+  error?: unknown;
+  declined?: boolean;
+};
+/** Sends batches in order. A batch the owner declined (LIBRARY_DECLINED) ends the run: it and every
+ * later batch are reported declined and never sent, so Cancel never opens the next confirmation.
+ * Returns undefined when `stopped` (the view closed) before a batch. */
+export async function runBatches<T, R>(
+  groups: readonly T[][],
+  send: (batch: T[]) => Promise<R>,
+  stopped: () => boolean = () => false,
+): Promise<BatchRun<T, R>[] | undefined> {
+  const out: BatchRun<T, R>[] = [];
+  for (let at = 0; at < groups.length; at++) {
+    if (stopped()) return undefined;
+    try {
+      out.push({ batch: groups[at], receipt: await send(groups[at]) });
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code === "LIBRARY_DECLINED") {
+        for (const rest of groups.slice(at))
+          out.push({ batch: rest, declined: true });
+        break;
+      }
+      out.push({ batch: groups[at], error });
+    }
+  }
   return out;
 }
 
