@@ -455,7 +455,7 @@ describe("Cloudflare A2A tasks through the existing service", () => {
       ).map((x) => x.task.id),
     ).toEqual(["new"]);
   });
-  test("original task expiry survives restart and removes the listing entry", async () => {
+  test("stored task expiry survives restart and removes the listing entry", async () => {
     await ok({
       operation: "import",
       organization: "expiry",
@@ -464,15 +464,19 @@ describe("Cloudflare A2A tasks through the existing service", () => {
           taskId: "short",
           entry: entry("short", "expiry"),
           score: 1,
-          expiresAt: Date.now() + 1000,
+          expiresAt: Date.now() + 60_000,
         },
       ],
     });
     expect(
       await ok({ operation: "get", taskId: "short", organization: "expiry" }),
     ).not.toBeNull();
+    await ok({
+      operation: "expire-fixture",
+      taskId: "short",
+      organization: "expiry",
+    });
     await worker.dispose();
-    await Bun.sleep(1100);
     worker = start();
     expect(
       await ok({ operation: "get", taskId: "short", organization: "expiry" }),

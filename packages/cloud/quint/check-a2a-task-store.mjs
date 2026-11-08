@@ -69,7 +69,7 @@ assert.deepEqual(
     "rejected foreign requests retain the owner's open import phase",
     "conflicting import batches do not retain preceding new rows or receipts",
     "import retains ordering and expiry, rejects conflicts and permanently closes after use",
-    "original task expiry survives restart and removes the listing entry",
+    "stored task expiry survives restart and removes the listing entry",
     "selected store refuses missing bindings instead of falling back to mock Redis",
   ].sort(),
   "All ten required A2A implementation checks must execute",
