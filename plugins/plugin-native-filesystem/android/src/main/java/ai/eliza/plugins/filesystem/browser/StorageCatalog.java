@@ -36,6 +36,19 @@ public final class StorageCatalog {
   return Environment.isExternalStorageManager()?"granted":"denied";
  }
 
+ /** Storage access as Android reports it: all-files access on API 30+; on API 29 (legacy storage,
+  * requestLegacyExternalStorage) both READ_ and WRITE_EXTERNAL_STORAGE. */
+ public static String access(Context context){
+  if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.R)return access();
+  if(Build.VERSION.SDK_INT<Build.VERSION_CODES.Q)return "unsupported";
+  for(String permission:LEGACY_PERMISSIONS)if(context.checkSelfPermission(permission)!=android.content.pm.PackageManager.PERMISSION_GRANTED)return "denied";
+  return "granted";
+ }
+ /** The runtime permissions Files needs on API 29, where all-files access does not exist. */
+ private static final String[] LEGACY_PERMISSIONS={android.Manifest.permission.READ_EXTERNAL_STORAGE,android.Manifest.permission.WRITE_EXTERNAL_STORAGE};
+ /** Whether Files asks for {@link #LEGACY_PERMISSIONS} instead of opening the all-files access page. */
+ public static boolean legacy(){return Build.VERSION.SDK_INT==Build.VERSION_CODES.Q;}
+
  public static final class Volume{public final String id,name;public final boolean primary;public final File directory;Volume(String id,String name,boolean primary,File directory){this.id=id;this.name=name;this.primary=primary;this.directory=directory;}}
  public static List<Volume> volumes(Context context){
   List<Volume> out=new ArrayList<>();

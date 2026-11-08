@@ -961,7 +961,7 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         summary:
           op.type === "files_move"
             ? `Moved ${done} of ${op.paths.length}.`
-            : `Moved ${done} of ${op.paths.length} to Trash. Restore from Files › Trash.`,
+            : `Moved ${done} of ${op.paths.length} to Trash.`,
       };
     },
   };
