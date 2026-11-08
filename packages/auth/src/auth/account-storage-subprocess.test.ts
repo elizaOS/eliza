@@ -712,80 +712,82 @@ it("admits a waiting process after owner fsync failure while the failed owner re
   }
 });
 
-it.each(process.platform === "win32" ? ["unlink"] : ["unlink", "fsync"])(
-  "keeps an unconfirmed reset fenced after intent %s failure",
-  (failure) => {
-    const root = path.join(container, `intent-${failure}`);
-    const policy = createIsolatedAccountStoragePolicy(root);
-    saveAccount(
-      {
-        id: "before",
-        providerId: "openai-codex",
-        label: "Before",
-        source: "oauth",
-        credentials: {
-          access: "fixture-access",
-          refresh: "fixture-refresh",
-          expires: 9_999_999_999_999,
+for (const failure of ["unlink", "fsync"] as const) {
+  it.skipIf(process.platform === "win32" && failure === "fsync")(
+    `keeps an unconfirmed reset fenced after intent ${failure} failure`,
+    () => {
+      const root = path.join(container, `intent-${failure}`);
+      const policy = createIsolatedAccountStoragePolicy(root);
+      saveAccount(
+        {
+          id: "before",
+          providerId: "openai-codex",
+          label: "Before",
+          source: "oauth",
+          credentials: {
+            access: "fixture-access",
+            refresh: "fixture-refresh",
+            expires: 9_999_999_999_999,
+          },
+          createdAt: 1,
+          updatedAt: 1,
         },
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      policy,
-    );
-    const intent = path.join(policy.authRoot, ".credential-storage-reset");
-    const generation = path.join(
-      policy.authRoot,
-      ".credential-storage-generation",
-    );
-    const originalUnlink = fs.unlinkSync;
-    const originalFsync = fs.fsyncSync;
-    let injected = false;
-    let calls = 0;
-    try {
-      fs.unlinkSync = (file) => {
-        if (failure === "unlink" && !injected && String(file) === intent) {
-          injected = true;
-          throw Object.assign(new Error("injected intent unlink failure"), {
-            code: "EIO",
-          });
-        }
-        originalUnlink(file);
-      };
-      fs.fsyncSync = (descriptor) => {
-        if (
-          failure === "fsync" &&
-          !injected &&
-          fs.existsSync(generation) &&
-          !fs.existsSync(intent)
-        ) {
-          injected = true;
-          throw Object.assign(new Error("injected intent fsync failure"), {
-            code: "EIO",
-          });
-        }
-        originalFsync(descriptor);
-      };
-      expect(() =>
-        resetAccountCredentialStorage(policy, () => {
-          calls++;
-        }),
-      ).toThrow(
-        "Credential reset advanced its generation but did not confirm completion",
+        policy,
       );
-    } finally {
-      fs.unlinkSync = originalUnlink;
-      fs.fsyncSync = originalFsync;
-    }
-    expect(injected).toBe(true);
-    const restarted = createIsolatedAccountStoragePolicy(root);
-    expect(loadAccount("openai-codex", "before", restarted)).toBeNull();
-    expect(calls).toBe(1);
-    expect(() => loadAccount("openai-codex", "before", policy)).toThrow(
-      "Credential storage policy predates the latest reset",
-    );
-  },
-);
+      const intent = path.join(policy.authRoot, ".credential-storage-reset");
+      const generation = path.join(
+        policy.authRoot,
+        ".credential-storage-generation",
+      );
+      const originalUnlink = fs.unlinkSync;
+      const originalFsync = fs.fsyncSync;
+      let injected = false;
+      let calls = 0;
+      try {
+        fs.unlinkSync = (file) => {
+          if (failure === "unlink" && !injected && String(file) === intent) {
+            injected = true;
+            throw Object.assign(new Error("injected intent unlink failure"), {
+              code: "EIO",
+            });
+          }
+          originalUnlink(file);
+        };
+        fs.fsyncSync = (descriptor) => {
+          if (
+            failure === "fsync" &&
+            !injected &&
+            fs.existsSync(generation) &&
+            !fs.existsSync(intent)
+          ) {
+            injected = true;
+            throw Object.assign(new Error("injected intent fsync failure"), {
+              code: "EIO",
+            });
+          }
+          originalFsync(descriptor);
+        };
+        expect(() =>
+          resetAccountCredentialStorage(policy, () => {
+            calls++;
+          }),
+        ).toThrow(
+          "Credential reset advanced its generation but did not confirm completion",
+        );
+      } finally {
+        fs.unlinkSync = originalUnlink;
+        fs.fsyncSync = originalFsync;
+      }
+      expect(injected).toBe(true);
+      const restarted = createIsolatedAccountStoragePolicy(root);
+      expect(loadAccount("openai-codex", "before", restarted)).toBeNull();
+      expect(calls).toBe(1);
+      expect(() => loadAccount("openai-codex", "before", policy)).toThrow(
+        "Credential storage policy predates the latest reset",
+      );
+    },
+  );
+}
 
 it("checks the acquisition deadline after a raced-away lock directory", () => {
   const policy = createIsolatedAccountStoragePolicy(
