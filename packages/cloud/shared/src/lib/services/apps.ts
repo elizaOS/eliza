@@ -19,6 +19,7 @@ import {
   invalidateInferenceAppByIdState,
   setInferenceAppById,
 } from "./inference-app-memory-cache";
+import type { JobExecutionAuthority } from "./job-execution-authority";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -565,8 +566,15 @@ export class AppsService {
     generation: string | null,
     data: Partial<NewApp>,
     expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+    executionAuthority?: JobExecutionAuthority,
   ): Promise<App | undefined> {
-    return await appsRepository.updateDeploymentGeneration(id, generation, data, expectedStatuses);
+    return await appsRepository.updateDeploymentGeneration(
+      id,
+      generation,
+      data,
+      expectedStatuses,
+      executionAuthority,
+    );
   }
 
   async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {

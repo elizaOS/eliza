@@ -1,0 +1,170 @@
+{
+  "container_monitor.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/container-health-observation.pglite.test.ts",
+      "required": [
+        "records a current healthy observation",
+        "records a current stopped-runtime observation",
+        "a pending retirement cannot be undone by an older healthy probe",
+        "completed deletion cannot be resurrected by an older healthy probe",
+        "an older failed probe cannot overwrite a newer deploying generation",
+        "metadata-only placement changes advance the canonical revision",
+        "status ABA cannot validate an older observation",
+        "a recreated row with the same millisecond cannot accept the original row probe",
+        "placement metadata ABA cannot validate an older observation",
+        "bookkeeping metadata keeps its revision but still invalidates a sampled snapshot"
+      ]
+    }
+  ],
+  "app_container_publication.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-container-terminal-status.pglite.test.ts",
+      "required": [
+        "a delete that completes inside markRunning's read/write window cannot resurrect the row",
+        "the same interleave on the pre-fix statement resurrects the row to running",
+        "sequential execution \u2014 one worker, one batch \u2014 is never corrupted",
+        "markError cannot flip a completed delete back to failed",
+        "markCleanupRequired cannot pin node capacity on a completed delete",
+        "markDeleted stays idempotent and stays organization-scoped",
+        "patched and pre-fix statements agree on every transition out of a non-terminal status",
+        "a status update on an absent row still returns null (unchanged)",
+        "org-scoped writes are untouched by the status CAS",
+        "pending retirement wins against a captured app publication snapshot",
+        "retirement after the atomic publication preserves its newer ownership metadata",
+        "original generation and microsecond row identity fence late provider publication",
+        "a superseded provision deletes only its returned Docker id and preserves retirement"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/app-container-store-recovery.integration.test.ts",
+      "required": [
+        "recovery filters by both organization ownership and deleting status",
+        "claims and rolls back exactly one authoritative node slot",
+        "capacity refusal atomically rolls back attribution and claim metadata",
+        "running, failure, and deletion transitions preserve ownership and placement",
+        "deleting a redeployed app's old generation keeps the DB ambassador the new one uses",
+        "deleting an app's last generation also removes its DB ambassador",
+        "a failed ingress route removal keeps the row until the route is gone",
+        "stale cleanup authority cannot release a replacement row's slot or mark it failed"
+      ]
+    }
+  ],
+  "provisioning_execution.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/provisioning-execution-authority.pglite.test.ts",
+      "required": [
+        "recovered worker success cannot mutate successor placement or delete by name",
+        "recovered worker failure cannot mutate successor placement or delete by name",
+        "expired lease fails dependent writes before any takeover",
+        "all dependent failure, release and deletion writes reject a superseded claim",
+        "cancelled claim cannot publish after provider completion",
+        "a live job cannot change a terminal container back to failed",
+        "expired execution rejects each container provider entry point before dispatch",
+        "retirement beats a live claim's delayed publication without losing its delete receipt",
+        "publication rechecks the database lease clock after waiting for its resource lock"
+      ]
+    }
+  ],
+  "checkout_credit_settlement.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/__tests__/stripe-checkout-orders.pglite.test.ts",
+      "required": [
+        "reuses one tenant request and rejects a changed digest or user",
+        "new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)",
+        "grants exactly the charged amount as credits with no bonus",
+        "concurrent webhook and landing verification converge on one grant",
+        "trusted webhook or verify receipts recover Session-create ACK loss exactly once",
+        "webhook-first and verify-first ACK-loss receipts both settle and replay",
+        "ACK-loss recovery rejects wrong client reference, metadata order, and Session races",
+        "customer pinning accepts only the customer already published by authority",
+        "fails closed on tenant, user, amount, currency, customer, session, and payment status",
+        "conflicting payment-intent replay cannot reuse a settled order",
+        "post-ledger failure rolls the grant back and a retry settles cleanly",
+        "legacy custom cutover derives from paid cents and packs are durably quarantined",
+        "legacy cutover rejects a cross-tenant user before grant or quarantine",
+        "legacy pack quarantine accepts only an exact replay"
+      ]
+    }
+  ],
+  "checkout_retry_clock.qnt": [
+    {
+      "file": "packages/cloud/api/__tests__/checkout-provider-horizon.pglite.test.ts",
+      "required": [
+        "repeated failures at0/22/44h never reset the original23-hour creation cutoff",
+        "a delayed first dispatch receives its own full original retry window",
+        "first dispatch is timestamped by the primary despite an application clock ahead",
+        "a slow application clock cannot authorize an expired ambiguous or started retry",
+        "recovery searches the entire original retry window, including a late accepted retry",
+        "legacy ambiguous orders remain read-only when original creation time is unknown",
+        "legacy read-only discovery can recover an old Session outside the last-update window",
+        "multiple matching historical Sessions require reconciliation instead of choosing one"
+      ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/billing-manager-mutations.pglite.test.ts",
+      "required": [
+        "checkout: current owner reaches its payment adapter",
+        "checkout: current admin reaches its payment adapter",
+        "checkout: member has no financial effects",
+        "checkout: guest has no financial effects",
+        "checkout: stale owner cannot survive primary downgrade",
+        "checkout: primary tenant transfer cannot charge old tenant",
+        "checkout: wrong-tenant signed cookie has no financial effects",
+        "checkout: explicit API key cannot borrow owner session",
+        "checkout: explicit API key cannot borrow owner session",
+        "topup: current owner reaches its payment adapter",
+        "topup: current admin reaches its payment adapter",
+        "topup: member has no financial effects",
+        "topup: guest has no financial effects",
+        "topup: stale owner cannot survive primary downgrade",
+        "topup: primary tenant transfer cannot charge old tenant",
+        "topup: wrong-tenant signed cookie has no financial effects",
+        "topup: explicit API key cannot borrow owner session",
+        "topup: explicit API key cannot borrow owner session",
+        "portal: current owner reaches its payment adapter",
+        "portal: current admin reaches its payment adapter",
+        "portal: member has no financial effects",
+        "portal: guest has no financial effects",
+        "portal: stale owner cannot survive primary downgrade",
+        "portal: primary tenant transfer cannot charge old tenant",
+        "portal: wrong-tenant signed cookie has no financial effects",
+        "portal: explicit API key cannot borrow owner session",
+        "portal: explicit API key cannot borrow owner session",
+        "downgrade: current owner reaches its payment adapter",
+        "downgrade: current admin reaches its payment adapter",
+        "downgrade: member has no financial effects",
+        "downgrade: guest has no financial effects",
+        "downgrade: stale owner cannot survive primary downgrade",
+        "downgrade: primary tenant transfer cannot charge old tenant",
+        "downgrade: wrong-tenant signed cookie has no financial effects",
+        "downgrade: explicit API key cannot borrow owner session",
+        "downgrade: explicit API key cannot borrow owner session",
+        "checkout: a retired credit pack id is rejected before payment effects (#22963)",
+        "checkout: hardware checkout retains existing member authority",
+        "checkout accepts exact decimal cents for 5",
+        "checkout accepts exact decimal cents for 5.15",
+        "checkout accepts exact decimal cents for 19.99",
+        "checkout accepts exact decimal cents for 1000",
+        "checkout rejects 1 before payment effects",
+        "checkout rejects 4.99 before payment effects",
+        "checkout rejects 1000.01 before payment effects",
+        "checkout rejects 5.001 before payment effects",
+        "checkout rejects 5.150000000000001 before payment effects",
+        "downgrade: manager loss during confirmation is re-read from primary before an effect",
+        "plan discovery: primary owner authorization",
+        "plan discovery: primary admin authorization",
+        "plan discovery: primary member authorization",
+        "plan discovery: primary guest authorization",
+        "plan discovery: primary role loss after reading discards the result",
+        "plan discovery: stale owner and tenant transfer cannot borrow the cached identity",
+        "plan discovery: wrong-tenant cookie and explicit API keys cannot borrow a session"
+      ]
+    },
+    {
+      "file": "packages/cloud/shared/src/db/migrations/stripe-checkout-provider-started-at.test.ts",
+      "required": [
+        "0559 preserves unknown historical dispatch and enforces write-once new dispatch"
+      ]
+    }
+  ]
+}
