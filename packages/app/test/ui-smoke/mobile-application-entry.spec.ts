@@ -916,57 +916,72 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   });
 });
 
-test("Android retained link receipts apply after readiness and preserve repeated URLs", async ({
-  page,
-}, info) => {
-  await fixture(page, true);
-  await installRenderTelemetryGuard(page);
-  await page.goto("/chat", { waitUntil: "domcontentloaded" });
-  await expect(
-    page.getByRole("button", { name: "Note Launch checklist", exact: true }),
-  ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const state = Reflect.get(window, "u1ReceiptProbe") as {
-          beforeReady: { navigations: number; acknowledgements: number };
-          navigations: number;
-          acknowledgements: Array<{
-            id: string;
-            navigations: number;
-            cleared: boolean;
-          }>;
-        };
-        return {
-          beforeReady: state.beforeReady,
-          navigations: state.navigations,
-          receipts: [
-            ...new Set(state.acknowledgements.map((entry) => entry.id)),
-          ].sort(),
-          premature: state.acknowledgements.some(
-            (entry) => entry.navigations === 0,
-          ),
-          cleared: state.acknowledgements
-            .filter((entry) => entry.cleared)
-            .map((entry) => entry.id),
-        };
-      }),
-    )
-    .toEqual({
-      beforeReady: { navigations: 0, acknowledgements: 0 },
-      navigations: 2,
-      receipts: ["A", "B"],
-      premature: false,
-      cleared: ["B"],
+for (const device of [
+  { name: "desktop", viewport: { width: 1280, height: 900 }, mobile: false },
+  { name: "mobile", viewport: { width: 393, height: 851 }, mobile: true },
+]) {
+  test.describe(`native receipts on ${device.name}`, () => {
+    test.use({
+      viewport: device.viewport,
+      isMobile: device.mobile,
+      hasTouch: device.mobile,
     });
-  await page
-    .getByRole("button", { name: "Note Launch checklist", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Note", exact: true }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: info.outputPath("receipt-navigation-notes.png"),
+    test("Android retained link receipts apply after readiness and preserve repeated URLs", async ({
+      page,
+    }, info) => {
+      await fixture(page, true);
+      await installRenderTelemetryGuard(page);
+      await page.goto("/chat", { waitUntil: "domcontentloaded" });
+      await expect(
+        page.getByRole("button", {
+          name: "Note Launch checklist",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const state = Reflect.get(window, "u1ReceiptProbe") as {
+              beforeReady: { navigations: number; acknowledgements: number };
+              navigations: number;
+              acknowledgements: Array<{
+                id: string;
+                navigations: number;
+                cleared: boolean;
+              }>;
+            };
+            return {
+              beforeReady: state.beforeReady,
+              navigations: state.navigations,
+              receipts: [
+                ...new Set(state.acknowledgements.map((entry) => entry.id)),
+              ].sort(),
+              premature: state.acknowledgements.some(
+                (entry) => entry.navigations === 0,
+              ),
+              cleared: state.acknowledgements
+                .filter((entry) => entry.cleared)
+                .map((entry) => entry.id),
+            };
+          }),
+        )
+        .toEqual({
+          beforeReady: { navigations: 0, acknowledgements: 0 },
+          navigations: 2,
+          receipts: ["A", "B"],
+          premature: false,
+          cleared: ["B"],
+        });
+      await page
+        .getByRole("button", { name: "Note Launch checklist", exact: true })
+        .click();
+      await expect(
+        page.getByRole("textbox", { name: "Note", exact: true }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: info.outputPath("receipt-navigation-notes.png"),
+      });
+      await expectNoRenderTelemetryErrors(page, "retained native receipts");
+    });
   });
-  await expectNoRenderTelemetryErrors(page, "retained native receipts");
-});
+}
