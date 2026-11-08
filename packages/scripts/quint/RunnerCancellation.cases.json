@@ -9,7 +9,7 @@
   "fairness": "CleanupProgress assumes fair signal forwarding, expiry of the finite grace timer, kernel delivery of forced termination and process reaping. Uncatchable termination of the supervisor is outside the model.",
   "limitations": [
     "The model projects a process group to one checker. Independently daemonized process groups are outside this ownership boundary.",
-    "The implementation conformance runs all 17 runner checks, including real Node parent/child/grandchild cancellation, inventory receipt retention and source-change rejection. Compiler semantic correctness remains in each source model.",
+    "The implementation conformance runs all 21 runner checks, including real Node parent/child/grandchild cancellation, inventory receipt retention and source-change rejection. Compiler semantic correctness remains in each source model.",
     "Operating-system process and Job Object semantics are platform assumptions. Linux conformance is exercised in this repository's Quint CI job."
   ],
   "cases": [
