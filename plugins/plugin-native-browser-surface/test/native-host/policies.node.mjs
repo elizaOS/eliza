@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const source = path.join(
@@ -180,25 +181,11 @@ test("native and renderer page reading agree", async (t) => {
   );
 });
 
-// The sealed site-permission record needs org.json, which Android provides. ELIZA_ORG_JSON_JAR
-// names the jar; otherwise the Gradle cache copy is used when present.
-const jsonCache = path.join(
-  os.homedir(),
-  ".gradle/caches/modules-2/files-2.1/org.json/json",
-);
-function cachedJsonJar() {
-  if (!fs.existsSync(jsonCache)) return undefined;
-  for (const version of fs.readdirSync(jsonCache).sort().reverse())
-    for (const hash of fs.readdirSync(path.join(jsonCache, version))) {
-      const jar = path.join(jsonCache, version, hash, `json-${version}.jar`);
-      if (fs.existsSync(jar)) return jar;
-    }
-  return undefined;
-}
-const jsonJar = process.env.ELIZA_ORG_JSON_JAR || cachedJsonJar();
+// The sealed site-permission record needs org.json, which Android provides.
+const { jar: jsonJar, reason: jsonJarReason } = resolveOrgJsonJar();
 
 test("sealed site-permission records keep order, the bound and the stored format", {
-  skip: jsonJar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jsonJar ? false : jsonJarReason,
 }, () => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "browser-record-"));
   try {

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 // Compiles the background new-mail reconciliation engine and delivery coordinator against org.json and
 // runs the synthetic JVM checks: durable pagination, at-most-once notices, owner and grant fences, tap
@@ -15,23 +16,10 @@ const sources = path.join(
   plugin,
   "android/src/main/java/ai/eliza/plugins/notifications",
 );
-const cached = () => {
-  const root = path.join(
-    os.homedir(),
-    ".gradle/caches/modules-2/files-2.1/org.json/json",
-  );
-  if (!fs.existsSync(root)) return undefined;
-  for (const version of fs.readdirSync(root).sort().reverse())
-    for (const hash of fs.readdirSync(path.join(root, version))) {
-      const jar = path.join(root, version, hash, `json-${version}.jar`);
-      if (fs.existsSync(jar)) return jar;
-    }
-  return undefined;
-};
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const { jar, reason } = resolveOrgJsonJar();
 
 test("mail history reconciliation and background delivery fences", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : reason,
 }, (t) => {
   if (!jar) return;
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "mail-background-"));

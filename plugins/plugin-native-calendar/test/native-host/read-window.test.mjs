@@ -1,29 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 const tests = dirname(fileURLToPath(import.meta.url));
 const plugin = resolve(tests, "../..");
 const source = process.env.ELIZA_CALENDAR_TEST_SOURCE || plugin;
-const cache = join(
-  homedir(),
-  ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
-);
-const json =
-  process.env.ALPHA_JSON_JAR ||
-  (existsSync(cache) &&
-    readdirSync(cache).flatMap((hash) =>
-      readdirSync(join(cache, hash))
-        .filter((name) => name === "json-20250517.jar")
-        .map((name) => join(cache, hash, name)),
-    )[0]);
+const { jar: json, reason } = resolveOrgJsonJar();
 
 test("shared Calendar range preserves complete reads and reports an explicit host bound", {
-  skip: !json && "Pinned JVM JSON dependency unavailable",
+  skip: json ? false : reason,
 }, () => {
   const temporary = mkdtempSync(join(tmpdir(), "shared-calendar-window-"));
   const binary = (name) =>

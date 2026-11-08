@@ -5,26 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 test("native provider admission preserves account, expiry, generation and rollback behavior", () => {
-  const cache = path.join(
-    os.homedir(),
-    ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
-  );
-  const jar =
-    process.env.ELIZA_JSON_JAR ||
-    (fs.existsSync(cache)
-      ? fs.readdirSync(cache).flatMap((dir) =>
-          fs
-            .readdirSync(path.join(cache, dir))
-            .filter((file) => file === "json-20250517.jar")
-            .map((file) => path.join(cache, dir, file)),
-        )[0]
-      : undefined);
-  assert.ok(
-    jar,
-    "Set ELIZA_JSON_JAR to org.json:json:20250517, or resolve that Gradle dependency",
-  );
+  const { jar, reason } = resolveOrgJsonJar();
+  assert.ok(jar, reason);
   const output = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-provider-admission-"),
   );

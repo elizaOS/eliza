@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 // Host-JVM contracts of the shared native connection transport and resident lifecycle
 // building blocks (ai.eliza.plugins.agent.connection and runtime). Not Android or device evidence.
@@ -15,29 +16,12 @@ const source = (name) =>
     "android/src/main/java/ai/eliza/plugins/agent",
     `${name}.java`,
   );
-const jsonJar = () => {
-  if (process.env.ELIZA_JSON_JAR) return process.env.ELIZA_JSON_JAR;
-  const cache = path.join(
-    os.homedir(),
-    ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
-  );
-  if (!fs.existsSync(cache)) return undefined;
-  return fs.readdirSync(cache).flatMap((dir) =>
-    fs
-      .readdirSync(path.join(cache, dir))
-      .filter((file) => file === "json-20250517.jar")
-      .map((file) => path.join(cache, dir, file)),
-  )[0];
-};
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 
 test("connection and resident lifecycle JVM contracts pass", () => {
-  const jar = jsonJar();
-  assert.ok(
-    jar,
-    "Set ELIZA_JSON_JAR to org.json:json:20250517, or resolve that Gradle dependency",
-  );
+  const { jar, reason } = resolveOrgJsonJar();
+  assert.ok(jar, reason);
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-connection-"));
   try {
     const shared = [

@@ -5,12 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
+import {resolveOrgJsonJar} from '../../../../../packages/scripts/lib/org-json-jar.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 test('shared voice assets install without loading an inference library',()=>{
- const cache=path.join(os.homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
- const jar=process.env.ELIZA_JSON_JAR||(fs.existsSync(cache)?fs.readdirSync(cache).flatMap(d=>fs.readdirSync(path.join(cache,d)).filter(f=>f==='json-20250517.jar').map(f=>path.join(cache,d,f)))[0]:undefined);
- assert.ok(jar,'Set ELIZA_JSON_JAR to the existing org.json:json:20250517 dependency');
+ const {jar,reason}=resolveOrgJsonJar();
+ assert.ok(jar,reason);
  const output=fs.mkdtempSync(path.join(os.tmpdir(),'eliza-voice-assets-'));
  const java=name=>process.env.JAVA_HOME?path.join(process.env.JAVA_HOME,'bin',name):name;
  try{

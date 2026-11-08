@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 // Compiles the journal engine against org.json and runs the synthetic JVM checks.
 // ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
@@ -13,23 +14,10 @@ const sources = path.join(
   plugin,
   "android/src/main/java/ai/eliza/plugins/actionjournal",
 );
-const cached = () => {
-  const root = path.join(
-    os.homedir(),
-    ".gradle/caches/modules-2/files-2.1/org.json/json",
-  );
-  if (!fs.existsSync(root)) return undefined;
-  for (const version of fs.readdirSync(root).sort().reverse())
-    for (const hash of fs.readdirSync(path.join(root, version))) {
-      const jar = path.join(root, version, hash, `json-${version}.jar`);
-      if (fs.existsSync(jar)) return jar;
-    }
-  return undefined;
-};
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const { jar, reason } = resolveOrgJsonJar();
 
 test("journal transitions, replay, bounds, crash ordering and host policy", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : reason,
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "action-journal-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
@@ -59,7 +47,7 @@ test("journal transitions, replay, bounds, crash ordering and host policy", {
 });
 
 test("deletion Undo window: deadline, journal, dispatch claim, receipt recovery and coordinator ports", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : reason,
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "deferred-deletion-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));

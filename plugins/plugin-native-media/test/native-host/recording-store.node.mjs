@@ -5,32 +5,20 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar.mjs";
 
 // Compiles the recording store against org.json and a host test double of AtomicFile, then runs
 // the synthetic JVM checks. ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is
 // used when present. Not Android, Keystore or MediaPlayer evidence.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const media = path.join(plugin, "android/src/main/java/ai/eliza/plugins/media");
-const cached = () => {
-  const root = path.join(
-    os.homedir(),
-    ".gradle/caches/modules-2/files-2.1/org.json/json",
-  );
-  if (!fs.existsSync(root)) return undefined;
-  for (const version of fs.readdirSync(root).sort().reverse())
-    for (const hash of fs.readdirSync(path.join(root, version))) {
-      const jar = path.join(root, version, hash, `json-${version}.jar`);
-      if (fs.existsSync(jar)) return jar;
-    }
-  return undefined;
-};
-const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
+const { jar, reason } = resolveOrgJsonJar();
 /** @param {string} name */
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 
 test("recording receipts, owner fences, retention and legacy migration", {
-  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+  skip: jar ? false : reason,
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "recording-store-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
