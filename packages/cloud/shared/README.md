@@ -417,3 +417,24 @@ immutable keys. Legacy
 version-1 roots retain their prior best-effort semantics and possible orphan debt.
 Apply the migration before updating all upload/deletion writers; mixed old writers
 do not provide the new cleanup protocol.
+
+Vertex job refresh requires migration 0562. It orders complete provider observations
+by exact nanosecond update time and publishes successful model ownership atomically.
+Payload generations are immutable; incomplete stored payloads fail explicitly.
+The local terminal marker and optional provider end time remain separate. Existing
+provider creation and assignment authorization remain separate protocols.
+Coordinate all deployed Vertex writers before relying on the new observation
+authority; the migration does not fence an old deployed writer.
+The exact provider-assigned job name binds refreshes. The configured project stays
+request provenance; project ID/number spelling is not an alias proof. Associated
+resources come from that job's authenticated response and terminal names stay exact.
+
+Stripe legacy queue adoption requires migration 0564 and cleanup index 0565. Durable cursors only select
+bounded work; matching SQL payload or terminal receipts authorize Redis removal.
+A retained handoff flag and DB delete guard protect those exact rows from both
+current and old webhook cleanup SQL;
+missing historical receipts require reconciliation and are never replayed blindly.
+Unknown receipts and malformed entries remain intact. KV adoption retains every
+raw entry: this owner has no durable old-writer fence to authorize deletion. KV
+cleanup remains a separate existing-owner obligation. Each list has its own work
+budget, while reading the complete legacy KV array can still exceed that budget.

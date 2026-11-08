@@ -777,6 +777,10 @@ test("CLI cancellation reaps checker descendants and retains incomplete evidence
         path.join(scriptRoot, "lib/test-output.ts"),
         "utf8",
       ),
+      "packages/scripts/lib/quint-shards.ts": readFileSync(
+        path.join(scriptRoot, "lib/quint-shards.ts"),
+        "utf8",
+      ),
       [conformance]: `import { spawn } from 'node:child_process';
 import { writeFileSync, existsSync } from 'node:fs';
 const grandchild = spawn(process.execPath, ['-e', "process.on('SIGINT', () => process.exit(0)); process.on('SIGTERM', () => process.exit(0)); require('node:fs').writeFileSync('test-results/ready-child', String(process.pid)); setInterval(() => {}, 1000);"]);

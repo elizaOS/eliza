@@ -168,7 +168,6 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
-
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
@@ -861,10 +860,17 @@ jobs:
           wait "$types_pid" || status=$?
           exit "$status"
 
-  quint:
-    name: Quint state and implementation checks
+  quint-models:
+    name: Quint shard (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+    outputs:
+      run: ${{ steps.changes.outputs.run }}
     services:
       quint-postgres:
         image: postgres:16-alpine
@@ -944,19 +950,100 @@ jobs:
       - name: Build core conformance dependencies
         if: steps.changes.outputs.run == 'true'
         run: bun run build:core
+      - name: Install local Redis for protocol conformance
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          if ! command -v redis-server >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends redis-server
+          fi
+          redis-server --version
       - name: Verify Quint models and real transitions
         if: steps.changes.outputs.run == 'true'
         env:
           INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
-        run: bun run test:quint
+        run: bun run test:quint --shard=${{ matrix.shard }}/4
       - name: Upload Quint evidence
         if: always() && steps.changes.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: quint-verification-pr
+          name: quint-verification-pr-shard-${{ matrix.shard }}
+          overwrite: true
           path: |
             test-results/quint/
             test-results/quint-*/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload required Quint shard manifest
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-manifest-pr-${{ matrix.shard }}
+          overwrite: true
+          path: test-results/quint/shard-${{ matrix.shard }}-of-4/verification.json
+          if-no-files-found: error
+          retention-days: 7
+
+  quint:
+    name: Quint state and implementation checks
+    if: always()
+    needs: [quint-models]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Require successful Quint shards
+        env:
+          RESULT: ${{ needs.quint-models.result }}
+          SHOULD_RUN: ${{ needs.quint-models.outputs.run }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::Quint shards finished with $RESULT"
+            exit 1
+          fi
+          case "$SHOULD_RUN" in
+            true|false) ;;
+            *) echo "::error::Quint selection result is missing or invalid"; exit 1 ;;
+          esac
+      - name: Checkout verified source
+        if: needs.quint-models.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Install evidence validator dependencies
+        if: needs.quint-models.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Download every shard manifest
+        if: needs.quint-models.outputs.run == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: quint-manifest-pr-*
+          path: test-results/quint-manifests
+      - name: Verify complete disjoint model coverage
+        if: needs.quint-models.outputs.run == 'true'
+        run: node packages/scripts/check-quint-shards.ts test-results/quint-manifests 4
+      - name: Upload complete Quint evidence summary
+        if: always() && needs.quint-models.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-verification-complete-pr
+          overwrite: true
+          path: test-results/quint/shards-summary.json
           if-no-files-found: warn
           retention-days: 7
 

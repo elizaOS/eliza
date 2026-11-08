@@ -1,0 +1,46 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/agents/memories.ts",
+    "packages/cloud/shared/src/db/helpers.ts",
+    "packages/cloud/api/v1/documents/_worker-documents.ts",
+    "packages/cloud/api/v1/documents/[id]/route.ts",
+    "packages/cloud/api/__tests__/documents-publication-atomicity.pglite.test.ts",
+    "packages/cloud/quint/check-document-publication.mjs",
+    "packages/scripts/lib/junit-summary.ts",
+    "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
+    "plugins/plugin-sql/src/schema/memory.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-document-publication.mjs",
+  "bounds": {
+    "assumptions": [
+      "One server-generated immutable document ID, complete content with two fragments, two already resolved request scopes, and one primary write transaction at a time. UUID reuse and document replacement are outside this model.",
+      "Document and fragment publication or deletion commit atomically. Rollback preserves every previously committed row. PostgreSQL transaction isolation and the parent row lock are assumed; general TypeScript/SQL refinement is not proved.",
+      "The caller has authenticated and resolved the scope. This model does not prove authentication, account deletion fencing, R2 upload/cleanup, SSRF, indexing consumers, arbitrary text bytes or multi-document request atomicity.",
+      "The same six complete-text, metadata, rollback, HTTP deletion and foreign-scope scenarios run on PGlite and an isolated PostgreSQL database. Four PostgreSQL interleavings use independent backend connections and observed lock waits to exercise unpublished creation, publication rollback, competing deletes and delete rollback. These are selected READ COMMITTED histories, not an exhaustive database-lock proof.",
+      "The Quint state space remains the serial committed-transaction abstraction. PostgreSQL interleavings check its selected implementation boundaries; they do not model every concurrent session, UUID reuse, document replacement, schema trigger or isolation level."
+    ],
+    "progress": "Pending database transactions settle only under weak fairness of their commit/rollback continuations. No provider, scheduler or network availability is assumed."
+  },
+  "cases": [
+    {
+      "name": "atomic-document-graph",
+      "main": "document_publication",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["TransactionsSettle"],
+      "temporalChecks": [
+        {
+          "property": "TransactionsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "The pending primary transaction eventually returns or rolls back, modeled by weak fairness of finish. This does not promise successful publication or deletion."
+          ]
+        }
+      ],
+      "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}

@@ -16,47 +16,119 @@
       "One host and one already-saved credential receipt. Public operations are modeled at quiescent boundaries, with failures before and after durable/remote effects and five explicit cancel-versus-resume await cuts. Other asynchronous interleavings remain outside this projection.",
       "Real implementation conformance replays generated Quint traces through private filesystem receipts, loopback HTTP and the actual native-host module. Server proof verification and atomic acknowledgement/revocation are assumed. Restart reconstructs the host against unchanged persisted data; process death, fsync and multi-process coordination are outside this checker.",
       "Progress assumes weak fairness of a successful complete cancellation retry. Permanent outages, missing retries and expired unacknowledged enrollment have no completion guarantee.",
-      "Initial challenge/PKCE issuance, MFA, Google OAuth, verified-owner activation, billing authority, account methods, and replacement credentials need separate models. A default cancel after the activation receipt has been cleared preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
+      "NativeGoogleAdmission covers the bounded Google callback and exchange boundary. Email and phone challenge issuance, MFA completion, verified-owner activation, billing authority, account methods and replacement credentials need separate models. A default cancel after activation receipt removal preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
     ]
   },
   {
     "id": "auth.NativeEnrollmentAdmissionAndAuthority",
-    "model": null,
+    "model": "packages/auth/quint/NativeGoogleAdmission.qnt",
     "sources": [
       "packages/auth/native-host/cloud-enrollment.mjs",
       "packages/auth/native-host/account-methods.mjs"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "TypeOK",
+      "OneExchangePerAttempt",
+      "InvalidShapeOrStateKeepsChallenge",
+      "MatchedFailuresConsumeWithoutDispatch",
+      "ExchangeUsesOwnVerifier",
+      "CancelledExchangeCannotRestoreChallenge"
+    ],
+    "status": "partial",
     "limitations": [
-      "Enrollment challenge/MFA and Google state/PKCE single-use redemption, verified owner activation, ephemeral account/billing authority, one-use account mutation reviews and replacement credentials remain to be modeled."
+      "Two Google attempts, one host, one in-flight exchange and one cancellation. Start represents a successful app configuration and an empty active/pending credential slot. State and verifier are opaque identities. Expiry is an explicit event before exchange dispatch.",
+      "Malformed return shape, foreign state, matched malformed code, matched failure link and matched valid code represent native callback branches. The model ends at exchange failure or MFA admission. Browser navigation, provider code cryptography, MFA completion, account methods, billing authority and credential activation are separate.",
+      "Native host tests check the parser and attempt behavior. The loopback check verifies the PKCE binding and the typed cancellation fence after a real HTTP exchange is already pending. The model does not prove provider token validation.",
+      "Email and phone challenge issuance, verified-owner activation, ephemeral account and billing authority, one-use account mutation reviews and replacement credentials remain separate."
     ]
   },
   {
     "id": "auth.AccountStorageDeletionAndMigration",
-    "model": null,
+    "model": "packages/auth/quint/AccountCredentialGeneration.qnt",
     "sources": [
       "packages/auth/src/auth/account-storage.ts",
       "packages/auth/src/auth/credentials.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
+      "ProviderIsolation"
+    ],
+    "status": "partial",
     "limitations": [
-      "Conditional metadata admission, deletion preflight/commit atomicity, encrypted legacy upgrade and pool-metadata persistence still need models. AccountStorageLock and AccountStorageReset now cover cross-process lock ownership and reset generation recovery. AccountCredentialGeneration covers the separate refresh compare-and-swap contract."
+      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. AccountProviderDeletion and AccountStorageMigration cover provider-wide deletion and per-file migration under separate bounds. Explicit account-list deletion, remaining pool-metadata persistence and route orchestration stay outside these cases.",
+      "AccountStorageLock and AccountStorageReset own cross-process lock and reset recovery. This case assumes atomic locked storage calls and does not cover filesystem failures."
+    ]
+  },
+  {
+    "id": "auth.AccountProviderDeletion",
+    "model": "packages/auth/quint/AccountProviderDeletion.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OutsideProviderUntouched",
+      "RefusedPlanRetainsFiles",
+      "CompleteValidationBeforeUnlink",
+      "UnlinksStayInsidePlan",
+      "SuccessConfirmsExactlyPlan",
+      "RollbackRestoresCiphertext"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two initial credential files for one provider, one optional new account, and an unrelated provider with the same account id. At most two preflights and one cooperating write between preflight and commit. A noncanonical inventory name can reject preflight.",
+      "The lock prevents other authorized readers and writers during validation, unlinks and rollback. The stat tuple is an opaque fingerprint. The modeled atomic replacement changes that tuple. Restoration preserves ciphertext, while file identity may change.",
+      "The failure branch injects an error on the second unlink after one successful unlink, with successful restoration. Directory sync failure, rollback failure, process death and reset interleavings are outside this bound.",
+      "Explicit account-list plans, nonregular paths, multi-provider plans, byte changes with equal stat tuples and malicious filesystem mutation are separate cases. Cryptographic correctness is assumed. An unsubmitted plan can be abandoned without writing."
+    ]
+  },
+  {
+    "id": "auth.AccountStorageMigration",
+    "model": "packages/auth/quint/AccountStorageMigration.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/vault/crypto.ts",
+      "packages/auth/src/vault/master-key.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "PreservesContentsAndExistingGeneration",
+      "InvalidRecordsStayUntouched",
+      "OneCanonicalRewritePerFile",
+      "FailedReadHasNoResult",
+      "ReturnedRecordsAreCanonical",
+      "FailurePreservesPublicationBoundary",
+      "EarlierListRewriteSurvives"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two present files in one provider, at most two locked load or list calls, and one fixed list order. The finite file kinds represent plaintext, canonical and legacy authenticated envelopes, corrupt bytes and authenticated wrong identity. Initial generation can be absent or present.",
+      "Cryptographic correctness, lock ownership, key availability and atomic rename are assumptions. Credentials and metadata are opaque identities. The first published generation is symbolic, and unobserved candidates discarded before rename are outside generation uniqueness.",
+      "A failure before rename preserves original bytes. A directory sync failure after rename returns an error with the canonical file visible in this process. Earlier files in a list stay migrated if a later file rejects. Filesystem power loss, failed lock release and process death stay outside this model.",
+      "Missing files, arbitrary list lengths, multiple providers, key rotation, explicit writes and reset interleavings are outside this bound. Named scenarios use actual encrypted bytes and controlled filesystem faults. Windows skips the directory sync error scenario because the implementation omits that sync there."
     ]
   },
   {
     "id": "auth.AccountPoolHealthAndStrategies",
-    "model": null,
+    "model": "packages/auth/quint/AccountPoolLeastUsed.qnt",
     "sources": [
       "packages/auth/src/accounts/account-pool.ts",
       "packages/auth/src/accounts/account-selection.ts",
       "packages/auth/src/accounts/account-usage.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "TypeOK",
+      "SelectedWithinProvider",
+      "UsageAndEffectiveAgeOrderPicks",
+      "StampsChangeOnlyForFreshPicks",
+      "PersistedRecencySurvivesRestart"
+    ],
+    "status": "partial",
     "limitations": [
-      "Eligibility health/cooldown/expiry clocks, usage refresh and mutations, priority/least-used/quota/reset strategies, and bounded-cache eviction remain to be modeled. AccountPoolAffinity covers the separate round-robin/affinity selection snapshot contract."
+      "AccountPoolLeastUsed covers provider-scoped selection stamps, preview, affinity reuse and persisted recency under declared bounds. AccountPoolAffinity and AccountPoolHealth separately cover round-robin and bounded health ownership.",
+      "Priority, quota-aware and reset-based ranking, mixed strategies, full eligibility and usage clock combinations, arbitrary storage failure and bounded-cache eviction remain gaps."
     ]
   },
   {
@@ -79,7 +151,27 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Android pending state/expiry, acknowledgement retry budget, credential-slot ownership, cancellation and activity recreation are not covered by the Node native-host projection."
+      "NativeAndroidAckRecovery covers startup receipt eligibility and acknowledgement retry under separate bounds. Android pending sign-in state, credential issuance and replacement, and composed cancellation or activity recreation remain outside the Node native-host projection."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidAckRecovery",
+    "model": "packages/auth/quint/NativeAndroidAckRecovery.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java"
+    ],
+    "invariants": [
+      "RetryBudget",
+      "AckUsesCurrentUnexpiredReceipt",
+      "RecoveryNeverReplacesSavedKey",
+      "RemoveOnlyStaleOrAcknowledged"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one credential and receipt slot, two startup invocations and three acknowledgement rounds per invocation. Deadline, storage availability and response classes are explicit.",
+      "Conformance executes the exact Java startup recovery and acknowledgement methods with synthetic storage and HTTPS boundaries in the existing JVM harness.",
+      "The model assumes a stable credential and receipt during an invocation. Other plugin instances, multi-deployment worker composition, storage durability, native device execution and credential issuance remain separate."
     ]
   },
   {
@@ -93,13 +185,14 @@
       "RefreshPreservesCurrentLabel",
       "MissingIdTokenIsCarriedForward",
       "MetadataPreservesCredentials",
+      "ConditionalMetadataHonorsGeneration",
       "ProviderIsolation"
     ],
     "status": "partial",
     "limitations": [
-      "Two provider namespaces share an account id. Two one-shot refresh callers and one explicit save bound fresh generations. Atomic storage API operations and unique generation UUIDs are assumed.",
-      "Generated traces replay public APIs against actual encrypted account files. Metadata changes and deletion/replacement interleave with held refresh generations. AccountStorageLock and AccountStorageReset cover their bounded ownership/recovery protocols. Conditional metadata, deletion plans and legacy migration remain separate gaps.",
-      "Refresh progress assumes weak fairness of completed provider responses and the refresh commit API. Permanent provider failure is outside this projection."
+      "Two providers share an account id. Two one-shot refresh or metadata callers and one explicit save bound replacement generations. Atomic storage calls and unique generation UUIDs are assumed.",
+      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. AccountProviderDeletion and AccountStorageMigration separately cover provider-wide deletion and per-file migration. Explicit account-list deletion plans remain a gap.",
+      "Progress assumes weak fairness of completion and eventual access to the storage commit. Caller cancellation and permanent provider or storage failure remain outside this projection."
     ]
   },
   {

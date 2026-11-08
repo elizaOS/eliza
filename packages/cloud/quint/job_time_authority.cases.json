@@ -10,6 +10,7 @@
     "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
     "packages/cloud/shared/src/db/repositories/job-execution-authority.ts"
   ],
+  "conformance": "packages/cloud/quint/check-job-time.ts",
   "bounds": {
     "assumptions": [
       "One durable job, two execution generations, two retries, database clock0..6, application and database timezone offsets -2/0/2, and a two-tick delay/lease.",
@@ -18,11 +19,16 @@
       "Renewal waits may outlive their transaction-start lease. The new expiry is sampled after acquiring the job row; another generation cannot be overwritten.",
       "No scheduler fairness, eventual execution, provider quiescence, unbounded clock behavior, DST transition semantics or TypeScript/SQL refinement is proved. Real PostgreSQL tests separately cover process and database timezone matrices and lock waits."
     ],
-    "progress": "No temporal or fairness claim. Each model permits stuttering and repeated failures."
+    "progress": "No fairness or temporal progress claim. Safety covers only the declared finite model."
   },
+  "limitations": [
+    "No complete scheduler model yet.",
+    "Verify implementation transitions and failure paths against the formal contract.",
+    "The time-authority model covers retry/read/renewal boundaries only; complete scheduler and remote-effect protocols remain open."
+  ],
   "cases": [
     {
-      "name": "job-time-authority",
+      "name": "database-clock",
       "main": "job_time_authority",
       "init": "init",
       "step": "step",
@@ -32,6 +38,5 @@
       "samples": 1000,
       "deadlock": false
     }
-  ],
-  "conformance": "packages/cloud/quint/check-job-time.ts"
+  ]
 }

@@ -221,18 +221,23 @@
   },
   {
     "id": "cloud-flow-platform-subscription-commands",
-    "model": null,
+    "model": "packages/cloud/quint/PlatformSubscriptionCommand.qnt",
     "sources": [
-      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts"
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+      "packages/cloud/quint/check-platform-subscription-command.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Model the platform command protocol separately from app-scoped worker leases.",
-      "Required flow invariants: Provider dispatch retains one immutable request identity. | Only provably unstarted commands can be superseded.",
-      "Abstract states: PREPARED, OUTCOME_UNKNOWN, SUCCEEDED, APPLIED, FAILED, SUPERSEDED"
+      "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes.",
+      "Each command mutation is one committed organization/authority/command transaction. Rollback stutters. Row-lock mechanics, SQL isolation, caller authentication and paid-work/deletion admission are not implemented by this abstraction; repository locks alone do not authorize provider I/O.",
+      "Repository dispatch commits OUTCOME_UNKNOWN before external I/O but is not an exclusive provider lease. Multiple callers may replay the same immutable key. Provider acceptance, idempotency retention, network ambiguity and recovery orchestration are excluded; no remote exactly-once claim is made.",
+      "The history set abstracts append-only matching own checkout source/plan/subscription/digest records. Code 3 represents a foreign or mismatched candidate. Current-plan change does not remove history. Cryptographic digest correctness and unbounded histories are not proved.",
+      "Concurrent different command keys, live-checkout uniqueness and contradictory command admission are exercised by the existing SQL fixture but not exhaustively modeled here. Full app-scoped execution, dedicated leased cancellation/resumption, upgrades and scheduled downgrade protocols need their own models.",
+      "Strict conformance requires eight named real PGlite repository scenarios; it is not trace-by-trace refinement or PostgreSQL multi-session lock evidence."
     ]
   },
   {
@@ -309,36 +314,68 @@
   },
   {
     "id": "cloud-flow-subscription-funding-reservations",
-    "model": null,
+    "model": "packages/cloud/quint/subscription_funding_reservations.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/subscription-funding-reservations.ts",
-      "packages/cloud/shared/src/db/schemas/billing-funding-reservations.ts"
+      "packages/cloud/shared/src/db/schemas/billing-funding-reservations.ts",
+      "packages/cloud/shared/src/lib/services/subscription-funding.ts",
+      "packages/cloud/shared/src/lib/services/subscription-funding-policy.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-allowance.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-allowance-periods.ts",
+      "packages/cloud/shared/src/lib/services/credits.ts",
+      "packages/cloud/shared/src/db/helpers.ts",
+      "packages/cloud/shared/src/lib/services/subscription-funding-transaction.pglite.test.ts",
+      "packages/cloud/shared/src/db/repositories/account-billing-snapshot-test-fixture.ts",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/cloud/quint/check-funding-reservations.ts",
+      "packages/cloud/shared/src/db/migrations/0000_last_reavers.sql",
+      "packages/cloud/shared/src/db/migrations/0265_compute_billing_recovery.sql",
+      "packages/cloud/shared/src/db/migrations/0274_agent_billing_run_receipts.sql",
+      "packages/cloud/shared/src/db/migrations/0387_agent_compute_funding.sql",
+      "packages/cloud/shared/src/db/migrations/0388_agent_compute_funded_receipts.sql",
+      "packages/cloud/shared/src/db/migrations/0389_agent_compute_stop_receipts.sql",
+      "packages/cloud/shared/src/db/migrations/0390_agent_compute_runtime_readiness.sql",
+      "packages/cloud/shared/src/db/migrations/0391_agent_compute_subjects.sql",
+      "packages/cloud/shared/src/db/migrations/0392_agent_compute_retirement_backup.sql",
+      "packages/cloud/shared/src/db/migrations/0393_agent_compute_activation_minimum.sql",
+      "packages/cloud/shared/src/db/migrations/0394_agent_billing_activation_minimum.sql",
+      "packages/cloud/shared/src/db/migrations/0484_agent_billing_funding_reservations.sql",
+      "packages/cloud/shared/src/lib/services/subscription-allowance-lifecycle.pglite.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Build the finite transition model and connect adversarial implementation tests.",
-      "Required flow invariants: Allowance and purchased-credit allocations exactly conserve the request. | Terminal settlement and cancellation identities cannot conflict.",
-      "Abstract states: reserved, finalized, canceled"
+      "Positive createPrerequisite protocol projected onto one organization/logical-operation key, two transaction callers, two scope/merchant pairs, one owned allowance-period identity, opaque digests/keys 0..1 and integer currency inputs 0..2. References 0/1 belong to the projected owner; reference 2 is foreign. The model uses one field for requested_amount/reserved_amount, whose equality is enforced by the writer and schema.",
+      "Every distinct valid bounded record is enumerated. Invalid arguments collapse to unchanged transaction abort, and terminal replay payloads collapse to unchanged replay or rejection; general actions retain all guards and negative scenarios.",
+      "The caller has locked the organization and supplies the reservation/allocations from the same transaction. Repository calls stage complete results; any failure aborts the whole owning transaction, and commit publishes all staged writes atomically.",
+      "Canonical fixed-six money is abstracted as integer units; parsing, precision, numeric overflow, cryptographic digest binding and SQL isolation are not proved.",
+      "Expiry labels represent valid caller-supplied deadlines. Actual time, expiry validation and clock progression are not represented.",
+      "The repository neither owns purchased balances nor validates economic meaning of referenced ledger rows. Caller-owned debit/refund and allowance eligibility/expiry decisions are assumptions; no repository-level overspend or provider-effect proof is claimed.",
+      "The caller-supplied allowanceExpired flag controls unused allowance classification. Expired allowance is not a purchased-credit refund; purchased releases remain purchased credit. Actual clocks, grace windows and cross-operation reference uniqueness are outside this model.",
+      "Reference IDs are owned alpha representatives per field role. persistCurrent reuses reserveRef symbolically; it does not assert that real reservation, settlement and refund ledger rows share identity. Independent reference-identity and uniqueness coverage remain excluded.",
+      "The strict conformance hook runs four ordered transaction cases and two independently seeded cancellation/expiry cases on PGlite and fresh dedicated_compute_test_* PostgreSQL databases. It verifies committed allocation conservation and excludes unrelated skipped/filtered cases from selected coverage.",
+      "States: reserved, finalized and canceled. Exhaustive safety over bounded rows does not prove caller balance conservation, SQL isolation, provider effects or implementation refinement. No temporal or fairness claim."
     ]
   },
   {
     "id": "cloud-flow-subscription-provider-event-receipts",
-    "model": null,
+    "model": "packages/cloud/quint/subscription_event_receipts.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
       "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
       "Finite models cover only their documented bounds; implementation refinement is not established.",
       "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
       "Build the finite transition model and connect adversarial implementation tests.",
       "Required flow invariants: A current receipt lease is required for application or retry release. | Receipt and subscription projection commit together.",
-      "Abstract states: received, processing, applied, ignored, failed, quarantined"
+      "Abstract states: received, processing, applied, ignored, failed, quarantined",
+      "A current receipt lease is required for application or retry release.",
+      "Receipt and subscription projection commit together.",
+      "Terminal-event receipt ownership and transactional publication now have a bounded model and strict47-case PGlite conformance (41 receipt/publication checks plus six command regressions). Invoice funding, app receipts and administrative recovery remain separate gaps."
     ]
   },
   {
@@ -549,39 +586,38 @@
   },
   {
     "id": "cloud-flow-inference-policy-admission",
-    "model": null,
+    "model": "packages/cloud/quint/StandardInferenceAdmission.qnt",
     "sources": [
       "packages/cloud/api/src/inference-admission-gate.ts",
       "packages/cloud/shared/src/lib/services/organization-inference-admission.ts",
-      "packages/cloud/shared/src/lib/services/inference-admission-snapshot.ts"
+      "packages/cloud/shared/src/lib/services/inference-admission-snapshot.ts",
+      "packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
+      "packages/cloud/shared/src/lib/services/inference-admission-recovery.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No complete policy-admission model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Policy generations and revocation fences remain current | Dispatch requires durable admission | Ambiguous acknowledgements do not cause duplicate effects",
-      "Abstract states: requested, authorized, reserved, dispatched, released, recovered"
+      "One standard organization request has a fixed recovery identity, one exact pre-provider cancellation capability and one initial policy generation. Ordinary and combined dispatch are both explored. Delegated grants, multiple organizations, credential parsing and cross-key revocation are separate.",
+      "The first durable dispatch checks the current policy generation and, for combined admission, standing. Exact replay can heal a committed acknowledgement without taking a second hold. A caller invokes the provider only after observing a valid acknowledgement.",
+      "Unknown dispatch acknowledgement retains any committed hold. Cancellation requires the live caller to know it has yet to invoke the provider. A retained recovering lease fences the direct debit until the current recovery publishes the authoritative balance.",
+      "A direct debit is idempotent under the original request identity. The model compresses known-cost settlement to one transition and uses one-unit exposure. Widening, partial collection, funding views, settled-ID eviction, authenticated zero-receipt composition and alarm batching remain separate.",
+      "Workerd runs the production Durable Object, with the transport response controlled for acknowledgement loss. PGlite runs actual direct debit recovery with injected write and publication failures. The two suites qualify their boundaries separately, without executing a live provider or the entire alarm-to-SQL composition."
     ]
   },
   {
     "id": "cloud-flow-inference-provider-streaming",
-    "model": null,
+    "model": "packages/cloud/quint/ChatSdkStreamSettlement.qnt",
     "sources": [
       "packages/cloud/api/v1/chat/completions/route.ts",
-      "packages/cloud/api/v1/responses/route.ts"
+      "packages/cloud/api/__tests__/anthropic-web-search-abort.pglite.test.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite provider-stream model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Disconnect preserves exact billing settlement | Complete model context is retained | Buffered data is bounded without silent truncation",
-      "Abstract states: admitted, connecting, streaming, completed, aborted, failed"
+      "One admitted SDK chat stream and two terminal callback sources. The first callback retains its promise through success or failure. The model covers callback ownership and settlement selection, without modeling lower-level accounting retries inside the winning callback.",
+      "Usage is classified as missing, explicit zero or positive. An error with provably unaccepted provider work can select zero before any delivered output. Search aborts and missing usage retain the admitted estimate. Ordinary abort can attempt partial pricing and retain the estimate when pricing fails.",
+      "The conformance test runs the production SDK stream handler, Anthropic decoder and PGlite pricing with controlled SSE and settlement ports. It proves callback selection for failed search followed by abort. It does not settle a live debit or test every model branch.",
+      "Byte framing and passthrough metering have separate evidence. Responses adaptation, complete context and buffering, SDK callback delivery guarantees, live provider behavior and monetary reconciliation remain outside this proof."
     ]
   },
   {
@@ -825,39 +861,48 @@
   },
   {
     "id": "cloud-flow-content-and-object-storage",
-    "model": null,
+    "model": "packages/cloud/quint/document_publication.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/storage/object-store.ts",
       "packages/cloud/shared/src/lib/storage/object-store-multipart.ts",
-      "packages/cloud/api/v1/documents/[id]/route.ts"
+      "packages/cloud/api/v1/documents/[id]/route.ts",
+      "packages/cloud/shared/src/db/repositories/agents/memories.ts",
+      "packages/cloud/shared/src/db/helpers.ts",
+      "packages/cloud/api/v1/documents/_worker-documents.ts",
+      "packages/cloud/api/__tests__/documents-publication-atomicity.pglite.test.ts",
+      "packages/cloud/quint/check-document-publication.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
+      "plugins/plugin-sql/src/schema/memory.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite content-store model yet.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Content address matches complete bytes | Publication follows durable object commit | Untrusted reads preserve SSRF and owner boundaries",
-      "Abstract states: admitted, uploading, validated, committed, published, deleted, failed"
+      "Abstract states: admitted, uploading, validated, committed, published, deleted, failed",
+      "The document parent/fragment publication and deletion subprotocol has a bounded transactional model and real database regressions. Object-provider uploads, exact-read completion, multipart cancellation/settlement, account deletion and BLOB cleanup remain separate unmodeled protocols.",
+      "Selected real PostgreSQL interleavings use independent backend connections; the Quint proof still abstracts committed transactions and does not establish the full database-lock graph."
     ]
   },
   {
     "id": "cloud-flow-domain-lifecycle",
-    "model": null,
+    "model": "packages/cloud/quint/DomainPurchaseAttempt.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/domain-purchase-attempts.ts",
-      "packages/cloud/api/cron/reconcile-domain-purchases/route.ts"
+      "packages/cloud/api/cron/reconcile-domain-purchases/route.ts",
+      "packages/cloud/api/v1/apps/[id]/domains/buy/route.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite domain lifecycle model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Purchase identity is idempotent | DNS proof precedes publication | Unknown provider outcomes are reconciled",
-      "Abstract states: available, quoted, purchasing, purchased, verifying, active, renewing, expired, failed"
+      "One already created nonlegacy attempt retains a fixed organization, app, domain, request digest and registration term. Quote values and exact receipt bindings are projected. The SQL suite checks the real tenant, term and amount constraints.",
+      "The model checks one retained row from quote through registrar authorization, read-only reconciliation and refund or local assignment. It covers one registrar-start permit. Physical dispatch timing, identity validation of Cloudflare responses, and provider settlement semantics remain external.",
+      "The start result may record an accepted registration response. A recovery read requires active registration or definitive failure to settle. Ambiguous responses, a stalled worker and lookup errors keep the attached charge and allow a later status-only claim.",
+      "Debit creation before charge attachment, legacy orphaned debits, new attempt creation after erasure, and existing same-tenant managed domain recovery are outside this projection. The charged pre-start refund transition assumes a verified foreign domain conflict.",
+      "Refund ledger creation and its attachment are separate steps. Managed domain persistence and terminal publication are also separate steps. Their exact SQL bindings are tested against PGlite. Real Cloudflare calls, DNS verification, renewal, zone setup, and cron batch scheduling are separate coverage."
     ]
   },
   {
@@ -900,40 +945,36 @@
   },
   {
     "id": "cloud-flow-personal-shared-consent",
-    "model": null,
+    "model": "packages/cloud/quint/PersonalSharedConsent.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/personal-shared-group-consent-lifecycle.ts",
-      "packages/cloud/api/src/shared-runtime-conversation.ts",
-      "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
+      "packages/cloud/shared/src/db/repositories/personal-shared-group-consent.ts",
+      "packages/cloud/shared/src/db/repositories/personal-shared-groups.ts",
+      "packages/cloud/shared/src/db/repositories/users.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite membership or group-consent model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Membership and consent bind the requesting identity | Revocation fences subsequent delivery | Conversation updates preserve complete retained content",
-      "Abstract states: invited, pending, approved, active, revoked, expired, removed"
+      "One already active all-adults binding requires its eligible owner and one eligible linked participant. Exact authority scope represents binding, owner, agent, platform, project, connector and provider chat. Policy, membership, other quorum sizes, and multi-binding transactions remain outside this projection.",
+      "An authenticated confirmation is projected as an exact challenge identifier. Provider identity and control classification are trusted inputs. User eligibility, consent loss, expiry, account retirement and explicit reactivation retain separate transitions.",
+      "The retry request records caller intent in the model. Production has no durable account-mutation queue. A live lease leaves a failed mutation retryable, and retirement keeps existing committed attempt authority.",
+      "A committed slot can retire as uncertain at the recovery horizon. Exact late receipts can reconcile it even after authority changes. Provider proof, partial or conflicting receipt sets, old-writer compatibility, real provider sends, and conversation content are separate coverage.",
+      "The hook executes actual PGlite repository transactions. Account, consent and lease mutations are represented as atomic steps. Database locking implementation, provider idempotency and wall-clock completion are outside this finite proof."
     ]
   },
   {
     "id": "cloud-flow-onboarding-sessions",
-    "model": null,
+    "model": "packages/cloud/quint/OnboardingContinuationClaim.qnt",
     "sources": [
       "packages/cloud/api/src/onboarding-session-coordinator.ts",
       "packages/cloud/api/src/authentication-state.ts",
       "packages/cloud/shared/src/lib/auth/authentication-state.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["SingleBoundAuthority"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite onboarding model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Onboarding completion belongs to the original session | Single-use proofs are not replayed | Expiry does not become renewed authority",
-      "Abstract states: created, pending, verified, completed, expired"
+      "Checks one stable redirect and one trusted platform session with two candidate claim lineages and account pairs. Workerd checks exact re-entry, denial and cleanup against stored platform and account scope records.",
+      "OnboardingGreetingLease separately checks greeting lease ownership. Transcript migration, replay alarm pagination, cross-shard binding races and authentication-state ownership remain separate."
     ]
   },
   {
@@ -1770,6 +1811,83 @@
     ]
   },
   {
+    "id": "cloud-protocol-subscription-terminal-receipt",
+    "model": "packages/cloud/quint/SubscriptionTerminalReceipt.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
+      "packages/cloud/api/src/queue/stripe-event.ts"
+    ],
+    "invariants": ["Safety"],
+    "status": "partial",
+    "limitations": [
+      "One platform Stripe cancellation event, one organization and one original subscription. Exact event, receipt and provider observation identities are abstracted as equality guards. Invoice renewal, dunning, merchant scope and nonterminal policy remain separate.",
+      "The lease uses database time at entry and again at final receipt CAS. A private draft represents locked source, projection, generation, audit and notice writes. A commit publishes them together or acknowledges an already matching reconciliation publication.",
+      "A failed finalizer rolls back its draft. A current unexpired lease may release for retry. After expiry only a fresh claim can finalize, and the original applied receipt stays historical after authority replacement.",
+      "The finite model compresses revision capture into the claim and abstracts the post-lock checks. It covers stale source and projection revisions and expiry during the draft. PostgreSQL isolation, physical lock waits, provider object validation, live notices and handler delivery retries are outside this proof.",
+      "The conformance suites use real PGlite transactions, inject failures into SQL writes, and check durable billing admission. A loopback Stripe HTTP fixture exercises the actual SDK and queue handler. Live Stripe is outside the evidence."
+    ]
+  },
+  {
+    "id": "cloud-flow-responses-adaptation",
+    "model": null,
+    "sources": [
+      "packages/cloud/api/v1/responses/route.ts",
+      "packages/cloud/api/v1/chat/completions/route.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Responses adaptation remains a distinct implementation obligation. ChatSdkStreamSettlement models the admitted chat SDK callback owner only; it does not establish Responses request or stream translation, complete context preservation, buffering, cancellation propagation or response event ordering.",
+      "Preserve the authorized complete request and response representations. Model the adaptation and its failure/recovery boundaries, and connect implementation conformance before claiming coverage."
+    ]
+  },
+  {
+    "id": "cloud-flow-personal-shared-conversation",
+    "model": null,
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "PersonalSharedConsent models consent and durable delivery authorization only. The shared runtime conversation and message route remain distinct obligations for membership-scoped context selection, complete retained content, provider send composition and reconciliation.",
+      "Do not infer conversation or request-boundary correctness from the consent repository model. Source selection, restoration, cancellation and cross-component failure interleavings need their own models and implementation conformance."
+    ]
+  },
+  {
+    "id": "cloud-protocol-ad-campaign-refund",
+    "model": "packages/cloud/quint/ad_campaign_refund.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/advertising/index.ts",
+      "packages/cloud/shared/src/db/repositories/ad-campaigns.ts",
+      "packages/cloud/shared/src/db/repositories/ad-transactions.ts",
+      "packages/cloud/shared/src/lib/services/credits.ts",
+      "packages/cloud/shared/src/db/helpers.ts",
+      "packages/cloud/shared/src/db/schemas/ad-campaigns.ts",
+      "packages/cloud/shared/src/db/schemas/ad-transactions.ts",
+      "packages/cloud/shared/src/db/schemas/credit-transactions.ts",
+      "packages/cloud/shared/src/lib/services/advertising/campaign-deletion.pglite.test.ts",
+      "packages/cloud/quint/check-ad-campaign-refund.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/shared/src/lib/services/advertising/campaign-deletion.postgres.integration.test.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/scripts/run-with-deadline.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One existing campaign with allocation5, initial spent2, two delete callers and at most two attempts each. Money is integral in this instance. The parent organization and source ownership remain present.",
+      "One primary SQL transaction locks the organization, deletes and returns the current campaign, refunds its unused allocation and inserts both linked financial receipts. Credit, advertising or suppressed-row failure rolls back every mutation; cache invalidation occurs only afterward.",
+      "Real PGlite service/repository tests check SQL failure and suppressed receipts, linked ledgers, post-commit cache failure, zero refund and foreign-organization refusal. SQL lock scheduling, provider truth, external deletion/creation races, debit/budget-update protocols, decimal rounding and general TypeScript refinement are not proved here.",
+      "This is the SQL settlement phase after no external campaign exists or its provider deletion was confirmed. Unknown external deletion, stale provider spend, and retries against an already-deleted remote resource remain separate unresolved lifecycle obligations; there is no remote exactly-once claim.",
+      "Weakly fair SQL and reply continuations settle accepted calls. Failure may preserve the campaign for retry. No provider availability, elapsed deadline, successful deletion or automatic replay guarantee.",
+      "Four independent-session PostgreSQL cases observe lock blocking for competing deletes, spend-before-delete, delete-before-spend and rollback-to-waiting-writer. These are selected real SQL histories, not a complete isolation proof."
+    ]
+  },
+  {
     "id": "cloud-protocol-frontend-publication",
     "model": "packages/cloud/quint/frontend_publication.qnt",
     "sources": [
@@ -1844,6 +1962,233 @@
       "Six real PGlite original-job service/repository/public-serving cases retain complete objects across rejected and lost final SQL writes, reject reactivation after the permanent deletion fence, and clean all 1002 retained manifests only after acknowledged cascade. Two separate PostgreSQL parent-lock cases retain the repository concurrency proof. Provider I/O remains controlled.",
       "Object-retention projection only; the app_teardown_authority model owns the new irreversible lifecycle, provider receipts and pending API contract. Reactivation in this older model is a conservative overapproximation of unfenced same-owner operations, not permission to reactivate a deletion-fenced app. No general refinement, live R2, arbitrary-count proof or orphan GC; older mixed writers require coordinated rollout.",
       "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."
+    ]
+  },
+  {
+    "id": "cloud-protocol-vertex-job-observation",
+    "model": "packages/cloud/quint/VertexJobObservation.qnt",
+    "sources": [
+      "packages/cloud/api/__tests__/vertex-job-refresh.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/vertex-model-registry-scope.test.ts",
+      "packages/cloud/shared/src/lib/services/vertex-model-registry.ts",
+      "packages/cloud/shared/src/lib/services/vertex-tuning.ts",
+      "packages/cloud/shared/src/lib/services/vertex-tuning-observation.ts",
+      "packages/cloud/shared/src/types/vertex-tuning.ts",
+      "packages/cloud/shared/src/db/schemas/vertex-tuning-jobs.ts",
+      "packages/cloud/shared/src/db/schemas/vertex-tuned-models.ts",
+      "packages/cloud/shared/src/db/migrations/0562_vertex_observation_authority.sql",
+      "packages/cloud/shared/src/db/migrations/vertex-observation-authority.test.ts",
+      "packages/cloud/api/training/vertex/jobs/route.ts",
+      "packages/cloud/shared/src/lib/storage/object-store.ts",
+      "packages/cloud/quint/check-vertex-job-observation.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One existing job, two refresh attempts, eight representative provider payloads with exact timestamp ranks0..3, at most two newly prepared immutable payload keys, one storage outage or corruption, and one deletion. Running/partial/cancelling/succeeded/failed represent mutable, cancellation-fenced and terminal state classes; all12 provider states are checked in implementation.",
+      "Provider reads, object preparation, one locked SQL commit, and strict result hydration are separate actions. SQL row locking and atomic job/model publication are assumed here and exercised by PGlite; multi-session PostgreSQL lock scheduling is not proved.",
+      "Nanosecond ranks abstract validated RFC3339 timestamps. Adjacent nanosecond and timezone-equivalent tests check the parser; the model does not prove every timestamp or cryptographic digest.",
+      "Full JSON structure is retained and hashed canonically; byte-for-byte original transport encoding, arbitrary numeric precision, provider truth and cryptographic collision resistance are external obligations.",
+      "Legacy rows establish exact authority only from a valid complete retained payload. Missing, corrupt or contradictory legacy evidence fails closed; it is not backfilled from rounded SQL timestamps.",
+      "Orphaned immutable objects can remain after a SQL rollback or a deleted job. Object garbage collection and backend migration are separate protocols.",
+      "recordSubmittedJob has no discovered live caller; its original identity/replay guard is tested, while remote job creation, assignment activation and deletion of the resulting model are outside this refresh model.",
+      "Provider updateTime orders observations. completed_at records first local terminal acceptance using the primary database clock; completed_provider_time remains null until an actual provider endTime is retained, and keeps its full nanosecond precision. The model completion rank denotes first terminal acceptance, not a fabricated provider completion time.",
+      "Updated service writers own the observation revision protocol. The schema checks receipt shape but does not fence legacy deployed writers; coordinate their rollout before claiming this authority. Normal refresh reuses a pre-read immutable receipt only after the locked revision/version/digest/pointer tuple matches; legacy or changed receipts are reread under the lock.",
+      "Only SUCCEEDED, FAILED, CANCELLED and EXPIRED are absorbing terminal states, following the TuningJob endTime contract. PARTIALLY_SUCCEEDED is retained verbatim and remains non-absorbing; it does not publish a model or establish completion.",
+      "The exact provider-assigned job name and createTime bind observations. project_id is immutable original request provenance, not proof that a project ID and number are equivalent. Resource association comes from the authenticated response to that exact job request (or the trusted submission coordinator); resource syntax and the original job region are checked; assigned resource locations are retained without inventing a same-region requirement, and terminal/published names are retained exactly. Google provider truth and project alias mapping are not proved, no alias rewriting or extra permissions/API calls are added, and early nonterminal resource identities are not assumed immutable."
+    ]
+  },
+  {
+    "id": "cloud-protocol-plan-request-buckets",
+    "model": "packages/cloud/quint/plan_request_buckets.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
+      "packages/cloud/shared/src/lib/services/plan-request-limiter.test.ts",
+      "packages/cloud/quint/check-plan-request-buckets.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two pre-existing identity buckets, wall time0..8 initially4, integer quarter-token units and two configurations exchanging the burst/sustained bottleneck. Each request needs four units from both buckets.",
+      "One synchronous process-local consume call is atomic. The two keys represent already resolved service, organization, user and plan identities.",
+      "No temporal or fairness claim. A stopped or backward clock may prevent refill indefinitely.",
+      "The finite integer scaling does not prove arbitrary JavaScript floating-point rounding, numeric overflow or invalid direct caller arguments.",
+      "Configuration changes, plan resolution and expiry, eviction/reset, cross-isolate traffic and distributed rate authority are outside the model. Eviction and reset intentionally create a new full local bucket.",
+      "Wall-clock time may move in either direction. Only new time above the retained per-bucket refill boundary adds tokens.",
+      "The conformance hook runs all named tests of the actual limiter, including rollback, partial refill, usable retry deadlines, paired refusal, service separation and response metadata. It is scenario evidence, not a general TypeScript refinement proof."
+    ]
+  },
+  {
+    "id": "cloud-protocol-subscription-event-receipts",
+    "model": "packages/cloud/quint/subscription_event_receipts.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-invoice-event-recovery.ts",
+      "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-renewal-finalization.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-lifecycle-finalization.pglite.test.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+      "packages/cloud/shared/src/db/repositories/primary-database-clock.ts",
+      "packages/cloud/shared/src/db/repositories/subscription-reconciliation-projection.ts",
+      "packages/cloud/quint/check-subscription-event-receipts.ts",
+      "packages/cloud/quint/check-reviewed-cloud.mjs",
+      "packages/cloud/quint/reviewed-cloud-checks.json",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One immutable platform terminal-event receipt, two invocation tokens and at most two claims; primary clock0..5 and source/projection revisions1..3.",
+      "Provider object validation and complete matching reconciliation evidence are abstract predicates, not a proof of Stripe authenticity, freshness, field-level validation or financial terms.",
+      "Tentative publication becomes visible only when the final live-lease CAS commits. The receipt row remains locked during the transaction, so another claimant waits; expiry may still occur while the lock is held.",
+      "The terminal reconciliation acknowledgement requires matching current immutable source and derived projection; historical receipt replay does not imply that its old source remains current.",
+      "Provider payload validation and complete matching reconciliation evidence are abstractions, not proofs of provider authenticity or all field-level validators.",
+      "Generic applyEvent/reconcileEvent/listStuckEvents have no live subscription production call sites in the audited cloud tree; they are excluded from the transactional-publication guarantee.",
+      "Failed/quarantined administrative recovery and app-scoped receipts require separate models.",
+      "Paid-invoice funding, different event IDs for one invoice, fee/amount conservation, command dispatch, deletion owners and global liveness remain unmodeled here.",
+      "PGlite checks are real database regressions but do not establish the full PostgreSQL lock graph.",
+      "The model includes received/processing/applied/ignored transitions used by live platform handlers. Failed/quarantined administrative primitives require a separate model.",
+      "No fairness or temporal progress is assumed. Stuttering and indefinite provider/database failure are allowed; bounded safety does not establish eventual receipt delivery, eventual application or a real-time completion bound.",
+      "The 47-case conformance hook retains 41 receipt/publication checks and six command regressions, including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof.",
+      "The commit action abstracts the final lease-guarded SQL write and successful atomic transaction under row locks. appliedAt is that decision clock, not a bound on COMMIT or HTTP acknowledgement time; storage and transport may finish later."
+    ]
+  },
+  {
+    "id": "cloud-protocol-object-field-full-reads",
+    "model": "packages/cloud/quint/object_field_hydration.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/storage/object-store.ts",
+      "packages/cloud/shared/src/lib/storage/r2-runtime-binding.ts",
+      "packages/cloud/shared/src/db/repositories/conversations.ts",
+      "packages/cloud/shared/src/db/repositories/generations.ts",
+      "packages/cloud/shared/src/db/repositories/agent-events.ts",
+      "packages/cloud/shared/src/db/repositories/seo-requests.ts",
+      "packages/cloud/shared/src/db/repositories/seo-provider-calls.ts",
+      "packages/cloud/shared/src/db/repositories/seo-artifacts.ts",
+      "packages/cloud/shared/src/db/schemas/conversations.ts",
+      "packages/cloud/shared/src/db/schemas/generations.ts",
+      "packages/cloud/shared/src/db/schemas/agent-events.ts",
+      "packages/cloud/shared/src/db/schemas/seo.ts",
+      "packages/cloud/shared/src/db/repositories/__tests__/object-field-full-reads.pglite.test.ts",
+      "packages/cloud/quint/check-object-field-hydration.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One already authorized immutable row snapshot and one field: valid inline, valid object/key, missing object key, unknown storage kind or conflicting inline/key. Text and JSON, full and explicit preview reads are distinct finite modes.",
+      "A provider read returns its complete body, absence or failure. Empty text is complete; empty or malformed JSON is invalid. Exact object generation, byte hashes, streaming transport correctness and arbitrary JSON schema validation are not proved.",
+      "Full reads in six repositories set strict mode for all thirteen offloaded fields. Explicit generation summary APIs retain their preview contract. Container logs, Vertex registry, optional job hydration and phone-message reads are separate protocols.",
+      "Real PGlite conformance uses canonical columns, defaults, enums and indexes, with cross-domain foreign keys omitted. Controlled R2 outcomes establish repository behavior, not live provider availability, authorization, source-replacement races, account deletion, retries or cancellation.",
+      "A started read settles only if provider resolution and the validation continuation are weakly fair. An unavailable or malformed field may settle as an error; successful remote availability is not assumed."
+    ]
+  },
+  {
+    "id": "cloud-protocol-document-publication",
+    "model": "packages/cloud/quint/document_publication.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/agents/memories.ts",
+      "packages/cloud/shared/src/db/helpers.ts",
+      "packages/cloud/api/v1/documents/_worker-documents.ts",
+      "packages/cloud/api/v1/documents/[id]/route.ts",
+      "packages/cloud/api/__tests__/documents-publication-atomicity.pglite.test.ts",
+      "packages/cloud/quint/check-document-publication.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/api/__tests__/documents-publication.postgres.integration.test.ts",
+      "plugins/plugin-sql/src/schema/memory.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One server-generated immutable document ID, complete content with two fragments, two already resolved request scopes, and one primary write transaction at a time. UUID reuse and document replacement are outside this model.",
+      "Document and fragment publication or deletion commit atomically. Rollback preserves every previously committed row. PostgreSQL transaction isolation and the parent row lock are assumed; general TypeScript/SQL refinement is not proved.",
+      "The caller has authenticated and resolved the scope. This model does not prove authentication, account deletion fencing, R2 upload/cleanup, SSRF, indexing consumers, arbitrary text bytes or multi-document request atomicity.",
+      "Real PGlite tests exercise complete text and retained metadata, rollback after a prior fragment batch, throwing/suppressed parent deletion failures, HTTP deletion and foreign-scope refusal. They do not establish the full PostgreSQL lock graph.",
+      "Pending database transactions settle only under weak fairness of their commit/rollback continuations. No provider, scheduler or network availability is assumed.",
+      "Selected real PostgreSQL interleavings use independent backend connections; the Quint proof still abstracts committed transactions and does not establish the full database-lock graph."
+    ]
+  },
+  {
+    "id": "cloud-protocol-video-settlement-projection",
+    "model": "packages/cloud/quint/video_settlement_projection.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/generations.ts",
+      "packages/cloud/shared/src/db/schemas/generations.ts",
+      "packages/cloud/shared/src/lib/services/video-generation-reconcile.ts",
+      "packages/cloud/shared/src/lib/providers/video/types.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/video-reconcile-rotation.pglite.test.ts",
+      "packages/cloud/quint/check-video-settlement-projection.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two pending rows, one coordinator, two database marker commits, and a stable total order. Unrelated prompt/result availability is independent of the complete inline settlement metadata projection.",
+      "The selected immutable row ID, original organization/user, model, provider job ID, complete metadata and creation time are retained. Persisted update receipts are separate from full-payload hydration; missing rows cannot claim a receipt.",
+      "Real PGlite tests exercise the whole coordinator loop, unavailable prompts, provider probe failures, complete metadata preservation, later-row progress and deletion before the update receipt. Live provider availability, PostgreSQL lock/refinement proof, concurrent coordinators, financial settlement arithmetic and stale status fencing are outside this model.",
+      "Progress requires both original pending rows to remain present, weakly fair selection/provider resolution/database writes and two available attempts. It does not promise provider success, financial completion or an elapsed deadline."
+    ]
+  },
+  {
+    "id": "cloud-protocol-generation-object-versions",
+    "model": "packages/cloud/quint/generation_object_versions.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/generations.ts",
+      "packages/cloud/shared/src/db/schemas/generations.ts",
+      "packages/cloud/shared/src/lib/storage/object-store.ts",
+      "packages/cloud/shared/src/lib/storage/r2-runtime-binding.ts",
+      "packages/cloud/shared/src/db/repositories/__tests__/generation-object-versions.pglite.test.ts",
+      "packages/cloud/quint/check-generation-object-versions.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two server-owned preparation versions, two fields per batch, one initial committed version, and atomic SQL pointer publication. UUID uniqueness and provider create-only semantics are assumed; generic SQL/TypeScript refinement is not proved.",
+      "A successful field PUT acknowledges complete bytes. Provider failure can be ambiguous, and a sibling PUT can settle after its caller rejected. Prepared objects never replace the bytes of any old or concurrent version.",
+      "Failed and abandoned preparation objects are retained without speculative deletion. An unknown SQL outcome may still reference them. Crash orphan reclamation and durable cleanup receipts remain explicit unimplemented obligations; this model does not establish a garbage collector.",
+      "Existing trusted explicit R2 pointer restoration bypasses preparation and remains supported. Tenant authorization, same-row lifecycle/financial CAS, arbitrary content bytes, provider checksum verification and external corruption remain outside this bounded model.",
+      "The real PGlite tests cover four fields, rollback after PUT, parallel writers, ambiguous and rejected PUTs, late sibling settlement and retained-pointer restoration. They do not establish live R2/S3 qualification or database transport-ambiguous commit handling.",
+      "Preparations and outstanding provider calls settle only under weak fairness of their provider/SQL continuations; no elapsed deadline, successful write or cleanup is guaranteed."
+    ]
+  },
+  {
+    "id": "cloud-protocol-stripe-legacy-adoption",
+    "model": "packages/cloud/quint/StripeLegacyAdoption.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.ts",
+      "packages/cloud/shared/src/db/repositories/webhook-events.ts",
+      "packages/cloud/shared/src/db/repositories/stripe-legacy-adoption-cursors.ts",
+      "packages/cloud/shared/src/db/schemas/webhook-events.ts",
+      "packages/cloud/shared/src/db/schemas/stripe-legacy-adoption-cursors.ts",
+      "packages/cloud/shared/src/db/migrations/0564_stripe_legacy_adoption_cursors.sql",
+      "packages/cloud/shared/src/db/migrations/0565_stripe_legacy_retention_index.sql",
+      "packages/cloud/shared/src/db/migrations/meta/_journal.json",
+      "packages/cloud/scripts/admin/canonical-migration-ledger.ts",
+      "packages/cloud/shared/src/lib/cache/client.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/kv-cache-adapter.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts",
+      "packages/cloud/shared/src/lib/services/stripe-delivery-outbox.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.pglite.test.ts",
+      "packages/cloud/api/cron/process-stripe-queue/route.ts",
+      "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.postgres.integration.test.ts",
+      "packages/cloud/quint/check-stripe-legacy-adoption.mjs"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two concurrent adoption calls, three initial retained entries (two valid and one malformed), one valid old-writer append, original marker cleanup racing adoption, a two-entry batch and digest ranks rather than cryptographic strings. The conflict case uses an unmatched receipt to represent provider, event, payload or historical digest conflicts.",
+      "KV adoption never removes raw entries because this owner has no durable fence proving old writers quiescent. The model includes one concurrent old-writer append; an explicit negative witness demonstrates how unfenced stale KV read/modify/write deletion would lose it. Redis LREM is atomic. This does not prove old writers safe against each other.",
+      "Retained KV raws are replayed against exact durable SQL receipts without reopening completed work. Cleanup of retained KV entries requires an existing owner with a separately proved writer fence and is not implemented here. KV eventual visibility and durability are external assumptions, not proved by the local namespace fixture.",
+      "The SQL transaction and exact payload/terminal receipt predicates are abstracted as matching, absent or unavailable. A missing historical receipt is quarantined, never inserted or treated as undelivered. PGlite exercises real SQL; PostgreSQL checks actual row-lock waiting, concurrent cursor reservation and retention racing adoption. The production KV adapter exercises retained read-only adoption and isolated loopback Redis exercises atomic removal; TypeScript refinement and production provider behavior are not proved.",
+      "Cursor reservations advance only selection hints. Losing a cursor reply or a progress CAS cannot authorize removal. The SQL receipt, not cursor position, is required before LREM. Scope includes the configured backend/environment and one legacy queue.",
+      "Production limits attempts to 25 per list and uses a separate one-second per-list work budget. The model abstracts this as one or two attempted entries. Full KV-array reads and hashing remain unbounded by the work timer, and a single in-flight SQL or cache call can outlive it.",
+      "The serial progress case assumes a fixed three-entry snapshot, available SQL and original matching markers, three fair cron invocations and returning operations. It establishes transfer of the two valid entries despite a permanent poison entry and one-attempt budgets; it does not promise unconditional backlog clearance or resolution of unavailable historical receipts. The separate three-list progress case assumes each operation returns, but permits a persistent removal failure on the first queue; retained receipts permit the later queues and SQL drain to proceed.",
+      "Outbox handler effects, Stripe signature verification, billing idempotency and retention are separate protocols. StripeDeliveryOutbox retains its existing lease model; a durable handoff here is not proof of end-to-end external delivery.",
+      "Identical raw multiplicity and SHA256 collisions are outside the set abstraction. Actual tests preserve identical copies until a matching receipt and remove them individually; collision resistance is assumed. Unknown or malformed raws remain retained for operator reconciliation with payload-free diagnostics.",
+      "Legacy handoff flags are set under the same row lock as matching adoption and prevent both current webhook cleanup variants from deleting the exact receipt. A row-level BEFORE DELETE guard also retains it under old unfiltered cleanup SQL and direct deletes during rolling deployment. Existing receipts already removed before first adoption cannot be reconstructed; their raws require explicit operator reconciliation. The flag is not automatically cleared after Redis removal, because duplicate raws or lost replies may remain. Retained receipt and KV-raw cleanup are unresolved obligations of the existing owner."
     ]
   },
   {
