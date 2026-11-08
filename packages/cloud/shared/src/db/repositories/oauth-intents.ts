@@ -1,5 +1,6 @@
+import { ElizaError } from "@elizaos/core";
 // Persists oauth intents records for cloud services through the shared DB boundary.
-import { and, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {
   type NewOAuthIntent as NewOAuthIntentDbRow,
@@ -127,19 +128,52 @@ function toDbEvent(input: NewOAuthIntentEvent): NewOAuthIntentEventDbRow {
   };
 }
 
+function lifecyclePayload(
+  row: OAuthIntentRow,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...extra,
+    oauthIntentId: row.id,
+    organizationId: row.organizationId,
+    provider: row.provider,
+    scopes: row.scopes,
+    status: row.status,
+  };
+}
+
 export class OAuthIntentsRepository {
+  constructor(private readonly database: typeof db = db) {}
+
   async createOAuthIntent(input: NewOAuthIntent): Promise<OAuthIntentRow> {
-    const [row] = await db.insert(oauthIntents).values(toDbInsert(input)).returning();
-    return toDomain(row);
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx.insert(oauthIntents).values(toDbInsert(input)).returning();
+      if (!row)
+        throw new ElizaError("Failed to create oauth-intents", {
+          code: "AUTHORIZATION_INTENT_PERSISTENCE",
+          severity: "ephemeral",
+        });
+      const created = toDomain(row);
+      await tx.insert(oauthIntentEvents).values({
+        oauth_intent_id: row.id,
+        event_name: "oauth.created",
+        redacted_payload: lifecyclePayload(created),
+      });
+      return created;
+    });
   }
 
   async getOAuthIntent(id: string): Promise<OAuthIntentRow | null> {
-    const [row] = await db.select().from(oauthIntents).where(eq(oauthIntents.id, id)).limit(1);
+    const [row] = await this.database
+      .select()
+      .from(oauthIntents)
+      .where(eq(oauthIntents.id, id))
+      .limit(1);
     return row ? toDomain(row) : null;
   }
 
   async findByStateTokenHash(stateTokenHash: string): Promise<OAuthIntentRow | null> {
-    const [row] = await db
+    const [row] = await this.database
       .select()
       .from(oauthIntents)
       .where(eq(oauthIntents.state_token_hash, stateTokenHash))
@@ -158,7 +192,7 @@ export class OAuthIntentsRepository {
     const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
 
-    const rows = await db
+    const rows = await this.database
       .select()
       .from(oauthIntents)
       .where(and(...conditions))
@@ -168,33 +202,71 @@ export class OAuthIntentsRepository {
     return rows.map(toDomain);
   }
 
-  async updateOAuthIntentStatus(
+  async transitionOAuthIntent(
     id: string,
-    status: OAuthIntentStatus | null,
-    patch: Partial<NewOAuthIntent> = {},
+    status: Exclude<OAuthIntentStatus, "pending" | "expired">,
+    options: {
+      organizationId?: string;
+      patch?: Pick<NewOAuthIntent, "hostedUrl" | "callbackUrl">;
+      eventPayload?: Record<string, unknown>;
+      now?: Date;
+    } = {},
   ): Promise<OAuthIntentRow | null> {
-    const dbPatch = toDbPatch(patch);
-    const [row] = await db
-      .update(oauthIntents)
-      .set({ ...dbPatch, ...(status ? { status } : {}), updated_at: new Date() })
-      .where(eq(oauthIntents.id, id))
-      .returning();
-    return row ? toDomain(row) : null;
+    const now = options.now ?? new Date();
+    const expected: OAuthIntentStatus[] = ["pending"];
+    return this.database.transaction(async (tx) => {
+      const [row] = await tx
+        .update(oauthIntents)
+        .set({ ...toDbPatch(options.patch ?? {}), status, updated_at: now })
+        .where(
+          and(
+            eq(oauthIntents.id, id),
+            inArray(oauthIntents.status, expected),
+            gt(oauthIntents.expires_at, options.now ?? sql`clock_timestamp()`),
+            ...(options.organizationId
+              ? [eq(oauthIntents.organization_id, options.organizationId)]
+              : []),
+          ),
+        )
+        .returning();
+      if (!row) return null;
+      const updated = toDomain(row);
+      await tx.insert(oauthIntentEvents).values({
+        oauth_intent_id: row.id,
+        event_name: `oauth.${status}`,
+        redacted_payload: lifecyclePayload(updated, options.eventPayload),
+      });
+      return updated;
+    });
   }
 
   async recordOAuthIntentEvent(input: NewOAuthIntentEvent): Promise<OAuthIntentEventRow> {
-    const [row] = await db.insert(oauthIntentEvents).values(toDbEvent(input)).returning();
+    const [row] = await this.database
+      .insert(oauthIntentEvents)
+      .values(toDbEvent(input))
+      .returning();
     return row;
   }
 
   async expirePastOAuthIntents(now: Date): Promise<string[]> {
-    const expirable: OAuthIntentStatus[] = ["pending"];
-    const rows = await db
-      .update(oauthIntents)
-      .set({ status: "expired", updated_at: now })
-      .where(and(inArray(oauthIntents.status, expirable), lt(oauthIntents.expires_at, now)))
-      .returning({ id: oauthIntents.id });
-    return rows.map((r) => r.id);
+    return this.database.transaction(async (tx) => {
+      const expirable: OAuthIntentStatus[] = ["pending"];
+      const rows = await tx
+        .update(oauthIntents)
+        .set({ status: "expired", updated_at: now })
+        .where(and(inArray(oauthIntents.status, expirable), lte(oauthIntents.expires_at, now)))
+        .returning();
+      if (rows.length > 0) {
+        await tx.insert(oauthIntentEvents).values(
+          rows.map((row) => ({
+            oauth_intent_id: row.id,
+            event_name: "oauth.expired" as const,
+            redacted_payload: lifecyclePayload(toDomain(row)),
+          })),
+        );
+      }
+      return rows.map((row) => row.id);
+    });
   }
 }
 

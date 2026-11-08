@@ -351,8 +351,7 @@ export function createLocalAgentGateway({
       });
     }
     const presentation = await admission.presentation();
-    if (signal.aborted || admission.requestEpoch !== epoch)
-      throw ownershipError();
+    await ensureCurrent(admission, signal);
     if (
       admission.chatTask &&
       JSON.stringify(presentation) !== admission.requestedPresentation
