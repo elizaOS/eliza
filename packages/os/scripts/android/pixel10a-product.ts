@@ -50,6 +50,11 @@ export function validatePixel10aProduct(value) {
     typeof value.launcher.refuseLockScreenSurfaces !== "boolean"
   )
     throw new Error("launcher.refuseLockScreenSurfaces must be a boolean");
+  if (
+    value.launcher.assistantRole !== undefined &&
+    typeof value.launcher.assistantRole !== "boolean"
+  )
+    throw new Error("launcher.assistantRole must be a boolean");
   if (value.launcher.imageProvisioning !== undefined) {
     const provisioning = value.launcher.imageProvisioning;
     if (

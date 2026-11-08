@@ -12,6 +12,7 @@
     "moduleName": "AlphaPhone",
     "packageName": "ai.elizaresearch.alphaphone",
     "refuseLockScreenSurfaces": true,
+    "assistantRole": false,
     "imageProvisioning": {
       "module": "AlphaImageCapabilityOverlay",
       "overlayable": "AlphaImageProvisioning",
