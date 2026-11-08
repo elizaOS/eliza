@@ -57,7 +57,7 @@ import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/transactions";
+} from "@elizaos/plugin-wallet/lib/trade-safety";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   loadElizaConfig,
