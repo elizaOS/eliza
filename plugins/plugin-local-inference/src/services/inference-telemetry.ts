@@ -133,6 +133,11 @@ export class InferenceTelemetry {
 		return [...this.rings.keys()];
 	}
 
+	/** Drop the retained samples of one metric. */
+	clear(name: string): void {
+		this.rings.delete(name);
+	}
+
 	/** Reset all retained samples. Useful in tests. */
 	reset(): void {
 		this.rings.clear();

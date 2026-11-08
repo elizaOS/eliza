@@ -58,6 +58,22 @@ export const MIN_DECODE_TPS_BUDGET = 6;
 const MIN_TOKENS_FOR_TPS_SAMPLE = 4;
 
 /**
+ * How long decode-TPS samples stay a live signal. Once `auto` demotes local, no
+ * local generation runs and no newer sample arrives, so without an age limit
+ * one slow turn would keep every later turn on cloud for the process lifetime.
+ */
+export const DECODE_TPS_SIGNAL_MAX_AGE_MS = 10 * 60_000;
+
+let lastDecodeSampleAtMs: number | null = null;
+
+function decodeSamplesAreStale(nowMs: number): boolean {
+	return (
+		lastDecodeSampleAtMs === null ||
+		nowMs - lastDecodeSampleAtMs > DECODE_TPS_SIGNAL_MAX_AGE_MS
+	);
+}
+
+/**
  * Approximate decoded-token count for a generated string when an exact tokenizer
  * count is not reachable from the call site. English averages ~4 characters per
  * token; this is deliberately coarse — it only feeds a p50 the router compares
@@ -96,14 +112,23 @@ export function recordDecodeThroughput(sample: {
 	if (!Number.isFinite(tokPerSec) || tokPerSec <= 0) {
 		return;
 	}
+	const nowMs = Date.now();
+	// Samples from before a quiet period must not outvote this turn.
+	if (decodeSamplesAreStale(nowMs)) {
+		inferenceTelemetry.clear(DECODE_TPS_METRIC);
+	}
 	inferenceTelemetry.record(DECODE_TPS_METRIC, tokPerSec);
+	lastDecodeSampleAtMs = nowMs;
 }
 
 /** A point-in-time snapshot of the live device signals. */
 export interface LiveDeviceSignals {
 	/** Current OS thermal pressure, or `null` when no device reported it. */
 	thermalState: ThermalState | null;
-	/** Recent p50 decode throughput in tokens/sec, or `null` when unmeasured. */
+	/**
+	 * Recent p50 decode throughput in tokens/sec, or `null` when unmeasured or
+	 * when the newest sample is older than {@link DECODE_TPS_SIGNAL_MAX_AGE_MS}.
+	 */
 	decodeTokensPerSecond: number | null;
 }
 
@@ -136,8 +161,9 @@ const defaultSource: LiveDeviceSignalsSource = () => {
 	const thermalState = normalizeThermalState(
 		primary?.capabilities.thermalState,
 	);
-	const decodeTokensPerSecond =
-		inferenceTelemetry.summary(DECODE_TPS_METRIC).p50;
+	const decodeTokensPerSecond = decodeSamplesAreStale(Date.now())
+		? null
+		: inferenceTelemetry.summary(DECODE_TPS_METRIC).p50;
 	return { thermalState, decodeTokensPerSecond };
 };
 

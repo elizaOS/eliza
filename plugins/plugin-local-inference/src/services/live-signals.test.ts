@@ -1,5 +1,5 @@
 /** Covers live device-signal reads (decode-token estimation, local demotion on pressure) feeding the routing policy. Deterministic, injected signal source. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { inferenceTelemetry } from "./inference-telemetry";
 import {
 	estimateDecodeTokens,
@@ -12,6 +12,7 @@ import {
 } from "./live-signals";
 
 afterEach(() => {
+	vi.useRealTimers();
 	setLiveDeviceSignalsSource(null);
 	inferenceTelemetry.reset();
 });
@@ -129,5 +130,39 @@ describe("recordDecodeThroughput → default source → demotion (end-to-end)", 
 		const out = readLiveDeviceSignals();
 		expect(out.decodeTokensPerSecond).toBeNull();
 		expect(liveSignalsDemoteLocal(out)).toBe(false);
+	});
+});
+
+describe("decode-TPS signal age", () => {
+	it("stops demoting once the only slow sample is old", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-08T09:00:00Z"));
+		// One slow local turn: 40 tokens in 8 s = 5 tok/s.
+		recordDecodeThroughput({ tokens: 40, elapsedMs: 8_000 });
+		vi.advanceTimersByTime(60_000);
+		expect(liveSignalsDemoteLocal(readLiveDeviceSignals())).toBe(true);
+
+		// `auto` now routes to cloud, so no local turn records a newer sample.
+		vi.advanceTimersByTime(2 * 60 * 60_000);
+		const out = readLiveDeviceSignals();
+		expect(out.decodeTokensPerSecond).toBeNull();
+		expect(liveSignalsDemoteLocal(out)).toBe(false);
+	});
+
+	it("judges the first local turn after a quiet period on its own speed", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-08T09:00:00Z"));
+		recordDecodeThroughput({ tokens: 40, elapsedMs: 8_000 }); // 5 tok/s
+		vi.advanceTimersByTime(2 * 60 * 60_000);
+
+		recordDecodeThroughput({ tokens: 100, elapsedMs: 1_000 }); // 100 tok/s
+		const out = readLiveDeviceSignals();
+		expect(out.decodeTokensPerSecond).toBeCloseTo(100, 5);
+		expect(liveSignalsDemoteLocal(out)).toBe(false);
+
+		// A slow turn is still demoted right away.
+		recordDecodeThroughput({ tokens: 40, elapsedMs: 8_000 });
+		recordDecodeThroughput({ tokens: 40, elapsedMs: 8_000 });
+		expect(liveSignalsDemoteLocal(readLiveDeviceSignals())).toBe(true);
 	});
 });
