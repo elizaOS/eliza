@@ -124,6 +124,7 @@ describe.skipIf(!postgresUrl)("setup Checkout resume with PostgreSQL and Stripe 
       "0414_app_subscription_outbox_delivery",
       "0415_app_billing_webhook_recovery",
       "0555_stripe_delivery_outbox",
+      "0564_stripe_legacy_adoption_cursors",
       "0416_app_billing_checkout_expiry",
       "0417_app_billing_membership_authority",
       "0420_app_billing_import_commands",
