@@ -48,5 +48,26 @@
       "Malformed arbitrary cursor numbers, unknown record fields and Unicode byte encoding are checked by existing implementation tests, outside the finite value domain.",
       "Changing the inbox epoch invalidates old cursors. After that error the client must explicitly begin a new snapshot, which is outside this one-cursor model."
     ]
+  },
+  {
+    "id": "core-NotificationRecovery",
+    "model": "packages/core/quint/NotificationRecovery.qnt",
+    "sources": [
+      "packages/core/src/services/notification.ts",
+      "packages/core/test/notification.test.ts"
+    ],
+    "invariants": [
+      "SingleLoad",
+      "BusyRequestsJoin",
+      "BackoffBlocksAdmission",
+      "OnlyFailedServicesStart",
+      "BoundedCooldown"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Concurrent replacement of the registered class during an unsettled recovery and separate runtime identity maps require the service lifecycle ownership model.",
+      "Only the first two exponential delays are represented. Wall-clock rollback, later capped delays, and exceptions thrown by diagnostic observers are outside this domain.",
+      "The existing 69-test real runtime/SQLite conformance suite covers hydration failure, recovery deduplication and immediate backoff. It is scenario conformance, not exhaustive schedule equivalence."
+    ]
   }
 ]

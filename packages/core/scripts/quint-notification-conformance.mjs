@@ -13,6 +13,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 const models = [
 	"NotificationDurability.qnt",
 	"NativeNotificationCursor.qnt",
+	"NotificationRecovery.qnt",
 ].map((name) => path.join(packageRoot, "quint", name));
 if (
 	process.argv.length > 3 ||
