@@ -1,8 +1,11 @@
 /** Real PostgreSQL row-lock evidence for the Stripe legacy selection hint. */
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Client } from "pg";
+import { testOutputPath } from "../../../../../scripts/lib/test-output";
+import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 
 let admin: Client | undefined;
@@ -10,6 +13,7 @@ let connectionString = "";
 const databaseName = `qa_stripe_legacy_${randomUUID().replaceAll("-", "")}`;
 let repository: typeof import("../../db/repositories/stripe-legacy-adoption-cursors");
 let database: typeof import("../../db/client");
+let webhooks: typeof import("../../db/repositories/webhook-events")["webhookEventsRepository"];
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
 beforeAll(async () => {
@@ -31,16 +35,27 @@ beforeAll(async () => {
   await setup.connect();
   try {
     await setup.query(
-      await readFile(
-        new URL("../../db/migrations/0564_stripe_legacy_adoption_cursors.sql", import.meta.url),
-        "utf8",
-      ),
+      `CREATE TABLE webhook_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id text NOT NULL UNIQUE,provider text NOT NULL,event_type text,payload_hash text NOT NULL,source_ip text,processed_at timestamp NOT NULL DEFAULT now(),event_timestamp timestamp,app_billing_trigger jsonb,app_billing_completed_at timestamptz,app_billing_next_attempt_at timestamptz NOT NULL DEFAULT now(),app_billing_error_code text)`,
     );
+    for (const tag of [
+      "0555_stripe_delivery_outbox",
+      "0556_stripe_delivery_outbox_due_index",
+      "0557_stripe_delivery_lease_check_validate",
+      "0564_stripe_legacy_adoption_cursors",
+    ]) {
+      const migration = await readFile(
+        new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
+        "utf8",
+      );
+      for (const statement of migration.split("--> statement-breakpoint"))
+        if (statement.trim()) await setup.query(statement);
+    }
   } finally {
     await setup.end();
   }
   database = await import("../../db/client");
   repository = await import("../../db/repositories/stripe-legacy-adoption-cursors");
+  webhooks = (await import("../../db/repositories/webhook-events")).webhookEventsRepository;
 }, 30_000);
 
 afterAll(async () => {
@@ -125,6 +140,137 @@ test("PostgreSQL cursor selection waits and uses the winning locked hint", async
     await observer.end();
   }
 }, 15_000);
+
+test("PostgreSQL partial retention index skips retained legacy history", async () => {
+  const observer = await connected();
+  try {
+    await observer.query(
+      "CREATE INDEX webhook_events_processed_at_idx ON webhook_events(processed_at)",
+    );
+    await observer.query(
+      "CREATE INDEX webhook_events_provider_processed_idx ON webhook_events(provider,processed_at)",
+    );
+    await observer.query(`INSERT INTO webhook_events(event_id,provider,payload_hash,processed_at,delivery_legacy_retained)
+      SELECT 'evt_plan_retained_'||i,'stripe','hash',now()-interval '60 days',true FROM generate_series(1,100000) AS i;
+      INSERT INTO webhook_events(event_id,provider,payload_hash,processed_at,delivery_legacy_retained)
+      SELECT 'evt_plan_eligible_'||i,'stripe','hash',now()-interval '40 days',false FROM generate_series(1,100) AS i;
+      ANALYZE webhook_events`);
+    const plans: Record<string, unknown> = {};
+    for (const phase of ["before", "after"]) {
+      if (phase === "after") {
+        await observer.query(
+          await readFile(
+            new URL("../../db/migrations/0565_stripe_legacy_retention_index.sql", import.meta.url),
+            "utf8",
+          ),
+        );
+        await observer.query("ANALYZE webhook_events");
+      }
+      for (const provider of [false, true]) {
+        await observer.query("BEGIN");
+        try {
+          const result = await observer.query(
+            `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) DELETE FROM webhook_events
+            WHERE processed_at<$1 AND delivery_legacy_retained=false
+            AND (app_billing_trigger IS NULL OR app_billing_completed_at IS NOT NULL)
+            AND (delivery_payload IS NULL OR delivery_completed_at IS NOT NULL OR delivery_dead_lettered_at IS NOT NULL)
+            ${provider ? "AND provider='stripe'" : ""}`,
+            [new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)],
+          );
+          const plan = result.rows[0]["QUERY PLAN"][0];
+          plans[`${phase}_${provider ? "provider" : "global"}`] = plan;
+          const scan = plan.Plan.Plans[0];
+          expect(scan["Actual Rows"]).toBe(100);
+          if (phase === "before")
+            expect(scan["Rows Removed by Filter"]).toBeGreaterThanOrEqual(100000);
+          else {
+            expect(scan["Index Name"]).toBe("webhook_events_unretained_processed_idx");
+            expect(scan["Rows Removed by Filter"] ?? 0).toBe(0);
+          }
+        } finally {
+          await observer.query("ROLLBACK");
+        }
+      }
+    }
+    const output = testOutputPath("stripe-legacy-retention-plan");
+    await mkdir(output, { recursive: true });
+    await writeFile(join(output, "plans.json"), `${JSON.stringify(plans, null, 2)}\n`);
+  } finally {
+    try {
+      await observer.query("DELETE FROM webhook_events WHERE event_id LIKE 'evt_plan_%'");
+    } finally {
+      await observer.end();
+    }
+  }
+}, 30_000);
+
+for (const provider of [false, true]) {
+  test(`PostgreSQL ${provider ? "provider" : "global"} cleanup waits for atomic legacy receipt retention`, async () => {
+    const holder = await connected();
+    const observer = await connected();
+    const eventId = `evt_cleanup_${provider}`;
+    const body: StripeEventMessage = {
+      kind: "stripe.event",
+      eventId,
+      eventType: "charge.refunded",
+      event: {
+        id: eventId,
+        object: "event",
+        type: "charge.refunded",
+      } as StripeEventMessage["event"],
+      receivedAt: 1,
+    };
+    const hash = digest(JSON.stringify(body.event));
+    const lock = provider ? 429082 : 429081;
+    let adoption: Promise<unknown> | undefined;
+    let cleanup: Promise<number> | undefined;
+    try {
+      await holder.query(
+        `INSERT INTO webhook_events(event_id,provider,event_type,payload_hash,processed_at,delivery_completed_at) VALUES($1,'stripe','charge.refunded',$2,now()-interval '60 days',now())`,
+        [eventId, hash],
+      );
+      await holder.query(
+        `CREATE FUNCTION pause_legacy_retention() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.delivery_legacy_retained THEN PERFORM pg_advisory_xact_lock(${lock}); END IF; RETURN NEW; END $$`,
+      );
+      await holder.query(
+        "CREATE TRIGGER pause_legacy_retention BEFORE UPDATE OF delivery_legacy_retained ON webhook_events FOR EACH ROW EXECUTE FUNCTION pause_legacy_retention()",
+      );
+      await holder.query("SELECT pg_advisory_lock($1)", [lock]);
+      const holderPid = (await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid"))
+        .rows[0]!.pid;
+      adoption = run(() => webhooks.adoptLegacyStripeDelivery(body, hash));
+      void adoption.catch(() => undefined);
+      expect(await observeBlocked(observer, holderPid)).toBe(true);
+      const adoptionPid = (
+        await observer.query<{ pid: number }>(
+          "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid))",
+          [holderPid],
+        )
+      ).rows[0]!.pid;
+      cleanup = run(() =>
+        provider
+          ? webhooks.cleanupOldEventsForProvider("stripe", 30)
+          : webhooks.cleanupOldEvents(30),
+      );
+      void cleanup.catch(() => undefined);
+      expect(await observeBlocked(observer, adoptionPid)).toBe(true);
+      await holder.query("SELECT pg_advisory_unlock($1)", [lock]);
+      expect(await adoption).toEqual({ kind: "completed" });
+      expect(await cleanup).toBe(0);
+      const retained = await run(() => webhooks.findByEventIdPrimary(eventId));
+      expect(retained?.delivery_legacy_retained).toBe(true);
+      expect(retained?.delivery_completed_at).not.toBeNull();
+    } finally {
+      await holder.query("SELECT pg_advisory_unlock($1)", [lock]);
+      await adoption?.catch(() => undefined);
+      await cleanup?.catch(() => undefined);
+      await holder.query("DROP TRIGGER IF EXISTS pause_legacy_retention ON webhook_events");
+      await holder.query("DROP FUNCTION IF EXISTS pause_legacy_retention()");
+      await holder.end();
+      await observer.end();
+    }
+  }, 15_000);
+}
 
 test("PostgreSQL concurrent reservations fence stale progress completion", async () => {
   const hashes = Array.from({ length: 40 }, (_, i) => digest(`concurrent-${i}`)).sort();

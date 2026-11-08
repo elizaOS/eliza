@@ -399,8 +399,10 @@ recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
 
-Stripe legacy queue adoption requires migration 0564. Durable cursors only select
-bounded work; matching SQL payload or terminal receipts authorize queue removal.
+Stripe legacy queue adoption requires migration 0564 and cleanup index 0565. Durable cursors only select
+bounded work; matching SQL payload or terminal receipts authorize Redis removal.
+A retained handoff flag protects those exact rows from normal webhook cleanup;
+missing historical receipts require reconciliation and are never replayed blindly.
 Unknown receipts and malformed entries remain intact. KV adoption retains every
 raw entry: this owner has no durable old-writer fence to authorize deletion. KV
 cleanup remains a separate existing-owner obligation. Each list has its own work

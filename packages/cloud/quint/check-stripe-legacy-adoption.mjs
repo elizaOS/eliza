@@ -32,6 +32,7 @@ const backendCases = (backend) => [
   "concurrent adopters retain one durable delivery per original",
   "slow first attempt cannot skip unattempted reserved entries",
   "lost progress completion reply is not work authority",
+  "a missing historical receipt quarantines the original raw",
 ];
 const suites = [
   {
@@ -44,6 +45,9 @@ const suites = [
       "canonical migration loads the bounded adoption hint schema",
       "KV non-string values remain intact without starving valid raw entries",
       "KV adoption preserves an old-writer append without attempting removal",
+      "matching marker, pending and completed receipts retain their original row identity",
+      "retained KV receipt survives global cleanup without redelivery",
+      "retained KV receipt survives provider cleanup without redelivery",
     ],
   },
   {
@@ -57,7 +61,7 @@ const suites = [
       "retention never deletes undelivered work: cleanupOldEvents (the retention cron)",
       "retention never deletes undelivered work: cleanupOldEventsForProvider",
       "rows a drain claimed but did not reach inside its budget keep their attempts and are claimed at once",
-      "deliveries left on the pre-outbox queue are moved into the outbox and delivered once",
+      "matching legacy receipts are adopted and missing historical receipts remain quarantined",
       "a legacy entry that cannot be adopted stays listed and never blocks the outbox drain",
       "a delivered row drops the stored event, and a late legacy copy of it is not adopted again",
     ],
@@ -67,6 +71,9 @@ const suites = [
     required: [
       "PostgreSQL cursor selection waits and uses the winning locked hint",
       "PostgreSQL concurrent reservations fence stale progress completion",
+      "PostgreSQL global cleanup waits for atomic legacy receipt retention",
+      "PostgreSQL provider cleanup waits for atomic legacy receipt retention",
+      "PostgreSQL partial retention index skips retained legacy history",
     ],
   },
 ];

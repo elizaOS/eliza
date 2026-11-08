@@ -249,7 +249,7 @@ test("rows a drain claimed but did not reach inside its budget keep their attemp
   for (const delivery of reclaimed) await repo.completeStripeDelivery(delivery);
 });
 
-test("deliveries left on the pre-outbox queue are moved into the outbox and delivered once", async () => {
+test("matching legacy receipts are adopted and missing historical receipts remain quarantined", async () => {
   await settleAll();
   // A marker written by the old route, whose work only the old list holds.
   const legacy = message();
@@ -259,7 +259,7 @@ test("deliveries left on the pre-outbox queue are moved into the outbox and deli
     event_type: legacy.eventType,
     payload_hash: createHash("sha256").update(JSON.stringify(legacy.event)).digest("hex"),
   });
-  // Work whose marker the old dead-letter path had released.
+  // A released historical marker cannot prove whether work already ran.
   const released = message();
   for (const body of [legacy, released])
     await cache.pushQueueHead(
@@ -268,12 +268,13 @@ test("deliveries left on the pre-outbox queue are moved into the outbox and deli
     );
 
   const { seen, stats } = await drain();
-  expect(stats.legacyAdopted).toBe(2);
-  expect(seen.map((delivery) => delivery.eventId).sort()).toEqual(
-    [legacy.eventId, released.eventId].sort(),
-  );
-  expect(await cache.getQueueLength("stripe-events")).toBe(0);
+  expect(stats.legacyAdopted).toBe(1);
+  expect(seen.map((delivery) => delivery.eventId).sort()).toEqual([legacy.eventId]);
+  expect(await cache.getQueueLength("stripe-events")).toBe(1);
+  expect(await repo.findByEventIdPrimary(released.eventId)).toBeUndefined();
   expect((await drain()).seen).toEqual([]);
+  for (const raw of (await cache.listQueue("stripe-events")) ?? [])
+    await cache.removeQueueValue("stripe-events", raw);
 });
 
 test("a legacy entry that cannot be adopted stays listed and never blocks the outbox drain", async () => {
@@ -286,6 +287,12 @@ test("a legacy entry that cannot be adopted stays listed and never blocks the ou
     enqueuedAt: Date.now(),
   });
   const deadLettered = message();
+  await repo.tryCreate({
+    event_id: deadLettered.eventId,
+    provider: "stripe",
+    event_type: deadLettered.eventType,
+    payload_hash: createHash("sha256").update(JSON.stringify(deadLettered.event)).digest("hex"),
+  });
   await cache.pushQueueHead("stripe-events", poison);
   await cache.pushQueueHead(
     "stripe-events:dlq",

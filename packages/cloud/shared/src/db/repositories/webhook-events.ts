@@ -13,7 +13,7 @@ export type LegacyStripeAdoptionResult =
   | { kind: "adopted" | "already_adopted" | "completed" }
   | {
       kind: "conflict" | "unavailable";
-      reason: "identity" | "provider" | "event_type" | "payload" | "receipt";
+      reason: "identity" | "provider" | "event_type" | "payload" | "receipt" | "missing_receipt";
     };
 
 /** A Stripe delivery claimed for one handler run. `attempts` counts this run. */
@@ -33,6 +33,7 @@ const pendingStripeDelivery = and(
 );
 /** Rows retention may delete once old: nothing left to recover. */
 const expirable = and(
+  eq(webhookEvents.delivery_legacy_retained, false),
   or(isNull(webhookEvents.app_billing_trigger), isNotNull(webhookEvents.app_billing_completed_at)),
   or(
     isNull(webhookEvents.delivery_payload),
@@ -148,8 +149,8 @@ export class WebhookEventsRepository {
 
   /**
    * Moves one delivery left on the pre-outbox queue into its dedupe row. A row
-   * that already holds work keeps it; a missing row (its marker was released)
-   * is recreated. Repeating this for the same delivery changes nothing.
+   * that already holds work keeps it. A missing historical receipt cannot prove
+   * whether this raw was already delivered, so it requires reconciliation.
    */
   async adoptLegacyStripeDelivery(
     payload: StripeEventMessage,
@@ -169,19 +170,6 @@ export class WebhookEventsRepository {
       return { kind: "unavailable", reason: "identity" };
 
     return writeTransaction<LegacyStripeAdoptionResult>(async (tx) => {
-      const [created] = await tx
-        .insert(webhookEvents)
-        .values({
-          event_id: eventId,
-          provider: "stripe",
-          event_type: payload.eventType,
-          payload_hash: payloadHash,
-          source_ip: "legacy-queue",
-          delivery_payload: payload,
-        })
-        .onConflictDoNothing({ target: webhookEvents.event_id })
-        .returning({ id: webhookEvents.id });
-      if (created) return { kind: "adopted" };
       const [existing] = await tx
         .select({
           row: webhookEvents,
@@ -190,19 +178,35 @@ export class WebhookEventsRepository {
         .from(webhookEvents)
         .where(eq(webhookEvents.event_id, eventId))
         .for("update");
-      if (!existing) return { kind: "unavailable", reason: "receipt" };
+      if (!existing) return { kind: "unavailable", reason: "missing_receipt" };
       if (existing.row.provider !== "stripe") return { kind: "conflict", reason: "provider" };
       if (existing.row.event_type !== payload.eventType)
         return { kind: "conflict", reason: "event_type" };
-      if (existing.row.delivery_payload !== null)
-        return existing.samePayload
-          ? { kind: "already_adopted" }
-          : { kind: "conflict", reason: "payload" };
+      const retainReceipt = async () => {
+        if (existing.row.delivery_legacy_retained) return;
+        const [retained] = await tx
+          .update(webhookEvents)
+          .set({ delivery_legacy_retained: true })
+          .where(eq(webhookEvents.id, existing.row.id))
+          .returning({ id: webhookEvents.id });
+        if (!retained)
+          throw new ElizaError("Legacy Stripe handoff receipt was not retained", {
+            code: "STRIPE_LEGACY_RECEIPT_NOT_RETAINED",
+          });
+      };
+      if (existing.row.delivery_payload !== null) {
+        if (!existing.samePayload) return { kind: "conflict", reason: "payload" };
+        await retainReceipt();
+        return { kind: "already_adopted" };
+      }
       // A marker without the complete payload can only prove this legacy
       // event when its retained digest matches. Never guess from uniqueness.
       if (existing.row.payload_hash !== payloadHash)
         return { kind: "unavailable", reason: "receipt" };
-      if (existing.row.delivery_completed_at !== null) return { kind: "completed" };
+      if (existing.row.delivery_completed_at !== null) {
+        await retainReceipt();
+        return { kind: "completed" };
+      }
       if (existing.row.delivery_dead_lettered_at !== null)
         return { kind: "unavailable", reason: "receipt" };
       if (existing.row.delivery_lease_token !== null)
@@ -211,6 +215,7 @@ export class WebhookEventsRepository {
         .update(webhookEvents)
         .set({
           delivery_payload: payload,
+          delivery_legacy_retained: true,
           delivery_next_attempt_at: sql`clock_timestamp()`,
         })
         .where(eq(webhookEvents.id, existing.row.id))

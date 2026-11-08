@@ -12,11 +12,13 @@ module StripeLegacyAdoption {
     used: int, first: int, last: int, revision: int, budgetSpent: bool, removal: Set[int] }
   pure val Idle = { phase: "idle", snapshot: Set(), batch: List(), held: 0,
     used: 0, first: 0, last: 0, revision: 0, budgetSpent: false, removal: Set() }
-  var s: { queue: Set[int], everQueued: Set[int], sql: int -> str,
+  // Settled call-local snapshots cannot affect later SQL/queue transitions.
+  pure def Done(used: int): Worker = {...Idle, phase: "done", used: used}
+  var s: { queue: Set[int], everQueued: Set[int], retained: Set[int], sql: int -> str,
     cursor: int, revision: int, workers: int -> Worker, reopened: bool }
   action init = s' = {
-    queue: Set(1, 2, 3), everQueued: Set(1, 2, 3),
-    sql: Map(1 -> "none", 2 -> (if (ForeignReceipt) "foreign" else "none"), 3 -> "none", 4 -> "none"),
+    queue: Set(1, 2, 3), everQueued: Set(1, 2, 3), retained: Set(),
+    sql: Map(1 -> "marker", 2 -> (if (ForeignReceipt) "foreign" else "marker"), 3 -> "none", 4 -> "marker"),
     cursor: 0, revision: 0, workers: Workers.mapBy(_ => Idle), reopened: false
   }
   action Snapshot(w: int): bool = all {
@@ -32,7 +34,7 @@ module StripeLegacyAdoption {
     all {
       s.workers.get(w).phase == "reserve",
       s' = if (batch.length() == 0) {
-        ...s, workers: s.workers.set(w, {...s.workers.get(w), phase: "done"})
+        ...s, workers: s.workers.set(w, Done(0))
       } else {
         ...s, cursor: batch.head(), revision: s.revision + 1,
         workers: s.workers.set(w, {...s.workers.get(w), phase: if (replied) "select" else "done",
@@ -50,17 +52,18 @@ module StripeLegacyAdoption {
     }
   }
   action Budget(w: int): bool = all {
-    not(s.workers.get(w).budgetSpent),
+    not(Set("idle", "done").contains(s.workers.get(w).phase)), not(s.workers.get(w).budgetSpent),
     s' = {...s, workers: s.workers.set(w, {...s.workers.get(w), budgetSpent: true})}
   }
   action Adopt(w: int, committed: bool, replied: bool): bool = {
     val worker = s.workers.get(w)
     val entry = worker.held
-    val known = Valid.contains(entry) and not(Set("foreign", "unknown", "mismatch").contains(s.sql.get(entry)))
-    val after = if (known and committed and s.sql.get(entry) == "none") "pending" else s.sql.get(entry)
+    val known = Valid.contains(entry) and Set("marker", "pending", "done").contains(s.sql.get(entry))
+    val after = if (known and committed and s.sql.get(entry) == "marker") "pending" else s.sql.get(entry)
     all {
       worker.phase == "adopt",
       s' = {...s, sql: s.sql.set(entry, after),
+        retained: if (known and committed) s.retained.union(Set(entry)) else s.retained,
         reopened: s.reopened or (s.sql.get(entry) == "done" and after != "done"),
         workers: s.workers.set(w, {...worker,
           phase: if (known and committed and replied and AtomicRemoval) "remove-read" else "select"})}
@@ -91,14 +94,17 @@ module StripeLegacyAdoption {
     all { eligible,
       s' = {...s, cursor: if (ownsHint) worker.last else s.cursor,
         revision: if (ownsHint) s.revision + 1 else s.revision,
-        workers: s.workers.set(w, {...worker, phase: "done"})} }
+        workers: s.workers.set(w, Done(worker.used))} }
   }
   action Complete(entry: int): bool = all {
     s.sql.get(entry) == "pending", s' = {...s, sql: s.sql.set(entry, "done")}
   }
+  action Cleanup(entry: int): bool = s' = if (not(s.retained.contains(entry)) and s.sql.get(entry) != "pending") {
+    ...s, sql: s.sql.set(entry, "none")
+  } else s
   action Crash(w: int): bool = all {
     not(Set("idle", "done").contains(s.workers.get(w).phase)),
-    s' = {...s, workers: s.workers.set(w, {...s.workers.get(w), phase: "done"})}
+    s' = {...s, workers: s.workers.set(w, Done(s.workers.get(w).used))}
   }
   action Advance(w: int): bool = {
     nondet committed = Set(false, true).oneOf()
@@ -110,10 +116,11 @@ module StripeLegacyAdoption {
   action step = {
     nondet w = Workers.oneOf()
     nondet entry = Entries.oneOf()
-    any { Advance(w), Budget(w), Complete(entry), Crash(w), OldProducer, s' = s }
+    any { Advance(w), Budget(w), Complete(entry), Cleanup(entry), Crash(w), OldProducer, s' = s }
   }
   val safety = all {
     not(s.reopened),
+    s.retained.forall(e => Set("pending", "done").contains(s.sql.get(e))),
     Valid.forall(e => (s.everQueued.contains(e) and not(s.queue.contains(e))) implies Set("pending", "done").contains(s.sql.get(e))),
     s.sql.get(3) == "none",
     Workers.forall(w => s.workers.get(w).used <= 2)
@@ -142,18 +149,24 @@ module StripeLegacyAdoption_redis {
   run lostSqlReplyRetainsRawTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
     .then(Adopt(1, true, false)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "pending")
   run failedSqlRetainsRawTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
-    .then(Adopt(1, false, false)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "none")
+    .then(Adopt(1, false, false)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "marker")
   run failedRemovalContinuesReservedWorkTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
     .then(Adopt(1, true, true)).then(RemovalFailed(1)).then(Choose(1)).then(Adopt(1, true, true))
     .expect(safety and s.queue.contains(1) and s.sql.get(2) == "pending")
   run lostCursorReplyIsNotAdoptionTest = init.then(Snapshot(1)).then(Reserve(1, false))
-    .expect(safety and s.cursor == 1 and s.queue.contains(1) and s.sql.get(1) == "none")
+    .expect(safety and s.cursor == 1 and s.queue.contains(1) and s.sql.get(1) == "marker")
   run timeBudgetCannotAdvancePastUnattemptedTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Budget(1))
     .then(Choose(1)).then(Adopt(1, false, false)).then(Finish(1))
     .expect(safety and s.cursor == 1 and s.workers.get(1).used == 1)
   run staleFinishCannotRewindHintTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, false, false))
     .then(Choose(1)).then(Adopt(1, false, false)).then(Snapshot(2)).then(Reserve(2, true)).then(Finish(1))
     .expect(safety and s.cursor == 2)
+  run retainedCompletedReceiptSurvivesCleanupTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
+    .then(Adopt(1, true, true)).then(ReadRemoval(1)).then(Remove(1, true)).then(Complete(1)).then(Cleanup(1))
+    .expect(safety and s.sql.get(1) == "done" and s.retained.contains(1))
+  run cleanupBeforeAdoptionQuarantinesMissingReceiptTest = init.then(Cleanup(1)).then(Snapshot(1))
+    .then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true))
+    .expect(safety and s.sql.get(1) == "none" and s.queue.contains(1) and not(s.retained.contains(1)))
   run cleanupBeforeReceiptNegativeWitnessTest = init.then(UnsafeDrop(1)).expect(not(safety))
   run unboundedAdoptionNegativeWitnessTest = init.then(UnsafeUnboundedBatch(1)).expect(not(safety))
 }

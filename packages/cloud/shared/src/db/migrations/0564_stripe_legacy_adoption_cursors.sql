@@ -9,3 +9,8 @@ CREATE TABLE "stripe_legacy_adoption_cursors" (
     CHECK ("cursor_digest" IS NULL OR "cursor_digest" ~ '^[0-9a-f]{64}$'),
   CONSTRAINT "stripe_legacy_adoption_cursor_revision_check" CHECK ("revision" >= 0)
 );
+--> statement-breakpoint
+-- A legacy raw can outlive normal webhook retention. Keep its exact handoff
+-- receipt until an owner can prove raw cleanup and old-writer quiescence.
+ALTER TABLE "webhook_events"
+  ADD COLUMN "delivery_legacy_retained" boolean DEFAULT false NOT NULL;

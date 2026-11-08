@@ -145,11 +145,19 @@ function useBackend(value: "kv" | "redis") {
     ),
   );
 }
-async function seed(raw: string, key = "stripe-events") {
+async function seedRaw(raw: string, key = "stripe-events") {
   if (backend === "kv") {
     const values = await adapter.lrange(prefix + key, 0, -1);
     await kv.put(prefix + key, JSON.stringify([raw, ...values]));
   } else await adapter.lpush(prefix + key, raw);
+}
+async function seedOriginal(raw: string, key = "stripe-events") {
+  let body: StripeEventMessage | undefined;
+  try {
+    body = JSON.parse(raw).body;
+  } catch {}
+  if (body?.kind === "stripe.event") await marker(body);
+  await seedRaw(raw, key);
 }
 const remaining = (key = "stripe-events") => adapter.lrange(prefix + key, 0, -1);
 function message(id: string): StripeEventMessage {
@@ -186,7 +194,7 @@ for (const mode of ["kv", "redis"] as const) {
     useBackend(mode);
     const keys = ["stripe-events", "stripe-events:processing", "stripe-events:dlq"];
     const bodies = keys.map((_, index) => message(`evt_remove_failure_${index}`));
-    for (const [index, key] of keys.entries()) await seed(envelope(bodies[index]), key);
+    for (const [index, key] of keys.entries()) await seedOriginal(envelope(bodies[index]), key);
     let removalCalls = 0;
     spies.push(
       spyOn(cache, "removeQueueValue").mockImplementation(async (key, raw) => {
@@ -211,7 +219,7 @@ for (const mode of ["kv", "redis"] as const) {
   test(`${mode}: bounded adoption preserves backlog and same-call delivery`, async () => {
     useBackend(mode);
     const raws = Array.from({ length: 64 }, (_, i) => envelope(message(`evt_backlog_${i}`)));
-    for (const raw of raws) await seed(raw);
+    for (const raw of raws) await seedOriginal(raw);
     const due = message("evt_already_due");
     await marker(due, { delivery_payload: due });
     const seen: string[] = [];
@@ -233,7 +241,7 @@ for (const mode of ["kv", "redis"] as const) {
     const body = message("evt_collision");
     const raw = envelope(body);
     await marker(body, { provider: "oxapay" });
-    await seed(raw);
+    await seedOriginal(raw);
     const seen: string[] = [];
     const stats = await drain(seen);
     expect(stats.legacyAdopted).toBe(0);
@@ -251,7 +259,7 @@ for (const mode of ["kv", "redis"] as const) {
       delivery_payload: original,
       delivery_next_attempt_at: new Date(Date.now() + 60_000),
     });
-    await seed(raw);
+    await seedOriginal(raw);
     await drain();
     expect(await remaining()).toEqual([raw]);
     expect((await repo.findByEventIdPrimary(body.eventId))?.delivery_payload).toEqual(original);
@@ -262,7 +270,7 @@ for (const mode of ["kv", "redis"] as const) {
     const body = message("evt_terminal_unknown");
     const raw = envelope(body);
     await marker(body, { payload_hash: "f".repeat(64), delivery_completed_at: new Date() });
-    await seed(raw);
+    await seedOriginal(raw);
     const seen: string[] = [];
     await drain(seen);
     expect(await remaining()).toEqual([raw]);
@@ -274,9 +282,9 @@ for (const mode of ["kv", "redis"] as const) {
     useBackend(mode);
     const secret = "retained-private-payload-marker";
     const malformed = Array.from({ length: 31 }, (_, i) => `${secret}-${i}`);
-    for (const raw of malformed) await seed(raw);
+    for (const raw of malformed) await seedOriginal(raw);
     const good = message("evt_after_poison");
-    await seed(envelope(good));
+    await seedOriginal(envelope(good));
     const logged: unknown[] = [];
     spies.push(
       spyOn(logger, "error").mockImplementation((...args) => {
@@ -296,7 +304,7 @@ for (const mode of ["kv", "redis"] as const) {
     useBackend(mode);
     const body = message("evt_sql_unknown");
     const raw = envelope(body);
-    await seed(raw);
+    await seedOriginal(raw);
     const original = repo.adoptLegacyStripeDelivery.bind(repo);
     let lost = true;
     spies.push(
@@ -321,7 +329,7 @@ for (const mode of ["kv", "redis"] as const) {
   test(`${mode}: ${mode === "kv" ? "adoption never attempts destructive removal without a writer fence" : "lost remove acknowledgement cannot duplicate completed delivery"}`, async () => {
     useBackend(mode);
     const body = message("evt_remove_unknown");
-    await seed(envelope(body));
+    await seedOriginal(envelope(body));
     let removalCalls = 0;
     spies.push(
       spyOn(cache, "removeQueueValue").mockImplementation(async (key, raw) => {
@@ -342,8 +350,8 @@ for (const mode of ["kv", "redis"] as const) {
     useBackend(mode);
     const body = message("evt_identical_copy");
     const raw = envelope(body);
-    await seed(raw);
-    await seed(raw);
+    await seedOriginal(raw);
+    await seedOriginal(raw);
     const seen: string[] = [];
     await drain(seen);
     expect(await remaining()).toEqual(mode === "kv" ? [raw, raw] : [raw]);
@@ -356,7 +364,7 @@ for (const mode of ["kv", "redis"] as const) {
     useBackend(mode);
     const body = message("evt_cursor_unknown");
     const raw = envelope(body);
-    await seed(raw);
+    await seedOriginal(raw);
     const original = cursors.selectLegacyStripeAdoptionDigests;
     let lost = true;
     spies.push(
@@ -372,7 +380,7 @@ for (const mode of ["kv", "redis"] as const) {
     const first = await drain();
     expect(first.legacyAdopted).toBe(0);
     expect(await remaining()).toEqual([raw]);
-    expect(await repo.findByEventIdPrimary(body.eventId)).toBeUndefined();
+    expect((await repo.findByEventIdPrimary(body.eventId))?.delivery_payload).toBeNull();
     const seen: string[] = [];
     await drain(seen);
     expect(await remaining()).toEqual(mode === "kv" ? [raw] : []);
@@ -382,7 +390,7 @@ for (const mode of ["kv", "redis"] as const) {
   test(`${mode}: concurrent adopters retain one durable delivery per original`, async () => {
     useBackend(mode);
     const raws = Array.from({ length: 40 }, (_, i) => envelope(message(`evt_race_${i}`)));
-    for (const raw of raws) await seed(raw);
+    for (const raw of raws) await seedOriginal(raw);
     const seen: string[] = [];
     await Promise.all([drain(seen), drain(seen)]);
     for (let turn = 0; turn < 5; turn++) await drain(seen);
@@ -397,7 +405,7 @@ for (const mode of ["kv", "redis"] as const) {
     const ordered = bodies
       .map((body) => ({ body, raw: envelope(body) }))
       .sort((a, b) => digest(a.raw).localeCompare(digest(b.raw)));
-    for (const { raw } of ordered) await seed(raw);
+    for (const { raw } of ordered) await seedOriginal(raw);
     const original = repo.adoptLegacyStripeDelivery.bind(repo);
     let delay = true;
     spies.push(
@@ -423,7 +431,7 @@ for (const mode of ["kv", "redis"] as const) {
 
   test(`${mode}: lost progress completion reply is not work authority`, async () => {
     useBackend(mode);
-    for (let i = 0; i < 3; i++) await seed(envelope(message(`evt_progress_${i}`)));
+    for (let i = 0; i < 3; i++) await seedOriginal(envelope(message(`evt_progress_${i}`)));
     const original = cursors.finishLegacyStripeAdoptionSelection;
     let lost = true;
     spies.push(
@@ -493,6 +501,7 @@ test("KV non-string values remain intact without starving valid raw entries", as
   useBackend("kv");
   const body = message("evt_after_nonstring");
   const privateValue = { secret: "retained-non-string-secret" };
+  await marker(body);
   await kv.put(prefix + "stripe-events", JSON.stringify([42, privateValue, envelope(body)]));
   const logged: unknown[] = [];
   spies.push(
@@ -517,7 +526,7 @@ test("KV adoption preserves an old-writer append without attempting removal", as
   const appendedBody = message("evt_old_writer_append");
   const originalRaw = envelope(originalBody);
   const appendedRaw = envelope(appendedBody);
-  await seed(originalRaw);
+  await seedOriginal(originalRaw);
   const originalAdopt = repo.adoptLegacyStripeDelivery.bind(repo);
   let appended = false;
   spies.push(
@@ -525,7 +534,7 @@ test("KV adoption preserves an old-writer append without attempting removal", as
       const result = await originalAdopt(...args);
       if (!appended) {
         appended = true;
-        await seed(appendedRaw);
+        await seedOriginal(appendedRaw);
       }
       return result;
     }),
@@ -542,3 +551,70 @@ test("KV adoption preserves an old-writer append without attempting removal", as
   expect(await remaining()).toEqual([appendedRaw, originalRaw]);
   expect(remove).not.toHaveBeenCalled();
 });
+
+for (const mode of ["kv", "redis"] as const) {
+  test(`${mode}: a missing historical receipt quarantines the original raw`, async () => {
+    useBackend(mode);
+    const body = message("evt_missing_receipt");
+    const raw = envelope(body);
+    await seedRaw(raw);
+    const logged: unknown[] = [];
+    spies.push(
+      spyOn(logger, "error").mockImplementation((...args) => {
+        logged.push(args);
+      }),
+    );
+    const seen: string[] = [];
+    expect((await drain(seen)).legacyAdopted).toBe(0);
+    expect(await remaining()).toEqual([raw]);
+    expect(seen).toEqual([]);
+    expect(await repo.findByEventIdPrimary(body.eventId)).toBeUndefined();
+    expect(JSON.stringify(logged)).toContain("missing_receipt");
+    expect(JSON.stringify(logged)).not.toContain(raw);
+  });
+}
+
+test("matching marker, pending and completed receipts retain their original row identity", async () => {
+  for (const state of ["marker", "pending", "completed"]) {
+    const body = message(`evt_original_${state}`);
+    await marker(
+      body,
+      state === "pending"
+        ? { delivery_payload: body }
+        : state === "completed"
+          ? { delivery_completed_at: new Date() }
+          : {},
+    );
+    const before = await repo.findByEventIdPrimary(body.eventId);
+    expect(before?.delivery_legacy_retained).toBe(false);
+    const result = await repo.adoptLegacyStripeDelivery(body, digest(JSON.stringify(body.event)));
+    expect(result.kind).toBe(
+      state === "marker" ? "adopted" : state === "pending" ? "already_adopted" : "completed",
+    );
+    const after = await repo.findByEventIdPrimary(body.eventId);
+    expect(after?.id).toBe(before?.id);
+    expect(after?.delivery_legacy_retained).toBe(true);
+  }
+});
+
+for (const provider of [false, true]) {
+  test(`retained KV receipt survives ${provider ? "provider" : "global"} cleanup without redelivery`, async () => {
+    useBackend("kv");
+    const body = message("evt_retained_receipt");
+    await marker(body);
+    await seedOriginal(envelope(body));
+    const seen: string[] = [];
+    await drain(seen);
+    await database
+      .getPgliteClientForTests()
+      .query("UPDATE webhook_events SET processed_at=now()-interval '60 days' WHERE event_id=$1", [
+        body.eventId,
+      ]);
+    const removed = provider
+      ? await repo.cleanupOldEventsForProvider("stripe", 30)
+      : await repo.cleanupOldEvents(30);
+    await drain(seen);
+    expect({ removed, seen }).toEqual({ removed: 0, seen: [body.eventId] });
+    expect(await remaining()).toEqual([envelope(body)]);
+  });
+}
