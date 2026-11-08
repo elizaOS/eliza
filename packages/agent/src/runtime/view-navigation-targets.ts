@@ -1,10 +1,17 @@
 /** Shared navigation names for installed registry entries; these names grant no authority. */
-export function viewNavigationAliases(view: { id: string }): readonly string[] {
-  return view.id === "chat"
-    ? ["home"]
-    : view.id === "automations"
-      ? ["workflows"]
-      : [];
+export function viewNavigationAliases(view: {
+  id: string;
+  navigationAliases?: readonly string[];
+}): readonly string[] {
+  const builtin =
+    view.id === "chat"
+      ? ["home"]
+      : view.id === "automations"
+        ? ["workflows"]
+        : [];
+  return view.navigationAliases?.length
+    ? [...builtin, ...view.navigationAliases]
+    : builtin;
 }
 
 /** The caller supplies the already role/availability-filtered registry. Ambiguity stays explicit. */
