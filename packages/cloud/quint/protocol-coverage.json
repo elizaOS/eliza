@@ -37,15 +37,22 @@
     "model": "packages/cloud/quint/authorization_intents.qnt",
     "sources": [
       "packages/cloud/shared/src/lib/services/oauth-intents.ts",
-      "packages/cloud/shared/src/lib/services/approval-requests.ts"
+      "packages/cloud/shared/src/lib/services/approval-requests.ts",
+      "packages/cloud/shared/src/db/repositories/oauth-intents.ts",
+      "packages/cloud/shared/src/db/repositories/approval-requests.ts",
+      "packages/cloud/shared/src/db/schemas/oauth-intents.ts",
+      "packages/cloud/shared/src/db/schemas/approval-requests.ts",
+      "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Intended contract only; implementation conformance is pending private review.",
-      "Two concurrent callers, two tenants, bounded clock, and atomic decision/receipt commit.",
-      "Proof validity abstracts cryptographic checks; no cryptographic or implementation proof is claimed.",
-      "No temporal or fairness claim. Implementation refinement remains unproved."
+      "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
+      "Opaque IDs, challenge text, signatures, scopes and event metadata are abstracted. The model records signature presence and automatic lifecycle event order.",
+      "Production decisions use database time. The expiry sweep uses its captured cutoff. Optional explicit test-clock overrides are exercised by implementation tests, outside the production-clock model.",
+      "Signature verification, OAuth provider proof, callback buses, session binding and manual diagnostic event appends are separate protocols and remain outside this SQL model.",
+      "The nine PGlite regressions exercise real repository transactions and rollback. They do not establish PostgreSQL lock scheduling or full TypeScript refinement.",
+      "Automatic conformance runs nine named repository regressions. Fair database completion settles the two modeled operations."
     ]
   },
   {
@@ -372,18 +379,22 @@
     "sources": [
       "packages/cloud/shared/src/lib/services/oauth-intents.ts",
       "packages/cloud/shared/src/db/repositories/oauth-intents.ts",
-      "packages/cloud/api/v1/oauth/callback/[provider]/route.ts"
+      "packages/cloud/api/v1/oauth/callback/[provider]/route.ts",
+      "packages/cloud/shared/src/db/schemas/oauth-intents.ts",
+      "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
-      "Two concurrent callers, two tenant identities and a bounded clock.",
-      "Atomic decision/receipt commit is an intended contract; implementation review remains private and incomplete.",
-      "Cryptographic proof validity is supplied by the environment.",
-      "Intended contract only; private implementation review remains pending.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Terminal outcomes are immutable | Decision and durable event receipt commit together | Expiry and owner authority are checked at the committing boundary",
-      "Abstract states: pending, bound, denied, expired, canceled"
+      "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
+      "Pending OAuth intents can commit bound, denied, canceled or expired once. Creation and terminal events share their row transaction; tenant matching is required for cancellation.",
+      "Opaque IDs, challenge text, signatures, scopes and event metadata are abstracted. The model records signature presence and automatic lifecycle event order.",
+      "Production decisions use database time. The expiry sweep uses its captured cutoff. Optional explicit test-clock overrides are exercised by implementation tests, outside the production-clock model.",
+      "Signature verification, OAuth provider proof, callback buses, session binding and manual diagnostic event appends are separate protocols and remain outside this SQL model.",
+      "The nine PGlite regressions exercise real repository transactions and rollback. They do not establish PostgreSQL lock scheduling or full TypeScript refinement.",
+      "Automatic conformance runs nine named repository regressions. Fair database completion settles the two modeled operations."
     ]
   },
   {
@@ -392,18 +403,22 @@
     "sources": [
       "packages/cloud/shared/src/lib/services/approval-requests.ts",
       "packages/cloud/shared/src/db/repositories/approval-requests.ts",
-      "packages/cloud/shared/src/lib/services/identity-verification-gatekeeper.ts"
+      "packages/cloud/shared/src/lib/services/identity-verification-gatekeeper.ts",
+      "packages/cloud/shared/src/db/schemas/approval-requests.ts",
+      "packages/cloud/shared/src/db/repositories/authorization-intents.pglite.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
-      "Two concurrent callers, two tenant identities and a bounded clock.",
-      "Atomic decision/receipt commit is an intended contract; implementation review remains private and incomplete.",
-      "Cryptographic proof validity is supplied by the environment.",
-      "Intended contract only; cryptography is an environment assumption.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Signature validation is bound to the original challenge | Terminal decisions retain exact receipts | Concurrent delivery cannot replace a decision",
-      "Abstract states: pending, delivered, approved, denied, expired, canceled"
+      "One intent row, two competing operations, two tenant inputs, clock 0..3 and deadline 2. OAuth and approval requests have separate cases.",
+      "Approvals record creation, optional delivery and one terminal event. A failed approval event rolls back its signature patch; delivery cannot replace a terminal decision.",
+      "Opaque IDs, challenge text, signatures, scopes and event metadata are abstracted. The model records signature presence and automatic lifecycle event order.",
+      "Production decisions use database time. The expiry sweep uses its captured cutoff. Optional explicit test-clock overrides are exercised by implementation tests, outside the production-clock model.",
+      "Signature verification, OAuth provider proof, callback buses, session binding and manual diagnostic event appends are separate protocols and remain outside this SQL model.",
+      "The nine PGlite regressions exercise real repository transactions and rollback. They do not establish PostgreSQL lock scheduling or full TypeScript refinement.",
+      "Automatic conformance runs nine named repository regressions. Fair database completion settles the two modeled operations."
     ]
   },
   {
