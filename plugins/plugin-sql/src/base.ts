@@ -95,6 +95,8 @@ import {
   type PatchOp,
   portableDocumentSearchTokens,
   type Relationship,
+  type RetentionInventoryParams,
+  type RetentionInventoryRow,
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
@@ -8056,6 +8058,73 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       await this.db
         .delete(logTable)
         .where(and(inArray(logTable.id, logIds), this.ownedLogRoomCondition()));
+    });
+  }
+
+  /**
+   * Id-only retention inventory, newest-first by (createdAt, id). Reads no
+   * bodies or content so a sweep can page a large table in bounded memory.
+   * Excluded log types are filtered in SQL, never returned to the caller.
+   */
+  async getRetentionInventory(params: RetentionInventoryParams): Promise<RetentionInventoryRow[]> {
+    const limit = Math.max(0, Math.floor(params.limit));
+    if (limit === 0) return [];
+    const isLogs = params.table === "logs";
+    if (!isLogs && !params.partition) {
+      throw new Error("getRetentionInventory requires a partition for memories");
+    }
+    const table = isLogs ? logTable : memoryTable;
+    // Millisecond keyset, as in getMemories: PostgreSQL keeps microseconds,
+    // the cursor carries JavaScript milliseconds.
+    const createdAtMs = sql`date_trunc('milliseconds', ${table.createdAt})`;
+    const conditions: SQL[] = [];
+    if (params.cursor) {
+      // logs.created_at carries a time zone; memories.created_at does not.
+      const epoch = isLogs ? sql`timestamptz 'epoch'` : sql`timestamp 'epoch'`;
+      const cursorTimestamp = sql`(${epoch} + ${params.cursor.createdAt} * interval '1 millisecond')`;
+      conditions.push(sql`(
+        ${createdAtMs} < ${cursorTimestamp}
+        OR (${createdAtMs} = ${cursorTimestamp} AND ${table.id} < ${params.cursor.id}::uuid)
+      )`);
+    }
+    return this.withDatabase(async () => {
+      const rows = isLogs
+        ? await this.db
+            .select({ id: logTable.id, roomId: logTable.roomId, createdAt: logTable.createdAt })
+            .from(logTable)
+            .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+            .where(
+              and(
+                eq(roomTable.agentId, this.agentId),
+                params.excludeTypes && params.excludeTypes.length > 0
+                  ? notInArray(logTable.type, [...params.excludeTypes])
+                  : undefined,
+                ...conditions
+              )
+            )
+            .orderBy(desc(createdAtMs), desc(logTable.id))
+            .limit(limit)
+        : await this.db
+            .select({
+              id: memoryTable.id,
+              roomId: memoryTable.roomId,
+              createdAt: memoryTable.createdAt,
+            })
+            .from(memoryTable)
+            .where(
+              and(
+                eq(memoryTable.agentId, this.agentId),
+                eq(memoryTable.type, params.partition as string),
+                ...conditions
+              )
+            )
+            .orderBy(desc(createdAtMs), desc(memoryTable.id))
+            .limit(limit);
+      return rows.map((row) => ({
+        id: row.id as UUID,
+        roomId: (row.roomId as UUID | null) ?? null,
+        createdAt: new Date(row.createdAt as string | number | Date).getTime(),
+      }));
     });
   }
 

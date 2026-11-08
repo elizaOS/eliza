@@ -375,3 +375,146 @@ it("applies log retention through the PostgreSQL query contract without its defa
     10,
   );
 });
+
+it("reads the PostgreSQL log inventory in pages and stops at the delete budget", async () => {
+  const h = await createTestRuntime({
+    characterName: "PagedLogRetention",
+  });
+  cleanups.push(() => h.cleanup());
+  const roomId = randomUUID() as UUID;
+  await h.runtime.createRooms([
+    {
+      id: roomId,
+      agentId: h.runtime.agentId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  const base = Date.UTC(2026, 0, 1);
+  const auditTypes = [
+    SANDBOX_AUDIT_LOG_TYPE,
+    ROLE_WRITE_AUDIT_LOG_TYPE,
+    CONFIDENTIAL_INFERENCE_AUDIT_LOG_TYPE,
+  ];
+  // Audit rows are the oldest, so any lapse in the exclusion would select them.
+  await h.runtime.adapter.createLogs([
+    ...auditTypes.map((type, index) => ({
+      entityId: h.runtime.agentId,
+      roomId,
+      type,
+      body: { source: "audit-acceptance" },
+      createdAt: new Date(base + index),
+    })),
+    ...Array.from({ length: 2500 }, (_, index) => ({
+      entityId: h.runtime.agentId,
+      roomId,
+      type: "retention-acceptance",
+      body: { message: `log ${index}` },
+      createdAt: new Date(base + 1000 + index),
+    })),
+  ]);
+  const adapter = h.runtime.adapter;
+  const inventory = adapter.getRetentionInventory?.bind(adapter);
+  if (!inventory) throw new Error("PostgreSQL adapter lacks the inventory");
+  const pages: number[] = [];
+  adapter.getRetentionInventory = async (params) => {
+    const rows = await inventory(params);
+    pages.push(rows.length);
+    return rows;
+  };
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM", "10");
+  h.runtime.setSetting("ELIZA_LOGS_RETENTION_MAX_DELETE_PER_SWEEP", "1200");
+  const logs = await LogsRetentionService.start(h.runtime);
+  cleanups.push(() => logs.stop());
+
+  expect(await logs.sweep()).toEqual({
+    scanned: 1210,
+    evictable: 1200,
+    deleted: 1200,
+    clamped: true,
+  });
+  expect(pages).toEqual([1000, 1000]);
+
+  pages.length = 0;
+  expect(await logs.sweep()).toMatchObject({ deleted: 1200, clamped: true });
+  pages.length = 0;
+  expect(await logs.sweep()).toEqual({
+    scanned: 100,
+    evictable: 90,
+    deleted: 90,
+    clamped: false,
+  });
+  expect(pages).toEqual([100]);
+
+  const remaining = await adapter.getLogs({ roomId, limit: 100 });
+  expect(remaining.map((row) => row.type).sort()).toEqual(
+    [...auditTypes, ...Array(10).fill("retention-acceptance")].sort(),
+  );
+  expect(
+    remaining
+      .filter((row) => row.type === "retention-acceptance")
+      .map((row) => (row.body as { message?: string }).message)
+      .sort(),
+  ).toEqual(Array.from({ length: 10 }, (_, index) => `log ${2490 + index}`));
+}, 120_000);
+
+it("shares the memory delete budget across partitions through the PostgreSQL inventory", async () => {
+  const h = await createTestRuntime({
+    characterName: "PagedMemoryRetention",
+  });
+  cleanups.push(() => h.cleanup());
+  const roomId = randomUUID() as UUID;
+  await h.runtime.createRooms([
+    {
+      id: roomId,
+      agentId: h.runtime.agentId,
+      type: ChannelType.DM,
+      source: "test",
+    },
+  ]);
+  const ids = Array.from({ length: 20 }, () => randomUUID() as UUID);
+  await h.runtime.createMemories(
+    ids.map((id, index) => ({
+      tableName: "messages",
+      memory: {
+        id,
+        roomId,
+        entityId: h.runtime.agentId,
+        agentId: h.runtime.agentId,
+        createdAt: Date.UTC(2026, 0, 1) + index,
+        content: { text: `message ${index}` },
+      },
+    })),
+  );
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM", "5");
+  h.runtime.setSetting("ELIZA_MEMORY_RETENTION_MAX_DELETE_PER_SWEEP", "7");
+  const memory = await MemoryRetentionService.start(h.runtime);
+  cleanups.push(() => memory.stop());
+
+  const first = await memory.sweep();
+  expect(first.find((row) => row.partition === "messages")).toEqual({
+    partition: "messages",
+    scanned: 12,
+    evictable: 7,
+    deleted: 7,
+    clamped: true,
+  });
+  // "memories" runs before "messages"; the partitions after it get no budget.
+  expect(
+    first.filter((row) => row.partition !== "messages").map((r) => r.clamped),
+  ).toEqual([false, true, true]);
+  const second = await memory.sweep();
+  expect(second.find((row) => row.partition === "messages")).toMatchObject({
+    deleted: 7,
+    clamped: true,
+  });
+  const third = await memory.sweep();
+  expect(third.find((row) => row.partition === "messages")).toMatchObject({
+    deleted: 1,
+    clamped: false,
+  });
+  for (const [index, id] of ids.entries()) {
+    const kept = await h.runtime.getMemoryById(id);
+    expect(kept === null).toBe(index < 15);
+  }
+});

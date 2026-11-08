@@ -148,6 +148,107 @@ export function planRetention(
   };
 }
 
+/** Rows a paged sweep reads per inventory page. */
+export const RETENTION_PAGE_SIZE = 1000;
+
+/** Bucket for rows without a room; the count bound applies to them as a group. */
+const NO_ROOM_KEY = "__no_room__";
+
+/** A page cursor: the last row of the previous (newer) page. */
+export interface RetentionCursor<Id extends string = string> {
+  createdAt: number;
+  id: Id;
+}
+
+export interface PagedRetentionResult {
+  scanned: number;
+  /** Evictable rows seen before the sweep stopped. */
+  evictable: number;
+  deleted: number;
+  /** True when the delete budget ran out before the inventory was fully read. */
+  clamped: boolean;
+}
+
+/**
+ * Apply the same bounds as {@link planRetention} to an inventory read in pages,
+ * newest-first by (createdAt, id). Per-room ranks carry across pages, so only
+ * one page of ids and one counter per room are held at a time. Each page's
+ * evictions are deleted before the next page is read, and the scan stops as
+ * soon as `maxDeletePerSweep` is used. Under a clamp, newer evictable rows go
+ * first; later sweeps reach the rest.
+ */
+export async function sweepRetentionPages<
+  Row extends { id: string; roomId: string | null; createdAt: number },
+>(
+  readPage: (cursor: RetentionCursor<Row["id"]> | undefined) => Promise<Row[]>,
+  deleteIds: (ids: Row["id"][]) => Promise<void>,
+  policy: RetentionPolicy,
+  nowMs: number,
+  pageSize = RETENTION_PAGE_SIZE,
+): Promise<PagedRetentionResult> {
+  const result: PagedRetentionResult = {
+    scanned: 0,
+    evictable: 0,
+    deleted: 0,
+    clamped: false,
+  };
+  if (!policyIsActive(policy)) return result;
+  const ageCutoff =
+    typeof policy.retentionDays === "number" && policy.retentionDays > 0
+      ? nowMs - policy.retentionDays * 24 * 60 * 60 * 1000
+      : undefined;
+  const maxRows =
+    typeof policy.maxRowsPerRoom === "number" && policy.maxRowsPerRoom > 0
+      ? Math.floor(policy.maxRowsPerRoom)
+      : undefined;
+  const cap =
+    typeof policy.maxDeletePerSweep === "number" && policy.maxDeletePerSweep > 0
+      ? Math.floor(policy.maxDeletePerSweep)
+      : undefined;
+
+  const ranks = new Map<string, number>();
+  let cursor: RetentionCursor<Row["id"]> | undefined;
+  for (;;) {
+    const page = await readPage(cursor);
+    const ids: Row["id"][] = [];
+    let stopped = false;
+    let read = 0;
+    for (const row of page) {
+      read++;
+      result.scanned++;
+      const room = row.roomId ?? NO_ROOM_KEY;
+      const rank = ranks.get(room) ?? 0;
+      ranks.set(room, rank + 1);
+      const overCount = maxRows !== undefined && rank >= maxRows;
+      const overAge =
+        ageCutoff !== undefined &&
+        Number.isFinite(row.createdAt) &&
+        row.createdAt < ageCutoff;
+      if (!overCount && !overAge) continue;
+      result.evictable++;
+      ids.push(row.id);
+      if (cap !== undefined && result.deleted + ids.length >= cap) {
+        stopped = true;
+        break;
+      }
+    }
+    if (ids.length > 0) {
+      await deleteIds(ids);
+      result.deleted += ids.length;
+    }
+    const exhausted = page.length < pageSize;
+    if (stopped) {
+      // Rows remain unread: the rest of this page, or further pages.
+      result.clamped = read < page.length || !exhausted;
+      break;
+    }
+    if (exhausted) break;
+    const last = page[page.length - 1];
+    cursor = { createdAt: last.createdAt, id: last.id };
+  }
+  return result;
+}
+
 /** Row timestamp, defaulting a missing/NaN value to `nowMs` (keep-safe). */
 function tsOf(row: RetainableRow, nowMs: number): number {
   return typeof row.createdAt === "number" && Number.isFinite(row.createdAt)

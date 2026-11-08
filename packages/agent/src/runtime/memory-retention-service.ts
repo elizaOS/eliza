@@ -8,8 +8,10 @@ import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   planRetention,
   policyIsActive,
+  RETENTION_PAGE_SIZE,
   type ResolvedRetentionConfig,
   type RetainableRow,
+  sweepRetentionPages,
 } from "./memory-retention.ts";
 
 import { RetentionTask } from "./retention-task.ts";
@@ -101,6 +103,34 @@ export class MemoryRetentionService extends Service {
           continue;
         }
 
+        const policy = {
+          retentionDays: this.retentionConfig.retentionDays,
+          maxRowsPerRoom: this.retentionConfig.maxRowsPerRoom,
+          maxDeletePerSweep: budget,
+        };
+
+        if (adapter.getRetentionInventory) {
+          const inventory = adapter.getRetentionInventory.bind(adapter);
+          const swept = await sweepRetentionPages(
+            (cursor) =>
+              inventory({
+                table: "memories",
+                partition,
+                cursor,
+                limit: RETENTION_PAGE_SIZE,
+              }),
+            (ids) => this.runtime.deleteMemories(ids),
+            policy,
+            Date.now(),
+          );
+          if (budget !== undefined) budget -= swept.deleted;
+          const result = { partition, ...swept };
+          results.push(result);
+          logSweep(result);
+          continue;
+        }
+
+        // Adapters without an inventory: one full read of the partition.
         const rows = await adapter.getMemories({
           agentId: this.runtime.agentId,
           tableName: partition,
@@ -120,15 +150,7 @@ export class MemoryRetentionService extends Service {
           });
         }
 
-        const plan = planRetention(
-          retainable,
-          {
-            retentionDays: this.retentionConfig.retentionDays,
-            maxRowsPerRoom: this.retentionConfig.maxRowsPerRoom,
-            maxDeletePerSweep: budget,
-          },
-          Date.now(),
-        );
+        const plan = planRetention(retainable, policy, Date.now());
 
         let deleted = 0;
         if (plan.deleteIds.length > 0) {
@@ -141,19 +163,15 @@ export class MemoryRetentionService extends Service {
           if (budget !== undefined) budget -= deleted;
         }
 
-        results.push({
+        const result = {
           partition,
           scanned: retainable.length,
           evictable: plan.evictable,
           deleted,
           clamped: plan.clamped,
-        });
-
-        if (deleted > 0) {
-          logger.info(
-            `[memory-retention] ${partition}: scanned=${retainable.length} evictable=${plan.evictable} deleted=${deleted}${plan.clamped ? " (clamped, more next sweep)" : ""}`,
-          );
-        }
+        };
+        results.push(result);
+        logSweep(result);
       }
     } catch (cause) {
       // error-policy:J2 TaskService or the direct caller owns failure reporting.
@@ -165,6 +183,13 @@ export class MemoryRetentionService extends Service {
     }
     return results;
   }
+}
+
+function logSweep(result: SweepResult): void {
+  if (result.deleted === 0) return;
+  logger.info(
+    `[memory-retention] ${result.partition}: scanned=${result.scanned} evictable=${result.evictable} deleted=${result.deleted}${result.clamped ? " (clamped, more next sweep)" : ""}`,
+  );
 }
 
 /** Resolve the registered service, or null when retention isn't installed. */

@@ -827,6 +827,29 @@ export interface AgentRunSummaryResult {
 	hasMore: boolean;
 }
 
+/** One row of a retention inventory: just what a retention plan needs. */
+export interface RetentionInventoryRow {
+	id: UUID;
+	/** Memories may have no room; logs always do. */
+	roomId: UUID | null;
+	/** Epoch milliseconds. */
+	createdAt: number;
+}
+
+/**
+ * A page of ids for a retention sweep, newest-first by `(createdAt, id)`.
+ * Pass the last row of a page as `cursor` to read the next (older) page.
+ */
+export interface RetentionInventoryParams {
+	table: "logs" | "memories";
+	/** Memory partition (`Memory` table name). Required for `memories`. */
+	partition?: string;
+	/** Row types never returned (logs only), e.g. durable audit evidence. */
+	excludeTypes?: readonly string[];
+	cursor?: { createdAt: number; id: UUID };
+	limit: number;
+}
+
 /**
  * Optional durable records in the adapter's own agent database. Domain plugins
  * own their namespace and schema versions; transactions serialize all callers,
@@ -1474,6 +1497,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		to?: number;
 		entityId?: UUID;
 	}): Promise<AgentRunSummaryResult>;
+
+	/**
+	 * Optional id-only inventory for retention sweeps, so a sweep pages through
+	 * a large table without loading row bodies. Scoped to this adapter's agent.
+	 */
+	getRetentionInventory?(
+		params: RetentionInventoryParams,
+	): Promise<RetentionInventoryRow[]>;
 
 	/** Adapters own retrieval and optional query reranking. Scope and paginate
 	 * vector candidates before reranking; retain semantic-only candidates. */

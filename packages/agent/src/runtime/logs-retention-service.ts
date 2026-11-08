@@ -9,8 +9,10 @@ import { DURABLE_AUDIT_LOG_TYPES } from "../security/audit-log.ts";
 import {
   planRetention,
   policyIsActive,
+  RETENTION_PAGE_SIZE,
   type ResolvedRetentionConfig,
   type RetainableRow,
+  sweepRetentionPages,
 } from "./memory-retention.ts";
 import { RetentionTask } from "./retention-task.ts";
 
@@ -74,9 +76,34 @@ export class LogsRetentionService extends Service {
     }
     try {
       const adapter = this.runtime.adapter;
+      const policy = {
+        retentionDays: this.retentionConfig.retentionDays,
+        maxRowsPerRoom: this.retentionConfig.maxRowsPerRoom,
+        maxDeletePerSweep: this.retentionConfig.maxDeletePerSweep,
+      };
 
-      // One query avoids unstable offset pages while log writers remain active.
-      // This exceeds JavaScript's maximum array length, so every representable
+      if (adapter.getRetentionInventory) {
+        const inventory = adapter.getRetentionInventory.bind(adapter);
+        // Id-only pages; durable audit evidence has its own retention
+        // authority, so the adapter filters it out before it is read.
+        const result = await sweepRetentionPages(
+          (cursor) =>
+            inventory({
+              table: "logs",
+              excludeTypes: [...DURABLE_AUDIT_LOG_TYPES],
+              cursor,
+              limit: RETENTION_PAGE_SIZE,
+            }),
+          (ids) => adapter.deleteLogs(ids),
+          policy,
+          Date.now(),
+        );
+        logSweep(result);
+        return result;
+      }
+
+      // Adapters without an inventory: one query avoids unstable offset pages
+      // while log writers remain active. This exceeds JavaScript's maximum array length, so every representable
       // inventory fits without imposing a retention scan ceiling.
       const rows = await adapter.getLogs({ limit: Number.MAX_SAFE_INTEGER });
 
@@ -94,15 +121,7 @@ export class LogsRetentionService extends Service {
         });
       }
 
-      const plan = planRetention(
-        retainable,
-        {
-          retentionDays: this.retentionConfig.retentionDays,
-          maxRowsPerRoom: this.retentionConfig.maxRowsPerRoom,
-          maxDeletePerSweep: this.retentionConfig.maxDeletePerSweep,
-        },
-        Date.now(),
-      );
+      const plan = planRetention(retainable, policy, Date.now());
 
       let deleted = 0;
       if (plan.deleteIds.length > 0) {
@@ -120,12 +139,7 @@ export class LogsRetentionService extends Service {
         deleted,
         clamped: plan.clamped,
       };
-
-      if (deleted > 0) {
-        logger.info(
-          `[logs-retention] scanned=${result.scanned} evictable=${result.evictable} deleted=${deleted}${plan.clamped ? " (clamped, more next sweep)" : ""}`,
-        );
-      }
+      logSweep(result);
       return result;
     } catch (cause) {
       // error-policy:J2 TaskService or the direct caller owns failure reporting.
@@ -136,6 +150,13 @@ export class LogsRetentionService extends Service {
       });
     }
   }
+}
+
+function logSweep(result: LogsSweepResult): void {
+  if (result.deleted === 0) return;
+  logger.info(
+    `[logs-retention] scanned=${result.scanned} evictable=${result.evictable} deleted=${result.deleted}${result.clamped ? " (clamped, more next sweep)" : ""}`,
+  );
 }
 
 /** Coerce a Date | epoch-ms | undefined into epoch ms (undefined => NaN). */
