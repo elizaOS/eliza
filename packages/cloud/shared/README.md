@@ -401,6 +401,7 @@ Resubmission still requires the configured wallet to match the original signer.
 
 Stripe legacy queue adoption requires migration 0564. Durable cursors only select
 bounded work; matching SQL payload or terminal receipts authorize queue removal.
-Unknown receipts and malformed entries remain intact. Stop old KV queue writers
-before cleanup; current writers reject KV queue pushes. Each list has its own work
+Unknown receipts and malformed entries remain intact. KV adoption retains every
+raw entry: this owner has no durable old-writer fence to authorize deletion. KV
+cleanup remains a separate existing-owner obligation. Each list has its own work
 budget, while reading the complete legacy KV array can still exceed that budget.

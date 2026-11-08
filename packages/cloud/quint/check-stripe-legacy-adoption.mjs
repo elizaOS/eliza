@@ -14,15 +14,19 @@ assert.equal(
   path.resolve(root, process.argv[2] ?? model),
   path.join(root, model),
 );
-const backendCases = [
-  "persistent first-queue removal failure cannot starve later queues",
+const backendCases = (backend) => [
+  backend === "kv"
+    ? "read-only adoption reaches every legacy queue"
+    : "persistent first-queue removal failure cannot starve later queues",
   "bounded adoption preserves backlog and same-call delivery",
   "foreign marker cannot discard original Stripe work",
   "mismatched retained payload remains unchanged",
   "unknown terminal digest cannot fabricate a matching receipt",
   "malformed prefix cannot starve valid work or leak raw data",
   "committed SQL with lost reply retains and safely replays raw",
-  "lost remove acknowledgement cannot duplicate completed delivery",
+  backend === "kv"
+    ? "adoption never attempts destructive removal without a writer fence"
+    : "lost remove acknowledgement cannot duplicate completed delivery",
   "identical retained copies share one delivery receipt",
   "cursor acknowledgement loss does not acknowledge work",
   "concurrent adopters retain one durable delivery per original",
@@ -34,11 +38,12 @@ const suites = [
     file: "packages/cloud/shared/src/lib/services/stripe-legacy-adoption.pglite.test.ts",
     required: [
       ...["kv", "redis"].flatMap((backend) =>
-        backendCases.map((name) => `${backend}: ${name}`),
+        backendCases(backend).map((name) => `${backend}: ${name}`),
       ),
       "stale completion cannot rewind a newer cursor reservation",
       "canonical migration loads the bounded adoption hint schema",
       "KV non-string values remain intact without starving valid raw entries",
+      "KV adoption preserves an old-writer append without attempting removal",
     ],
   },
   {

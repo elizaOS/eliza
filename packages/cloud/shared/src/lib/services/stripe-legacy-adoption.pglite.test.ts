@@ -182,13 +182,15 @@ async function drain(seen: string[] = []) {
 }
 
 for (const mode of ["kv", "redis"] as const) {
-  test(`${mode}: persistent first-queue removal failure cannot starve later queues`, async () => {
+  test(`${mode}: ${mode === "kv" ? "read-only adoption reaches every legacy queue" : "persistent first-queue removal failure cannot starve later queues"}`, async () => {
     useBackend(mode);
     const keys = ["stripe-events", "stripe-events:processing", "stripe-events:dlq"];
     const bodies = keys.map((_, index) => message(`evt_remove_failure_${index}`));
     for (const [index, key] of keys.entries()) await seed(envelope(bodies[index]), key);
+    let removalCalls = 0;
     spies.push(
       spyOn(cache, "removeQueueValue").mockImplementation(async (key, raw) => {
+        removalCalls++;
         if (key === keys[0]) throw new Error("Persistent first-list removal failure");
         return adapter.lrem(prefix + key, 1, raw);
       }),
@@ -197,8 +199,9 @@ for (const mode of ["kv", "redis"] as const) {
     await drain(seen);
     expect(seen.sort()).toEqual(bodies.map((body) => body.eventId).sort());
     expect(await remaining(keys[0])).toEqual([envelope(bodies[0])]);
-    expect(await remaining(keys[1])).toEqual([]);
-    expect(await remaining(keys[2])).toEqual([]);
+    expect(await remaining(keys[1])).toEqual(mode === "kv" ? [envelope(bodies[1])] : []);
+    expect(await remaining(keys[2])).toEqual(mode === "kv" ? [envelope(bodies[2])] : []);
+    expect(removalCalls).toBe(mode === "kv" ? 0 : 3);
     for (const body of bodies)
       expect((await repo.findByEventIdPrimary(body.eventId))?.delivery_completed_at).not.toBeNull();
     await drain(seen);
@@ -215,11 +218,11 @@ for (const mode of ["kv", "redis"] as const) {
     const first = await drain(seen);
     expect(first.legacyAdopted).toBeGreaterThan(0);
     expect(first.legacyAdopted).toBeLessThanOrEqual(25);
-    expect((await remaining()).length).toBe(64 - first.legacyAdopted);
+    expect((await remaining()).length).toBe(mode === "kv" ? 64 : 64 - first.legacyAdopted);
     expect(seen).toContain(due.eventId);
     expect(seen.some((id) => id.startsWith("evt_backlog_"))).toBe(true);
     for (let turn = 0; turn < 5 && (await remaining()).length; turn++) await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect((await remaining()).sort()).toEqual(mode === "kv" ? raws.sort() : []);
     for (let turn = 0; turn < 4; turn++) await drain(seen);
     expect(new Set(seen).size).toBe(65);
     expect(seen.length).toBe(65);
@@ -283,7 +286,9 @@ for (const mode of ["kv", "redis"] as const) {
     const seen: string[] = [];
     for (let turn = 0; turn < 4; turn++) await drain(seen);
     expect(seen).toEqual([good.eventId]);
-    expect((await remaining()).sort()).toEqual(malformed.sort());
+    expect((await remaining()).sort()).toEqual(
+      (mode === "kv" ? [...malformed, envelope(good)] : malformed).sort(),
+    );
     expect(JSON.stringify(logged)).not.toContain(secret);
   });
 
@@ -309,16 +314,18 @@ for (const mode of ["kv", "redis"] as const) {
     expect(await remaining()).toEqual([raw]);
     expect((await repo.findByEventIdPrimary(body.eventId))?.delivery_completed_at).not.toBeNull();
     await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect(await remaining()).toEqual(mode === "kv" ? [raw] : []);
     expect(seen).toEqual([body.eventId]);
   });
 
-  test(`${mode}: lost remove acknowledgement cannot duplicate completed delivery`, async () => {
+  test(`${mode}: ${mode === "kv" ? "adoption never attempts destructive removal without a writer fence" : "lost remove acknowledgement cannot duplicate completed delivery"}`, async () => {
     useBackend(mode);
     const body = message("evt_remove_unknown");
     await seed(envelope(body));
+    let removalCalls = 0;
     spies.push(
       spyOn(cache, "removeQueueValue").mockImplementation(async (key, raw) => {
+        removalCalls++;
         await adapter.lrem(prefix + key, 1, raw);
         return null;
       }),
@@ -326,7 +333,8 @@ for (const mode of ["kv", "redis"] as const) {
     const seen: string[] = [];
     await drain(seen);
     await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect(await remaining()).toEqual(mode === "kv" ? [envelope(body)] : []);
+    expect(removalCalls).toBe(mode === "kv" ? 0 : 1);
     expect(seen).toEqual([body.eventId]);
   });
 
@@ -338,9 +346,9 @@ for (const mode of ["kv", "redis"] as const) {
     await seed(raw);
     const seen: string[] = [];
     await drain(seen);
-    expect(await remaining()).toEqual([raw]);
+    expect(await remaining()).toEqual(mode === "kv" ? [raw, raw] : [raw]);
     await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect(await remaining()).toEqual(mode === "kv" ? [raw, raw] : []);
     expect(seen).toEqual([body.eventId]);
   });
 
@@ -367,7 +375,7 @@ for (const mode of ["kv", "redis"] as const) {
     expect(await repo.findByEventIdPrimary(body.eventId)).toBeUndefined();
     const seen: string[] = [];
     await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect(await remaining()).toEqual(mode === "kv" ? [raw] : []);
     expect(seen).toEqual([body.eventId]);
   });
 
@@ -378,7 +386,7 @@ for (const mode of ["kv", "redis"] as const) {
     const seen: string[] = [];
     await Promise.all([drain(seen), drain(seen)]);
     for (let turn = 0; turn < 5; turn++) await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect((await remaining()).sort()).toEqual(mode === "kv" ? raws.sort() : []);
     expect(new Set(seen).size).toBe(40);
     expect(seen.length).toBe(40);
   }, 30_000);
@@ -405,9 +413,11 @@ for (const mode of ["kv", "redis"] as const) {
     const seen: string[] = [];
     const first = await drain(seen);
     expect(first.legacyAdopted).toBe(1);
-    expect((await remaining()).length).toBe(25);
+    expect((await remaining()).length).toBe(mode === "kv" ? 26 : 25);
     for (let turn = 0; turn < 3; turn++) await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect((await remaining()).sort()).toEqual(
+      mode === "kv" ? ordered.map(({ raw }) => raw).sort() : [],
+    );
     expect(new Set(seen).size).toBe(26);
   }, 30_000);
 
@@ -429,7 +439,7 @@ for (const mode of ["kv", "redis"] as const) {
     const seen: string[] = [];
     expect((await drain(seen)).legacyAdopted).toBe(3);
     await drain(seen);
-    expect(await remaining()).toEqual([]);
+    expect((await remaining()).length).toBe(mode === "kv" ? 3 : 0);
     expect(new Set(seen).size).toBe(3);
     expect(seen.length).toBe(3);
   });
@@ -493,6 +503,42 @@ test("KV non-string values remain intact without starving valid raw entries", as
   const seen: string[] = [];
   await drain(seen);
   expect(seen).toEqual([body.eventId]);
-  expect(JSON.parse((await kv.get(prefix + "stripe-events"))!)).toEqual([42, privateValue]);
+  expect(JSON.parse((await kv.get(prefix + "stripe-events"))!)).toEqual([
+    42,
+    privateValue,
+    envelope(body),
+  ]);
   expect(JSON.stringify(logged)).not.toContain(privateValue.secret);
+});
+
+test("KV adoption preserves an old-writer append without attempting removal", async () => {
+  useBackend("kv");
+  const originalBody = message("evt_before_old_writer");
+  const appendedBody = message("evt_old_writer_append");
+  const originalRaw = envelope(originalBody);
+  const appendedRaw = envelope(appendedBody);
+  await seed(originalRaw);
+  const originalAdopt = repo.adoptLegacyStripeDelivery.bind(repo);
+  let appended = false;
+  spies.push(
+    spyOn(repo, "adoptLegacyStripeDelivery").mockImplementation(async (...args) => {
+      const result = await originalAdopt(...args);
+      if (!appended) {
+        appended = true;
+        await seed(appendedRaw);
+      }
+      return result;
+    }),
+  );
+  const remove = spyOn(cache, "removeQueueValue");
+  spies.push(remove);
+  const seen: string[] = [];
+  await drain(seen);
+  expect(seen).toEqual([originalBody.eventId]);
+  expect(await remaining()).toEqual([appendedRaw, originalRaw]);
+  expect(remove).not.toHaveBeenCalled();
+  await drain(seen);
+  expect(seen).toEqual([originalBody.eventId, appendedBody.eventId]);
+  expect(await remaining()).toEqual([appendedRaw, originalRaw]);
+  expect(remove).not.toHaveBeenCalled();
 });

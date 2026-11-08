@@ -32,7 +32,8 @@ import { logger } from "../utils/logger";
  * Lists the pre-outbox queue used. The cron moves anything left there into the
  * outbox, the dead-letter list included: the old route answered those events
  * 200, so Stripe will not send them again, and in the outbox they get a fresh
- * budget. Remove this lane once the lists are seen empty.
+ * budget. Redis entries can be removed after adoption. KV entries are retained:
+ * this owner has no durable fence proving that old KV writers are quiescent.
  */
 const LEGACY_STRIPE_QUEUE_KEYS = [
   "stripe-events",
@@ -250,8 +251,10 @@ async function adoptLegacyStripeQueue(): Promise<number> {
         });
         continue;
       }
-      // KV list removal is a read/modify/write. All old queue producers must
-      // be quiescent; concurrent removers can only resurrect adopted entries.
+      // KV removal is a read/modify/write that can erase an old writer's
+      // concurrent append. SQL adoption is safe, but there is no durable writer
+      // fence here to authorize deletion. Keep the complete original KV list.
+      if (cache.getBackendKind() === "cloudflare_kv") continue;
       try {
         await cache.removeQueueValue(key, raw);
       } catch (error) {

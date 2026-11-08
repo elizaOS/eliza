@@ -1,6 +1,7 @@
 // stripe-delivery-outbox.ts and stripe-legacy-adoption-cursors.ts.
 // IDs abstract digest order. A cursor chooses work and never permits deletion.
-// The legacy producer is quiescent; KV removal may use a stale read snapshot.
+// A legacy producer can append while adoption runs. KV raw lists are read-only;
+// only atomic Redis removal is authorized by matching SQL receipt publication.
 module StripeLegacyAdoption {
   const AtomicRemoval: bool
   const ForeignReceipt: bool
@@ -62,7 +63,7 @@ module StripeLegacyAdoption {
       s' = {...s, sql: s.sql.set(entry, after),
         reopened: s.reopened or (s.sql.get(entry) == "done" and after != "done"),
         workers: s.workers.set(w, {...worker,
-          phase: if (known and committed and replied) "remove-read" else "select"})}
+          phase: if (known and committed and replied and AtomicRemoval) "remove-read" else "select"})}
     }
   }
   action ReadRemoval(w: int): bool = {
@@ -109,7 +110,7 @@ module StripeLegacyAdoption {
   action step = {
     nondet w = Workers.oneOf()
     nondet entry = Entries.oneOf()
-    any { Advance(w), Budget(w), Complete(entry), Crash(w), s' = s }
+    any { Advance(w), Budget(w), Complete(entry), Crash(w), OldProducer, s' = s }
   }
   val safety = all {
     not(s.reopened),
@@ -121,7 +122,18 @@ module StripeLegacyAdoption {
     eventually(always(Workers.forall(w => Set("idle", "done").contains(s.workers.get(w).phase))))
 
   // Negative witnesses for the documented unsupported or former transitions.
-  action UnsafeOldProducer = s' = {...s, queue: s.queue.union(Set(4)), everQueued: s.everQueued.union(Set(4))}
+  action OldProducer = all { not(s.everQueued.contains(4)),
+    s' = {...s, queue: s.queue.union(Set(4)), everQueued: s.everQueued.union(Set(4))} }
+  action UnsafeKvRead(w: int): bool = all {
+    s.workers.get(w).phase == "select", Set("pending", "done").contains(s.sql.get(s.workers.get(w).held)),
+    s' = {...s, workers: s.workers.set(w, {...s.workers.get(w),
+      phase: "unsafe-kv-write", removal: s.queue.exclude(Set(s.workers.get(w).held))})}
+  }
+  action UnsafeKvWrite(w: int): bool = all {
+    s.workers.get(w).phase == "unsafe-kv-write",
+    s' = {...s, queue: s.workers.get(w).removal,
+      workers: s.workers.set(w, {...s.workers.get(w), phase: "select"})}
+  }
   action UnsafeDrop(entry: int): bool = s' = {...s, queue: s.queue.exclude(Set(entry))}
   action UnsafeUnboundedBatch(w: int): bool = s' = {...s, workers: s.workers.set(w, {...s.workers.get(w), used: 3})}
 }
@@ -178,16 +190,16 @@ module StripeLegacyAdoption_queues {
 }
 module StripeLegacyAdoption_kv {
   import StripeLegacyAdoption(AtomicRemoval=false, ForeignReceipt=false).*
-  run staleRemovalOnlyResurrectsAdoptedEntryTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true)).then(ReadRemoval(1))
-    .then(Snapshot(2)).then(Reserve(2, true)).then(Choose(2)).then(Adopt(2, true, true)).then(ReadRemoval(2))
-    .then(Remove(1, true)).then(Remove(2, true)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "pending")
+  run readOnlyAdoptionPreservesConcurrentOldWriterTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true))
+    .then(OldProducer).then(Choose(1)).then(Adopt(1, true, true))
+    .expect(safety and s.queue == Set(1, 2, 3, 4) and s.sql.get(1) == "pending" and s.sql.get(2) == "pending")
   run completedReceiptCannotReopenTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, false)).then(Complete(1))
     .then(Choose(1)).then(Adopt(1, false, false)).then(Finish(1))
     .then(Snapshot(2)).then(Reserve(2, true)).then(Choose(2)).then(Adopt(2, false, false))
-    .then(Choose(2)).then(Adopt(2, true, true)).then(ReadRemoval(2)).then(Remove(2, true))
-    .expect(safety and s.sql.get(1) == "done" and not(s.queue.contains(1)))
-  run activeOldProducerNegativeWitnessTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true)).then(ReadRemoval(1))
-    .then(UnsafeOldProducer).then(Remove(1, true)).expect(not(safety))
+    .then(Choose(2)).then(Adopt(2, true, true))
+    .expect(safety and s.sql.get(1) == "done" and s.queue.contains(1))
+  run unfencedKvRemovalLosesConcurrentAppendNegativeWitnessTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true))
+    .then(UnsafeKvRead(1)).then(OldProducer).then(UnsafeKvWrite(1)).expect(not(safety))
 }
 module StripeLegacyAdoption_conflict {
   import StripeLegacyAdoption(AtomicRemoval=false, ForeignReceipt=true).*
