@@ -1,4 +1,4 @@
-/** Replays Quint refresh races against encrypted account files and public APIs. */
+/** Replays Quint refresh and metadata races against encrypted account files and public APIs. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -219,6 +219,26 @@ for (const [index, file] of files.entries()) {
           policy,
         ).kind;
         break;
+      case "conditional-metadata": {
+        const expected = held.get(state.reader);
+        assert(expected, "Conditional metadata needs a captured generation");
+        const updated = updateAccountMetadata(
+          provider,
+          accountId,
+          { label: `label-${state.value}` },
+          policy,
+          expected,
+        );
+        result = updated.kind;
+        if (updated.kind !== "missing") {
+          assert.deepEqual(
+            updated.record,
+            loadAccount(provider, accountId, policy),
+            "Metadata outcome must carry the current encrypted record",
+          );
+        }
+        break;
+      }
       case "remove":
         deleteAccount(provider, accountId, policy);
         result = "deleted";
@@ -245,6 +265,9 @@ for (const outcome of [
   "save/saved",
   "metadata/updated",
   "metadata/missing",
+  "conditional-metadata/updated",
+  "conditional-metadata/changed",
+  "conditional-metadata/missing",
   "remove/deleted",
 ]) {
   assert(outcomes.has(outcome), `missing exercised outcome ${outcome}`);
@@ -262,7 +285,7 @@ const evidence = {
   storage:
     "Actual account-storage public APIs, private files, AES-GCM envelopes and filesystem mutation locks",
   assumptions:
-    "Two providers, one common account id, two one-shot captured refresh callers, one explicit replacement. No process death or injected filesystem errors.",
+    "Two providers, one common account id, two one-shot captured refresh or metadata callers, one explicit replacement. No process death or injected filesystem errors.",
 };
 await writeFile(
   path.join(directory, "evidence.json"),
