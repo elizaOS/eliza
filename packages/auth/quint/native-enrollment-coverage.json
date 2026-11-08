@@ -102,16 +102,23 @@
   },
   {
     "id": "auth.AccountPoolHealthAndStrategies",
-    "model": null,
+    "model": "packages/auth/quint/AccountPoolLeastUsed.qnt",
     "sources": [
       "packages/auth/src/accounts/account-pool.ts",
       "packages/auth/src/accounts/account-selection.ts",
       "packages/auth/src/accounts/account-usage.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": [
+      "TypeOK",
+      "SelectedWithinProvider",
+      "UsageAndEffectiveAgeOrderPicks",
+      "StampsChangeOnlyForFreshPicks",
+      "PersistedRecencySurvivesRestart"
+    ],
+    "status": "partial",
     "limitations": [
-      "Eligibility health/cooldown/expiry clocks, usage refresh and mutations, priority/least-used/quota/reset strategies, and bounded-cache eviction remain to be modeled. AccountPoolAffinity covers the separate round-robin/affinity selection snapshot contract."
+      "AccountPoolLeastUsed covers provider-scoped selection stamps, preview, affinity reuse and persisted recency under declared bounds. AccountPoolAffinity and AccountPoolHealth separately cover round-robin and bounded health ownership.",
+      "Priority, quota-aware and reset-based ranking, mixed strategies, full eligibility and usage clock combinations, arbitrary storage failure and bounded-cache eviction remain gaps."
     ]
   },
   {
