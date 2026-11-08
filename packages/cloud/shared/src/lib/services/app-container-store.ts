@@ -5,12 +5,14 @@
  * while terminal `deleted` status is required to release organization quota.
  */
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import type { containersRepository } from "../../db/repositories/containers";
 import { containers, TERMINAL_CONTAINER_STATUS } from "../../db/schemas/containers";
+import { logger } from "../utils/logger";
 import {
   type AppContainerNodeSlotClaim,
+  type AppContainerPublicationAuthority,
   type AppContainerReadDatabase,
   type AppContainerTransactionDatabase,
   claimAppContainerNodeSlot,
@@ -72,6 +74,7 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     image: row.image_tag ?? "",
     port: row.port,
     organizationId: row.organization_id,
+    createdAtSnapshot: row.createdAtSnapshot,
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
     nodeId: row.node_id ?? undefined,
@@ -159,24 +162,61 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     containerId: string,
     organizationId: string,
     nodeId: string,
+    authority?: AppContainerPublicationAuthority,
   ): Promise<boolean> {
     return rollbackAppContainerNodeSlotClaim(
       this.deps.writeDatabase,
       containerId,
       organizationId,
       nodeId,
+      authority,
+    );
+  }
+
+  private async readPublicationRow(
+    containerId: string,
+    authority: AppContainerPublicationAuthority,
+  ) {
+    const [row] = await this.deps.writeDatabase
+      .select({
+        organization_id: containers.organization_id,
+        status: containers.status,
+        lifecycle_revision: containers.lifecycle_revision,
+        metadata: containers.metadata,
+        created_at: containers.created_at,
+        createdAtSnapshot: sql<string>`to_char(${containers.created_at}, 'YYYY-MM-DD HH24:MI:SS.US')`,
+      })
+      .from(containers)
+      .where(
+        and(
+          eq(containers.id, containerId),
+          eq(containers.organization_id, authority.organizationId),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
+  private publicationMatches(
+    row: Awaited<ReturnType<ContainerRepoAppContainerStore["readPublicationRow"]>>,
+    authority: AppContainerPublicationAuthority,
+  ): boolean {
+    return (
+      !!row &&
+      row.createdAtSnapshot === authority.createdAtSnapshot &&
+      deploymentGenerationFromMetadata(row.metadata) === authority.deploymentGeneration &&
+      row.status !== "deleting" &&
+      row.status !== TERMINAL_CONTAINER_STATUS &&
+      !Object.hasOwn(row.metadata ?? {}, "retirement")
     );
   }
 
   async markRunning(
     containerId: string,
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
+    authority: AppContainerPublicationAuthority,
   ): Promise<void> {
-    const [row] = await this.deps.readDatabase
-      .select({ organization_id: containers.organization_id, metadata: containers.metadata })
-      .from(containers)
-      .where(eq(containers.id, containerId))
-      .limit(1);
+    const row = await this.readPublicationRow(containerId, authority);
     if (!row) {
       throw this.deps.errorFactory(
         `App container ${containerId} disappeared before it became running`,
@@ -187,44 +227,39 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
         },
       );
     }
-
-    // Merge host placement into metadata (no dedicated columns on the 2AM
-    // schema), preserving anything already there (e.g. appId).
-    const nextMetadata = mergeHostPlacementMetadata(row.metadata, info);
-
-    // Stamp the app's public URL via the SAME ingress hostname derivation the
-    // agent path uses (reused, not rebuilt) so the running app is reachable at
-    // a real URL. Skipped when no public base domain is configured (local dev).
-    const endpoint = deriveAppPublicUrl(containerId);
-
-    // Two writes: status (id-scoped) + metadata/url/last_deployed_at (org-scoped
-    // update, which is the only metadata-writing surface the repo exposes).
-    //
-    // The read above and this write are separate awaited round-trips with no
-    // enclosing transaction, so a CONTAINER_DELETE claimed by an overlapping
-    // worker can drive the row to the hard-terminal `deleted` in between.
-    // `updateStatus` compare-and-sets on that status and returns null when it
-    // loses; proceeding would stamp `last_deployed_at`/placement metadata onto a
-    // container whose teardown already completed. Failing here routes the
-    // provision job through `settleFailedProvision`, which removes the container
-    // we just started and releases its node slot — the correct settlement for a
-    // deploy that was overtaken by its own delete.
-    const running = await this.deps.repository.updateStatus(containerId, "running");
-    if (!running) {
-      throw this.deps.errorFactory(
-        `App container ${containerId} reached a terminal state before it became running`,
+    const stale = () =>
+      this.deps.errorFactory(
+        `App container ${containerId} reached a retired or changed generation before it became running`,
         {
-          code: "APP_CONTAINER_TERMINALLY_DELETED",
-          context: { containerId, organizationId: row.organization_id, transition: "running" },
-          severity: "fatal",
+          code: "APP_CONTAINER_PUBLICATION_STALE",
+          context: {
+            containerId,
+            organizationId: authority.organizationId,
+            deploymentGeneration: authority.deploymentGeneration,
+            transition: "running",
+          },
+          severity: "ephemeral",
         },
       );
-    }
-    await this.deps.repository.update(containerId, row.organization_id, {
-      metadata: nextMetadata,
-      last_deployed_at: new Date(),
-      ...(endpoint ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url } : {}),
-    });
+    if (!this.publicationMatches(row, authority)) throw stale();
+    const endpoint = deriveAppPublicUrl(containerId);
+    // Status, placement and publication timestamp have one linearization point.
+    // The canonical CAS rechecks the original row, revision and complete metadata;
+    // a concurrent retirement or generation change owns the row if it wins first.
+    const published = await this.deps.repository.update(
+      containerId,
+      authority.organizationId,
+      {
+        status: "running",
+        metadata: mergeHostPlacementMetadata(row.metadata, info),
+        last_deployed_at: new Date(),
+        ...(endpoint
+          ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url }
+          : {}),
+      },
+      row,
+    );
+    if (!published) throw stale();
   }
 
   async markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void> {
@@ -243,20 +278,51 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
       .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
   }
 
-  async markError(containerId: string, error: string): Promise<void> {
+  private async markOwnedFailure(
+    containerId: string,
+    error: string,
+    status: "failed" | "cleanup_required",
+    authority: AppContainerPublicationAuthority,
+  ): Promise<void> {
+    const row = await this.readPublicationRow(containerId, authority);
+    if (!row || !this.publicationMatches(row, authority)) {
+      logger.info("[AppContainerStore] newer lifecycle owns failure publication", {
+        containerId,
+        deploymentGeneration: authority.deploymentGeneration,
+        status,
+      });
+      return;
+    }
+    const written = await this.deps.repository.update(
+      containerId,
+      authority.organizationId,
+      { status, error_message: error },
+      row,
+    );
+    if (!written) {
+      logger.info("[AppContainerStore] newer lifecycle won failure publication", {
+        containerId,
+        deploymentGeneration: authority.deploymentGeneration,
+        status,
+      });
+    }
+  }
+
+  async markError(
+    containerId: string,
+    error: string,
+    authority?: AppContainerPublicationAuthority,
+  ): Promise<void> {
+    if (authority) return this.markOwnedFailure(containerId, error, "failed", authority);
     await this.deps.repository.updateStatus(containerId, "failed", error);
   }
 
-  /**
-   * `cleanup_required` deliberately RETAINS node capacity until a retry proves
-   * Docker absence, and the orphan reconciler treats such a row as live. Writing
-   * it over a `deleted` row would therefore pin a node slot forever for a
-   * container whose teardown already completed, so this write carries the same
-   * hard-terminal compare-and-set as `updateStatus`. Losing the CAS is not an
-   * error: the delete path already released the slot and reached the state this
-   * call was trying to protect.
-   */
-  async markCleanupRequired(containerId: string, error: string): Promise<void> {
+  async markCleanupRequired(
+    containerId: string,
+    error: string,
+    authority?: AppContainerPublicationAuthority,
+  ): Promise<void> {
+    if (authority) return this.markOwnedFailure(containerId, error, "cleanup_required", authority);
     await this.deps.writeDatabase
       .update(containers)
       .set({ status: "cleanup_required", error_message: error, updated_at: new Date() })
