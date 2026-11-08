@@ -126,6 +126,7 @@ export interface DurableDraftState {
    * sent (it was marked as sending by a send that did not settle here).
    */
   unsettled: boolean;
+  /** Recovery text may be retained only in memory after a failed consume. */
   savedText: string;
   /** {@link DurableDraftController.consume} is in progress. */
   consuming: boolean;
@@ -544,32 +545,46 @@ export class DurableDraftController<Recovery = unknown> {
     return binding.store;
   }
 
-  private async reviewConflict(binding: Binding<Recovery>): Promise<void> {
+  private async reviewConflict(
+    binding: Binding<Recovery>,
+    retainedText?: string,
+  ): Promise<void> {
     try {
       const latest = await this.requireStore(binding).read();
       if (this.active !== binding) return;
       binding.record = latest;
+      const recovery =
+        this.text() === "" && retainedText !== (latest?.text ?? "")
+          ? retainedText
+          : undefined;
       const unsettled =
-        isSendingDurableDraft(latest) && !this.sendingHere(binding);
+        !recovery &&
+        isSendingDurableDraft(latest) &&
+        !this.sendingHere(binding);
       this.publish({
         opening: false,
         conflict: true,
         unsettled,
-        error: false,
-        savedText: latest?.text ?? "",
-        message: unsettled
-          ? this.messages.unsettled
-          : this.messages.saveConflict,
+        error: !!recovery,
+        savedText: recovery || latest?.text || "",
+        message: recovery
+          ? this.messages.saveFailed
+          : unsettled
+            ? this.messages.unsettled
+            : this.messages.saveConflict,
       });
     } catch {
-      if (this.active === binding)
+      if (this.active === binding) {
+        const recovery = this.text() === "" ? retainedText : undefined;
         this.publish({
           opening: false,
-          conflict: false,
+          conflict: !!recovery,
           unsettled: false,
           error: true,
+          ...(recovery ? { savedText: recovery } : {}),
           message: this.messages.saveFailed,
         });
+      }
     }
   }
 
@@ -578,22 +593,34 @@ export class DurableDraftController<Recovery = unknown> {
     const binding = this.active;
     if (!binding?.ready || !this.state.conflict || this.restoring.has(binding))
       return;
-    const saved = binding.record?.text ?? "";
+    const saved = this.state.savedText;
     const finish = (applied: boolean) => {
       if (this.active !== binding) return;
       if (!applied || this.text() !== saved) {
         this.offerBoth(binding, saved, isSendingDurableDraft(binding.record));
         return;
       }
-      binding.failed = false;
+      const stored = binding.record?.text ?? "";
       binding.last = saved;
+      if (saved !== stored && stored) {
+        // Restoring a retained local copy must not replace a different stored
+        // copy without offering that copy for its own review.
+        this.offerBoth(binding, stored, isSendingDurableDraft(binding.record));
+        return;
+      }
+      binding.failed = false;
       this.publish({
         conflict: false,
         unsettled: false,
+        error: false,
         message: saved ? this.messages.savedRestored : "",
       });
+      if (saved !== stored) this.queueSave(binding, () => saved);
       // The person chose to edit that text again: it is an ordinary draft now.
-      if (isSendingDurableDraft(binding.record) && !this.sendingHere(binding))
+      else if (
+        isSendingDurableDraft(binding.record) &&
+        !this.sendingHere(binding)
+      )
         this.unmark(binding);
     };
     const failed = (error: unknown): never => {
@@ -619,6 +646,11 @@ export class DurableDraftController<Recovery = unknown> {
   keepCurrent(): void {
     const binding = this.active;
     if (!binding?.ready || !this.state.conflict) return;
+    const stored = binding.record?.text ?? "";
+    if (this.state.savedText !== stored && stored) {
+      this.offerBoth(binding, stored, isSendingDurableDraft(binding.record));
+      return;
+    }
     binding.failed = false;
     const text = this.text();
     binding.last = binding.record?.text ?? "";
@@ -1061,7 +1093,7 @@ export class DurableDraftController<Recovery = unknown> {
         binding.failed = true;
         if (this.active === binding) {
           this.publish({ consuming: false });
-          await this.reviewConflict(binding);
+          await this.reviewConflict(binding, original);
         }
         throw error;
       }

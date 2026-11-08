@@ -176,13 +176,28 @@
     ]
   },
   {
+    "id": "DraftConsumeRetention",
+    "model": "packages/ui/quint/DraftConsumeRetention.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Composes a host rejection after applying the clear with rollback failure before/after writing or a foreign CAS winner, failed/successful readback and two explicit review choices. Three symbolic text values and at most four storage mutations.",
+      "The original must remain in the editor, persisted store or offered recovery copy until explicit discard. A different stored winner needs a separate reviewed choice before overwrite. Generated traces replay through the real controller and row CAS.",
+      "Later review host updates complete synchronously. Concurrent review choices, retirement before backup recovery, process crashes and longer retry histories remain outside this finite instance."
+    ]
+  },
+  {
     "id": "DurableDraftControllerRemaining",
     "model": null,
     "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Reviewed residual obligations include arbitrary-length mixed hold/commit/release/consume queues, more than two concurrent send rounds or retired-binding handoffs, and crash/restart during pending host restoration or consume rollback. The eight controller cases cover finite protocol instances; they do not prove those unbounded compositions.",
+      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, overlapping review choices while host restoration is pending, more than two send rounds or retired-binding handoffs, retained-backup recovery after retirement, and crashes during pending host restoration or consume rollback. The nine controller cases cover finite protocol instances.",
       "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
     ]
   }

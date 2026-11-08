@@ -1079,6 +1079,120 @@ async function replayConsumeHandoff(states) {
   }
 }
 
+async function replayConsumeRetention(states) {
+  const initial = states[0];
+  let editor = "reviewed";
+  let row = { version: 1, binding: "one", revision: "0", text: editor };
+  let revision = 0;
+  let writes = 0;
+  let update;
+  let inlineRestore = false;
+  let consumeResult = "pending";
+  let consuming;
+  const store = {
+    async read() {
+      if (writes >= 2 && initial.readFailure)
+        throw new Error("Conflict readback failed");
+      return row;
+    },
+    async save(expected, text) {
+      writes++;
+      if (writes === 2 && initial.fault === "before")
+        throw new Error("Rollback failed before write");
+      if (writes === 2 && initial.fault === "external") {
+        row = replaceDurableDraft(row, row, "one", "external", {
+          revision: () => String(++revision),
+        });
+        throw new Error("Another writer replaced the clear");
+      }
+      row = replaceDurableDraft(row, expected, "one", text, {
+        revision: () => String(++revision),
+      });
+      if (writes === 2 && initial.fault === "after")
+        throw new Error("Rollback acknowledgement lost");
+      return row;
+    },
+  };
+  const controller = new DurableDraftController(
+    async () => store,
+    () => editor,
+    (text, expected, current) => {
+      if (inlineRestore) {
+        if (current() && editor === expected) editor = text;
+        return;
+      }
+      return new Promise((resolve, reject) => {
+        update = { text, expected, current, resolve, reject };
+      });
+    },
+    () => {},
+  );
+  await controller.open("one");
+  const review = async (choice) => {
+    if (choice === "restore") await controller.restoreSaved();
+    if (choice === "keep") controller.keepCurrent();
+  };
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && previous.phase !== 4) {
+      switch (state.event) {
+        case "begin":
+          consuming = controller.consume("reviewed").then(
+            () => {
+              consumeResult = "fulfilled";
+            },
+            () => {
+              consumeResult = "rejected";
+            },
+          );
+          break;
+        case "host-rejected":
+          assert(update.current() && editor === update.expected);
+          editor = update.text;
+          update.reject(new Error("Host rejected after applying"));
+          await consuming;
+          inlineRestore = true;
+          break;
+        case "review":
+          await review(state.choice);
+          break;
+        case "review-again":
+          if (
+            previous.choice !== "none" &&
+            previous.conflict &&
+            previous.offered === "external"
+          )
+            await review(state.secondChoice);
+          break;
+        default:
+          throw new Error(`Unknown retained-consume event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    if (state.phase >= 2) assert.equal(consumeResult, "rejected");
+    assert.deepEqual(
+      {
+        editor,
+        stored: row.text,
+        offered: controller.state.savedText,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+        consuming: controller.state.consuming,
+      },
+      {
+        editor: state.editor,
+        stored: state.stored,
+        offered: state.offered,
+        conflict: state.conflict,
+        error: state.error,
+        consuming: state.consuming,
+      },
+      `Consume retention state ${index} (${state.event})`,
+    );
+  }
+}
+
 const protocols = {
   DraftSendRecovery: replaySendRecovery,
   DraftMarkRace: replayMarkRace,
@@ -1088,6 +1202,7 @@ const protocols = {
   DraftConsumeRollback: replayConsumeRollback,
   DraftRepeatedSend: replayRepeatedSend,
   DraftConsumeHandoff: replayConsumeHandoff,
+  DraftConsumeRetention: replayConsumeRetention,
 };
 const requested = process.argv[2] && path.resolve(process.argv[2]);
 let steps = 0;
@@ -1105,6 +1220,7 @@ for (const [name, replay] of Object.entries(protocols)) {
     DraftConsumeRollback: 5,
     DraftRepeatedSend: 9,
     DraftConsumeHandoff: 8,
+    DraftConsumeRetention: 4,
     DraftSendRecovery: 7,
   }[name];
   const result = spawnSync(

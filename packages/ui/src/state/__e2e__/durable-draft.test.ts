@@ -1192,6 +1192,111 @@ describe("DurableDraftController asynchronous restore ownership", () => {
   });
 });
 
+describe("DurableDraftController compound consume recovery", () => {
+  async function failedConsume(
+    fault: "before" | "after" | "external",
+    readFailure = false,
+  ) {
+    const f = queuedRestoreFixture("Reviewed form");
+    const opening = f.c.open("one");
+    await tick();
+    f.commit();
+    await opening;
+    const save = f.store.save;
+    const read = f.store.read;
+    let writes = 0;
+    f.store.save = async (expected, text, signal, write) => {
+      writes++;
+      if (writes !== 2) return save.call(f.store, expected, text, signal, write);
+      if (fault !== "before")
+        await save.call(
+          f.store,
+          expected,
+          fault === "external" ? "Other editor" : text,
+          signal,
+          write,
+        );
+      throw new Error("Rollback was not confirmed");
+    };
+    f.store.read = async () => {
+      if (writes >= 2 && readFailure) throw new Error("Readback unavailable");
+      return read.call(f.store);
+    };
+    const consuming = f.c.consume("Reviewed form");
+    const rejected = expect(consuming).rejects.toThrow("Host rejected after applying");
+    await tick();
+    const update = f.takeUpdate();
+    update.apply();
+    update.acknowledge(new Error("Host rejected after applying"));
+    await rejected;
+    return f;
+  }
+
+  it.each(["before", "after", "external"] as const)(
+    "retains the reviewed copy when rollback fails %s its write",
+    async (fault) => {
+      const f = await failedConsume(fault);
+      expect(f.get()).toBe("");
+      expect(f.c.state.conflict).toBe(true);
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      const restoring = f.c.restoreSaved();
+      f.commit();
+      await restoring;
+      await tick();
+      expect(f.get()).toBe("Reviewed form");
+      if (fault === "external") {
+        expect(f.saved()?.text).toBe("Other editor");
+        expect(f.c.state.savedText).toBe("Other editor");
+        expect(f.c.state.conflict).toBe(true);
+        f.c.keepCurrent();
+        await tick();
+      }
+      expect(f.saved()?.text).toBe("Reviewed form");
+    },
+  );
+
+  it.each(["before", "after", "external"] as const)(
+    "offers the retained copy even when %s rollback readback also fails",
+    async (fault) => {
+      const f = await failedConsume(fault, true);
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(true);
+      expect(f.c.state.error).toBe(true);
+      const restoring = f.c.restoreSaved();
+      f.commit();
+      await restoring;
+      await tick();
+      expect(f.get()).toBe("Reviewed form");
+      if (fault === "external") expect(f.saved()?.text).toBe("Other editor");
+    },
+  );
+
+  it("requires review of a different stored copy before discarding it", async () => {
+    const f = await failedConsume("external");
+    f.c.keepCurrent();
+    await tick();
+    expect(f.get()).toBe("");
+    expect(f.saved()?.text).toBe("Other editor");
+    expect(f.c.state.savedText).toBe("Other editor");
+    expect(f.c.state.conflict).toBe(true);
+    f.c.keepCurrent();
+    await tick();
+    expect(f.saved()?.text).toBe("");
+  });
+
+  it("keeps the retained copy after another skipped host restoration", async () => {
+    const f = await failedConsume("before");
+    const restoring = f.c.restoreSaved();
+    const update = f.takeUpdate();
+    update.acknowledge();
+    await restoring;
+    update.apply();
+    expect(f.get()).toBe("");
+    expect(f.c.state.savedText).toBe("Reviewed form");
+    expect(f.c.state.conflict).toBe(true);
+  });
+});
+
 describe("DurableDraftController consume", () => {
   it("waits for a retired consume and retains its failed receipt until a newer write", async () => {
     const f = fixture();
