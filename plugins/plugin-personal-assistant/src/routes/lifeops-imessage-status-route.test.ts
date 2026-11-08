@@ -119,9 +119,21 @@ class NativeIMessageService extends Service {
   async sendMessage(): Promise<{ success: true; messageId: string }> {
     return { success: true, messageId: "message-test" };
   }
+
+  // Like plugin-imessage, reads answer an empty list while chat.db is closed.
+  async getMessages(): Promise<[]> {
+    return [];
+  }
+
+  async getChats(): Promise<[]> {
+    return [];
+  }
 }
 
-function routeContext(runtime: AgentRuntime): {
+function routeContext(
+  runtime: AgentRuntime,
+  pathname = "/api/lifeops/connectors/imessage/status",
+): {
   context: LifeOpsRouteContext;
   response: CapturedResponse;
 } {
@@ -144,7 +156,6 @@ function routeContext(runtime: AgentRuntime): {
     return this;
   };
 
-  const pathname = "/api/lifeops/connectors/imessage/status";
   return {
     context: {
       req: request,
@@ -358,6 +369,35 @@ describe("LifeOps iMessage native transport projection", () => {
       sendOnly: true,
     });
     expect(response.body).not.toContain("full_disk_access_required");
+  });
+
+  it("refuses a message read while chat.db is unreadable, like the chat list", async () => {
+    const read = routeContext(
+      nativeRuntime,
+      "/api/lifeops/connectors/imessage/messages",
+    );
+    await expect(handleLifeOpsRoutes(read.context)).resolves.toBe(true);
+    expect(read.response.statusCode).toBe(200);
+    expect(JSON.parse(read.response.body)).toEqual({ messages: [], count: 0 });
+
+    nativeService.connected = true;
+    nativeService.chatDbAvailable = false;
+    const chats = routeContext(
+      nativeRuntime,
+      "/api/lifeops/connectors/imessage/chats",
+    );
+    const sendOnlyRead = routeContext(
+      nativeRuntime,
+      "/api/lifeops/connectors/imessage/messages",
+    );
+
+    await expect(handleLifeOpsRoutes(chats.context)).resolves.toBe(true);
+    await expect(handleLifeOpsRoutes(sendOnlyRead.context)).resolves.toBe(true);
+    expect(chats.response.statusCode).toBe(503);
+    expect(sendOnlyRead.response.statusCode).toBe(503);
+    expect(JSON.parse(sendOnlyRead.response.body)).toEqual(
+      JSON.parse(chats.response.body),
+    );
   });
 });
 

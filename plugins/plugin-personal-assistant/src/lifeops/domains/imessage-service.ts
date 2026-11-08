@@ -529,6 +529,14 @@ export class IMessageDomain {
     since?: string;
     limit?: number;
   }): Promise<IMessageRecord[]> {
+    // plugin-imessage answers reads with [] while chat.db is unreadable
+    // (send-only); report that like the chat list instead of an empty inbox.
+    const registered = this.ctx.runtime.getService(
+      "imessage",
+    ) as RuntimeIMessageServiceLike | null;
+    if (registered && !nativeServiceCanRead(registered)) {
+      fail(503, IMESSAGE_PLUGIN_SETUP_MESSAGE);
+    }
     const delegated = await readIMessagesWithRuntimeService({
       runtime: this.ctx.runtime,
       chatId: opts.chatId,
