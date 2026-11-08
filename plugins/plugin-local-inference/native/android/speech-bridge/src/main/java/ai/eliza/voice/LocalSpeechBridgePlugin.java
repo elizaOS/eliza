@@ -264,8 +264,9 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  private static boolean keepsEngine(SpeechRequestGate.Request request){return request.keepEngine&&request.cancelled;}
  @PluginMethod public void releaseLocalSpeech(PluginCall call){gate.cancelAll();main.post(this::clearPlayback);queueLocalRelease();call.resolve();}
  // Local CPU execution has no dependency on an account, URL, or host process. The status resolves
- // only when the native pair loads, every bundle file verifies and a context opens. A build without
- // the voice bundle answers "unavailable" without loading any native library.
+ // ready only when the whole pair (recognition and synthesis) prepares: the native libraries load,
+ // every bundle file verifies and a context opens. Otherwise it rejects; read-aloud readiness is
+ // not reported separately.
  @PluginMethod public void localSpeechStatus(PluginCall call){submitLocal(call,request->{
   localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();engine.prepare();return null;});
   if(request.cancelled||destroyed)throw new IOException();JSObject out=new JSObject();out.put("ready",true);out.put("execution","device");out.put("provider","fused-paradee-asr");request.result=out;

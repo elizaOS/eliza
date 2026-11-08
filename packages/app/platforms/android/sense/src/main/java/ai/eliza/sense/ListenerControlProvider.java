@@ -12,10 +12,12 @@ import android.os.Bundle;
  * The listener's only exported programmatic surface, for the host's settings and status UI. Callers
  * must hold the signature permission {@link Listener#CONTROL_PERMISSION}. It reports state text
  * and can only reduce capability (pause, turn off); enabling and resuming happen in the listener's
- * own UI with the user present. It never returns audio, transcripts or timestamps of speech.
+ * own UI with the user present. Reset, for a data reset, erases the listener's settings, consent and
+ * storage failure state and stops the service; it can never grant consent, enable or resume
+ * listening. It never returns audio, transcripts or timestamps of speech.
  */
 public class ListenerControlProvider extends ContentProvider {
- static final String STATUS="status",PAUSE="pause",TURN_OFF="turnOff";
+ static final String STATUS="status",PAUSE="pause",TURN_OFF="turnOff",RESET="reset";
 
  @Override public boolean onCreate(){return true;}
 
@@ -26,7 +28,7 @@ public class ListenerControlProvider extends ContentProvider {
   try{
    ListenerStore store=new ListenerStore(getContext());
    boolean resetSaved=true;
-   if("reset".equals(method)){resetSaved=store.reset();Listener.refresh(getContext());}
+   if(RESET.equals(method)){resetSaved=store.reset();Listener.refresh(getContext());}
    else if(PAUSE.equals(method)){store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);Listener.refresh(getContext());}
    else if(TURN_OFF.equals(method)){store.setEnabled(false);Listener.refresh(getContext());}
    else if(!STATUS.equals(method))throw new IllegalArgumentException("Unknown method");
