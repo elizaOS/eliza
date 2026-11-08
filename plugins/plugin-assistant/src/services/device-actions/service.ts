@@ -267,13 +267,13 @@ export function deviceActionToolGuidance(
   const canonicalCalendarGuidance =
     canonicalCalendar && calendarRecords === "runtime"
       ? phoneReview("calendar")
-        ? " Phone-native Calendar data uses the device Calendar reviews. Use the canonical CALENDAR service only when the owner selected a canonical Calendar record. "
+        ? " Phone-native Calendar data uses the device Calendar reviews. Other Calendar requests, and a selected canonical Calendar record, use the canonical CALENDAR service. "
         : " Ordinary app Calendar requests use the canonical CALENDAR service, runtime store and conversation context. Enrolled Calendar capabilities do not redirect app records into a device proposal. "
       : "";
   const canonicalNotesGuidance =
     canonicalNotes && notesRecords === "runtime"
       ? phoneReview("notes")
-        ? " Phone-native Notes data uses the device Notes reviews. Use the canonical NOTES service only when the owner selected a canonical Notes record. "
+        ? " Phone-native Notes data uses the device Notes reviews. Other Notes requests, and a selected canonical Notes record, use the canonical NOTES service. "
         : " Ordinary app Notes use the canonical NOTES service and owner-scoped runtime store. Device note capabilities do not redirect ordinary Notes reads, creates, edits or deletions. "
       : "";
   const specialized = runtime.actions.flatMap((action) => {

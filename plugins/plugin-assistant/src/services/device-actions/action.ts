@@ -607,7 +607,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
       "calendar_availability",
       "calendar_named",
     ],
-    text: "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Use the canonical NOTES or CALENDAR service only when the turn carries a canonical Notes or Calendar selection; a phone capability never redirects a canonical record.",
+    text: "Phone-native Notes and Calendar data uses these device reviews. A lookup, named record or new event the phone resolves itself works from Home or the Notes or Calendar view; an operation on an exact record or source needs it selected on the phone. Other Notes and Calendar requests, and any turn with a canonical Notes or Calendar selection, use the canonical NOTES or CALENDAR service; a phone capability never redirects a canonical record.",
   },
   {
     types: ["sms_send"],
@@ -1220,7 +1220,7 @@ export const proposeDeviceAction: Action = {
     )
       return {
         success: false,
-        text: "This device proposal expired before the owner reviewed it. No device operation ran. Do not retry it automatically.",
+        text: "This device proposal expired. No device operation ran. Do not retry it automatically.",
         userFacingText: "That request expired; ask again.",
         verifiedUserFacing: true,
         data: {
