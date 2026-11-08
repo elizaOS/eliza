@@ -369,7 +369,10 @@ async function seedProvableGrant() {
 
       const lost = await seedProvableGrant();
       await exchange(lost);
-      await expect(lost.ack(late)).rejects.toMatchObject({
+      const lostExpiry = (
+        await setup.query("SELECT expires_at FROM mobile_app_auth_grants WHERE id=$1", [lost.id])
+      ).rows[0].expires_at as Date;
+      await expect(lost.ack(new Date(lostExpiry.getTime() + 1_000))).rejects.toMatchObject({
         protocolCode: "authorization_code_expired",
       });
       const keys = await setup.query("SELECT id,is_active,deleted_at FROM api_keys ORDER BY id");
@@ -547,6 +550,163 @@ async function seedProvableGrant() {
       expect(key.is_active).toBe(false);
       expect(key.deleted_at).toBeNull();
       expect(key.key_ciphertext).toBe(input.credential.key_ciphertext);
+    }, 30_000);
+
+    test("CLI consumed credentials survive cleanup after concurrent one-shot delivery", async () => {
+      const sessionId = randomUUID();
+      const now = new Date();
+      await setup.query(
+        "INSERT INTO cli_auth_sessions(id,session_id,status,expires_at,created_at,updated_at) VALUES($1,$2,'pending',$3,$4,$4)",
+        [randomUUID(), sessionId, new Date(now.getTime() + 60_000), now],
+      );
+      const created = await run(() =>
+        new cli.CliAuthSessionCompletionService().claimPending({
+          sessionId,
+          userId,
+          organizationId,
+        }),
+      );
+      expect(created.claimed).toBe(true);
+      const { CliAuthSessionsService } = await import("./cli-auth-sessions");
+      const { CliAuthSessionsRepository } = await import("../../db/repositories/cli-auth-sessions");
+      const sessions = new CliAuthSessionsService();
+      const locker = new Client({ connectionString: scopedUrl });
+      await locker.connect();
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM cli_auth_sessions WHERE session_id=$1 FOR UPDATE", [
+        sessionId,
+      ]);
+      const polls = run(() =>
+        Promise.all([sessions.getAndClearApiKey(sessionId), sessions.getAndClearApiKey(sessionId)]),
+      );
+      try {
+        const deadline = Date.now() + 5_000;
+        while (
+          (
+            await setup.query(
+              "SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'update \"cli_auth_sessions\"%'",
+            )
+          ).rowCount !== 2
+        ) {
+          if (Date.now() >= deadline)
+            throw new Error("Both reveal contenders did not reach the row lock");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        await locker.query("COMMIT");
+        const results = await polls;
+        expect(results.filter((result) => result.status === "revealed")).toHaveLength(1);
+        const reaped = await run(() =>
+          new CliAuthSessionsRepository().reapExpiredSessions(new Date(now.getTime() + 120_000)),
+        );
+        expect(reaped.deletedSessions).toBe(1);
+        expect(reaped.revokedOrphanKeys).toHaveLength(0);
+        expect(
+          (await setup.query("SELECT is_active FROM api_keys WHERE id=$1", [created.apiKey!.id]))
+            .rows[0].is_active,
+        ).toBe(true);
+      } finally {
+        await locker.query("ROLLBACK");
+        await locker.end();
+        await polls.catch(() => undefined);
+      }
+    }, 30_000);
+
+    test("CLI cleanup cannot strand an active key from a completion admitted before expiry", async () => {
+      const sessionId = randomUUID();
+      const expiresAt = new Date(Date.now() + 4_000);
+      await setup.query(
+        "INSERT INTO cli_auth_sessions(id,session_id,status,expires_at,created_at,updated_at) VALUES($1,$2,'pending',$3,clock_timestamp(),clock_timestamp())",
+        [randomUUID(), sessionId, expiresAt],
+      );
+      const blocker = new Client({ connectionString: scopedUrl });
+      await blocker.connect();
+      const lock = `${schema}:cli-cleanup-race`;
+      await blocker.query("SELECT pg_advisory_lock(hashtextextended($1,0))", [lock]);
+      await setup.query(`CREATE FUNCTION hold_cli_cleanup() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN
+          PERFORM pg_advisory_xact_lock(hashtextextended(TG_TABLE_SCHEMA || ':cli-cleanup-race',0));
+          RETURN NULL;
+        END $body$`);
+      await setup.query(
+        "CREATE TRIGGER hold_cli_cleanup AFTER UPDATE ON api_keys FOR EACH STATEMENT EXECUTE FUNCTION hold_cli_cleanup()",
+      );
+      let allowPermit!: () => void;
+      let permitReached!: () => void;
+      const permit = new Promise<void>((resolve) => {
+        allowPermit = resolve;
+      });
+      const reached = new Promise<void>((resolve) => {
+        permitReached = resolve;
+      });
+      beforePermit = async () => {
+        permitReached();
+        await permit;
+      };
+      let completionSettled = false;
+      const completion = run(() =>
+        new cli.CliAuthSessionCompletionService().claimPending({
+          sessionId,
+          userId,
+          organizationId,
+        }),
+      ).then((value) => {
+        completionSettled = true;
+        return value;
+      });
+      let cleanup: Promise<unknown> | undefined;
+      try {
+        await reached;
+        expect(Date.now()).toBeLessThan(expiresAt.getTime());
+        await new Promise((resolve) => setTimeout(resolve, expiresAt.getTime() - Date.now() + 20));
+        const { CliAuthSessionsRepository } = await import(
+          "../../db/repositories/cli-auth-sessions"
+        );
+        cleanup = run(() => new CliAuthSessionsRepository().reapExpiredSessions());
+        const waitFor = async (predicate: () => Promise<boolean>, message: string) => {
+          const deadline = Date.now() + 5_000;
+          while (!(await predicate())) {
+            if (Date.now() >= deadline) throw new Error(message);
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        };
+        await waitFor(
+          async () =>
+            (
+              await setup.query(
+                "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory' AND query LIKE 'update \"api_keys\"%'",
+              )
+            ).rowCount !== 0,
+          "Cleanup never reached its key-update barrier",
+        );
+        allowPermit();
+        await waitFor(
+          async () =>
+            completionSettled ||
+            (
+              await setup.query(
+                "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'update \"cli_auth_sessions\"%'",
+              )
+            ).rowCount !== 0,
+          "Completion neither settled nor waited for cleanup's session lock",
+        );
+        await blocker.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [lock]);
+        await Promise.all([completion, cleanup]);
+        expect(
+          (await setup.query("SELECT id FROM cli_auth_sessions WHERE session_id=$1", [sessionId]))
+            .rowCount,
+        ).toBe(0);
+        expect((await setup.query("SELECT id FROM api_keys WHERE is_active=true")).rowCount).toBe(
+          0,
+        );
+      } finally {
+        allowPermit();
+        await blocker.query("SELECT pg_advisory_unlock_all()");
+        await Promise.allSettled([completion, ...(cleanup ? [cleanup] : [])]);
+        await setup.query("DROP TRIGGER hold_cli_cleanup ON api_keys");
+        await setup.query("DROP FUNCTION hold_cli_cleanup()");
+        await blocker.end();
+        beforePermit = undefined;
+      }
     }, 30_000);
 
     test("CLI completion encrypts, commits and replays its single credential through enrolled policy", async () => {
