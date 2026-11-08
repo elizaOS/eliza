@@ -1,0 +1,39 @@
+name: V38 educational kernel
+on:
+  push:
+    branches: [develop]
+    paths: ['experimental/valhalla-v38/**', '.github/workflows/v38-kernel.yml']
+  pull_request:
+    paths: ['experimental/valhalla-v38/**', '.github/workflows/v38-kernel.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  boot:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: experimental/valhalla-v38
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BIOS build and emulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils grub-common grub-pc-bin xorriso mtools qemu-system-x86 python3
+      - name: Build and boot at 128 and 64 MiB
+        run: |
+          make CROSS= test
+          cp build/qemu-serial.log build/qemu-128M.log
+          python3 scripts/smoke.py --memory 64M
+          cp build/qemu-serial.log build/qemu-64M.log
+          cd build
+          sha256sum kernel.elf valhalla-v38.iso > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: valhalla-v38-kernel
+          path: |
+            experimental/valhalla-v38/build/kernel.elf
+            experimental/valhalla-v38/build/valhalla-v38.iso
+            experimental/valhalla-v38/build/*.log
+            experimental/valhalla-v38/build/SHA256SUMS.txt
