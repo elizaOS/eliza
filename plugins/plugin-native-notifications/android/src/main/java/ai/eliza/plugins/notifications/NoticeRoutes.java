@@ -18,6 +18,9 @@ import org.json.JSONObject;
  * owner is current. Routes live in host storage (commit before return); all callers share one lock. */
 public class NoticeRoutes {
  public static final class UnknownTap extends Exception {}
+ /** A tap on a route whose receipt is not confirmed for the current owner (unposted, uncertain, expired or
+  * another owner's). Retrying cannot change that, unlike a storage failure. */
+ public static final class Refused extends IllegalStateException {Refused(){super("Notification receipt unconfirmed");}}
  /** No room for another route, even after NoticeCoordinator retired settled ones. */
  public static final class Full extends IllegalStateException {Full(){super("Notification routes full");}}
  /** Routes stay below this many UTF-8 bytes: under the 256 KiB host slot, with room for tap writes. */
@@ -143,7 +146,7 @@ public class NoticeRoutes {
  public void capture(String token,boolean question)throws Exception{synchronized(LOCK){
   if(token==null||!token.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid notice tap");
   JSONObject rows=ledger();for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!token.equals(row.getString("token")))continue;
-   if(!confirmed(id,row,question))throw new IllegalStateException("Notification receipt unconfirmed");
+   if(!confirmed(id,row,question))throw new Refused();
    if(!row.getString("state").equals("consumed")){long order=0;for(String key:keys(rows))order=Math.max(order,rows.getJSONObject(key).getLong("order"));row.put("state","pending").put("order",Math.addExact(order,1));if(question){row.put("question",true);}else row.remove("question");storage.write(config.routeSlot,rows.toString());}
    return;
   }throw new UnknownTap();

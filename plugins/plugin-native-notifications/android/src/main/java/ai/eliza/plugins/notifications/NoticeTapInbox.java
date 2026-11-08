@@ -34,7 +34,7 @@ public final class NoticeTapInbox<I> {
  /** Storage-worker confined: token (or token + ":ask") to the intents that carried it. */
  private final LinkedHashMap<String,List<I>> uncaptured=new LinkedHashMap<>();
  public NoticeTapInbox(NoticeRoutes routes,String openAction,String askAction,String prefix){this(routes,openAction,askAction,prefix,token->{});}
- /** `recheck` runs before a refused capture is retried once: a tap on a notice whose receipt stayed applying
+ /** `recheck` runs before a refused capture is retried once (a second refusal drops the tap): a tap on a notice whose receipt stayed applying
   * or unknown (the post was not seen listed in time) proves delivery when the shown notice matches. */
  public NoticeTapInbox(NoticeRoutes routes,String openAction,String askAction,String prefix,Recheck recheck){
   this.recheck=Objects.requireNonNull(recheck);
@@ -65,14 +65,15 @@ public final class NoticeTapInbox<I> {
   uncaptured.computeIfAbsent(Objects.requireNonNull(key),ignored->new ArrayList<>()).add(Objects.requireNonNull(intent));
   return drain(captured);
  }
- /** Storage worker: durably captures each retained tap. An unknown route is dropped; a tap that cannot be
-  * written now stays retained for the next drain. Returns how many are still retained. */
+ /** Storage worker: durably captures each retained tap. An unknown or refused route (its receipt is not
+  * confirmed for the current owner, even after a recheck) is dropped; a tap that cannot be written now stays
+  * retained for the next drain. Returns how many are still retained. */
  public int drain(Captured<I> captured){
   int failed=0;Iterator<Map.Entry<String,List<I>>> entries=uncaptured.entrySet().iterator();
   while(entries.hasNext()){
    Map.Entry<String,List<I>> entry=entries.next();String token=entry.getKey().substring(0,36);
    try{capture(token,entry.getKey().endsWith(":ask"));}
-   catch(NoticeRoutes.UnknownTap unknown){/* No route: nothing can open it; clear it below. */}
+   catch(NoticeRoutes.UnknownTap|NoticeRoutes.Refused unopenable){/* Nothing can open it; clear it below. */}
    catch(Exception unavailable){failed++;continue;}
    for(I intent:entry.getValue())captured.captured(intent,token);
    entries.remove();
@@ -81,8 +82,7 @@ public final class NoticeTapInbox<I> {
  }
  private void capture(String token,boolean question)throws Exception{
   try{routes.capture(token,question);}
-  catch(NoticeRoutes.UnknownTap unknown){throw unknown;}
-  catch(Exception unconfirmed){recheck.recheck(token);routes.capture(token,question);}
+  catch(NoticeRoutes.Refused unconfirmed){recheck.recheck(token);routes.capture(token,question);}
  }
  /** Storage worker: the newest pending tap of the current owner, or an empty object. An Ask whose own notice
   * is gone (timed out, swiped or withdrawn) has nothing left to review, so it settles into a plain open tap.

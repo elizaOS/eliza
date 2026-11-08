@@ -217,8 +217,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
  /** The mirror, or throws so cross-app calls reject on a host without notification access. */
  private NotificationMirror requireMirror(){NotificationMirror mirror=mirror();if(mirror==null)throw new IllegalStateException("No notification access on this host");return mirror;}
  @PluginMethod public void crossAppStatus(PluginCall call){try{call.resolve(new JSObject(requireMirror().status(getContext()).toString()));}catch(Exception failure){call.reject("Notification access status is unavailable. History may need clearing.");}}
- @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
- @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
+ @PluginMethod public void notificationApps(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("apps",new JSArray(requireMirror().apps(getContext()).toString()));call.resolve(out);}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification app choices are unavailable");}}
+ @PluginMethod public void setNotificationPolicy(PluginCall call){try{foreground();call.resolve(new JSObject(requireMirror().update(getContext(),call.getData()).toString()));}catch(NotificationMirrorPolicy.Rejected rejected){call.reject(rejected.getMessage());}catch(Exception failure){call.reject("Notification settings changed or could not be saved. Refresh Settings.");}}
  @PluginMethod public void resumeCrossApp(PluginCall call){try{
   foreground();NotificationMirror mirror=requireMirror();
   synchronized(mirror.lock){
@@ -235,7 +235,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",new JSArray(requireMirror().history(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
  @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
 
- /** Own rows (newest first), then allowed cross-app rows. Every row is returned. */
+ /** Own rows (newest first), then the newest allowed cross-app rows. A mirror failure leaves only own rows. */
  @PluginMethod public void list(PluginCall call){try{
   JSArray items=new JSArray();Set<String> current=new HashSet<>();boolean locked=locked();String label=appLabel();
   StatusBarNotification[] rows=manager().getActiveNotifications();Arrays.sort(rows,Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
@@ -249,7 +249,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   }
   ids.retain(current);
   NotificationMirror mirror=mirror();
-  if(mirror!=null){JSONArray external=mirror.list(getContext());for(int i=0;i<external.length();i++)items.put(external.get(i));}
+  if(mirror!=null){try{JSONArray external=mirror.list(getContext());for(int i=0;i<external.length();i++)items.put(external.get(i));}catch(Exception unavailable){/* Own rows stay readable without the mirror. */}}
   JSObject result=new JSObject();result.put("items",items);result.put("scope",scope());call.resolve(result);
  }catch(Exception error){call.reject("Notifications could not be read");}}
  @PluginMethod public void open(PluginCall call){try{
