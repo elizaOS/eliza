@@ -87,10 +87,13 @@ public final class PermittedMediaReview implements AutoCloseable {
           Request request = pending.getAndSet(null);
           if (request == null)
             return;
-          if (closed || result.getResultCode() != Activity.RESULT_OK
-              || request.until < SystemClock.elapsedRealtime()) {
+          if (result.getResultCode() != Activity.RESULT_OK) {
             request.call.reject(
                 "Photo change cancelled or expired. No change was dispatched.", DECLINED);
+            return;
+          }
+          if (closed || expired(request)) {
+            unconfirmed(request);
             return;
           }
           afterResume(request);
@@ -113,23 +116,42 @@ public final class PermittedMediaReview implements AutoCloseable {
           androidx.lifecycle.LifecycleOwner owner, androidx.lifecycle.Lifecycle.Event event) {
         if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
           owner.getLifecycle().removeObserver(this);
-          if (closed || request.until < SystemClock.elapsedRealtime())
-            request.call.reject(
-                "Photo change cancelled or expired. No change was dispatched.", DECLINED);
+          if (closed || expired(request))
+            unconfirmed(request);
           else
             dispatch(request);
         } else if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) {
           owner.getLifecycle().removeObserver(this);
-          request.call.reject("Photos closed before dispatch. Review the selection again.");
+          if (request.appReview)
+            request.call.reject("Photos closed before dispatch. Review the selection again.");
+          else
+            unconfirmed(request);
         }
       }
     });
+  }
+  /**
+   * Expiry ends the authority to write. Android has already applied an owner's own change, so only
+   * its readback remains and it never expires.
+   */
+  private static boolean expired(Request request) {
+    return request.appReview && request.until < SystemClock.elapsedRealtime();
+  }
+  /** An approved change that will not be applied or read back here. */
+  private static void unconfirmed(Request request) {
+    if (request.appReview)
+      request.call.reject("Photo change cancelled or expired. No change was dispatched.", DECLINED);
+    else
+      request.call.reject("Photo outcome could not be verified. Refresh Photos.");
   }
   private void dispatch(Request request) {
     try {
       worker.execute(() -> apply(request));
     } catch (RuntimeException unavailable) {
-      request.call.reject("Photos closed before dispatch. Review the selection again.");
+      if (request.appReview)
+        request.call.reject("Photos closed before dispatch. Review the selection again.");
+      else
+        unconfirmed(request);
     }
   }
   /** A change the agent asked for: the owner sees the app's review before Android's. */
@@ -251,7 +273,7 @@ public final class PermittedMediaReview implements AutoCloseable {
       JSObject outcome = new JSObject();
       outcome.put("id", request.ids.get(i));
       try {
-        if (closed || request.until < SystemClock.elapsedRealtime())
+        if (closed || expired(request))
           throw new IllegalStateException("unverified");
         JSObject row = request.permanent
             ? catalog.deleteTrashed(request.ids.get(i), request.revisions.get(i))

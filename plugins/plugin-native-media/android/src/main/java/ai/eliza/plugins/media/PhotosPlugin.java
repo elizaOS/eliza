@@ -654,7 +654,8 @@ public abstract class PhotosPlugin extends Plugin {
           return;
         }
         for (PhotoLibraryAccess.Reviewed item : own)
-          if (!OwnedMediaLibrary.isOwnedKey(item.id) || item.revision.isEmpty()) throw new IllegalArgumentException();
+          if (!OwnedMediaLibrary.isOwnedKey(item.id) || item.revision.isEmpty() || item.revision.length() > 160)
+            throw new IllegalArgumentException();
         org.json.JSONArray ownItems = PhotoLibraryAccess.items(own);
         // Android reviews the library items first. A decline rejects the call, so the owner's own
         // items stay unchanged too: the owner cancelled the whole batch.
