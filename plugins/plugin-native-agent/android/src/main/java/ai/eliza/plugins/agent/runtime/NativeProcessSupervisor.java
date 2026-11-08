@@ -10,7 +10,7 @@ public final class NativeProcessSupervisor implements AutoCloseable {
     public enum State { STOPPED, STARTING, RUNNING, FAILED }
     @FunctionalInterface public interface Launcher { void launch(Scope scope) throws Exception; }
     @FunctionalInterface public interface Probe { boolean ready() throws Exception; }
-    public static final class LifecycleException extends IOException {
+    public static class LifecycleException extends IOException {
         public LifecycleException(String message) { super(message); }
     }
     public static final class Snapshot {

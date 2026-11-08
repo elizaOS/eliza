@@ -371,6 +371,16 @@ function isDurableRetryJob(type: string): boolean {
   return type === JOB_TYPES.APP_CACHE_INVALIDATE;
 }
 
+const JOB_TIMESTAMP_FIELDS = [
+  "estimated_completion_at",
+  "scheduled_for",
+  "started_at",
+  "execution_quiesced_at",
+  "completed_at",
+  "created_at",
+  "updated_at",
+] as const;
+
 export async function hydrateJob(job: Job, options: { strict?: boolean } = {}): Promise<Job> {
   const [data, result, error] = await Promise.all([
     hydrateJsonField<Record<string, unknown>>({
@@ -393,12 +403,25 @@ export async function hydrateJob(job: Job, options: { strict?: boolean } = {}): 
     }),
   ]);
 
-  return {
-    ...job,
-    data: data ?? job.data,
-    result,
-    error,
-  };
+  const hydrated = { ...job, data: data ?? job.data, result, error };
+  // Raw claim SQL bypasses Drizzle's column decoder. Use the same UTC-naive
+  // decoding as typed reads so a freshly claimed snapshot can pass its CAS.
+  // Date precision remains the existing Job contract; generation and payload
+  // fences, rather than timestamp precision alone, authorize transitions.
+  for (const field of JOB_TIMESTAMP_FIELDS) {
+    const value = hydrated[field];
+    if (typeof value === "string") {
+      const decoded = jobs[field].mapFromDriverValue(value);
+      if (!(decoded instanceof Date) || !Number.isFinite(decoded.getTime())) {
+        throw new ElizaError("Job timestamp is invalid", {
+          code: "INVALID_JOB_TIMESTAMP",
+          context: { jobId: job.id, field },
+        });
+      }
+      hydrated[field] = decoded;
+    }
+  }
+  return hydrated;
 }
 
 async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
@@ -997,8 +1020,10 @@ export class JobsRepository {
       const [renewed] = await tx
         .update(jobExecutionLeases)
         .set({
-          expires_at: sql`NOW() + (${leaseMs} * INTERVAL '1 millisecond')`,
-          heartbeat_at: new Date(),
+          // The job row may have waited behind a resource writer. A renewed
+          // lease begins after that lock, not at this transaction's start.
+          expires_at: sql`clock_timestamp() + (${leaseMs} * INTERVAL '1 millisecond')`,
+          heartbeat_at: sql`clock_timestamp()`,
         })
         .where(
           and(
@@ -1762,7 +1787,6 @@ export class JobsRepository {
 
     // Exponential backoff: 30s, 2min, 8min for attempts 1, 2, 3
     const backoffMs = isFailed ? 0 : 4 ** (newAttempts - 1) * 30 * 1000;
-    const scheduledFor = new Date(Date.now() + backoffMs);
 
     const payload = await prepareJobPayload(
       { error },
@@ -1813,7 +1837,9 @@ export class JobsRepository {
             ? new Date()
             : job.execution_quiesced_at,
           updated_at: new Date(),
-          scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
+          scheduled_for: isFailed
+            ? sql`${jobs.scheduled_for}`
+            : sql`clock_timestamp() + (${backoffMs} * INTERVAL '1 millisecond')`,
         })
         .where(
           and(
@@ -1902,7 +1928,6 @@ export class JobsRepository {
       return undefined;
     }
 
-    const scheduledFor = new Date(Date.now() + delayMs);
     const payload = await prepareJobPayload(
       { error },
       {
@@ -1954,9 +1979,10 @@ export class JobsRepository {
           completed_at: exhausted ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
-          // Raw claim rows can carry timestamp strings. Exhaustion keeps the
-          // stored schedule without decoding and re-encoding its precision.
-          ...(exhausted ? {} : { scheduled_for: scheduledFor }),
+          // Exhaustion preserves the stored schedule and its precision.
+          ...(exhausted
+            ? {}
+            : { scheduled_for: sql`clock_timestamp() + (${delayMs} * INTERVAL '1 millisecond')` }),
         })
         .where(
           and(
