@@ -434,4 +434,18 @@ describe("onboarding coordinator error integration", () => {
       status: 409,
     });
   });
+
+  test("replay created behind the cleanup cursor keeps an expiry alarm", async () => {
+    const reply = await miniflare.dispatchFetch(
+      "https://cloud.test/fixture/replay-case",
+    );
+    expect(reply.status).toBe(200);
+    const state = (await reply.json()) as {
+      count: number;
+      expiry: number;
+      alarm: number | null;
+    };
+    expect(state.count).toBe(1);
+    expect(state.alarm).toBe(state.expiry);
+  });
 });
