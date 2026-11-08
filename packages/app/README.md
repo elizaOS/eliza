@@ -414,7 +414,10 @@ the shared helpers it compiles beside them: main Java sources of native plugins
 (`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
 helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
 that import; every other helper is staged verbatim (`residentHelperKind`), so a host
-adopts a new shared helper without an edit here. The rewrite anchors live here and
+adopts a new shared helper without an edit here. A helper that compiles only
+beside others names them in `RESIDENT_HELPER_DEPENDENCIES` (`ChromiumBrowserConnection`
+needs `ChromiumBindingDemand` and `ChromiumBrowserIdentity`), and a helper list that
+leaves one out is refused before anything is written. The rewrite anchors live here and
 fail closed when the upstream source changes; each staged file reports source and
 generated digests for the host's provenance receipt. Run
 `node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.

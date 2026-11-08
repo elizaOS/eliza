@@ -891,7 +891,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val surface = surfaces[id] ?: return
                     if (surface.webView !== view || surface.disposed || view.url != url) return
                     if (!isLive(surface)) return
-                    notifyListeners("navigationChanged", surfaceEvent(id, surface))
+                    notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
                 // Same-document moves (pushState, fragments) change the address and history
@@ -903,7 +903,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     surface.pageRevision += 1
                     if (isReload || !isLive(surface) || view.progress < 100) return
                     gate.commit(url)
-                    notifyListeners("navigationChanged", surfaceEvent(id, surface))
+                    notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
                 // Returning true keeps the host activity alive when this page's renderer crashes or
@@ -1286,7 +1286,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             surface.gate.settle(null)
             // onPageFinished may not follow a stop (or may name an address that never
             // committed), so the host is told to re-read state and clear its loading line.
-            if (isLive(surface)) notifyListeners("navigationChanged", surfaceEvent(id, surface))
+            if (isLive(surface)) notifyListeners("navigationChanged", surfaceState(id, surface))
             call.resolve()
         }
     }
@@ -2289,7 +2289,9 @@ internal class OccludingSurfaceLayout(
     fun setOcclusions(rects: List<RoundedOcclusionRect>) {
         if (occlusions == rects) return
         occlusions = rects
-        invalidate()
+        // A below-host page draws the same whatever its occlusions, so only input and capture
+        // read them and nothing needs redrawing.
+        if (layer != SurfaceLayer.BELOW_HOST) invalidate()
     }
 
     /**
