@@ -54,6 +54,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      quint-redis:
+        image: redis:7.4.12-alpine
+        ports:
+          - "127.0.0.1:6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       TURBO_SCM_BASE: ${{ needs.preflight.outputs.base }}
@@ -96,6 +105,7 @@ jobs:
       - name: Quint application state models
         env:
           INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+          A2A_REDIS_TEST_URL: redis://127.0.0.1:6379
         run: bun run test:quint
       - name: Upload Quint verification evidence
         if: always()

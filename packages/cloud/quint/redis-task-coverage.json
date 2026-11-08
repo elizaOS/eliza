@@ -1,0 +1,21 @@
+[
+  {
+    "id": "cloud-RedisTaskLease",
+    "model": "packages/cloud/quint/RedisTaskLease.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/shared/src/lib/cache/mock-redis.ts",
+      "packages/cloud/shared/src/lib/cache/redis-factory.ts",
+      "packages/cloud/shared/src/lib/cache/socket-redis.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/a2a-task-store.redis.integration.test.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two once-started callers, each selecting append, replacement or deletion. One exclusive lease with one token per caller; any number of modeled expirations before callers settle. One task and its listing index.",
+      "The primary task mutation and lease-token comparison are one Redis command. Listing zadd/expire/zrem remain separate operations with possible failure and lag. Index repair, pagination completeness and tenant/index migration are outside this instance.",
+      "Real implementation checks use a single loopback Redis server and explicit synchronous memory backend. Redis Cluster cross-slot support, failover, acknowledged-write durability, unknown transport outcomes, arbitrary concurrent clients, task semantic policy and downstream provider effects remain outside this proof.",
+      "Conformance executes eight named real-store scenarios. It is not a generated-trace refinement proof. Foreign read/update/delete refusal is tested but cross-tenant noninterference across all methods is not proved."
+    ]
+  }
+]

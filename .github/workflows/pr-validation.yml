@@ -877,6 +877,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      quint-redis:
+        image: redis:7.4.12-alpine
+        ports:
+          - "127.0.0.1:6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       RUN_TURBO_CONCURRENCY: "1"
     steps:
@@ -946,6 +955,7 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         env:
           INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+          A2A_REDIS_TEST_URL: redis://127.0.0.1:6379
         run: bun run test:quint
       - name: Upload Quint evidence
         if: always() && steps.changes.outputs.run == 'true'
