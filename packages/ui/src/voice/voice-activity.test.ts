@@ -64,8 +64,10 @@ describe("createVoiceActivityDetector", () => {
 
   it("reports no speech after a reset blip", () => {
     const vad = detector();
-    const r = feed(vad, LOUD, startGraceMs, FRAME_MS);
-    feed(vad, QUIET, r.nextMs, silenceMs + FRAME_MS);
+    let r = feed(vad, LOUD, startGraceMs, FRAME_MS);
+    r = feed(vad, QUIET, r.nextMs, silenceMs + FRAME_MS);
     expect(vad.hasSpeech).toBe(false);
+    // The blip is forgotten: later silence is no longer buffered as a turn.
+    expect(vad(QUIET, r.nextMs).shouldBuffer).toBe(false);
   });
 });
