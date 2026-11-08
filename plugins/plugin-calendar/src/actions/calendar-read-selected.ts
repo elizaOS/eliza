@@ -12,6 +12,7 @@ import {
   normalizeEffectReceipt,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 } from "@elizaos/core";
+import { APPLE_CALENDAR_PROVIDER } from "../apple-calendar.js";
 import { INTERNAL_URL } from "../internal/detail.js";
 import { CalendarService } from "../service/CalendarService.js";
 
@@ -104,7 +105,12 @@ export const calendarReadSelectedAction: Action = {
         calendarId: seed.calendarId,
         timeMin: new Date(start - 1).toISOString(),
         timeMax: new Date(start + 1).toISOString(),
-        timeZone: seed.timezone ?? "UTC",
+        // A non-Apple all-day startAt carries a civil date at UTC midnight,
+        // not an instant in the event zone, so its day is looked up in UTC.
+        timeZone:
+          seed.isAllDay && seed.provider !== APPLE_CALENDAR_PROVIDER
+            ? "UTC"
+            : (seed.timezone ?? "UTC"),
         forceSync: true,
         includeHiddenCalendars: true,
       },

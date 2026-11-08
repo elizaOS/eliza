@@ -4,6 +4,7 @@ import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
  * snapshot, proving read receipts are grounded in persisted provider evidence.
  */
 
+import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import {
   type Content,
@@ -551,6 +552,92 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
     expect(JSON.stringify(unknown)).not.toContain('"grantId":"eliza-calendar"');
   } finally {
     appleTesting.setNativeCalendarBridgeForTest(null);
+    await fixture.cleanup();
+  }
+}, 60000);
+
+it("CALENDAR_READ_SELECTED reads a selected all-day event west of UTC", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "SelectedAllDayRead",
+    plugins: [calendarPlugin],
+  });
+  const runtime = fixture.runtime;
+  try {
+    const calendar = runtime.getService<CalendarService>(
+      CalendarService.serviceType,
+    );
+    if (!calendar) throw Error("The production Calendar service did not start");
+    const action = runtime.actions.find(
+      (action) => action.name === "CALENDAR_READ_SELECTED",
+    );
+    if (!action?.handler)
+      throw Error(
+        "The production CALENDAR_READ_SELECTED action was not registered",
+      );
+    for (const [index, timeZone] of [
+      "Asia/Tokyo",
+      "America/Los_Angeles",
+    ].entries()) {
+      const { event } = await calendar.createCalendarEventMutation(
+        new URL("http://internal.local/api/calendar"),
+        {
+          title: `All-day in ${timeZone}`,
+          allDay: { startDate: "2026-11-22", endDateExclusive: "2026-11-23" },
+          timeZone,
+          idempotencyKey: `selected-all-day-${index}`,
+        } as never,
+      );
+      if (!event) throw Error("Expected a persisted all-day event");
+      // The row keeps the civil date at UTC midnight and the owner zone.
+      expect(event).toMatchObject({
+        isAllDay: true,
+        startAt: "2026-11-22T00:00:00.000Z",
+        timezone: timeZone,
+      });
+      const target = {
+        kind: "canonical-calendar-event",
+        id: event.id,
+        revision: String(event.metadata.etag),
+        accountId: event.grantId,
+        sourceRevision: createHash("sha256")
+          .update(
+            JSON.stringify([
+              event.provider,
+              event.side,
+              event.grantId,
+              event.connectorAccountId,
+              event.calendarId,
+            ]),
+          )
+          .digest("hex"),
+      };
+      const result = await action.handler(runtime, {
+        id: `00000000-0000-4000-8000-00000000071${index}`,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: ROOM_ID,
+        createdAt: Date.now(),
+        content: {
+          text: "What is this event?",
+          source: "client_chat",
+          metadata: {
+            clientDevice: {
+              context: {
+                view: "calendar",
+                revision: 1,
+                sensitive: false,
+                selectedObject: target,
+              },
+            },
+          },
+        },
+      } as Memory);
+      expect(result).toMatchObject({
+        success: true,
+        data: { event: { id: event.id, title: `All-day in ${timeZone}` } },
+      });
+    }
+  } finally {
     await fixture.cleanup();
   }
 }, 60000);
