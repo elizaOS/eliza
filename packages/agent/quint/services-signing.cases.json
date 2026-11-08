@@ -21,7 +21,18 @@
       "invariants": ["safety"],
       "temporal": ["RequestEventuallySettles"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RequestEventuallySettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in services_signing: RequestEventuallySettles = FairWork.implies(always( not(settledPhases.contains(s.phase)).implies(eventually(settledPhases.contains(s.phase)))))",
+            "Model fairness predicate FairWork = and { submissionSettles.weakFair(s), rejectionSettles.weakFair(s), approvalDecided.weakFair(s), signerSettles.weakFair(s), failureAuditSettles.weakFair(s), finalAuditSettles.weakFair(s), }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

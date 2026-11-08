@@ -20,6 +20,13 @@ const root = path.resolve(import.meta.dirname, "../..");
 const version = "0.33.1";
 const apalacheVersion = "0.62.4";
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_:]*$/);
+const temporalCheckSchema = z
+  .object({
+    property: identifier,
+    expect: z.enum(["holds", "counterexample"]),
+    assumptions: z.array(z.string().trim().min(1)).min(1),
+  })
+  .strict();
 const caseSchema = z
   .object({
     name: z.string().min(1),
@@ -28,11 +35,35 @@ const caseSchema = z
     step: identifier,
     invariants: z.array(identifier).min(1),
     temporal: z.array(identifier),
+    temporalChecks: z.array(temporalCheckSchema).min(1).optional(),
     maxSteps: z.number().int().positive(),
     samples: z.number().int().positive(),
     deadlock: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((item, ctx) => {
+    const checks = item.temporalChecks ?? [];
+    const names = new Set(checks.map((check) => check.property));
+    if (
+      new Set(item.temporal).size !== item.temporal.length ||
+      names.size !== checks.length
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Duplicate temporal property",
+      });
+    }
+    if (
+      item.temporal.some((name) => !names.has(name)) ||
+      checks.some((check) => !item.temporal.includes(check.property))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Every temporal property requires an explicit expectation and assumptions",
+      });
+    }
+  });
 const manifestSchema = z.object({
   sources: z.array(z.string().min(1)).min(1),
   conformance: z
@@ -53,6 +84,33 @@ const coverageSchema = z.array(
   }),
 );
 type ModelCase = z.infer<typeof caseSchema>;
+type TemporalCheck = z.infer<typeof temporalCheckSchema>;
+export type TemporalOutcome = "holds" | "counterexample" | "checker-error";
+
+/** A checker error, timeout, or safety failure is not a temporal witness. */
+export function classifyTemporalOutcome(
+  status: number | null,
+  output: string,
+  error?: string,
+): TemporalOutcome {
+  if (error) return "checker-error";
+  if (
+    status === 0 &&
+    /Checking (?:\d+ branches of )?temporal properties/.test(output) &&
+    output.includes("Model checking completed. No error has been found.")
+  )
+    return "holds";
+  if (
+    status !== null &&
+    status !== 0 &&
+    /Temporal property q_temporalProps was violated/.test(output) &&
+    /behavior constitutes a counter-example/.test(output) &&
+    /Stuttering|Back to state/i.test(output) &&
+    !/Invariant .* is violated/.test(output)
+  )
+    return "counterexample";
+  return "checker-error";
+}
 type Model = {
   file: string;
   sources: string[];
@@ -185,6 +243,17 @@ export function loadQuintModels(directory: string): Model[] {
         names.add(item.name);
         if (item.deadlock && !item.temporal.includes("DeadlockFree")) {
           throw new Error(`Missing DeadlockFree property in ${manifest}`);
+        }
+        if (
+          item.deadlock &&
+          !item.temporalChecks?.some(
+            (check) =>
+              check.property === "DeadlockFree" && check.expect === "holds",
+          )
+        ) {
+          throw new Error(
+            `DeadlockFree must be expected to hold in ${manifest}`,
+          );
         }
       }
       const sources = data.sources.map((source) =>
@@ -493,9 +562,6 @@ export async function main(
                   endpoint as string,
                   "--verbosity",
                   "3",
-                  ...(item.temporal.length
-                    ? ["--temporal", item.temporal.join(",")]
-                    : []),
                 ]),
             "--invariants",
             ...item.invariants,
@@ -504,10 +570,38 @@ export async function main(
             ? [["conformance", model.conformance]]
             : []),
         ];
+        // Keep existing positive formulas grouped with safety. Negative checks
+        // run separately so one expected witness cannot hide another outcome.
+        const temporalCommands = new Map<string[], TemporalCheck[]>();
+        if (!simulate) {
+          const safetyCommand = [...commands[2]];
+          const positive = (item.temporalChecks ?? []).filter(
+            (check) => check.expect === "holds",
+          );
+          if (positive.length) {
+            commands[2].push(
+              "--temporal",
+              positive.map((check) => check.property).join(","),
+            );
+            temporalCommands.set(commands[2], positive);
+          }
+          const checks = (item.temporalChecks ?? [])
+            .filter((check) => check.expect === "counterexample")
+            .map((check) => {
+              const command = [...safetyCommand, "--temporal", check.property];
+              temporalCommands.set(command, [check]);
+              return command;
+            });
+          commands.splice(3, 0, ...checks);
+        }
         let passed = true;
-        for (const command of commands) {
+        for (const [commandIndex, command] of commands.entries()) {
+          const temporalChecks = temporalCommands.get(command);
+          const expectedTemporalOutcome = temporalChecks?.[0].expect;
           requireQuintRepositoryFingerprint(directory, repositorySha256);
-          console.log(`${key} ${command[0]}`);
+          console.log(
+            `${key} ${command[0]}${temporalChecks ? ` ${temporalChecks.map((check) => check.property).join(",")} (expected ${expectedTemporalOutcome})` : ""}`,
+          );
           const hashes = modelInputs.get(model);
           const started = Date.now();
           const result = spawnSync(
@@ -526,10 +620,20 @@ export async function main(
             },
           );
           const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-          const log = `${createHash("sha256").update(key).digest("hex").slice(0, 16)}-${command[0]}.log`;
+          const log = `${createHash("sha256").update(key).digest("hex").slice(0, 16)}-${commandIndex}-${command[0]}.log`;
           writeFileSync(path.join(outputDirectory, log), output);
           const repositorySha256After = quintRepositoryFingerprint(directory);
           const repositoryChanged = repositorySha256After !== repositorySha256;
+          const observedTemporalOutcome = temporalChecks
+            ? classifyTemporalOutcome(
+                result.status,
+                output,
+                result.error?.message,
+              )
+            : undefined;
+          const matchedExpectation = temporalChecks
+            ? observedTemporalOutcome === expectedTemporalOutcome
+            : !result.error && result.status === 0;
           results.push({
             key,
             bounds: model.bounds,
@@ -543,6 +647,14 @@ export async function main(
             error: result.error?.message,
             durationMs: Date.now() - started,
             log,
+            temporalProperties: temporalChecks?.map((check) => check.property),
+            expectedTemporalOutcome,
+            observedTemporalOutcome,
+            temporalAssumptions: temporalChecks?.map((check) => ({
+              property: check.property,
+              assumptions: check.assumptions,
+            })),
+            matchedExpectation,
           });
           report();
           if (result.signal === "SIGINT" || result.signal === "SIGTERM") {
@@ -553,7 +665,7 @@ export async function main(
               `Repository changed during ${key} ${command[0]}; restart Quint verification`,
             );
           }
-          if (result.error || result.status !== 0) {
+          if (!matchedExpectation) {
             passed = false;
             failures.push(`${key} ${command[0]}`);
             console.error(output);

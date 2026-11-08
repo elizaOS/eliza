@@ -101,13 +101,119 @@
     ]
   },
   {
+    "id": "DraftOpenRecovery",
+    "model": "packages/ui/quint/DraftOpenRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One open operation with all three factory/read attempts, exact 150ms and 600ms retry gates, one same-key open join, one edit and one retirement. Real controller replay drives each deferred factory/read and retry callback.",
+      "Host promises and timers must eventually settle for progress. Temporal verification assumes weak fairness of store completion and retry actions. Scheduling within the delay is abstracted to before/at its deadline.",
+      "Asynchronous host restoration is modeled separately by DraftRestoreOwnership. Repeated failure/retry sessions and crash recovery are outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftRestoreOwnership",
+    "model": "packages/ui/quint/DraftRestoreOwnership.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One open, saved-copy review, non-dispatch release or consume operation. The host applies and acknowledges separately, including acknowledgement before application, rejection after application, one edit, one retirement and consume-authority revocation.",
+      "Real controller replay checks every generated intermediate editor, store and status state. Synchronous and void-returning host behavior also has direct controller regressions.",
+      "Release persistence includes failures before writing and lost acknowledgements after writing. Consume store failures and receipt races have separate cases. Host completion needs weak fairness for progress. It does not establish authenticated binding provenance or arbitrary overlapping host callbacks."
+    ]
+  },
+  {
+    "id": "DraftConsumeRollback",
+    "model": "packages/ui/quint/DraftConsumeRollback.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One consume clear and optional rollback. Includes pre/post-write failures, competing CAS writes, one edit/retirement/authority change, and failed conflict readback. Revisions are bounded to 0..3.",
+      "Real controller and row CAS replay all generated traces. A lost clear acknowledgement can leave only the editor copy; a failed rollback can retain different editor and saved copies for explicit review.",
+      "Host clear is synchronous here. Crash durability, retries after every failure and composition with multiple concurrent callers remain outside this finite case."
+    ]
+  },
+  {
+    "id": "DraftRepeatedSend",
+    "model": "packages/ui/quint/DraftRepeatedSend.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Two sequential send rounds, each with two concurrent hold calls. Each pauses one mark, admits at most one caller, includes edit or authority loss and four mark outcomes, then dispatch/non-dispatch/unknown settlement.",
+      "Between rounds, the real controller reopens the current receipt, resolves any marked-copy review, and writes the next draft. Model traces replay through the real controller and row CAS.",
+      "One binding and synchronous host restoration. More than two rounds, unbounded concurrent callers, external delivery and arbitrary overlapping settlement calls remain outside this instance."
+    ]
+  },
+  {
+    "id": "DraftConsumeHandoff",
+    "model": "packages/ui/quint/DraftConsumeHandoff.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One pending consume clear and rollback across one same/different-key retirement, two flush attempts, one retry and one replacement write. The old failed receipt can be superseded only by a newer successful same-key write.",
+      "Real controller replay checks that flush remains pending through the old write and rejects after its failure. Direct regression also checks subsequent explicit retry and write recovery.",
+      "Rollback faults are before or after its durable write. Storage crash durability and arbitrary longer chains of retired binding operations remain outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftConsumeRetention",
+    "model": "packages/ui/quint/DraftConsumeRetention.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "Composes a host rejection after applying the clear with rollback failure before/after writing or a foreign CAS winner, failed/successful readback and two explicit review choices. Three symbolic text values and at most four storage mutations.",
+      "The original must remain in the editor, persisted store or offered recovery copy until explicit discard. A different stored winner needs a separate reviewed choice before overwrite. Generated traces replay through the real controller and row CAS.",
+      "Later review host updates complete synchronously. Concurrent review choices, retirement before backup recovery, process crashes and longer retry histories remain outside this finite instance."
+    ]
+  },
+  {
+    "id": "DraftRetiredConsumeRecovery",
+    "model": "packages/ui/quint/DraftRetiredConsumeRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One retired consume and optional newer edit, rollback failure before/after writing, reopen before/after failure, competing same-key write in both completion orders, one recovery choice, two flushes and a repeated reopen. Four text values and at most four durable mutations.",
+      "Real controller/CAS replay checks the retained copy remains reviewable, and failed owners remain until a newer successful CAS receipt exists. Read-only reopens do not discard that obligation.",
+      "Reads and later host updates succeed in this finite case. More than two failed owners, overlapping review choices after host completion, crashes and arbitrary mixed histories remain outside the instance."
+    ]
+  },
+  {
     "id": "DurableDraftControllerRemaining",
     "model": null,
     "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Reviewed remaining work includes consume rollback, asynchronous host restore completion, open/read retry timing, arbitrary-length queues, repeated concurrent sends, and storage-adapter durability. The three controller models cover explicitly bounded subsets."
+      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and crashes during pending host restoration or consume rollback. Ten finite controller cases cover the reviewed protocols, including one pending keep-current attempt and retired consume recovery.",
+      "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
     ]
   }
 ]

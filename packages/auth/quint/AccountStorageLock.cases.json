@@ -23,7 +23,18 @@
       ],
       "temporal": ["AttemptsTerminate"],
       "maxSteps": 45,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "AttemptsTerminate",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in AccountStorageLock: AttemptsTerminate = FairWork.implies(eventually( processes.forall(p => s.pc.get(p).in(Set(\"done\", \"dead\")))))",
+            "Model fairness predicate FairWork = processes.forall(p => and { claim(p).weakFair(s), publication(p).weakFair(s), inspectAdmission(p).weakFair(s), enter(p).weakFair(s), leave(p).weakFair(s), findRelease(p).weakFair(s), stageRelease(p).weakFair(s), finishRelease(p).weakFair(s), }) and tokens.forall(token => cleanQuarantine(token).weakFair(s))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

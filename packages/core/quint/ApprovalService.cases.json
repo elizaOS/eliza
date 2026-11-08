@@ -11,36 +11,51 @@
         "ResultAgrees",
         "SingleOwner"
       ],
-      "temporal": [
-        "SettlesOnce",
-        "CallerSettles",
-        "DeadlockFree"
-      ],
+      "temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
         "name": "ApprovalService.failures.cfg",
-        "constants": [
-          "Selectors = {s1, s2}",
-          "CanFail = TRUE"
-        ],
-        "specification": [
-          "Spec"
-        ],
+        "constants": ["Selectors = {s1, s2}", "CanFail = TRUE"],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "AtMostOneCallback",
           "ResultAgrees",
           "SingleOwner"
         ],
-        "properties": [
-          "SettlesOnce",
-          "CallerSettles"
-        ],
+        "properties": ["SettlesOnce", "CallerSettles"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettlesOnce",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "CallerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: CallerSettles = Fairness implies eventually(s.result != \"none\")",
+            "Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_failures: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     },
     {
       "name": "race",
@@ -53,39 +68,52 @@
         "ResultAgrees",
         "SingleOwner"
       ],
-      "temporal": [
-        "SettlesOnce",
-        "CallerSettles",
-        "DeadlockFree"
-      ],
+      "temporal": ["SettlesOnce", "CallerSettles", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
         "name": "ApprovalService.race.cfg",
-        "constants": [
-          "Selectors = {s1, s2}",
-          "CanFail = FALSE"
-        ],
-        "specification": [
-          "Spec"
-        ],
+        "constants": ["Selectors = {s1, s2}", "CanFail = FALSE"],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "AtMostOneCallback",
           "ResultAgrees",
           "SingleOwner"
         ],
-        "properties": [
-          "SettlesOnce",
-          "CallerSettles"
-        ],
+        "properties": ["SettlesOnce", "CallerSettles"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettlesOnce",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: SettlesOnce = always(( Set(\"selected\", \"timedOut\", \"cancelled\", \"rejected\").forall(result => s.result == result implies next(s.result) == result) ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "CallerSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: CallerSettles = Fairness implies eventually(s.result != \"none\")",
+            "Model fairness predicate Fairness = and { Fire.weakFair(s), TGetTask.weakFair(s), any { TCallbackDone, TCallbackFails }.weakFair(s), TResolve.weakFair(s), TDelete.weakFair(s), Selectors.forall(i => and { SGetTask(i).weakFair(s), any { SCallbackDone(i), SCallbackFails(i) }.weakFair(s), SDelete(i).weakFair(s) }) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ApprovalService_race: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ],
-  "sources": [
-    "packages/core/src/services/approval.ts"
-  ]
+  "sources": ["packages/core/src/services/approval.ts"]
 }

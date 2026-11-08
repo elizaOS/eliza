@@ -40,7 +40,33 @@
       ],
       "maxSteps": 60,
       "samples": 1000,
-      "deadlock": false
+      "deadlock": false,
+      "temporalChecks": [
+        {
+          "property": "QuarantineMonotone",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in UpdateJournal: QuarantineMonotone = always(s.q.subseteq(next(s.q)).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "GenerationMonotone",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in UpdateJournal: GenerationMonotone = always((next(s.gen) >= s.gen).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "RejectionDurable",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in UpdateJournal: RejectionDurable = always(( s.reported == \"CANDIDATE_REJECTED\" and Set(\"COMMITTING\", \"SUPPORT\").contains(next(s.phase)) implies next(s.reported) == \"CANDIDATE_REJECTED\" ).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ]
 }

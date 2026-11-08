@@ -117,13 +117,18 @@ module AccountDeletionOrderModel {
   val CompletionHasEveryReceipt = s.completionReceipt.implies(Phases.subseteq(s.receipts) and not(s.identifiersPresent))
   val ReceiptsStayOrdered = Ordered.indices().forall(i =>
     (s.phase.get(Ordered.nth(i)) == "completed").implies(Ordered.indices().filter(j => j < i).forall(j => s.phase.get(Ordered.nth(j)) == "completed")))
-  val PurgeRequiresAuthority = s.issued.forall(p => s.receipts.contains("account_authority"))
+  // The initial state assumes an admission receipt. This checks its retention,
+  // not live authority at adapter dispatch after a worker has claimed a phase.
+  val RetainedAdmissionReceipt = s.receipts.contains("account_authority")
   val ReceiptMatchesPhase = Phases.forall(p => s.receipts.contains(p).iff(s.phase.get(p) == "completed"))
   val ErasureIsTerminal = (s.status == "completed").iff(s.completionReceipt)
   // Dedicated liveness lane assumes every provider effect is already visible,
   // stable authority, no expiry, and fair execution of local coordination steps.
   temporal FairProgress = Workers.forall(w => Claim(w).weakFair(s) and Inspect(w).weakFair(s) and Confirm(w).weakFair(s) and Finalize(w).weakFair(s))
   temporal CompletesVerifiedEffects = FairProgress.implies(eventually(s.completionReceipt))
+
+  run retainedReceiptDoesNotImplyLiveAuthorityTest = init.then(LoseAuthority)
+    .expect(RetainedAdmissionReceipt and not(s.authority))
 }
 module AccountDeletionOrder {
   import AccountDeletionOrderModel(InitialStatus = "scheduled", ExistingEffects = Set()).* from "./AccountDeletionOrder"

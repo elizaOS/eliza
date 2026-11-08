@@ -26,11 +26,19 @@
         "CompleteConsumesFence",
         "FailedPageDoesNotAdvance"
       ],
-      "temporal": [
-        "PagesFinish"
-      ],
+      "temporal": ["PagesFinish"],
       "maxSteps": 80,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PagesFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in NativeNotificationCursor: PagesFinish = (page.weakFair(s) and eventually(always(s.blocked == 0)) and always(s.queryEpoch == s.epoch)).implies( s.started.leadsTo(s.status == \"ok\" and s.complete))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

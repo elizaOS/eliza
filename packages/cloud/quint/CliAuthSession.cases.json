@@ -24,7 +24,18 @@
       ],
       "temporal": ["OperationsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_pending: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "existing",
@@ -41,7 +52,18 @@
       ],
       "temporal": ["OperationsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_existing: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "wrong-owner",
@@ -58,7 +80,18 @@
       ],
       "temporal": ["OperationsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_wrongOwner: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "missing-key",
@@ -75,7 +108,18 @@
       ],
       "temporal": ["OperationsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_missingKey: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "missing-cipher",
@@ -92,7 +136,18 @@
       ],
       "temporal": ["OperationsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "OperationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in CliAuthSession_missingCipher: OperationsSettle = Fairness implies eventually(always(OperationsIdle))",
+            "Model fairness predicate Fairness = and { Clients.forall(c => Complete(c).weakFair(s)), Clients.forall(p => Decrypt(p).weakFair(s)), Clients.forall(p => BeginClaim(p).weakFair(s)), Clients.forall(p => Claim(p).weakFair(s)), Clients.forall(p => Deliver(p).weakFair(s)), LockExpiredSessions.weakFair(s), StageKeyRevocation.weakFair(s), CommitCleanup.weakFair(s) }",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ],
   "bounds": "One session, one persisted credential identity, two completion candidates, two pollers, one cleanup transaction, clock0..3, session expiry1 and credential expiry3. Distinct identities never wrap or reuse.",

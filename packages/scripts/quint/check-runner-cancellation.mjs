@@ -44,8 +44,8 @@ if (
   !/^ok \d+ - child cancellation stops later cases and remains visible in evidence$/m.test(
     output,
   ) ||
-  !/^# tests 17$/m.test(output) ||
-  !/^# pass 17$/m.test(output) ||
+  !/^# tests 21$/m.test(output) ||
+  !/^# pass 21$/m.test(output) ||
   !/^# fail 0$/m.test(output) ||
   !/^# skipped 0$/m.test(output) ||
   !/^# cancelled 0$/m.test(output)

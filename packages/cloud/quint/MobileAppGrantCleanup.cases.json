@@ -27,7 +27,17 @@
       "invariants": ["safety"],
       "temporal": ["SweepsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SweepsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in MobileAppGrantCleanup_one: SweepsSettle = and { Plan.weakFair(s), LockRows.weakFair(s), LockKeys.weakFair(s), Classify.weakFair(s), Commit.weakFair(s) } implies eventually(always(Set(\"idle\", \"done\").contains(s.phase)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "two",
@@ -37,7 +47,17 @@
       "invariants": ["safety"],
       "temporal": ["SweepsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SweepsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in MobileAppGrantCleanup_two: SweepsSettle = and { Plan.weakFair(s), LockRows.weakFair(s), LockKeys.weakFair(s), Classify.weakFair(s), Commit.weakFair(s) } implies eventually(always(Set(\"idle\", \"done\").contains(s.phase)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }
