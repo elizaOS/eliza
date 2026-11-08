@@ -233,6 +233,26 @@ describe("calendar feed preference SQL revisions", { timeout: 30_000 }, () => {
     expect(preference.rows).toEqual([{ included: true, version: 0 }]);
   });
 
+  it("returns the persisted updatedAt on a no-change selection", async () => {
+    const identity = source({ initialIncluded: false });
+    const { runtime } = await harness();
+    await ensureCalendarFeedIncludes(runtime, [identity]);
+    const before = await getCalendarFeedPreference(runtime, identity);
+    expect(before.included).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const receipt = await setCalendarFeedIncluded(
+      runtime,
+      identity,
+      false,
+      before.version,
+    );
+    expect(receipt.changed).toBe(false);
+    expect(receipt.currentVersion).toBe(before.version);
+    expect(receipt.updatedAt).toBe(before.updatedAt);
+    const after = await getCalendarFeedPreference(runtime, identity);
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
   it("keeps delimiter collisions and provider/account aliases independent", async () => {
     const first = source({
       grantId: "a:b",

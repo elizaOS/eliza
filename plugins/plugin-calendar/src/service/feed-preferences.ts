@@ -561,7 +561,9 @@ export async function setCalendarFeedIncluded(
       previousVersion: expectedVersion,
       currentVersion: expectedVersion,
       changed: false,
-      updatedAt: new Date().toISOString(),
+      // No row was written, so report the persisted timestamp. A fresh
+      // timestamp here would claim an acceptance that never happened.
+      updatedAt: before.updatedAt,
     };
   }
   const key = sourceKey(identifier);
