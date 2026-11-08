@@ -77,6 +77,7 @@ import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
 import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
+import { ElizaError } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { ZodError } from "zod";
@@ -727,6 +728,17 @@ async function processSubscriptionEvent(
 }
 
 /**
+ * Typed failures a retry cannot fix: the delivery names an order or
+ * organization that no longer exists, or a stored hold that cannot be read.
+ */
+const PERMANENT_EVENT_FAILURES = new Set([
+  "STRIPE_CHECKOUT_ORDER_NOT_FOUND",
+  "CREDIT_ORGANIZATION_NOT_FOUND",
+  "PAYMENT_REVERSAL_HOLD_ORG_NOT_FOUND",
+  "STRIPE_REINSTATEMENT_INVALID_HOLD_AMOUNTS",
+]);
+
+/**
  * Process a single Stripe event message.
  *
  * Returns `ack` on success and permanent failures (bad data we cannot
@@ -796,17 +808,13 @@ export async function processStripeEvent(
       error instanceof Error ? error.message : "Unknown error";
 
     // Permanent errors: bad data we cannot recover by retrying. Ack so
-    // the DLQ does not collect noise from poisonous metadata.
-    const isPermanentError =
-      error instanceof Error &&
-      (error.message.includes("not found") ||
-        error.message.includes("Invalid") ||
-        error.message.includes("already processed"));
-
-    if (isPermanentError) {
+    // the DLQ does not collect noise from poisonous metadata. Only named
+    // codes qualify; a provider or database error retries whatever it says.
+    const code = typedFailure(error)?.code;
+    if (code && PERMANENT_EVENT_FAILURES.has(code)) {
       logger.warn(
         `[Stripe Queue] Permanent failure for ${event.type} (${event.id}); acking to skip retries`,
-        { error: errorMessage },
+        { error: errorMessage, code },
       );
       return "ack";
     }
@@ -855,6 +863,20 @@ async function handleCheckoutSessionCompleted(
   if (!paymentIntentId) {
     logger.warn(
       `[Stripe Queue] Permanent failure - No payment intent ID in checkout session ${session.id}`,
+    );
+    return;
+  }
+
+  if (purchaseType === "hardware_preorder") {
+    // Stripe is the system of record for hardware preorders: Cloud grants no
+    // credits and keeps no order row for them.
+    logger.info(
+      `[Stripe Queue] Hardware preorder paid in checkout session ${session.id}; no credits to grant`,
+      {
+        organizationId,
+        paymentIntentId,
+        hardwareSku: session.metadata?.hardware_sku,
+      },
     );
     return;
   }
@@ -987,21 +1009,6 @@ async function handleCheckoutSessionCompleted(
     organizationId,
     "checkout.session.completed",
   );
-
-  if (agentId && stillHeld) {
-    logger.info(
-      "[Stripe Queue] Agent restart skipped after top-up: billing hold still active",
-      { agentId, organizationId, paymentIntentId },
-    );
-  } else if (agentId) {
-    await enqueueAgentRestartAfterTopUp({
-      agentId,
-      organizationId,
-      userId,
-      paymentIntentId,
-      sessionId: session.id,
-    });
-  }
 
   // Revenue splits run on every delivery (including duplicate event_id
   // hits at the per-row level) so a retry that previously failed mid-way
@@ -1144,6 +1151,34 @@ async function handleCheckoutSessionCompleted(
       // The authoritative Checkout settlement is replay-safe, so retry to
       // recover a projection failure that happened after the credit commit.
       if (checkoutOrderId || legacyCutoverApplied) throw invoiceError;
+    }
+  }
+
+  // The restart runs last and never fails the delivery: a missing or busy
+  // agent must not hold back the splits and invoice above.
+  if (agentId && stillHeld) {
+    logger.info(
+      "[Stripe Queue] Agent restart skipped after top-up: billing hold still active",
+      { agentId, organizationId, paymentIntentId },
+    );
+  } else if (agentId) {
+    try {
+      await enqueueAgentRestartAfterTopUp({
+        agentId,
+        organizationId,
+        userId,
+        paymentIntentId,
+        sessionId: session.id,
+      });
+    } catch (error) {
+      // error-policy:J5 The credits, splits and invoice are committed; the owner can restart the agent.
+      logger.error("[Stripe Queue] Agent restart after top-up failed", {
+        agentId,
+        organizationId,
+        paymentIntentId,
+        code: typedFailure(error)?.code ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }
@@ -1448,7 +1483,8 @@ async function handlePaymentIntentSucceeded(
   if (
     paymentIntent.metadata?.checkout_order_id ||
     purchaseType === "custom_amount" ||
-    purchaseType === "credit_pack"
+    purchaseType === "credit_pack" ||
+    purchaseType === "hardware_preorder"
   ) {
     logger.debug(
       `[Stripe Queue] Skipping Checkout-owned payment intent ${paymentIntent.id}; checkout.session.completed owns fulfillment`,
@@ -2079,6 +2115,21 @@ async function handleChargeDisputeFundsReinstated(
   const clawback =
     await creditsService.getTransactionByStripePaymentIntent(clawbackKey);
   if (clawback?.type !== "clawback") {
+    // A charge that never granted credits (a hardware preorder, say) has no
+    // clawback to reinstate. A Stripe error in topUpGrantPending retries.
+    if (
+      !paymentIntentId ||
+      (!(await creditsService.getTransactionByStripePaymentIntent(
+        paymentIntentId,
+      )) &&
+        !(await topUpGrantPending(paymentIntentId)))
+    ) {
+      logger.info(
+        `[Stripe Queue] ${source} ${reference}: no credit grant was clawed back; nothing to reinstate`,
+        { paymentIntentId },
+      );
+      return;
+    }
     // Stripe does not guarantee event ordering. Retry until the corresponding
     // funds-withdrawn mutation commits (or the message reaches reconciliation)
     // instead of acknowledging and permanently dropping a valid reinstatement.
@@ -2117,8 +2168,9 @@ async function handleChargeDisputeFundsReinstated(
     ? parseCreditMicros(hold.outstanding_usd ?? "")
     : 0n;
   if (shortfallMicros === null || outstandingMicros === null) {
-    throw new Error(
+    throw new ElizaError(
       `Invalid shortfall hold amounts for reinstatement ${reference}`,
+      { code: "STRIPE_REINSTATEMENT_INVALID_HOLD_AMOUNTS" },
     );
   }
   const repaidMicros = shortfallMicros - outstandingMicros;

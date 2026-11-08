@@ -25,16 +25,29 @@ setDefaultTimeout(60_000);
 
 /** Checkout sessions Stripe would list for a payment intent. */
 const sessions = new Map<string, Record<string, unknown>>();
+/** When set, Stripe rejects every call the way the SDK reports a bad key. */
+let stripeFailure: Error | null = null;
 mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   isStripeConfigured: () => true,
   requireStripe: () => ({
     checkout: {
       sessions: {
-        list: async ({ payment_intent }: { payment_intent: string }) => ({
-          data: [sessions.get(payment_intent)].filter(Boolean),
-          has_more: false,
-        }),
+        list: async ({ payment_intent }: { payment_intent: string }) => {
+          if (stripeFailure) throw stripeFailure;
+          return {
+            data: [sessions.get(payment_intent)].filter(Boolean),
+            has_more: false,
+          };
+        },
       },
+    },
+    charges: {
+      retrieve: async (id: string) => ({
+        id,
+        object: "charge",
+        invoice: null,
+        amount_refunded: 0,
+      }),
     },
     paymentIntents: {
       retrieve: async (id: string) => ({
@@ -69,6 +82,14 @@ const { referralCodes, referralSignups } = await import(
   "@elizaos/cloud-shared/db/schemas/referrals"
 );
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
+const {
+  earningsSourceEnum,
+  ledgerEntryTypeEnum,
+  redeemableEarnings,
+  redeemableEarningsLedger,
+} = await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
+const { provisioningJobService } = await import("@elizaos/cloud-shared/agents");
+const { ElizaError } = await import("@elizaos/core");
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 
 const pg = () => getPgliteClientForTests();
@@ -89,6 +110,10 @@ beforeAll(async () => {
         referralCodes,
         referralSignups,
         invoices,
+        earningsSourceEnum,
+        ledgerEntryTypeEnum,
+        redeemableEarnings,
+        redeemableEarningsLedger,
       },
       empty.id,
     ),
@@ -279,4 +304,156 @@ test("a refund for a payment that never grants credits is still acknowledged", a
       refundEvent(`ch_${randomUUID()}`, 500, paymentIntentId),
     ),
   ).toBe("ack");
+});
+
+test("a Stripe key failure while checking for a pending grant is retried, not acknowledged", async () => {
+  const paymentIntentId = `pi_${randomUUID().replaceAll("-", "")}`;
+  stripeFailure = new Error("Invalid API Key provided: sk_live_****");
+  try {
+    expect(
+      await processStripeEvent(
+        refundEvent(`ch_${randomUUID()}`, 500, paymentIntentId),
+      ),
+    ).toBe("retry");
+  } finally {
+    stripeFailure = null;
+  }
+});
+
+test("a checkout for an order that does not exist is acknowledged as permanent", async () => {
+  const id = randomUUID().replaceAll("-", "");
+  expect(
+    await processStripeEvent(
+      delivery("checkout.session.completed", {
+        id: `cs_${id}`,
+        object: "checkout.session",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: `pi_${id}`,
+        amount_total: 1000,
+        currency: "usd",
+        customer: "cus_buyer",
+        client_reference_id: randomUUID(),
+        metadata: { checkout_order_id: randomUUID() },
+      }),
+    ),
+  ).toBe("ack");
+});
+
+/** A paid hardware preorder session: Stripe holds the order, Cloud grants nothing. */
+function hardwarePreorder(): {
+  org: string;
+  paymentIntentId: string;
+  session: Record<string, unknown>;
+} {
+  const org = randomUUID();
+  const id = org.replaceAll("-", "");
+  const paymentIntentId = `pi_${id}`;
+  const session = {
+    id: `cs_${id}`,
+    object: "checkout.session",
+    mode: "payment",
+    payment_status: "paid",
+    payment_intent: paymentIntentId,
+    amount_total: 49900,
+    currency: "usd",
+    customer: "cus_buyer",
+    metadata: {
+      organization_id: org,
+      user_id: randomUUID(),
+      hardware_sku: "phone",
+      hardware_color: "black",
+      preorder_amount: "499.00",
+      type: "hardware_preorder",
+    },
+  };
+  sessions.set(paymentIntentId, session);
+  return { org, paymentIntentId, session };
+}
+
+test("a paid hardware preorder is acknowledged without credits or an invoice", async () => {
+  const preorder = hardwarePreorder();
+  expect(
+    await processStripeEvent(
+      delivery("checkout.session.completed", preorder.session),
+    ),
+  ).toBe("ack");
+  expect(await ledger(preorder.org)).toEqual([]);
+  const rows = await pg().query(
+    "SELECT id FROM invoices WHERE organization_id=$1",
+    [preorder.org],
+  );
+  expect(rows.rows).toEqual([]);
+});
+
+test("a won dispute on a charge that never granted credits is acknowledged", async () => {
+  const preorder = hardwarePreorder();
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      disputeWithdrawn(disputeId, 49900, preorder.paymentIntentId),
+    ),
+  ).toBe("ack");
+  expect(
+    await processStripeEvent(
+      delivery("charge.dispute.funds_reinstated", {
+        id: disputeId,
+        object: "dispute",
+        amount: 49900,
+        charge: `ch_${disputeId}`,
+        payment_intent: preorder.paymentIntentId,
+      }),
+    ),
+  ).toBe("ack");
+});
+
+test("a won dispute whose grant is still pending is retried", async () => {
+  const order = await pendingOrder(10, 1000);
+  const disputeId = `dp_${randomUUID()}`;
+  expect(
+    await processStripeEvent(
+      delivery("charge.dispute.funds_reinstated", {
+        id: disputeId,
+        object: "dispute",
+        amount: 1000,
+        charge: `ch_${disputeId}`,
+        payment_intent: order.paymentIntentId,
+      }),
+    ),
+  ).toBe("retry");
+});
+
+test("a failed agent restart after a top-up does not hold back the invoice", async () => {
+  // Only the columns the top-up webhook lookup reads; the agent has no row.
+  await pg().exec(
+    "CREATE TABLE IF NOT EXISTS agent_sandboxes(id uuid PRIMARY KEY, organization_id uuid, agent_config jsonb, status text, billing_status text)",
+  );
+  const order = await pendingOrder(10, 1000);
+  const original = provisioningJobService.enqueueAgentRestartOnce;
+  provisioningJobService.enqueueAgentRestartOnce = async () => {
+    throw new ElizaError("Agent not found", {
+      code: "PROVISION_ENQUEUE_AGENT_NOT_FOUND",
+    });
+  };
+  try {
+    expect(
+      await processStripeEvent(
+        delivery("checkout.session.completed", {
+          ...order.session,
+          metadata: {
+            ...(order.session.metadata as Record<string, string>),
+            agent_id: randomUUID(),
+          },
+        }),
+      ),
+    ).toBe("ack");
+  } finally {
+    provisioningJobService.enqueueAgentRestartOnce = original;
+  }
+  expect(await balance(order.org)).toBe(10);
+  const rows = await pg().query(
+    "SELECT stripe_invoice_id FROM invoices WHERE organization_id=$1",
+    [order.org],
+  );
+  expect(rows.rows).toEqual([{ stripe_invoice_id: `cs_${order.session.id}` }]);
 });

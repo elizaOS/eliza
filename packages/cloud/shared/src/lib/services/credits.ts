@@ -163,6 +163,14 @@ export class ReservationNotFoundError extends ElizaError {
   }
 }
 
+/** Keeps the message routes map to 404 and adds a code queue consumers classify by. */
+function organizationNotFound(organizationId: string): ElizaError {
+  return new ElizaError("Organization not found", {
+    code: "CREDIT_ORGANIZATION_NOT_FOUND",
+    context: { organizationId },
+  });
+}
+
 /** Refuses malformed amounts before they can reach a credit-ledger mutation. */
 export class InvalidCreditAmountError extends ElizaError {
   override readonly name = "InvalidCreditAmountError";
@@ -718,7 +726,7 @@ export class CreditsService {
 
     const row = rows[0];
     if (!row || !isPgTrue(row.org_exists)) {
-      throw new Error("Organization not found");
+      throw organizationNotFound(organizationId);
     }
 
     if (!row.id && stripePaymentIntentId && !params.db) {
@@ -727,7 +735,7 @@ export class CreditsService {
       if (existingTransaction) {
         const org = await organizationsRepository.findById(organizationId);
         if (!org) {
-          throw new Error("Organization not found");
+          throw organizationNotFound(organizationId);
         }
         if (
           existingTransaction.organization_id !== organizationId ||
@@ -1359,7 +1367,7 @@ export class CreditsService {
           tx,
           sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
         );
-        if (!lockRows[0]) throw new Error("Organization not found");
+        if (!lockRows[0]) throw organizationNotFound(params.organizationId);
 
         // The reversal query runs as a second READ COMMITTED statement after
         // acquiring the org lock. A contender that waited for this lock now gets
@@ -1559,7 +1567,7 @@ export class CreditsService {
 
     const row = rows[0];
     if (!row || !isPgTrue(row.org_exists)) {
-      throw new Error("Organization not found");
+      throw organizationNotFound(params.organizationId);
     }
     if (!row.id) {
       if (cumulativeTarget !== null && originalPaymentIntentId) {
