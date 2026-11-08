@@ -98,13 +98,55 @@ function legacyMembershipVersion(values: readonly string[]): string {
   return canonicalParticipants(values).join("\u0000");
 }
 
+/**
+ * Recover the participant list a stored membership version renders, in
+ * either stored format (JSON array or legacy NUL-joined). Returns null when
+ * the string is not a well-formed rendering of a string list.
+ */
+function storedVersionParticipants(storedVersion: string): string[] | null {
+  if (storedVersion.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(storedVersion);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.some((value) => typeof value !== "string")
+      ) {
+        return null;
+      }
+      return parsed as string[];
+    } catch {
+      return null;
+    }
+  }
+  return storedVersion.split("\u0000");
+}
+
 function matchesMembershipVersion(
   values: readonly string[],
   storedVersion: string,
 ): boolean {
-  return (
+  if (
     membershipVersion(values) === storedVersion ||
     legacyMembershipVersion(values) === storedVersion
+  ) {
+    return true;
+  }
+  // Upgrade boundary: a binding minted before the code-unit ordering change
+  // can hold this same participant list rendered in the minting host's
+  // collation order, in either stored format. That rendering matches neither
+  // string above under any locale, and revalidation is read-only, so without
+  // this branch the refusal would repeat on every dispatch and the task
+  // would fail terminally. The participant set is the sameness proof: parse
+  // the stored rendering and accept only when it is exactly the current set.
+  // Render order is not part of the audience identity; a different, larger,
+  // smaller, or unparseable stored version keeps refusing.
+  const stored = storedVersionParticipants(storedVersion);
+  if (!stored) return false;
+  const current = canonicalParticipants(values);
+  const storedCanonical = canonicalParticipants(stored);
+  return (
+    current.length === storedCanonical.length &&
+    current.every((value, index) => value === storedCanonical[index])
   );
 }
 

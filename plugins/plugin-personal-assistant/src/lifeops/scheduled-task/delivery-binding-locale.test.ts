@@ -13,6 +13,13 @@
  * of this module's TypeScript source (built with `bun build`, the same
  * bundling the module graph needs) and calls the real exported
  * revalidation function with a stub runtime.
+ *
+ * The second case covers the upgrade boundary: a binding minted by the
+ * pre-change comparator holds the participant list in the minting host's
+ * collation order. Revalidation is read-only, so a stored rendering that
+ * matches neither current string refused on every dispatch and the task
+ * failed terminally. The stored renderings there are built with an
+ * explicit da-DK collator, so the case does not depend on the host locale.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -24,6 +31,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const OWNER = "aa000000-0000-4000-8000-000000000001";
 const AGENT = "b0000000-0000-4000-8000-000000000002";
 const ROOM = "cc000000-0000-4000-8000-000000000003";
+const STRANGER = "dd000000-0000-4000-8000-000000000004";
 const CHANNEL = "chan-1";
 
 let bundleDir: string;
@@ -57,6 +65,12 @@ type RevalidateResult = {
   collation: string[];
   json: string;
   legacy: string;
+  staleOrder: string[];
+  staleJson: string[];
+  staleLegacy: string;
+  wrongSet: string;
+  superset: string;
+  garbage: string;
 };
 
 function revalidateUnderLocale(locale: string): RevalidateResult {
@@ -66,6 +80,7 @@ function revalidateUnderLocale(locale: string): RevalidateResult {
     `const AGENT = ${JSON.stringify(AGENT)};`,
     `const ROOM = ${JSON.stringify(ROOM)};`,
     `const CHANNEL = ${JSON.stringify(CHANNEL)};`,
+    `const STRANGER = ${JSON.stringify(STRANGER)};`,
     "const runtime = {",
     "  agentId: AGENT,",
     '  getRoom: async () => ({ id: ROOM, source: "discord", channelId: CHANNEL, metadata: { accountId: "acct-1" } }),',
@@ -101,10 +116,30 @@ function revalidateUnderLocale(locale: string): RevalidateResult {
     "const json = await revalidateScheduledTaskChatDeliveryBinding(runtime, record(JSON.stringify([OWNER, AGENT])));",
     // Legacy NUL-joined form, as minted by the same canonical order.
     'const legacy = await revalidateScheduledTaskChatDeliveryBinding(runtime, record([OWNER, AGENT].join("\\u0000")));',
+    // Stored versions minted by the pre-change comparator under da_DK. The
+    // explicit collator builds that ordering on any host, so this case does
+    // not depend on the child process locale the way a stored row cannot.
+    'const staleOrder = [OWNER, AGENT].sort((a, b) => a.localeCompare(b, "da-DK"));',
+    "const staleJson = [];",
+    "for (let i = 0; i < 3; i += 1) {",
+    "  staleJson.push(render(await revalidateScheduledTaskChatDeliveryBinding(runtime, record(JSON.stringify(staleOrder)))));",
+    "}",
+    'const staleLegacy = render(await revalidateScheduledTaskChatDeliveryBinding(runtime, record(staleOrder.join("\\u0000"))));',
+    // Negative controls: a different set, a superset, and an unparseable
+    // stored string must keep refusing with delivery_audience_changed.
+    "const wrongSet = render(await revalidateScheduledTaskChatDeliveryBinding(runtime, record(JSON.stringify([OWNER, STRANGER]))));",
+    "const superset = render(await revalidateScheduledTaskChatDeliveryBinding(runtime, record(JSON.stringify([OWNER, AGENT, STRANGER]))));",
+    'const garbage = render(await revalidateScheduledTaskChatDeliveryBinding(runtime, record("not-a-version")));',
     "console.log(JSON.stringify({",
     "  collation: [OWNER, AGENT].sort((a, b) => a.localeCompare(b)),",
     "  json: render(json),",
     "  legacy: render(legacy),",
+    "  staleOrder,",
+    "  staleJson,",
+    "  staleLegacy,",
+    "  wrongSet,",
+    "  superset,",
+    "  garbage,",
     "}));",
   ].join("\n");
   const result = spawnSync("node", ["--input-type=module", "-e", script], {
@@ -132,5 +167,22 @@ describe("scheduled-task delivery binding revalidation across host locales", () 
     expect(daDk.json).toBe("OK");
     expect(enUs.legacy).toBe("OK");
     expect(daDk.legacy).toBe("OK");
+  }, 60_000);
+
+  it("accepts a stored version minted under the pre-change collation ordering on every dispatch, refuses a different audience", () => {
+    const enUs = revalidateUnderLocale("en_US.UTF-8");
+    const daDk = revalidateUnderLocale("da_DK.UTF-8");
+    for (const result of [enUs, daDk]) {
+      // Sanity: the explicit da-DK collator really does reverse this pair,
+      // so the stored strings below are the pre-change da_DK renderings.
+      expect(result.staleOrder).toEqual([AGENT, OWNER]);
+      // The wedge this guards: before the tolerance, each of these calls
+      // refused, so the third dispatch failed exactly like the first.
+      expect(result.staleJson).toEqual(["OK", "OK", "OK"]);
+      expect(result.staleLegacy).toBe("OK");
+      expect(result.wrongSet).toBe("REFUSED:delivery_audience_changed");
+      expect(result.superset).toBe("REFUSED:delivery_audience_changed");
+      expect(result.garbage).toBe("REFUSED:delivery_audience_changed");
+    }
   }, 60_000);
 });
