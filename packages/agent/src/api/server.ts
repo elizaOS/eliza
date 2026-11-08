@@ -1178,6 +1178,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         // Connector setup (Telegram, Discord, iMessage): saves, replaces or
         // clears the owner's connector credentials and sessions.
         under("/api/setup") ||
+        // Approval resolution runs the owner's reviewed change (Calendar
+        // writes and invitations); a paired guest must not approve it.
+        under("/api/approvals") ||
         // The app-facing runtime switch repoints the owner's text inference,
         // and a local target can start a model download. Its loopback writes
         // carry the owner's self token, so the outer request needs this gate.

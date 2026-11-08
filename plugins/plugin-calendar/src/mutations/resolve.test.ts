@@ -13,7 +13,10 @@ vi.mock("./execution.js", () => ({
   executeCalendarMutationApproval: s.execute,
 }));
 
-import { resolveCalendarApproval } from "./resolve.js";
+import {
+  resolveCalendarApproval,
+  resolveOwnerCalendarApproval,
+} from "./resolve.js";
 
 const message = {
   id: "review-message",
@@ -102,4 +105,61 @@ it("rejects malformed decisions before changing a request", async () => {
     }),
   ).rejects.toThrow("exact Calendar request");
   expect(s.queue.approve).not.toHaveBeenCalled();
+});
+
+const reviewed = (isReviewed: () => boolean) => ({
+  ownerEntityId: "owner",
+  requestId: "review",
+  decision: "approve" as const,
+  resolutionReason: "Owner review dialog",
+  isReviewed,
+});
+it("refuses a reviewed decision when the row changed since the review", async () => {
+  const port = { preflight() {}, execute() {} };
+  await expect(
+    resolveOwnerCalendarApproval(
+      { agentId: "agent", getService: () => port } as never,
+      reviewed(() => false),
+    ),
+  ).rejects.toMatchObject({ status: 409 });
+  expect(s.queue.approve).not.toHaveBeenCalled();
+  expect(s.execute).not.toHaveBeenCalled();
+});
+it("refuses a reviewed decision once the row left pending", async () => {
+  s.queue.byId.mockResolvedValue({
+    id: "review",
+    action: "schedule_event",
+    state: "approved",
+  });
+  const port = { preflight() {}, execute() {} };
+  await expect(
+    resolveOwnerCalendarApproval(
+      { agentId: "agent", getService: () => port } as never,
+      reviewed(() => true),
+    ),
+  ).rejects.toMatchObject({ status: 409 });
+  expect(s.execute).not.toHaveBeenCalled();
+});
+it("reports a lost approval race on a reviewed row as stale", async () => {
+  s.queue.approve.mockRejectedValue(new Error("lost race"));
+  const port = { preflight() {}, execute() {} };
+  await expect(
+    resolveOwnerCalendarApproval(
+      { agentId: "agent", getService: () => port } as never,
+      reviewed(() => true),
+    ),
+  ).rejects.toMatchObject({ status: 409 });
+  expect(s.execute).not.toHaveBeenCalled();
+});
+it("executes a reviewed approval that is still pending and unchanged", async () => {
+  const port = { preflight() {}, execute() {} };
+  await resolveOwnerCalendarApproval(
+    { agentId: "agent", getService: () => port } as never,
+    reviewed(() => true),
+  );
+  expect(s.queue.approve).toHaveBeenCalledWith("review", "owner", {
+    resolvedBy: "owner",
+    resolutionReason: "Owner review dialog",
+  });
+  expect(s.execute).toHaveBeenCalledTimes(1);
 });

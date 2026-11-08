@@ -5,6 +5,11 @@
  * on the user. It aggregates legacy owner approval rows, task-based approval
  * records, and pending planner prompts into the shared `PendingUserAction`
  * contract so clients render one list without knowing producer internals.
+ *
+ * `POST /api/approvals/:id/resolve` applies the owner's tap in a review dialog.
+ * The body names the decision and the revision the owner reviewed; the row
+ * must still be pending at that revision. The server gate makes it owner-only.
+ * Only Calendar approvals resolve here today.
  */
 
 import type http from "node:http";
@@ -80,6 +85,7 @@ export interface ApprovalRequestDto {
   } | null;
   createdAt: string;
   updatedAt: string;
+  revision: string;
 }
 
 const APPROVAL_STATES: ApprovalRequestState[] = [
@@ -193,6 +199,23 @@ function toIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
+/**
+ * The reviewed-row identity a client compares at the tap: every field the
+ * review shows plus `updatedAt`, so any change to the row changes it.
+ */
+export function approvalRevision(approval: ApprovalRequest): string {
+  return JSON.stringify([
+    approval.id,
+    approval.subjectUserId,
+    approval.state,
+    approval.action,
+    approval.payload,
+    approval.reason,
+    approval.expiresAt.toISOString(),
+    approval.updatedAt.toISOString(),
+  ]);
+}
+
 function approvalToDto(approval: ApprovalRequest): ApprovalRequestDto {
   return {
     id: approval.id,
@@ -217,6 +240,7 @@ function approvalToDto(approval: ApprovalRequest): ApprovalRequestDto {
       : null,
     createdAt: approval.createdAt.toISOString(),
     updatedAt: approval.updatedAt.toISOString(),
+    revision: approvalRevision(approval),
   };
 }
 
@@ -325,6 +349,88 @@ function dedupeAndSortPendingActions(
   });
 }
 
+type CalendarApprovalResolver = (
+  runtime: IAgentRuntime,
+  input: {
+    ownerEntityId: string;
+    requestId: string;
+    decision: "approve" | "reject";
+    resolutionReason: string;
+    isReviewed: (request: ApprovalRequest) => boolean;
+  },
+) => Promise<{ kind: string }>;
+
+async function loadCalendarApprovalResolver(): Promise<CalendarApprovalResolver | null> {
+  try {
+    const calendar = (await import(
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle.
+      "@elizaos/plugin-calendar"
+    )) as { resolveOwnerCalendarApproval?: CalendarApprovalResolver };
+    return calendar.resolveOwnerCalendarApproval ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function errorStatus(error: unknown): number | null {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" && status >= 400 && status < 600
+    ? status
+    : null;
+}
+
+async function handleResolveApproval(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  requestId: string,
+  state: ApprovalRouteState,
+  helpers: RouteHelpers,
+): Promise<void> {
+  const body = await helpers.readJsonBody<Record<string, unknown>>(req, res);
+  if (!body) return;
+  const { decision, revision } = body;
+  if (
+    (decision !== "approve" && decision !== "reject") ||
+    typeof revision !== "string" ||
+    !revision
+  ) {
+    helpers.error(res, "decision and revision are required", 400);
+    return;
+  }
+  const runtime = state.runtime;
+  if (!runtime?.agentId || typeof runtime.getSetting !== "function") {
+    helpers.error(res, "Agent runtime is not ready", 503);
+    return;
+  }
+  const resolve = await loadCalendarApprovalResolver();
+  if (!resolve) {
+    helpers.error(res, "Calendar approvals are unavailable", 503);
+    return;
+  }
+  const ownerEntityId = resolveOwnerEntityIdOrDefault(
+    runtime as Pick<IAgentRuntime, "agentId" | "getSetting">,
+  );
+  try {
+    const result = await resolve(runtime as IAgentRuntime, {
+      ownerEntityId,
+      requestId,
+      decision,
+      resolutionReason: "Owner review dialog",
+      isReviewed: (request) => approvalRevision(request) === revision,
+    });
+    helpers.json(res, { requestId, decision, kind: result.kind });
+  } catch (error) {
+    const status = errorStatus(error);
+    if (status === null) throw error;
+    helpers.error(
+      res,
+      error instanceof Error ? error.message : "Approval failed",
+      status,
+    );
+  }
+}
+
 export async function handleApprovalRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -334,6 +440,19 @@ export async function handleApprovalRoute(
   helpers: RouteHelpers,
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/approvals")) return false;
+
+  const resolveMatch = /^\/api\/approvals\/([^/]+)\/resolve$/.exec(pathname);
+  if (method === "POST" && resolveMatch) {
+    let requestId: string;
+    try {
+      requestId = decodeURIComponent(resolveMatch[1]);
+    } catch {
+      helpers.error(res, "invalid approval id", 400);
+      return true;
+    }
+    await handleResolveApproval(req, res, requestId, state, helpers);
+    return true;
+  }
 
   if (method !== "GET" || pathname !== "/api/approvals") {
     helpers.error(res, "approval route not found", 404);

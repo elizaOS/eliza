@@ -1,6 +1,9 @@
 /** Calendar-only resolution; the canonical ledger owns every provider dispatch. */
 import { hasRoleAccess, type IAgentRuntime, type Memory } from "@elizaos/core";
-import { createApprovalQueue } from "@elizaos/plugin-assistant";
+import {
+  type ApprovalRequest,
+  createApprovalQueue,
+} from "@elizaos/plugin-assistant";
 import { CalendarServiceError } from "../internal/errors.js";
 import { executeCalendarMutationApproval } from "./execution.js";
 import type { CalendarMutationPort } from "./types.js";
@@ -22,6 +25,27 @@ export async function resolveCalendarApproval(
       "Calendar review requires a persisted current owner message.",
       "CALENDAR_APPROVAL_OWNER_REQUIRED",
     );
+  return resolveOwnerCalendarApproval(runtime, {
+    ...input,
+    ownerEntityId: message.entityId,
+    resolutionReason: `Owner message ${message.id}`,
+  });
+}
+/**
+ * Resolution for a caller the host already authenticated as the owner. With
+ * `isReviewed`, the decision applies only while the row is still pending and
+ * unchanged from what the owner reviewed; any other state is a 409.
+ */
+export async function resolveOwnerCalendarApproval(
+  runtime: IAgentRuntime,
+  input: {
+    ownerEntityId: string;
+    requestId: string;
+    decision: "approve" | "reject";
+    resolutionReason: string;
+    isReviewed?: (request: ApprovalRequest) => boolean;
+  },
+) {
   if (
     !input.requestId?.trim() ||
     !["approve", "reject"].includes(input.decision)
@@ -31,8 +55,12 @@ export async function resolveCalendarApproval(
       "Use an exact Calendar request and decision.",
       "CALENDAR_REVIEW_INVALID",
     );
+  const resolution = {
+    resolvedBy: input.ownerEntityId,
+    resolutionReason: input.resolutionReason,
+  };
   const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-  const request = await queue.byId(input.requestId, message.entityId);
+  const request = await queue.byId(input.requestId, input.ownerEntityId);
   if (
     !request ||
     !["schedule_event", "modify_event", "cancel_event"].includes(request.action)
@@ -42,13 +70,31 @@ export async function resolveCalendarApproval(
       "Calendar approval not found.",
       "CALENDAR_APPROVAL_NOT_FOUND",
     );
+  const stale = () =>
+    new CalendarServiceError(
+      409,
+      "This Calendar request changed. Review it again.",
+      "CALENDAR_APPROVAL_STALE",
+    );
+  if (
+    input.isReviewed &&
+    (request.state !== "pending" || !input.isReviewed(request))
+  )
+    throw stale();
+  // The queue transitions with a compare-and-set on state, so a concurrent
+  // resolution of a reviewed row loses here instead of resolving twice.
+  const reviewed = <T>(transition: Promise<T>) =>
+    input.isReviewed
+      ? transition.catch(() => {
+          throw stale();
+        })
+      : transition;
   if (input.decision === "reject")
     return {
       kind: "rejected" as const,
-      request: await queue.reject(request.id, message.entityId, {
-        resolvedBy: message.entityId,
-        resolutionReason: `Owner message ${message.id}`,
-      }),
+      request: await reviewed(
+        queue.reject(request.id, input.ownerEntityId, resolution),
+      ),
     };
   const port = runtime.getService(
     CALENDAR_MUTATION_PORT_SERVICE,
@@ -65,10 +111,9 @@ export async function resolveCalendarApproval(
     );
   const approved =
     request.state === "pending"
-      ? await queue.approve(request.id, message.entityId, {
-          resolvedBy: message.entityId,
-          resolutionReason: `Owner message ${message.id}`,
-        })
+      ? await reviewed(
+          queue.approve(request.id, input.ownerEntityId, resolution),
+        )
       : request;
   if (
     !["approved", "executing", "done", "reconciliation_required"].includes(
