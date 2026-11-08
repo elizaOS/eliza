@@ -120,6 +120,25 @@ async function seedBedtimeEveningTelemetry(fixture: Fixture): Promise<void> {
   });
 }
 
+// A week of 23:30 -> 07:30 nights gives a very regular baseline, so the
+// target is the projected bedtime and the evening state is winding_down.
+async function seedRegularNights(fixture: Fixture): Promise<void> {
+  for (let day = 12; day <= 18; day += 1) {
+    await fixture.service.repository.upsertSleepEpisode(
+      createLifeOpsSleepEpisode({
+        agentId: String(fixture.runtime.agentId),
+        startAt: `2026-04-${day}T23:30:00.000Z`,
+        endAt: `2026-04-${day + 1}T07:30:00.000Z`,
+        source: "activity_gap",
+        confidence: 0.9,
+        cycleType: "overnight",
+        sealed: true,
+        evidence: [],
+      }),
+    );
+  }
+}
+
 // Runs the scheduler tick 35 and then 25 minutes before that target and
 // returns the `occurredAt` of every bedtime.imminent the runtime emitted.
 async function collectBedtimeImminentAcrossTicks(
@@ -411,26 +430,30 @@ describe("merged schedule state", () => {
     }
   });
 
+  it("reports awake-relative time as working while the owner winds down", async () => {
+    const fixture = await createFixture("lifeops-capability-winding-down");
+    try {
+      await seedBedtimeEveningTelemetry(fixture);
+      await seedRegularNights(fixture);
+      const now = new Date("2026-04-19T23:05:00.000Z");
+      await fixture.service.processScheduledWork({ now: now.toISOString() });
+
+      const status = await fixture.service.getCapabilityStatus(now);
+      const relativeTime = status.capabilities.find(
+        (capability) => capability.id === "sleep.relative_time",
+      );
+      expect(status.relativeTime?.circadianState).toBe("winding_down");
+      expect(relativeTime?.state).toBe("working");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("emits bedtime.imminent for a regular owner who is winding down", async () => {
     const fixture = await createFixture("lifeops-bedtime-imminent-regular");
     try {
       await seedBedtimeEveningTelemetry(fixture);
-      // A week of 23:30 -> 07:30 nights gives a very regular baseline, so the
-      // target is the projected bedtime and the evening state is winding_down.
-      for (let day = 12; day <= 18; day += 1) {
-        await fixture.service.repository.upsertSleepEpisode(
-          createLifeOpsSleepEpisode({
-            agentId: String(fixture.runtime.agentId),
-            startAt: `2026-04-${day}T23:30:00.000Z`,
-            endAt: `2026-04-${day + 1}T07:30:00.000Z`,
-            source: "activity_gap",
-            confidence: 0.9,
-            cycleType: "overnight",
-            sealed: true,
-            evidence: [],
-          }),
-        );
-      }
+      await seedRegularNights(fixture);
 
       expect(await collectBedtimeImminentAcrossTicks(fixture)).toEqual([
         "2026-04-19T23:30:00.000Z",

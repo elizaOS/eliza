@@ -309,12 +309,9 @@ export class StatusDomain {
         domain: "schedule",
         label: "Awake-relative time",
         state: scheduleState
-          ? scheduleState.relativeTime.circadianState === "awake" ||
-            scheduleState.relativeTime.circadianState === "waking" ||
-            scheduleState.relativeTime.circadianState === "sleeping" ||
-            scheduleState.relativeTime.circadianState === "napping"
-            ? "working"
-            : "degraded"
+          ? scheduleState.relativeTime.circadianState === "unclear"
+            ? "degraded"
+            : "working"
           : "not_configured",
         summary: scheduleState
           ? `${scheduleState.relativeTime.circadianState}; ${
