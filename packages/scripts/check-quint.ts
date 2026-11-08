@@ -14,12 +14,15 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { parseQuintShard, selectQuintShard } from "./lib/quint-shards.ts";
 import { testOutputPath } from "./lib/test-output.ts";
 import { MAX_TIMER_DELAY_MS, runWithDeadline } from "./run-with-deadline.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const version = "0.33.1";
-const apalacheVersion = "0.62.4";
+export const QUINT_VERSION = "0.33.1";
+export const APALACHE_VERSION = "0.62.4";
+const version = QUINT_VERSION;
+const apalacheVersion = APALACHE_VERSION;
 const identifier = z.string().regex(/^[A-Za-z_][A-Za-z0-9_:]*$/);
 const temporalCheckSchema = z
   .object({
@@ -435,10 +438,26 @@ export async function main(
   outputDirectory = testOutputPath("quint"),
 ): Promise<void> {
   const options = new Set(["--simulate", "--inventory", "--require-complete"]);
+  const shardArguments = args.filter((arg) => arg.startsWith("--shard="));
+  if (shardArguments.length > 1)
+    throw new Error("Only one Quint shard may be selected");
+  const shard = shardArguments[0]
+    ? parseQuintShard(shardArguments[0])
+    : undefined;
   for (const arg of args) {
-    if (arg.startsWith("-") && !options.has(arg)) {
+    if (
+      arg.startsWith("-") &&
+      !options.has(arg) &&
+      !shardArguments.includes(arg)
+    ) {
       throw new Error(`Unknown Quint option: ${arg}`);
     }
+  }
+  if (shard && outputDirectory === testOutputPath("quint")) {
+    outputDirectory = path.join(
+      outputDirectory,
+      `shard-${shard.index}-of-${shard.count}`,
+    );
   }
   const simulate = args.includes("--simulate");
   if (!args.includes("--inventory")) {
@@ -452,10 +471,13 @@ export async function main(
   }
   const repositorySha256 = quintRepositoryFingerprint(directory);
   const allModels = loadQuintModels(directory);
-  const models = selectQuintModels(
+  const selectedModels = selectQuintModels(
     allModels,
     args.filter((arg) => !arg.startsWith("-")),
   );
+  const models = shard
+    ? selectQuintShard(selectedModels, shard)
+    : selectedModels;
   const inventory = writeInventory(
     directory,
     outputDirectory,
@@ -518,7 +540,7 @@ export async function main(
         outputDirectory,
         simulate ? "simulation.json" : "verification.json",
       ),
-      `${JSON.stringify({ quintVersion: version, apalacheVersion: simulate ? null : apalacheVersion, mode: simulate ? "simulation" : "exhaustive-tlc", repositorySha256, observedRepositorySha256, completed: completed && !repositoryChanged, results }, null, 2)}\n`,
+      `${JSON.stringify({ quintVersion: version, apalacheVersion: simulate ? null : apalacheVersion, mode: simulate ? "simulation" : "exhaustive-tlc", repositorySha256, observedRepositorySha256, ...(shard ? { shard: { ...shard, models: models.map((model) => model.file), allModels: allModels.map((model) => model.file) } } : {}), completed: completed && !repositoryChanged, results }, null, 2)}\n`,
     );
     if (completed && repositoryChanged) {
       throw new Error(
