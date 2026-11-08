@@ -261,7 +261,8 @@ export async function digestAdmission(
     throw new WorkflowApiError('Digest source integrity changed', 409);
   // Any reviewed compiler's output of this exact spec runs; a compiler update
   // must not stop saved digests. Anything else needs the owner to review again.
-  const templateVersion = workflow.metadata?.elizaHostedTemplateVersion ?? HOSTED_TEMPLATE_VERSION;
+  // Digests saved before the version was recorded were built by hosted-digest-1.
+  const templateVersion = workflow.metadata?.elizaHostedTemplateVersion ?? 'hosted-digest-1';
   const reviewed =
     typeof templateVersion === 'string' &&
     DIGEST_SPEC_BUILDERS.has(templateVersion) &&

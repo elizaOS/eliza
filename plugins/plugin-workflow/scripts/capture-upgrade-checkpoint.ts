@@ -29,6 +29,8 @@ import { join, resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { PHONE_COMPILER_REVISION } from '../src/services/phone-workflow-spec';
 
+const CAPTURED_SMITHERS_DIRECTORY = '/captured/smithers';
+const CAPTURED_REPO_ROOT = '/captured/repo';
 const name = process.argv[2];
 if (!name || !/^[\w.-]+$/.test(name))
   throw new Error('usage: bun --conditions=eliza-source scripts/capture-upgrade-checkpoint.ts <name>');
@@ -83,6 +85,25 @@ try {
   ).__smithersDurability;
   runs.run('VACUUM INTO ?', [join(work, 'runs.sqlite')]);
   runs.close();
+  // Keep this machine's paths out of the fixture; the test rewrites these to its own.
+  const copy = new Database(join(work, 'runs.sqlite'));
+  for (const { name: table } of copy
+    .query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%'"
+    )
+    .all() as { name: string }[])
+    for (const { name: column, type } of copy.query(`PRAGMA table_info("${table}")`).all() as {
+      name: string;
+      type: string;
+    }[])
+      if (/text/i.test(type))
+        for (const [from, to] of [
+          [state.smithersDirectory, CAPTURED_SMITHERS_DIRECTORY],
+          [repoRoot, CAPTURED_REPO_ROOT],
+        ])
+          copy.run(`UPDATE "${table}" SET "${column}"=replace("${column}",?,?)`, [from, to]);
+  copy.run('VACUUM');
+  copy.close();
   await writeFile(
     join(target, 'runs.sqlite.gz'),
     Bun.gzipSync(await readFile(join(work, 'runs.sqlite')))
@@ -95,8 +116,9 @@ try {
     `${JSON.stringify(
       {
         ...kept,
-        // Absolute paths inside runs.sqlite; the test rewrites them to its own.
-        repoRoot,
+        // Placeholder paths inside runs.sqlite; the test rewrites them to its own.
+        smithersDirectory: CAPTURED_SMITHERS_DIRECTORY,
+        repoRoot: CAPTURED_REPO_ROOT,
         capturedWith: {
           smithersDurability: durability,
           smithers: JSON.parse(readFileSync(smithers, 'utf8')).version,

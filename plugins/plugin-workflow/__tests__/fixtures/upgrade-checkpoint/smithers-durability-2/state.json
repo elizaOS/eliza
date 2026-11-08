@@ -1,5 +1,5 @@
 {
-  "smithersDirectory": "/home/shaw/Work/alphaphone-wt/eliza-slot2/plugins/plugin-workflow/.eliza/smthrs/00000000-0000-4000-8000-000000000002/01ad80fe-de08-4c0e-8d44-d75256ca91ce",
+  "smithersDirectory": "/captured/smithers",
   "agentId": "00000000-0000-4000-8000-000000000002",
   "owner": "synthetic-owner",
   "credential": {
@@ -122,7 +122,7 @@
       }
     }
   },
-  "repoRoot": "/home/shaw/Work/alphaphone-wt/eliza-slot2",
+  "repoRoot": "/captured/repo",
   "capturedWith": {
     "smithersDurability": {
       "version": 2,
