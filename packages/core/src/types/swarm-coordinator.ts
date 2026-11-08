@@ -38,23 +38,6 @@ export interface SwarmEvent {
 
 export type SwarmEventListener = (event: SwarmEvent) => void;
 
-/**
- * The typed, discriminated per-event contract the chat client consumes.
- *
- * `SwarmEvent.data` is `unknown` on the wire because it is assembled from
- * ACP-adapter payloads whose exact shape varies by backend. `toSwarmActivity`
- * is the single boundary that validates one raw event and narrows it to one of
- * these variants (or `null` when the event is not renderable inline) — so every
- * inline widget reads a typed envelope, never pokes at `data` itself. This is
- * the "validate at the boundary, type the result" rule applied to the wire.
- */
-export type SwarmActivityKind =
-	| "message"
-	| "reasoning"
-	| "plan"
-	| "tool"
-	| "lifecycle";
-
 /** Coarse status the inline pipeline colors a step/agent by. */
 export type SwarmActivityStatus =
 	| "running"
@@ -114,12 +97,24 @@ export interface SwarmActivityLifecycle extends SwarmActivityBase {
 	text?: string;
 }
 
+/**
+ * The typed, discriminated per-event contract the chat client consumes.
+ *
+ * `SwarmEvent.data` is `unknown` on the wire because it is assembled from
+ * ACP-adapter payloads whose exact shape varies by backend. `toSwarmActivity`
+ * is the single boundary that validates one raw event and narrows it to one of
+ * these variants (or `null` when the event is not renderable inline) — so every
+ * inline widget reads a typed envelope, never pokes at `data` itself. This is
+ * the "validate at the boundary, type the result" rule applied to the wire.
+ */
 export type SwarmActivityEnvelope =
 	| SwarmActivityMessage
 	| SwarmActivityReasoning
 	| SwarmActivityPlan
 	| SwarmActivityToolStep
 	| SwarmActivityLifecycle;
+
+export type SwarmActivityKind = SwarmActivityEnvelope["kind"];
 
 export interface SwarmCoordinatorChatRouting {
 	sessionId?: string;

@@ -4,6 +4,7 @@ import {
 	getEmbeddingVectorSpace,
 } from "../embedding-vector-space";
 import { ElizaError } from "../errors";
+import type { IDatabaseAdapter } from "../types/database.js";
 import { EventType } from "../types/events.js";
 import type { Memory } from "../types/memory.js";
 import { ModelType, type ModelTypeName } from "../types/model.js";
@@ -180,9 +181,11 @@ export class RuntimeEmbeddings {
 				? embeddingProviderOutput
 				: [embeddingProviderOutput];
 		const targets = batch && Array.isArray(result) ? result : [result];
-		const namedSpace = sources
-			.map(getEmbeddingVectorSpace)
-			.find((space) => space !== undefined);
+		let namedSpace: string | undefined;
+		for (const source of sources) {
+			namedSpace = getEmbeddingVectorSpace(source);
+			if (namedSpace !== undefined) break;
+		}
 		// A named vector cannot escape before its adapter representation commits.
 		// Recall may precede the host's deferred probe, so initialize on first use
 		// as well as sharing an in-flight probe. The null probe must never await
@@ -193,8 +196,7 @@ export class RuntimeEmbeddings {
 			(params !== null || batch)
 		) {
 			signal?.throwIfAborted();
-			const initialization =
-				this.embeddingInitialization ?? this.ensureEmbeddingDimension();
+			const initialization = this.ensureEmbeddingDimension();
 			if (!signal) await initialization;
 			else {
 				signal.throwIfAborted();
@@ -242,7 +244,7 @@ export class RuntimeEmbeddings {
 					"Embedding provider returned a different or unidentified representation",
 					{
 						code: "EMBEDDING_SPACE_MISMATCH",
-						context: { expected, provider: provider },
+						context: { expected, provider },
 					},
 				);
 			}
@@ -447,17 +449,18 @@ export class RuntimeEmbeddings {
 				if (!(error instanceof NoModelProviderConfiguredError)) {
 					allFailuresBenign = false;
 				}
+				const message = error instanceof Error ? error.message : String(error);
 				attempts.push({
 					provider: registration.provider,
 					modelKey: registration.modelKey,
-					error: error instanceof Error ? error.message : String(error),
+					error: message,
 				});
 				this.runtime.logger.warn(
 					{
 						src: "agent",
 						agentId: this.runtime.agentId,
 						provider: registration.provider,
-						error: error instanceof Error ? error.message : String(error),
+						error: message,
 					},
 					localOnly
 						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
@@ -682,9 +685,8 @@ export class RuntimeEmbeddings {
 	 */
 	async queueEmbeddingGeneration(
 		memory: Memory,
-		priority?: "high" | "normal" | "low",
+		priority: "high" | "normal" | "low" = "normal",
 	): Promise<void> {
-		priority = priority || "normal";
 		if (
 			!memory ||
 			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
@@ -737,14 +739,9 @@ export class RuntimeEmbeddings {
 		return this.runtime.adapter.clearEmbeddingsOutsideActiveDimension();
 	}
 
-	async getCachedEmbeddings(params: {
-		query_table_name: string;
-		query_threshold: number;
-		query_input: string;
-		query_field_name: string;
-		query_field_sub_name: string;
-		query_match_count: number;
-	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
+	getCachedEmbeddings(
+		params: Parameters<IDatabaseAdapter["getCachedEmbeddings"]>[0],
+	): ReturnType<IDatabaseAdapter["getCachedEmbeddings"]> {
 		return this.runtime.adapter.getCachedEmbeddings(params);
 	}
 }

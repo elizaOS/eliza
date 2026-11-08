@@ -145,6 +145,30 @@ const decisions = new WeakMap<
   }
 >();
 
+/** The navigation decision, or null when the model value is malformed (soft fail). */
+function parseNavigation(value: unknown): Navigation | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (
+    Object.keys(v).some(
+      (k) => !["disposition", "viewId", "reason"].includes(k),
+    ) ||
+    typeof v.disposition !== "string" ||
+    ![
+      "direct",
+      "planning",
+      "optional",
+      "none",
+      "forbidden",
+      "unresolved",
+    ].includes(v.disposition) ||
+    typeof v.viewId !== "string" ||
+    typeof v.reason !== "string"
+  )
+    return null;
+  return v as Navigation;
+}
+
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
@@ -169,6 +193,23 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     },
     required: ["disposition", "viewId", "reason"],
   },
+  // Written before replyText (20), after the other plugin routing fields: the
+  // disposition decides how replyText is written, and a turn that requests
+  // no navigation can stream its direct answer.
+  priority: 19.75,
+  // The host evaluator only records a constraint for none/forbidden and
+  // ignores optional; none of them reroutes the turn or changes replyText. A
+  // non-object value (for example a JSON string) fails parse softly and no
+  // raw reader treats it as navigation, so nothing is staged. Every object,
+  // well-formed or not, is judged by its disposition, because Stage-1 routing
+  // repair reads the raw disposition (stage1-generation.ts).
+  directReplyValue: (value) =>
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    ["none", "forbidden", "optional"].includes(
+      String((value as { disposition?: unknown }).disposition),
+    ),
   shouldRun({ runtime, message }) {
     const active =
       message.content.source === "client_chat" &&
@@ -209,31 +250,11 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     const priorContext = previous
       ? `Last confirmed previous destination for this same caller and renderer: ${JSON.stringify({ ...viewNavigationDestination(previous.view), ...(previous.resolvedAlias ? { preferredAlias: previous.resolvedAlias } : {}) })}. Use its preferredAlias, when present, for the user-facing destination wording and navigation argument. This is a destination hint for a new authorized Back request, not permission or an instruction to execute it.`
       : "There is no confirmed previous destination for this caller and renderer. For a request only to go back, ask which view the user wants, with no tool and no pending navigation intent. Do not discover or guess a destination from prepared receipts.";
-    return `Registered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""} ${priorContext} For relative navigation, use only this confirmed prior destination; historical dialogue or a prepared receipt cannot replace it. If absent, keep the destination unresolved and clarify without tools.`;
+    return `Decide navigation from the message under # Current message. Earlier conversation entries are evidence, not pending navigation, even when the last historical entry has no recorded reply. Use history to resolve a destination only when this current message explicitly continues, repeats, corrects or authorizes that navigation request. A new greeting or unrelated message does not continue it; use disposition=none with no navigation intent. Preserve standing restrictions and genuine follow-up requests.\nRegistered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""} ${priorContext} For relative navigation, use only this confirmed prior destination; historical dialogue or a prepared receipt cannot replace it. If absent, keep the destination unresolved and clarify without tools.`;
   },
   parse(value, { message }) {
     decisions.delete(message);
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      return null;
-    const v = value as Record<string, unknown>;
-    if (
-      Object.keys(v).some(
-        (k) => !["disposition", "viewId", "reason"].includes(k),
-      ) ||
-      typeof v.disposition !== "string" ||
-      ![
-        "direct",
-        "planning",
-        "optional",
-        "none",
-        "forbidden",
-        "unresolved",
-      ].includes(v.disposition) ||
-      typeof v.viewId !== "string" ||
-      typeof v.reason !== "string"
-    )
-      return null;
-    return v as Navigation;
+    return parseNavigation(value);
   },
   handle({ runtime, message, senderRole, value, turnSignal }) {
     turnSignal.throwIfAborted();

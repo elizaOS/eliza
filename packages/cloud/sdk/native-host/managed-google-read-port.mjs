@@ -5,6 +5,32 @@ const unavailable = () =>
   new NativeCloudServiceError("Managed Google task reads unavailable");
 const id = (value) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+export const isStringList = (value) =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+/**
+ * The two read fields that sit beside bodyText. A server without them reads as
+ * no links and no authentication result, so a client treats the sender as not
+ * checked. `links` are inert http(s) anchors from the connector. A client must
+ * review a link before it opens it. `authenticationResults` are raw header
+ * values, topmost first, and a sender can write them. Do not reorder them, and
+ * keep them on the host. Returns null for any other shape.
+ */
+export const readDetailFields = (value) => {
+  const links = value.links ?? [];
+  const authenticationResults = value.authenticationResults ?? [];
+  if (
+    !Array.isArray(links) ||
+    !links.every(
+      (link) => typeof link?.href === "string" && typeof link.text === "string",
+    ) ||
+    !isStringList(authenticationResults)
+  )
+    return null;
+  return {
+    links: links.map(({ href, text }) => ({ href, text })),
+    authenticationResults: [...authenticationResults],
+  };
+};
 /**
  * Host-only adapter: request owns credentials, account lifetime and bounded
  * JSON transport. With `accountId`, every read must name that grant. Without
@@ -31,8 +57,11 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       // The connector contract allows a null sender address when no address
       // can be parsed from the From header; pass it through as null.
       !(typeof value.fromEmail === "string" || value.fromEmail === null) ||
-      !Array.isArray(value.to) ||
-      !value.to.every((x) => typeof x === "string") ||
+      !isStringList(value.to) ||
+      !isStringList(value.cc) ||
+      !(typeof value.replyTo === "string" || value.replyTo === null) ||
+      typeof value.isUnread !== "boolean" ||
+      typeof value.subject !== "string" ||
       typeof value.receivedAt !== "string"
     )
       throw unavailable();
@@ -41,6 +70,10 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       threadId: value.threadId,
       fromEmail: value.fromEmail,
       to: [...value.to],
+      cc: [...value.cc],
+      replyTo: value.replyTo,
+      unread: value.isUnread,
+      subject: value.subject,
       receivedAt: value.receivedAt,
       ...(typeof value.htmlLink === "string"
         ? { htmlLink: value.htmlLink }
@@ -126,10 +159,13 @@ export function createManagedGoogleReadPort({ accountId, request }) {
         value.attachments.length > 100
       )
         throw unavailable();
+      const fields = readDetailFields(value);
+      if (!fields) throw unavailable();
       return {
         message: message(value.message),
         bodyText: value.bodyText,
         attachments: value.attachments.map(descriptor),
+        ...fields,
       };
     },
     async getGmailAttachment(input) {

@@ -108,7 +108,7 @@ test("journal capture is consent and owner scoped, pseudonymous and restart dura
   queue.close();
 });
 
-test("an owner with more than a thousand journaled tasks is still captured", async (t) => {
+test("an owner with more than a thousand journaled tasks, one of them set aside, is still captured", async (t) => {
   const { DatabaseSync } = await import("node:sqlite");
   const dir = mkdtempSync(join(tmpdir(), "pilot-journal-many-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -135,15 +135,29 @@ test("an owner with more than a thousand journaled tasks is still captured", asy
   const taskCount = 1001;
   for (let i = 0; i < taskCount; i++)
     insert.run(`task-${String(i).padStart(5, "0")}`, ownerKey);
+  // A record this build cannot read: the task store set it aside, and its
+  // events answer TASK_UNREADABLE.
+  db.exec(
+    "CREATE TABLE interactive_task_quarantine_v1 (task_id TEXT PRIMARY KEY NOT NULL, owner_key TEXT NOT NULL, reason TEXT NOT NULL, quarantined_at INTEGER NOT NULL, acknowledged_at INTEGER)",
+  );
+  insert.run("task-00500-unreadable", ownerKey);
+  db.prepare(
+    "INSERT INTO interactive_task_quarantine_v1 VALUES (?, ?, 'schema', 1, NULL)",
+  ).run("task-00500-unreadable", ownerKey);
   const tasks = {
-    events: (_id, _who, cursor) =>
-      cursor >= 0
+    events: (id, _who, cursor) => {
+      if (id === "task-00500-unreadable")
+        throw Object.assign(new Error("unreadable"), {
+          code: "TASK_UNREADABLE",
+        });
+      return cursor >= 0
         ? { events: [], cursor, hasMore: false }
         : {
             events: [{ sequence: 0, at: 50, kind: "create" }],
             cursor: 0,
             hasMore: false,
-          },
+          };
+    },
   };
   // Real SQLite statements behind the encrypted driver's surface: only `get`
   // and `run`, so every page is one json_group_array row.

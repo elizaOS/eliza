@@ -1,5 +1,5 @@
-import type { TaskChoiceWidget } from "@elizaos/core/protocol";
-import { validateTaskChoiceWidget } from "@elizaos/core/protocol";
+import type { TaskChoiceWidget } from "@elizaos/core/task-widgets";
+import { validateTaskChoiceWidget } from "@elizaos/core/task-widgets";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export interface TaskChoiceMessages {

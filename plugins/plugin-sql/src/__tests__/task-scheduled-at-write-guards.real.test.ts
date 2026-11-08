@@ -195,10 +195,10 @@ describe("task scheduledAt write guards", () => {
       }
       const scheduler = new TaskService(runtime, {
         now: () => CANONICAL_MS + 1000,
-        setInterval: () => {
+        setTimeout: () => {
           throw new Error("Only manual ticks are expected");
         },
-        clearInterval: () => undefined,
+        clearTimeout: () => undefined,
       });
       try {
         const tasks = await runtime.getTasks({ tags: ["queue"] });

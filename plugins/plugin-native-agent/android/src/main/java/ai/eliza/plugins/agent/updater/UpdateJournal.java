@@ -14,6 +14,38 @@ public class UpdateJournal {
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
+  /** Refuses, by throwing, a plan that may no longer install: admission is not
+   * a lasting permission. It runs under the journal lock, before the install
+   * intent is written, so a refusal leaves the plan VERIFIED. */
+  public interface FreshnessCheck { void require(Plan plan,long channelGeneration) throws IOException; }
+  /** What a finished install session reported. CANDIDATE_REJECTED is evidence
+   * that the candidate itself cannot install here; RETRYABLE is a fault of the
+   * moment, such as low storage. Hosts map platform statuses to these. */
+  public enum InstallerFailure { CANDIDATE_REJECTED, RETRYABLE }
+  /** The session is gone, the previous code still runs and nothing reported why. */
+  public static final String OUTCOME_UNKNOWN="install_outcome_unknown";
+  /** The install can no longer happen; the plan may be admitted again. */
+  public static final String INSTALL_RELEASED="install_not_completed";
+  /** The same candidate was released too often and is quarantined. */
+  public static final String RETRY_BUDGET_SPENT="install_retry_budget_spent";
+  /** Reasons a stalled install waits in SUPPORT for platform readback. */
+  public static final Set<String> AWAITING_REASONS=Set.of("user_action_required","policy_blocked","install_timeout","install_clock_invalid",OUTCOME_UNKNOWN);
+  /** Owner-overridable default: the observed uptime a gone session with no
+   * report waits for a late installer callback before the plan is released.
+   * One periodic reconciliation job interval. */
+  public static final long OUTCOME_UNKNOWN_WAIT_MS=15*60*1000L;
+  /** Owner-overridable default: a candidate whose install ends released this
+   * many times in a row is quarantined, so a persistent policy block or full
+   * storage cannot commit the same plan on every job run. */
+  public static final int MAX_INSTALL_ATTEMPTS_PER_CANDIDATE=3;
+  /** The platform handoff threw after the install intent was durable. The
+   * platform may still install, so callers must not abandon the session
+   * blindly; InstallReadback abandons it only once the platform has reported
+   * it uncommitted for long enough, and installed and session readback decide
+   * the outcome. */
+  public static final class HandoffFailed extends IOException {
+    HandoffFailed(Exception cause) { super("Platform handoff outcome unknown",cause); }
+  }
   public static final class Identity {
     public final long code;
     public final String digest;
@@ -72,9 +104,15 @@ public class UpdateJournal {
     public final Plan plan;
     public final int sessionId, recoveryAttempts;
     public final Set<String> quarantine;
+    /** A failure reported while the session was still listed, applied once it is gone. */
+    public final InstallerFailure reportedFailure;
+    /** The candidate digest whose installs ended released, and how many times in a row. */
+    public final String releasedCandidate;
+    public final int releases;
     Snapshot(State s) {
       probation=s.probation; pendingMillis=s.pendingMillis; revision=s.revision; channelGeneration=s.generation; channel=s.channel; reason=s.reason; phase=s.phase; plan=s.plan;
       sessionId=s.session; recoveryAttempts=s.attempts; quarantine=Collections.unmodifiableSet(new HashSet<>(s.quarantine));
+      reportedFailure=s.reported; releasedCandidate=s.releasedDigest; releases=s.releases;
     }
   }
   private static final class State {
@@ -82,24 +120,37 @@ public class UpdateJournal {
     long pendingMillis=0, observedBoot=-1, observedElapsed=-1;
     long revision=0, generation=0; String channel="stable", reason=""; Phase phase=Phase.IDLE;
     Plan plan; int session=-1, attempts=0; Set<String> quarantine=new TreeSet<>();
+    InstallerFailure reported; String releasedDigest=""; int releases=0;
+    State copy() {
+      State c=new State();c.probation=probation;c.pendingMillis=pendingMillis;c.observedBoot=observedBoot;c.observedElapsed=observedElapsed;
+      c.revision=revision;c.generation=generation;c.channel=channel;c.reason=reason;c.phase=phase;c.plan=plan;c.session=session;c.attempts=attempts;c.quarantine=new TreeSet<>(quarantine);
+      c.reported=reported;c.releasedDigest=releasedDigest;c.releases=releases;
+      return c;
+    }
   }
   private interface Mutation { void apply(State state) throws IOException; }
-  private final Path directory;
-  private final Durability durability;
-  private final Faults faults;
-  private static final int MAX_BYTES=1024*1024, MAGIC=0x53434f54;
-  public UpdateJournal(Path directory, Durability durability) throws IOException { this(directory,durability,name->{}); }
-  public UpdateJournal(Path directory, Durability durability, Faults faults) throws IOException {
-    this.directory=directory.toAbsolutePath().normalize(); this.durability=durability; this.faults=faults;
-    if (!Files.exists(this.directory,LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(this.directory);
-    if (!Files.isDirectory(this.directory,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid updater storage");
+  private interface Locked<T> { T apply(State current) throws IOException; }
+  /** Holds the encoded journal. The file store is the only production store. */
+  interface Store {
+    /** Runs body exclusively against every other instance on the same storage. */
+    <T> T exclusive(Exclusive<T> body) throws IOException;
+    /** The published envelope, or null on a device that never published one. */
+    byte[] read() throws IOException;
+    /** Atomically replaces the published envelope. */
+    void publish(byte[] envelope) throws IOException;
   }
-  public Snapshot read() throws IOException { return transact(null); }
+  interface Exclusive<T> { T run() throws IOException; }
+  private final Store store;
+  private static final int MAX_BYTES=1024*1024, MAGIC=0x53434f54, VERSION=5;
+  public UpdateJournal(Path directory, Durability durability) throws IOException { this(directory,durability,name->{}); }
+  public UpdateJournal(Path directory, Durability durability, Faults faults) throws IOException { this(new FileStore(directory,durability,faults)); }
+  UpdateJournal(Store store) { this.store=Objects.requireNonNull(store); }
+  public Snapshot read() throws IOException { return locked(Snapshot::new); }
   public interface SnapshotAction { void run(Snapshot snapshot) throws IOException; }
   /** Short private-storage operations only; never perform network I/O here. */
   public void withLockedSnapshot(SnapshotAction action)throws IOException {
     Objects.requireNonNull(action);
-    transact(s->action.run(new Snapshot(s)),null,false);
+    locked(s->{action.run(new Snapshot(s));return null;});
   }
   public Snapshot setChannel(String channel) throws IOException {
     if (!"stable".equals(channel) && !"beta".equals(channel)) throw new IllegalArgumentException("Unknown update channel");
@@ -129,7 +180,7 @@ public class UpdateJournal {
       require(!s.quarantine.contains(plan.candidate.digest),"Candidate is quarantined");
       require(!s.quarantine.contains(plan.recovery.digest),"Recovery is quarantined");
       validate.commit();
-      resetPending(s); s.probation=null; s.plan=plan; s.phase=phase; s.session=-1; s.attempts=0; s.reason="";
+      resetPending(s); s.probation=null; s.plan=plan; s.phase=phase; s.session=-1; s.attempts=0; s.reason=""; s.reported=null;
     });
   }
   private static boolean samePlan(Plan a,Plan b){return a!=null&&b!=null&&a.id.equals(b.id)&&a.channel.equals(b.channel)&&a.distribution.equals(b.distribution)&&a.baseline.matches(b.baseline)&&a.candidate.matches(b.candidate)&&a.recovery.matches(b.recovery);}
@@ -137,19 +188,26 @@ public class UpdateJournal {
   public Snapshot discardStaging(String planId,long generation)throws IOException {
     return transact(s->{requirePlan(s,planId);require(s.phase==Phase.STAGING&&s.generation==generation,"Stale staging discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="staging_invalidated";resetPending(s);});
   }
-  /** Call only after final idle/lease/admission checks and before Session.commit. */
-  public Snapshot committing(String planId, int sessionId, long channelGeneration) throws IOException {
-    return transact(s->{
-      requirePlan(s,planId); require(s.phase==Phase.VERIFIED,"Candidate is not ready");
-      require(s.generation==channelGeneration,"Channel changed before commit"); require(sessionId>=0,"Invalid install session");
-      s.session=sessionId; s.phase=Phase.COMMITTING;
-    });
+  /** Serialize the freshness check, the durable intent and the platform handoff
+   * with channel changes. This is the only way into COMMITTING. */
+  public Snapshot committingWithAction(String planId,int sessionId,long channelGeneration,FreshnessCheck fresh,CommitAction action)throws IOException {
+    Objects.requireNonNull(fresh);Objects.requireNonNull(action);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");require(sessionId>=0,"Invalid install session");fresh.require(s.plan,s.generation);s.session=sessionId;s.phase=Phase.COMMITTING;},action);
   }
-  /** Serialize the durable intent and platform handoff with channel changes. */
-  public Snapshot committingWithAction(String planId,int sessionId,long channelGeneration,CommitAction action)throws IOException {
-    Objects.requireNonNull(action);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");require(sessionId>=0,"Invalid install session");s.session=sessionId;s.phase=Phase.COMMITTING;},action);
+  /** Drops a VERIFIED plan that a metadata refresh shows can no longer install.
+   * Quarantine, floors and the channel generation stay. */
+  public Snapshot discardVerified(String planId,long channelGeneration,String reason)throws IOException {
+    requireReason(reason);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED&&s.generation==channelGeneration,"Stale verified discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="verified_invalidated:"+reason;resetPending(s);});
   }
+  /** Ends a RECOVERY_READY wait for a recovery that revocations or floors have
+   * made permanently unloadable. Both artifacts are quarantined, and the failed
+   * candidate stays installed until a newer release fixes forward. */
+  public Snapshot recoveryUnavailable(String planId,String reason)throws IOException {
+    requireReason(reason);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
+  }
+  private static void requireReason(String reason){if(reason==null||!reason.matches("[a-z][a-z-]{0,47}"))throw new IllegalArgumentException("Invalid journal reason");}
   public Snapshot recoveringWithAction(String planId,int sessionId,CommitAction action)throws IOException {
     Objects.requireNonNull(action);
     return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");require(sessionId>=0,"Invalid recovery session");resetPending(s);s.session=sessionId;s.attempts=1;s.phase=Phase.RECOVERING;},action);
@@ -160,11 +218,21 @@ public class UpdateJournal {
     return reconcile(state.plan==null?null:state.plan.id,state.sessionId,installed,sessionPending);
   }
   public Snapshot reconcile(String planId,int sessionId,Identity installed,boolean sessionPending) throws IOException {
-    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,null);
+    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,null,null);
+  }
+  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason)throws IOException {
+    return reconcileInstallerResult(planId,sessionId,installed,sessionPending,blockedReason,null);
   }
   /** Callback status is a hint; installed bytes and our live session win. A
-   * blocked callback must not conceal a later successful platform commit. */
-  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason)throws IOException {
+   * blocked callback must not conceal a later successful platform commit.
+   * Only a reported candidate fault quarantines, and a fault reported while
+   * the session is still listed is kept until it is gone. A gone session with
+   * no report waits OUTCOME_UNKNOWN_WAIT_MS of observed uptime
+   * (observeOutcomeUnknown) for a late callback before the plan is released.
+   * That wait holds the journal in SUPPORT, which admits no other plan, and
+   * only observeOutcomeUnknown ends it: a host that calls this directly must
+   * also run InstallReadback.reconcile periodically while awaitingInstaller. */
+  public Snapshot reconcileInstallerResult(String planId,int sessionId,Identity installed,boolean sessionPending,String blockedReason,InstallerFailure failure)throws IOException {
     if(blockedReason!=null&&!Arrays.asList("user_action_required","policy_blocked").contains(blockedReason))throw new IllegalArgumentException("Unknown installer reason");
     return transact(s->{
       if(!awaitingInstaller(new Snapshot(s)))return;
@@ -172,18 +240,34 @@ public class UpdateJournal {
       boolean wasBlocked=s.phase==Phase.SUPPORT;
       boolean recovering=s.phase==Phase.RECOVERING||(wasBlocked&&s.attempts==1);
       Identity expected=recovering?s.plan.recovery:s.plan.candidate;
-      if(expected.matches(installed)){s.phase=recovering?Phase.RECOVERY_PROBATION:Phase.PROBATION;s.reason="";return;}
+      if(expected.matches(installed)){
+        s.phase=recovering?Phase.RECOVERY_PROBATION:Phase.PROBATION;s.reason="";s.reported=null;
+        // The candidate installed, so its releases are no longer in a row; the
+        // cleared record also lets the journal be written as version 4 again.
+        if(!recovering){s.releasedDigest="";s.releases=0;}
+        return;
+      }
       Identity previous=recovering?s.plan.candidate:s.plan.baseline;
       if(!previous.matches(installed)){s.phase=Phase.SUPPORT;s.reason="unexpected_installed_identity";return;}
       if(blockedReason!=null){s.phase=Phase.SUPPORT;s.reason=blockedReason;return;}
-      if(wasBlocked||sessionPending)return;
-      s.phase=recovering?Phase.SUPPORT:Phase.QUARANTINED;
-      quarantine(s,false);s.reason=recovering?"recovery_install_failed":"candidate_install_failed";
+      if(sessionPending){if(!recovering)s.reported=stronger(s.reported,failure);return;}
+      // The session is gone and the previous code still runs. Recovery is
+      // attempted once, so a failed or stalled one stays in support.
+      if(recovering){if(!wasBlocked){s.phase=Phase.SUPPORT;quarantine(s,false);s.reason="recovery_install_failed";}return;}
+      InstallerFailure evidence=stronger(s.reported,failure);
+      if(evidence==InstallerFailure.CANDIDATE_REJECTED){s.phase=Phase.QUARANTINED;quarantine(s,false);s.reason="candidate_install_failed";s.reported=null;return;}
+      // A fault of the moment: the install can no longer happen, so release it.
+      if(evidence==InstallerFailure.RETRYABLE){release(s);return;}
+      if(wasBlocked&&OUTCOME_UNKNOWN.equals(s.reason))return;
+      s.phase=Phase.SUPPORT;s.reason=OUTCOME_UNKNOWN;resetPending(s);
     });
+  }
+  private static InstallerFailure stronger(InstallerFailure a,InstallerFailure b){
+    return a==InstallerFailure.CANDIDATE_REJECTED||b==InstallerFailure.CANDIDATE_REJECTED?InstallerFailure.CANDIDATE_REJECTED:a!=null?a:b;
   }
   public static boolean awaitingInstaller(Snapshot s) {
     return s.phase==Phase.COMMITTING||s.phase==Phase.RECOVERING||
-      (s.phase==Phase.SUPPORT&&("user_action_required".equals(s.reason)||"policy_blocked".equals(s.reason)||"install_timeout".equals(s.reason)||"install_clock_invalid".equals(s.reason)));
+      (s.phase==Phase.SUPPORT&&AWAITING_REASONS.contains(s.reason));
   }
   /** Conservative observed duration only. Never infer elapsed powered-off time
    * from wall time, abandon an in-flight commit or start a competing install. */
@@ -203,7 +287,33 @@ public class UpdateJournal {
       if(s.pendingMillis>=budgetMillis){s.phase=Phase.SUPPORT;s.reason="install_timeout";}
     });
   }
+  public Snapshot observeOutcomeUnknown(String planId,int sessionId,long boot,long elapsed)throws IOException {
+    return observeOutcomeUnknown(planId,sessionId,boot,elapsed,OUTCOME_UNKNOWN_WAIT_MS);
+  }
+  /** Counts observed uptime, as observePending does, while a gone session has
+   * no report, and releases the plan once waitMillis has passed. A clock that
+   * runs backwards restarts the wait rather than shortening it. */
+  public Snapshot observeOutcomeUnknown(String planId,int sessionId,long boot,long elapsed,long waitMillis)throws IOException {
+    require(boot>=0&&elapsed>=0&&waitMillis>0,"Invalid monotonic observation");
+    return transact(s->{
+      if(s.phase!=Phase.SUPPORT||!OUTCOME_UNKNOWN.equals(s.reason)||s.plan==null||!s.plan.id.equals(planId)||s.session!=sessionId)return;
+      boolean regressed=s.observedBoot>boot||(s.observedBoot==boot&&s.observedElapsed>elapsed);
+      long delta=regressed?0:s.observedBoot==boot?elapsed-s.observedElapsed:(s.observedBoot>=0?elapsed:0);
+      if(regressed)s.pendingMillis=0;
+      s.pendingMillis=delta>Long.MAX_VALUE-s.pendingMillis?Long.MAX_VALUE:s.pendingMillis+delta;
+      s.observedBoot=boot;s.observedElapsed=elapsed;
+      if(s.pendingMillis>=waitMillis)release(s);
+    });
+  }
   private static void resetPending(State s){s.pendingMillis=0;s.observedBoot=-1;s.observedElapsed=-1;}
+  /** Lets the plan be admitted again, unless the same candidate has spent its
+   * retry budget; quarantine and the channel generation stay. */
+  private static void release(State s) throws IOException {
+    String candidate=s.plan.candidate.digest;
+    s.releases=candidate.equals(s.releasedDigest)?s.releases+1:1;s.releasedDigest=candidate;s.reported=null;resetPending(s);
+    if(s.releases>=MAX_INSTALL_ATTEMPTS_PER_CANDIDATE){s.phase=Phase.QUARANTINED;quarantine(s,false);s.reason=RETRY_BUDGET_SPENT;return;}
+    s.phase=Phase.IDLE;s.plan=null;s.session=-1;s.reason=INSTALL_RELEASED;
+  }
   /** Callers capture this snapshot before collecting health evidence. Both
    * verdicts compare it under the mutation lock; even a channel change or a
    * competing verdict invalidates an in-flight observation. This is a race
@@ -268,33 +378,31 @@ public class UpdateJournal {
   private static void requirePlan(State s,String id) throws IOException { require(s.plan!=null && s.plan.id.equals(id),"Wrong update transaction"); }
   private static void require(boolean value,String message) throws IOException { if(!value)throw new IOException(message); }
   private static long increment(long value) throws IOException { require(value<Long.MAX_VALUE,"Journal counter exhausted");return value+1; }
-  private Snapshot transact(Mutation mutation) throws IOException { return transact(mutation,null); }
-  private Snapshot transact(Mutation mutation,CommitAction commit) throws IOException { return transact(mutation,commit,true); }
-  private Snapshot transact(Mutation mutation,CommitAction commit,boolean persistMutation) throws IOException {
-    // Multiple Android components can open distinct instances in one process.
-    // FileLock alone throws on overlapping JVM locks instead of waiting.
-    synchronized(UpdateJournal.class) {
-    try(FileChannel lockChannel=FileChannel.open(directory.resolve("lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS);
-        FileLock lock=lockChannel.lock()) {
-      require(lock.isValid(),"Updater storage lock unavailable"); State state=load();
-      if(mutation!=null) { Phase previousPhase=state.phase;mutation.apply(state);if(previousPhase!=state.phase)state.probation=null; if(persistMutation){state.revision=increment(state.revision); persist(state);} }
-      if(commit!=null)commit.commit();
-      return new Snapshot(state);
-    }
-    }
+  /** The transition alone: a new state from the loaded one, with no storage I/O.
+   * A refused mutation throws and leaves the loaded state untouched. The only
+   * callback a mutation may run is the caller's admission check. */
+  private static State step(State current,Mutation mutation) throws IOException {
+    State next=current.copy();mutation.apply(next);
+    if(next.phase!=current.phase)next.probation=null;
+    next.revision=increment(next.revision);return next;
   }
-  private State load() throws IOException {
-    Path file=directory.resolve("journal");
-    if(!Files.exists(file,LinkOption.NOFOLLOW_LINKS)) {
-      require(!Files.exists(directory.resolve("initialized"),LinkOption.NOFOLLOW_LINKS),"Previously initialized updater journal is missing");
-      return new State();
-    }
-    require(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) && Files.size(file)<=MAX_BYTES,"Invalid updater journal");
-    byte[] envelope=Files.readAllBytes(file); require(envelope.length>32,"Truncated updater journal");
+  private Snapshot transact(Mutation mutation) throws IOException { return transact(mutation,null); }
+  /** Persists the step, then runs the platform handoff under the same lock. */
+  private Snapshot transact(Mutation mutation,CommitAction commit) throws IOException {
+    return locked(current->{
+      State next=step(current,mutation);store.publish(encode(next));
+      if(commit!=null)try{commit.commit();}catch(IOException|RuntimeException failure){throw new HandoffFailed(failure);}
+      return new Snapshot(next);
+    });
+  }
+  private <T> T locked(Locked<T> body) throws IOException { return store.exclusive(()->body.apply(decode(store.read()))); }
+  private static State decode(byte[] envelope) throws IOException {
+    if(envelope==null)return new State();
+    require(envelope.length>32 && envelope.length<=MAX_BYTES,"Truncated updater journal");
     byte[] body=Arrays.copyOf(envelope,envelope.length-32);
     require(MessageDigest.isEqual(hash(body),Arrays.copyOfRange(envelope,body.length,envelope.length)),"Corrupt updater journal");
     try(DataInputStream in=new DataInputStream(new ByteArrayInputStream(body))) {
-      require(in.readInt()==MAGIC,"Unsupported updater journal");int version=in.readInt();require(version==1||version==2||version==3||version==4,"Unsupported updater journal"); State s=new State();
+      require(in.readInt()==MAGIC,"Unsupported updater journal");int version=in.readInt();require(version>=1&&version<=VERSION,"Unsupported updater journal"); State s=new State();
       s.revision=in.readLong();s.generation=in.readLong();require(s.revision>=0 && s.generation>=0,"Invalid journal counters");
       s.channel=in.readUTF();require(s.channel.equals("stable")||s.channel.equals("beta"),"Invalid persisted channel");
       s.phase=Phase.valueOf(in.readUTF());s.reason=in.readUTF();s.session=in.readInt();s.attempts=in.readInt();
@@ -315,42 +423,89 @@ public class UpdateJournal {
         require((ready==0&&failure==0)||(!sample.process.equals("none")&&!sample.runtime.equals("none")),"Probation timing without lifetime");
         s.probation=new ProbationWindow(policy,sample,ready,failure);
       }
+      if(version>=5) {
+        String reported=in.readUTF();s.reported=reported.isEmpty()?null:InstallerFailure.valueOf(reported);
+        s.releasedDigest=in.readUTF();s.releases=in.readInt();
+        require((s.reported==null||s.plan!=null)&&s.releases>=0&&(s.releasedDigest.isEmpty()?s.releases==0:s.releasedDigest.matches("[a-f0-9]{64}")&&s.releases>0),"Invalid install release record");
+      }
       require(in.available()==0 && (s.phase==Phase.IDLE || s.plan!=null),"Invalid journal structure");
-      markInitialized();return s;
+      return s;
     } catch(IllegalArgumentException e) { throw new IOException("Invalid updater journal value",e); }
   }
-  private void markInitialized() throws IOException {
-    Path marker=directory.resolve("initialized");
-    if(Files.exists(marker,LinkOption.NOFOLLOW_LINKS)) {
-      require(Files.isRegularFile(marker,LinkOption.NOFOLLOW_LINKS)&&Files.size(marker)==1&&Files.readAllBytes(marker)[0]==1,"Invalid journal initialization marker");return;
-    }
-    try(FileChannel file=FileChannel.open(marker,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-      java.nio.ByteBuffer value=java.nio.ByteBuffer.wrap(new byte[]{1});while(value.hasRemaining())file.write(value);file.force(true);
-    }
-    durability.syncDirectory(directory);
-  }
-  private void persist(State s) throws IOException {
-    markInitialized();
+  private static byte[] encode(State s) throws IOException {
     ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+    // Version 5 adds only the install report and release record. While they
+    // hold their defaults the journal is written as version 4, which an older
+    // updater still reads; nothing is lost, since decode restores the defaults.
+    boolean installRecord=s.reported!=null||!s.releasedDigest.isEmpty()||s.releases!=0;
     try(DataOutputStream out=new DataOutputStream(bytes)) {
-      out.writeInt(MAGIC);out.writeInt(4);out.writeLong(s.revision);out.writeLong(s.generation);out.writeUTF(s.channel);out.writeUTF(s.phase.name());out.writeUTF(s.reason);out.writeInt(s.session);out.writeInt(s.attempts);
+      out.writeInt(MAGIC);out.writeInt(installRecord?VERSION:4);out.writeLong(s.revision);out.writeLong(s.generation);out.writeUTF(s.channel);out.writeUTF(s.phase.name());out.writeUTF(s.reason);out.writeInt(s.session);out.writeInt(s.attempts);
       out.writeBoolean(s.plan!=null);
       if(s.plan!=null){out.writeUTF(s.plan.id);out.writeUTF(s.plan.channel);out.writeUTF(s.plan.distribution);identity(out,s.plan.baseline);identity(out,s.plan.candidate);identity(out,s.plan.recovery);}
       out.writeInt(s.quarantine.size());for(String digest:s.quarantine)out.writeUTF(digest);
       out.writeLong(s.pendingMillis);out.writeLong(s.observedBoot);out.writeLong(s.observedElapsed);
       out.writeBoolean(s.probation!=null);
       if(s.probation!=null){ProbationWindow w=s.probation;out.writeUTF(w.policy.id);out.writeLong(w.policy.readyMillis);out.writeLong(w.policy.failureMillis);out.writeLong(w.policy.maxGapMillis);out.writeLong(w.last.boot);out.writeLong(w.last.elapsed);out.writeUTF(w.last.process);out.writeUTF(w.last.runtime);out.writeUTF(w.last.kind.name());out.writeLong(w.readyMillis);out.writeLong(w.failureMillis);}
-
+      if(installRecord){out.writeUTF(s.reported==null?"":s.reported.name());out.writeUTF(s.releasedDigest);out.writeInt(s.releases);}
     }
     byte[] body=bytes.toByteArray();require(body.length+32<=MAX_BYTES,"Journal exceeds limit");
-    Path temporary=directory.resolve("journal.next");
-    try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
-      java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(body);while(buffer.hasRemaining())file.write(buffer);
-      buffer=java.nio.ByteBuffer.wrap(hash(body));while(buffer.hasRemaining())file.write(buffer);
-      faults.boundary("before-sync");file.force(true);
+    byte[] envelope=Arrays.copyOf(body,body.length+32);System.arraycopy(hash(body),0,envelope,body.length,32);return envelope;
+  }
+  /** Fsync, then same-filesystem rename, under an OS file lock. */
+  private static final class FileStore implements Store {
+    private final Path directory;
+    private final Durability durability;
+    private final Faults faults;
+    FileStore(Path directory,Durability durability,Faults faults) throws IOException {
+      this.directory=directory.toAbsolutePath().normalize(); this.durability=durability; this.faults=faults;
+      if (!Files.exists(this.directory,LinkOption.NOFOLLOW_LINKS)) Files.createDirectory(this.directory);
+      if (!Files.isDirectory(this.directory,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Invalid updater storage");
     }
-    faults.boundary("before-rename");Files.move(temporary,directory.resolve("journal"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
-    durability.syncDirectory(directory);faults.boundary("published");
+    @Override public <T> T exclusive(Exclusive<T> body) throws IOException {
+      // Multiple Android components can open distinct instances in one process.
+      // FileLock alone throws on overlapping JVM locks instead of waiting.
+      synchronized(UpdateJournal.class) {
+      try(FileChannel lockChannel=FileChannel.open(directory.resolve("lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS);
+          FileLock lock=lockChannel.lock()) {
+        require(lock.isValid(),"Updater storage lock unavailable");
+        return body.run();
+      }
+      }
+    }
+    @Override public byte[] read() throws IOException {
+      Path file=directory.resolve("journal");
+      if(!Files.exists(file,LinkOption.NOFOLLOW_LINKS)) {
+        require(!Files.exists(directory.resolve("initialized"),LinkOption.NOFOLLOW_LINKS),"Previously initialized updater journal is missing");
+        return null;
+      }
+      require(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) && Files.size(file)<=MAX_BYTES,"Invalid updater journal");
+      byte[] envelope=Files.readAllBytes(file);markInitialized();return envelope;
+    }
+    /** The marker follows the first published journal. A failed or full first
+     * write leaves no marker, so the device still reads as new; a journal lost
+     * after the marker reads as lost. Between the rename and the marker, a loss
+     * would read as new; load repairs a missing marker on the next read. */
+    @Override public void publish(byte[] envelope) throws IOException {
+      replace("journal",envelope,"");
+      markInitialized();faults.boundary("published");
+    }
+    private void markInitialized() throws IOException {
+      Path marker=directory.resolve("initialized");
+      if(Files.exists(marker,LinkOption.NOFOLLOW_LINKS)) {
+        require(Files.isRegularFile(marker,LinkOption.NOFOLLOW_LINKS)&&Files.size(marker)==1&&Files.readAllBytes(marker)[0]==1,"Invalid journal initialization marker");return;
+      }
+      replace("initialized",new byte[]{1},"marker-");
+    }
+    /** Fsync a temporary file, then rename it over name, so name is never partial. */
+    private void replace(String name,byte[] value,String boundary) throws IOException {
+      Path temporary=directory.resolve(name+".next");
+      try(FileChannel file=FileChannel.open(temporary,StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS)) {
+        java.nio.ByteBuffer buffer=java.nio.ByteBuffer.wrap(value);while(buffer.hasRemaining())file.write(buffer);
+        faults.boundary(boundary+"before-sync");file.force(true);
+      }
+      faults.boundary(boundary+"before-rename");Files.move(temporary,directory.resolve(name),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+      durability.syncDirectory(directory);
+    }
   }
   private static byte[] hash(byte[] bytes) { try{return MessageDigest.getInstance("SHA-256").digest(bytes);}catch(Exception e){throw new IllegalStateException(e);} }
   private static Identity identity(DataInputStream in)throws IOException{return new Identity(in.readLong(),in.readUTF());}

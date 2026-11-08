@@ -9,6 +9,7 @@ import { logger } from "../utils/logger";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { appsService } from "./apps";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { setInferenceOrganizationActive } from "./inference-credential-revocation";
 import { managedDomainsService } from "./managed-domains";
 import { voiceCloningService } from "./voice-cloning";
 
@@ -83,6 +84,7 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
     async disableBilling(organizationId) {
       const organization = await organizationsRepository.findById(organizationId);
       if (!organization) return null;
+      await setInferenceOrganizationActive(organizationId, false);
       await organizationsRepository.update(organizationId, {
         auto_top_up_enabled: false,
         is_active: false,

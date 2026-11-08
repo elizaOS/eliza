@@ -142,8 +142,8 @@ export function noRoute(): MapsServiceError {
 
 /**
  * Bounded, redirect-free request to an operator endpoint. Timeouts, network
- * failures, oversized bodies, 429 and 5xx are outages; other statuses than 200
- * and 400 are invalid responses. The URL is never attached to an error: it can
+ * failures, oversized bodies, 429 and 5xx are outages; statuses outside
+ * `accept` (200 and 400 by default) are invalid responses. The URL is never attached to an error: it can
  * carry a query or a location.
  */
 export async function upstreamFetch(
@@ -151,6 +151,8 @@ export async function upstreamFetch(
   init: RequestInit,
   signal: AbortSignal | undefined,
   fetchImpl: typeof fetch | undefined,
+  /** Statuses returned to the caller; every other non-outage status is invalid. */
+  accept: readonly number[] = [200, 400],
 ): Promise<Response> {
   let response: Response;
   try {
@@ -178,7 +180,7 @@ export async function upstreamFetch(
     throw unavailable(error instanceof Error ? error.name : undefined);
   }
   if (response.status === 429 || response.status >= 500) throw unavailable(response.status);
-  if (response.status !== 200 && response.status !== 400) throw invalidResponse(response.status);
+  if (!accept.includes(response.status)) throw invalidResponse(response.status);
   return response;
 }
 

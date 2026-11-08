@@ -71,27 +71,12 @@ export * from "./i18n/recurrence-markers.js";
 export * from "./inference-trace.js";
 export * from "./markdown/chunk.js";
 export {
-	buildCodeSpanIndex,
-	type CodeSpanIndex,
-	createInlineCodeState,
 	type FenceSpan,
 	findFenceSpanAt,
-	type InlineCodeState,
 	isSafeFenceBreak,
 	parseFenceSpans,
 } from "./markdown/code.js";
 export * from "./markdown/frontmatter.js";
-export {
-	chunkMarkdownIR,
-	type MarkdownIR,
-	type MarkdownLinkSpan,
-	type MarkdownParseOptions,
-	type MarkdownStyle,
-	type MarkdownStyleSpan,
-	type MarkdownTableMode as MarkdownIRTableMode,
-	markdownToIR,
-	markdownToIRWithMeta,
-} from "./markdown/ir.js";
 export * from "./meeting-artifacts.js";
 export * from "./meetings.js";
 export * from "./memory";
@@ -99,7 +84,6 @@ export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export * from "./messaging/interaction-dashboard-markers.js";
 export {
 	findInteractionRegions,
-	hasInteractionBlocks,
 	type InteractionRegion,
 	MAX_FOLLOWUPS,
 	MAX_FORM_FIELDS,
@@ -122,6 +106,7 @@ export {
 	type TaskOperation,
 	type TaskOriginGrant,
 	type TaskOriginStep,
+	type TaskOutcome,
 	type TaskOwner,
 	type TaskTransition,
 	transitionInteractiveTask,
@@ -130,8 +115,10 @@ export {
 export {
 	mergeTaskEventPage,
 	mergeTaskEvents,
+	TASK_EVENT_KINDS,
 	TASK_ID_PATTERN,
 	type TaskEvent,
+	type TaskEventKind,
 	type TaskEventPage,
 	TaskEventReader,
 	type TaskEventReaderOptions,
@@ -238,7 +225,6 @@ export {
 } from "./runtime/response-field-transcript.ts";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-fields";
-export * from "./runtime/rlm";
 export * from "./runtime/run-terminal-owner";
 export * from "./runtime/session-provider.js";
 export * from "./runtime/system-prompt";
@@ -279,14 +265,9 @@ export {
 	CHANNEL_SECRETS,
 	checkRequiredSecrets,
 	getAliasesForKey,
-	getAllSecretsForChannel,
 	getProviderForApiKey,
-	getRequiredSecretsForChannel,
-	getValidationPattern,
-	hasValidationPattern,
 	inferValidationPatternKey,
 	isCanonicalSecretKey,
-	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
 	MODEL_PROVIDER_SECRETS,
 	SECRET_KEY_ALIASES,
@@ -317,7 +298,6 @@ export {
 	type RuntimePromptResolver,
 	resolveOptimizedPrompt,
 	resolveOptimizedPromptForRuntime,
-	trimDemonstrationInput,
 } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
@@ -380,7 +360,6 @@ export {
 	type CreateTriggerRequest,
 	type DatabaseStatus,
 	DELTA_STREAM_PROTOCOL,
-	type DeltaStreamProtocol,
 	type LogEntry as AgentLogEntry,
 	type PluginParamDef,
 	type QueryResult,
@@ -438,7 +417,6 @@ export {
 	type PendingUserActionOption,
 	type PendingUserActionResolution,
 	type PendingUserActionResolutionTarget,
-	type RequiresUserResponse,
 } from "./types/pending-user-action.js";
 export * from "./types/permissions.js";
 export * from "./types/pipeline-hooks.js";
@@ -446,9 +424,9 @@ export * from "./types/plugin.js";
 export * from "./types/plugin-manifest";
 export * from "./types/plugin-store.js";
 export * from "./types/primitives.js";
-export * from "./types/prompts.js";
 export * from "./types/reminder-presentation";
 export * from "./types/runtime.js";
+export * from "./types/search.js";
 export * from "./types/service.js";
 export * from "./types/service-interfaces.js";
 export * from "./types/session.js";
@@ -459,7 +437,6 @@ export * from "./types/surface-manifest.js";
 export * from "./types/swarm-coordinator.js";
 export * from "./types/system-notice.js";
 export * from "./types/task.js";
-export * from "./types/tee.js";
 export * from "./types/testing.js";
 export {
 	type ActionAttempt,
@@ -577,7 +554,6 @@ export {
 	TEXT_NORMALIZE_UNBOUNDED,
 	toMultilineText,
 } from "./utils/text-normalize.ts";
-export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export * from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
 export * from "./utils/union-find.ts";
@@ -600,7 +576,6 @@ export {
 	type ViewType,
 } from "./views/declarations.js";
 export * from "./views/host-external-contract.js";
-export * from "./views/shared-nav-targets.js";
 export {
 	IMMERSIVE_WALLPAPER_SURFACE,
 	resolveSurfaceBackgroundPolicy,
@@ -613,6 +588,5 @@ export {
 	findViewActionHandoff,
 	type ViewActionHandoff,
 } from "./views/view-action-handoff.ts";
-export * from "./views/view-command-matcher.js";
 export * from "./views/view-interact-protocol.js";
 export * from "./voice-cancellation-token.js";

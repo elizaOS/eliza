@@ -141,6 +141,16 @@ function stepSubmits(element) {
 }
 
 /**
+ * Whether a control holds an answer: its `hasInput` flag, or the checked
+ * state of a choice, which has no `hasInput`. Null when the page says neither.
+ */
+export function filled(element) {
+  if (typeof element.hasInput === "boolean") return element.hasInput;
+  if (typeof element.checked === "boolean") return element.checked;
+  return null;
+}
+
+/**
  * Every control of one complete observation, with a stable ref for each. A
  * ref is made from the facts that locate the control (role, name, label,
  * placeholder, title, field name, image text, nearby text, field group and
@@ -277,14 +287,7 @@ export function pageView(snapshot, { controls, protectedFields }) {
               }))
             : null,
         ],
-        [
-          "filled",
-          typeof element.hasInput === "boolean"
-            ? element.hasInput
-            : typeof element.checked === "boolean"
-              ? element.checked
-              : null,
-        ],
+        ["filled", filled(element)],
         ["edited", element.edited === true ? true : null],
         ["required", element.required === true ? true : null],
         ["invalid", element.invalid === true ? true : null],
@@ -312,7 +315,7 @@ export function pageView(snapshot, { controls, protectedFields }) {
     protectedFields: protectedFields.map(({ element, category }) =>
       present([
         ["category", category],
-        ["filled", element.hasInput === true],
+        ["filled", filled(element) === true],
         [
           "form",
           element.form
@@ -392,6 +395,9 @@ const PROTECTED_KIND = {
   "one-time-code": "human-verification",
 };
 const STATUSES = ["act", "wait", "done", "blocked", "needs-help"];
+// Her answer about forms sent on the website covers those forms for the
+// whole task. Every other answer is a yes to one step (see `acknowledge`).
+const MANUAL_ACTIVITY = "manual-activity:";
 // Manual activity is browser-reported evidence; a malformed record stops the task.
 function validManualActivity(activity) {
   return (
@@ -431,6 +437,10 @@ function validManualActivity(activity) {
  * A host can explicitly opt into planned actions with `authorizeAction`. The
  * planner may then propose an `agent-action`; `executeAction` rechecks host
  * authority and page identity before the task runtime dispatches one effect.
+ * `authorizeAction(input, context)` runs twice: while the step is planned
+ * (`context.phase` "plan") it answers true to offer the step; at dispatch
+ * (`context.phase` "dispatch") only the value of `context.authorize()`
+ * dispatches it, so no planning answer can ever authorize an effect.
  * The host remains responsible for consequence policy and readback verification.
  *
  * It stops and asks when the website did something nobody asked for (a form
@@ -463,7 +473,9 @@ export class GuidedWebsiteWorkflow {
       signal,
       words: { ...DEFAULT_WORDS, ...words },
     });
-    this.acknowledged = new Set();
+    // Each answered question, with the task epoch of the yes (null: the
+    // whole task).
+    this.acknowledged = new Map();
     this.history = [];
     this.lastStep = null;
     this.offer = null;
@@ -518,15 +530,56 @@ export class GuidedWebsiteWorkflow {
       ? [{ selector: this.grant.selector, action: this.grant.action ?? "fill" }]
       : [];
   }
-  /** The person answered a stop-and-ask question; the same question is not asked again. */
-  acknowledge(key) {
-    this.acknowledged.add(key);
+  /**
+   * The person answered a stop-and-ask question. A yes to a step covers one
+   * dispatch of that step in the current epoch: the dispatch uses it up,
+   * and a Stop, a resume or any other new epoch clears it. Her answer about
+   * forms sent on the website holds for the task. A host that passes the
+   * `epoch` the question was asked in (the `epoch` of the `person-check`
+   * result) has a late or repeated yes to an older question ignored, so it
+   * can never arm the step again.
+   */
+  acknowledge(key, { epoch } = {}) {
+    const current = this.runtime.get(this.taskId).epoch;
+    if (epoch !== undefined && epoch !== current) return;
+    this.acknowledged.set(
+      key,
+      key.startsWith(MANUAL_ACTIVITY) ? null : current,
+    );
   }
+  /** Whether the yes `offer` was armed with no longer stands. */
+  answerGone(offer) {
+    return offer.answer !== null && !this.acknowledged.has(offer.answer);
+  }
+  /** Drops each yes given in another epoch than `epoch`. */
+  forgetAnswers(epoch) {
+    for (const [key, given] of this.acknowledged)
+      if (given !== null && given !== epoch) this.acknowledged.delete(key);
+  }
+  /**
+   * Takes back an answer the host gave for the person, for example when the
+   * page changed after it. The same question is asked again. Returns whether
+   * the key was acknowledged.
+   */
+  withdrawAcknowledgement(key) {
+    return this.acknowledged.delete(key);
+  }
+  /**
+   * Hides this task's guidance. The actuator also waits for an earlier
+   * cancelled browser command to be confirmed stopped; when Chromium does
+   * not confirm it, the actuator ends that connection, which stops every
+   * command it carried. That is the fence a Pause reports, not a failure of
+   * this step, so the step still returns its own result.
+   */
   async clearGuidance() {
-    await this.actuator.quiesce?.({
-      owner: this.runtime.owner,
-      taskId: this.taskId,
-    });
+    try {
+      await this.actuator.quiesce?.({
+        owner: this.runtime.owner,
+        taskId: this.taskId,
+      });
+    } catch (error) {
+      if (error?.reason !== "cancel-unconfirmed") throw error;
+    }
   }
   async requireAuthority() {
     if (!(await this.stillAuthorized()) || this.signal.aborted) {
@@ -566,6 +619,7 @@ export class GuidedWebsiteWorkflow {
   /** Common task checks before a step; a result here ends the step. */
   async taskGate() {
     const task = this.runtime.get(this.taskId);
+    this.forgetAnswers(task.epoch);
     if (task.status === "paused") {
       await this.clearGuidance();
       return { result: { kind: "paused", taskId: this.taskId } };
@@ -767,7 +821,7 @@ export class GuidedWebsiteWorkflow {
       // and document, and the event ID of each. A new failed submit, or the
       // same address loaded again, asks again; a new address in the same
       // document with the same gaps does not.
-      const key = `manual-activity:${digest({
+      const key = `${MANUAL_ACTIVITY}${digest({
         events: activity.events,
         overflow: activity.overflow,
         captureGap:
@@ -786,6 +840,7 @@ export class GuidedWebsiteWorkflow {
           key,
           reason: "manual-activity",
           message: this.words.manualActivity,
+          epoch: task.epoch,
         };
       }
     }
@@ -793,7 +848,7 @@ export class GuidedWebsiteWorkflow {
     // A protected field is hers alone. When it is the next empty field of
     // its form, point at it without asking a model.
     const secret = index.protectedFields.find(
-      ({ element }) => element.disabled !== true && element.hasInput !== true,
+      ({ element }) => element.disabled !== true && filled(element) !== true,
     );
     if (
       secret &&
@@ -887,6 +942,7 @@ export class GuidedWebsiteWorkflow {
         key: check.key,
         reason: check.reason ?? "step",
         message: check.message,
+        epoch: task.epoch,
       };
     }
     const instruction =
@@ -911,7 +967,7 @@ export class GuidedWebsiteWorkflow {
             control: view,
             page: pageView(snapshot, { controls, protectedFields: [] }),
           },
-          { signal: this.signal, taskId: this.taskId },
+          { signal: this.signal, taskId: this.taskId, phase: "plan" },
         ),
         this.signal,
       )) === true;
@@ -958,6 +1014,8 @@ export class GuidedWebsiteWorkflow {
         selector: control.element.targetSelector,
         valueRef: plan.valueRef,
         fingerprint,
+        // Her yes to this step, used up when the step is dispatched.
+        answer: check?.key ?? null,
       };
     return this.pointAt(decision, control.element, {
       stepId: `website:${decision.kind}`,
@@ -988,6 +1046,12 @@ export class GuidedWebsiteWorkflow {
     const gate = await this.taskGate();
     if (gate.result) return gate.result;
     let { task } = gate;
+    // Her Stop, a Resume or any new epoch dropped the yes this offer was
+    // armed with: the offer is stale, and she is asked again.
+    if (this.answerGone(offer)) {
+      this.offer = null;
+      return this.refresh();
+    }
     await this.clearGuidance();
     await this.requireAuthority();
     if (
@@ -995,27 +1059,41 @@ export class GuidedWebsiteWorkflow {
       this.grant.selector !== offer.selector ||
       this.grant.action !== offer.action.split(".")[0]
     ) {
-      this.runtime.control(task.id, task.revision, "pause");
+      // A new target needs a new epoch. The task stays active: the guide
+      // never pauses for a binding, and a Stop meanwhile fails the observe
+      // below.
+      const epoch = task.epoch;
+      try {
+        task = this.runtime.rebind(task.id, task.revision);
+      } catch (error) {
+        // A page read is still running (a background refresh). The guide never
+        // cancels it to press: nothing is pressed, and its fresh offer follows.
+        if (error?.code === "TASK_BUSY")
+          return blocked(this.words.changed, "task-busy");
+        // Her Stop (or another change) landed during the awaits above.
+        if (["TASK_CONFLICT", "TASK_NOT_ACTIVE"].includes(error?.code)) {
+          this.offer = null;
+          const changed = await this.taskGate();
+          return changed.result ?? blocked(this.words.changed, "task-changed");
+        }
+        throw error;
+      }
+      // The guide's own new binding keeps her yes; her Stop never does.
+      for (const [key, given] of this.acknowledged)
+        if (given === epoch) this.acknowledged.set(key, task.epoch);
       await this.runtime.settle?.(task.id);
-      task = this.runtime.get(this.taskId);
       this.grant = {
         epoch: task.epoch,
         selector: offer.selector,
         action: offer.action.split(".")[0],
       };
-      task = await this.runtime.observe(
-        task.id,
-        task.revision,
-        true,
-        this.stillAuthorized,
-      );
-    } else
-      task = await this.runtime.observe(
-        task.id,
-        task.revision,
-        false,
-        this.stillAuthorized,
-      );
+    }
+    task = await this.runtime.observe(
+      task.id,
+      task.revision,
+      false,
+      this.stillAuthorized,
+    );
     let { observation, snapshot } = this.actuator.readObservation(
       task.id,
       this.runtime.owner,
@@ -1032,6 +1110,7 @@ export class GuidedWebsiteWorkflow {
       return this.refresh();
     }
     if (kind === "agent-action") {
+      const authorized = Object.freeze({ offer: offer.key });
       const checked = await this.decideOnFreshPage(
         { observation, snapshot },
         (current, context) => {
@@ -1043,14 +1122,20 @@ export class GuidedWebsiteWorkflow {
               control: view.controls.find((c) => c.ref === offer.ref),
               page: view,
             },
-            context,
+            { ...context, phase: "dispatch", authorize: () => authorized },
           );
         },
         { taskChanged: this.words.changed, pageChanged: this.words.changed },
       );
       if (checked.result) return checked.result;
-      if (checked.decision !== true) {
+      if (checked.decision !== authorized) {
         this.offer = null;
+        // A bare true was the old contract: name the change, so a host
+        // written for it fails loudly instead of never pressing anything.
+        if (checked.decision === true)
+          throw new BillHostError(
+            "authorizeAction answered true at dispatch; return context.authorize() to allow the effect",
+          );
         return blocked(this.words.noTarget, "no-target");
       }
       ({ observation, snapshot } = checked);
@@ -1065,7 +1150,12 @@ export class GuidedWebsiteWorkflow {
       task = this.runtime.get(this.taskId);
     }
     await this.requireAuthority();
+    if (this.answerGone(offer)) {
+      this.offer = null;
+      return this.refresh();
+    }
     this.offer = null;
+    if (offer.answer !== null) this.acknowledged.delete(offer.answer);
     const id = `${kind === "offer-fill" ? GUIDED_FILL : PLANNED_ACTION}${operationId}`;
     const result = await this.runtime.execute(task.id, task.revision, {
       id,

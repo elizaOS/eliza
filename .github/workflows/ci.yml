@@ -69,6 +69,25 @@ jobs:
         run: bun run verify
       - name: Formatting
         run: bun run format:check
+      - name: Setup Java for TLC
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: TLA+ models of core protocols
+        run: bun run --cwd packages/core test:tla
+      - name: Exhaustive cloud protocol models
+        if: needs.preflight.outputs.cloud == 'true'
+        timeout-minutes: 15
+        run: bun run verify:cloud:formal
+      - name: Upload cloud protocol verification
+        if: always() && needs.preflight.outputs.cloud == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cloud-protocol-verification
+          path: test-results/cloud-formal
+          retention-days: 14
+          if-no-files-found: warn
       - name: Prompt secret scan
         run: node packages/scripts/check-prompt-secrets.ts
       - name: Validate CI Bun version pin contract

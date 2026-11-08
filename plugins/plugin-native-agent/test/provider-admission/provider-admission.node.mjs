@@ -65,19 +65,19 @@ test("native provider admission preserves account, expiry, generation and rollba
         ),
         fileURLToPath(
           new URL(
-            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+            "../../../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
             import.meta.url,
           ),
         ),
         fileURLToPath(
           new URL(
-            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialSlotMutation.java",
+            "../../../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialSlotMutation.java",
             import.meta.url,
           ),
         ),
         fileURLToPath(
           new URL(
-            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialMutationConductor.java",
+            "../../../plugin-native-secure-store/android-nativeonly/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialMutationConductor.java",
             import.meta.url,
           ),
         ),

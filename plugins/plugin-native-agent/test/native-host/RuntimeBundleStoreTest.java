@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.util.*;
 
@@ -56,6 +57,114 @@ public final class RuntimeBundleStoreTest {
       name -> "inventory".equals(name) ? new ByteArrayInputStream(inventory) : source(assets).open(name),
       root.resolve("native"), SYNC, "eliza-runtime-v1");
   }
+  private static final List<String> seen = new ArrayList<>();
+  private static ai.eliza.plugins.agent.runtime.RuntimeBundleStore.Prepared last;
+  private static List<String> launch(Path root, Map<String, byte[]> assets, long now) throws Exception {
+    seen.clear();
+    last = RuntimeBundleStore.prepareSealed(root.resolve("versions"), manifest(assets), source(assets), root.resolve("native"), new RuntimeBundleStore.Durability() {
+      public void syncDirectory(Path path) throws IOException { SYNC.syncDirectory(path); }
+      public long now() { return now; }
+    }, seen::add, "eliza-runtime-v1");
+    return new ArrayList<>(seen);
+  }
+  private static boolean hashed(List<String> seen) { return seen.contains("release-verified") && !seen.contains("release-sealed") && !last.deferred; }
+  private static List<String> files(Path directory) throws IOException {
+    List<String> names = new ArrayList<>();
+    try (var walk = Files.walk(directory)) { walk.filter(Files::isRegularFile).forEach(file -> names.add(directory.relativize(file).toString())); }
+    Collections.sort(names); return names;
+  }
+  /** A launch defers hashing only while every file keeps the metadata sealed after its last full hash. */
+  private static void sealedRelease(Path suite, Map<String, byte[]> next) throws Exception {
+    Path root = Files.createDirectory(suite.resolve("sealed")); libraries(root);
+    long day = 24L * 60 * 60 * 1000, t = 1_000_000_000L;
+    String identity = hash(manifest(next));
+    Path versions = root.resolve("versions"), release = versions.resolve(identity), bundle = release.resolve("bundle"), seal = versions.resolve(".seals").resolve(identity);
+    check(launch(root, next, t).contains("published") && !last.deferred && last.sealed, "First launch extracts and hashes");
+    check(Files.isRegularFile(seal), "Verified extraction writes a seal");
+    check(launch(root, next, t + 1).equals(List.of("release-sealed")) && last.deferred, "Unchanged release defers the hash");
+    last.verify();
+    check(seen.contains("deferred-verified"), "Deferred verify hashes the release");
+
+    // Older stores accept only the inventory files and .complete inside a release.
+    List<String> expected = new ArrayList<>(List.of(".complete")); for (String name : next.keySet()) expected.add("bundle/" + name);
+    Collections.sort(expected);
+    check(files(release).equals(expected), "The seal lives outside the release");
+    check(prepare(root, next).equals(bundle.toRealPath()), "Strict prepare accepts a sealed release");
+    check(launch(root, next, t + 1).equals(List.of("release-sealed")), "Strict prepare leaves the seal valid");
+
+    Files.setLastModifiedTime(bundle.resolve("agent-bundle.js"), FileTime.fromMillis(t));
+    check(hashed(launch(root, next, t + 2)), "Changed mtime forces a full hash");
+    check(launch(root, next, t + 3).equals(List.of("release-sealed")), "A passing full hash renews the seal");
+
+    Files.delete(seal);
+    check(hashed(launch(root, next, t + 4)), "Missing seal forces a full hash");
+    Files.writeString(seal, "eliza-runtime-seal-v1\nforged\n");
+    check(hashed(launch(root, next, t + 5)), "Malformed seal forces a full hash");
+    check(hashed(launch(root, next, t + 5 + day + 1)), "An old seal forces a full hash");
+    check(hashed(launch(root, next, t)), "A seal from the future forces a full hash");
+    if (!"root".equals(System.getProperty("user.name"))) {
+      Files.setPosixFilePermissions(seal, Set.of());
+      check(hashed(launch(root, next, t + 6)) && last.sealed, "Unreadable seal forces a full hash and is replaced");
+    }
+
+    // A seal that cannot be written never fails a launch that passed its hash.
+    Files.delete(seal); Files.createDirectories(seal.resolve("block"));
+    check(hashed(launch(root, next, t + 7)) && !last.sealed && seen.contains("seal-unavailable"), "Unwritable seal still launches");
+    check(hashed(launch(root, next, t + 8)), "Without a seal the next launch hashes");
+    Files.delete(seal.resolve("block")); Files.delete(seal);
+    check(hashed(launch(root, next, t + 9)) && last.sealed, "A writable seal path seals again");
+
+    // Same size and restored mtime still change ctime, so tampering is hashed and refused.
+    Path file = bundle.resolve("gateway/bootstrap.mjs");
+    FileTime mtime = Files.getLastModifiedTime(file);
+    byte[] original = Files.readAllBytes(file), forged = original.clone(); forged[0] ^= 1;
+    Thread.sleep(5); Files.write(file, forged); Files.setLastModifiedTime(file, mtime);
+    rejects(() -> launch(root, next, t + 10));
+    Files.write(file, original);
+    check(hashed(launch(root, next, t + 11)), "Restored release hashes before it is sealed again");
+    Files.writeString(file, "longer tampered content");
+    rejects(() -> launch(root, next, t + 12));
+    Files.write(file, original); launch(root, next, t + 13);
+
+    // A same-uid writer can forge the seal over tampered bytes; the deferred hash catches it.
+    Thread.sleep(5); Files.write(file, forged);
+    forgeSeal(root, next, t + 14);
+    check(launch(root, next, t + 15).equals(List.of("release-sealed")), "A forged seal defers the hash");
+    ai.eliza.plugins.agent.runtime.RuntimeBundleStore.Prepared forgedLaunch = last;
+    rejects(forgedLaunch::verify);
+    check(!Files.exists(seal), "A failed deferred hash drops the seal");
+    rejects(() -> launch(root, next, t + 16));
+    Files.write(file, original);
+    check(hashed(launch(root, next, t + 17)), "Restored release hashes again");
+
+    Path library = root.resolve("native/libeliza_bun.so");
+    byte[] libraryBytes = Files.readAllBytes(library), wrong = libraryBytes.clone(); wrong[0] ^= 1;
+    Thread.sleep(5); Files.write(library, wrong);
+    rejects(() -> launch(root, next, t + 18));
+    Files.write(library, libraryBytes);
+    check(hashed(launch(root, next, t + 19)), "Replaced native library forces a full hash");
+
+    // A pruned release loses its seal on the next seal write.
+    String stale = "0".repeat(64); Files.writeString(versions.resolve(".seals").resolve(stale), "stale");
+    Files.delete(seal); launch(root, next, t + 20);
+    check(!Files.exists(versions.resolve(".seals").resolve(stale)), "Seals of removed releases are dropped");
+  }
+  /** Writes a seal the way any same-uid process could, from public metadata. */
+  private static void forgeSeal(Path root, Map<String, byte[]> assets, long now) throws Exception {
+    Path versions = root.resolve("versions"); String identity = hash(manifest(assets));
+    Path release = versions.resolve(identity);
+    List<String[]> files = new ArrayList<>(); files.add(new String[]{".complete", release.resolve(".complete").toString()});
+    for (String name : assets.keySet()) files.add(new String[]{"bundle/" + name, release.resolve("bundle/" + name).toString()});
+    for (String name : new String[]{"libeliza_bun.so", "libeliza_ld_musl_aarch64.so"}) files.add(new String[]{name, root.resolve("native").resolve(name).toString()});
+    StringBuilder stamps = new StringBuilder();
+    for (String[] entry : files) {
+      Map<String, Object> values = Files.readAttributes(Path.of(entry[1]), "unix:size,lastModifiedTime,ctime,ino,dev,mode,uid,nlink", LinkOption.NOFOLLOW_LINKS);
+      stamps.append(entry[0]);
+      for (String key : new String[]{"size", "lastModifiedTime", "ctime", "ino", "dev", "mode", "uid", "nlink"}) stamps.append('\t').append(values.get(key));
+      stamps.append('\n');
+    }
+    Files.writeString(versions.resolve(".seals").resolve(identity), "eliza-runtime-seal-v1\n" + identity + "\n" + now + "\n" + hash(stamps.toString().getBytes(StandardCharsets.UTF_8)) + "\n");
+  }
   public static void main(String[] args) throws Exception {
     if (args.length == 3 && args[0].equals("crash")) {
       Path root = Path.of(args[1]); Map<String, byte[]> next = assets("new", false);
@@ -81,6 +190,9 @@ public final class RuntimeBundleStoreTest {
     rejects(() -> prepare(normal, next)); Files.delete(newBundle.resolve("extra.js"));
     Files.writeString(newBundle.resolve("agent-bundle.js"), "tampered"); rejects(() -> prepare(normal, next));
     check(Files.readString(oldBundle.resolve("agent-bundle.js")).startsWith("old"), "Corruption must not alter old release");
+
+    check(!Files.exists(normal.resolve("versions/.seals")), "Strict prepare never writes seals");
+    sealedRelease(suite, next);
 
     for (String boundary : new String[]{"staging-created", "file-chunk", "file-synced", "before-marker", "before-publish", "published"}) {
       Path root = Files.createDirectory(suite.resolve(boundary)); libraries(root); Path prior = prepare(root, old);
