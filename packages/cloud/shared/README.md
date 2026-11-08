@@ -398,3 +398,11 @@ deletion retains unconfirmed signed sweeps until their original receipt is
 recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
+
+Vertex job refresh requires migration 0562. It orders complete provider observations
+by exact nanosecond update time and publishes successful model ownership atomically.
+Payload generations are immutable; incomplete stored payloads fail explicitly.
+The local terminal marker and optional provider end time remain separate. Existing
+provider creation and assignment authorization remain separate protocols.
+Coordinate all deployed Vertex writers before relying on the new observation
+authority; the migration does not fence an old deployed writer.
