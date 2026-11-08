@@ -2428,8 +2428,12 @@ public class ElizaAgentService extends Service {
             }
             retireRuntimeRequests();
             clearTerminalStatus();
-            currentStatus = restartFirst ? "restarting" : "starting";
-            updateNotification();
+            // A redelivered start keeps a probe-proven detached agent "running";
+            // the worker re-checks its socket and adopts it without a new probe.
+            if (restartFirst || !detachedAgentMode || !"running".equals(currentStatus)) {
+                currentStatus = restartFirst ? "restarting" : "starting";
+                updateNotification();
+            }
             final java.util.concurrent.CompletableFuture<Void> previousLifecycle, lifecycle =
                 new java.util.concurrent.CompletableFuture<>();
             synchronized (ElizaAgentService.class) {
@@ -2567,6 +2571,10 @@ public class ElizaAgentService extends Service {
                         childStart != null && isAgentChildProcessAlive(childStart.childPid))) {
                     detachedAgentMode = true;
                     detachedLaunchStartedAtMs = launchStartedAt;
+                    if (!"starting".equals(currentStatus)) {
+                        currentStatus = "starting";
+                        updateNotification();
+                    }
                     Map<String, String> details = new LinkedHashMap<>();
                     details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
                     details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
@@ -3632,7 +3640,8 @@ public class ElizaAgentService extends Service {
     /**
      * The stored random passphrase when one exists; else the legacy
      * ANDROID_ID-derived one for a vault created before it; else a new random
-     * passphrase, stored before use. Null only when neither can be produced.
+     * passphrase, stored before use. Null when none can be produced, or when
+     * a stored one cannot be read.
      */
     private String resolveVaultPassphrase(File stateDir) {
         String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
@@ -3645,9 +3654,12 @@ public class ElizaAgentService extends Service {
             if (vaultExists && legacyAvailable) return "elizaos-android-vault-" + androidId;
             return AgentSecureStore.createVaultPassphrase(this);
         } catch (Exception error) {
-            // error-policy:J1 Keystore unavailable: keep an existing vault openable.
+            // error-policy:J1 Keystore unavailable: keep a legacy vault openable. A
+            // stored random passphrase must never be swapped for the legacy one,
+            // which would open or create a vault under the wrong key.
             Log.e(TAG, "Vault passphrase store unavailable: " + error.getClass().getSimpleName());
             appendDiagnosticEvent("vault-passphrase-unavailable", null);
+            if (AgentSecureStore.hasVaultPassphrase(this)) return null;
             return legacyAvailable ? "elizaos-android-vault-" + androidId : null;
         }
     }

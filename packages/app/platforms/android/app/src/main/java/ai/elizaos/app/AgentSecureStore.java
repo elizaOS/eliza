@@ -130,6 +130,12 @@ final class AgentSecureStore implements AutoCloseable {
         return hex.toString();
     }
 
+    /** True when a random passphrase was stored, even if it cannot be read right now. */
+    static boolean hasVaultPassphrase(Context context) {
+        File directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
+        return new AtomicFile(new File(directory, VAULT_PASSPHRASE_FILE)).getBaseFile().exists();
+    }
+
     private static AtomicFile vaultPassphraseFile(Context context) throws IOException {
         File directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create secure storage");
