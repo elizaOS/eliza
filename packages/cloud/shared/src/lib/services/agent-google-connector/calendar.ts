@@ -85,15 +85,8 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
 
-function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "shortOffset",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
+function getTimeZoneOffsetMinutes(date: Date, formatter: Intl.DateTimeFormat): number {
+  const parts = formatter.formatToParts(date);
   const token = parts.find((part) => part.type === "timeZoneName")?.value?.trim() ?? "GMT";
   if (token === "GMT" || token === "UTC") {
     return 0;
@@ -129,9 +122,17 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
   if (!Number.isFinite(baseUtcMs)) {
     throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
   }
+  const offsetFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
-      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
+      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), offsetFormatter),
     ),
   );
   const candidates = [...offsets]
