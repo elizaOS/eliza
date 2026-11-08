@@ -28,7 +28,7 @@ assert.deepEqual(
 );
 assert.equal(
   checks.reduce((count, check) => count + check.required.length, 0),
-  41,
+  47,
 );
 process.argv[2] = model;
 // Reuse the checked child deadline, signal forwarding, JUnit parser and exact

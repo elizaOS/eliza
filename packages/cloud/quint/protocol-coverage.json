@@ -375,7 +375,7 @@
       "Abstract states: received, processing, applied, ignored, failed, quarantined",
       "A current receipt lease is required for application or retry release.",
       "Receipt and subscription projection commit together.",
-      "Terminal-event receipt ownership and transactional publication now have a bounded model and strict41-case PGlite conformance. Invoice funding, app receipts and administrative recovery remain separate gaps."
+      "Terminal-event receipt ownership and transactional publication now have a bounded model and strict47-case PGlite conformance (41 receipt/publication checks plus six command regressions). Invoice funding, app receipts and administrative recovery remain separate gaps."
     ]
   },
   {
@@ -1835,7 +1835,7 @@
       "PGlite checks are real database regressions but do not establish the full PostgreSQL lock graph.",
       "The model includes received/processing/applied/ignored transitions used by live platform handlers. Failed/quarantined administrative primitives require a separate model.",
       "No fairness or temporal progress is assumed. Stuttering and indefinite provider/database failure are allowed; bounded safety does not establish eventual receipt delivery, eventual application or a real-time completion bound.",
-      "The 41-case conformance hook checks real PGlite repository transactions including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof.",
+      "The 47-case conformance hook retains 41 receipt/publication checks and six command regressions, including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof.",
       "The commit action abstracts the final lease-guarded SQL write and successful atomic transaction under row locks. appliedAt is that decision clock, not a bound on COMMIT or HTTP acknowledgement time; storage and transport may finish later."
     ]
   }

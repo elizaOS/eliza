@@ -31,7 +31,7 @@
       "source_and_projection_revisions": "1..3"
     },
     "progress": "No fairness, liveness or real-time bound is claimed.",
-    "conformance": "All41 named PGlite cases must execute and pass without skips."
+    "conformance": "All47 named PGlite cases must execute and pass without skips."
   },
   "limitations": [
     "Provider payload validation and complete matching reconciliation evidence are abstractions, not proofs of provider authenticity or all field-level validators.",
@@ -41,7 +41,7 @@
     "PGlite checks are real database regressions but do not establish the full PostgreSQL lock graph.",
     "The model includes received/processing/applied/ignored transitions used by live platform handlers. Failed/quarantined administrative primitives require a separate model.",
     "No fairness or temporal progress is assumed. Stuttering and indefinite provider/database failure are allowed; bounded safety does not establish eventual receipt delivery, eventual application or a real-time completion bound.",
-    "The 41-case conformance hook checks real PGlite repository transactions including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof."
+    "The 47-case conformance hook retains 41 receipt/publication checks and six command regressions, including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof."
   ],
   "cases": [
     {
