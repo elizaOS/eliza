@@ -23,12 +23,13 @@ const result = spawnSync(
   process.execPath,
   [
     path.join(root, "packages/scripts/run-with-deadline.ts"),
-    "120000",
+    "180000",
     "--",
     process.execPath,
     "--test",
     "--test-reporter=tap",
     path.join(root, "packages/scripts/check-quint.node.test.ts"),
+    path.join(root, "packages/scripts/quint-cancellation.node.test.ts"),
   ],
   { cwd: root, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
 );
@@ -44,8 +45,20 @@ if (
   !/^ok \d+ - child cancellation stops later cases and remains visible in evidence$/m.test(
     output,
   ) ||
-  !/^# tests 21$/m.test(output) ||
-  !/^# pass 21$/m.test(output) ||
+  !/^ok \d+ - nested CLI cancellation reaps signal-ignoring checker descendants$/m.test(
+    output,
+  ) ||
+  !/^ok \d+ - nested CLI cancellation reaps descendants spawned after cancellation$/m.test(
+    output,
+  ) ||
+  !/^ok \d+ - TLC state and action properties retain their checked outcomes$/m.test(
+    output,
+  ) ||
+  !/^ok \d+ - a failed implementation check leaves an incomplete model receipt$/m.test(
+    output,
+  ) ||
+  !/^# tests 25$/m.test(output) ||
+  !/^# pass 25$/m.test(output) ||
   !/^# fail 0$/m.test(output) ||
   !/^# skipped 0$/m.test(output) ||
   !/^# cancelled 0$/m.test(output)

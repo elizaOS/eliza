@@ -192,7 +192,7 @@ test("arbitrary failures cannot satisfy expected temporal counterexamples", () =
   assert.equal(
     classifyTemporalOutcome(
       0,
-      "Starting model checking, but no completed result",
+      "Model checking completed. No error has been found.",
     ),
     "checker-error",
   );
@@ -232,7 +232,6 @@ test("the shared runner records positive liveness and expected unfair schedules 
       temporal UnfairProgress = eventually(state == 1)
       temporal FairProgress = advance.weakFair(state) implies eventually(state == 1)
       temporal FairSinks = advance.weakFair(state) implies eventually(always(state == 1))
-      temporal StableOnceReached = always((state == 1 implies next(state) == 1).orKeep(state))
     }`,
     [`${example}.cases.json`]: JSON.stringify({
       sources: [stateSource],
@@ -260,18 +259,6 @@ test("the shared runner records positive liveness and expected unfair schedules 
             },
           ],
         },
-        {
-          ...modelCase,
-          name: "transition-safety",
-          temporal: ["StableOnceReached"],
-          temporalChecks: [
-            {
-              property: "StableOnceReached",
-              expect: "holds",
-              assumptions: ["No scheduler fairness"],
-            },
-          ],
-        },
       ],
     }),
   });
@@ -290,17 +277,12 @@ test("the shared runner records positive liveness and expected unfair schedules 
       (item: { observedTemporalOutcome: string }) =>
         item.observedTemporalOutcome,
     ),
-    ["holds", "counterexample", "holds"],
+    ["holds", "counterexample"],
   );
   assert.deepEqual(temporal[0].temporalProperties, [
     "FairProgress",
     "FairSinks",
   ]);
-  assert.deepEqual(temporal[2].temporalProperties, ["StableOnceReached"]);
-  assert.doesNotMatch(
-    readFileSync(path.join(output, temporal[2].log), "utf8"),
-    /Checking (?:\d+ branches of )?temporal properties/,
-  );
   assert(
     temporal.every(
       (item: { matchedExpectation: boolean; temporalAssumptions: string[] }) =>
@@ -311,6 +293,81 @@ test("the shared runner records positive liveness and expected unfair schedules 
     new Set(report.results.map((item: { log: string }) => item.log)).size,
     report.results.length,
   );
+});
+
+test("TLC state and action properties retain their checked outcomes", async () => {
+  const directory = fixture({
+    ...checkedFiles,
+    "packages/scripts/quint/tlc.json":
+      '{"maxHeap":"-Xmx512M","stackSize":"-Xss8m","workers":2}',
+    [`${example}.qnt`]: `module Example {
+      var state: int
+      action init = state' = 0
+      action step = state' = 1
+      val Safe = state == 0 or state == 1
+      temporal StateProperty = always(state == 0 or state == 1)
+      temporal ActionProperty = always((next(state) >= state).orKeep(state))
+      temporal ViolatedProperty = always(state == 0)
+    }`,
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource],
+      cases: [
+        {
+          ...modelCase,
+          name: "state-and-action-properties",
+          temporal: ["StateProperty", "ActionProperty"],
+          temporalChecks: ["StateProperty", "ActionProperty"].map(
+            (property) => ({
+              property,
+              expect: "holds",
+              assumptions: [
+                "No fairness is required for these safety properties",
+              ],
+            }),
+          ),
+        },
+        {
+          ...modelCase,
+          name: "violated-state-property",
+          temporal: ["ViolatedProperty"],
+          temporalChecks: [
+            {
+              property: "ViolatedProperty",
+              expect: "holds",
+              assumptions: [
+                "Intentionally false safety property exercises the checker result",
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(main([], directory, output), /Quint checks failed/);
+  const report = JSON.parse(
+    readFileSync(path.join(output, "verification.json"), "utf8"),
+  );
+  const positive = report.results.find(
+    (item: { key: string; command: string[] }) =>
+      item.key.endsWith("#state-and-action-properties") &&
+      item.command[0] === "verify",
+  );
+  const negative = report.results.find(
+    (item: { key: string; command: string[] }) =>
+      item.key.endsWith("#violated-state-property") &&
+      item.command[0] === "verify",
+  );
+  assert.equal(positive.exitCode, 0);
+  assert.equal(positive.matchedExpectation, true);
+  assert.equal(positive.observedTemporalOutcome, "holds");
+  const log = readFileSync(path.join(output, positive.log), "utf8");
+  assert.doesNotMatch(log, /Checking (?:\d+ branches of )?temporal properties/);
+  assert.match(log, /Model checking completed\. No error has been found\./);
+  assert.notEqual(negative.exitCode, 0);
+  assert.equal(negative.matchedExpectation, false);
+  assert.equal(negative.observedTemporalOutcome, "checker-error");
+  assert.equal(report.completed, false);
 });
 
 test("a missing temporal definition fails the shared runner rather than becoming a negative success", async () => {
@@ -342,31 +399,6 @@ test("a missing temporal definition fails the shared runner rather than becoming
   );
   assert.equal(report.completed, false);
   assert.equal(report.results.at(-1).observedTemporalOutcome, "checker-error");
-});
-
-test("an implementation conformance failure fails the shared run", async () => {
-  const conformance = "packages/example/quint/check.mjs";
-  const directory = fixture({
-    ...checkedFiles,
-    [conformance]: "process.exitCode = 17;\n",
-    [`${example}.cases.json`]: JSON.stringify({
-      sources: [stateSource, conformance],
-      cases: [modelCase],
-      conformance,
-    }),
-  });
-  const output = path.join(directory, "test-results/quint");
-  await assert.rejects(
-    main(["--simulate"], directory, output),
-    /Quint checks failed/,
-  );
-  const report = JSON.parse(
-    readFileSync(path.join(output, "simulation.json"), "utf8"),
-  );
-  assert.equal(report.completed, false);
-  assert.equal(report.results.at(-1).command[0], "conformance");
-  assert.equal(report.results.at(-1).exitCode, 17);
-  assert.equal(report.results.at(-1).matchedExpectation, false);
 });
 
 const coveredEntry = {
@@ -559,6 +591,31 @@ test("the normal simulation entry point records one unchanged snapshot", async (
       simulationReceipt,
     );
   }
+});
+
+test("a failed implementation check leaves an incomplete model receipt", async () => {
+  const conformance = "packages/example/quint/conformance.mjs";
+  const directory = fixture({
+    ...checkedFiles,
+    [conformance]: "process.exitCode = 17;\n",
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource],
+      conformance,
+      cases: [modelCase],
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(
+    main(["--simulate"], directory, output),
+    /Quint checks failed/,
+  );
+  const report = JSON.parse(
+    readFileSync(path.join(output, "simulation.json"), "utf8"),
+  );
+  assert.equal(report.completed, false);
+  assert.equal(report.results.at(-1).command[0], "conformance");
+  assert.equal(report.results.at(-1).exitCode, 17);
+  assert.equal(report.results.at(-1).matchedExpectation, false);
 });
 
 test("the normal entry point rejects an unlisted dependency changed during conformance", async () => {

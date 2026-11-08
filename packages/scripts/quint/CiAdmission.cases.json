@@ -1,0 +1,41 @@
+{
+  "sources": [
+    ".github/workflows/pr-validation.yml",
+    ".github/rulesets/required-branches.json"
+  ],
+  "conformance": "packages/scripts/quint/check-ci-admission.mjs",
+  "bounds": {
+    "domain": "Seven mandatory PR lanes. Each settles once to success, failure, cancellation or skipped. One aggregate evaluation follows all terminal results.",
+    "assumptions": "GitHub dependency scheduling prevents the aggregate from running before all needs settle. The hook reads the actual YAML dependency/result lists and executes the actual shell gate for all 29 one-fault outcomes.",
+    "limitations": "The model does not prove GitHub service availability, job contents, branch-rule deployment, administrator bypass policy, or arbitrary changes to the set of mandatory lanes. Workflow cancellation that stops the aggregate itself remains a non-success outcome."
+  },
+  "cases": [
+    {
+      "name": "required-pr-lanes",
+      "main": "CiAdmission",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["ConditionalCompletion", "UnfairCompletion"],
+      "temporalChecks": [
+        {
+          "property": "ConditionalCompletion",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness settles every running mandatory lane and evaluates the enabled aggregate. No particular successful outcome is assumed."
+          ]
+        },
+        {
+          "property": "UnfairCompletion",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness or service availability is assumed. A permanently running lane can prevent the aggregate from completing."
+          ]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}
