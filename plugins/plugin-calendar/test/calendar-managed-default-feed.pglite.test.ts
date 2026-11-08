@@ -238,6 +238,63 @@ afterAll(async () => {
 describe("managed owner calendars in the aggregate feed", {
   timeout: 30_000,
 }, () => {
+  it("starts managed discovery while standard Google discovery is pending", async () => {
+    let releaseStandard!: () => void;
+    const standard = new Promise<void>((resolve) => {
+      releaseStandard = resolve;
+    });
+    standardGoogleAccounts.mockImplementationOnce(async () => {
+      await standard;
+      return [];
+    });
+    const managedStarted = vi.fn();
+    const calendar = service((input) => {
+      if (input.operation === "sources") managedStarted();
+      return broker(input);
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedStarted).toHaveBeenCalledTimes(1));
+      expect(feedReads).toEqual([]);
+    } finally {
+      releaseStandard();
+      await pending;
+    }
+    expect(standardGoogleAccounts).toHaveBeenCalledTimes(1);
+    expect(feedReads.sort()).toEqual([
+      "owner@example.test",
+      "team@group.calendar.google.com",
+    ]);
+  });
+
+  it("cancels a pending managed catalog if standard Google discovery fails", async () => {
+    let rejectStandard!: (error: Error) => void;
+    const standard = new Promise<never[]>((_resolve, reject) => {
+      rejectStandard = reject;
+    });
+    standardGoogleAccounts.mockImplementationOnce(() => standard);
+    const error = new Error("Synthetic standard discovery failure");
+    let managedSignal: AbortSignal | undefined;
+    const calendar = service((input, signal) => {
+      if (input.operation !== "sources") return broker(input);
+      managedSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const pending = calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    try {
+      await vi.waitFor(() => expect(managedSignal).toBeDefined());
+    } finally {
+      rejectStandard(error);
+      await expect(pending).rejects.toBe(error);
+    }
+    expect(managedSignal?.aborted).toBe(true);
+    expect(feedReads).toEqual([]);
+  });
+
   it("reads an exact managed grant without looking up standard Google accounts", async () => {
     const calendar = service();
     const feed = await calendar.getCalendarFeed(INTERNAL_URL, {
