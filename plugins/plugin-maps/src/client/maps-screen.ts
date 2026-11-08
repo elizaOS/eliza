@@ -1095,7 +1095,10 @@ export class MapsScreenController {
         this.directions = true;
         this.message =
           "Your agent asked for directions. Use current location or enter an origin to plan the route, then tap Start.";
-        return this.showAgentPlace(place, resolveDetails);
+        const shown = this.showAgentPlace(place, resolveDetails);
+        // The agent's place owns this sheet, so reopening Directions keeps its origin.
+        this.directionsFor = this.selected;
+        return shown;
       },
       locationGranted: () => this.host.locationGranted(),
       locate: async (signal, accept) => {
@@ -1510,6 +1513,7 @@ export class MapsScreenController {
         this.navStep = 0;
         this.navRouteId = next.route.value.id;
         this.resetStepping();
+        if (next.origin) this.originText = coordLabel(next.origin);
         this.host.voice.pause();
         this.message = "New route ready.";
       } else if (next.rerouteError) {
@@ -1748,7 +1752,6 @@ export class MapsScreenController {
     this.rerouting = true;
     this.offRoute = false;
     this.host.voice.pause();
-    this.originText = coordLabel(from);
     this.message = "Planning a new route from here…";
     const pending = this.ensure().replan(from);
     this.invalidate();

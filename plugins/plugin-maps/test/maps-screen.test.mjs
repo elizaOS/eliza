@@ -813,6 +813,10 @@ test("the agent surface shows directions and plans only from an explicit device 
     null,
     "only the user's Start begins guidance",
   );
+  // The agent's place keeps its origin when the user reopens Directions.
+  f.screen.back();
+  f.screen.openDirections();
+  assert.equal(f.screen.view().directions?.routeReady, true);
   const denied = fixture({ granted: false });
   await assert.rejects(
     denied.screen
@@ -945,6 +949,28 @@ test("a failed reroute keeps guiding on the current route and leaves Reroute ava
   assert.notEqual(surface.guidance()?.routeId, previous);
   assert.equal(surface.snapshot().rerouteError, null);
   assert.equal(f.screen.view().status.text, "New route ready.");
+});
+
+test("the origin field names the route's start only once a reroute succeeds", async () => {
+  const options = {};
+  const f = fixture(options);
+  await planned(f);
+  f.screen.start();
+  await settle();
+  f.emit(f.fix());
+  options.routeError = new MapsFailure(
+    "timeout",
+    "The route request timed out.",
+  );
+  f.screen.reroute();
+  await settle();
+  f.screen.back();
+  f.screen.openDirections();
+  assert.equal(
+    f.screen.view().directions?.originText,
+    `${ORIGIN.latitude}, ${ORIGIN.longitude}`,
+  );
+  assert.equal(f.screen.view().directions?.routeReady, true);
 });
 
 test("navigation fixes keep the agent's context revision; a new route changes it", async () => {

@@ -86,7 +86,7 @@ export function guidanceView(
   const band: "far" | "near" =
     next && next.distanceMeters > NEAR_METERS[mode] ? "far" : "near";
   // Arrival is announced once, without a distance; under 10 m a distance adds nothing.
-  const arriving = !!next && (next.step.maneuver === "arrive" || !then);
+  const arriving = next?.step.maneuver === "arrive";
   const spoken = !next
     ? ""
     : arriving || next.distanceMeters < 10

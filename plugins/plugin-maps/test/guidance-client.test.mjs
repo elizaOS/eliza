@@ -90,6 +90,14 @@ test("each step is announced early with its distance and again near the maneuver
   assert.deepEqual(said(30, "transit"), ["2:near", "In 30 m, Turn right"]);
   // At the maneuver the distance adds nothing.
   assert.deepEqual(said(4, "drive"), ["2:near", "Turn right"]);
+  // A last maneuver that is not the arrival still gets both prompts.
+  const last = (distanceMeters) => {
+    const { then: _then, ...rest } = at(distanceMeters);
+    const view = guidanceView(rest, undefined, "drive");
+    return [view.spokenKey, view.spoken];
+  };
+  assert.deepEqual(last(900), ["2:far", "In 900 m, Turn right"]);
+  assert.deepEqual(last(150), ["2:near", "In 150 m, Turn right"]);
 });
 
 test("the upcoming maneuver stays fixed until the device has come near it", async () => {
