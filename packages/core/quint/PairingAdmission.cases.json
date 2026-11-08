@@ -30,11 +30,19 @@
         "SingleAdmission",
         "AdmissionUsesBoundedRead"
       ],
-      "temporal": [
-        "QueueProgress"
-      ],
+      "temporal": ["QueueProgress"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "QueueProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PairingAdmission: QueueProgress = (step.weakFair(s) and read.weakFair(s) and write(true).weakFair(s) and reject.weakFair(s)).implies( (s.phase != \"idle\").leadsTo(s.phase == \"idle\"))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "approval-recovery",
@@ -46,11 +54,19 @@
         "SuccessfulApprovalHasGrant",
         "FailedWriteRetainsCode"
       ],
-      "temporal": [
-        "SuccessfulRetryProgress"
-      ],
+      "temporal": ["SuccessfulRetryProgress"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "SuccessfulRetryProgress",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in PairingApprovalRecovery: SuccessfulRetryProgress = (begin.weakFair(s) and grant(true).strongFair(s) and consume(true).strongFair(s)).implies((s.request).leadsTo(not(s.request)))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "reply-retention",

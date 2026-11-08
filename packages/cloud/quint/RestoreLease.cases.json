@@ -19,7 +19,17 @@
       ],
       "temporal": ["NoReopen"],
       "maxSteps": 60,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "NoReopen",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in RestoreLease: NoReopen = always((s.released.subseteq(next(s.released))).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ],
   "limitations": [

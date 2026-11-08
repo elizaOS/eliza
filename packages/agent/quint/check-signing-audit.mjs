@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const model = process.argv[2];
@@ -51,18 +52,26 @@ assert.equal(
   0,
   `Real signing/audit integration failed. See ${directory}/tests.log`,
 );
-const report = JSON.parse(await readFile(resultPath, "utf8"));
-assert.equal(report.success, true);
-assert.equal(report.numFailedTests, 0);
-assert.equal(report.numPendingTests, 0);
-assert.equal(report.testResults.length, 1);
-const file = report.testResults[0];
-assert.equal(path.resolve(file.name), path.join(root, testFile));
-assert(file.assertionResults.length > 0, "Conformance suite executed no cases");
-assert(file.assertionResults.every((test) => test.status === "passed"));
+const requiredTests = [
+  "holds entries until a durable sink commits them and keeps them across restart",
+  "rejects sink attachment and every queued record when storage is unavailable",
+  "rejects a record when durable storage cannot commit it (sink required: true)",
+  "rejects a record when durable storage cannot commit it (sink required: false)",
+  "accepts a durable fallback after an optional storage sink fails",
+  "keeps a pending signature bound to its admitted transaction despite caller or listing mutation",
+  "revokes pending approvals when a signing policy changes",
+  "rejects admission overtaken by a policy change while its durable audit is waiting",
+  "retains recorded audit facts when callers and observers mutate snapshots",
+];
+const tests = requireVitestConformance(
+  JSON.parse(await readFile(resultPath, "utf8")),
+  path.join(root, testFile),
+  requiredTests,
+);
 const inputs = [
   model,
   testFile,
+  "packages/scripts/lib/vitest-conformance.ts",
   "packages/agent/src/security/audit-log.ts",
   "packages/agent/src/services/remote-signing-service.ts",
   "packages/agent/src/services/signing-policy.ts",
@@ -76,10 +85,8 @@ for (const input of inputs) {
 const evidence = {
   model,
   inputs: hashes,
-  tests: file.assertionResults.map((test) => ({
-    name: test.fullName,
-    status: test.status,
-  })),
+  tests,
+  report: resultPath,
   limitations:
     "Scenario conformance through actual file-backed SQLite and ethers signatures. Does not prove every abstract interleaving or external signer failure semantics.",
 };
@@ -88,6 +95,6 @@ await writeFile(
   `${JSON.stringify(evidence, null, 2)}\n`,
 );
 console.log(
-  `Signing/audit scenario conformance passed ${file.assertionResults.length} real SQLite/ethers tests.`,
+  `Signing/audit scenario conformance passed ${tests.length} real SQLite/ethers tests.`,
 );
 console.log(`Evidence: ${path.join(directory, "evidence.json")}`);

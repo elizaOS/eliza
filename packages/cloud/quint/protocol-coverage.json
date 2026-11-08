@@ -1375,5 +1375,22 @@
       "Fair repeated revocation calls and eventual row-lock release drain the bounded backlog. Call scheduling and lock recovery are assumptions, not implementation proofs.",
       "The PGlite suite exercises canonical migrations and repository transitions. The PostgreSQL test validates a skipped claimed-row lock and the repeated cleanup call."
     ]
+  },
+  {
+    "id": "shutdown-liveness",
+    "model": "packages/cloud/quint/shutdown_liveness.qnt",
+    "sources": [
+      "packages/cloud/services/agent-server/src/agent-shutdown.ts",
+      "packages/cloud/services/agent-server/src/agent-lifecycle.ts",
+      "packages/cloud/services/agent-server/src/index.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Imports the unchanged finite shutdown_sequence transition system: three phases and a logical deadline of two ticks.",
+      "Fairness assumptions are explicit in each property. No eventual provider acknowledgement or success is assumed.",
+      "A responsive event loop and returning synchronous callbacks justify timer fairness only conditionally; these environmental facts are not proved.",
+      "Eventual abstract completion does not prove a 55-second wall-clock deadline, physical teardown, or implementation refinement."
+    ]
   }
 ]

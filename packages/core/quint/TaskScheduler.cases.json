@@ -12,11 +12,7 @@
         "AttachedTickCurrent",
         "TakenClearsDirty"
       ],
-      "temporal": [
-        "DirtyServed",
-        "TickSettles",
-        "DeadlockFree"
-      ],
+      "temporal": ["DirtyServed", "TickSettles", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
@@ -30,9 +26,7 @@
           "QueryCanFail = FALSE",
           "None = None"
         ],
-        "specification": [
-          "Spec"
-        ],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "NoStaleDispatch",
@@ -40,14 +34,39 @@
           "AttachedTickCurrent",
           "TakenClearsDirty"
         ],
-        "properties": [
-          "DirtyServed",
-          "TickSettles"
-        ],
+        "properties": ["DirtyServed", "TickSettles"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DirtyServed",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: DirtyServed = Fairness implies Services.forall(svc => (s.dirty and s.timer and s.adapter != None and s.registry != NoEntry and s.registry.svc == svc and not(s.stopped.get(svc))) leadsTo (s.taken == svc or s.registry == NoEntry or s.registry.svc != svc or s.adapter == None or s.stopped.get(svc)))",
+            "Model fairness predicate Fairness = AnyFire.weakFair(s) and Ticks.forall(k => Query(k).weakFair(s) and RunDone(k).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "TickSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: TickSettles = Fairness implies Ticks.forall(k => s.tk.get(k).pc == \"query\" leadsTo s.tk.get(k).pc == \"free\")",
+            "Model fairness predicate Fairness = AnyFire.weakFair(s) and Ticks.forall(k => Query(k).weakFair(s) and RunDone(k).weakFair(s))",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_live: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     },
     {
       "name": "restart",
@@ -61,9 +80,7 @@
         "AttachedTickCurrent",
         "TakenClearsDirty"
       ],
-      "temporal": [
-        "DeadlockFree"
-      ],
+      "temporal": ["DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
@@ -77,9 +94,7 @@
           "QueryCanFail = TRUE",
           "None = None"
         ],
-        "specification": [
-          "Spec"
-        ],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "NoStaleDispatch",
@@ -91,10 +106,18 @@
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in TaskScheduler_restart: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ],
-  "sources": [
-    "packages/core/src/services/task-scheduler.ts"
-  ]
+  "sources": ["packages/core/src/services/task-scheduler.ts"]
 }

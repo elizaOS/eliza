@@ -140,14 +140,17 @@
     "model": "packages/agent/quint/api-native-supervisor.qnt",
     "sources": [
       "packages/agent/native-host/runtime-supervisor.mjs",
-      "packages/agent/native-host/private-runtime-launch.mjs"
+      "packages/agent/native-host/private-runtime-launch.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs"
     ],
-    "invariants": ["safety"],
+    "invariants": [
+      "safety"
+    ],
     "status": "partial",
     "limitations": [
-      "Two owner identities and one child.",
-      "OS process signaling, private-file security and arbitrary repeated owner changes remain external.",
-      "Safety projection only. No implementation trace-refinement or unbounded progress proof."
+      "Two owner identities and one child. Repeated arbitrary rotations, stop failures and hung host callbacks require separate state refinements.",
+      "Seven real-process tests cover startup account rotation, close while spawning, failed launch receipts, missing executables, signal escalation and private launch configuration.",
+      "Close progress assumes settling host callbacks, successful child termination and fair continuation. Operating-system and filesystem semantics remain external."
     ]
   },
   {

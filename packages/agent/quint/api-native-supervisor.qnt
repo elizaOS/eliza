@@ -13,9 +13,14 @@ module api_native_supervisor {
   action retry = all { s.backoff, s' = s.with("backoff", false).with("failed", false) }
   action close = s' = s.with("closeRequested", true)
   action finishClose = all { s.closeRequested, not(s.busy), s.running == 0, not(s.spawned), s' = s.with("closed", true) }
+  action drainStop = all { s.closeRequested, stop }
   action idle = s' = s
   action step = any { identity(0), identity(1), identity(2), reconcile, spawn, receipt, startComplete, launchFailure, stop, retry, close, finishClose, idle }
   val safety = all { s.running != 0 implies (s.spawned and s.receipt), s.failed implies not(s.spawned), s.backoff implies not(s.busy), s.closed implies (s.closeRequested and not(s.busy) and s.running == 0 and not(s.spawned)) }
+  temporal CloseCompletes = (spawn.weakFair(s) and receipt.weakFair(s)
+    and startComplete.weakFair(s) and launchFailure.weakFair(s)
+    and drainStop.weakFair(s) and finishClose.weakFair(s)).implies(
+      s.closeRequested.leadsTo(s.closed))
   run changedIdentityReapsNewChildTest = init.then(identity(1)).then(reconcile).then(spawn).then(receipt).then(identity(2)).then(startComplete).expect(s.running == 0 and not(s.spawned))
   run failedReceiptReapsChildTest = init.then(identity(1)).then(reconcile).then(spawn).then(launchFailure).expect(s.running == 0 and not(s.spawned) and s.backoff)
   run closeDuringSpawnTest = init.then(identity(1)).then(reconcile).then(spawn).then(receipt).then(close).then(startComplete).then(finishClose).expect(s.closed and not(s.spawned))

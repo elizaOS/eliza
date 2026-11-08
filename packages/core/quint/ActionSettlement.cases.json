@@ -13,11 +13,7 @@
         "NoneOnReplyFailure",
         "NoneWhilePending"
       ],
-      "temporal": [
-        "SettleReturns",
-        "AllDelivered",
-        "DeadlockFree"
-      ],
+      "temporal": ["SettleReturns", "AllDelivered", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
@@ -28,9 +24,7 @@
           "Outcomes = {\"ok\"}",
           "MayDeny = FALSE"
         ],
-        "specification": [
-          "Spec"
-        ],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "DeliveredInEmissionOrder",
@@ -39,14 +33,39 @@
           "NoneOnReplyFailure",
           "NoneWhilePending"
         ],
-        "properties": [
-          "SettleReturns",
-          "AllDelivered"
-        ],
+        "properties": ["SettleReturns", "AllDelivered"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettleReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_late: SettleReturns = Fairness implies eventually(s.spc == \"done\")",
+            "Model fairness predicate Fairness = and { nextStep.weakFair(s), HandlerEmit.weakFair(s), HandlerReturn.weakFair(s), LateEmit.weakFair(s), Settle.weakFair(s), Deliver.weakFair(s), TransportSettle.weakFair(s), Drained.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "AllDelivered",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_late: AllDelivered = Fairness implies eventually(always(s.phase == \"settled\" and s.outcome == \"ok\" implies s.delivered.length() == N))",
+            "Model fairness predicate Fairness = and { nextStep.weakFair(s), HandlerEmit.weakFair(s), HandlerReturn.weakFair(s), LateEmit.weakFair(s), Settle.weakFair(s), Deliver.weakFair(s), TransportSettle.weakFair(s), Drained.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_late: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     },
     {
       "name": "outcomes",
@@ -61,11 +80,7 @@
         "NoneOnReplyFailure",
         "NoneWhilePending"
       ],
-      "temporal": [
-        "SettleReturns",
-        "AllDelivered",
-        "DeadlockFree"
-      ],
+      "temporal": ["SettleReturns", "AllDelivered", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
@@ -76,9 +91,7 @@
           "Outcomes = {\"ok\", \"replyFailure\", \"invalid\", \"throw\"}",
           "MayDeny = TRUE"
         ],
-        "specification": [
-          "Spec"
-        ],
+        "specification": ["Spec"],
         "invariants": [
           "TypeOK",
           "DeliveredInEmissionOrder",
@@ -87,17 +100,40 @@
           "NoneOnReplyFailure",
           "NoneWhilePending"
         ],
-        "properties": [
-          "SettleReturns",
-          "AllDelivered"
-        ],
+        "properties": ["SettleReturns", "AllDelivered"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "SettleReturns",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_outcomes: SettleReturns = Fairness implies eventually(s.spc == \"done\")",
+            "Model fairness predicate Fairness = and { nextStep.weakFair(s), HandlerEmit.weakFair(s), HandlerReturn.weakFair(s), LateEmit.weakFair(s), Settle.weakFair(s), Deliver.weakFair(s), TransportSettle.weakFair(s), Drained.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "AllDelivered",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_outcomes: AllDelivered = Fairness implies eventually(always(s.phase == \"settled\" and s.outcome == \"ok\" implies s.delivered.length() == N))",
+            "Model fairness predicate Fairness = and { nextStep.weakFair(s), HandlerEmit.weakFair(s), HandlerReturn.weakFair(s), LateEmit.weakFair(s), Settle.weakFair(s), Deliver.weakFair(s), TransportSettle.weakFair(s), Drained.weakFair(s) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in ActionSettlement_outcomes: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ],
-  "sources": [
-    "packages/core/src/runtime/action-handler-settlement.ts"
-  ]
+  "sources": ["packages/core/src/runtime/action-handler-settlement.ts"]
 }

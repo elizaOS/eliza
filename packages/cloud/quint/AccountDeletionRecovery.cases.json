@@ -24,5 +24,11 @@
       "maxSteps": 150,
       "samples": 1000
     }
-  ]
+  ],
+  "bounds": {
+    "assumptions": [
+      "RestoredOnlyAfterReceipts records both cleanup receipts at the authority-restoration commit. A later export completion may require fresh revocation without changing that historical receipt.",
+      "One account/request identity, two credential epochs and five logical clock values; external gate failures, provider behavior and implementation refinement remain outside the model."
+    ]
+  }
 }

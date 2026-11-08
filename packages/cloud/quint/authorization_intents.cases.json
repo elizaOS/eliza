@@ -33,7 +33,17 @@
       "invariants": ["safety"],
       "temporal": ["operationsSettle"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "operationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in authorization_intents: operationsSettle = Callers.forall(c => commit(c).weakFair(s)) implies eventually(always(Idle))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     },
     {
       "name": "approval-requests",
@@ -43,7 +53,17 @@
       "invariants": ["safety"],
       "temporal": ["operationsSettle"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "operationsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in approval_requests: operationsSettle = Callers.forall(c => commit(c).weakFair(s)) implies eventually(always(Idle))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

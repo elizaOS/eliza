@@ -11,33 +11,37 @@
         "StoredInColumn",
         "StoredOneSpace"
       ],
-      "temporal": [
-        "PinSpaceStable",
-        "DeadlockFree"
-      ],
+      "temporal": ["PinSpaceStable", "DeadlockFree"],
       "maxSteps": 60,
       "samples": 1000,
       "legacyConfiguration": {
         "name": "EmbeddingDimension.probes.cfg",
-        "constants": [
-          "Embedders = {e1, e2}",
-          "MaxProbes = 3"
-        ],
-        "specification": [
-          "Spec"
-        ],
-        "invariants": [
-          "TypeOK",
-          "PinMatchesStore",
-          "StoredInColumn"
-        ],
-        "properties": [
-          "PinSpaceStable"
-        ],
+        "constants": ["Embedders = {e1, e2}", "MaxProbes = 3"],
+        "specification": ["Spec"],
+        "invariants": ["TypeOK", "PinMatchesStore", "StoredInColumn"],
+        "properties": ["PinSpaceStable"],
         "checkDeadlock": true
       },
       "fairness": "Temporal liveness obligations explicitly imply the original per-action Fairness predicate. Step includes stuttering; nextStep preserves the original enabled relation.",
-      "deadlock": true
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "PinSpaceStable",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in EmbeddingDimension_probes: PinSpaceStable = always((s.pinProv != None implies next(s.pinSpace) == s.pinSpace).orKeep(s))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in EmbeddingDimension_probes: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
     }
   ],
   "sources": [

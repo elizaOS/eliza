@@ -19,14 +19,20 @@
       "main": "exact_restore_recovery",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "StableAuthorityCleanupFinishes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["StableAuthorityCleanupFinishes"],
       "maxSteps": 35,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "StableAuthorityCleanupFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in exact_restore_recovery: StableAuthorityCleanupFinishes = (always(s.currentNode == 1) and producerQuiescent.weakFair(s) and workers.forall(w => begin(w, 1).weakFair(s) and tombstone(w).weakFair(s) and observeExactId(w).weakFair(s) and deleteExactId(w).weakFair(s) and receiveProof(w).weakFair(s) and settle(w).weakFair(s))).implies(eventually(s.receipt))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ],
   "fairness": "Cleanup completion assumes a stable original node incarnation, eventual producer quiescence, and weak fairness for trusted begin, tombstone, observation, exact deletion, proof and settlement actions. Unavailable authority remains quarantined."

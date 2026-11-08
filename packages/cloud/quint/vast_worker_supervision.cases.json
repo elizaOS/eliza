@@ -20,14 +20,20 @@
       "main": "vast_worker_supervision",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "StopCompletes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["StopCompletes"],
       "maxSteps": 30,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "StopCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in vast_worker_supervision: StopCompletes = (processes.forall(p => threadExit(p).weakFair(s) and finish(p).weakFair(s))).implies( processes.forall(p => (s.phase.get(p) == \"closing\").leadsTo(Set(\"exited\", \"crashed\").contains(s.phase.get(p)))))",
+            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+          ]
+        }
+      ]
     }
   ]
 }

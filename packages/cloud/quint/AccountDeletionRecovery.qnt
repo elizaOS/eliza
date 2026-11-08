@@ -10,7 +10,8 @@ module AccountDeletionRecovery {
     authorityReceipt: bool, deactivationReceipt: bool, reactivationReceipt: bool,
     exportStatus: str, exportPhase: str, exportBeforeCall: bool,
     exportDelivered: bool, revokeReceipt: bool, revokePending: bool,
-    irreversible: bool, eligible: bool, providerWork: bool
+    irreversible: bool, eligible: bool, providerWork: bool,
+    restoredWithReceipts: bool
   }
   var s: State
   action init = s' = {
@@ -20,7 +21,8 @@ module AccountDeletionRecovery {
     authorityReceipt: false, deactivationReceipt: false, reactivationReceipt: false,
     exportStatus: "none", exportPhase: "none", exportBeforeCall: false,
     exportDelivered: false, revokeReceipt: false, revokePending: false,
-    irreversible: false, eligible: true, providerWork: false
+    irreversible: false, eligible: true, providerWork: false,
+    restoredWithReceipts: false
   }
   action reserve = all {
     s.status == "none", s.eligible, s.userActive,
@@ -78,7 +80,8 @@ module AccountDeletionRecovery {
     s' = { ...s, status: "canceled", requestRevision: s.requestRevision + 1,
       userRevision: s.requestRevision + 1, organizationRevision: s.requestRevision + 1,
       userActive: true, organizationActive: true, recoveryToken: false,
-      admissionToken: false, deactivationReceipt: false }
+      admissionToken: false, deactivationReceipt: false,
+      restoredWithReceipts: s.reactivationReceipt and s.revokeReceipt }
   }
   action expireRecovery = all {
     Set("reserved", "recovery").contains(s.status), s.now >= s.deadline,
@@ -103,7 +106,7 @@ module AccountDeletionRecovery {
   val FencesPublishedTogether = Set("reserved", "recovery", "canceling", "scheduled").contains(s.status)
     .implies(not(s.userActive) and not(s.organizationActive) and s.authorityReceipt)
   val RestoredOnlyAfterReceipts = (s.status == "canceled").implies(
-    s.reactivationReceipt and s.userActive and s.organizationActive and not(s.recoveryToken) and not(s.admissionToken))
+    s.restoredWithReceipts and s.reactivationReceipt and s.userActive and s.organizationActive and not(s.recoveryToken) and not(s.admissionToken))
   val IrreversibleCannotRestore = s.irreversible.implies(
     s.status == "scheduled" and not(s.userActive) and not(s.organizationActive) and not(s.recoveryToken))
   val RevisionsAgree = Set("reserved", "recovery", "canceling", "scheduled", "canceled").contains(s.status)
@@ -111,4 +114,33 @@ module AccountDeletionRecovery {
   val ExportOnlyDuringRecovery = (s.exportStatus == "ready").implies(s.status == "recovery")
   val LateExportStaysFenced = (s.exportDelivered and Set("canceling", "canceled", "scheduled").contains(s.status))
     .implies(Set("expired", "deleted").contains(s.exportStatus))
+
+  run cancellationRetainsBothCompletionReceiptsTest = init.then(reserve)
+    .then(activate(1)).then(startExport).then(completeDeactivation).then(cancel(1))
+    .then(completeReactivation).then(revokeExport).then(finishCancellation)
+    .expect(RestoredOnlyAfterReceipts and s.restoredWithReceipts)
+
+  // A late export requires fresh revocation without undoing the historical
+  // evidence that both cleanup receipts existed when authority was restored.
+  run lateExportPreservesRestorationEvidenceTest = init.then(reserve)
+    .then(activate(1)).then(startExport).then(completeDeactivation).then(cancel(1))
+    .then(completeReactivation).then(revokeExport).then(finishCancellation)
+    .then(completeExport)
+    .expect(RestoredOnlyAfterReceipts and s.restoredWithReceipts
+      and not(s.revokeReceipt) and s.revokePending and LateExportStaysFenced)
+
+  // Test-only mutation of the real transition: remove the revocation guard.
+  // It must violate the historical receipt invariant; it is not in step.
+  action legacyFinishWithoutRevocation = all {
+    s.status == "canceling", s.reactivationReceipt,
+    s' = { ...s, status: "canceled", requestRevision: s.requestRevision + 1,
+      userRevision: s.requestRevision + 1, organizationRevision: s.requestRevision + 1,
+      userActive: true, organizationActive: true, recoveryToken: false,
+      admissionToken: false, deactivationReceipt: false,
+      restoredWithReceipts: s.reactivationReceipt and s.revokeReceipt }
+  }
+  run missingRevocationGuardDetectedTest = init.then(reserve)
+    .then(activate(1)).then(startExport).then(completeDeactivation).then(cancel(1))
+    .then(completeReactivation).then(legacyFinishWithoutRevocation)
+    .expect(not(RestoredOnlyAfterReceipts) and not(s.restoredWithReceipts))
 }

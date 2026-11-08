@@ -12,6 +12,7 @@ import path from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  classifyTemporalOutcome,
   createQuintInventory,
   loadQuintModels,
   main,
@@ -131,6 +132,72 @@ test("required deadlock checks cannot be dropped from a case", () => {
   assert.throws(() => loadQuintModels(directory), /Missing DeadlockFree/);
 });
 
+test("temporal properties require explicit matching expectations and assumptions", () => {
+  const base = "packages/example/quint/Example";
+  const directory = fixture({
+    [`${base}.qnt`]: "",
+    "source.ts": "",
+    [`${base}.cases.json`]: "{}",
+  });
+  const temporal = {
+    property: "Progress",
+    expect: "holds",
+    assumptions: ["Fair clock"],
+  };
+  for (const item of [
+    { ...modelCase, temporal: ["Progress"] },
+    { ...modelCase, temporal: ["Progress"], temporalChecks: [] },
+    {
+      ...modelCase,
+      temporal: ["Progress"],
+      temporalChecks: [{ ...temporal, assumptions: [] }],
+    },
+    {
+      ...modelCase,
+      temporal: ["Progress"],
+      temporalChecks: [{ property: "Progress", assumptions: ["Fair clock"] }],
+    },
+    {
+      ...modelCase,
+      temporal: ["Progress"],
+      temporalChecks: [{ ...temporal, property: "Other" }],
+    },
+    {
+      ...modelCase,
+      temporal: ["Progress"],
+      temporalChecks: [temporal, temporal],
+    },
+  ]) {
+    writeFileSync(
+      path.join(directory, `${base}.cases.json`),
+      JSON.stringify({ sources: ["source.ts"], cases: [item] }),
+    );
+    assert.throws(() => loadQuintModels(directory));
+  }
+});
+
+test("arbitrary failures cannot satisfy expected temporal counterexamples", () => {
+  assert.equal(
+    classifyTemporalOutcome(1, "error: found a counterexample"),
+    "checker-error",
+  );
+  assert.equal(
+    classifyTemporalOutcome(
+      null,
+      "Temporal property q_temporalProps was violated",
+      "ETIMEDOUT",
+    ),
+    "checker-error",
+  );
+  assert.equal(
+    classifyTemporalOutcome(
+      0,
+      "Model checking completed. No error has been found.",
+    ),
+    "checker-error",
+  );
+});
+
 const example = "packages/example/quint/Example";
 const stateSource = "packages/example/src/state.ts";
 const helperSource = "packages/example/src/helper.ts";
@@ -150,6 +217,114 @@ const checkedFiles = {
     cases: [{ ...modelCase, constants: { stateCount: 2 } }],
   }),
 };
+
+test("the shared runner records positive liveness and expected unfair schedules separately", async () => {
+  const directory = fixture({
+    ...checkedFiles,
+    "packages/scripts/quint/tlc.json":
+      '{"maxHeap":"-Xmx1G","stackSize":"-Xss8m","workers":2}',
+    [`${example}.qnt`]: `module Example {
+      var state: int
+      action init = state' = 0
+      action advance = all { state == 0, state' = 1 }
+      action step = any { advance, state' = state }
+      val Safe = state == 0 or state == 1
+      temporal UnfairProgress = eventually(state == 1)
+      temporal FairProgress = advance.weakFair(state) implies eventually(state == 1)
+      temporal FairSinks = advance.weakFair(state) implies eventually(always(state == 1))
+    }`,
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource],
+      cases: [
+        {
+          ...modelCase,
+          temporal: ["UnfairProgress", "FairProgress", "FairSinks"],
+          temporalChecks: [
+            {
+              property: "UnfairProgress",
+              expect: "counterexample",
+              assumptions: ["No scheduler fairness"],
+            },
+            {
+              property: "FairProgress",
+              expect: "holds",
+              assumptions: ["advance is weakly fair relative to state"],
+            },
+            {
+              property: "FairSinks",
+              expect: "holds",
+              assumptions: [
+                "advance is weakly fair relative to state; state 1 is terminal",
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await main([], directory, output);
+  const report = JSON.parse(
+    readFileSync(path.join(output, "verification.json"), "utf8"),
+  );
+  assert.equal(report.completed, true);
+  const temporal = report.results.filter(
+    (item: { temporalProperties?: string[] }) =>
+      item.temporalProperties?.length,
+  );
+  assert.deepEqual(
+    temporal.map(
+      (item: { observedTemporalOutcome: string }) =>
+        item.observedTemporalOutcome,
+    ),
+    ["holds", "counterexample"],
+  );
+  assert.deepEqual(temporal[0].temporalProperties, [
+    "FairProgress",
+    "FairSinks",
+  ]);
+  assert(
+    temporal.every(
+      (item: { matchedExpectation: boolean; temporalAssumptions: string[] }) =>
+        item.matchedExpectation && item.temporalAssumptions.length > 0,
+    ),
+  );
+  assert.equal(
+    new Set(report.results.map((item: { log: string }) => item.log)).size,
+    report.results.length,
+  );
+});
+
+test("a missing temporal definition fails the shared runner rather than becoming a negative success", async () => {
+  const directory = fixture({
+    ...checkedFiles,
+    "packages/scripts/quint/tlc.json":
+      '{"maxHeap":"-Xmx1G","stackSize":"-Xss8m","workers":2}',
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource],
+      cases: [
+        {
+          ...modelCase,
+          temporal: ["Missing"],
+          temporalChecks: [
+            {
+              property: "Missing",
+              expect: "counterexample",
+              assumptions: ["No assumptions"],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(main([], directory, output), /Quint checks failed/);
+  const report = JSON.parse(
+    readFileSync(path.join(output, "verification.json"), "utf8"),
+  );
+  assert.equal(report.completed, false);
+  assert.equal(report.results.at(-1).observedTemporalOutcome, "checker-error");
+});
 
 const coveredEntry = {
   id: "example",

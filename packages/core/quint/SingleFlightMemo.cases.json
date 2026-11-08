@@ -1,41 +1,70 @@
 {
-	"sources": [
-		"packages/core/src/runtime/single-flight-memo.ts",
-		"packages/core/src/runtime/data-mutations.ts",
-		"packages/core/src/runtime.ts"
-	],
-	"stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
-	"cases": [
-		{
-			"name": "safety",
-			"main": "SingleFlightMemo",
-			"init": "init",
-			"step": "step",
-			"invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
-			"temporal": ["DeadlockFree"],
-			"maxSteps": 100,
-			"samples": 1000,
-			"constants": {
-				"Readers": ["r1", "r2", "r3"],
-				"Writers": ["w1", "w2"]
-			},
-			"deadlock": true
-		},
-		{
-			"name": "liveness",
-			"main": "SingleFlightMemoLiveness",
-			"init": "init",
-			"step": "step",
-			"invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
-			"temporal": ["DeadlockFree", "ReaderFinishes"],
-			"maxSteps": 100,
-			"samples": 1000,
-			"constants": {
-				"Readers": ["r1", "r2"],
-				"Writers": ["w1", "w2"]
-			},
-			"deadlock": true
-		}
-	],
-	"symmetry": "The safety case retains all reader/writer identities. Omitting the former permutation reduction explores a superset of the reduced search graph."
+  "sources": [
+    "packages/core/src/runtime/single-flight-memo.ts",
+    "packages/core/src/runtime/data-mutations.ts",
+    "packages/core/src/runtime.ts"
+  ],
+  "stateRepresentation": "The source variables form one typed record. Every action updates that record atomically and retains all other fields.",
+  "cases": [
+    {
+      "name": "safety",
+      "main": "SingleFlightMemo",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
+      "temporal": ["DeadlockFree"],
+      "maxSteps": 100,
+      "samples": 1000,
+      "constants": {
+        "Readers": ["r1", "r2", "r3"],
+        "Writers": ["w1", "w2"]
+      },
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in SingleFlightMemo: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "liveness",
+      "main": "SingleFlightMemoLiveness",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "NoStaleAfterInvalidate", "RejectedNotCached"],
+      "temporal": ["DeadlockFree", "ReaderFinishes"],
+      "maxSteps": 100,
+      "samples": 1000,
+      "constants": {
+        "Readers": ["r1", "r2"],
+        "Writers": ["w1", "w2"]
+      },
+      "deadlock": true,
+      "temporalChecks": [
+        {
+          "property": "DeadlockFree",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in SingleFlightMemoLiveness: DeadlockFree = always(enabled(nextStep))",
+            "No scheduler fairness is assumed by this property."
+          ]
+        },
+        {
+          "property": "ReaderFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "Checked formula in SingleFlightMemoLiveness: ReaderFinishes = Fairness.implies(Readers.forall(r => (s.rpc.get(r) == \"waiting\").leadsTo(Set(\"served\", \"failed\").contains(s.rpc.get(r)))))",
+            "Model fairness predicate Fairness = and { Fetches.forall(f => FetchRead(f).weakFair(s) and FetchResolve(f).weakFair(s)), Readers.forall(r => Serve(r).weakFair(s)), Writers.forall(w => Invalidate(w).weakFair(s)) }",
+            "The stated fairness is an assumption about enabled model actions; runtime scheduling and provider completion are not proved."
+          ]
+        }
+      ]
+    }
+  ],
+  "symmetry": "The safety case retains all reader/writer identities. Omitting the former permutation reduction explores a superset of the reduced search graph."
 }
