@@ -4,6 +4,7 @@
 // still settle after abort. Only the current revision can change the view.
 module CloudSessionProjectionBase {
   const fenceReadErrors: bool
+  const fenceSignOutJoin: bool
 
   pure val Reads = Set(1, 2)
   type Operation = { port: int, revision: int }
@@ -16,6 +17,7 @@ module CloudSessionProjectionBase {
     retirements: int,
     reads: int -> Read,
     signOut: Operation,
+    signOutAcknowledged: bool,
     account: int,
     unavailable: bool,
     suppressConnected: bool,
@@ -35,7 +37,7 @@ module CloudSessionProjectionBase {
 
   action init = s' = {
     mounted: true, port: 1, revision: 0, replacements: 0, retirements: 0,
-    reads: Reads.mapBy(_ => unused), signOut: noOwner,
+    reads: Reads.mapBy(_ => unused), signOut: noOwner, signOutAcknowledged: false,
     account: 0, unavailable: false, suppressConnected: false,
     staleReadPublished: false, staleSignOutPublished: false,
   }
@@ -85,12 +87,22 @@ module CloudSessionProjectionBase {
       revision: s.revision + 1, retirements: s.retirements + 1 },
   }
 
-  action signOutReply(acknowledged: bool): bool = {
+  action signOutReply(acknowledged: bool): bool = all {
+    s.signOut != noOwner,
+    not(s.signOutAcknowledged),
+    s' = if (acknowledged and current(s, s.signOut)) {
+      ...s, signOutAcknowledged: true,
+    } else { ...s, signOut: noOwner },
+  }
+
+  // withNativeSession can resolve before the caller's reset continuation.
+  // Replacement and teardown may run between these two actions.
+  action joinSignOut = {
     val owns = current(s, s.signOut)
-    val settled = { ...s, signOut: noOwner }
+    val settled = { ...s, signOut: noOwner, signOutAcknowledged: false }
     all {
-      s.signOut != noOwner,
-      s' = if (acknowledged and owns) {
+      s.signOutAcknowledged,
+      s' = if (owns or not(fenceSignOutJoin)) {
         ...settled, account: 0, suppressConnected: true,
         staleSignOutPublished: s.staleSignOutPublished or not(owns),
       } else settled,
@@ -114,6 +126,7 @@ module CloudSessionProjectionBase {
     finishRead(2),
     startSignOut,
     finishSignOut,
+    joinSignOut,
     s' = s,
   }
 
@@ -133,16 +146,18 @@ module CloudSessionProjectionBase {
     weakFair(finishRead(1), s),
     weakFair(finishRead(2), s),
     weakFair(finishSignOut, s),
+    weakFair(joinSignOut, s),
   } implies EveryHostCallSettles
 
   // A bad error publication is recorded permanently to give a looping trace.
   temporal NoStaleErrorReceipt = eventually(always(not(s.staleReadPublished)))
+  temporal NoStaleSignOutReceipt = eventually(always(not(s.staleSignOutPublished)))
 }
 
 module CloudSessionProjection {
-  import CloudSessionProjectionBase(fenceReadErrors = true).*
+  import CloudSessionProjectionBase(fenceReadErrors = true, fenceSignOutJoin = true).*
 }
 
 module CloudSessionProjectionBeforeFix {
-  import CloudSessionProjectionBase(fenceReadErrors = false).*
+  import CloudSessionProjectionBase(fenceReadErrors = false, fenceSignOutJoin = false).*
 }
