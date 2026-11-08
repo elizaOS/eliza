@@ -15,6 +15,7 @@ import {
   type FrontendBuildMeta,
   type FrontendManifest,
 } from "../schemas/app-frontend-deployments";
+import { apps } from "../schemas/apps";
 
 /** True when an error is a unique-violation on the (app_id, version) index. */
 function isVersionRaceConflict(error: unknown): boolean {
@@ -71,7 +72,8 @@ export class AppFrontendDeploymentsRepository {
   }
 
   async getById(id: string): Promise<AppFrontendDeployment | undefined> {
-    return await dbRead.query.appFrontendDeployments.findFirst({
+    // Used after deployment mutations; a replica can hide an acknowledged row.
+    return await dbWrite.query.appFrontendDeployments.findFirst({
       where: eq(appFrontendDeployments.id, id),
     });
   }
@@ -104,6 +106,7 @@ export class AppFrontendDeploymentsRepository {
   async finalize(
     id: string,
     input: {
+      r2Prefix: string;
       manifest: FrontendManifest;
       contentHash: string;
       fileCount: number;
@@ -114,6 +117,7 @@ export class AppFrontendDeploymentsRepository {
       .update(appFrontendDeployments)
       .set({
         status: "ready",
+        r2_prefix: input.r2Prefix,
         manifest: input.manifest,
         content_hash: input.contentHash,
         file_count: input.fileCount,
@@ -122,31 +126,33 @@ export class AppFrontendDeploymentsRepository {
         finalized_at: new Date(),
         updated_at: new Date(),
       })
-      .where(eq(appFrontendDeployments.id, id))
+      .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.status, "uploading")))
       .returning();
     return row;
   }
 
-  /** Persist the R2 object-key prefix (known only after the id is assigned). */
-  async setPrefix(id: string, r2Prefix: string): Promise<void> {
-    await dbWrite
+  async beginUpload(id: string): Promise<AppFrontendDeployment | undefined> {
+    const [row] = await dbWrite
       .update(appFrontendDeployments)
-      .set({ r2_prefix: r2Prefix, updated_at: new Date() })
-      .where(eq(appFrontendDeployments.id, id));
+      .set({ status: "uploading", updated_at: new Date() })
+      .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.status, "pending")))
+      .returning();
+    return row;
   }
 
-  async markStatus(id: string, status: AppFrontendDeployment["status"]): Promise<void> {
-    await dbWrite
-      .update(appFrontendDeployments)
-      .set({ status, updated_at: new Date() })
-      .where(eq(appFrontendDeployments.id, id));
-  }
-
-  async markFailed(id: string, error: string): Promise<void> {
-    await dbWrite
+  /** Retire only unpublished work. Its returned row is the object cleanup authority. */
+  async markFailed(id: string, error: string): Promise<AppFrontendDeployment | undefined> {
+    const [row] = await dbWrite
       .update(appFrontendDeployments)
       .set({ status: "failed", error, updated_at: new Date() })
-      .where(eq(appFrontendDeployments.id, id));
+      .where(
+        and(
+          eq(appFrontendDeployments.id, id),
+          inArray(appFrontendDeployments.status, ["pending", "uploading"]),
+        ),
+      )
+      .returning();
+    return row;
   }
 
   /**
@@ -165,6 +171,15 @@ export class AppFrontendDeploymentsRepository {
 
   private async activateOrRollBack(appId: string, id: string): Promise<AppFrontendDeployment> {
     return await dbWrite.transaction(async (tx) => {
+      // Share final app deletion's parent lock before touching deployments.
+      // A mutable active-first ordering alone is insufficient when another
+      // activation changes the active row while a deletion snapshot waits.
+      const [app] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .for("update");
+      if (!app) throw new DeploymentNotPromotable();
       await tx
         .update(appFrontendDeployments)
         .set({ status: "superseded", updated_at: new Date() })

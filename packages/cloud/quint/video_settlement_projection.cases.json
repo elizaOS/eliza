@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/db/repositories/generations.ts",
+    "packages/cloud/shared/src/db/schemas/generations.ts",
+    "packages/cloud/shared/src/lib/services/video-generation-reconcile.ts",
+    "packages/cloud/shared/src/lib/providers/video/types.ts",
+    "packages/cloud/shared/src/lib/services/__tests__/video-reconcile-rotation.pglite.test.ts",
+    "packages/cloud/quint/check-video-settlement-projection.mjs",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-video-settlement-projection.mjs",
+  "bounds": {
+    "assumptions": [
+      "Two pending rows, one coordinator, two database marker commits, and a stable total order. Unrelated prompt/result availability is independent of the complete inline settlement metadata projection.",
+      "The selected immutable row ID, original organization/user, model, provider job ID, complete metadata and creation time are retained. Persisted update receipts are separate from full-payload hydration; missing rows cannot claim a receipt.",
+      "Real PGlite tests exercise the whole coordinator loop, unavailable prompts, provider probe failures, complete metadata preservation, later-row progress and deletion before the update receipt. Live provider availability, PostgreSQL lock/refinement proof, concurrent coordinators, financial settlement arithmetic and stale status fencing are outside this model.",
+      "Progress requires both original pending rows to remain present, weakly fair selection/provider resolution/database writes and two available attempts. It does not promise provider success, financial completion or an elapsed deadline."
+    ]
+  },
+  "cases": [
+    {
+      "name": "settlement-projection-and-receipt",
+      "main": "video_settlement_projection",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["RotationReachesLater"],
+      "temporalChecks": [
+        {
+          "property": "RotationReachesLater",
+          "expect": "holds",
+          "assumptions": [
+            "Progress requires both original pending rows to remain present, weakly fair selection/provider resolution/database writes and two available attempts. It does not promise provider success, financial completion or an elapsed deadline."
+          ]
+        }
+      ],
+      "maxSteps": 25,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}
