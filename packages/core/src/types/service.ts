@@ -237,26 +237,6 @@ export interface TypedService<
 }
 
 /**
- * Generic factory function to create a typed service instance.
- * getService() is synchronous — no await needed.
- * @param runtime The agent runtime
- * @param serviceType The type of service to get
- * @returns The service instance or null if not available
- */
-export function getTypedService<
-	ConfigType extends Metadata = Metadata,
-	InputType = JsonValue,
-	ResultType = JsonValue,
->(
-	runtime: IAgentRuntime,
-	serviceType: ServiceTypeName,
-): TypedService<ConfigType, InputType, ResultType> | null {
-	return runtime.getService<TypedService<ConfigType, InputType, ResultType>>(
-		serviceType,
-	);
-}
-
-/**
  * Standardized service error type for consistent error handling
  */
 export interface ServiceError {
@@ -264,25 +244,4 @@ export interface ServiceError {
 	message: string;
 	details?: Record<string, JsonValue> | string | number | boolean | null;
 	cause?: Error;
-}
-
-/**
- * Safely create a ServiceError from any caught error
- */
-export function createServiceError(
-	error: Error | string | JsonValue,
-	code = "UNKNOWN_ERROR",
-): ServiceError {
-	if (error instanceof Error) {
-		return {
-			code,
-			message: error.message,
-			cause: error,
-		};
-	}
-
-	return {
-		code,
-		message: String(error),
-	};
 }

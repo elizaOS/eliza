@@ -1140,9 +1140,6 @@ export interface ActionResult {
 
 	/** Explicit false aborts the remaining planner queue, including failed and fire-and-forget actions. turnComplete is the conservative single-operation completion signal. */
 	continueChain?: boolean;
-
-	/** Optional cleanup function to execute after action completion */
-	cleanup?: () => void | Promise<void>;
 }
 
 /**

@@ -50,8 +50,6 @@ export interface MessageProcessingOptions {
 		receipt: import("../runtime/typed-read-contract").TypedReadEgressReceipt,
 	) => void;
 	maxRetries?: number;
-	useMultiStep?: boolean;
-	maxMultiStepIterations?: number;
 	/**
 	 * Run this trusted host turn as a focused coding-agent loop. Coding turns
 	 * enter the planner directly instead of spending a separate model call on

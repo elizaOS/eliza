@@ -1179,19 +1179,8 @@ export interface Plugin {
 	contexts?: AgentContext[];
 
 	/**
-	 * Declarative auto-enable conditions. When present, the plugin self-describes
-	 * when it should be activated — replacing (or supplementing) the hardcoded
-	 * maps in `plugin-auto-enable.ts`.
-	 *
-	 * The runtime evaluates these after initial plugin resolution:
-	 * - `envKeys`: enable when ANY of these env vars are set and non-empty.
-	 * - `connectorKeys`: enable when ANY of these connector names appear and
-	 * are configured in `config.connectors`.
-	 * - `shouldEnable`: custom predicate for complex enable logic.
-	 *
-	 * All three are OR'd — if any condition is met the plugin is auto-enabled.
-	 * The hardcoded map in `plugin-auto-enable.ts` still serves as a fallback
-	 * for plugins without `autoEnable`.
+	 * @deprecated The runtime does not read this field. Auto-enable is driven
+	 * by `elizaos.plugin.autoEnableModule` in the plugin's package.json.
 	 */
 	autoEnable?: {
 		/** Enable when any of these env vars are set and non-empty. */

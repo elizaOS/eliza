@@ -391,19 +391,14 @@ export interface MessageMetadata {
 	transcript?: string;
 
 	/**
-	 * Voice-mode metadata attached when this message came in on the audio path.
+	 * Voice-mode metadata for a message that came in on the audio path. The
+	 * acoustic-emotion read (`emotion`) is kept apart from the text-side
+	 * `Content.emotion`; voice and text often disagree, so consumers fuse them
+	 * where they care.
 	 *
-	 * Populated by the local-inference voice pipeline (`engine-bridge.ts` →
-	 * `DefaultMessageService`) on `isFinal` transcript snapshots, then carried
-	 * into the storage layer for retrieval. The acoustic-emotion read (`emotion`)
-	 * is the fused voice + text attribution from
-	 * `attributeVoiceEmotion()`; the text-side enum from the Stage-1
-	 * `emotion` field-evaluator rides on `Content.emotion` directly. Two fields,
-	 * not one merged emotion — voice (acoustic) and text (lexical) disagree
-	 * often and meaningfully; downstream consumers fuse where they care.
-	 *
-	 * The block is biometric-adjacent: the `privacy-filter.ts` redacts it on
-	 * cloud export. See R3-emotion §3 ("Runtime channel design").
+	 * No code writes this block today, and no export path redacts it. It is
+	 * biometric-adjacent: a future writer must land with a tested redaction at
+	 * the Cloud export boundary.
 	 */
 	voice?: {
 		emotion?: {

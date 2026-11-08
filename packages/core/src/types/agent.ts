@@ -34,7 +34,9 @@ export interface MessageExampleGroup {
  */
 export interface CharacterSettings {
 	shouldRespondModel?: string;
+	/** @deprecated No effect; the runtime does not read it. */
 	useMultiStep?: boolean;
+	/** @deprecated No effect; the runtime does not read it. */
 	maxMultistepIterations?: number;
 	providersTotalTimeoutMs?: number;
 	maxWorkingMemoryEntries?: number;

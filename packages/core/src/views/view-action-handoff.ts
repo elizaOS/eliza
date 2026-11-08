@@ -50,8 +50,6 @@ export function findViewActionHandoff(
 		const isViewsHandoff =
 			(actionName === "VIEWS" && (mode === "show" || mode === "open")) ||
 			(actionName === "VIEWS_SHOW" && mode === "show");
-		const isAppBrowserHandoff =
-			actionName === "APP" && mode === "launch" && viewId === "browser";
 		const isBrowserWorkspaceHandoff =
 			(actionName === "BROWSER" ||
 				actionName === "BROWSER_OPEN" ||
@@ -62,10 +60,7 @@ export function findViewActionHandoff(
 				subaction === "navigate" ||
 				subaction === "show") &&
 			viewId === "browser";
-		if (
-			(isViewsHandoff || isAppBrowserHandoff || isBrowserWorkspaceHandoff) &&
-			viewId
-		) {
+		if ((isViewsHandoff || isBrowserWorkspaceHandoff) && viewId) {
 			const actionUrl = readString(readOwnValue(values, "url"));
 			const declaredViewPath = readString(readOwnValue(values, "viewPath"));
 			// Native mobile browser tabs are intentionally client-owned, while the

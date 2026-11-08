@@ -228,69 +228,6 @@ export type SessionEntry = {
  */
 export type SessionStore = Record<string, SessionEntry>;
 
-// Utility Functions
-
-/**
- * Merge a session entry with a partial update.
- *
- * @param existing - Existing session entry (or undefined for new)
- * @param patch - Partial updates to apply
- * @returns Merged session entry
- */
-export function mergeSessionEntry(
-	existing: SessionEntry | undefined,
-	patch: Partial<SessionEntry>,
-): SessionEntry {
-	const sessionId =
-		patch.sessionId ?? existing?.sessionId ?? globalThis.crypto.randomUUID();
-	const updatedAt = Math.max(
-		existing?.updatedAt ?? 0,
-		patch.updatedAt ?? 0,
-		Date.now(),
-	);
-
-	if (!existing) {
-		return { ...patch, sessionId, updatedAt };
-	}
-
-	return { ...existing, ...patch, sessionId, updatedAt };
-}
-
-/**
- * Create a new session entry with minimal required fields.
- *
- * @param overrides - Optional field overrides
- * @returns New session entry
- */
-export function createSessionEntry(
-	overrides?: Partial<SessionEntry>,
-): SessionEntry {
-	return {
-		sessionId: globalThis.crypto.randomUUID(),
-		updatedAt: Date.now(),
-		...overrides,
-	};
-}
-
-/**
- * Check if a session entry is valid.
- *
- * @param entry - Entry to validate
- * @returns True if entry has required fields
- */
-export function isValidSessionEntry(entry: unknown): entry is SessionEntry {
-	if (!entry || typeof entry !== "object") {
-		return false;
-	}
-
-	const e = entry as Record<string, unknown>;
-	return (
-		typeof e.sessionId === "string" &&
-		e.sessionId.length > 0 &&
-		typeof e.updatedAt === "number"
-	);
-}
-
 // Session Resolution
 
 /**
@@ -320,14 +257,3 @@ export type GroupKeyResolution = {
 	/** Chat type */
 	chatType?: SessionChatType;
 };
-
-// Constants
-
-/** Default trigger for resetting a session */
-export const DEFAULT_RESET_TRIGGER = "/new";
-
-/** All default reset triggers */
-export const DEFAULT_RESET_TRIGGERS = ["/new", "/reset"];
-
-/** Default idle timeout in minutes */
-export const DEFAULT_IDLE_MINUTES = 60;
