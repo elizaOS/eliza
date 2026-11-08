@@ -605,20 +605,18 @@
   },
   {
     "id": "cloud-flow-voice-usage",
-    "model": null,
+    "model": "packages/cloud/quint/VoiceUsage.qnt",
     "sources": [
       "packages/cloud/api/src/voice-usage-state.ts",
       "packages/cloud/shared/src/lib/services/voice-usage-meter.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["invariant"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite usage model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Quota and usage counters settle once | Provider ambiguity retains accounting debt | Retry preserves the original request identity",
-      "Abstract states: reserved, streaming, settling, settled, expired"
+      "The model assumes the private namespace routes to the correct organization/day owner. The operator must supply a complete, genuinely quiesced snapshot. The object validates the asserted flag, key shape, and values.",
+      "Caller authorization, positive scaled amount and limits, exact day rollover, key encoding and multiple organizations are outside the finite model. The Workerd suite checks rollover, cross-organization behavior and rejection when metering is missing.",
+      "Live reserve and release have no operation identity. A repeated call after an ambiguous reply can apply a second mutation. Release clamps the counters independently and does not prove aggregate conservation or single settlement.",
+      "The model abstracts a SQL transaction as atomic with a single clock sample. It serializes post-commit schedule and reply phases. It does not prove provider usage settlement, storage availability, precise Cloudflare alarm retries, or a delivery deadline."
     ]
   },
   {

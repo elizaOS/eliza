@@ -17,14 +17,17 @@
   {
     "id": "VoiceUsage",
     "model": "packages/cloud/quint/VoiceUsage.qnt",
-    "sources": ["packages/cloud/api/src/voice-usage-state.ts"],
+    "sources": [
+      "packages/cloud/api/src/voice-usage-state.ts",
+      "packages/cloud/shared/src/lib/services/voice-usage-meter.ts"
+    ],
     "invariants": ["invariant"],
     "status": "modeled",
     "limitations": [
-      "One user counter, one organization counter. Snapshot entries independently choose 0/1/2; partial snapshots, changed-expiry replay conflicts and all malformed-wire combinations require further coverage.",
-      "Organization/user counter updates and admission are atomic. This model does not establish aggregate conservation because release intentionally clamps each counter independently.",
-      "Finite verification domain. One organization/user pair, time 0..4, org limit 3, user limit 2, imports 0/1/2, amounts 1/2. Larger populations and histories remain unverified.",
-      "Cross-tenant and cross-user noninterference remains unmodeled. This pair-level specification does not establish whole-service isolation; the Durable Object namespace and request-key validation need separate conformance evidence."
+      "The model assumes the private namespace routes to the correct organization/day owner. The operator must supply a complete, genuinely quiesced snapshot. The object validates the asserted flag, key shape, and values.",
+      "Caller authorization, positive scaled amount and limits, exact day rollover, key encoding and multiple organizations are outside the finite model. The Workerd suite checks rollover, cross-organization behavior and rejection when metering is missing.",
+      "Live reserve and release have no operation identity. A repeated call after an ambiguous reply can apply a second mutation. Release clamps the counters independently and does not prove aggregate conservation or single settlement.",
+      "The model abstracts a SQL transaction as atomic with a single clock sample. It serializes post-commit schedule and reply phases. It does not prove provider usage settlement, storage availability, precise Cloudflare alarm retries, or a delivery deadline."
     ]
   },
   {
