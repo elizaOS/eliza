@@ -42,7 +42,7 @@ beforeAll(async () => {
   await getPgliteClientForTests().exec(migration.slice(start, end));
   await getPgliteClientForTests().exec(
     await readFile(
-      new URL("../../../db/migrations/0560_container_placement_revision.sql", import.meta.url),
+      new URL("../../../db/migrations/0558_container_placement_revision.sql", import.meta.url),
       "utf8",
     ),
   );

@@ -185,13 +185,13 @@
       "sources": [
         "packages/cloud/shared/src/db/repositories/containers.ts",
         "packages/cloud/shared/src/lib/services/containers/hetzner-client/client.ts",
-        "packages/cloud/shared/src/db/migrations/0560_container_placement_revision.sql"
+        "packages/cloud/shared/src/db/migrations/0558_container_placement_revision.sql"
       ],
       "invariants": ["safety"],
       "assumptions": [
         "One logical container, two row incarnations, one restart, one newer deployment, placement metadata A-to-B-to-A and one bookkeeping update.",
         "The original created_at database text identifies a row; malicious reuse of both its UUID and exact timestamp is excluded.",
-        "Migration0560 advances the canonical lifecycle revision for all typed Hetzner placement fields; funded restart advances it even when already deploying. Full metadata equality alone does not prove absence of ABA.",
+        "Migration0558 advances the canonical lifecycle revision for all typed Hetzner placement fields; funded restart advances it even when already deploying. Full metadata equality alone does not prove absence of ABA.",
         "Database CAS is atomic. Provider health truth, physical node replacement outside retained identity, transport reliability, liveness and TypeScript refinement are not proved."
       ],
       "maxSteps": 35
