@@ -32,6 +32,10 @@ const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_YOUTUBE_TRANSCRIPT_BYTES = 10 * 1024 * 1024; // 10 MB
 const URL_FETCH_TIMEOUT_MS = 15_000;
+// After headers, the body must keep delivering bytes (idle) and finish within
+// the overall cap, so a stalled server cannot hold an import open.
+let urlBodyIdleTimeoutMs = 15_000;
+let urlBodyTotalTimeoutMs = 60_000;
 const BLOCKED_HOST_LITERALS = new Set([
   "localhost",
   "metadata.google.internal",
@@ -43,7 +47,7 @@ type ResolvedUrlTarget = {
   pinnedAddress: string;
 };
 
-type PinnedFetchInput = {
+export type PinnedFetchInput = {
   url: URL;
   init: RequestInit;
   target: ResolvedUrlTarget;
@@ -69,7 +73,48 @@ function nodeReadableChunkToUint8Array(
   return new Uint8Array(chunk);
 }
 
-function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
+/**
+ * Destroy the response when no bytes arrive for the idle window or the body
+ * outlasts the overall cap. Returns the callback that marks progress.
+ */
+function armBodyDeadline(response: IncomingMessage): () => void {
+  const fail = (message: string) => {
+    response.destroy(new Error(message));
+  };
+  let idleHandle: ReturnType<typeof setTimeout> | undefined;
+  const resetIdle = () => {
+    clearTimeout(idleHandle);
+    idleHandle = setTimeout(
+      () => fail(`URL fetch stalled for ${urlBodyIdleTimeoutMs}ms`),
+      urlBodyIdleTimeoutMs,
+    );
+  };
+  const totalHandle = setTimeout(
+    () => fail(`URL fetch did not finish within ${urlBodyTotalTimeoutMs}ms`),
+    urlBodyTotalTimeoutMs,
+  );
+  const clear = () => {
+    clearTimeout(idleHandle);
+    clearTimeout(totalHandle);
+  };
+  resetIdle();
+  response.once("end", clear);
+  response.once("close", clear);
+  return resetIdle;
+}
+
+// Test hook for exercising the body deadlines without long waits.
+export function __setDocumentUrlBodyDeadlinesForTests(
+  deadlines: { idleMs: number; totalMs: number } | null,
+): void {
+  urlBodyIdleTimeoutMs = deadlines?.idleMs ?? 15_000;
+  urlBodyTotalTimeoutMs = deadlines?.totalMs ?? 60_000;
+}
+
+function incomingMessageToWebBody(
+  stream: IncomingMessage,
+  onProgress: () => void,
+): BodyInit {
   const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<
     Buffer | Uint8Array | string
   >;
@@ -82,6 +127,7 @@ function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
           controller.close();
           return;
         }
+        onProgress();
         controller.enqueue(nodeReadableChunkToUint8Array(next.value));
       } catch (error) {
         // error-policy:J1 Translate the Node stream failure into the Web
@@ -112,10 +158,13 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
     statusText: response.statusMessage,
     headers,
   } satisfies ResponseInit;
+  const onProgress = armBodyDeadline(response);
   if (status === 204 || status === 205 || status === 304) {
+    // Never read; drain it so "end" clears the deadline.
+    response.resume();
     return new Response(null, init);
   }
-  return new Response(incomingMessageToWebBody(response), init);
+  return new Response(incomingMessageToWebBody(response, onProgress), init);
 }
 
 async function requestWithPinnedAddress(
@@ -194,6 +243,13 @@ export function __setDocumentUrlFetchImplForTests(
   impl: PinnedFetchImpl | null,
 ): void {
   pinnedFetchImpl = impl ?? requestWithPinnedAddress;
+}
+
+// The real pinned transport, so tests can redirect it to a local server.
+export function __documentUrlPinnedRequestForTests(
+  input: PinnedFetchInput,
+): Promise<Response> {
+  return requestWithPinnedAddress(input);
 }
 
 async function resolveSafeUrlTarget(url: string): Promise<{
