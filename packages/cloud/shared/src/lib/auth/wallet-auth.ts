@@ -19,6 +19,14 @@ import type { UserWithOrganization } from "../types";
 
 const MAX_TIMESTAMP_AGE_MS = 5 * 60 * 1000; // WHY: limits replay window while allowing clock skew
 
+/** The nonce store is down, so no signature can be checked. Retryable, not an auth failure. */
+export class WalletAuthUnavailableError extends Error {
+  constructor() {
+    super("Service temporarily unavailable");
+    this.name = "WalletAuthUnavailableError";
+  }
+}
+
 /**
  * Canonical query string for the payload hash: decoded `key=value` pairs
  * sorted by key then value and joined with `&`, so parameter reordering does
@@ -88,7 +96,7 @@ export async function verifyWalletSignature(
   // Fail closed if cache unavailable to prevent replay attacks during Redis outages.
   // SLA: Wallet-header auth is fully unavailable during Redis outages; no fallback.
   if (!cache.isAvailable()) {
-    throw new Error("Service temporarily unavailable");
+    throw new WalletAuthUnavailableError();
   }
 
   const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}\nPayload-SHA256: ${payloadHash}`;
