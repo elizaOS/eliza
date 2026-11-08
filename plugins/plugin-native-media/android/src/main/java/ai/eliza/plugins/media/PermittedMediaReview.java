@@ -13,6 +13,7 @@ import com.getcapacitor.*;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to 1–20
@@ -54,6 +55,8 @@ public final class PermittedMediaReview implements AutoCloseable {
     final PluginCall call;
     final List<String> ids, revisions;
     final boolean favorite, desired, batch, permanent, appReview;
+    /** A batch's continuation: receives the outcomes instead of resolving the call. */
+    Consumer<JSArray> then;
     /** Identity and flag of each item when Android was asked; read back after Android applies. */
     final List<String> identities = new ArrayList<>();
     final List<Boolean> before = new ArrayList<>();
@@ -139,13 +142,26 @@ public final class PermittedMediaReview implements AutoCloseable {
       boolean desired, boolean batch, boolean agent) {
     request(call, ids, revisions, favorite, desired, batch, false, agent);
   }
+  /**
+   * A batch whose call settles in {@code then}: it receives the per-item outcomes once Android's
+   * review completes, while a decline, stale selection or closed Photos still rejects the call.
+   */
+  public void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
+      boolean desired, boolean agent, Consumer<JSArray> then) {
+    request(call, ids, revisions, favorite, desired, true, false, agent, then);
+  }
   public void deleteTrashed(PluginCall call, List<String> ids, List<String> revisions) {
     request(call, ids, revisions, false, true, true, true, false);
   }
   private void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
       boolean desired, boolean batch, boolean permanent, boolean agent) {
+    request(call, ids, revisions, favorite, desired, batch, permanent, agent, null);
+  }
+  private void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
+      boolean desired, boolean batch, boolean permanent, boolean agent, Consumer<JSArray> then) {
     Request request =
         new Request(call, ids, revisions, favorite, desired, batch, permanent, agent);
+    request.then = then;
     if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > 20
         || new HashSet<>(ids).size() != ids.size() || ids.size() != revisions.size()) {
       call.reject("Select 1–20 distinct permitted items.");
@@ -260,6 +276,8 @@ public final class PermittedMediaReview implements AutoCloseable {
         else
           request.call.reject(
               "Photo outcome could not be verified. Refresh before reviewing a new change.");
+      } else if (request.then != null) {
+        request.then.accept(outcomes);
       } else {
         JSObject result = new JSObject();
         result.put("status", verified == request.ids.size() ? "complete" : "partial");

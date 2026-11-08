@@ -147,6 +147,42 @@ public final class PhotoLibraryAccess {
     return false;
   }
 
+  /** The items of a {@link #reviewed} selection that are, or are not, permitted catalog rows. */
+  public static List<Reviewed> only(List<Reviewed> items, boolean permitted) {
+    List<Reviewed> out = new ArrayList<>();
+    for (Reviewed item : items) if (permitted(item.id) == permitted) out.add(item);
+    return out;
+  }
+
+  /** A {@link #reviewed} selection as the {@code [{id, revision}]} items a change takes. */
+  public static JSONArray items(List<Reviewed> items) throws JSONException {
+    JSONArray out = new JSONArray();
+    for (Reviewed item : items) out.put(new JSONObject().put("id", item.id).put("revision", item.revision));
+    return out;
+  }
+
+  /**
+   * One batch result for a selection changed in parts: each item's outcome in selection order, and
+   * "complete" only when every item was verified (its outcome carries the changed {@code item}). An
+   * item no part reports is unverified.
+   */
+  public static JSONObject merged(List<Reviewed> items, JSONArray... parts) throws JSONException {
+    JSONArray outcomes = new JSONArray();
+    int verified = 0;
+    for (Reviewed item : items) {
+      JSONObject found = null;
+      for (JSONArray part : parts)
+        for (int i = 0; found == null && i < part.length(); i++) {
+          JSONObject outcome = part.optJSONObject(i);
+          if (outcome != null && item.id.equals(outcome.optString("id"))) found = outcome;
+        }
+      if (found == null) found = new JSONObject().put("id", item.id).put("status", "unverified");
+      if (found.has("item")) verified++;
+      outcomes.put(found);
+    }
+    return new JSONObject().put("status", verified == items.size() ? "complete" : "partial").put("outcomes", outcomes);
+  }
+
   /** Whether {@code id} names a permitted catalog row. */
   public static boolean permitted(String id) {
     return id != null && id.startsWith("m:");

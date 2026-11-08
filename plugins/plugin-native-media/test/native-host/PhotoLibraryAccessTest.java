@@ -95,6 +95,36 @@ public final class PhotoLibraryAccessTest {
     check(PhotoLibraryAccess.revisions(picked).equals(List.of("a", "b")));
     check(PhotoLibraryAccess.anyPermitted(picked));
     check(!PhotoLibraryAccess.anyPermitted(PhotoLibraryAccess.reviewed(items("12", "b", "v:13", "c"), 20)));
+    // A mixed batch: library and owned items change in separate parts, then report as one result.
+    List<PhotoLibraryAccess.Reviewed> mixed =
+        PhotoLibraryAccess.reviewed(items("12", "a", "m:external:i:1", "b", "v:13", "c"), 20);
+    check(PhotoLibraryAccess.ids(PhotoLibraryAccess.only(mixed, true)).equals(List.of("m:external:i:1")));
+    check(PhotoLibraryAccess.ids(PhotoLibraryAccess.only(mixed, false)).equals(List.of("12", "v:13")));
+    JSONArray ownItems = PhotoLibraryAccess.items(PhotoLibraryAccess.only(mixed, false));
+    check(ownItems.length() == 2 && ownItems.getJSONObject(1).getString("id").equals("v:13")
+        && ownItems.getJSONObject(1).getString("revision").equals("c"));
+    JSONObject changed = new JSONObject().put("status", "changed");
+    JSONArray library = new JSONArray().put(
+        new JSONObject().put("id", "m:external:i:1").put("status", "changed").put("item", changed));
+    JSONArray own = new JSONArray()
+        .put(new JSONObject().put("id", "12").put("status", "changed").put("item", changed))
+        .put(new JSONObject().put("id", "v:13").put("status", "changed").put("item", changed));
+    JSONObject all = PhotoLibraryAccess.merged(mixed, library, own);
+    check(all.getString("status").equals("complete"));
+    JSONArray outcomes = all.getJSONArray("outcomes");
+    check(outcomes.length() == 3 && outcomes.getJSONObject(0).getString("id").equals("12")
+        && outcomes.getJSONObject(1).getString("id").equals("m:external:i:1")
+        && outcomes.getJSONObject(2).getString("id").equals("v:13"));
+    own.getJSONObject(1).remove("item");
+    own.getJSONObject(1).put("status", "stale");
+    JSONObject part = PhotoLibraryAccess.merged(mixed, library, own);
+    check(part.getString("status").equals("partial")
+        && part.getJSONArray("outcomes").getJSONObject(2).getString("status").equals("stale"));
+    // An owned change that failed outright reports its items unverified, not missing.
+    JSONObject lost = PhotoLibraryAccess.merged(mixed, library, new JSONArray());
+    check(lost.getString("status").equals("partial")
+        && lost.getJSONArray("outcomes").getJSONObject(0).getString("status").equals("unverified")
+        && lost.getJSONArray("outcomes").getJSONObject(1).has("item"));
 
     // Changes: Photos batches and agent album changes; permanent deletion is never an agent change.
     check(Arrays.equals(PhotoLibraryAccess.batchChange("favorite"), new boolean[] {true, true}));

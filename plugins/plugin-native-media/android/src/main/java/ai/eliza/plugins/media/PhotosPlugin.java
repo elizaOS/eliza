@@ -517,7 +517,7 @@ public abstract class PhotosPlugin extends Plugin {
       try {
         OwnedCaptures.Result result = captures.keep(call.getString("operationId", ""), call.getString("dataBase64", ""));
         JSObject out = new JSObject();
-        out.put("status", result.saved ? "saved" : "failed");
+        out.put("status", result.saved ? "saved" : result.failed ? "failed" : "unknown");
         if (result.id != null) out.put("id", result.id);
         if (result.message != null) out.put("message", result.message);
         call.resolve(out);
@@ -642,12 +642,36 @@ public abstract class PhotosPlugin extends Plugin {
         boolean[] change = PhotoLibraryAccess.batchChange(operation);
         JSArray items = call.getArray("items");
         List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED);
-        if (PhotoLibraryAccess.anyPermitted(reviewed)) {
-          mediaReview.request(call, PhotoLibraryAccess.ids(reviewed), PhotoLibraryAccess.revisions(reviewed),
+        List<PhotoLibraryAccess.Reviewed> library = PhotoLibraryAccess.only(reviewed, true);
+        List<PhotoLibraryAccess.Reviewed> own = PhotoLibraryAccess.only(reviewed, false);
+        if (library.isEmpty()) {
+          call.resolve(owned.changeMany(operation, items, () -> destroyed));
+          return;
+        }
+        if (own.isEmpty()) {
+          mediaReview.request(call, PhotoLibraryAccess.ids(library), PhotoLibraryAccess.revisions(library),
               change[0], change[1], true, false);
           return;
         }
-        call.resolve(owned.changeMany(operation, items, () -> destroyed));
+        for (PhotoLibraryAccess.Reviewed item : own)
+          if (!OwnedMediaLibrary.isOwnedKey(item.id) || item.revision.isEmpty()) throw new IllegalArgumentException();
+        org.json.JSONArray ownItems = PhotoLibraryAccess.items(own);
+        // Android reviews the library items first. A decline rejects the call, so the owner's own
+        // items stay unchanged too: the owner cancelled the whole batch.
+        mediaReview.request(call, PhotoLibraryAccess.ids(library), PhotoLibraryAccess.revisions(library),
+            change[0], change[1], false, outcomes -> {
+              org.json.JSONArray ownOutcomes;
+              try {
+                ownOutcomes = owned.changeMany(operation, ownItems, () -> destroyed).getJSONArray("outcomes");
+              } catch (Exception failed) {
+                ownOutcomes = new org.json.JSONArray();
+              }
+              try {
+                call.resolve(JSObject.fromJSONObject(PhotoLibraryAccess.merged(reviewed, outcomes, ownOutcomes)));
+              } catch (Exception invalid) {
+                call.reject("Photo outcome could not be verified. Refresh Photos.");
+              }
+            });
       } catch (Exception invalid) {
         call.reject("Select 1–20 distinct owned items with current revisions.");
       }

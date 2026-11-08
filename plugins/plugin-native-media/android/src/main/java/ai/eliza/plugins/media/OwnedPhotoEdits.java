@@ -220,6 +220,7 @@ public final class OwnedPhotoEdits {
       out.put("id", Long.toString(ContentUris.parseId(uri)));
     return out;
   }
+  @SuppressWarnings("deprecation")
   public JSObject result(String token) throws Exception {
     name(token);
     String record = journal.getString(token, null);
@@ -230,8 +231,10 @@ public final class OwnedPhotoEdits {
     String savedId = saved.optString("id", null);
     if (published && savedId != null)
       return receipt("saved", token, source(savedId));
-    // The deterministic owned display name closes publish→receipt crash ambiguity.
-    try (Cursor row = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+    // The deterministic owned display name closes publish→receipt crash ambiguity. The default
+    // collection hides rows inserted pending, so include them to clean up a dead save's copy.
+    try (Cursor row = resolver.query(
+             MediaStore.setIncludePending(MediaStore.Images.Media.EXTERNAL_CONTENT_URI),
              new String[] {"_id", "is_pending"}, "owner_package_name=? AND _display_name=?",
              new String[] {context.getPackageName(), name(token)}, null)) {
       if (row == null)

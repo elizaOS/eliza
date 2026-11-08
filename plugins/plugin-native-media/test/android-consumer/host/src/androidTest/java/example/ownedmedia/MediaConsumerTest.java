@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.*;
 import java.lang.reflect.Proxy;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,6 +45,31 @@ public final class MediaConsumerTest {
              new String[] {"_id"}, "owner_package_name=?", new String[] {owner}, null)) {
       assertNotNull(rows);
       return rows.getCount();
+    }
+  }
+  /** Rows with this owned display name, pending ones included. */
+  @SuppressWarnings("deprecation")
+  private static int named(ContentResolver resolver, String owner, String name) {
+    try (Cursor rows = resolver.query(
+             MediaStore.setIncludePending(MediaStore.Images.Media.EXTERNAL_CONTENT_URI),
+             new String[] {"_id"}, "owner_package_name=? AND _display_name=?",
+             new String[] {owner, name}, null)) {
+      assertNotNull(rows);
+      return rows.getCount();
+    }
+  }
+  /** The partial row a process leaves when it dies between insert and publication. */
+  private static void pendingRow(ContentResolver resolver, String name, String path, String mime,
+      byte[] partial) throws Exception {
+    ContentValues pending = new ContentValues();
+    pending.put("_display_name", name);
+    pending.put("mime_type", mime);
+    pending.put("relative_path", path);
+    pending.put("is_pending", 1);
+    Uri row = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, pending);
+    assertNotNull(row);
+    try (OutputStream out = resolver.openOutputStream(row, "w")) {
+      out.write(partial);
     }
   }
   // Keep real SharedPreferences and MediaStore writes, but fail the acknowledgement of terminal
@@ -120,8 +146,11 @@ public final class MediaConsumerTest {
       AtomicBoolean rejectReceipt = new AtomicBoolean(true);
       OwnedCaptures failing = new OwnedCaptures(failSavedReceipt(context, rejectReceipt), config);
       String uncertain = UUID.randomUUID().toString();
-      assertFalse(failing.keep(uncertain, base64).saved);
-      assertFalse(failing.keep(uncertain, base64).saved);
+      // Published, but no terminal receipt could be written: unknown, never failed.
+      OwnedCaptures.Result unresolved = failing.keep(uncertain, base64);
+      assertFalse(unresolved.saved || unresolved.failed);
+      unresolved = failing.keep(uncertain, base64);
+      assertFalse(unresolved.saved || unresolved.failed);
       assertEquals(initial + 2, count(resolver, context.getPackageName()));
       rejectReceipt.set(false);
       OwnedCaptures.Result recovered = failing.keep(uncertain, base64);
@@ -144,18 +173,24 @@ public final class MediaConsumerTest {
               .putString(unfinished,
                   new JSONObject().put("status", "reserved").put("sha256", hash(jpeg)).toString())
               .commit());
-      ContentValues pending = new ContentValues();
-      pending.put("_display_name", config.captureName(unfinished));
-      pending.put("mime_type", "image/jpeg");
-      pending.put("relative_path", config.captureRelativePath);
-      pending.put("is_pending", 1);
-      Uri partial = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, pending);
-      assertNotNull(partial);
-      try (OutputStream out = resolver.openOutputStream(partial, "w")) {
-        out.write(jpeg, 0, 4);
-      }
-      assertFalse(captures.keep(unfinished, base64).saved);
-      assertFalse(captures.keep(unfinished, base64).saved);
+      pendingRow(resolver, config.captureName(unfinished), config.captureRelativePath,
+          "image/jpeg", Arrays.copyOf(jpeg, 4));
+      // A reserved receipt plus its pending row: the row is removed and the keep fails.
+      OwnedCaptures.Result removed = captures.keep(unfinished, base64);
+      assertTrue(removed.failed);
+      assertEquals(0, named(resolver, context.getPackageName(), config.captureName(unfinished)));
+      assertTrue(captures.keep(unfinished, base64).failed);
+      assertEquals(initial + 1, count(resolver, context.getPackageName()));
+
+      // A pending row with no receipt is an earlier crash's orphan: replaced by one published row.
+      String orphaned = UUID.randomUUID().toString();
+      pendingRow(resolver, config.captureName(orphaned), config.captureRelativePath, "image/jpeg",
+          Arrays.copyOf(jpeg, 4));
+      OwnedCaptures.Result replaced = captures.keep(orphaned, base64);
+      assertTrue(replaced.message, replaced.saved);
+      assertArrayEquals(jpeg, read(resolver, item(replaced.id)));
+      assertEquals(1, named(resolver, context.getPackageName(), config.captureName(orphaned)));
+      assertEquals(1, resolver.delete(item(replaced.id), null, null));
       assertEquals(initial + 1, count(resolver, context.getPackageName()));
 
       String revision;
@@ -207,6 +242,23 @@ public final class MediaConsumerTest {
       assertEquals("saved", pastSave.getString("status"));
       assertEquals(copy.getString("id"), pastSave.getString("id"));
       assertEquals(initial + 1, count(resolver, context.getPackageName()));
+
+      // A save whose process died after inserting its pending copy: result() removes the copy.
+      String dead = UUID.randomUUID().toString();
+      assertTrue(history.edit()
+              .putString(dead,
+                  new JSONObject()
+                      .put("status", "incomplete")
+                      .put("createdAt", System.currentTimeMillis())
+                      .put("rotation", 90)
+                      .put("crop", false)
+                      .put("filter", "none")
+                      .toString())
+              .commit());
+      pendingRow(resolver, config.editName(dead), config.editRelativePath, "image/png",
+          new byte[] {(byte) 0x89, 'P', 'N', 'G'});
+      assertEquals("failed", new OwnedPhotoEdits(context, config).result(dead).getString("status"));
+      assertEquals(0, named(resolver, context.getPackageName(), config.editName(dead)));
     } finally {
       edits.close();
       resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "owner_package_name=?",

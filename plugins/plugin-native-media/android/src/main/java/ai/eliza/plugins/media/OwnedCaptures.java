@@ -20,11 +20,20 @@ import org.json.JSONObject;
  * worker.
  */
 public final class OwnedCaptures {
+  /**
+   * Saved, failed (nothing is in Photos for this operation) or, when neither {@code saved} nor
+   * {@code failed} holds, unknown: the outcome could not be resolved and only the same operation
+   * may retry.
+   */
   public static final class Result {
-    public final boolean saved;
+    public final boolean saved, failed;
     public final String id, message;
     private Result(boolean saved, String id, String message) {
+      this(saved, !saved, id, message);
+    }
+    private Result(boolean saved, boolean failed, String id, String message) {
       this.saved = saved;
+      this.failed = failed;
       this.id = id;
       this.message = message;
     }
@@ -62,8 +71,11 @@ public final class OwnedCaptures {
     return new Result(true, id, null);
   }
 
+  // API29-compatible pending visibility: the default collection hides rows inserted pending.
+  @SuppressWarnings("deprecation")
   private Cursor lookup(String operation) throws IOException {
-    Cursor row = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+    Cursor row = resolver.query(
+        MediaStore.setIncludePending(MediaStore.Images.Media.EXTERNAL_CONTENT_URI),
         new String[] {"_id", "is_pending"},
         "owner_package_name=? AND _display_name=? AND relative_path=?",
         new String[] {owner, config.captureName(operation), config.captureRelativePath}, null);
@@ -129,8 +141,16 @@ public final class OwnedCaptures {
       receipt = new JSONObject().put("status", "reserved").put("sha256", digest);
       // Also recover copies made by hosts that only recorded an identity after publication.
       try (Cursor row = lookup(operation)) {
-        if (row.moveToFirst())
-          return recover(operation, receipt, bytes);
+        while (row.moveToNext()) {
+          if (row.getInt(1) == 0)
+            return recover(operation, receipt, bytes);
+          // No receipt was reserved, so a pending row is the orphan of an earlier crashed attempt.
+          Uri orphan = ContentUris.withAppendedId(
+              MediaStore.Images.Media.EXTERNAL_CONTENT_URI, row.getLong(0));
+          if (resolver.delete(orphan, "is_pending=1 AND owner_package_name=?", new String[] {owner})
+              != 1)
+            throw new IOException("Unfinished capture cleanup was not confirmed");
+        }
       }
       persist(operation, receipt);
       ContentValues values = new ContentValues();
@@ -163,8 +183,8 @@ public final class OwnedCaptures {
         } catch (Exception unresolved) { /* Keep the reservation for a later explicit retry. */
         }
       }
-      return new Result(
-          false, null, "Photo save could not be confirmed. Check Photos before trying again.");
+      return new Result(false, false, null,
+          "Photo save could not be confirmed. Check Photos before trying again.");
     }
   }
 }
