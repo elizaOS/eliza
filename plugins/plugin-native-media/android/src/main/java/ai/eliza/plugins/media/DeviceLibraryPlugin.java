@@ -42,6 +42,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private PermittedMediaCatalog catalog;
   private PermittedMediaReview review;
   private volatile boolean destroyed, watching;
+  /** The scope last answered or announced; resume announces only a different one. */
+  private volatile String lastScope = "";
 
   private PhotosPlugin photos() {
     PluginHandle handle = getBridge().getPlugin(photosPluginName());
@@ -98,7 +100,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private JSObject scopeResult() {
     String version;
     try {
-      version = catalog.fence().cursorIdentity();
+      version = catalog.scopeVersion();
     } catch (Exception unavailable) {
       version = "";
     }
@@ -108,6 +110,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
     } catch (org.json.JSONException impossible) {
       throw new IllegalStateException(impossible);
     }
+    lastScope = out.toString();
     return out;
   }
 
@@ -190,6 +193,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
         out.put("next", page.getString("next"));
         out.put("generation", 1);
         catalog.publish(call, out, ticket);
+      } catch (PermittedMediaCatalog.StaleCursor stale) {
+        call.reject("Photo page expired. Load from the first page.", "LIBRARY_STALE_CURSOR");
       } catch (Exception failure) {
         call.reject("Photo library changed. Reload before continuing.");
       }
@@ -282,11 +287,14 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   }
 
   // Posted so the Photos plugin's own handleOnResume (plugin order is unspecified) has restored
-  // foreground first.
+  // foreground first. A resume with the same grant and library announces nothing.
   @Override
   protected void handleOnResume() {
     new Handler(Looper.getMainLooper()).post(() -> {
-      if (!destroyed) notifyListeners("scopeChanged", scopeResult());
+      if (destroyed) return;
+      String before = lastScope;
+      JSObject scope = scopeResult();
+      if (!scope.toString().equals(before)) notifyListeners("scopeChanged", scope);
     });
   }
 
