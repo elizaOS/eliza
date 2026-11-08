@@ -42,9 +42,11 @@ function clampTtlSeconds(ttlSeconds: number): number {
  * atomic operations, lists, or TTL introspection**. This adapter therefore
  * serves the read-through caches (auth, api-key, model catalog, …) faithfully
  * and provides best-effort, non-atomic emulation for the rest:
- *   - `set …{nx}` / `incr` are NOT atomic (racy under concurrency); callers that
- *     need atomicity gate on `CacheClient.supportsAtomicOperations()`, which
- *     returns false for this backend, so distributed locks use dummy locks.
+ *   - `set …{nx}` / `getdel` / `incr` are NOT atomic (racy under concurrency).
+ *     `CacheClient.supportsAtomicOperations()` returns false for this backend,
+ *     but `setIfNotExists`/`getAndDelete` do not check it: callers that need
+ *     atomicity must (room locks fall back to dummy locks; single-use records
+ *     move to the authentication state store).
  *   - `llen`/`lrem`/`lrange` read a JSON array value; `lpush`/`rpop`/`rpoplpush`
  *     throw, because a read-then-write list loses concurrent queue writes.
  *   - `pttl` cannot be derived from KV and returns -1 (present, ttl unknown).
