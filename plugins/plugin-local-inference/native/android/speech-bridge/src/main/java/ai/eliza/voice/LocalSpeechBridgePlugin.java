@@ -235,7 +235,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** Capacitor's own permission request launches through the activity; see {@link #launch}. */
  @Override @PluginMethod public void requestPermissions(PluginCall call){launch(call,()->super.requestPermissions(call));}
  @PermissionCallback private void microphonePermission(PluginCall call){Long admitted=permissionEpochs.remove(call.getCallbackId());if(admitted==null||admitted!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startRecording(call,admitted);}
- private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
+ private void startRecording(PluginCall call,long admitted){main.post(()->{if(destroyed||!speechForeground||sensitiveSurfaceActive()||gate.draining()||admitted!=epoch.get()){call.reject("Recording cancelled");return;}try{int limit=call.getInt("maxDurationMs",LocalVoiceRecording.LONG_LIMIT_MS);if(limit!=LocalVoiceRecording.SHORT_LIMIT_MS&&limit!=LocalVoiceRecording.LONG_LIMIT_MS)throw new IllegalArgumentException("Unsupported capture duration");call.resolve(js(capture.start(limit)));}catch(Exception error){call.reject("Microphone could not start");}});}
  @PluginMethod public void getRecordingMetrics(PluginCall call){main.post(()->{try{call.resolve(js(capture.metrics(call.getString("recordingId"))));}catch(RuntimeException error){call.reject("Recording metrics are no longer available");}});}
  @PluginMethod public void stopRecording(PluginCall call){main.post(()->{try{call.resolve(js(capture.stop()));}catch(Exception error){call.reject("Recording could not be saved");}});}
  private void finishDrain(boolean complete,String error){
@@ -471,6 +471,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  /** The shared VAD opens on this process's inference session (verifies the bundle once; capture worker only). */
  private boolean vadAvailable(){try{return LiveVoiceCapture.vadAvailable(VoiceAssets.sharedInference(getContext()));}catch(Exception|Error unavailable){return false;}}
  @PluginMethod public void startLiveCapture(PluginCall call){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   String id=call.getString("captureId","");
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(gate.draining()||destroyed||!speechForeground){call.reject(LiveCaptureController.CANCELLED);return;}
@@ -483,6 +484,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
  }
  @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
  private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
+  if(sensitiveSurfaceActive()){if(live.current(ticket))live.cancelAll();call.reject(LiveCaptureController.CANCELLED);return;}
   String owner=call.getString("ownerId","");
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;
   live.start(ticket,Boolean.TRUE.equals(call.getBoolean("echoCancel",false)),route,call.getString("roomId",null),Boolean.TRUE.equals(call.getBoolean("reopen",false)),new LiveCaptureController.Started(){
