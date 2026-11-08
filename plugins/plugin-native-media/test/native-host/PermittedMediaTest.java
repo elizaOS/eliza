@@ -1,11 +1,14 @@
 import ai.eliza.plugins.media.MediaLibraryKey;
 import ai.eliza.plugins.media.OwnedMediaConfig;
 import ai.eliza.plugins.media.PermittedMediaChange;
+import ai.eliza.plugins.media.PermittedMediaPage;
 import ai.eliza.plugins.media.VideoEditSpec;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * JVM tests of permitted-library identities and revisions, change review, video copy rules and host
- * placement. No Android.
+ * JVM tests of permitted-library identities and revisions, page merging, change review, video copy
+ * rules and host placement. No Android.
  */
 public final class PermittedMediaTest {
   private static int checks;
@@ -27,6 +30,37 @@ public final class PermittedMediaTest {
       throw new AssertionError("Check " + checks + " (" + label + "): " + error);
     }
     throw new AssertionError("Check " + checks + " should have been rejected: " + label);
+  }
+
+  /** One synthetic MediaStore bucket of {date_added, _id} rows, read as the catalog reads it. */
+  private static List<PermittedMediaPage.Row<String>> bucketRows(
+      PermittedMediaPage position, int bucket, long[][] rows, String name, int limit) {
+    String[] after = position.after(bucket);
+    long date = Long.parseLong(after[0]), id = Long.parseLong(after[2]);
+    List<long[]> matching = new ArrayList<>();
+    for (long[] row : rows)
+      if (row[0] < date || (row[0] == date && row[1] < id))
+        matching.add(row);
+    matching.sort((a, b) -> a[0] != b[0] ? Long.compare(b[0], a[0]) : Long.compare(b[1], a[1]));
+    List<PermittedMediaPage.Row<String>> result = new ArrayList<>();
+    for (long[] row : matching.subList(0, Math.min(limit + 1, matching.size())))
+      result.add(new PermittedMediaPage.Row<>(bucket, row[0], row[1], name + row[1]));
+    return result;
+  }
+  /** Every page of the merged listing, each page's items joined in order. */
+  private static List<List<String>> pages(long[][][] buckets, String[] names, int limit) {
+    List<List<String>> result = new ArrayList<>();
+    PermittedMediaPage position = new PermittedMediaPage(buckets.length);
+    while (position != null) {
+      position.requireBuckets(buckets.length);
+      List<PermittedMediaPage.Row<String>> rows = new ArrayList<>();
+      for (int bucket = 0; bucket < buckets.length; bucket++)
+        rows.addAll(bucketRows(position, bucket, buckets[bucket], names[bucket], limit));
+      PermittedMediaPage.Merged<String> merged = position.merge(rows, limit);
+      result.add(merged.items);
+      position = merged.next;
+    }
+    return result;
   }
 
   public static void main(String[] args) throws Exception {
@@ -80,6 +114,52 @@ public final class PermittedMediaTest {
     check(same.equals(MediaLibraryKey.revisionPrefix("17:a"))
             && !same.equals(MediaLibraryKey.revisionPrefix("18:a")),
         "a new provider version changes the revision");
+
+    // Library pages merge every bucket by date added, so a new video is not listed after older
+    // images. Equal dates order by bucket (images before videos), then by row id.
+    long[][] images = new long[30][];
+    for (int i = 0; i < 30; i++) images[i] = new long[] {1_000 + i, i + 1};
+    long[][] newVideo = {{5_000, 1}};
+    List<List<String>> mixed = pages(new long[][][] {images, newVideo}, new String[] {"i", "v"}, 24);
+    check(mixed.get(0).get(0).equals("v1"), "the newest video leads page one");
+    check(mixed.size() == 2 && mixed.get(0).size() == 24 && mixed.get(1).size() == 7,
+        "31 rows fill one page and part of the next");
+    List<String> all = new ArrayList<>();
+    for (List<String> page : mixed) all.addAll(page);
+    List<String> expected = new ArrayList<>();
+    expected.add("v1");
+    for (int i = 30; i >= 1; i--) expected.add("i" + i);
+    check(all.equals(expected), "every row once, newest first");
+    long[][] spread = new long[20][], spreadVideos = new long[20][], secondVolume = new long[20][];
+    for (int i = 0; i < 20; i++) {
+      spread[i] = new long[] {100 + 3 * i, 50 + i};
+      spreadVideos[i] = new long[] {101 + 3 * i, 7 + i};
+      secondVolume[i] = new long[] {102 + 3 * i, 50 + i};
+    }
+    List<String> merged = new ArrayList<>();
+    for (List<String> page :
+        pages(new long[][][] {spread, spreadVideos, secondVolume}, new String[] {"a", "b", "c"}, 7))
+      merged.addAll(page);
+    check(merged.size() == 60 && new java.util.HashSet<>(merged).size() == 60,
+        "small pages across three buckets yield each row exactly once");
+    check(merged.get(0).equals("c69") && merged.get(1).equals("b26") && merged.get(2).equals("a69")
+            && merged.get(59).equals("a50"),
+        "small pages stay in date order");
+    long[][] tiedImages = {{2_000, 9}, {2_000, 4}};
+    long[][] tiedVideos = {{2_000, 12}, {2_000, 3}};
+    for (int limit : new int[] {1, 2, 3, 24}) {
+      List<String> tied = new ArrayList<>();
+      for (List<String> page :
+          pages(new long[][][] {tiedImages, tiedVideos}, new String[] {"i", "v"}, limit))
+        tied.addAll(page);
+      check(tied.equals(java.util.Arrays.asList("i9", "i4", "v12", "v3")),
+          "equal dates order by bucket then id at page size " + limit);
+    }
+    PermittedMediaPage onePage = new PermittedMediaPage(2);
+    rejects(IllegalStateException.class, () -> onePage.requireBuckets(3),
+        "a position from another bucket list");
+    check(pages(new long[][][] {{}, {}}, new String[] {"i", "v"}, 24).get(0).isEmpty(),
+        "an empty library is one empty page");
 
     // Change review: the owner's reversible change goes straight to Android's request, which names
     // the action and items; permanent deletion and agent requests keep the app's review.

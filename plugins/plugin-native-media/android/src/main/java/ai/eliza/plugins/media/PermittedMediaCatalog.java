@@ -71,14 +71,13 @@ public final class PermittedMediaCatalog implements AutoCloseable {
   };
   private static final class Page {
     final String snapshot, query, kind;
-    final int bucket;
-    final long before, until;
-    Page(String snapshot, String query, String kind, int bucket, long before) {
+    final PermittedMediaPage position;
+    final long until;
+    Page(String snapshot, String query, String kind, PermittedMediaPage position) {
       this.snapshot = snapshot;
       this.query = query;
       this.kind = kind;
-      this.bucket = bucket;
-      this.before = before;
+      this.position = position;
       until = SystemClock.elapsedRealtime() + 120000;
     }
   }
@@ -362,8 +361,6 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       throw new IllegalArgumentException("Invalid photo query");
     List<String> volumes = volumes();
     String snapshot = snapshot(volumes);
-    int bucketIndex = 0;
-    long before = Long.MAX_VALUE;
     List<MediaLibraryKey> buckets = new ArrayList<>();
     for (String volume : volumes) {
       if (readable(false) && !kind.equals("video"))
@@ -371,6 +368,7 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       if (readable(true) && !kind.equals("image"))
         buckets.add(new MediaLibraryKey(volume, 1, true));
     }
+    PermittedMediaPage position = new PermittedMediaPage(buckets.size());
     if (cursor != null && !cursor.isEmpty()) {
       Page page;
       synchronized (pages) {
@@ -380,20 +378,18 @@ public final class PermittedMediaCatalog implements AutoCloseable {
           || !page.snapshot.equals(snapshot) || !page.query.equals(search)
           || !page.kind.equals(pageKind))
         throw new IllegalStateException("Photo page expired; refresh Photos");
-      bucketIndex = page.bucket;
-      before = page.before;
+      page.position.requireBuckets(buckets.size());
+      position = page.position;
     }
-    JSArray items = new JSArray();
-    String next = "";
-    long thumbnailUntil = SystemClock.elapsedRealtime() + 3000;
-  outer:
-    for (; bucketIndex < buckets.size(); bucketIndex++, before = Long.MAX_VALUE) {
+    // Every bucket is read from its own position, so a new video is not listed after older images.
+    List<PermittedMediaPage.Row<JSObject>> rows = new ArrayList<>();
+    for (int bucketIndex = 0; bucketIndex < buckets.size(); bucketIndex++) {
       MediaLibraryKey bucket = buckets.get(bucketIndex);
       String volume = bucket.volume;
       Bundle args = new Bundle();
-      List<String> values = new ArrayList<>();
-      values.add(Long.toString(before));
-      String where = "is_pending=0 AND _id<?"
+      List<String> values =
+          new ArrayList<>(java.util.Arrays.asList(position.after(bucketIndex)));
+      String where = "is_pending=0 AND (date_added<? OR (date_added=? AND _id<?))"
           + (Build.VERSION.SDK_INT >= 30 ? " AND is_trashed=" + (filter.equals("trash") ? "1" : "0")
                                          : "")
           + (filter.equals("favorites") ? " AND is_favorite=1" : "");
@@ -415,35 +411,37 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where);
       args.putStringArray(
           ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values.toArray(new String[0]));
-      args.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {"_id"});
-      args.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION,
-          ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);
-      args.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1 - items.length());
-      try (Cursor rows = query(volume, bucket.video, args)) {
-        if (rows == null)
+      // The sort-columns argument puts its direction on the last column only.
+      args.putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "date_added DESC, _id DESC");
+      args.putInt(ContentResolver.QUERY_ARG_LIMIT, limit + 1);
+      try (Cursor bucketRows = query(volume, bucket.video, args)) {
+        if (bucketRows == null)
           throw new IllegalStateException("Media provider unavailable");
-        while (rows.moveToNext()) {
-          if (items.length() == limit) {
-            next = UUID.randomUUID().toString();
-            synchronized (pages) {
-              pages.entrySet().removeIf(
-                  entry -> entry.getValue().until < SystemClock.elapsedRealtime());
-              while (pages.size() >= 32) pages.remove(pages.keySet().iterator().next());
-              pages.put(next, new Page(snapshot, search, pageKind, bucketIndex, before));
-            }
-            break outer;
-          }
-          JSObject item = metadata(rows, volume, bucket.video);
-          before = rows.getLong(0);
-          if (thumbnails && SystemClock.elapsedRealtime() < thumbnailUntil) {
-            try {
-              item.put("image", thumbnail(MediaLibraryKey.parse(item.getString("id")), 240));
-            } catch (Exception unavailable) {
-              item.put("image", "");
-            }
-          }
-          items.put(item);
+        while (bucketRows.moveToNext())
+          rows.add(new PermittedMediaPage.Row<>(bucketIndex, bucketRows.getLong(3),
+              bucketRows.getLong(0), metadata(bucketRows, volume, bucket.video)));
+      }
+    }
+    PermittedMediaPage.Merged<JSObject> merged = position.merge(rows, limit);
+    JSArray items = new JSArray();
+    long thumbnailUntil = SystemClock.elapsedRealtime() + 3000;
+    for (JSObject item : merged.items) {
+      if (thumbnails && SystemClock.elapsedRealtime() < thumbnailUntil) {
+        try {
+          item.put("image", thumbnail(MediaLibraryKey.parse(item.getString("id")), 240));
+        } catch (Exception unavailable) {
+          item.put("image", "");
         }
+      }
+      items.put(item);
+    }
+    String next = "";
+    if (merged.next != null) {
+      next = UUID.randomUUID().toString();
+      synchronized (pages) {
+        pages.entrySet().removeIf(entry -> entry.getValue().until < SystemClock.elapsedRealtime());
+        while (pages.size() >= 32) pages.remove(pages.keySet().iterator().next());
+        pages.put(next, new Page(snapshot, search, pageKind, merged.next));
       }
     }
     current(snapshot, volumes);

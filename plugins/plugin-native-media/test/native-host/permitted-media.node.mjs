@@ -36,13 +36,14 @@ function run(t, sources, main) {
   });
 }
 
-test("permitted-library identities, change review, video copy rules and host placement", (t) => {
+test("permitted-library identities, page merging, change review, video copy rules and host placement", (t) => {
   assert.match(
     run(
       t,
       [
         "MediaLibraryKey",
         "PermittedMediaChange",
+        "PermittedMediaPage",
         "VideoEditSpec",
         "OwnedMediaConfig",
       ],
