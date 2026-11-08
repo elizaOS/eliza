@@ -2396,6 +2396,117 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect((await review.getLinkedCalendarControl()).conflicts).toBe(0);
   });
 
+  it("restores a deleted Eliza event from Google when the owner keeps Google", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Deleted on the phone",
+      startAt: "2026-08-17T19:00:00.000Z",
+      endAt: "2026-08-17T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "conflict-restore-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "restore-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    const link = await links.save(
+      await links.create({
+        agentId: AGENT_ID,
+        localEventId: event.id,
+        ...destination,
+        localRevision: 1,
+      }),
+      {
+        state: "conflicted",
+        pendingOperation: null,
+        providerEventId: "google-restore-event",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "older-common-version",
+        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+      },
+    );
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    await service.deleteCalendarEvent(INTERNAL_URL, {
+      eventId: event.externalId,
+      expectedProviderVersion: event.metadata.etag,
+      calendarId: event.calendarId,
+      grantId: event.grantId,
+    });
+    expect(await service.getCalendarEventById(event.id)).toBeNull();
+    const google = {
+      getEvent: async () => ({
+        id: "google-restore-event",
+        calendarId: destination.providerCalendarId,
+        title: "Kept in Google",
+        description: "",
+        location: "Room 3",
+        start: event.startAt,
+        end: event.endAt,
+        timeZone: event.timezone,
+        attendees: [],
+        metadata: { etag: '"g2"' },
+      }),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Restore calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent: async () => {
+        throw new Error("Keeping Google must not create an event");
+      },
+      updateEvent: async () => {
+        throw new Error("Keeping Google must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Keeping Google must not delete an event");
+      },
+    };
+    const review = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    review.setGate(connectedGoogleGate());
+    await controls.resume(selected.revision);
+    const current = await links.getById(AGENT_ID, link.id);
+    if (!current) throw new Error("Expected the conflicted link");
+
+    const resolved = await review.executeLinkedCalendarConflictResolution(
+      link.id,
+      {
+        strategy: "keep_google",
+        expectedUpdatedAt: current.updatedAt,
+        idempotencyKey: "keep-google-restore",
+      },
+    );
+    expect(resolved.outcome).toBe("pulled");
+    expect(resolved.link).toMatchObject({ state: "clean" });
+    const restored = await review.getCalendarEventById(event.id);
+    expect(restored).toMatchObject({
+      id: event.id,
+      title: "Kept in Google",
+      location: "Room 3",
+    });
+    expect(Number(restored?.metadata.version)).toBeGreaterThan(
+      Number(event.metadata.version),
+    );
+  });
+
   it("lets the owner release a create that never reached Google, then sends it once on resume", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Never landed",
