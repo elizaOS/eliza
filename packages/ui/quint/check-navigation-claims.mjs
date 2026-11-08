@@ -9,6 +9,19 @@ import { requireVitestConformance } from "../../scripts/lib/vitest-conformance.t
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const suites = {
+  ConversationMessageLoad: {
+    test: "src/state/__e2e__/conversation-message-load.test.tsx",
+    names: [
+      "conversation message load ownership clears old transcript rows before a new owner's request",
+      "conversation message load ownership ignores a transport success after another owner claims the view",
+      "conversation message load ownership keeps a newer same-owner response when an older request finishes",
+      "conversation message load ownership fences a missing-thread list response after a new owner claim",
+      "conversation message load ownership returns the loader's fallback ownership after a missing-thread reply",
+      "conversation message load ownership preserves a cached transcript after transient revalidation failure",
+      "conversation message load ownership fences a centered window superseded by a newest-history request",
+      "conversation message load ownership does not publish an around window after its callback changes ownership",
+    ],
+  },
   NavigateViewClaims: {
     test: "src/events/__e2e__/navigate-view-claims.test.ts",
     names: [
