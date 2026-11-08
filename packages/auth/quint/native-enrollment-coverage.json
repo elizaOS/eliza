@@ -16,7 +16,7 @@
       "One host and one already-saved credential receipt. Public operations are modeled at quiescent boundaries, with failures before and after durable/remote effects and five explicit cancel-versus-resume await cuts. Other asynchronous interleavings remain outside this projection.",
       "Real implementation conformance replays generated Quint traces through private filesystem receipts, loopback HTTP and the actual native-host module. Server proof verification and atomic acknowledgement/revocation are assumed. Restart reconstructs the host against unchanged persisted data; process death, fsync and multi-process coordination are outside this checker.",
       "Progress assumes weak fairness of a successful complete cancellation retry. Permanent outages, missing retries and expired unacknowledged enrollment have no completion guarantee.",
-      "NativeGoogleAdmission covers the bounded Google callback and exchange boundary. Email and phone challenge issuance, MFA completion, verified-owner activation, billing authority, account methods and replacement credentials need separate models. A default cancel after activation receipt removal preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
+      "NativeGoogleAdmission and NativeGoogleMfa cover bounded Google callback and factor admission. Email and phone challenge issuance, verified-owner activation, billing authority, account methods and replacement credentials need separate models. A default cancel after activation receipt removal preserves the committed credential. An unconfirmed remote revocation can temporarily leave a locally selected revoked credential."
     ]
   },
   {
@@ -39,7 +39,31 @@
       "Two Google attempts, one host, one in-flight exchange and one cancellation. Start represents a successful app configuration and an empty active/pending credential slot. State and verifier are opaque identities. Expiry is an explicit event before exchange dispatch.",
       "Malformed return shape, foreign state, matched malformed code, matched failure link and matched valid code represent native callback branches. The model ends at exchange failure or MFA admission. Browser navigation, provider code cryptography, MFA completion, account methods, billing authority and credential activation are separate.",
       "Native host tests check the parser and attempt behavior. The loopback check verifies the PKCE binding and the typed cancellation fence after a real HTTP exchange is already pending. The model does not prove provider token validation.",
-      "Email and phone challenge issuance, verified-owner activation, ephemeral account and billing authority, one-use account mutation reviews and replacement credentials remain separate."
+      "Email and phone challenge issuance, verified-owner activation, ephemeral account and billing authority, one-use account mutation reviews and replacement credentials remain separate.",
+      "NativeGoogleMfa separately covers a bounded native Google factor challenge, retry, replacement and first Cloud grant admission."
+    ]
+  },
+  {
+    "id": "auth.NativeGoogleMfa",
+    "model": "packages/auth/quint/NativeGoogleMfa.qnt",
+    "sources": [
+      "packages/auth/native-host/cloud-enrollment.mjs",
+      "packages/auth/native-host/cloud-enrollment-google.test.mjs"
+    ],
+    "invariants": [
+      "TypeOK",
+      "CompletionUsesMatchingLiveFactor",
+      "ReplacementCanOnlyShortenDeadline",
+      "ProviderFailureKeepsChallenge",
+      "GrantNeedsCurrentEpochAndEmptyReceipt",
+      "CancelCannotRestoreChallengeOrDispatchGrant"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Google attempt with one admitted MFA challenge, one replacement, three completion submissions, one local cancellation and bounded logical time. TOTP and SMS are submit-capable. Passkey is represented as admitted but unsupported by this operation.",
+      "A rejected provider reply retains the private challenge, and a replacement uses the earlier deadline. The expiry check happens before dispatch. The case ends at the first Cloud grant dispatch, so retries after grant dispatch are outside the bound.",
+      "The stored-receipt read may report an existing receipt or return empty. Cancellation fences an empty result with the epoch. Existing receipt recovery, grant issuance, durable writes, acknowledgement, activation, key revocation and Android handling belong to other models.",
+      "Maintained native-host tests check successful factor completion and exact expiry. A loopback scenario checks retry, private replacement, and cancellation while the post-token receipt read is pending. Provider MFA verification and code replay handling remain external assumptions."
     ]
   },
   {
