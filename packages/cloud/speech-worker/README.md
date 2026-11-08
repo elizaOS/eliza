@@ -14,6 +14,11 @@ A new object in the 32 MB API Worker took about 4.4 s on first touch, with a
 range of 3.4 to 8.1 s. A new object in the lean admission Worker took about
 1.0 s. Touching either object again took 6 to 33 ms.
 
+The current local dry runs produced a 5,131.49 KiB speech Worker (1,284.35 KiB
+gzip) and a 32,179.04 KiB API Worker (8,285.78 KiB gzip). These are bundle
+measurements, not timing results. This new speech host's live cold-start latency
+has not been measured; the 1.0 s result above belongs to the admission Worker.
+
 The coordinator does not go in `eliza-cloud-admission-staging`. That Worker has
 no database, cache or provider credentials, and its contract enforces that.
 Accounting reaches it only through private API capabilities. The coordinator

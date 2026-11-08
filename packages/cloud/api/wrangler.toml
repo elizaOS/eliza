@@ -887,8 +887,8 @@ class_name = "HfEgressState"
 name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
 
-# New speech sessions live in the lean staging speech host (cold start ~1 s
-# there vs ~4.4 s in this 32 MB Worker). The class export above stays so
+# New speech sessions live in the lean staging speech host; its live cold-start
+# latency is not measured yet. The class export above stays so
 # objects created before the switch still finish their retirement alarms here.
 # Production keeps this binding local until staging proves the move.
 [[env.staging.durable_objects.bindings]]
