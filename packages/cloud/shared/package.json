@@ -464,6 +464,7 @@
     "./lib/services/maps/graphhopper-router": "./src/lib/services/maps/graphhopper-router.ts",
     "./lib/services/maps/nominatim-geocoder": "./src/lib/services/maps/nominatim-geocoder.ts",
     "./lib/services/maps/provider-registry": "./src/lib/services/maps/provider-registry.ts",
+    "./lib/services/maps/route-geometry": "./src/lib/services/maps/route-geometry.ts",
     "./lib/services/maps/valhalla-router": "./src/lib/services/maps/valhalla-router.ts",
     "./lib/services/market-preview": "./src/lib/services/market-preview.ts",
     "./lib/services/message-router": "./src/lib/services/message-router.ts",
