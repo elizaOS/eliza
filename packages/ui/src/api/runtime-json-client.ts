@@ -259,6 +259,9 @@ export function createRuntimeJsonClient(options: {
             seenRunning(epoch);
           };
           const send = async (afterNotReady: boolean): Promise<T> => {
+            // Awaiting readiness can yield to an account refresh before this
+            // invocation, including when retrying an undispatched request.
+            current(epoch);
             let response: RuntimeJsonResponse;
             try {
               response = await bridge.request({
