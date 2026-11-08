@@ -38,6 +38,8 @@ const NESTED_BUILD_DEPENDENCIES: Record<string, string> = {
   "@noble/hashes/sha2.js": "../../../core/node_modules/@noble/hashes/sha2.js",
 };
 
+type GreetingDrain = { greetings: Array<{ leaseId: string }> };
+
 describe("onboarding coordinator error integration", () => {
   let miniflare: Miniflare;
 
@@ -200,6 +202,22 @@ describe("onboarding coordinator error integration", () => {
     await miniflare?.dispose();
   });
 
+  async function greetingQueue(name: string) {
+    const namespace = await miniflare.getDurableObjectNamespace(
+      "ONBOARDING_SESSIONS",
+    );
+    const stub = namespace.getByName(`proactive-greetings:${name}`);
+    return async <Reply = unknown>(path: string, body: unknown) => {
+      const response = await stub.fetch(`https://onboarding.internal/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as Reply;
+    };
+  }
+
   test("public route maps a typed coordinator rejection to fail-closed 403", async () => {
     const response = await miniflare.dispatchFetch(
       "https://cloud.test/api/eliza-app/onboarding/chat",
@@ -221,4 +239,87 @@ describe("onboarding coordinator error integration", () => {
       code: "access_denied",
     });
   }, 120_000);
+
+  test("concurrent greeting drains lease the original enqueue to one poller", async () => {
+    const queue = await greetingQueue("concurrent");
+    const original = {
+      sessionId: "platform:queue-original",
+      platformUserId: "test-recipient",
+      message: "Original greeting",
+      createdAt: new Date().toISOString(),
+      deliveryNonce: "original",
+    };
+    await queue("enqueue-greeting", original);
+    await queue("enqueue-greeting", { ...original, message: "Duplicate" });
+    const replies = await Promise.all([
+      queue<GreetingDrain>("drain-greetings", { limit: 1 }),
+      queue<GreetingDrain>("drain-greetings", { limit: 1 }),
+    ]);
+    const claims = replies.flatMap((reply) => reply.greetings);
+    expect(claims).toHaveLength(1);
+    const [claim] = claims;
+    expect(claim).toMatchObject(original);
+    const acknowledgement = {
+      sessionId: original.sessionId,
+      leaseId: claim.leaseId,
+    };
+    expect(
+      await queue("ack-greetings", {
+        acknowledgements: [{ ...acknowledgement, leaseId: "other" }],
+      }),
+    ).toEqual({ acknowledged: 0 });
+    expect(await queue("drain-greetings", {})).toEqual({ greetings: [] });
+    expect(
+      await queue("ack-greetings", { acknowledgements: [acknowledgement] }),
+    ).toEqual({ acknowledged: 1 });
+    expect(
+      await queue("ack-greetings", { acknowledgements: [acknowledgement] }),
+    ).toEqual({ acknowledged: 0 });
+    await queue("enqueue-greeting", { ...original, deliveryNonce: "new" });
+    const next = await queue<GreetingDrain>("drain-greetings", {});
+    expect(next.greetings).toEqual([
+      expect.objectContaining({ deliveryNonce: "new" }),
+    ]);
+  });
+
+  test("an expired lease can be replaced and its delayed acknowledgement has no effect", async () => {
+    const queue = await greetingQueue("recovery");
+    const now = Date.now();
+    const original = {
+      sessionId: "platform:queue-recovery",
+      platformUserId: "test-recipient",
+      message: "Recovered greeting",
+      createdAt: new Date(now - 3 * 60_000).toISOString(),
+      deliveryNonce: "recovery",
+    };
+    await queue("enqueue-greeting", {
+      ...original,
+      lease: { id: "retired", expiresAt: now - 60_000 },
+    });
+    await queue("enqueue-greeting", {
+      ...original,
+      sessionId: "platform:queue-expired",
+      createdAt: new Date(now - 16 * 60_000).toISOString(),
+    });
+    const reply = await queue<GreetingDrain>("drain-greetings", {});
+    expect(reply.greetings).toHaveLength(1);
+    const [claim] = reply.greetings;
+    expect(claim).toMatchObject(original);
+    expect(claim.leaseId).not.toBe("retired");
+    expect(
+      await queue("ack-greetings", {
+        acknowledgements: [
+          { sessionId: original.sessionId, leaseId: "retired" },
+        ],
+      }),
+    ).toEqual({ acknowledged: 0 });
+    expect(
+      await queue("ack-greetings", {
+        acknowledgements: [
+          { sessionId: original.sessionId, leaseId: claim.leaseId },
+        ],
+      }),
+    ).toEqual({ acknowledged: 1 });
+    expect(await queue("drain-greetings", {})).toEqual({ greetings: [] });
+  });
 });
