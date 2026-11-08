@@ -386,6 +386,36 @@ describe("createMailDraftsController", () => {
     expect(shelfItems(f)).toHaveLength(1);
   });
 
+  it("warns when the saved copy of a Gmail draft is an earlier version of a sent email", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    const reference = { draftId: "g1", providerDigest: "d1" };
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    type(f.controller, "onBody", "Sent text");
+    const email = f.controller.email();
+    const revision = (
+      JSON.parse(
+        [...f.slots.entries()].find(
+          ([k]) => !k.includes(":shelf:"),
+        )?.[1] as string,
+      ) as { revision: string }
+    ).revision;
+    await f.controller.settleSent(
+      email?.draftId as string,
+      { kind: "send", ...(email?.proposal as Bag) },
+      "grant-a",
+      revision,
+      true,
+    );
+    f.controller.reset();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    expect((f.controller.proposal() as Bag).bodyText).toBe("Gmail text");
+    expect((f.controller.render().c as Bag).status).toMatch(
+      /^Earlier version of a sent email/,
+    );
+  });
+
   it("refuses to open a Gmail draft over an open composer with other text", async () => {
     const f = fixture();
     await f.controller.bind("grant-a", "owner@example.invalid");

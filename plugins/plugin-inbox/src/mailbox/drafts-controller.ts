@@ -1562,7 +1562,10 @@ export function createMailDraftsController(
           open = true;
           confirm = false;
           toQ = "";
-          status = "Editing the copy of this Gmail draft saved on this device.";
+          // An earlier version of a sent email keeps its duplicate-send warning.
+          status = earlierVersion()
+            ? "Earlier version of a sent email. Sending it creates another message; nothing has been sent."
+            : "Editing the copy of this Gmail draft saved on this device.";
           publish();
           return true;
         }
