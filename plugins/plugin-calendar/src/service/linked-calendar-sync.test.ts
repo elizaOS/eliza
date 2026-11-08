@@ -388,6 +388,58 @@ describe("LinkedCalendarRepository with PGlite", () => {
     expect(await repository.listActionable("agent-1")).toHaveLength(1);
   });
 
+  it("counts conflicts for the destination and settles one whose sides converged", async () => {
+    const created = await repository.create({
+      agentId: "agent-1",
+      localEventId: "local-1",
+      connectorAccountId: "google-1",
+      providerCalendarId: "primary",
+      localRevision: 2,
+    });
+    const conflicted = await repository.save(created, {
+      state: "conflicted",
+      pendingOperation: null,
+      providerEventId: "google-event-1",
+      providerEtag: '"g1"',
+      lastCommonSemanticHash: "old",
+      lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+    });
+    const destination = {
+      connectorAccountId: "google-1",
+      providerCalendarId: "primary",
+    };
+    expect(await repository.countConflicted("agent-1", destination)).toBe(1);
+    expect(
+      await repository.countConflicted("agent-1", {
+        ...destination,
+        providerCalendarId: "other",
+      }),
+    ).toBe(0);
+    expect(
+      (await repository.listActionable("agent-1")).map((row) => row.id),
+    ).toEqual([conflicted.id]);
+
+    const testPorts = ports({
+      local: { eventId: "local-1", revision: 2, event: baseEvent },
+      provider: { eventId: "google-event-1", etag: '"g2"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        repository,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).reconcile(conflicted),
+    ).toBe("clean");
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+    expect(await repository.getById("agent-1", conflicted.id)).toMatchObject({
+      state: "clean",
+      providerEtag: '"g2"',
+      lastCommonSemanticHash: linkedCalendarSemanticHash(baseEvent),
+      lastErrorCode: null,
+    });
+    expect(await repository.countConflicted("agent-1", destination)).toBe(0);
+  });
+
   it.each(["", null])(
     "preserves nullable checkpoint text %j through reload and a subsequent save",
     async (value) => {

@@ -85,6 +85,12 @@ export interface LinkedCalendarLocalPort<
     expectedRevision: Revision,
   ): Promise<LinkedCalendarLocalSnapshot<Revision>>;
   delete(eventId: string, expectedRevision: Revision): Promise<void>;
+  /** Recreates a deleted local event under its original id, at a revision after `previousRevision`. */
+  restore?(
+    eventId: string,
+    event: LinkedCalendarSemanticEvent,
+    previousRevision: Revision,
+  ): Promise<LinkedCalendarLocalSnapshot<Revision>>;
 }
 
 export interface LinkedCalendarCheckpointStore<
@@ -160,16 +166,20 @@ export function linkedCalendarSemanticText(
   return JSON.stringify(normalized);
 }
 
-export async function linkedCalendarSemanticDigest(
-  event: LinkedCalendarSemanticEvent,
-): Promise<string> {
+async function sha256Hex(text: string): Promise<string> {
   const bytes = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(linkedCalendarSemanticText(event)),
+    new TextEncoder().encode(text),
   );
   return Array.from(new Uint8Array(bytes), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+export async function linkedCalendarSemanticDigest(
+  event: LinkedCalendarSemanticEvent,
+): Promise<string> {
+  return sha256Hex(linkedCalendarSemanticText(event));
 }
 
 export type LinkedCalendarReconcileOutcome =
@@ -201,7 +211,7 @@ export class LinkedCalendarReconciler<
   ): Promise<LinkedCalendarReconcileOutcome> {
     if (record.state === "paused" || record.state === "local_only")
       return "paused";
-    if (record.state === "conflicted") return "conflicted";
+    if (record.state === "conflicted") return this.settleConflict(record);
     if (record.state === "quarantined") return "quarantined";
 
     const local = await this.local.get(record.localEventId);
@@ -479,20 +489,102 @@ export class LinkedCalendarReconciler<
   ): Promise<LinkedCalendarReconcileOutcome> {
     if (record.state !== "conflicted") return this.reconcile(record);
     const local = await this.local.get(record.localEventId);
+    const current = await this.provider.get(record);
+    const provider = current && !current.event.deleted ? current : null;
     if (!local) {
-      return this.quarantine(
-        record,
-        "LINKED_LOCAL_EVENT_MISSING",
-        "The linked Eliza event no longer exists.",
-      );
+      if (!provider) {
+        await this.repository.save(record, {
+          state: "paused",
+          pendingOperation: null,
+          providerEtag: null,
+          lastErrorCode: "LINKED_CALENDAR_BOTH_EVENTS_DELETED",
+          lastErrorMessage: "Both the Eliza and Google events were deleted.",
+        });
+        return "paused";
+      }
+      if (strategy === "keep_eliza") {
+        // Eliza's deletion wins: delete the Google copy at the version read now.
+        const dirty = await this.repository.save(record, {
+          state: "dirty",
+          pendingOperation: "delete",
+          providerEventId: provider.eventId,
+          providerEtag: provider.etag,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        });
+        return this.reconcile(dirty);
+      }
+      if (!this.local.restore)
+        return this.quarantine(
+          record,
+          "LINKED_LOCAL_EVENT_MISSING",
+          "The linked Eliza event no longer exists.",
+        );
+      let restored: LinkedCalendarLocalSnapshot<Revision>;
+      try {
+        restored = await this.local.restore(
+          record.localEventId,
+          provider.event,
+          record.localRevision,
+        );
+      } catch (error) {
+        return this.quarantine(
+          record,
+          "LINKED_CALENDAR_LOCAL_RESTORE_REJECTED",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      await this.repository.save(record, {
+        localRevision: restored.revision,
+        providerEventId: provider.eventId,
+        providerEtag: provider.etag,
+        lastCommonSemanticHash: await linkedCalendarSemanticDigest(
+          provider.event,
+        ),
+        state: "clean",
+        pendingOperation: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      });
+      return "pulled";
     }
-    const provider = await this.provider.get(record);
     if (!provider) {
-      return this.quarantine(
-        record,
-        "LINKED_PROVIDER_EVENT_MISSING",
-        "The linked Google event no longer exists.",
-      );
+      if (strategy === "keep_google") {
+        // Google's deletion wins: remove the Eliza event and pause the link.
+        try {
+          await this.local.delete(local.eventId, local.revision);
+        } catch (error) {
+          return this.quarantine(
+            record,
+            "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        await this.repository.save(record, {
+          state: "paused",
+          pendingOperation: null,
+          providerEtag: null,
+          lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
+          lastErrorMessage:
+            "Google deleted the linked event; the Eliza event was removed and the retained link was paused.",
+        });
+        return "pulled";
+      }
+      // Google will not reuse a deleted event's id, so recreate under a new key.
+      const dirty = await this.repository.save(record, {
+        state: "dirty",
+        pendingOperation: "create",
+        providerEventId: null,
+        providerEtag: null,
+        lastCommonSemanticHash: null,
+        localRevision: local.revision,
+        idempotencyKey: `linked-calendar:recreate:${await sha256Hex(
+          `${record.idempotencyKey}\n${record.updatedAt}`,
+        )}`,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      });
+      return this.reconcile(dirty);
     }
     if (strategy === "keep_google") {
       let applied: LinkedCalendarLocalSnapshot<Revision>;
@@ -542,6 +634,33 @@ export class LinkedCalendarReconciler<
       lastErrorMessage: null,
     });
     return this.reconcile(dirty);
+  }
+
+  /**
+   * A conflicted row stays conflicted until the owner picks a side, unless a
+   * fresh read shows both sides already hold the same version.
+   */
+  private async settleConflict(
+    record: LinkedCalendarEventRecord<Revision>,
+  ): Promise<LinkedCalendarReconcileOutcome> {
+    const local = await this.local.get(record.localEventId);
+    if (!local || local.event.deleted) return "conflicted";
+    const provider = await this.provider.get(record);
+    if (!provider || provider.event.deleted) return "conflicted";
+    const localHash = await linkedCalendarSemanticDigest(local.event);
+    if (localHash !== (await linkedCalendarSemanticDigest(provider.event)))
+      return "conflicted";
+    await this.repository.save(record, {
+      localRevision: local.revision,
+      providerEventId: provider.eventId,
+      providerEtag: provider.etag,
+      lastCommonSemanticHash: localHash,
+      state: "clean",
+      pendingOperation: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    });
+    return "clean";
   }
 
   private async push(
