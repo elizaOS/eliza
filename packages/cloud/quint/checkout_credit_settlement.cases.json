@@ -1,0 +1,28 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
+    "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+    "packages/cloud/api/stripe/create-checkout-session/route.ts"
+  ],
+  "bounds": {
+    "assumptions": [
+      "One organization, immutable two-unit credit quote, one Session and PaymentIntent, two provider create calls and two refund amounts.",
+      "Transactions and receipt publication are atomic. Provider idempotency is assumed within the original retained window; the separate clock model does not establish compositional refinement.",
+      "Cryptography, arbitrary decimals, SQL isolation, unbounded provider/network delay and TypeScript refinement are not proved."
+    ],
+    "progress": "No temporal or fairness claim. Repeated failure and stuttering remain permitted."
+  },
+  "cases": [
+    {
+      "name": "checkout-credit-settlement",
+      "main": "checkout_credit_settlement",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 45,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ]
+}
