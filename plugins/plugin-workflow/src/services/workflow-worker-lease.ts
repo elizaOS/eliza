@@ -340,8 +340,13 @@ export async function acquireWorkerLease(input: WorkerLeaseInput) {
       fs.renameSync(active, settled);
       syncDirectory(path.dirname(active));
       // Nothing reads a settled journal; commit evidence lives in the Smithers store.
-      fs.rmSync(settled, { recursive: true, force: true });
-      syncDirectory(path.dirname(active));
+      try {
+        fs.rmSync(settled, { recursive: true, force: true });
+        syncDirectory(path.dirname(active));
+      } catch {
+        // error-policy:J6 the rename above committed the result; a leftover
+        // settled journal must not turn it into a failed run.
+      }
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve()))

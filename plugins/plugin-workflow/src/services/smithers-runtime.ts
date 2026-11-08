@@ -1228,17 +1228,13 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
           : []),
         ...(workerError ? [workerError.message] : []),
       ];
-      throw new ElizaError(
-        `${
-          stoppedBy
-            ? `The agent stopped this run (${stoppedBy}) before it reported a result. Nothing was replayed.`
-            : 'Workflow worker outcome is unknown; preserve it and do not replay effects.'
-        }${details.length ? `; ${details.join('; ')}` : ''}`,
-        {
-          code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
-          ...(terminationCause ? { context: { terminationCause } } : {}),
-        }
-      );
+      const summary = stoppedBy
+        ? `The agent stopped this run (${stoppedBy}) before it reported a result. Nothing was replayed`
+        : 'Workflow worker outcome is unknown; preserve it and do not replay effects';
+      throw new ElizaError(`${summary}${details.length ? `; ${details.join('; ')}` : '.'}`, {
+        code: 'WORKFLOW_WORKER_OUTCOME_UNKNOWN',
+        ...(terminationCause ? { context: { terminationCause } } : {}),
+      });
     }
   }
   if (lineProcessingFailed) throw lineProcessingError;
