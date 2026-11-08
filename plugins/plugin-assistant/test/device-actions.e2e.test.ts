@@ -1377,8 +1377,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ).toBe(409);
         const recorded = await post(receipt);
         expect(recorded.status).toBe(200);
+        // A cancelled or denied SMS submitted nothing, so it settles without review.
         expect(recorded.body.proposal.state).toBe(
-          applied ? "done" : "reconciliation_required",
+          applied || ["cancelled", "denied"].includes(status)
+            ? "done"
+            : "reconciliation_required",
         );
         expect((await post(receipt)).status).toBe(200);
         if (status === "unknown" || status === "failed") {

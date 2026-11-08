@@ -1176,6 +1176,20 @@ export class PgApprovalQueue implements ApprovalQueue {
     if (filter.excludeAction != null) {
       where.push(`action <> ${sqlText(filter.excludeAction)}`);
     }
+    if (filter.states) {
+      where.push(
+        filter.states.length
+          ? `state IN (${filter.states.map(sqlText).join(", ")})`
+          : "FALSE",
+      );
+    }
+    if (filter.operationTypes) {
+      where.push(
+        filter.operationTypes.length
+          ? `payload->'operation'->>'type' IN (${filter.operationTypes.map(sqlText).join(", ")})`
+          : "FALSE",
+      );
+    }
     const limitClause =
       typeof filter.limit === "number"
         ? `LIMIT ${sqlInteger(filter.limit)}`
@@ -1185,7 +1199,16 @@ export class PgApprovalQueue implements ApprovalQueue {
       ORDER BY created_at DESC, id DESC
       ${limitClause}`;
     const rows = await executeRawSql(this.runtime, sql);
-    return rows.map(rowToRequest);
+    const { onInvalidRow } = filter;
+    if (!onInvalidRow) return rows.map(rowToRequest);
+    return rows.flatMap((row) => {
+      try {
+        return [rowToRequest(row)];
+      } catch (error) {
+        onInvalidRow(toText(row.id), error);
+        return [];
+      }
+    });
   }
 
   async byId(
@@ -1445,11 +1468,13 @@ export class PgApprovalQueue implements ApprovalQueue {
     return rowToRequest(rows[0]);
   }
 
+  /** Expires lapsed pending rows and approvals whose execution was never claimed. */
   async purgeExpired(now: Date): Promise<ReadonlyArray<string>> {
     const sql = `UPDATE approval_requests
       SET state = ${sqlText("expired")}, updated_at = ${timestampLiteral(now)}
       WHERE agent_id = ${sqlText(this.agentId)}
-        AND state = ${sqlText("pending")}
+        AND (state = ${sqlText("pending")}
+          OR (state = ${sqlText("approved")} AND execution_attempt_id IS NULL))
         AND expires_at <= ${timestampLiteral(now)}
       RETURNING id`;
     const rows = await executeRawSql(this.runtime, sql);

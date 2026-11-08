@@ -166,3 +166,24 @@ it("Gmail policy negotiation does not widen a clock-only device", () => {
   expect(types(restricted)).not.toContain("open_view");
   expect(types(restricted)).toContain("clock_handoff");
 });
+
+it("describes only the operations this connection's schema offers", () => {
+  const notesOnly = deviceActionForCapabilities(proposeDeviceAction, [
+    "notes.local-record.v1",
+  ]).description;
+  for (const absent of [
+    "sms_send",
+    "phone_dial",
+    "notes_named",
+    "notes_search",
+    "notes_query",
+    "camera_capture_photo",
+  ])
+    expect(notesOnly).not.toContain(absent);
+  expect(notesOnly).toContain("Notes read-selected/update/delete");
+  const withSms = deviceActionForCapabilities(proposeDeviceAction, [
+    "notes.local-record.v1",
+    "sms.send.v1",
+  ]).description;
+  expect(withSms).toContain("Reviewed SIM SMS requires sms.send.v1");
+});
