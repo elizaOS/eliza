@@ -269,6 +269,50 @@ describe("native resident capture", () => {
     expect(out.lost).toEqual([]);
   });
 
+  it("keeps a long conversation alive past the remembered turn ids and still drops a repeated final", async () => {
+    const bridge = fakeBridge();
+    const agent = residentAgent();
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: agent.resident,
+    });
+    const out = handlers();
+    const capture = await voice.open(out.open(new AbortController().signal));
+    const id = bridge.captureId;
+    const turns = 600;
+    for (let i = 0; i < turns; i++) {
+      bridge.emit("liveCaptureFrames", {
+        captureId: id,
+        vad: [
+          { type: "speech-start", timestampMs: i * 10 },
+          { type: "speech-end", timestampMs: i * 10 + 5 },
+        ],
+      });
+      bridge.emit("liveCaptureTranscript", {
+        captureId: id,
+        final: { turnId: `turn-${i}`, text: `line ${i}`, mode: "stream" },
+      });
+    }
+    expect(out.lost).toEqual([]);
+    expect(out.segments).toHaveLength(turns);
+    expect(out.segments.at(-1)).toBe(`line ${turns - 1}`);
+    bridge.emit("liveCaptureFrames", {
+      captureId: id,
+      vad: [
+        { type: "speech-start", timestampMs: turns * 10 },
+        { type: "speech-end", timestampMs: turns * 10 + 5 },
+      ],
+    });
+    bridge.emit("liveCaptureTranscript", {
+      captureId: id,
+      final: { turnId: `turn-${turns - 1}`, text: "again", mode: "stream" },
+    });
+    expect(out.segments).toHaveLength(turns);
+    expect(out.lost).toEqual([]);
+    await capture.cancel();
+  });
+
   it("shows partials only for the open turn, in sequence, and clears them at the final", async () => {
     const bridge = fakeBridge();
     const agent = residentAgent();

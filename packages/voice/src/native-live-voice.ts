@@ -272,7 +272,7 @@ export async function openNativeResidentCapture(
         if (event.error) {
           if (event.error === "ASR_FAILED") {
             if (pending.length >= NATIVE_PENDING_FINALS) {
-              lose(Error("Native transcription session limit reached."));
+              lose(Error("Voice input fell behind. Start again."));
               return;
             }
             pending.push(null);
@@ -282,12 +282,15 @@ export async function openNativeResidentCapture(
         }
         const final = parseLiveFinal(event.final);
         if (!final || finished.has(final.turnId)) return;
-        if (
-          finished.size >= NATIVE_FINISHED_TURNS ||
-          pending.length >= NATIVE_PENDING_FINALS
-        ) {
-          lose(Error("Native transcription session limit reached."));
+        if (pending.length >= NATIVE_PENDING_FINALS) {
+          lose(Error("Voice input fell behind. Start again."));
           return;
+        }
+        // Finals arrive in VAD order, so dropping the oldest id keeps the
+        // duplicate check for recent turns without capping the conversation.
+        if (finished.size >= NATIVE_FINISHED_TURNS) {
+          const oldest = finished.values().next().value;
+          if (oldest !== undefined) finished.delete(oldest);
         }
         finished.add(final.turnId);
         if (partialTurn === final.turnId) {
