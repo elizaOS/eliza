@@ -514,6 +514,68 @@ test("sign-out stops a room's turn even after its request closed, and only rooms
   }
 });
 
+test("runtime supervisor fences account rotation and close during real child startup", async () => {
+  for (const transition of ["rotate", "close"]) {
+    let owner = "first";
+    const children = [];
+    const started = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    const supervisor = createRuntimeSupervisor({
+      readIdentity: async () => owner,
+      start: async () => {
+        const child = spawn(
+          process.execPath,
+          ["-e", "setInterval(()=>{},1000)"],
+          {
+            stdio: "ignore",
+          },
+        );
+        children.push(child);
+        await once(child, "spawn");
+        started.resolve();
+        await release.promise;
+        return child;
+      },
+      stop: async (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const exited = once(child, "exit");
+        child.kill();
+        await exited;
+      },
+    });
+    const pending = supervisor.reconcile();
+    let closing;
+    try {
+      await started.promise;
+      if (transition === "rotate") owner = "second";
+      else closing = supervisor.close();
+      await supervisor.reconcile();
+      assert.equal(children.length, 1);
+      assert.equal(children[0].signalCode, null);
+      release.resolve();
+      await pending;
+      await closing;
+      assert.equal(children[0].signalCode, "SIGTERM");
+      assert.throws(() => process.kill(children[0].pid, 0), { code: "ESRCH" });
+      if (transition === "rotate") {
+        await supervisor.reconcile();
+        assert.equal(children.length, 2);
+      } else {
+        await supervisor.reconcile();
+        assert.equal(children.length, 1);
+      }
+    } finally {
+      release.resolve();
+      await pending;
+      await supervisor.close();
+      await closing;
+      for (const child of children) {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+      }
+    }
+  }
+});
+
 test("runtime supervisor starts real processes in isolated account storage and stops only its child", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-runtime-e2e-"));
   let owner = "first";
