@@ -109,13 +109,22 @@ await run(
     "lifecycle settlement requires and releases the exact resource fence",
     "a missing lifecycle resource permits terminal job cleanup",
     "recovery preserves a lifecycle fence held by another job",
+    "ordinary failure retries use exponential backoff and roll back failed writebacks",
+    "concurrent ordinary failures spend one attempt and stale generations spend none",
+    "durable timeout preserves attempts while restart spends interruptions",
+    "requeue refuses a stale payload and unbounded retry preserves all counters",
+    "committed canary recovery preserves both attempt and interruption budgets",
+    "changed canary evidence invalidates a selected preservation snapshot",
+    "concurrent exhausted recovery commits one counter and dependent receipt",
+    "bounded requeue allowance 0 is spent separately from attempts",
+    "bounded requeue allowance 5 is spent separately from attempts",
+    "bounded requeue allowance 10 is spent separately from attempts",
   ],
 );
-
 await writeFile(
   path.join(directory, "results.json"),
   `${JSON.stringify({ status: "passed", results }, null, 2)}\n`,
 );
 console.log(
-  `Job execution lease conformance passed 13 required tests. Results ${directory}`,
+  `Job execution lease conformance passed 23 required tests. Results ${directory}`,
 );
