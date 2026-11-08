@@ -326,19 +326,21 @@
   },
   {
     "id": "cloud-flow-subscription-provider-event-receipts",
-    "model": null,
+    "model": "packages/cloud/quint/SubscriptionTerminalReceipt.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
-      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts"
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/lib/services/stripe-terminal-lifecycle.ts",
+      "packages/cloud/api/src/queue/stripe-event.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Build the finite transition model and connect adversarial implementation tests.",
-      "Required flow invariants: A current receipt lease is required for application or retry release. | Receipt and subscription projection commit together.",
-      "Abstract states: received, processing, applied, ignored, failed, quarantined"
+      "One platform Stripe cancellation event, one organization and one original subscription. Exact event, receipt and provider observation identities are abstracted as equality guards. Invoice renewal, dunning, merchant scope and nonterminal policy remain separate.",
+      "The lease uses database time at entry and again at final receipt CAS. A private draft represents locked source, projection, generation, audit and notice writes. A commit publishes them together or acknowledges an already matching reconciliation publication.",
+      "A failed finalizer rolls back its draft. A current unexpired lease may release for retry. After expiry only a fresh claim can finalize, and the original applied receipt stays historical after authority replacement.",
+      "The finite model compresses revision capture into the claim and abstracts the post-lock checks. It covers stale source and projection revisions and expiry during the draft. PostgreSQL isolation, physical lock waits, provider object validation, live notices and handler delivery retries are outside this proof.",
+      "The conformance suites use real PGlite transactions, inject failures into SQL writes, and check durable billing admission. A loopback Stripe HTTP fixture exercises the actual SDK and queue handler. Live Stripe is outside the evidence."
     ]
   },
   {
