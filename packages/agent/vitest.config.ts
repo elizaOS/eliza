@@ -93,6 +93,9 @@ export default defineConfig({
   },
   test: {
     ...baseConfig.test,
+    // Each batch is a fresh process. Vitest's shared disk-cache invalidation
+    // races across concurrent batches and can fail before any test executes.
+    fsModuleCache: false,
     environment: "node",
     // Separate processes isolate host state and database lifecycles.
     pool: "forks",
