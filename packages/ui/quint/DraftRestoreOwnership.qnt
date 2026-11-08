@@ -20,6 +20,7 @@ module DraftRestoreOwnership {
     edited: bool,
     retired: bool,
     revoked: bool,
+    keepTried: bool,
     holding: bool,
     consuming: bool,
     opening: bool,
@@ -37,7 +38,7 @@ module DraftRestoreOwnership {
     saved: if (mode == "consume") "" else "saved",
     storageFault: fault, marked: mode == "release", unsettled: false,
     guard: true, applied: false, acknowledged: false,
-    edited: false, retired: false, revoked: false,
+    edited: false, retired: false, revoked: false, keepTried: false,
     holding: mode == "release", consuming: mode == "consume",
     opening: mode == "open", conflict: mode == "review",
     error: false, result: "pending"
@@ -72,6 +73,10 @@ module DraftRestoreOwnership {
       editor: "other", opening: true, conflict: false, error: false,
       consuming: false
     }
+  }
+  action tryKeep = all {
+    s.mode == "review", s.active, not(s.acknowledged), not(s.keepTried),
+    s' = { ...s, event: "keep", keepTried: true }
   }
   action revoke = all {
     s.mode == "consume", not(s.acknowledged), not(s.revoked),
@@ -115,7 +120,8 @@ module DraftRestoreOwnership {
         result: if ((not(s.active) or accepted) and s.storageFault == "ok") "fulfilled" else "rejected"
       } else {
         ...completed, consuming: false,
-        saved: if (accepted) "" else if (s.active and s.editor != "") s.editor else "saved",
+        saved: if (accepted) "" else if (s.active and s.editor != "") s.editor
+          else if (not(s.active) and s.edited) "new" else "saved",
         conflict: s.active and not(accepted)
       }
     }
@@ -124,7 +130,7 @@ module DraftRestoreOwnership {
   action completion = any { acknowledge(false), acknowledge(true) }
   action progress = any { apply, completion }
   action step = any {
-    progress, edit, retire, revoke,
+    progress, edit, retire, revoke, tryKeep,
     all { s.applied, s.acknowledged, s' = s }
   }
 

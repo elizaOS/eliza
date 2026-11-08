@@ -70,7 +70,7 @@ module DraftConsumeRetention {
         previous.record else previous.offered,
       conflict: previous.record != previous.offered and previous.record != "",
       error: if (previous.record != previous.offered and previous.record != "")
-        previous.error else false
+        previous.error else not(previous.currentReceipt) and previous.error
     } else if (previous.record != previous.offered and previous.record != "") {
       ...previous, editor: previous.offered, offered: previous.record
     } else if (previous.record == previous.offered) {

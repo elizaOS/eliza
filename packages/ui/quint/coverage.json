@@ -191,13 +191,28 @@
     ]
   },
   {
+    "id": "DraftRetiredConsumeRecovery",
+    "model": "packages/ui/quint/DraftRetiredConsumeRecovery.qnt",
+    "sources": [
+      "packages/ui/src/state/durable-draft-controller.ts",
+      "packages/ui/src/state/durable-draft.ts"
+    ],
+    "invariants": ["invariant"],
+    "status": "partial",
+    "limitations": [
+      "One retired consume and optional newer edit, rollback failure before/after writing, reopen before/after failure, competing same-key write in both completion orders, one recovery choice, two flushes and a repeated reopen. Four text values and at most four durable mutations.",
+      "Real controller/CAS replay checks the retained copy remains reviewable, and failed owners remain until a newer successful CAS receipt exists. Read-only reopens do not discard that obligation.",
+      "Reads and later host updates succeed in this finite case. More than two failed owners, overlapping review choices after host completion, crashes and arbitrary mixed histories remain outside the instance."
+    ]
+  },
+  {
     "id": "DurableDraftControllerRemaining",
     "model": null,
     "sources": ["packages/ui/src/state/durable-draft-controller.ts"],
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, overlapping review choices while host restoration is pending, more than two send rounds or retired-binding handoffs, retained-backup recovery after retirement, and crashes during pending host restoration or consume rollback. The nine controller cases cover finite protocol instances.",
+      "Reviewed residual obligations include arbitrary mixed hold/commit/release/consume histories, more than two failed owners or concurrent send rounds, conflicting terminal settlements, and crashes during pending host restoration or consume rollback. Ten finite controller cases cover the reviewed protocols, including one pending keep-current attempt and retired consume recovery.",
       "Storage-adapter atomicity, crash durability and the host-owned authenticated owner/agent/conversation binding contract require their own implementation evidence. The controller accepts an opaque binding string and is not the authentication authority."
     ]
   }

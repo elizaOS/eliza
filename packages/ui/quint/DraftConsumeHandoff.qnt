@@ -46,14 +46,14 @@ module DraftConsumeHandoff {
     s' = {
       ...s, phase: 5, event: "finish-rollback", rollbackFault: fault,
       saved: if (fault == "before") "" else "draft",
-      consume: "rejected", flush: "rejected"
+      consume: "rejected", flush: "rejected", conflict: s.sameKey
     }
   }
   action retry = all {
     s.phase == 5,
     s' = {
       ...s, phase: 6, event: "retry",
-      conflict: s.sameKey and s.saved != s.editor
+      conflict: s.sameKey
     }
   }
   action writeNew = all {

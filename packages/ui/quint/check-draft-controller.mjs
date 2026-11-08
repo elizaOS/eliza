@@ -734,6 +734,9 @@ async function replayRestoreOwnership(states) {
           editor = "other";
           controller.edit(editor);
           break;
+        case "keep":
+          controller.keepCurrent();
+          break;
         case "revoke":
           authority = false;
           break;
@@ -1193,6 +1196,161 @@ async function replayConsumeRetention(states) {
   }
 }
 
+async function replayRetiredConsumeRecovery(states) {
+  const initial = states[0];
+  let editor = "draft";
+  let row = { version: 1, binding: "one", revision: "0", text: "draft" };
+  let revision = 0;
+  let owners = 0;
+  let consume = "idle";
+  let flush = "idle";
+  let consuming;
+  const gates = new Map();
+  const releases = new Map();
+  for (const name of ["clear", "rollback", "newer"]) {
+    gates.set(
+      name,
+      new Promise((resolve) => {
+        releases.set(name, resolve);
+      }),
+    );
+  }
+  const controller = new DurableDraftController(
+    async () => {
+      const owner = ++owners;
+      let writes = 0;
+      return {
+        async read() {
+          return row;
+        },
+        async save(expected, text) {
+          writes++;
+          if (owner === 1) {
+            await gates.get(writes === 1 ? "clear" : "rollback");
+            if (writes === 2 && !initial.rollbackAfter)
+              throw new Error("Rollback unavailable before write");
+          } else if (text === "newer") await gates.get("newer");
+          row = replaceDurableDraft(row, expected, "one", text, {
+            revision: () => String(++revision),
+          });
+          if (owner === 1 && writes === 2)
+            throw new Error("Rollback acknowledgement lost");
+          return row;
+        },
+      };
+    },
+    () => editor,
+    (text, expected, current) => {
+      if (current() && editor === expected) editor = text;
+    },
+    () => {},
+  );
+  await controller.open("one");
+  const type = (text) => {
+    editor = text;
+    controller.edit(text);
+  };
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    if (index > 0 && states[index - 1].phase !== 8) {
+      switch (state.phase) {
+        case 1:
+          consume = "pending";
+          consuming = controller.consume("draft").then(
+            () => {
+              consume = "fulfilled";
+            },
+            () => {
+              consume = "rejected";
+            },
+          );
+          break;
+        case 2:
+          if (state.typed) type("edited");
+          controller.retire();
+          if (state.mode === "newer") {
+            await controller.open("one");
+            type("newer");
+          } else type("");
+          break;
+        case 3:
+          if (state.mode === "newer" && state.newerFirst)
+            releases.get("newer")();
+          else {
+            releases.get("clear")();
+            await settleQueues();
+            if (state.mode === "recover") {
+              if (state.early) {
+                if (state.equalEditor) type(state.typed ? "edited" : "draft");
+                await controller.open("one");
+              }
+            } else {
+              releases.get("rollback")();
+              await consuming;
+            }
+          }
+          break;
+        case 4:
+          if (state.mode === "recover") {
+            releases.get("rollback")();
+            await consuming;
+            if (!state.early) {
+              if (state.equalEditor) type(state.typed ? "edited" : "draft");
+              await controller.open("one");
+            }
+          } else if (state.newerFirst) {
+            releases.get("clear")();
+            await consuming;
+          } else releases.get("newer")();
+          break;
+        case 5:
+          if (state.mode === "recover") await controller.restoreSaved();
+          else if (controller.state.conflict) controller.keepCurrent();
+          break;
+        case 6:
+        case 8:
+          flush = await controller.flush().then(
+            () => "fulfilled",
+            () => "rejected",
+          );
+          break;
+        case 7:
+          controller.retire();
+          type("");
+          await controller.open("one");
+          flush = "idle";
+          break;
+        default:
+          throw new Error(`Unknown retired consume phase ${state.phase}`);
+      }
+    }
+    await settleQueues();
+    assert.deepEqual(
+      {
+        editor,
+        stored: row.text,
+        offered: controller.state.savedText,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+        consuming: controller.state.consuming,
+        consume,
+        flush,
+      },
+      {
+        editor: state.editor,
+        stored: state.stored,
+        offered: state.offered,
+        conflict: state.conflict,
+        error: state.error,
+        consuming: state.consuming,
+        consume: state.consume,
+        flush: state.flush,
+      },
+      `Retired consume ${state.mode}, phase ${state.phase}`,
+    );
+  }
+}
+
 const protocols = {
   DraftSendRecovery: replaySendRecovery,
   DraftMarkRace: replayMarkRace,
@@ -1203,6 +1361,7 @@ const protocols = {
   DraftRepeatedSend: replayRepeatedSend,
   DraftConsumeHandoff: replayConsumeHandoff,
   DraftConsumeRetention: replayConsumeRetention,
+  DraftRetiredConsumeRecovery: replayRetiredConsumeRecovery,
 };
 const requested = process.argv[2] && path.resolve(process.argv[2]);
 let steps = 0;
@@ -1221,6 +1380,7 @@ for (const [name, replay] of Object.entries(protocols)) {
     DraftRepeatedSend: 9,
     DraftConsumeHandoff: 8,
     DraftConsumeRetention: 4,
+    DraftRetiredConsumeRecovery: 8,
     DraftSendRecovery: 7,
   }[name];
   const result = spawnSync(

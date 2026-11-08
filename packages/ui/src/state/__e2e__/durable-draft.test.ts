@@ -1193,6 +1193,132 @@ describe("DurableDraftController asynchronous restore ownership", () => {
 });
 
 describe("DurableDraftController compound consume recovery", () => {
+  function retiredConsumeFixture(rollbackAfter = false) {
+    let text = "Reviewed form";
+    let row: DurableDraft | null = record(text);
+    let revision = 1;
+    let owner = 0;
+    const release = new Map<string, () => void>();
+    const gates = new Map<string, Promise<void>>();
+    for (const key of ["clear", "rollback", "newer"]) {
+      gates.set(key, new Promise<void>((resolve) => { release.set(key, resolve); }));
+    }
+    const c = new DurableDraftController(
+      async () => {
+        const currentOwner = ++owner;
+        let writes = 0;
+        return {
+          read: async () => row,
+          async save(expected, value) {
+            writes++;
+            if (currentOwner === 1) {
+              await gates.get(writes === 1 ? "clear" : "rollback");
+              if (writes === 2 && !rollbackAfter) throw new Error("Rollback unavailable");
+            } else if (value === "Newer draft") await gates.get("newer");
+            row = replaceDurableDraft(row, expected, "test", value, {
+              revision: () => String(++revision),
+            });
+            if (currentOwner === 1 && writes === 2)
+              throw new Error("Rollback acknowledgement lost");
+            return row;
+          },
+        };
+      },
+      () => text,
+      (value, expected, current) => {
+        if (text === expected && current?.()) text = value;
+      },
+      () => {},
+    );
+    return {
+      c,
+      get: () => text,
+      saved: () => row?.text ?? "",
+      type(value: string) { text = value; c.edit(value); },
+      release(key: string) { release.get(key)?.(); },
+    };
+  }
+
+  it.each([
+    [false, false, false], [true, false, false],
+    [false, true, false], [true, true, false],
+    [false, true, true], [true, true, true],
+  ])(
+    "offers a retired failed consume across reopen order, rollback and equal editor (%s, %s, %s)",
+    async (reopenFirst, rollbackAfter, equalEditor) => {
+      const f = retiredConsumeFixture(rollbackAfter);
+      await f.c.open("one");
+      const consumed = expect(f.c.consume("Reviewed form")).rejects.toThrow();
+      await tick();
+      f.c.retire();
+      f.type("");
+      f.release("clear");
+      await tick();
+      if (reopenFirst) {
+        if (equalEditor) f.type("Reviewed form");
+        await f.c.open("one");
+      }
+      f.release("rollback");
+      await consumed;
+      if (!reopenFirst) {
+        if (equalEditor) f.type("Reviewed form");
+        await f.c.open("one");
+      }
+      expect(f.get()).toBe(equalEditor ? "Reviewed form" : "");
+      expect(f.c.state.savedText).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(true);
+      await expect(f.c.flush()).rejects.toThrow();
+      await f.c.restoreSaved();
+      await tick();
+      await f.c.flush();
+      f.c.retire();
+      f.type("");
+      await f.c.open("one");
+      expect(f.get()).toBe("Reviewed form");
+      expect(f.c.state.conflict).toBe(false);
+    },
+  );
+
+  it.each([false, true])(
+    "keeps a newer same-key write across both completion orders (newerFirst=%s)",
+    async (newerFirst) => {
+      const f = retiredConsumeFixture();
+      await f.c.open("one");
+      const consumed = expect(f.c.consume("Reviewed form")).rejects.toThrow();
+      await tick();
+      f.c.retire();
+      await f.c.open("one");
+      f.type("Newer draft");
+      if (newerFirst) { f.release("newer"); await tick(); }
+      f.release("clear");
+      f.release("rollback");
+      await consumed;
+      if (!newerFirst) { f.release("newer"); await tick(); }
+      if (f.c.state.conflict) f.c.keepCurrent();
+      await tick();
+      await f.c.flush();
+      expect(f.get()).toBe("Newer draft");
+      expect(f.saved()).toBe("Newer draft");
+      f.c.retire();
+      f.type("");
+      await f.c.open("one");
+      expect(f.get()).toBe("Newer draft");
+      expect(f.c.state.conflict).toBe(false);
+    },
+  );
+
+  it("does not accept keep-current while the earlier restore is pending", async () => {
+    const f = queuedRestoreFixture("Saved form");
+    f.type("Current form");
+    await f.c.open("one");
+    const restoring = f.c.restoreSaved();
+    f.c.keepCurrent();
+    expect(f.c.state.conflict).toBe(true);
+    f.commit();
+    await restoring;
+    expect(f.get()).toBe("Saved form");
+  });
+
   async function failedConsume(
     fault: "before" | "after" | "external",
     readFailure = false,
@@ -1325,6 +1451,7 @@ describe("DurableDraftController consume", () => {
     await flushed;
     await expect(f.c.flush()).rejects.toThrow();
     await f.c.retry();
+    if (f.c.state.conflict) f.c.keepCurrent();
     f.set("Replacement draft");
     await tick();
     await f.c.flush();

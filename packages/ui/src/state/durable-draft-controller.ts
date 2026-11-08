@@ -360,6 +360,36 @@ export class DurableDraftController<Recovery = unknown> {
       // or another window) may already have been delivered: it is offered for
       // review and never restored as an ordinary draft.
       const unsettled = !sending && isSendingDurableDraft(binding.record);
+      let retained: Binding<Recovery> | undefined;
+      for (const owner of this.pendingWrites) {
+        if (
+          owner !== binding &&
+          owner.key === key &&
+          owner.failed &&
+          owner.last &&
+          (!retained || owner.writeSerial > retained.writeSerial)
+        )
+          retained = owner;
+      }
+      if (
+        retained &&
+        (retained.last !== this.text() ||
+          retained.last === (binding.record?.text ?? "")) &&
+        !sending &&
+        !unsettled
+      ) {
+        binding.ready = true;
+        binding.failed = true;
+        this.publish({
+          opening: false,
+          conflict: true,
+          unsettled: false,
+          error: true,
+          savedText: retained.last,
+          message: this.messages.saveFailed,
+        });
+        return;
+      }
       if (this.text() !== initial || initial !== "") {
         // Text typed before (or while) the draft opened always wins the
         // editor; a different saved copy is offered for review instead.
@@ -490,6 +520,17 @@ export class DurableDraftController<Recovery = unknown> {
           value,
         );
         binding.savedWriteSerial = serial;
+        // A confirmed newer edit is the same supersession authority used by
+        // flush. Keep failed owners until that exact CAS has succeeded.
+        for (const owner of this.pendingWrites) {
+          if (
+            owner !== binding &&
+            owner.key === binding.key &&
+            owner.failed &&
+            owner.writeSerial < serial
+          )
+            this.pendingWrites.delete(owner);
+        }
         if (clearStatus && this.active === binding && binding.last === value)
           this.publish({ message: "" });
       } catch (error) {
@@ -594,6 +635,11 @@ export class DurableDraftController<Recovery = unknown> {
     if (!binding?.ready || !this.state.conflict || this.restoring.has(binding))
       return;
     const saved = this.state.savedText;
+    const requiresConfirmation =
+      this.state.error ||
+      [...this.pendingWrites].some(
+        (owner) => owner.key === binding.key && owner.failed,
+      );
     const finish = (applied: boolean) => {
       if (this.active !== binding) return;
       if (!applied || this.text() !== saved) {
@@ -615,7 +661,8 @@ export class DurableDraftController<Recovery = unknown> {
         error: false,
         message: saved ? this.messages.savedRestored : "",
       });
-      if (saved !== stored) this.queueSave(binding, () => saved);
+      if (saved !== stored || requiresConfirmation)
+        this.queueSave(binding, () => saved);
       // The person chose to edit that text again: it is an ordinary draft now.
       else if (
         isSendingDurableDraft(binding.record) &&
@@ -645,8 +692,15 @@ export class DurableDraftController<Recovery = unknown> {
   /** Resolve a conflict by saving the editor's text over the saved copy. */
   keepCurrent(): void {
     const binding = this.active;
-    if (!binding?.ready || !this.state.conflict) return;
+    if (!binding?.ready || !this.state.conflict || this.restoring.has(binding))
+      return;
     const stored = binding.record?.text ?? "";
+    const requiresConfirmation =
+      this.state.error ||
+      this.state.savedText !== stored ||
+      [...this.pendingWrites].some(
+        (owner) => owner.key === binding.key && owner.failed,
+      );
     if (this.state.savedText !== stored && stored) {
       this.offerBoth(binding, stored, isSendingDurableDraft(binding.record));
       return;
@@ -661,7 +715,8 @@ export class DurableDraftController<Recovery = unknown> {
       message: "",
     });
     // The same text is saved again only to drop a sending mark.
-    if (text === binding.last) this.unmark(binding);
+    if (requiresConfirmation) this.queueSave(binding, () => text);
+    else if (text === binding.last) this.unmark(binding);
     else this.edit(text);
   }
 
@@ -1061,7 +1116,7 @@ export class DurableDraftController<Recovery = unknown> {
           !current() ||
           this.text().trim() !== expectedText.trim()
         ) {
-          await rollback(this.active === binding ? this.text() : original);
+          await rollback(this.active === binding ? this.text() : binding.last);
           throw new Error(this.messages.changedNothingSent);
         }
         let restored = false;
@@ -1076,13 +1131,13 @@ export class DurableDraftController<Recovery = unknown> {
           // A host may reject after applying its update. Retain the reviewed copy
           // when that failure left an empty editor; no form effect was admitted.
           await rollback(
-            this.active === binding && this.text() ? this.text() : original,
+            this.active === binding ? this.text() || original : binding.last,
           );
           throw error;
         }
         if (!restored || this.active !== binding || !current() || this.text()) {
           await rollback(
-            this.active === binding && this.text() ? this.text() : original,
+            this.active === binding ? this.text() || original : binding.last,
           );
           throw new Error(this.messages.changedNothingSent);
         }
@@ -1090,10 +1145,25 @@ export class DurableDraftController<Recovery = unknown> {
         binding.savedWriteSerial = serial;
         this.publish({ consuming: false, message: "" });
       } catch (error) {
+        // A host clear may report through edit("") before it fails. Keep the
+        // reviewed copy reachable when no newer editor text remains.
+        if (!binding.last) binding.last = original;
         binding.failed = true;
         if (this.active === binding) {
           this.publish({ consuming: false });
-          await this.reviewConflict(binding, original);
+          await this.reviewConflict(binding, binding.last);
+        } else {
+          const active = this.active;
+          if (active?.key === binding.key && active.writeSerial <= serial) {
+            await this.opening;
+            if (this.active === active && active.writeSerial <= serial) {
+              active.failed = true;
+              await this.reviewConflict(active, binding.last);
+            }
+          }
+          // A later same-key write may already have won before this failure.
+          if (active?.key === binding.key && active.savedWriteSerial > serial)
+            this.pendingWrites.delete(binding);
         }
         throw error;
       }
