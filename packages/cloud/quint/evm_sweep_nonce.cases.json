@@ -3,8 +3,10 @@
     "packages/cloud/shared/src/lib/services/direct-wallet-payments.ts",
     "packages/cloud/shared/src/lib/services/evm-sweep-authority.ts",
     "packages/cloud/shared/src/lib/services/account-deletion-crypto-sweeps.ts",
+    "packages/cloud/shared/src/lib/services/evm-sweep-authority.pglite.test.ts",
     "packages/cloud/shared/src/db/migrations/0561_evm_sweep_nonce_authority.sql"
   ],
+  "conformance": "packages/cloud/quint/check-evm-speech-conformance.ts",
   "bounds": {
     "assumptions": [
       "One original wallet/network, two durable outboxes, chain nonces zero through two, one unrelated pending transaction and one configured-wallet rotation. Signed bytes and transaction identity remain immutable; activity from the replacement wallet is outside this model.",
