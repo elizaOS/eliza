@@ -36,13 +36,13 @@ export class ManagedGmailProtocolError extends Error {
 }
 
 /**
- * The protocol error's transport code and HTTP status, plus the machine code
- * of the Cloud error body (`data.code`) when the host kept the body. Older
- * Cloud deployments send no code.
+ * The protocol error's transport code, HTTP status and Cloud error body
+ * (`data`), plus the body's machine code (`data.code`) when the host kept the
+ * body. Older Cloud deployments send no code. Null for any other error.
  */
-function protocolFailure(
+export function protocolFailure(
   error: unknown,
-): { code: unknown; status: unknown; reason?: string } | null {
+): { code: unknown; status: unknown; data?: unknown; reason?: string } | null {
   if (!error || typeof error !== "object") return null;
   const candidate = error as {
     name?: unknown;
@@ -62,6 +62,7 @@ function protocolFailure(
   return {
     code: candidate.code,
     status: candidate.status,
+    ...(candidate.data !== undefined ? { data: candidate.data } : {}),
     ...(typeof reason === "string" ? { reason } : {}),
   };
 }
@@ -90,6 +91,8 @@ export const attachmentRefused = (error: unknown): boolean =>
  * `refused` is this client's own refusal of an attachment's bytes, name or
  * size: Gmail answered, and a retry would get the same file. `gone` is a
  * message or draft Gmail no longer has: close it and refresh the list.
+ * `rejected` is Cloud refusing the request itself (HTTP 400 or 413 without a
+ * known code), shown with Cloud's own reason when it is plain text.
  */
 export type GmailFailureKind =
   | "offline"
@@ -97,7 +100,8 @@ export type GmailFailureKind =
   | "stale"
   | "gone"
   | "unavailable"
-  | "refused";
+  | "refused"
+  | "rejected";
 
 export interface GmailFailure {
   kind: GmailFailureKind;
@@ -134,6 +138,11 @@ const messages: Record<
     operation:
       "An attachment does not match its type or is too large, so this review was refused. Nothing was sent or changed.",
   },
+  // A 400 can come at dispatch, so the operation sentence does not claim nothing was sent.
+  rejected: {
+    read: "Gmail refused this request.",
+    operation: "Gmail refused this change. Check the review and try again.",
+  },
   unavailable: {
     read: "Gmail is unavailable right now. Retry, or check the connection.",
     operation:
@@ -151,6 +160,26 @@ const reasonKinds: Record<string, GmailFailureKind> = {
   stale_revision: "stale",
   not_found: "gone",
 };
+
+/**
+ * Cloud's own reason for a refused request (`data.error`), when it is short
+ * plain text: printable characters only, no link and no markup.
+ */
+function cloudReason(data: unknown): string | null {
+  const text =
+    data && typeof data === "object"
+      ? (data as { error?: unknown }).error
+      : undefined;
+  if (typeof text !== "string") return null;
+  const reason = text.trim();
+  return reason.length >= 1 &&
+    reason.length <= 200 &&
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this refuses.
+    !/[\u0000-\u001f\u007f-\u009f<>]/.test(reason) &&
+    !/[a-z][a-z0-9+.-]*:\/\/|\bwww\.|\]\(/i.test(reason)
+    ? reason
+    : null;
+}
 
 /**
  * Classifies a failed Gmail request. The Cloud error code decides when the
@@ -179,6 +208,12 @@ export function classifyGmailFailure(
     const status = failure.status;
     if (status === 403 || status === 404) return result("revoked");
     if (status === 409) return result(context === "read" ? "revoked" : "stale");
+    if (status === 400 || status === 413) {
+      const reason = cloudReason(failure.data);
+      return reason
+        ? { kind: "rejected", message: reason }
+        : result("rejected");
+    }
     return result("unavailable");
   }
   // Transport failures only; a TypeError from a programming fault is not reported as offline.

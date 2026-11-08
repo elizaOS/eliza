@@ -125,6 +125,46 @@ describe("managed Gmail failures", () => {
     ).toMatch(/no longer in Gmail/);
   });
 
+  it("shows Cloud's plain reason for a refused request and a fixed sentence otherwise", () => {
+    const refused = (status: number, data?: unknown, context = "operation") =>
+      classifyGmailFailure(
+        new CloudProtocolError("http", status, data),
+        context as "read" | "operation",
+        true,
+      );
+    expect(refused(400, { error: "Attachment names must be unique" })).toEqual({
+      kind: "rejected",
+      message: "Attachment names must be unique",
+    });
+    expect(refused(413, { error: "Attachments are too large" })).toEqual({
+      kind: "rejected",
+      message: "Attachments are too large",
+    });
+    for (const data of [
+      undefined,
+      { error: "Read https://example.invalid/help" },
+      { error: "x".repeat(201) },
+      { error: "<b>no</b>" },
+      { error: "line\nbreak" },
+      { error: "" },
+      { error: 42 },
+    ]) {
+      expect(refused(400, data)).toEqual({
+        kind: "rejected",
+        message: "Gmail refused this change. Check the review and try again.",
+      });
+      expect(refused(413, data, "read").message).toBe(
+        "Gmail refused this request.",
+      );
+    }
+    // A known Cloud code still decides first, and a 401 is not a refusal.
+    expect(refused(400, { code: "stale_revision", error: "x" }).kind).toBe(
+      "stale",
+    );
+    expect(refused(401).kind).toBe("unavailable");
+    expect(refused(401, { error: "expired" }).kind).toBe("unavailable");
+  });
+
   it("treats an attachment's invalid response as a refusal of the file", () => {
     expect(
       attachmentRefused(

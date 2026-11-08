@@ -12,7 +12,11 @@
  * journal itself.
  */
 import type { MailAttachmentReviewer } from "./attachments.ts";
-import { classifyGmailFailure, type GmailFailureKind } from "./failures.ts";
+import {
+  classifyGmailFailure,
+  type GmailFailureKind,
+  protocolFailure,
+} from "./failures.ts";
 import { gmailInboxAllows } from "./grants.ts";
 import {
   type ComposerEmail,
@@ -72,7 +76,19 @@ export interface MailReviewControllerOptions {
   now?(): number;
   /** Schedules the discard of a review whose composer email changed. Defaults to queueMicrotask. */
   defer?(task: () => void): void;
+  /**
+   * Called first for a failed review step, with the session the step started
+   * in. True means the host found that session's Cloud sign-in expired: the
+   * review then asks the user to sign in again instead of classifying the error.
+   */
+  onSessionError?(sessionId: string, error: unknown): boolean;
 }
+
+/** The local draft a send came from, and the Gmail draft it was opened from, if any. */
+export type MailSentSource = {
+  draftId: string;
+  providerDraft?: { draftId: string; providerDigest: string };
+};
 
 export interface MailReviewObservers {
   /** A stale review was discarded without dispatch; reload what the user sees. */
@@ -80,9 +96,9 @@ export interface MailReviewObservers {
   /** A provider-confirmed receipt (reported once per request). */
   receipt?: (receipt: GmailInboxReceipt) => void;
   /** A provider-confirmed send of a local draft: remove that draft's local copies. */
-  sent?: (source: { draftId: string }, proposal: Bag, grant: string) => void;
+  sent?: (source: MailSentSource, proposal: Bag, grant: string) => void;
   /** The note shown for a confirmed send of a local draft. */
-  sentNote?: (source: { draftId: string }) => string;
+  sentNote?: (source: MailSentSource) => string;
 }
 
 const TITLES: Record<string, string> = {
@@ -117,6 +133,7 @@ export function createMailReviewController(
     epoch = 0,
     operation: InboxOperation | null = null,
     caps: GmailInboxCapabilities | null = null,
+    capabilitiesFailed = false,
     busy = false,
     visible = false,
     status = "";
@@ -144,9 +161,9 @@ export function createMailReviewController(
   let composer: (() => ComposerEmail | null) | null = null,
     discarding = false;
   let onSent:
-      | ((source: { draftId: string }, proposal: Bag, grant: string) => void)
+      | ((source: MailSentSource, proposal: Bag, grant: string) => void)
       | null = null,
-    sentNote: ((source: { draftId: string }) => string) | null = null;
+    sentNote: ((source: MailSentSource) => string) | null = null;
 
   const currentSession = () => options.binding()?.sessionId;
   const unsent = () => {
@@ -221,6 +238,7 @@ export function createMailReviewController(
     selected = session = owner = "";
     running = null;
     caps = null;
+    capabilitiesFailed = false;
     busy = visible = false;
     status = "";
     failure = null;
@@ -246,11 +264,13 @@ export function createMailReviewController(
         );
         if (token === epoch && capabilityRead === read) {
           caps = next;
+          capabilitiesFailed = false;
           publish();
         }
       } catch {
         if (token === epoch && capabilityRead === read) {
           caps = null;
+          capabilitiesFailed = true;
           publish();
         }
       }
@@ -293,10 +313,13 @@ export function createMailReviewController(
       );
       if (token !== epoch || capabilityRead !== read) return;
       caps = next;
+      capabilitiesFailed = false;
     } catch {
-      if (token === epoch && capabilityRead === read)
+      if (token === epoch && capabilityRead === read) {
+        capabilitiesFailed = true;
         status =
           "Provider actions unavailable. Your local drafts remain on this device.";
+      }
     }
     if (token === epoch) publish();
   }
@@ -349,17 +372,27 @@ export function createMailReviewController(
     } catch (error) {
       if (token === epoch) {
         const aborted =
-            error instanceof DOMException && error.name === "AbortError",
-          classified = aborted
+          error instanceof DOMException && error.name === "AbortError";
+        if (!aborted && options.onSessionError?.(ownerSession, error)) {
+          // A 401 does not say whether a dispatch happened; the receipt does.
+          failure = "revoked";
+          status =
+            "Cloud sign-in expired. Sign in again, then check this review before retrying.";
+        } else {
+          const classified = aborted
             ? null
             : classifyGmailFailure(error, "operation");
-        failure = classified?.kind || null;
-        status =
-          classified && classified.kind !== "unavailable"
-            ? classified.message
-            : error instanceof Error
-              ? error.message
-              : "Mail operation unavailable";
+          failure = classified?.kind || null;
+          // A protocol error's own message names only the transport
+          // ("Cloud http (400)"); a plain client error carries a reviewed sentence.
+          status =
+            classified &&
+            (classified.kind !== "unavailable" || protocolFailure(error))
+              ? classified.message
+              : error instanceof Error
+                ? error.message
+                : "Mail operation unavailable";
+        }
         toast(status);
       }
     } finally {
@@ -420,12 +453,15 @@ export function createMailReviewController(
     await run((owned) => owned.refresh());
   }
 
-  async function prepare(proposal: Bag, source?: { draftId: string }) {
+  async function prepare(
+    proposal: Bag,
+    source?: Parameters<InboxOperation["prepare"]>[1],
+  ) {
     if (!operation) return;
     const kind = proposal.kind;
     if (!gmailInboxAllows(caps, kind as GmailMailboxAction)) {
       toast(
-        "The selected account has not granted this provider action. Authorize Gmail changes, then try again. Nothing was changed.",
+        "This account has not allowed Gmail changes. Allow them in Settings, then try again. Nothing was changed.",
       );
       return;
     }
@@ -534,7 +570,7 @@ export function createMailReviewController(
           );
         if (!(await editor?.(record.proposal, draft)))
           throw new Error(
-            "Save or discard changed local edits before opening this provider draft.",
+            "Save or discard changed local edits before opening this Gmail draft.",
           );
         check();
         await owned.clear();
@@ -553,12 +589,19 @@ export function createMailReviewController(
       const record = owned.snapshot(),
         result = record?.receipt?.providerResult;
       if (!record || !result) throw new Error("No confirmed provider result");
+      // After a send, the Gmail draft it was opened from, as it was when opened.
+      const draft =
+        record.proposal.kind === "send"
+          ? sentSource(record)?.providerDraft
+          : result;
+      if (kind === "delete-draft" && !draft)
+        throw new Error("No Gmail draft to delete");
       const proposal =
         kind === "delete-draft"
           ? {
               kind: "draft-delete",
-              draftId: result.draftId,
-              expectedDigest: result.providerDigest,
+              draftId: draft?.draftId,
+              expectedDigest: draft?.providerDigest,
               confirmPermanentDelete: true,
             }
           : {
@@ -590,6 +633,8 @@ export function createMailReviewController(
     const receiptState = record?.receipt?.state;
     return {
       providerReview: visible,
+      /** The last capability read failed, so a missing grant is not known to be missing. */
+      capabilitiesFailed,
       provider: {
         busy,
         status: replaced(bound)
@@ -662,6 +707,13 @@ export function createMailReviewController(
         editDraft: () => {
           if (!doubleTap()) void editSavedDraft().finally(settle);
         },
+        /** Offered after a draft save, and after a send of an email opened from a Gmail draft. */
+        canDeleteDraft:
+          receiptState === "succeeded" &&
+          (["draft-create", "draft-replace"].includes(
+            record?.receipt?.kind ?? "",
+          ) ||
+            !!sent?.providerDraft),
         deleteDraft: () => {
           if (!doubleTap()) void followup("delete-draft").finally(settle);
         },

@@ -117,6 +117,8 @@ function fixture(
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
+const MiB = 1024 * 1024;
+const base64 = (bytes: number) => "A".repeat(Math.ceil(bytes / 3) * 4);
 const save = async (controller: ReturnType<typeof fixture>["controller"]) => {
   (controller.render().c as { save: () => void }).save();
   await settle();
@@ -285,9 +287,7 @@ describe("createMailDraftsController", () => {
       "grant-a",
     );
     expect(f.controller.hasDraft).toBe(false);
-    expect(f.controller.sentNote(email?.draftId as string)).toMatch(
-      /were removed/,
-    );
+    expect(f.controller.sentNote(email?.draftId as string)).toBe("Sent.");
     // A send confirmed for another grant never touches this account's drafts.
     await f.controller.newEmail();
     type(f.controller, "onSubj", "Other");
@@ -339,7 +339,7 @@ describe("createMailDraftsController", () => {
         fromEmail: "Not an address",
       }),
     ).toBe(false);
-    expect(f.toasts.at(-1)).toMatch(/no valid literal reply address/);
+    expect(f.toasts.at(-1)).toMatch(/no reply address/);
     await f.controller.newEmail();
     const composer = f.controller.render().c as {
       sendDisabled: boolean;
@@ -449,6 +449,83 @@ describe("createMailDraftsController", () => {
     expect(kept?.draft.id).toBe(email?.draftId);
     expect(kept?.draft.earlierThanSent).toBeUndefined();
     expect(shelfItems(f)[0]?.draft.earlierThanSent).toBe(true);
+  });
+
+  it("counts forwarded attachments toward the size cap and name check", async () => {
+    const f = fixture({
+      send: true,
+      providerDrafts: true,
+      from: "owner@example.invalid",
+      forwardAttachments: true,
+      attachmentPolicy: { maximumOutgoing: 10, maximumTotalBytes: 5 * MiB },
+    });
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(
+      await f.controller.newEmail(message, "forward", "", {
+        forward: {
+          messageId: "m1",
+          historyId: "h1",
+          parts: [
+            {
+              partId: "p1",
+              name: "report.pdf",
+              mimeType: "application/pdf",
+              size: 3 * MiB,
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+    const attach = (name: string, bytes: number) =>
+      f.controller.attachReviewed(
+        { name, mimeType: "application/pdf", dataBase64: base64(bytes) },
+        f.controller.suggestionTarget().token as string,
+      );
+    expect(attach("notes.pdf", 3 * MiB)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/exceed 5 MiB in total/);
+    expect(attach("Report.pdf", 1024)).toBe(false);
+    expect(f.toasts.at(-1)).toMatch(/same name/);
+    expect(attach("notes.pdf", 1024)).toBe(true);
+  });
+
+  it("blocks Send when no recipient is left after removing the account's own address", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    expect(
+      await f.controller.newEmail({
+        ...message,
+        replyTo: "owner@example.invalid",
+      }),
+    ).toBe(true);
+    expect((f.controller.proposal() as Bag).to).toEqual([]);
+    (f.controller.render().c as { send: () => void }).send();
+    expect(f.prepared).toEqual([]);
+    expect(f.toasts.at(-1)).toBe("Add a recipient before sending.");
+  });
+
+  it("sends an opened Gmail draft without deleting it and says it is still in Drafts", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "owner@example.invalid");
+    const reference = { draftId: "g1", providerDigest: "d1" };
+    expect(await f.controller.editProvider(gmailDraft, reference)).toBe(true);
+    (f.controller.render().c as { send: () => void }).send();
+    expect(f.prepared).toHaveLength(1);
+    expect(f.prepared[0]?.proposal.kind).toBe("send");
+    expect(f.prepared[0]?.source?.providerDraft).toEqual(reference);
+    const email = f.controller.email();
+    await f.controller.settleSent(
+      email?.draftId as string,
+      { kind: "send", ...(email?.proposal as Bag) },
+      "grant-a",
+      undefined,
+      true,
+    );
+    expect(f.controller.hasDraft).toBe(false);
+    expect(f.controller.sentNote(email?.draftId as string, true)).toBe(
+      "Sent. The Gmail draft you opened is still in Drafts.",
+    );
+    // Only the reviewed send went to Cloud: no draft deletion rides along.
+    expect(f.prepared.map((row) => row.proposal.kind)).toEqual(["send"]);
   });
 
   it("keeps a reply's subject as Gmail threads it", async () => {
