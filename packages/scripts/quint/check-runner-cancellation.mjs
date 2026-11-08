@@ -51,8 +51,11 @@ if (
   !/^ok \d+ - nested CLI cancellation reaps descendants spawned after cancellation$/m.test(
     output,
   ) ||
-  !/^# tests 23$/m.test(output) ||
-  !/^# pass 23$/m.test(output) ||
+  !/^ok \d+ - TLC state and action properties retain their checked outcomes$/m.test(
+    output,
+  ) ||
+  !/^# tests 24$/m.test(output) ||
+  !/^# pass 24$/m.test(output) ||
   !/^# fail 0$/m.test(output) ||
   !/^# skipped 0$/m.test(output) ||
   !/^# cancelled 0$/m.test(output)

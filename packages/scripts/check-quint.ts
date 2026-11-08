@@ -88,7 +88,10 @@ type ModelCase = z.infer<typeof caseSchema>;
 type TemporalCheck = z.infer<typeof temporalCheckSchema>;
 export type TemporalOutcome = "holds" | "counterexample" | "checker-error";
 
-/** A checker error, timeout, or safety failure is not a temporal witness. */
+/** A checker error, timeout, or safety failure is not a temporal witness.
+ * TLC checks always-state/action properties without a liveness graph pass.
+ * Require both TLC completion and Quint's successful verifier receipt.
+ */
 export function classifyTemporalOutcome(
   status: number | null,
   output: string,
@@ -97,8 +100,8 @@ export function classifyTemporalOutcome(
   if (error) return "checker-error";
   if (
     status === 0 &&
-    /Checking (?:\d+ branches of )?temporal properties/.test(output) &&
-    output.includes("Model checking completed. No error has been found.")
+    output.includes("Model checking completed. No error has been found.") &&
+    /\[ok\] No violation found/.test(output)
   )
     return "holds";
   if (
