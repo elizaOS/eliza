@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { jvmTestsRequired } from "../../../scripts/lib/org-json-jar.mjs";
 import { renderProvisioningOverlay } from "../android/launcher-provisioning.mjs";
 import { inspectBootAnimationArchive } from "../android/pixel10a-brand-assets.mjs";
 import {
@@ -450,4 +452,42 @@ test("development images keep the launcher's provisioning default and malformed 
         }),
       /imageProvisioning|Invalid/,
     );
+});
+
+// Host-JVM check of the vendor flags parsing and key/prefix matching that FlagsProvider serves.
+// Not provider, caller-UID or device evidence.
+const javaTool = (name: string) =>
+  process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
+const javacMissing =
+  spawnSync(javaTool("javac"), ["-version"], { stdio: "ignore" }).status !== 0;
+
+test("pixel vendor flags parsing and key/prefix queries", {
+  skip: javacMissing && !jvmTestsRequired() ? "javac is not installed" : false,
+}, (t) => {
+  const config = new URL(
+    "../../android/devices/pixel10a/vendor-config/",
+    import.meta.url,
+  );
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "pixel-flags-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  execFileSync(
+    javaTool("javac"),
+    [
+      "--release",
+      "11",
+      "-d",
+      classes,
+      fileURLToPath(
+        new URL("src/ai/elizaresearch/pixelconfig/FlagsQuery.java", config),
+      ),
+      fileURLToPath(new URL("hosttest/FlagsQueryTest.java", config)),
+    ],
+    { stdio: "pipe", timeout: 120000 },
+  );
+  const output = execFileSync(
+    javaTool("java"),
+    ["-cp", classes, "ai.elizaresearch.pixelconfig.FlagsQueryTest"],
+    { encoding: "utf8", timeout: 60000 },
+  );
+  assert.match(output, /^PASS flags query/);
 });

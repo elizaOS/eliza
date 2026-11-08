@@ -6,6 +6,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Host-JVM check of streamed speech logic: the bounded PCM queue, the playback writer
@@ -66,11 +67,14 @@ public final class StreamingSpeechTest {
 
   // Backpressure: a fast producer blocks on a slow consumer; the queue stays bounded.
   SpeechPcmQueue paced=new SpeechPcmQueue(48_000);int[] peak={0};
-  Thread producer=new Thread(()->{try{for(int i=0;i<12;i++)if(!paced.offer(tone(12_000,.2f),5,TimeUnit.SECONDS))throw new AssertionError("blocked producer gave up");paced.complete();}catch(InterruptedException e){throw new AssertionError(e);}});
-  producer.start();int taken=0;
-  for(;;){Thread.sleep(2);peak[0]=Math.max(peak[0],paced.queuedSamples());float[] next=paced.take(1,TimeUnit.SECONDS);if(next==SpeechPcmQueue.END)break;if(next!=null)taken++;}
+  // A producer failure is recorded and rethrown here, so it fails with its message instead of spinning.
+  AtomicReference<Throwable> producerFailure=new AtomicReference<>();
+  Thread producer=new Thread(()->{try{for(int i=0;i<12;i++)if(!paced.offer(tone(12_000,.2f),5,TimeUnit.SECONDS))throw new AssertionError("blocked producer gave up");paced.complete();}catch(Throwable e){producerFailure.set(e);}});
+  producer.start();int taken=0;boolean ended=false;
+  while(!ended&&(producer.isAlive()||paced.queuedSamples()>0||producerFailure.get()==null)){Thread.sleep(2);peak[0]=Math.max(peak[0],paced.queuedSamples());float[] next=paced.take(1,TimeUnit.SECONDS);if(next==SpeechPcmQueue.END)ended=true;else if(next!=null)taken++;}
   producer.join(5000);
-  check(taken==12&&peak[0]<=48_000,"backpressure delivers every chunk without exceeding the bound");
+  if(producerFailure.get()!=null)throw new AssertionError("backpressure producer failed: "+producerFailure.get().getMessage(),producerFailure.get());
+  check(ended&&taken==12&&peak[0]<=48_000,"backpressure delivers every chunk without exceeding the bound");
 
   // Streamed playback: chunks play as they arrive; first frame, audible time, end; buffers zeroed.
   FakeOutput output=new FakeOutput();Events events=new Events();

@@ -14,7 +14,6 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
-import java.util.TreeMap;
 
 /** Read-only extracted eSIM configuration for Alpha's AOSP image without GSF.
  * Gservices key/prefix cursor protocol: GrapheneOS GmsCompat GservicesProvider,
@@ -27,25 +26,14 @@ public final class FlagsProvider extends ContentProvider {
 
     @Override public boolean onCreate() {
         File file = new File("/system_ext/etc/gmscompat/gservices-flags/flags.txt");
-        TreeMap<String, String> loaded = new TreeMap<>();
         try {
             if (!file.isFile() || file.length() > 1024 * 1024) throw new IllegalStateException("Missing or oversized vendor flags");
             try (BufferedReader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) continue;
-                    int split = line.indexOf(' ');
-                    if (split <= 0 || loaded.size() >= 512) throw new IllegalStateException("Invalid vendor flags");
-                    String key = line.substring(0, split);
-                    if (!key.startsWith("euicc.") && !key.startsWith("euiccpixel.")) throw new IllegalStateException("Unexpected vendor flag namespace");
-                    if (loaded.put(key, line.substring(split + 1)) != null) throw new IllegalStateException("Duplicate vendor flag");
-                }
+                flags = FlagsQuery.parse(reader);
             }
         } catch (Exception error) {
             throw new IllegalStateException("Cannot load extracted Pixel eSIM configuration", error);
         }
-        flags = java.util.Collections.unmodifiableMap(loaded);
         return true;
     }
 
@@ -64,16 +52,9 @@ public final class FlagsProvider extends ContentProvider {
 
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
         enforceCaller();
-        if (!AUTHORITY.equals(uri.getAuthority()) || !(uri.getPath().isEmpty() || "/".equals(uri.getPath()) || "/prefix".equals(uri.getPath()))) throw new IllegalArgumentException("Unsupported flags URI");
+        if (!AUTHORITY.equals(uri.getAuthority()) || !FlagsQuery.supportedPath(uri.getPath())) throw new IllegalArgumentException("Unsupported flags URI");
         MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
-        if (args == null || args.length == 0) return cursor;
-        if (args.length > 64) throw new IllegalArgumentException("Too many flag prefixes");
-        boolean prefix = "/prefix".equals(uri.getPath());
-        for (Map.Entry<String, String> row : flags.entrySet()) {
-            boolean matches = !prefix && row.getKey().equals(args[0]);
-            if (prefix) for (String arg : args) if (arg != null && row.getKey().startsWith(arg)) { matches = true; break; }
-            if (matches) cursor.addRow(new Object[]{row.getKey(), row.getValue()});
-        }
+        for (String[] row : FlagsQuery.select(flags, uri.getPath(), args)) cursor.addRow(row);
         return cursor;
     }
     @Override public String getType(Uri uri) { enforceCaller(); return "vnd.android.cursor.dir/vnd.alpha.pixel-flags"; }

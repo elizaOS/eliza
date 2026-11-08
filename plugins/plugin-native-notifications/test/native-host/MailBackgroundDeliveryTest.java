@@ -1,3 +1,4 @@
+import ai.eliza.plugins.agent.runtime.NativeProviderAdmission;
 import ai.eliza.plugins.notifications.MailBackgroundDelivery;
 import ai.eliza.plugins.notifications.MailHistoryReconciliation;
 import java.io.ByteArrayInputStream;
@@ -21,12 +22,13 @@ public class MailBackgroundDeliveryTest {
   public Object lock(){return lock;}
   public String readState(){return state;}public void writeState(String value){state=value;}public void removeState(){state=null;}
   public String readCredential(){return credential;}public boolean resetPending(){return reset;}
-  public JSONObject verifiedIdentity(JSONObject data)throws Exception{return new JSONObject().put("userId",data.getString("id")).put("organizationId",data.getString("organization_id"));}
+  // The installed host delegates to the shared Cloud identity parser.
+  public JSONObject verifiedIdentity(JSONObject data)throws Exception{return NativeProviderAdmission.verifiedCloudIdentity(data);}
  }
  static final class Scheduler implements MailBackgroundDelivery.Scheduler {int schedules,cancels;String generation;public void schedule(String g){schedules++;generation=g;}public void cancel(){cancels++;generation=null;}}
  static final class Poster implements MailBackgroundDelivery.Notices {int posts;Set<String> active=new HashSet<>();public boolean allowed(){return true;}public boolean active(String k){return active.contains(k);}public void post(String k){posts++;active.add(k);}public void cancel(String k){active.remove(k);}public void cancelAll(){active.clear();}}
  static final class Transport implements MailBackgroundDelivery.Connections {
-  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,noGrant,accountsDown;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
+  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,malformedOwner,noGrant,accountsDown;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
   Transport(Host host){this.host=host;}
   public HttpURLConnection open(URL url){
    check(url.getHost().equals("cloud.example"),"fixed authority");paths.add(url.getFile());
@@ -37,7 +39,7 @@ public class MailBackgroundDeliveryTest {
      try{
       Object value;
       if(url.getPath().endsWith("history")){if(staleDuringHistory)host.credential=credential("replaced");value=pages.remove();}
-      else if(url.getPath().endsWith("user")){if(onUser!=null)onUser.run();value=new JSONObject().put("success",true).put("data",new JSONObject().put("id",wrongOwner?"33333333-3333-4333-8333-333333333333":USER).put("organization_id",ORG));}
+      else if(url.getPath().endsWith("user")){if(onUser!=null)onUser.run();value=new JSONObject().put("success",true).put("data",new JSONObject().put("id",malformedOwner?"user-1":wrongOwner?"33333333-3333-4333-8333-333333333333":USER).put("organization_id",ORG));}
       else value=new JSONArray().put(new JSONObject().put("connectionId","grant").put("connected",true).put("grantedCapabilities",new JSONArray().put(noGrant?"google.calendar.read":"google.gmail.triage")));
       return new ByteArrayInputStream(value.toString().getBytes(StandardCharsets.UTF_8));
      }catch(Exception e){throw new IOException(e);}
@@ -56,7 +58,8 @@ public class MailBackgroundDeliveryTest {
   Case a=new Case();
   check(a.delivery.status().getString("status").equals("disabled"),"unconfigured reports disabled, never a provider coupling");
   String generation=a.configure();
-  check(a.saved().getJSONObject("binding").getString("accountRef").equals(new JSONArray().put("cloud").put("production").put(USER).put(ORG).toString()),"owner account reference keeps the installed format");
+  JSONObject admitted=new JSONObject().put("verifiedCloudIdentity",NativeProviderAdmission.verifiedCloudIdentity(new JSONObject().put("id",USER).put("organization_id",ORG)));
+  check(a.saved().getJSONObject("binding").getString("accountRef").equals(NativeProviderAdmission.cloudAccountRef(admitted)),"owner account reference matches the provider admission format");
   check(a.scheduler.generation.equals(generation),"selection scheduled");
   a.transport.pages.add(MailHistoryReconciliationTest.baseline("100"));check(a.delivery.sync(generation,()->{}),"baseline complete job");check(a.saved().getString("historyId").equals("100"),"durable baseline");
   a.configure();check(a.saved().getString("historyId").equals("100")&&a.saved().getJSONObject("binding").getString("generation").equals(generation),"same owner reconfiguration preserves cursor");
@@ -77,6 +80,7 @@ public class MailBackgroundDeliveryTest {
   refuses(()->a.delivery.sync(generation,()->{}),"withdrawn job runs");
 
   Case wrong=new Case();wrong.transport.wrongOwner=true;refuses(wrong::configure,"remote owner mismatch admitted");check(wrong.host.state==null,"remote owner cannot configure");
+  Case malformed=new Case();malformed.transport.malformedOwner=true;try{malformed.configure();throw new AssertionError("non-UUID owner admitted");}catch(IllegalArgumentException expected){assertions++;}check(malformed.host.state==null,"a non-UUID owner cannot configure");
   Case grant=new Case();grant.transport.noGrant=true;refuses(grant::configure,"missing read grant admitted");check(grant.host.state==null,"grant without the read capability cannot configure");
   Case other=new Case();refuses(()->other.delivery.configure(other.delivery.begin(),"other-credential","grant",USER,ORG),"other credential admitted");refuses(()->other.delivery.configure(other.delivery.begin(),"credential","grant",USER,""),"missing organization admitted");
   Case reset=new Case();reset.host.reset=true;refuses(reset::configure,"pending reset admitted");check(reset.host.state==null,"reset blocks configuration");

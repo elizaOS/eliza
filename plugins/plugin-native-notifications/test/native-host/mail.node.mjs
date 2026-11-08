@@ -9,8 +9,8 @@ import { resolveOrgJsonJar } from "../../../../packages/scripts/lib/org-json-jar
 
 // Compiles the background new-mail reconciliation engine and delivery coordinator against org.json and
 // runs the synthetic JVM checks: durable pagination, at-most-once notices, owner and grant fences, tap
-// capture and unsupported deployments. ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy
-// is used when present.
+// capture and unsupported deployments. The owner check runs plugin-native-agent's real Cloud identity
+// parser. ELIZA_ORG_JSON_JAR names the jar; otherwise the Gradle cache copy is used when present.
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
 const sources = path.join(
   plugin,
@@ -38,6 +38,10 @@ test("mail history reconciliation and background delivery fences", {
       classes,
       path.join(sources, "MailHistoryReconciliation.java"),
       path.join(sources, "MailBackgroundDelivery.java"),
+      path.join(
+        plugin,
+        "../plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderAdmission.java",
+      ),
       path.join(plugin, "test/native-host/MailHistoryReconciliationTest.java"),
       path.join(plugin, "test/native-host/MailBackgroundDeliveryTest.java"),
     ],
