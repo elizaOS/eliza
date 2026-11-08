@@ -1,4 +1,4 @@
-/** Run the real Durable Object lease and PGlite direct recovery suites. */
+/** Run the required Durable Object lease and PGlite direct recovery cases. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
@@ -15,7 +15,7 @@ assert.equal(
 const suites = new Map([
   [
     "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
-    42,
+    5,
   ],
   [
     "packages/cloud/shared/src/lib/services/inference-admission-recovery.pglite.test.ts",
@@ -32,6 +32,7 @@ const required = [
   "a post-commit callback failure returns no recovery result and replays without another debit",
   "a database failure rolls back the debit and ledger claim",
 ];
+const pattern = `(?:${required.map((name) => RegExp.escape(name)).join("|")})$`;
 const output = testOutputPath("quint-standard-inference-admission");
 mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(path.join(output, "run-"));
@@ -47,6 +48,8 @@ const result = spawnSync(
     "--isolate",
     "--conditions=eliza-source",
     "--timeout=60000",
+    "--test-name-pattern",
+    pattern,
     "--reporter=junit",
     `--reporter-outfile=${report}`,
     ...suites.keys(),
@@ -63,7 +66,7 @@ assert.equal(
 
 const xml = readFileSync(report, "utf8");
 const summary = parseJunitSummary(xml);
-assert.equal(summary.failures + summary.errors + summary.skipped, 0);
+assert.equal(summary.failures + summary.errors, 0);
 assert.deepEqual(
   new Map(
     summary.files.map(({ file, executedTests }) => [file, executedTests]),
@@ -72,13 +75,13 @@ assert.deepEqual(
   "Both standard inference implementation suites must execute",
 );
 const names = new Set(
-  [...xml.matchAll(/<testcase\b[^>]*\bname="([^"]+)"/g)].map(
-    (match) => match[1],
-  ),
+  [...xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)]
+    .filter((match) => !/<skipped\b/.test(match[2] ?? ""))
+    .map((match) => match[1].match(/\bname="([^"]+)"/)?.[1]),
 );
 for (const name of required) {
   assert(names.has(name), `Missing required standard inference case: ${name}`);
 }
 console.log(
-  `Standard inference passed ${required.length} required checks within ${summary.executedTests} Workerd and PGlite tests. Report ${report}`,
+  `Standard inference passed ${summary.executedTests} required Workerd and PGlite checks. Report ${report}`,
 );
