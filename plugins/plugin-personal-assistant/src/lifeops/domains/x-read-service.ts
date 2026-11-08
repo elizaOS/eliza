@@ -152,10 +152,6 @@ function memoryToLifeOpsXFeedItem(args: {
   };
 }
 
-function cachedLimit(opts: XReadOpts): number | undefined {
-  return opts.limit;
-}
-
 function matchesCachedXSearchQuery(
   item: LifeOpsXFeedItem,
   query: string,
@@ -286,26 +282,20 @@ export class XReadDomain {
       limit: opts.limit,
     });
     if (delegated.status !== "handled") {
-      const searchLimit = cachedLimit(opts);
+      // The limit caps the matches, not the cached rows read before the
+      // query filter: older matches sit below newer posts that do not match.
       const cached = dedupeCachedSearchResults([
         ...(await this.ctx.repository.listXFeedItems(
           this.ctx.agentId(),
           "search",
-          {
-            limit: searchLimit,
-          },
         )),
         ...(await this.ctx.repository.listXFeedItems(
           this.ctx.agentId(),
           "home_timeline",
-          { limit: searchLimit },
         )),
         ...(await this.ctx.repository.listXFeedItems(
           this.ctx.agentId(),
           "mentions",
-          {
-            limit: searchLimit,
-          },
         )),
       ]).filter((item) => matchesCachedXSearchQuery(item, trimmed));
       if (cached.length > 0) {
