@@ -29,12 +29,17 @@ const between = (text, from, to) => {
   return text.slice(start, end);
 };
 
-test("pause and resume keep the scope version; a grant or volume version changes it", (t) => {
+test("pause and resume keep the scope version; a grant or volume version changes it; paused row changes refresh", (t) => {
   const catalog = source("PermittedMediaCatalog");
   const scopeVersion = between(
     catalog,
     "  public String scopeVersion()",
     "  /** A {@code next} cursor",
+  );
+  const generations = between(
+    catalog,
+    "  public String generations()",
+    "  public void requireCurrent(",
   );
   const plugin = source("DeviceLibraryPlugin");
   const scopeResult = between(
@@ -61,28 +66,37 @@ public class ScopeVersionFixture {
  static class Handler{Handler(Looper l){}void post(Runnable r){r.run();}}
  static class PhotoLibraryAccess{static void scope(JSObject access,int sdk,boolean locked,String version,JSObject out)throws org.json.JSONException{out.putAll(access);out.put("locked",locked);out.put("version",version);}}
  static class org{static class json{static class JSONException extends Exception{}}}
+ static Map<String,Long> rows=new TreeMap<>();
+ static class MediaStore{static long getGeneration(Object context,String volume){return rows.getOrDefault(volume,0L);}}
  /** The catalog side: a grant, volume versions, and the epoch and generations a fence holds. */
  static class Catalog{
-  String scope="full";Map<String,String> versions=new TreeMap<>(Map.of("external_primary","v1"));long epoch,generation;
+  String scope="full";Map<String,String> versions=new TreeMap<>(Map.of("external_primary","v1"));long epoch;Object context;
   void unlocked(){}
   JSObject access(){JSObject a=new JSObject();a.put("scope",scope);return a;}
   List<String> volumes(){return new ArrayList<>(versions.keySet());}
   String version(String volume){return versions.get(volume);}
   void foreground(boolean value){epoch++;}
 ${scopeVersion}
+${generations}
  }
  Catalog catalog=new Catalog();boolean destroyed,locked;List<JSObject> announced=new ArrayList<>();
  boolean locked(){return locked;}
- void notifyListeners(String event,JSObject data){if(!event.equals("scopeChanged"))throw new AssertionError(event);announced.add(data);}
+ int refreshes;
+ void notifyListeners(String event,JSObject data){if(event.equals("libraryChanged")){refreshes++;return;}if(!event.equals("scopeChanged"))throw new AssertionError(event);announced.add(data);}
 ${scopeResult}
- private volatile String lastScope="";
+ private volatile String lastScope="";private volatile String lastLibrary;
+ void page(){lastLibrary=generations();scopeResult();}
  void pauseResume(){catalog.foreground(false);catalog.foreground(true);handleOnResume();}
 ${resume}
  static void require(boolean value,String why){if(!value)throw new AssertionError(why);}
  public static void main(String[] args)throws Exception{
   ScopeVersionFixture f=new ScopeVersionFixture();
   String first=(String)f.scopeResult().get("version");require(!first.isEmpty(),"version published");
-  f.pauseResume();f.catalog.generation++;f.pauseResume();
+  f.pauseResume();require(f.refreshes==0,"no libraryChanged before a page");
+  f.page();f.pauseResume();require(f.refreshes==0,"no libraryChanged without a row change");
+  rows.put("external_primary",7L);f.pauseResume();
+  require(f.refreshes==1,"a row changed while paused announces libraryChanged");
+  f.pauseResume();require(f.refreshes==1,"the next resume stays quiet");
   require(f.announced.isEmpty(),"no scopeChanged without a change");
   require(first.equals(f.scopeResult().get("version")),"pause, resume and row edits keep the version");
   f.catalog.scope="selected";f.pauseResume();
@@ -92,7 +106,7 @@ ${resume}
   require(f.announced.size()==2&&!selected.equals(f.announced.get(1).get("version")),"a rebuilt volume announces a new version");
   f.catalog.versions.put("sdcard","s1");f.pauseResume();
   require(f.announced.size()==3,"a new volume announces a new version");
-  f.pauseResume();require(f.announced.size()==3,"a second resume stays quiet");
+  f.page();f.pauseResume();require(f.announced.size()==3&&f.refreshes==1,"a resume after the reload stays quiet");
   System.out.println("PASS stable scope version");
  }
 }`,

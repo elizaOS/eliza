@@ -44,6 +44,8 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   private volatile boolean destroyed, watching;
   /** The scope last answered or announced; resume announces only a different one. */
   private volatile String lastScope = "";
+  /** Library generations when the last page was read, or null before one. */
+  private volatile String lastLibrary;
 
   private PhotosPlugin photos() {
     PluginHandle handle = getBridge().getPlugin(photosPluginName());
@@ -114,6 +116,14 @@ public abstract class DeviceLibraryPlugin extends Plugin {
     return out;
   }
 
+  private String generations() {
+    try {
+      return catalog.generations();
+    } catch (Exception unavailable) {
+      return "";
+    }
+  }
+
   private boolean readable(PluginCall call) {
     if (locked()) {
       call.reject("Unlock the phone to use the device library", "LIBRARY_LOCKED");
@@ -180,6 +190,7 @@ public abstract class DeviceLibraryPlugin extends Plugin {
     submit(call, ticket -> {
       if (!readable(call)) return;
       try {
+        lastLibrary = generations();
         JSObject page = catalog.list(call.getString("before", ""), call.getString("query", ""),
             call.getString("kind", "all"), call.getBoolean("thumbnails", false),
             call.getBoolean("favorites", false) ? "favorites" : "all", call.getLong("from", 0L),
@@ -287,14 +298,22 @@ public abstract class DeviceLibraryPlugin extends Plugin {
   }
 
   // Posted so the Photos plugin's own handleOnResume (plugin order is unspecified) has restored
-  // foreground first. A resume with the same grant and library announces nothing.
+  // foreground first. The same scope announces no scopeChanged; rows changed while paused, when
+  // nothing observed them, announce libraryChanged so the caller refreshes without a reset.
   @Override
   protected void handleOnResume() {
     new Handler(Looper.getMainLooper()).post(() -> {
       if (destroyed) return;
-      String before = lastScope;
+      String before = lastScope, library = lastLibrary;
       JSObject scope = scopeResult();
-      if (!scope.toString().equals(before)) notifyListeners("scopeChanged", scope);
+      if (!scope.toString().equals(before)) {
+        notifyListeners("scopeChanged", scope);
+        return;
+      }
+      if (library == null) return;
+      lastLibrary = generations();
+      if (library.isEmpty() || !library.equals(lastLibrary))
+        notifyListeners("libraryChanged", new JSObject());
     });
   }
 

@@ -78,9 +78,9 @@ Capacitor bindings (a host registers a subclass under its own plugin name):
   200 items under one fence, and favorite/unfavorite/Recently deleted through the native review.
   Permanent deletion stays in the system photos app. The scope `version` covers the grant and
   each volume's MediaStore version only, so pausing or locking keeps it and `scopeChanged` fires
-  on resume only when it or the lock state changed; a `next` cursor from before a pause is
-  refused with `LIBRARY_STALE_CURSOR`, and the caller pages again from the first page. The host
-  names its `PhotosPlugin` in `photosPluginName()`.
+  on resume only when it or the lock state changed, else `libraryChanged` when rows changed while
+  paused. A `next` cursor from before a pause is refused with `LIBRARY_STALE_CURSOR`; the caller
+  pages again from the first page. The host names its `PhotosPlugin` in `photosPluginName()`.
 - `PhotoLibraryAccess` – the bridge rules both apply: permission aliases per API level, the scope
   answer, listing filters, page and selection bounds and change mapping. Pure Java.
 

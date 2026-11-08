@@ -256,6 +256,18 @@ public final class PermittedMediaCatalog implements AutoCloseable {
       super("Photo page expired; refresh Photos");
     }
   }
+  /**
+   * Each volume's MediaStore generation, which moves on any row change, even one made while
+   * paused and unobserved. Empty below Android 11, which has no generation.
+   */
+  public String generations() {
+    unlocked();
+    if (Build.VERSION.SDK_INT < 30) return "";
+    StringBuilder value = new StringBuilder();
+    for (String volume : volumes())
+      value.append('|').append(volume).append('=').append(MediaStore.getGeneration(context, volume));
+    return value.toString();
+  }
   public void requireCurrent(Fence fence) {
     if (SystemClock.elapsedRealtime() > fence.until)
       throw new IllegalStateException("Media query took too long; refresh Photos");
