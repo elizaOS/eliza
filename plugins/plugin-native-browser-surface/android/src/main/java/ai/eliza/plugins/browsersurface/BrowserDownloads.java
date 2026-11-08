@@ -51,9 +51,10 @@ import org.json.JSONObject;
  *
  * <p>HTTPS files without a sign-in go to the OS DownloadManager. A file that uses the requesting
  * tab's own profile cookie (exact same origin as its committed page, read at confirmation while
- * that tab is still open) is fetched by the host instead: DownloadManager would replay a Cookie
- * header to every redirect target and keep it in Android's download database after the tab, even a
- * private one, is gone. No bearer tokens, referer or form bodies are copied. {@code blob:} and
+ * that tab is still open), and any same-origin file of a private tab, is fetched by the host
+ * instead: DownloadManager would replay a Cookie header to every redirect target, keep it in
+ * Android's download database after the tab, even a private one, is gone, and keep running after a
+ * private tab closes. No bearer tokens, referer or form bodies are copied. {@code blob:} and
  * {@code data:} links are captured into a host-owned cache file ({@code blob:} through {@link
  * BrowserBlobCapture}) and copied to Downloads only after review. Private-tab entries are never
  * written to the persisted list ({@link BrowserDownloadPolicy.History}). Completion always comes
@@ -118,8 +119,12 @@ public final class BrowserDownloads {
   private final ExecutorService statusReader = Executors.newSingleThreadExecutor();
   private final Map<Long, Long> received = new ConcurrentHashMap<>();
   private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
-  private AlertDialog pending, listing;
+  private AlertDialog pending, listing, notice;
   private String pendingTab;
+  /** Requests each tab had dropped or refused since its last main-frame navigation. */
+  private final Map<String, Integer> refusals = new HashMap<>();
+  /** After this many dropped or refused requests a tab's downloads are ignored until it navigates. */
+  static final int MAX_REFUSALS = 3;
   private Runnable update;
   /** Positive ids are DownloadManager IDs; negative ids are files the host saved to MediaStore. */
   private static final String TAG = "BrowserDownloads";
@@ -223,10 +228,35 @@ public final class BrowserDownloads {
     }
   }
 
+  /** Shows one notice at a time; a later notice replaces the text of one still open. */
   private void message(String text) {
     if (closed)
       return;
-    new AlertDialog.Builder(context).setTitle("Download").setMessage(text).setPositiveButton("Close", null).show();
+    if (notice != null && notice.isShowing()) {
+      notice.setMessage(text);
+      return;
+    }
+    AlertDialog shown = new AlertDialog.Builder(context).setTitle("Download").setMessage(text)
+        .setPositiveButton("Close", null).create();
+    shown.setOnDismissListener(dialog -> {
+      if (notice == shown)
+        notice = null;
+    });
+    notice = shown;
+    shown.show();
+  }
+
+  /** Whether {@code source}'s tab has had too many requests dropped or refused to be heard now. */
+  private boolean ignored(Source source) {
+    return closed || refusals.getOrDefault(source.tab, 0) >= MAX_REFUSALS;
+  }
+
+  /** A request from {@code source} was dropped or refused; returns false for the caller. */
+  private boolean refuse(Source source, String text) {
+    refusals.merge(source.tab, 1, Integer::sum);
+    if (text != null)
+      message(text);
+    return false;
   }
 
   private static String privateNote(boolean priv) {
@@ -234,17 +264,19 @@ public final class BrowserDownloads {
                 : "";
   }
 
-  private boolean reviewable() {
-    if (closed)
+  /**
+   * Whether a review may open now. A request made while a review is open is dropped without a
+   * dialog, so a page that repeats download requests cannot stack dialogs; after {@link
+   * #MAX_REFUSALS} dropped or refused requests its tab is ignored until it navigates. No user
+   * gesture is required: a server download after a form submit has none.
+   */
+  private boolean reviewable(Source source) {
+    if (ignored(source))
       return false;
-    if (pending != null) {
-      message("Finish the current download review first.");
-      return false;
-    }
-    if (!history.hasRoom(this::osActive)) {
-      message("All 50 downloads in the list are still in progress. Wait for one to finish or cancel one in Downloads.");
-      return false;
-    }
+    if (pending != null)
+      return refuse(source, null);
+    if (!history.hasRoom(this::osActive))
+      return refuse(source, "All 50 downloads in the list are still in progress. Wait for one to finish or cancel one in Downloads.");
     return true;
   }
 
@@ -264,12 +296,19 @@ public final class BrowserDownloads {
     review.show();
   }
 
+  /** The requesting tab's own profile cookie for the download address, or null once it closed. */
+  private static String cookie(Source source) {
+    return source.cookies == null ? null : source.cookies.get();
+  }
+
   private static BrowserDownloadPolicy.Entry entry(long id, String name, String origin, Source source) {
     return new BrowserDownloadPolicy.Entry(id, name, origin, source.priv, source.priv ? source.tab : null);
   }
 
   /** Review a WebView download request of {@code source}'s committed page. */
   public void request(Source source, String raw, String disposition, String mime, long length, BooleanSupplier current) {
+    if (ignored(source))
+      return;
     if (raw != null && raw.regionMatches(true, 0, "data:", 0, 5)) {
       requestData(source, raw, disposition, mime, current);
       return;
@@ -280,23 +319,27 @@ public final class BrowserDownloads {
       if (raw.length() > 8192 || raw.matches("(?s).*[\\x00-\\x1f\\x7f].*") || !allowed(uri))
         throw new IllegalArgumentException();
     } catch (Exception invalid) {
-      message("Only HTTPS file downloads are supported.");
+      refuse(source, "Only HTTPS file downloads are supported.");
       return;
     }
     if (manager == null) {
-      message("Android downloads are unavailable.");
+      refuse(source, "Android downloads are unavailable.");
       return;
     }
-    if (!reviewable())
+    if (!reviewable(source))
       return;
     String name = safeName(raw, disposition, mime);
     String origin = BrowserWebOrigin.of(raw);
-    boolean signedIn = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true);
+    boolean sameOrigin = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true);
+    // Signed in only when the tab holds a usable cookie for this address now, not by origin alone.
+    boolean signedIn = sameOrigin && BrowserDownloadPolicy.cookieHeaderAcceptable(cookie(source));
+    // A private tab's same-origin file is fetched by the host, so closing the tab stops it.
+    boolean hostFetch = signedIn || (sameOrigin && source.priv);
     String details = "From: " + origin + "\nFile: " + name + "\nAdvertised size: "
         + (length < 0 ? "unknown" : size(length) + " (may differ)")
-        + (signedIn ? "\n\nYour sign-in for this site is used for this download only." : "")
+        + (signedIn ? "\n\nUses your sign-in for this site." : "\n\nWebsite sign-in is not shared with other sites.")
         + privateNote(source.priv)
-        + (signedIn && source.priv ? " Closing this tab before the download finishes cancels it." : "");
+        + (hostFetch && source.priv ? " Closing this tab before the download finishes cancels it." : "");
     review(source.tab, "Download file?", details, () -> {
       if (!current.getAsBoolean()) {
         message("The source page changed. Start the download again.");
@@ -311,14 +354,13 @@ public final class BrowserDownloads {
           request.setMimeType(mime);
         if (source.userAgent != null && !source.userAgent.isEmpty() && source.userAgent.length() < 1024)
           request.addRequestHeader("User-Agent", source.userAgent);
-        // Read now, from the still-open requesting tab's own profile. A closed tab supplies nothing.
-        if (signedIn) {
-          String cookie = source.cookies == null ? null : source.cookies.get();
-          if (BrowserDownloadPolicy.cookieHeaderAcceptable(cookie)) {
-            fetchSignedIn(raw, name, mime, origin, source, cookie);
-            show();
-            return;
-          }
+        // Read again now, from the still-open requesting tab's own profile. A closed tab supplies nothing.
+        if (hostFetch) {
+          String cookie = cookie(source);
+          fetchSignedIn(raw, name, mime, origin, source,
+              BrowserDownloadPolicy.cookieHeaderAcceptable(cookie) ? cookie : null);
+          show();
+          return;
         }
         // No sign-in: DownloadManager never receives a Cookie header.
         long id = manager.enqueue(request);
@@ -340,7 +382,7 @@ public final class BrowserDownloads {
     try {
       bytes = BrowserDownloadPolicy.decodeData(raw);
     } catch (Exception invalid) {
-      message("This embedded file is invalid or larger than " + (BrowserDownloadPolicy.MAX_CAPTURE / 1048576) + " MB.");
+      refuse(source, "This embedded file is invalid or larger than " + (BrowserDownloadPolicy.MAX_CAPTURE / 1048576) + " MB.");
       return;
     }
     String type = validMime(mime) ? mime : BrowserDownloadPolicy.dataMime(raw);
@@ -366,7 +408,7 @@ public final class BrowserDownloads {
 
   /** Review a host-owned captured file, then copy it to Downloads. The capture is deleted either way. */
   public void reviewCaptured(Source source, File file, String name, String mime, BooleanSupplier current) {
-    if (!reviewable()) {
+    if (!reviewable(source)) {
       file.delete();
       return;
     }
@@ -436,7 +478,8 @@ public final class BrowserDownloads {
   }
 
   /**
-   * Fetch a signed-in file in-app. The cookie is sent on each hop only when that hop's URL has
+   * Fetch a signed-in file, or a private tab's same-origin file ({@code cookie} null), in-app, so
+   * closing a private tab stops it. The cookie is sent on each hop only when that hop's URL has
    * exactly the page's origin; redirects are followed manually, only to allowed (HTTPS) addresses,
    * and the cookie is never stored. The entry is in memory while running and persisted on success
    * (normal tabs only). A fetch interrupted by process death leaves only Android's pending row,
@@ -502,7 +545,7 @@ public final class BrowserDownloads {
         if (agent != null && !agent.isEmpty() && agent.length() < 1024 && !agent.matches("(?s).*[\\r\\n].*"))
           connection.setRequestProperty("User-Agent", agent);
         // Only the exact page origin gets the sign-in, on this hop and on any redirect back to it.
-        if (BrowserDownloadPolicy.cookieAllowed(url.toString(), pageOrigin, true))
+        if (cookie != null && BrowserDownloadPolicy.cookieAllowed(url.toString(), pageOrigin, true))
           connection.setRequestProperty("Cookie", cookie);
         int code = connection.getResponseCode();
         if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
@@ -570,8 +613,12 @@ public final class BrowserDownloads {
     return uri;
   }
 
-  /** The requesting tab navigated or closed: its open review ends unanswered. */
+  /**
+   * The requesting tab navigated or closed: its open review ends unanswered and its dropped or
+   * refused requests are forgotten.
+   */
   public void cancelReview(String tab) {
+    refusals.remove(tab);
     if (Objects.equals(pendingTab, tab) && pending != null)
       pending.dismiss();
   }
@@ -855,14 +902,17 @@ public final class BrowserDownloads {
     if (update != null)
       handler.removeCallbacks(update);
     update = null;
-    AlertDialog review = pending, list = listing;
+    AlertDialog review = pending, list = listing, shown = notice;
     pending = null;
     pendingTab = null;
     listing = null;
+    notice = null;
     if (review != null)
       review.dismiss();
     if (list != null)
       list.dismiss();
+    if (shown != null)
+      shown.dismiss();
   }
 
   public void destroy() {

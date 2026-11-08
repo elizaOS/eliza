@@ -118,6 +118,26 @@ public final class BrowserWebPolicyTest {
         "bounded length");
     equal("_.._etc_passwd", BrowserDownloadPolicy.sanitizeName("/../etc/passwd"),
         "no path separators");
+    String longName =
+        BrowserDownloadPolicy.sanitizeName(new String(new char[150]).replace('\0', 'r') + ".pdf");
+    equal(BrowserDownloadPolicy.MAX_NAME, longName.length(), "long name bounded");
+    check(longName.endsWith("rrr.pdf"), "long name keeps its extension");
+    String longExtension = BrowserDownloadPolicy.sanitizeName(
+        "a." + new String(new char[150]).replace('\0', 'x'));
+    equal(BrowserDownloadPolicy.MAX_NAME, longExtension.length(),
+        "an over-long extension is cut like the rest of the name");
+    equal("\u041e\u0442\u0447\u0451\u0442.pdf",
+        BrowserDownloadPolicy.sanitizeName("\u041e\u0442\u0447\u0451\u0442.pdf"),
+        "Cyrillic name survives");
+    equal("\u5831\u544a 2026.pdf", BrowserDownloadPolicy.sanitizeName("\u5831\u544a 2026.pdf"),
+        "CJK name survives");
+    equal("invoicefdp.exe", BrowserDownloadPolicy.sanitizeName("invoice\u202efdp.exe"),
+        "bidi override removed");
+    equal("ab_c.txt", BrowserDownloadPolicy.sanitizeName("a\u2066b/c\u0007.txt"),
+        "isolates and controls removed, separators replaced");
+    String wide = BrowserDownloadPolicy.sanitizeName(
+        new String(new char[99]).replace('\0', 'e') + "\ud840\udc00\ud840\udc00");
+    equal(99, wide.length(), "a cut never leaves half a surrogate pair");
     check(BrowserDownloadPolicy.validMime("application/pdf"), "valid mime");
     check(!BrowserDownloadPolicy.validMime("text/html; charset=utf-8"),
         "parameters are not a mime type");

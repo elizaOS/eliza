@@ -58,15 +58,33 @@ public final class BrowserDownloadPolicy {
     return true;
   }
 
-  /** A display/file name made of portable characters, never hidden, at most {@link #MAX_NAME}. */
+  /** The longest suffix after the last '.' that a long name keeps as its extension. */
+  static final int MAX_EXTENSION = 16;
+
+  /**
+   * A display/file name of letters, digits, marks and {@code ._ -}, never hidden, at most {@link
+   * #MAX_NAME}. Control and format characters (bidi overrides included) are removed; any other
+   * character, path separators included, becomes {@code _}. A long name is cut in its stem so its
+   * extension (up to {@link #MAX_EXTENSION} characters) survives.
+   */
   public static String sanitizeName(String name) {
     String safe = (name == null ? "" : name)
-                      .replaceAll("[^A-Za-z0-9._ -]", "_")
+                      .replaceAll("[\\p{Cc}\\p{Cf}]", "")
+                      .replaceAll("[^\\p{L}\\p{N}\\p{M}._ -]", "_")
                       .replaceAll("^[. ]+", "")
                       .trim();
     if (safe.isEmpty())
       safe = "download";
-    return safe.length() > MAX_NAME ? safe.substring(0, MAX_NAME) : safe;
+    if (safe.length() <= MAX_NAME)
+      return safe;
+    int dot = safe.lastIndexOf('.');
+    String extension =
+        dot > 0 && safe.length() - dot - 1 <= MAX_EXTENSION ? safe.substring(dot) : "";
+    int stem = MAX_NAME - extension.length();
+    // Never split a surrogate pair.
+    if (Character.isLowSurrogate(safe.charAt(stem)))
+      stem--;
+    return safe.substring(0, stem).trim() + extension;
   }
 
   public static boolean validMime(String mime) {
