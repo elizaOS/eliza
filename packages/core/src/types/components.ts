@@ -310,7 +310,7 @@ export type Validator = (
  *
  * - ALWAYS_*: every message, regardless of routing decision.
  * - CONTEXT_*: only when one of the action's `contexts` was selected by Stage 1.
- * - MESSAGE_*: hooks specifically on the messageHandler model call.
+ * - RESPONSE_HANDLER_*: hooks specifically on the messageHandler model call.
  * - PLANNER (default): planner picks based on user intent.
  *
  * `*_DURING` modes are non-blocking (parallel with the corresponding pipeline
@@ -334,7 +334,12 @@ export const ActionMode = {
 } as const;
 export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 
-/** Hook modes that run in parallel with the corresponding pipeline step. */
+/**
+ * Hook modes that run in parallel with the corresponding pipeline step.
+ *
+ * @deprecated `runActionsByMode` does not consult this set; it decides
+ * blocking per mode itself. Kept for API compatibility.
+ */
 export const NON_BLOCKING_MODES = new Set<ActionMode>([
 	ActionMode.ALWAYS_DURING,
 	ActionMode.CONTEXT_DURING,
@@ -903,7 +908,7 @@ export interface Provider {
 	 * materializes `contexts` from the gate's anyOf surface at registration.
 	 * A contextGate adds context requirements on top of the provider's
 	 * top-level `roleGate`; it does not waive it unless it declares its own
-	 *.
+	 * `roleGate`, which then replaces the top-level one.
 	 */
 	contextGate?: ContextGate;
 

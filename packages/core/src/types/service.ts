@@ -44,6 +44,9 @@ export interface ServiceTypeRegistry {
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage";
 	AGENT_EVENT: "agent_event";
 	CONTROL_TRANSPORT: "control_transport";
+	NOTIFICATION: "notification";
+	MEDIA_GENERATION: "media_generation";
+	VOICE_CACHE: "voice_cache";
 	OPTIMIZED_PROMPT: "optimized_prompt";
 	CHANNEL_TOPICS: "channel_topics";
 	COMMANDS: "commands";
@@ -99,8 +102,8 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
  * }
  * ```
  */
-// biome-ignore lint/complexity/noBannedTypes: Empty interface for module augmentation
-export type ServiceClassMap = {};
+// biome-ignore lint/suspicious/noEmptyInterface: augmented by plugins
+export interface ServiceClassMap {}
 
 /**
  * Helper to infer service instance type from service type name
@@ -123,6 +126,7 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<
  * secure execution via TEE (Trusted Execution Environment), and task management.
  * This constant is used in `AgentRuntime` for service registration and retrieval (e.g., `getService`).
  * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
+ * Every value must also be in `ServiceTypeRegistry`; the `satisfies` clause fails to compile otherwise.
  */
 export const ServiceType = {
 	TRANSCRIPTION: "transcription",
@@ -164,7 +168,7 @@ export const ServiceType = {
 	TRAJECTORIES: "trajectories",
 	SWARM_COORDINATOR: "SWARM_COORDINATOR",
 	UNKNOWN: "unknown",
-} as const;
+} as const satisfies Record<string, ServiceTypeName>;
 
 /**
  * Client instance

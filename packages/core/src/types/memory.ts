@@ -470,7 +470,8 @@ export interface CustomMetadata {
 }
 
 /**
- * Two-store fact memory model (see docs/architecture/fact-memory.md).
+ * Two-store fact memory model: durable facts (identity, preferences, goals)
+ * and current-state facts (feelings, what someone is working on).
  */
 export type FactKind = "durable" | "current";
 

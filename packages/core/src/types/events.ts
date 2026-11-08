@@ -172,7 +172,7 @@ export interface MembershipAuthorityChangedPayload extends EventPayload {
 }
 
 /**
- * Payload for reaction-related events
+ * Payload for message events (received, sent, deleted, and similar)
  */
 export interface MessagePayload extends EventPayload {
 	message: Memory;

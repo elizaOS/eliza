@@ -2,7 +2,8 @@
  * Database-adapter contract and its row/log types: `IDatabaseAdapter`, run/log
  * body shapes, patch ops, and the participant/entity query result types. Defines
  * the persistence boundary the runtime reads and writes through; implemented by
- * `plugin-sql` and the in-memory fallback adapter.
+ * `plugin-sql` (`BaseDrizzleAdapter`) and `plugin-sqlite`
+ * (`SQLiteRecordAdapter`).
  */
 import type { AccessContext } from "./access-context";
 import type { Agent } from "./agent";
@@ -927,7 +928,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * executes the callback within that context.
 	 *
 	 * WHY unknown context parameter: Different backends provide different context
-	 * types (Drizzle transaction for SQL, nothing for in-memory). Callers that
+	 * types (a Drizzle transaction for plugin-sql; plugin-sqlite does not
+	 * implement this method). Callers that
 	 * need the context can cast `ctx` to the appropriate type.
 	 *
 	 * @param entityId - The entity ID to set as context (null clears context)
@@ -959,17 +961,16 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * WHY: Atomic insert-or-update eliminates the get-check-create race condition
 	 * in `ensureAgentExists`. Single SQL statement is safer and faster.
 	 *
-	 * WHY on adapter interface: PostgreSQL and MySQL can perform this atomically
-	 * (ON CONFLICT / ON DUPLICATE KEY), so it belongs on the adapter. InMemory
-	 * simulates with has()/set(), which is acceptable.
+	 * WHY on adapter interface: PostgreSQL can perform this atomically
+	 * (ON CONFLICT), so it belongs on the adapter. The SQLite record adapter
+	 * reads and merges each record inside its storage transaction.
 	 *
 	 * WHY void return: Upserts don't create new IDs - the caller already has them.
 	 * Returning UUID[] suggests creation, which is misleading for updates.
 	 *
 	 * IMPLEMENTATION NOTES:
 	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET...
-	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE...
-	 * - InMemory: map.has(id) ? map.set(id, merged): map.set(id, agent)
+	 * - SQLite records: get(id), then set(id, { ...existing, ...agent })
 	 *
 	 * @param agents Agents to upsert (ID is required for each)
 	 */
@@ -993,7 +994,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * database bloat from accumulating test/demo agents.
 	 *
 	 * IMPLEMENTATION NOTE: Deletion criteria varies by adapter. SQL adapters
-	 * typically use updatedAt < 30 days ago. InMemory adapters may do nothing.
+	 * typically use updatedAt < 30 days ago. plugin-sqlite does nothing.
 	 */
 	cleanupAgents(): Promise<void>;
 
@@ -1007,8 +1008,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * currently-active embedding dimension, returning the ids of the memories
 	 * left without a vector so the runtime can re-embed them at the active width.
 	 * The store side of switching embedders (e.g. cloud 1536-dim → on-device
-	 * gte-small 384-dim); a no-op returning `[]` once every vector matches. In-
-	 * memory adapters, whose vectors are not schema-bound, may return `[]`.
+	 * gte-small 384-dim); a no-op returning `[]` once every vector matches.
 	 */
 	clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>;
 
@@ -1028,18 +1028,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * ```
 	 *
 	 * IMPLEMENTATION:
-	 * - SQL adapters: Use Drizzle's transaction() with prototype proxy pattern
-	 * - InMemory: Executes callback directly (NOT atomic - see warning below)
-	 *
-	 * TRAP - InMemory non-atomicity: The InMemory adapter does NOT provide true
-	 * transaction semantics. If step 2 fails, step 1's changes are NOT rolled back.
-	 * This is acceptable for dev/test but NOT for production critical paths.
+	 * - plugin-sql: Drizzle's transaction() with prototype proxy pattern
+	 * - plugin-sqlite: a SQLite SAVEPOINT; rejects `entityContext` (no RLS)
 	 *
 	 * @param callback Function that receives a transactional adapter proxy
 	 * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs callback under RLS for this entity.
 	 * WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
 	 * @returns Promise resolving to callback's return value
-	 * @throws Error if any operation in the callback fails (SQL: rolls back, InMemory: does NOT)
+	 * @throws Error if any operation in the callback fails (the transaction rolls back)
 	 */
 	transaction<T>(
 		callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
@@ -1081,8 +1077,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * IMPLEMENTATION NOTES:
 	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
-	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
-	 * - InMemory: entities.set(id, merged)
+	 * - SQLite records: set(id, merged)
 	 * - Conflict resolution: Last write wins (update all fields from input)
 	 *
 	 * @param entities Entities to upsert (ID, agentId, name required)
@@ -1097,13 +1092,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * search across all entity names.
 	 *
 	 * WHY on adapter interface: SQL adapters use ILIKE/LOWER() with GIN indexes
-	 * on the names array. InMemory adapters iterate and filter. This search
+	 * on the names array. The SQLite record adapter scans and filters. This search
 	 * pattern is common enough to warrant a dedicated method.
 	 *
 	 * PERFORMANCE:
 	 * - PostgreSQL: Uses GIN index on names array + ILIKE for case-insensitive
-	 * - MySQL: Uses JSON_TABLE + LIKE (slower, no ideal index)
-	 * - InMemory: O(N) scan with substring match
+	 * - SQLite records: O(N) scan with substring match
 	 *
 	 * @param params.query Substring to search for (case-insensitive)
 	 * @param params.agentId Scope search to this agent's entities
@@ -1247,9 +1241,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - PostgreSQL: INSERT... ON CONFLICT (entity_id, type, world_id, source_entity_id)
 	 * DO UPDATE SET data = EXCLUDED.data,...
 	 * Requires unique_component_natural_key constraint with NULLS NOT DISTINCT
-	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE data = VALUES(data),...
-	 * Requires UNIQUE KEY on (entity_id, type, world_id, source_entity_id)
-	 * - InMemory: Find by natural key, update if found, insert if not
+	 * - SQLite records: Find by natural key, update if found, insert if not
 	 *
 	 * TRAP: If input contains duplicate natural keys, dedupe first (last-wins).
 	 * PostgreSQL will error: "ON CONFLICT DO UPDATE command cannot affect row a second time"
@@ -1296,7 +1288,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		metadata?: Record<string, unknown>;
 		/**
 		 * Case-insensitive keyword predicate over `Memory.content.text`. SQL
-		 * adapters push this into the database (`ILIKE`); in-memory adapters apply
+		 * adapters push this into the database (`ILIKE`); the SQLite record adapter applies
 		 * the same `includes` semantics. Used by keyword message search so the
 		 * filter runs in the store, not by scanning every room in the process.
 		 */
@@ -1355,8 +1347,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	/**
 	 * Atomic compare-and-swap replacement of a world's whole metadata under the
-	 * exact prior snapshot, committing the audit row in the same transaction
-	 *. Authorization role writes MUST go through
+	 * exact prior snapshot, committing the audit row in the same transaction.
+	 * Authorization role writes MUST go through
 	 * this operation and fail closed when an adapter omits the optional
 	 * capability; they never fall back to a blind `updateWorlds` overwrite.
 	 */
@@ -1379,8 +1371,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Full-text + trigram message search across a set of rooms, ranked
 	 * corpus-wide (not truncated by recency before ranking). SQL adapters run a
 	 * GIN-indexed Postgres FTS query (`websearch_to_tsquery` + `ts_rank_cd`) with
-	 * a `pg_trgm` fallback for partial/typo/code/URL tokens; in-memory adapters
-	 * apply the same folded-token semantics in JS. Rows come back ranked:
+	 * a `pg_trgm` fallback for partial/typo/code/URL tokens; the SQLite record
+	 * adapter applies the same folded-token semantics in JS. Rows come back ranked:
 	 * `ftsRank` desc, then `trigramSimilarity` desc, then recency, so multi-word
 	 * non-adjacent queries and hits older than any recency window are both found
 	 * and correctly ordered.
@@ -1414,7 +1406,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		offset?: number;
 		/**
 		 * Case-insensitive keyword predicate over `Memory.content.text`. SQL
-		 * adapters push this into the database (`ILIKE`); in-memory adapters apply
+		 * adapters push this into the database (`ILIKE`); the SQLite record adapter applies
 		 * the same `includes` semantics. Lets keyword message search scope to a set
 		 * of accessible rooms AND filter by keyword in a single store query, so the
 		 * LIMIT is applied after access-scoping rather than across every room.
@@ -1639,15 +1631,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * WHY on adapter interface: SQL dialects support atomic upserts for worlds.
 	 * The world table has minimal fields (id, name, type, agentId), making upserts
-	 * straightforward across all dialects.
+	 * straightforward.
 	 *
 	 * WHY void return: World IDs are provided by the caller (often deterministic
 	 * UUIDs based on world name/type). No need to return IDs.
 	 *
 	 * IMPLEMENTATION NOTES:
 	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
-	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
-	 * - InMemory: worlds.set(id, world)
+	 * - SQLite records: set(id, world)
 	 *
 	 * @param worlds Worlds to upsert (ID required for each)
 	 */
@@ -1697,8 +1688,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * IMPLEMENTATION NOTES:
 	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
-	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
-	 * - InMemory: rooms.set(id, room)
+	 * - SQLite records: set(id, room)
 	 * - Partial updates: Full replacement (all fields updated)
 	 *
 	 * @param rooms Rooms to upsert (ID, worldId, agentId required for each)
@@ -1848,14 +1838,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
 	/** Atomically updates a queued task only while status is pending or absent. Storage evaluates the queue tag and lifecycle predicate in the same mutation. */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
+	/** True only for atomic earliest wake + revision-conditional consumption. */
+	supportsAtomicTaskWake?: boolean;
 	/**
 	 * Atomically merges `patch.set` into the task's metadata and removes
 	 * `patch.unset` keys in the same storage mutation. Returns false when no
 	 * task matched. Adapters without an atomic merge leave this undefined and
 	 * callers fall back to a whole-metadata update.
 	 */
-	/** True only for atomic earliest wake + revision-conditional consumption. */
-	supportsAtomicTaskWake?: boolean;
 	patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
@@ -1980,8 +1970,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * MIGRATIONS: If a plugin updates its schema (adds columns, indexes), the
 	 * adapter should diff against the current schema and apply changes. For SQL
-	 * adapters, this uses ALTER TABLE. For in-memory, this records
-	 * the schema definition.
+	 * adapters, this uses ALTER TABLE. plugin-sqlite rejects plugin schemas
+	 * until an explicit SQLite migration exists.
 	 *
 	 * @param schema Complete schema definition for the plugin
 	 * @throws Error if schema is invalid or migration fails
@@ -1994,7 +1984,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Get a plugin store for CRUD operations on plugin tables
 	 *
 	 * WHY: Provides a generic interface for plugins to access their data without
-	 * knowing whether they're running on SQL or in-memory adapters.
+	 * knowing whether they're running on plugin-sql or plugin-sqlite.
 	 *
 	 * NAMESPACING: The store automatically prefixes table names with the plugin
 	 * name to avoid conflicts (e.g., "goals_goals", "goals_goal_tags").
