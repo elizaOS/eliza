@@ -474,7 +474,10 @@ export const runtimeAction: Action = {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Agent: …", action: "RUNTIME" },
+        content: {
+          text: "Running: 40 actions, 18 providers, 12 services.",
+          action: "RUNTIME",
+        },
       },
     ],
     [
@@ -484,7 +487,10 @@ export const runtimeAction: Action = {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Agent: …", action: "RUNTIME" },
+        content: {
+          text: "Running: 40 actions, 18 providers, 12 services.",
+          action: "RUNTIME",
+        },
       },
     ],
     [

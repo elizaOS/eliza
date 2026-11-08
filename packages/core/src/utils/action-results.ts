@@ -49,14 +49,6 @@ export interface ActionResultReferences {
 	error?: string;
 }
 
-/** Serializes complete action data for model context; maxChars does not limit content. */
-export function formatActionResultDataForPrompt(
-	data: ProviderDataRecord,
-	_maxChars?: number,
-): string {
-	return JSON.stringify(data);
-}
-
 export function estimateActionResultTokens(text: string): number {
 	return Math.ceil(text.length / ACTION_RESULT_TOKEN_ESTIMATE_CHARS);
 }
