@@ -269,7 +269,7 @@ public class ElizaAgentService extends Service {
     private volatile int restartAttempts;
     private volatile long healthySinceMs;
     // A startup or adoption probe is shepherding the agent; adoption never stacks a second one.
-    private volatile boolean healthProbeActive;
+    private volatile Thread healthProbe;
     private volatile boolean terminalNoticePosted;
     private volatile String currentStatus = "starting";
 
@@ -2529,7 +2529,7 @@ public class ElizaAgentService extends Service {
                     currentStatus = "starting";
                     updateNotification();
                 }
-                if (!healthProbeActive) {
+                if (healthProbe == null) {
                     startDetachedStartupProbe(detachedLaunchStartedAtMs, null,
                         System.currentTimeMillis() + ADOPTION_HEALTH_GRACE_MS, true);
                 }
@@ -4130,7 +4130,6 @@ public class ElizaAgentService extends Service {
      */
     private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId,
             final long deadline, final boolean adopted) {
-        healthProbeActive = true;
         Thread probe = new Thread(() -> {
           try {
             ElizaAgentWatchdogPolicy.ProbeResult lastResult = null;
@@ -4225,10 +4224,13 @@ public class ElizaAgentService extends Service {
             appendDiagnosticEvent("detached-agent-startup-timeout", details);
             scheduleRestart(answeredUnready);
           } finally {
-            healthProbeActive = false;
+            // Only the newest probe clears the slot; an older one ending must
+            // not let adoption stack a second probe beside the current one.
+            if (healthProbe == Thread.currentThread()) healthProbe = null;
           }
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
+        healthProbe = probe;
         probe.start();
     }
 

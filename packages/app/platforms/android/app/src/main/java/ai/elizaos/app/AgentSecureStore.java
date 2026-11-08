@@ -142,7 +142,10 @@ final class AgentSecureStore implements AutoCloseable {
         return new AtomicFile(new File(directory, VAULT_PASSPHRASE_FILE));
     }
 
-    private static SecretKey key() throws Exception {
+    // Class-locked: the instance store and the static vault passphrase share this
+    // alias, and two first-use generators racing would replace the key the
+    // other one already encrypted with.
+    private static synchronized SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
         if (!store.containsAlias(KEY_ALIAS)) {
