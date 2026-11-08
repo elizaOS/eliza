@@ -307,22 +307,35 @@ module AccountPoolHealth {
       WriteSnapshot(id, storage)
     },
   }
-  action step = any {
-    {nondet id = Calls.oneOf(); nondet a = Accounts.oneOf(); Start(id, a)},
-    {nondet id = Calls.oneOf(); nondet a = Accounts.oneOf(); CaptureSnapshot(id, a)},
-    {nondet id = Calls.oneOf(); CallWork(id)},
-    {nondet a = Accounts.oneOf(); nondet remove = Set(true, false).oneOf(); Replace(a, remove)},
-    {
-      nondet a = Accounts.oneOf()
-      nondet health = Health.oneOf()
-      nondet detail = Set(1, 2).oneOf()
-      NewHealth(a, health, detail)
+  action BoundedStep(callIds: Set[int], tick: bool, externalWrites: bool): bool = any {
+    {nondet id = callIds.oneOf(); nondet a = Accounts.oneOf(); Start(id, a)},
+    {nondet id = callIds.oneOf(); nondet a = Accounts.oneOf(); CaptureSnapshot(id, a)},
+    {nondet id = callIds.oneOf(); CallWork(id)},
+    all {
+      externalWrites,
+      any {
+        {nondet a = Accounts.oneOf(); nondet remove = Set(true, false).oneOf(); Replace(a, remove)},
+        {
+          nondet a = Accounts.oneOf()
+          nondet health = Health.oneOf()
+          nondet detail = Set(1, 2).oneOf()
+          NewHealth(a, health, detail)
+        },
+        {nondet a = Accounts.oneOf(); EndSubscription(a)},
+        {nondet a = Accounts.oneOf(); ExtendSubscription(a)},
+      },
     },
-    {nondet a = Accounts.oneOf(); EndSubscription(a)},
-    {nondet a = Accounts.oneOf(); ExtendSubscription(a)},
-    all {s.now < 2, s' = {...s, now: s.now + 1}},
+    all {tick, s.now < 2, s' = {...s, now: s.now + 1}},
     s' = s,
   }
+
+  // The full combination remains available for explicit runs. The shared
+  // checker verifies three overlapping partitions with smaller state spaces.
+  action step = BoundedStep(Calls, true, true)
+  action concurrentOwnershipStep = BoundedStep(Calls, false, true)
+  action timedExternalWritesStep = BoundedStep(Set(1), true, true)
+  action concurrentCooldownStep = BoundedStep(Calls, true, false)
+
   val TypeOK = and {
     s.accounts.keys() == Accounts, s.calls.keys() == Calls,
     0 <= s.now and s.now <= 2, 3 <= s.nextGeneration and s.nextGeneration <= 6,
