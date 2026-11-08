@@ -412,7 +412,9 @@ export function createLauncher(
     const light = await bridge.list();
     if (!Array.isArray(light?.apps)) return light;
     const known = new Map(state.apps.map((app) => [appKey(app), app] as const));
-    const current = light.apps.filter(valid);
+    const current = light.apps
+      .filter(valid)
+      .filter((app) => !options.aliases?.[appKey(app)]);
     if (
       current.some((app) => {
         const was = known.get(appKey(app));

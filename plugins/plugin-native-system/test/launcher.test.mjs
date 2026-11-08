@@ -1480,3 +1480,23 @@ test("without the change listener every resume is a full read", async () => {
     doc.restore();
   }
 });
+
+test("an aliased entry does not force a full re-read on every light re-read", async () => {
+  const calls = [];
+  const launcher = createLauncher(
+    {
+      list: async (options) => {
+        calls.push(options);
+        return {
+          apps: [...apps, { packageName: "org.example.old", label: "Old" }],
+        };
+      },
+      launch: async () => {},
+    },
+    () => {},
+    { icons: true, aliases: { "org.example.old": "com.android.settings" } },
+  );
+  await launcher.load();
+  await launcher.refresh({ reuseIcons: true });
+  assert.deepEqual(calls, [{ icons: true }, undefined]);
+});
