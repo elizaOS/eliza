@@ -126,4 +126,53 @@ describe("X personal identity", () => {
       }),
     ).rejects.toMatchObject({ code: "X_PERSONAL_IDENTITY_CONFLICT" });
   });
+
+  test("verified owner OAuth takes over an unfunded transport-only account", async () => {
+    const squatted = await findOrCreateXPersonalAccount({ twitterUserId: "444" });
+    const organization = await seedMatureUser(USER_A, "a");
+    await linkVerifiedXOwnerIdentity({
+      organizationId: organization.id,
+      userId: USER_A,
+      twitterUserId: "444",
+    });
+
+    const links = await dbWrite
+      .select()
+      .from(identityLinks)
+      .where(eq(identityLinks.right_entity_id, "x:444"));
+    expect(links).toHaveLength(1);
+    expect(links[0]?.user_id).toBe(USER_A);
+    expect(links[0]?.source).toBe("oauth");
+    const resolved = await findOrCreateXPersonalAccount({ twitterUserId: "444" });
+    expect(resolved.user.id).toBe(USER_A);
+    expect(resolved.user.id).not.toBe(squatted.user.id);
+  });
+
+  test("keeps the conflict for a transport account with owner activity", async () => {
+    const funded = await findOrCreateXPersonalAccount({ twitterUserId: "555" });
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "5" })
+      .where(eq(organizations.id, funded.organization.id));
+    const linked = await findOrCreateXPersonalAccount({ twitterUserId: "666" });
+    await dbWrite.insert(identityLinks).values({
+      organization_id: linked.organization.id,
+      user_id: linked.user.id,
+      left_entity_id: `user:${linked.user.id}`,
+      right_entity_id: "google:linked",
+      provider: "google",
+      source: "oauth",
+    });
+    const organization = await seedMatureUser(USER_A, "a");
+
+    for (const twitterUserId of ["555", "666"]) {
+      await expect(
+        linkVerifiedXOwnerIdentity({
+          organizationId: organization.id,
+          userId: USER_A,
+          twitterUserId,
+        }),
+      ).rejects.toMatchObject({ code: "X_PERSONAL_IDENTITY_CONFLICT" });
+    }
+  });
 });
