@@ -681,4 +681,43 @@ describe("SQL identity authority", () => {
       })
     ).toThrow(expect.objectContaining({ code: "IDENTITY_PERSON_LINK_INPUT_INVALID" }));
   });
+
+  it("canonicalizes a case-variant actor that is one of the linked principals", async () => {
+    const leftId = `a${crypto.randomUUID().slice(1)}` as UUID;
+    const rightId = `b${crypto.randomUUID().slice(1)}` as UUID;
+    await db
+      .insert(entityTable)
+      .values([leftId, rightId].map((id) => ({ id, agentId, names: [id], metadata: {} })));
+    const [state] = await db
+      .select()
+      .from(identityAuthorityStateTable)
+      .where(eq(identityAuthorityStateTable.agentId, agentId));
+    const generation = state?.generation ?? 0;
+    const attestValue = {
+      agentId,
+      leftPrincipalId: leftId.toUpperCase() as UUID,
+      rightPrincipalId: rightId,
+      actorPrincipalId: leftId.toUpperCase() as UUID,
+      actorRole: "OWNER" as const,
+      authority: "authenticated_private_route" as const,
+      transport: "http" as const,
+      reason: "same person on two connectors, attested by that person",
+      idempotencyKey: "person-link-upper-case-actor",
+      expectedGeneration: generation,
+    };
+
+    const attestation = await service.attestPersonLink({
+      ...attestValue,
+      requestDigest: computeIdentityPersonLinkRequestDigest(attestValue),
+    });
+    expect(attestation.actorPrincipalId).toBe(leftId);
+    const lowerCaseActor = { ...attestValue, actorPrincipalId: leftId };
+    expect(attestation.requestDigest).toBe(computeIdentityPersonLinkRequestDigest(lowerCaseActor));
+    await expect(
+      service.attestPersonLink({
+        ...lowerCaseActor,
+        requestDigest: computeIdentityPersonLinkRequestDigest(lowerCaseActor),
+      })
+    ).resolves.toMatchObject({ id: attestation.id });
+  });
 });

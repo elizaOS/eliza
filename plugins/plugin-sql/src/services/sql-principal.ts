@@ -135,6 +135,7 @@ export function computeIdentityPersonLinkRequestDigest(
     ...value,
     leftPrincipalId,
     rightPrincipalId,
+    actorPrincipalId: value.actorPrincipalId.toLowerCase() as UUID,
   });
 }
 
@@ -567,6 +568,8 @@ export class SqlPrincipalService extends PrincipalService {
       request.leftPrincipalId,
       request.rightPrincipalId
     );
+    // The actor can be one of the pair; compare it in the same canonical form.
+    const actorPrincipalId = request.actorPrincipalId.toLowerCase() as UUID;
     const reason = request.reason.trim();
     const idempotencyKey = request.idempotencyKey.trim();
     if (
@@ -586,7 +589,7 @@ export class SqlPrincipalService extends PrincipalService {
       agentId: request.agentId,
       leftPrincipalId,
       rightPrincipalId,
-      actorPrincipalId: request.actorPrincipalId,
+      actorPrincipalId,
       actorRole: request.actorRole,
       authority: request.authority,
       transport: request.transport,
@@ -639,7 +642,7 @@ export class SqlPrincipalService extends PrincipalService {
       }
 
       const requiredPrincipalIds = [
-        ...new Set([leftPrincipalId, rightPrincipalId, request.actorPrincipalId]),
+        ...new Set([leftPrincipalId, rightPrincipalId, actorPrincipalId]),
       ];
       const principals = await tx
         .select({ id: entityTable.id })
@@ -699,7 +702,7 @@ export class SqlPrincipalService extends PrincipalService {
           agentId: request.agentId,
           leftPrincipalId,
           rightPrincipalId,
-          actorPrincipalId: request.actorPrincipalId,
+          actorPrincipalId,
           actorRole: request.actorRole,
           authority: request.authority,
           transport: request.transport,
