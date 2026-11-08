@@ -29,7 +29,7 @@ module DraftRestoreOwnership {
   }
   var s: State
 
-  action initWithStorage(mode: str, fault: str): bool = s' = {
+  pure def initialState(mode: str, fault: str): State = {
     mode: mode, event: "init", active: true, authority: true,
     editor: if (mode == "review") "typed" else if (mode == "consume") "saved" else "",
     expected: if (mode == "review") "typed" else if (mode == "consume") "saved" else "",
@@ -42,11 +42,12 @@ module DraftRestoreOwnership {
     opening: mode == "open", conflict: mode == "review",
     error: false, result: "pending"
   }
-  action initCase(mode: str): bool = initWithStorage(mode, "ok")
+  action initWithStorage(mode: str, fault: str): bool = s' = initialState(mode, fault)
+  action initCase(mode: str): bool = s' = initialState(mode, "ok")
   action init = {
     nondet mode = Set("open", "review", "release", "consume").oneOf()
     nondet fault = Set("ok", "before", "after").oneOf()
-    initWithStorage(mode, if (mode == "release") fault else "ok")
+    s' = initialState(mode, if (mode == "release") fault else "ok")
   }
 
   // Every host application checks the exact initial editor text and operation
