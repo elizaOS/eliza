@@ -210,6 +210,9 @@ export interface FoodShoppingListContent {
   contentSha256: string;
 }
 
+/** Longest shopping-list title the Instacart products-link boundary accepts. */
+export const SHOPPING_LIST_TITLE_MAX_LENGTH = 120;
+
 export const FOOD_HANDOFF_STATES = [
   "awaiting_approval",
   "creating_link",

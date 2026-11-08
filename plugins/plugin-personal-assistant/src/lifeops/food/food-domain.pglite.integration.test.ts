@@ -771,4 +771,40 @@ describe("food domain — real PGlite and approval queue", () => {
     expect(completed.state).toBe("link_created");
     expect(providerRequestCount).toBe(requestsBeforeRateLimit + 2);
   });
+  it("creates the link for a meal title longer than the provider's list-title limit", async () => {
+    const mealTitle =
+      "Weeknight black bean tacos with charred corn salsa, pickled red onions, avocado crema, shredded cabbage slaw, and cilantro-lime rice";
+    const evaluation = await service.evaluateMeal({
+      principalEntityId: SELF_ENTITY_ID,
+      householdId,
+      plannedFor: "2027-03-17T18:00:00.000Z",
+      meal: { ...safeMeal("long-title"), title: mealTitle },
+      participants: [mealParticipant(SELF_ENTITY_ID)],
+    });
+    const prepared = await service.requestShoppingHandoffApproval({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation,
+      idempotencyKey: "long-meal-title",
+    });
+    await approvals.approve(
+      prepared.approvalRequest.id,
+      prepared.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason: "Approve this exact list for a long meal title.",
+      },
+    );
+    const requestsBeforeLongTitle = providerRequestCount;
+    const completed = await service.materializeApprovedShoppingHandoff({
+      principalEntityId: SELF_ENTITY_ID,
+      handoffId: prepared.handoff.handoffId,
+    });
+    expect(completed.state).toBe("link_created");
+    expect(providerRequestCount).toBe(requestsBeforeLongTitle + 1);
+    expect(completed.content.title.length).toBeLessThanOrEqual(120);
+    expect(completed.content.title.startsWith(mealTitle.slice(0, 100))).toBe(
+      true,
+    );
+    expect(completed.content.title.endsWith("… shopping list")).toBe(true);
+  });
 });

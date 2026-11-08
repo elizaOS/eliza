@@ -4,7 +4,7 @@
  * gate that decides whether a candidate can advance to an approval handoff.
  */
 import crypto from "node:crypto";
-import { stableStringify } from "@elizaos/core";
+import { stableStringify, truncateWellFormed } from "@elizaos/core";
 import {
   assertConfidence,
   assertIsoTimestamp,
@@ -29,6 +29,7 @@ import {
   normalizeTags,
   type ProductSafetyFacts,
   roundFoodQuantity,
+  SHOPPING_LIST_TITLE_MAX_LENGTH,
   type ShoppingDeltaLine,
   SUBSTITUTION_POLICIES,
   type SubstitutionDecision,
@@ -627,6 +628,21 @@ export function assertMealPlanSafe(
   return evaluation;
 }
 
+const SHOPPING_LIST_TITLE_SUFFIX = " shopping list";
+
+// Meal titles may run to 200 characters, but the list title must fit the
+// provider limit; shorten the meal part here so the approved, hashed content
+// is exactly what the provider accepts.
+function shoppingListTitle(mealTitle: string): string {
+  const budget =
+    SHOPPING_LIST_TITLE_MAX_LENGTH - SHOPPING_LIST_TITLE_SUFFIX.length;
+  const name =
+    mealTitle.length <= budget
+      ? mealTitle
+      : `${truncateWellFormed(mealTitle, budget - 1).trimEnd()}…`;
+  return `${name}${SHOPPING_LIST_TITLE_SUFFIX}`;
+}
+
 export function buildShoppingListContent(
   evaluation: MealPlanEvaluation,
 ): FoodShoppingListContent {
@@ -650,7 +666,7 @@ export function buildShoppingListContent(
   }
   const contentWithoutHash = {
     householdId: evaluation.householdId,
-    title: `${evaluation.meal.title} shopping list`,
+    title: shoppingListTitle(evaluation.meal.title),
     lines: evaluation.shoppingDelta,
     safetyConstraintIds: evaluation.hardConstraintIds,
     safetyPolicySha256: evaluation.safetyPolicySha256,

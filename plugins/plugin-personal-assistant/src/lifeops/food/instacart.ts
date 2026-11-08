@@ -10,6 +10,7 @@ import {
   FoodDomainError,
   type FoodShoppingListContent,
   type FoodUnit,
+  SHOPPING_LIST_TITLE_MAX_LENGTH,
 } from "./types.js";
 
 const PRODUCTION_BASE_URL = "https://connect.instacart.com";
@@ -161,7 +162,11 @@ export function buildInstacartProductsLinkRequest(
     };
   });
   return {
-    title: assertNonEmptyText(content.title, "content.title", 120),
+    title: assertNonEmptyText(
+      content.title,
+      "content.title",
+      SHOPPING_LIST_TITLE_MAX_LENGTH,
+    ),
     link_type: "shopping_list",
     instructions: [
       "Review every matched product label and every substitution against your household constraints before adding items to a cart.",
