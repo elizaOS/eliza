@@ -376,8 +376,7 @@
         "Renewal waits may outlive their transaction-start lease. The new expiry is sampled after acquiring the job row; another generation cannot be overwritten.",
         "No scheduler fairness, eventual execution, provider quiescence, unbounded clock behavior, DST transition semantics or TypeScript/SQL refinement is proved. Real PostgreSQL tests separately cover process and database timezone matrices and lock waits."
       ],
-      "maxSteps": 35,
-      "conformance": "packages/cloud/formal/conformance/job-time.ts"
+      "maxSteps": 35
     }
   ],
   "pendingDomains": [
