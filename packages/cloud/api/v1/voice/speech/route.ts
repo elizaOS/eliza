@@ -250,8 +250,11 @@ app.post("/session", async (c) => {
 /**
  * Staging-only measurement of first-touch cost by hosting script. Each new
  * object answers one read-only request and stores nothing: a gate object in the
- * lean admission Worker and a session object in the API Worker. Durations are
- * I/O waits in this Worker, so they include any wait before the object runs.
+ * lean admission Worker and a session object wherever SPEECH_RELAY_SESSIONS is
+ * hosted (the lean speech Worker on staging once its binding uses script_name;
+ * the API Worker otherwise). The `api*` keys keep their names for comparison
+ * across runs. Durations are I/O waits in this Worker, so they include any wait
+ * before the object runs.
  */
 app.post("/hosting-probe", async (c) => {
   if (c.env.ENVIRONMENT !== "staging")
