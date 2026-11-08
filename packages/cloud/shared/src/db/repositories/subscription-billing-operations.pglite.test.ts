@@ -321,6 +321,298 @@ describe("SubscriptionBillingOperationsRepository", () => {
     });
   });
 
+  test("platform command dispatch refuses stale or foreign authority and preserves its first fence", async () => {
+    await enqueue();
+    const dispatch = {
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 1,
+      expectedExecutionGeneration: 0,
+    };
+    for (const changed of [
+      { organizationId: ORG_B },
+      { expectedStateRevision: 0 },
+      { expectedExecutionGeneration: 1 },
+    ]) {
+      expect(await repository.markCommandOutcomeUnknown({ ...dispatch, ...changed })).toBeNull();
+    }
+    const first = await repository.markCommandOutcomeUnknown(dispatch);
+    if (!first) throw new Error("Expected the original dispatch fence");
+    expect(first).toMatchObject({
+      status: "OUTCOME_UNKNOWN",
+      state_revision: 2,
+      execution_generation: 1,
+      attempt_count: 1,
+    });
+    expect(first?.provider_started_at).toBeInstanceOf(Date);
+    expect(await repository.markCommandOutcomeUnknown(dispatch)).toEqual(first);
+    expect(
+      await repository.markCommandOutcomeUnknown({
+        ...dispatch,
+        expectedStateRevision: 2,
+        expectedExecutionGeneration: 1,
+      }),
+    ).toBeNull();
+    expect(await repository.findCommand(ORG_A, COMMAND)).toEqual(first);
+  });
+
+  test("platform command failure replay requires the original generation and exact terminal evidence", async () => {
+    await enqueue();
+    await repository.markCommandOutcomeUnknown({
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 1,
+      expectedExecutionGeneration: 0,
+    });
+    const failure = {
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 2,
+      expectedExecutionGeneration: 1,
+      outcome: "FAILED" as const,
+      providerResponseDigest: null,
+      errorCode: "ORIGINAL_PROVIDER_FAILURE",
+    };
+    for (const changed of [
+      { organizationId: ORG_B },
+      { expectedStateRevision: 1 },
+      { expectedExecutionGeneration: 0 },
+    ]) {
+      expect(await repository.resolveCommandOutcome({ ...failure, ...changed })).toBeNull();
+    }
+    await expect(
+      repository.resolveCommandOutcome({ ...failure, providerResponseDigest: DIGEST_B }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_BILLING_OPERATIONS_INVALID" });
+    await expect(
+      repository.resolveCommandOutcome({ ...failure, errorCode: null }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_BILLING_OPERATIONS_INVALID" });
+    const first = await repository.resolveCommandOutcome(failure);
+    if (!first) throw new Error("Expected the original failure receipt");
+    expect(first).toMatchObject({ status: "FAILED", state_revision: 3, execution_generation: 1 });
+    expect(await repository.resolveCommandOutcome(failure)).toEqual(first);
+    expect(
+      await repository.resolveCommandOutcome({ ...failure, errorCode: "REPLACEMENT_FAILURE" }),
+    ).toBeNull();
+    expect(
+      await repository.resolveCommandOutcome({
+        ...failure,
+        outcome: "SUCCEEDED",
+        providerResponseDigest: DIGEST_B,
+        errorCode: null,
+      }),
+    ).toBeNull();
+    expect(await repository.findCommand(ORG_A, COMMAND)).toEqual(first);
+  });
+
+  test("platform command supersession retires only a prepared intent with exact replay", async () => {
+    await enqueue();
+    const supersede = {
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 1,
+      errorCode: "ORIGINAL_REVIEW_EXPIRED",
+    };
+    expect(
+      await repository.supersedePreparedCommand({ ...supersede, expectedStateRevision: 0 }),
+    ).toBeNull();
+    expect(
+      await repository.supersedePreparedCommand({ ...supersede, organizationId: ORG_B }),
+    ).toBeNull();
+    const first = await repository.supersedePreparedCommand(supersede);
+    expect(first).toMatchObject({
+      status: "SUPERSEDED",
+      state_revision: 2,
+      execution_generation: 0,
+      attempt_count: 0,
+      provider_started_at: null,
+    });
+    expect(await repository.supersedePreparedCommand(supersede)).toEqual(first);
+    expect(
+      await repository.supersedePreparedCommand({ ...supersede, errorCode: "OTHER_REASON" }),
+    ).toBeNull();
+    expect(
+      await repository.markCommandOutcomeUnknown({
+        organizationId: ORG_A,
+        commandId: COMMAND,
+        expectedStateRevision: 2,
+        expectedExecutionGeneration: 0,
+      }),
+    ).toBeNull();
+
+    const pending = await enqueue({
+      id: randomUUID(),
+      idempotencyKey: "command:second-one",
+      providerIdempotencyKey: "provider-command-second-one",
+    });
+    await repository.markCommandOutcomeUnknown({
+      organizationId: ORG_A,
+      commandId: pending.value.id,
+      expectedStateRevision: 1,
+      expectedExecutionGeneration: 0,
+    });
+    expect(
+      await repository.supersedePreparedCommand({
+        ...supersede,
+        commandId: pending.value.id,
+        expectedStateRevision: 2,
+      }),
+    ).toBeNull();
+    expect(await repository.findCommand(ORG_A, pending.value.id)).toMatchObject({
+      status: "OUTCOME_UNKNOWN",
+      execution_generation: 1,
+    });
+  });
+
+  test("platform checkout application requires matching retained history and replays only its original result", async () => {
+    await getPgliteClientForTests().exec(
+      `UPDATE billing_subscriptions SET status='canceled' WHERE id='${SUB_A}'`,
+    );
+    await enqueue({
+      kind: "checkout",
+      subscriptionId: null,
+      expectedSubscriptionRevision: null,
+    });
+    await repository.markCommandOutcomeUnknown({
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 1,
+      expectedExecutionGeneration: 0,
+    });
+    const resolution = {
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      expectedStateRevision: 2,
+      expectedExecutionGeneration: 1,
+      outcome: "SUCCEEDED" as const,
+      providerResponseDigest: DIGEST_B,
+      errorCode: null,
+    };
+    const succeeded = await repository.resolveCommandOutcome(resolution);
+    expect(await repository.resolveCommandOutcome(resolution)).toEqual(succeeded);
+    expect(
+      await repository.resolveCommandOutcome({ ...resolution, providerResponseDigest: DIGEST_A }),
+    ).toBeNull();
+    const apply = {
+      organizationId: ORG_A,
+      commandId: COMMAND,
+      resultSubscriptionId: CHECKOUT_SUB,
+      expectedStateRevision: 3,
+    };
+    expect(await repository.applyCheckoutResult(apply)).toBeNull();
+    expect(
+      await repository.applyCheckoutResult({ ...apply, resultSubscriptionId: SUB_B }),
+    ).toBeNull();
+    await getPgliteClientForTests().exec(`
+      INSERT INTO billing_subscriptions (
+        id, organization_id, provider_environment, stripe_customer_id,
+        stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version,
+        status, current_period_start, current_period_end, lifecycle_revision, provider_object_digest
+      ) VALUES ('${CHECKOUT_SUB}','${ORG_A}','test','cus_retained','sub_retained','si_retained',
+        'pro_monthly','v1','active','2026-08-01Z','2026-09-01Z',1,'${DIGEST_B}');
+    `);
+    expect(await repository.applyCheckoutResult(apply)).toBeNull();
+    for (const [index, source, plan, digest] of [
+      [1, "webhook", "pro_monthly", DIGEST_B],
+      [2, "checkout", "plus_monthly", DIGEST_B],
+      [3, "checkout", "pro_monthly", DIGEST_A],
+    ] as const) {
+      await getPgliteClientForTests().exec(`
+        INSERT INTO billing_subscription_revisions (
+          organization_id,subscription_id,revision,source,provider_environment,
+          stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,
+          plan_key,catalog_version,status,current_period_start,current_period_end,
+          cancel_at_period_end,provider_object_digest
+        ) VALUES ('${ORG_A}','${CHECKOUT_SUB}',${index},'${source}','test',
+          'cus_retained','sub_retained','si_retained','${plan}','v1','active',
+          '2026-08-01Z','2026-09-01Z',false,'${digest}');
+      `);
+      expect(await repository.applyCheckoutResult(apply)).toBeNull();
+    }
+    await getPgliteClientForTests().exec(`
+      INSERT INTO billing_subscription_revisions (
+        organization_id,subscription_id,revision,source,provider_environment,
+        stripe_customer_id,stripe_subscription_id,stripe_subscription_item_id,
+        plan_key,catalog_version,status,current_period_start,current_period_end,
+        cancel_at_period_end,provider_object_digest
+      ) VALUES ('${ORG_A}','${CHECKOUT_SUB}',4,'checkout','test',
+        'cus_retained','sub_retained','si_retained','pro_monthly','v1','active',
+        '2026-08-01Z','2026-09-01Z',false,'${DIGEST_B}');
+      UPDATE billing_subscriptions SET plan_key='plus_monthly',provider_object_digest='${DIGEST_A}',
+        lifecycle_revision=5 WHERE id='${CHECKOUT_SUB}';
+    `);
+    expect(await repository.applyCheckoutResult({ ...apply, expectedStateRevision: 2 })).toBeNull();
+    const applied = await repository.applyCheckoutResult(apply);
+    expect(applied).toMatchObject({
+      status: "APPLIED",
+      state_revision: 4,
+      result_subscription_id: CHECKOUT_SUB,
+    });
+    expect(await repository.applyCheckoutResult(apply)).toEqual(applied);
+    expect(
+      await repository.applyCheckoutResult({ ...apply, resultSubscriptionId: SUB_A }),
+    ).toBeNull();
+    expect(await repository.resolveCommandOutcome(resolution)).toBeNull();
+  });
+
+  test("platform cancel and resume require their dedicated dispatch protocol", async () => {
+    for (const kind of ["cancel", "resume"] as const) {
+      const command = await enqueue({
+        id: randomUUID(),
+        kind,
+        targetPlanKey: null,
+        idempotencyKey: `command:dedicated-${kind}`,
+        providerIdempotencyKey: `provider-command-dedicated-${kind}`,
+      });
+      expect(
+        await repository.markCommandOutcomeUnknown({
+          organizationId: ORG_A,
+          commandId: command.value.id,
+          expectedStateRevision: 1,
+          expectedExecutionGeneration: 0,
+        }),
+      ).toBeNull();
+      expect(
+        await repository.resolveCommandOutcome({
+          organizationId: ORG_A,
+          commandId: command.value.id,
+          expectedStateRevision: 1,
+          expectedExecutionGeneration: 0,
+          outcome: "SUCCEEDED",
+          providerResponseDigest: DIGEST_B,
+          errorCode: null,
+        }),
+      ).toBeNull();
+      expect(await repository.findCommand(ORG_A, command.value.id)).toMatchObject({
+        status: "PREPARED",
+      });
+      expect(
+        await repository.supersedePreparedCommand({
+          organizationId: ORG_A,
+          commandId: command.value.id,
+          expectedStateRevision: 1,
+          errorCode: "UNSTARTED_REVIEW_EXPIRED",
+        }),
+      ).toMatchObject({ status: "SUPERSEDED", provider_started_at: null });
+    }
+  });
+
+  test("platform command original provider identity is protected by the database", async () => {
+    const command = (await enqueue()).value;
+    for (const update of [
+      `provider_idempotency_key='provider-replacement-key'`,
+      `request_digest='${DIGEST_B}'`,
+      `requested_by_user_id='${randomUUID()}'`,
+      `target_plan_key='plus_monthly'`,
+    ]) {
+      await expect(
+        getPgliteClientForTests().exec(
+          `UPDATE billing_subscription_commands SET ${update} WHERE id='${COMMAND}'`,
+        ),
+      ).rejects.toThrow("subscription command intent is immutable");
+      expect(await repository.findCommand(ORG_A, COMMAND)).toEqual(command);
+    }
+  });
+
   test("deduplicates exact provider events and lease-CAS applies one revision", async () => {
     expect((await recordEvent()).replayed).toBe(false);
     expect((await recordEvent()).replayed).toBe(true);

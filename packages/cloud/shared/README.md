@@ -399,6 +399,17 @@ recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
 
+Vertex job refresh requires migration 0562. It orders complete provider observations
+by exact nanosecond update time and publishes successful model ownership atomically.
+Payload generations are immutable; incomplete stored payloads fail explicitly.
+The local terminal marker and optional provider end time remain separate. Existing
+provider creation and assignment authorization remain separate protocols.
+Coordinate all deployed Vertex writers before relying on the new observation
+authority; the migration does not fence an old deployed writer.
+The exact provider-assigned job name binds refreshes. The configured project stays
+request provenance; project ID/number spelling is not an alias proof. Associated
+resources come from that job's authenticated response and terminal names stay exact.
+
 Stripe legacy queue adoption requires migration 0564 and cleanup index 0565. Durable cursors only select
 bounded work; matching SQL payload or terminal receipts authorize Redis removal.
 A retained handoff flag and DB delete guard protect those exact rows from both

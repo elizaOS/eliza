@@ -1,0 +1,42 @@
+{
+  "sources": [
+    "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
+    "packages/cloud/shared/src/lib/services/plan-request-limiter.test.ts",
+    "packages/cloud/quint/check-plan-request-buckets.mjs",
+    "packages/scripts/lib/junit-summary.ts"
+  ],
+  "conformance": "packages/cloud/quint/check-plan-request-buckets.mjs",
+  "bounds": {
+    "domain": "Two pre-existing identity buckets, wall time0..8 initially4, integer quarter-token units and two configurations exchanging the burst/sustained bottleneck. Each request needs four units from both buckets.",
+    "atomicity": "One synchronous process-local consume call is atomic. The two keys represent already resolved service, organization, user and plan identities.",
+    "progress": "No temporal or fairness claim. A stopped or backward clock may prevent refill indefinitely."
+  },
+  "limitations": [
+    "The finite integer scaling does not prove arbitrary JavaScript floating-point rounding, numeric overflow or invalid direct caller arguments.",
+    "Configuration changes, plan resolution and expiry, eviction/reset, cross-isolate traffic and distributed rate authority are outside the model. Eviction and reset intentionally create a new full local bucket.",
+    "Wall-clock time may move in either direction. Only new time above the retained per-bucket refill boundary adds tokens.",
+    "The conformance hook runs all named tests of the actual limiter, including rollback, partial refill, usable retry deadlines, paired refusal, service separation and response metadata. It is scenario evidence, not a general TypeScript refinement proof."
+  ],
+  "cases": [
+    {
+      "name": "burst-limited",
+      "main": "plan_request_burst_limited",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "sustained-limited",
+      "main": "plan_request_sustained_limited",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 40,
+      "samples": 1000
+    }
+  ]
+}
