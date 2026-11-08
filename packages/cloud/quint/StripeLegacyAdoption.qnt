@@ -99,6 +99,7 @@ module StripeLegacyAdoption {
   action Complete(entry: int): bool = all {
     s.sql.get(entry) == "pending", s' = {...s, sql: s.sql.set(entry, "done")}
   }
+  // The row-level DB guard also covers old replicas without the new predicate.
   action Cleanup(entry: int): bool = s' = if (not(s.retained.contains(entry)) and s.sql.get(entry) != "pending") {
     ...s, sql: s.sql.set(entry, "none")
   } else s
@@ -142,6 +143,7 @@ module StripeLegacyAdoption {
       workers: s.workers.set(w, {...s.workers.get(w), phase: "select"})}
   }
   action UnsafeDrop(entry: int): bool = s' = {...s, queue: s.queue.exclude(Set(entry))}
+  action UnsafeUnprotectedCleanup(entry: int): bool = s' = {...s, sql: s.sql.set(entry, "none")}
   action UnsafeUnboundedBatch(w: int): bool = s' = {...s, workers: s.workers.set(w, {...s.workers.get(w), used: 3})}
 }
 module StripeLegacyAdoption_redis {
@@ -167,6 +169,9 @@ module StripeLegacyAdoption_redis {
   run cleanupBeforeAdoptionQuarantinesMissingReceiptTest = init.then(Cleanup(1)).then(Snapshot(1))
     .then(Reserve(1, true)).then(Choose(1)).then(Adopt(1, true, true))
     .expect(safety and s.sql.get(1) == "none" and s.queue.contains(1) and not(s.retained.contains(1)))
+  run oldCleanupWithoutDbGuardNegativeWitnessTest = init.then(Snapshot(1)).then(Reserve(1, true))
+    .then(Choose(1)).then(Adopt(1, true, true)).then(Complete(1)).then(UnsafeUnprotectedCleanup(1))
+    .expect(not(safety))
   run cleanupBeforeReceiptNegativeWitnessTest = init.then(UnsafeDrop(1)).expect(not(safety))
   run unboundedAdoptionNegativeWitnessTest = init.then(UnsafeUnboundedBatch(1)).expect(not(safety))
 }

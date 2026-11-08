@@ -197,18 +197,19 @@ test("PostgreSQL partial retention index skips retained legacy history", async (
     await writeFile(join(output, "plans.json"), `${JSON.stringify(plans, null, 2)}\n`);
   } finally {
     try {
-      await observer.query("DELETE FROM webhook_events WHERE event_id LIKE 'evt_plan_%'");
+      await observer.query("TRUNCATE webhook_events");
     } finally {
       await observer.end();
     }
   }
 }, 30_000);
 
-for (const provider of [false, true]) {
-  test(`PostgreSQL ${provider ? "provider" : "global"} cleanup waits for atomic legacy receipt retention`, async () => {
+for (const cleanupKind of ["global", "provider", "old unfiltered"] as const) {
+  test(`PostgreSQL ${cleanupKind} cleanup waits for atomic legacy receipt retention`, async () => {
     const holder = await connected();
     const observer = await connected();
-    const eventId = `evt_cleanup_${provider}`;
+    const oldCleaner = await connected();
+    const eventId = `evt_cleanup_${cleanupKind}`;
     const body: StripeEventMessage = {
       kind: "stripe.event",
       eventId,
@@ -221,7 +222,7 @@ for (const provider of [false, true]) {
       receivedAt: 1,
     };
     const hash = digest(JSON.stringify(body.event));
-    const lock = provider ? 429082 : 429081;
+    const lock = cleanupKind === "global" ? 429081 : cleanupKind === "provider" ? 429082 : 429083;
     let adoption: Promise<unknown> | undefined;
     let cleanup: Promise<number> | undefined;
     try {
@@ -247,11 +248,16 @@ for (const provider of [false, true]) {
           [holderPid],
         )
       ).rows[0]!.pid;
-      cleanup = run(() =>
-        provider
-          ? webhooks.cleanupOldEventsForProvider("stripe", 30)
-          : webhooks.cleanupOldEvents(30),
-      );
+      cleanup =
+        cleanupKind === "old unfiltered"
+          ? oldCleaner
+              .query("DELETE FROM webhook_events WHERE event_id=$1 RETURNING id", [eventId])
+              .then((result) => result.rowCount ?? 0)
+          : run(() =>
+              cleanupKind === "provider"
+                ? webhooks.cleanupOldEventsForProvider("stripe", 30)
+                : webhooks.cleanupOldEvents(30),
+            );
       void cleanup.catch(() => undefined);
       expect(await observeBlocked(observer, adoptionPid)).toBe(true);
       await holder.query("SELECT pg_advisory_unlock($1)", [lock]);
@@ -266,6 +272,7 @@ for (const provider of [false, true]) {
       await cleanup?.catch(() => undefined);
       await holder.query("DROP TRIGGER IF EXISTS pause_legacy_retention ON webhook_events");
       await holder.query("DROP FUNCTION IF EXISTS pause_legacy_retention()");
+      await oldCleaner.end();
       await holder.end();
       await observer.end();
     }

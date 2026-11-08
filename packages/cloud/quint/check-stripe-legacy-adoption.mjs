@@ -48,6 +48,7 @@ const suites = [
       "matching marker, pending and completed receipts retain their original row identity",
       "retained KV receipt survives global cleanup without redelivery",
       "retained KV receipt survives provider cleanup without redelivery",
+      "old unfiltered deletes preserve retained receipts and still return ordinary rows",
     ],
   },
   {
@@ -73,6 +74,7 @@ const suites = [
       "PostgreSQL concurrent reservations fence stale progress completion",
       "PostgreSQL global cleanup waits for atomic legacy receipt retention",
       "PostgreSQL provider cleanup waits for atomic legacy receipt retention",
+      "PostgreSQL old unfiltered cleanup waits for atomic legacy receipt retention",
       "PostgreSQL partial retention index skips retained legacy history",
     ],
   },

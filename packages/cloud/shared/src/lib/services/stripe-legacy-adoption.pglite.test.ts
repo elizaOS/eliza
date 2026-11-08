@@ -618,3 +618,17 @@ for (const provider of [false, true]) {
     expect(await remaining()).toEqual([envelope(body)]);
   });
 }
+
+test("old unfiltered deletes preserve retained receipts and still return ordinary rows", async () => {
+  const retained = message("evt_retained_old_delete");
+  const ordinary = message("evt_ordinary_old_delete");
+  await marker(retained, { delivery_completed_at: new Date() });
+  await marker(ordinary, { delivery_completed_at: new Date() });
+  await repo.adoptLegacyStripeDelivery(retained, digest(JSON.stringify(retained.event)));
+  const deleted = await database
+    .getPgliteClientForTests()
+    .query<{ event_id: string }>("DELETE FROM webhook_events RETURNING event_id");
+  expect(deleted.rows).toEqual([{ event_id: ordinary.eventId }]);
+  await repo.deleteByEventId(retained.eventId, "stripe");
+  expect((await repo.findByEventIdPrimary(retained.eventId))?.delivery_legacy_retained).toBe(true);
+});

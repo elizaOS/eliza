@@ -401,7 +401,8 @@ Resubmission still requires the configured wallet to match the original signer.
 
 Stripe legacy queue adoption requires migration 0564 and cleanup index 0565. Durable cursors only select
 bounded work; matching SQL payload or terminal receipts authorize Redis removal.
-A retained handoff flag protects those exact rows from normal webhook cleanup;
+A retained handoff flag and DB delete guard protect those exact rows from both
+current and old webhook cleanup SQL;
 missing historical receipts require reconciliation and are never replayed blindly.
 Unknown receipts and malformed entries remain intact. KV adoption retains every
 raw entry: this owner has no durable old-writer fence to authorize deletion. KV

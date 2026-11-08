@@ -14,3 +14,19 @@ CREATE TABLE "stripe_legacy_adoption_cursors" (
 -- receipt until an owner can prove raw cleanup and old-writer quiescence.
 ALTER TABLE "webhook_events"
   ADD COLUMN "delivery_legacy_retained" boolean DEFAULT false NOT NULL;
+--> statement-breakpoint
+-- Old application replicas do not include the new cleanup predicate. Keep
+-- retained receipts safe from their DELETE statements during rolling deploys.
+CREATE FUNCTION "preserve_legacy_stripe_handoff_receipt"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."delivery_legacy_retained" THEN
+    RETURN NULL;
+  END IF;
+  RETURN OLD;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "webhook_events_preserve_legacy_handoff"
+BEFORE DELETE ON "webhook_events"
+FOR EACH ROW EXECUTE FUNCTION "preserve_legacy_stripe_handoff_receipt"();
