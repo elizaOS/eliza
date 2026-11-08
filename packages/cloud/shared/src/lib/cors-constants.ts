@@ -38,7 +38,7 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // credentialed preflight fails. See lib/auth/browser-origin-policy.ts.
   "X-Eliza-CSRF",
   // Proves a CLI-session poll comes from the client that created the session
-  // (GET /api/auth/cli-session/:id).
+  // (GET /api/auth/cli-session/:id and the other CLI key-release polls).
   "X-Cli-Session-Verifier",
   // Read by /api/v1/chat/completions for safe retries (idempotency-key) and
   // affiliate attribution (X-Affiliate-Code); must be in the allow-list or the

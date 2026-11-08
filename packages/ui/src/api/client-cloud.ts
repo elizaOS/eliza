@@ -499,6 +499,8 @@ function createCloudLoginRequestId(): string | null {
 const PENDING_CLOUD_LOGIN_KEY_PREFIX = "eliza-cloud-login-pending:";
 const PENDING_CLOUD_LOGIN_FALLBACK_TTL_MS = 10 * 60_000;
 const CLOUD_LOGIN_VERIFIER_HEADER = "X-Cli-Session-Verifier";
+// Also kept in memory so this page's own poll works when storage is blocked.
+const pendingCloudLogins = new Map<string, PendingCloudLogin>();
 
 export interface PendingCloudLogin {
   sessionId: string;
@@ -552,13 +554,14 @@ function rememberPendingCloudLogin(
   verifier: string,
   expiresAtValue: unknown,
 ): void {
-  const storage = pendingCloudLoginStorage();
-  if (!storage) return;
   const parsed =
     typeof expiresAtValue === "string" ? Date.parse(expiresAtValue) : NaN;
   const expiresAt = Number.isFinite(parsed)
     ? parsed
     : Date.now() + PENDING_CLOUD_LOGIN_FALLBACK_TTL_MS;
+  pendingCloudLogins.set(sessionId, { sessionId, verifier, expiresAt });
+  const storage = pendingCloudLoginStorage();
+  if (!storage) return;
   try {
     for (let i = storage.length - 1; i >= 0; i--) {
       const key = storage.key(i);
@@ -573,8 +576,8 @@ function rememberPendingCloudLogin(
       JSON.stringify({ verifier, expiresAt }),
     );
   } catch {
-    // error-policy:J3 a full or blocked store leaves no pending entry, so the
-    // return is not claimed; the opener's own poll is unaffected.
+    // error-policy:J3 a full or blocked store leaves no shared entry, so a
+    // return in another tab is not claimed; this page's poll uses memory.
   }
 }
 
@@ -582,8 +585,11 @@ function rememberPendingCloudLogin(
 export function readPendingCloudLogin(
   sessionId: string,
 ): PendingCloudLogin | null {
+  if (!cloudLoginSessionIdOrNull(sessionId)) return null;
+  const inMemory = pendingCloudLogins.get(sessionId);
+  if (inMemory && inMemory.expiresAt > Date.now()) return inMemory;
   const storage = pendingCloudLoginStorage();
-  if (!storage || !cloudLoginSessionIdOrNull(sessionId)) return null;
+  if (!storage) return null;
   try {
     const raw = storage.getItem(
       `${PENDING_CLOUD_LOGIN_KEY_PREFIX}${sessionId}`,
@@ -606,6 +612,7 @@ export function readPendingCloudLogin(
 }
 
 export function forgetPendingCloudLogin(sessionId: string): void {
+  pendingCloudLogins.delete(sessionId);
   try {
     pendingCloudLoginStorage()?.removeItem(
       `${PENDING_CLOUD_LOGIN_KEY_PREFIX}${sessionId}`,

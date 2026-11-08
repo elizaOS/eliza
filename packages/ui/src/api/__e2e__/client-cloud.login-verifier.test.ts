@@ -4,11 +4,12 @@
  * created with a verifier hash, the verifier stays in same-origin storage, and
  * only a poll that sends it can claim the key.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "../client-base";
 import { readPendingCloudLogin } from "../client-cloud";
 
 const SESSION_ID = "bbbbbbbb-2222-4333-8444-cccccccccccc";
+const BLOCKED_SESSION_ID = "cccccccc-3333-4444-8555-dddddddddddd";
 const originalFetch = globalThis.fetch;
 
 function captureCloudRequests(reply: (url: string) => unknown) {
@@ -72,6 +73,29 @@ describe("direct Cloud login verifier", () => {
     ).toBe(pending!.verifier);
     // The claim consumes the pending entry.
     expect(readPendingCloudLogin(SESSION_ID)).toBeNull();
+  });
+
+  it("still proves the verifier on its own poll when storage is blocked", async () => {
+    const requests = captureCloudRequests((url) =>
+      url.endsWith("/api/auth/cli-session")
+        ? { sessionId: BLOCKED_SESSION_ID, status: "pending" }
+        : { status: "pending" },
+    );
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    const client = new ElizaClient("https://api.eliza.app");
+    await client.cloudLoginDirect("https://api.eliza.app");
+    await client.cloudLoginPollDirect("https://api.eliza.app", BLOCKED_SESSION_ID);
+    setItem.mockRestore();
+    const created = JSON.parse(String(requests[0]?.init.body));
+    const verifier = new Headers(requests[1]?.init.headers).get(
+      "X-Cli-Session-Verifier",
+    );
+    expect(verifier).toBeTruthy();
+    expect(created.verifierHash).toBe(await sha256Hex(String(verifier)));
   });
 
   it("polls a session it did not start without any verifier", async () => {
