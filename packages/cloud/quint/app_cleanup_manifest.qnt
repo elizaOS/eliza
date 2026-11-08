@@ -109,3 +109,25 @@ module app_cleanup_uploads {
     .then(unsafeResetPending).then(cascade).expect(not(safety))
 
 }
+
+// One projected row; bulk operations apply the same local deleting set to each row.
+module app_cleanup_ui {
+  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool }
+  var s: State
+  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false}
+  action begin = all {s.row,not(s.deleting),s'={...s,deleting:true,label:"Deleting",actions:false}}
+  action pollPending = all {s.deleting,not(s.receipt),s'=s}
+  action receiveReceipt = all {s.deleting,s'={...s,receipt:true}}
+  action publishComplete = all {s.receipt,s'={...s,deleting:false,row:false,toast:true}}
+  action step = any {begin,pollPending,receiveReceipt,publishComplete,s'=s}
+  val safety = all {
+    s.deleting implies (s.row and s.label == "Deleting" and not(s.actions)),
+    not(s.row) implies s.receipt,
+    s.toast implies s.receipt,
+  }
+  run pendingRowThenReceiptTest = init.then(begin).then(pollPending).then(receiveReceipt).then(publishComplete).expect(safety and s.toast and not(s.row))
+  action unsafeActiveBadge = all {s.deleting,s'={...s,label:"Active"}}
+  run oldActiveBadgeWitnessTest = init.then(begin).then(unsafeActiveBadge).expect(not(safety))
+  action unsafeEarlyRemoval = all {s.deleting,s'={...s,row:false,deleting:false,toast:true}}
+  run earlyRemovalWitnessTest = init.then(begin).then(unsafeEarlyRemoval).expect(not(safety))
+}

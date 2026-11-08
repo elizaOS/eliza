@@ -140,7 +140,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
 
       <AppsListView
         apps={apps}
-        deletingId={deletingIds.size === 1 ? [...deletingIds][0] : null}
+        deletingIds={deletingIds}
         renderAppLink={({ app, className, children }) => (
           <Link to={`/cloud/apps/${app.id}`} className={className}>
             {children}

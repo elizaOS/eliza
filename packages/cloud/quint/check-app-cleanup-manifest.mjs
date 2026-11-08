@@ -69,6 +69,13 @@ const suites = [
       "a paused PostgreSQL uploader retains its full plan until deletion admission stops and quiesces it",
     ],
   },
+  {
+    name: "ui",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-pending.test.tsx",
+    names: [
+      "bulk deleting rows stay visible with pending status and disabled mutations until exact HTTP receipts complete",
+    ],
+  },
 ];
 for (const suite of suites) {
   const report = path.join(directory, `${suite.name}.xml`);
@@ -79,15 +86,31 @@ for (const suite of suites) {
       "180000",
       "--",
       "bun",
-      "test",
-      "--conditions=eliza-source",
-      suite.file,
-      "--timeout=120000",
-      "--reporter=junit",
-      `--reporter-outfile=${report}`,
+      ...(suite.name === "ui"
+        ? [
+            "x",
+            "vitest",
+            "run",
+            "--config",
+            "./vitest.config.ts",
+            path.relative(
+              path.join(root, "packages/ui"),
+              path.join(root, suite.file),
+            ),
+            "--reporter=junit",
+            `--outputFile=${report}`,
+          ]
+        : [
+            "test",
+            "--conditions=eliza-source",
+            suite.file,
+            "--timeout=120000",
+            "--reporter=junit",
+            `--reporter-outfile=${report}`,
+          ]),
     ],
     {
-      cwd: root,
+      cwd: suite.name === "ui" ? path.join(root, "packages/ui") : root,
       env: {
         ...process.env,
         APP_DELETION_TEST_POSTGRES_URL: postgres,
@@ -126,5 +149,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed twenty-three PGlite and ten PostgreSQL cases. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-three PGlite, ten PostgreSQL and one UI case. Evidence ${directory}`,
 );

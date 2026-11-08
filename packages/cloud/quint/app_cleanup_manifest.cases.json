@@ -23,14 +23,18 @@
     "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
     "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
     "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
-    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts"
+    "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts",
+    "packages/ui/src/cloud/applications/components/apps-table.tsx",
+    "packages/ui/src/cloud-ui/components/data-list/apps-list-view.tsx",
+    "packages/ui/src/cloud/applications/lib/app-deletion-client.ts",
+    "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-pending.test.tsx"
   ],
   "conformance": "packages/cloud/quint/check-app-cleanup-manifest.mjs",
   "bounds": {
     "domain": "Two immutable original object keys, one deletion root and two lease generations. Successful idempotent delete, lost replies, takeover and cursor acknowledgement are separate transitions.",
     "atomicity": "Final SQL publication atomically retains all original manifests in v2 job.data and marks app metadata deleted. Small result cursors require original live job lease; v2 job/org deletion waits for cleanup confirmation. Legacy v1 jobs retain prior semantics and may have orphan debt.",
-    "conformance": "Twenty-three real PGlite object/service cases and ten PostgreSQL cases, including independent connection contention, job/org cascade protection and post-lock expiry in UTC, New York and Kathmandu. Provider effects are local controlled fixtures.",
-    "gaps": "Assumes original R2 binding and immutable deployment-key ownership remain stable; no live R2, bucket rotation, remote atomicity, arbitrary-count proof or general TypeScript refinement is established. A timed-out in-flight exact-key delete may finish after lease loss. Complete plans intentionally remain inline and immutable in job.data, with small independently updated result receipts. Physical PostgreSQL write-cost measurements are experimental evidence, not a worst-case bound. Uploads bind their complete plan before PUT; deletion waits for the original writer to acknowledge all issued PUTs and stop issuing more. Ambiguous legacy/failed uploads remain typed recovery-required; no elapsed-time quiescence or automatic unknown-PUT recovery is claimed.",
+    "conformance": "Twenty-three real PGlite object/service cases and ten PostgreSQL cases, including independent connection contention, job/org cascade protection and post-lock expiry in UTC, New York and Kathmandu. Provider effects are local controlled fixtures. One real React table/query-cache/HTTP-client test covers two pending rows, disabled mutation controls and receipt-gated removal.",
+    "gaps": "Assumes original R2 binding and immutable deployment-key ownership remain stable; no live R2, bucket rotation, remote atomicity, arbitrary-count proof or general TypeScript refinement is established. A timed-out in-flight exact-key delete may finish after lease loss. Complete plans intentionally remain inline and immutable in job.data, with small independently updated result receipts. Physical PostgreSQL write-cost measurements are experimental evidence, not a worst-case bound. Uploads bind their complete plan before PUT; deletion waits for the original writer to acknowledge all issued PUTs and stop issuing more. Ambiguous legacy/failed uploads remain typed recovery-required; no elapsed-time quiescence or automatic unknown-PUT recovery is claimed. UI projection is one row of the local deletion set; no general React refinement or native-device claim.",
     "progress": "Progress requires eventual provider/SQL availability, retained original queue, fair scheduling, and a successful acknowledged attempt before bounded no-progress retries exhaust. This safety model does not prove temporal liveness. Forward progress resets the bounded retry counter; one invocation handles at most 64 objects."
   },
   "cases": [
@@ -52,6 +56,17 @@
       "step": "step",
       "invariants": ["safety"],
       "maxSteps": 30,
+      "samples": 1000,
+      "deadlock": false,
+      "temporal": []
+    },
+    {
+      "name": "app-cleanup-ui-pending",
+      "main": "app_cleanup_ui",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "maxSteps": 20,
       "samples": 1000,
       "deadlock": false,
       "temporal": []
