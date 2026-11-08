@@ -553,7 +553,7 @@ describe("LinkedCalendarReconciler", () => {
       testPorts.localPort,
       testPorts.providerPort,
     );
-    expect(await reconciler.recoverDispatch(store.current)).toBe(true);
+    expect(await reconciler.recoverDispatch(store.current)).toBe("landed");
     expect(store.current.providerEventId).toBe("accepted-create");
     expect(store.current.pendingOperation).toBeNull();
     expect(store.current.state).toBe("clean");
@@ -570,7 +570,7 @@ describe("LinkedCalendarReconciler", () => {
         testPorts.localPort,
         testPorts.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(false);
+    ).toBe("unresolved");
     expect(store.current).toBe(initial);
     expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
   });
@@ -592,7 +592,7 @@ describe("LinkedCalendarReconciler", () => {
         unchanged.localPort,
         unchanged.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(false);
+    ).toBe("unresolved");
     expect(store.current).toBe(initial);
     const changed = ports({
       provider: { eventId: "existing", etag: '"g2"', event: baseEvent },
@@ -603,7 +603,7 @@ describe("LinkedCalendarReconciler", () => {
         changed.localPort,
         changed.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(true);
+    ).toBe("landed");
     expect(store.current.providerEtag).toBe('"g2"');
     expect(changed.counts()).toEqual({ creates: 0, updates: 0 });
   });
@@ -625,7 +625,7 @@ describe("LinkedCalendarReconciler", () => {
         stillPresent.localPort,
         stillPresent.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(false);
+    ).toBe("unresolved");
     expect(store.current).toBe(initial);
     const absent = ports({ local: null, provider: null });
     expect(
@@ -634,7 +634,7 @@ describe("LinkedCalendarReconciler", () => {
         absent.localPort,
         absent.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(true);
+    ).toBe("landed");
     expect(store.current.state).toBe("paused");
     expect(store.current.pendingOperation).toBeNull();
   });
@@ -677,9 +677,166 @@ describe("LinkedCalendarReconciler", () => {
         testPorts.localPort,
         testPorts.providerPort,
       ).recoverDispatch(initial),
-    ).toBe(false);
+    ).toBe("unresolved");
     expect(store.current).toBe(initial);
     expect(testPorts.local()?.event.title).toBe(baseEvent.title);
+  });
+
+  const settled = {
+    dispatchedAt: new Date("2026-09-01T00:00:00.000Z"),
+    settleMs: 60_000,
+    now: new Date("2026-09-01T00:01:00.000Z"),
+  };
+
+  it("returns a create that never reached Google to dirty, and the next pass creates it once", async () => {
+    const initial = record({ state: "quarantined" });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({});
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      testPorts.localPort,
+      testPorts.providerPort,
+    );
+    expect(await reconciler.recoverDispatch(initial, settled)).toBe(
+      "not_landed",
+    );
+    expect(store.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "create",
+      providerEventId: null,
+      lastErrorCode: "LINKED_CALENDAR_DISPATCH_NOT_LANDED",
+    });
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+    expect(await reconciler.reconcile(store.current)).toBe("pushed");
+    expect(await reconciler.reconcile(store.current)).toBe("clean");
+    expect(testPorts.counts()).toEqual({ creates: 1, updates: 0 });
+    expect(store.current.providerEventId).toBe("google-event-1");
+  });
+
+  it("returns an update whose ETag is unchanged to dirty and resends it under the same precondition", async () => {
+    const providerEvent = { ...baseEvent, title: "Before" };
+    const initial = record({
+      state: "quarantined",
+      pendingOperation: "update",
+      providerEventId: "existing",
+      providerEtag: '"g1"',
+      lastCommonSemanticHash: await linkedCalendarSemanticDigest(providerEvent),
+    });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({
+      provider: { eventId: "existing", etag: '"g1"', event: providerEvent },
+      updateExpectedEtag: '"g1"',
+    });
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      testPorts.localPort,
+      testPorts.providerPort,
+    );
+    expect(await reconciler.recoverDispatch(initial, settled)).toBe(
+      "not_landed",
+    );
+    expect(store.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "update",
+      providerEtag: '"g1"',
+    });
+    expect(await reconciler.reconcile(store.current)).toBe("pushed");
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 1 });
+    expect(store.current.state).toBe("clean");
+  });
+
+  it("returns a delete whose target is unchanged to dirty with the delete still pending", async () => {
+    const initial = record({
+      state: "quarantined",
+      pendingOperation: "delete",
+      providerEventId: "doomed",
+      providerEtag: '"g1"',
+    });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({
+      local: null,
+      provider: { eventId: "doomed", etag: '"g1"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).recoverDispatch(initial, settled),
+    ).toBe("not_landed");
+    expect(store.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "delete",
+    });
+  });
+
+  it("still settles a create that landed late as landed", async () => {
+    const store = new MemoryStore(record({ state: "quarantined" }));
+    const testPorts = ports({
+      provider: { eventId: "late-create", etag: '"g1"', event: baseEvent },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).recoverDispatch(store.current, settled),
+    ).toBe("landed");
+    expect(store.current).toMatchObject({
+      state: "clean",
+      providerEventId: "late-create",
+      pendingOperation: null,
+    });
+    expect(testPorts.counts()).toEqual({ creates: 0, updates: 0 });
+  });
+
+  it("keeps an absent create unresolved inside the settle window", async () => {
+    const initial = record({ state: "quarantined" });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({});
+    const reconciler = new LinkedCalendarReconciler(
+      store,
+      testPorts.localPort,
+      testPorts.providerPort,
+    );
+    expect(
+      await reconciler.recoverDispatch(initial, {
+        ...settled,
+        now: new Date("2026-09-01T00:00:59.999Z"),
+      }),
+    ).toBe("unresolved");
+    expect(
+      await reconciler.recoverDispatch(initial, {
+        ...settled,
+        dispatchedAt: null,
+      }),
+    ).toBe("unresolved");
+    expect(store.current).toBe(initial);
+  });
+
+  it("keeps a changed ETag with different content unresolved after the settle window", async () => {
+    const initial = record({
+      state: "quarantined",
+      pendingOperation: "update",
+      providerEventId: "existing",
+      providerEtag: '"g1"',
+    });
+    const store = new MemoryStore(initial);
+    const testPorts = ports({
+      provider: {
+        eventId: "existing",
+        etag: '"g2"',
+        event: { ...baseEvent, title: "External edit" },
+      },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).recoverDispatch(initial, settled),
+    ).toBe("unresolved");
+    expect(store.current).toBe(initial);
   });
 
   it("pushes local-first exactly once and treats replay as clean", async () => {

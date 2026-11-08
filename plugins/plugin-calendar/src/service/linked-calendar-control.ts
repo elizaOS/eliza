@@ -18,7 +18,8 @@ export interface LinkedCalendarControl {
   revision: number;
   paused: boolean;
   destination: LinkedCalendarDestination | null;
-  dispatch: { token: string; linkId: string } | null;
+  /** acquiredAt is null for a dispatch held before the column existed. */
+  dispatch: { token: string; linkId: string; acquiredAt: string | null } | null;
 }
 
 export interface LinkedCalendarControlMutation {
@@ -81,7 +82,15 @@ function parseControl(row: Record<string, unknown>): LinkedCalendarControl {
           row.dispatch_token.length > 0 &&
           typeof row.dispatch_link_id === "string" &&
           row.dispatch_link_id.length > 0
-        ? { token: row.dispatch_token, linkId: row.dispatch_link_id }
+        ? {
+            token: row.dispatch_token,
+            linkId: row.dispatch_link_id,
+            acquiredAt:
+              typeof row.dispatch_acquired_at === "string" &&
+              Number.isFinite(Date.parse(row.dispatch_acquired_at))
+                ? row.dispatch_acquired_at
+                : null,
+          }
         : invalidState();
   if (
     typeof revision !== "number" ||
@@ -170,7 +179,8 @@ export class LinkedCalendarControlRepository {
         break;
       case "recover":
         if (!recoveryToken) return invalidState();
-        assignments = "dispatch_token = NULL, dispatch_link_id = NULL";
+        assignments =
+          "dispatch_token = NULL, dispatch_link_id = NULL, dispatch_acquired_at = NULL";
         condition = `paused = TRUE AND dispatch_token = ${sqlQuote(recoveryToken)}`;
         break;
     }
@@ -249,7 +259,8 @@ export class LinkedCalendarControlRepository {
       this.runtime,
       `
       UPDATE app_calendar.linked_calendar_control
-      SET dispatch_token = ${sqlQuote(token)}, dispatch_link_id = ${sqlQuote(linkId)}
+      SET dispatch_token = ${sqlQuote(token)}, dispatch_link_id = ${sqlQuote(linkId)},
+        dispatch_acquired_at = ${sqlQuote(new Date().toISOString())}
       WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
         AND revision = ${sqlInteger(expectedRevision)} AND paused = FALSE
         AND dispatch_token IS NULL
@@ -277,7 +288,7 @@ export class LinkedCalendarControlRepository {
       this.runtime,
       `
       UPDATE app_calendar.linked_calendar_control
-      SET dispatch_token = NULL, dispatch_link_id = NULL${expectedPausedRevision === undefined ? "" : ", revision = revision + 1"}
+      SET dispatch_token = NULL, dispatch_link_id = NULL, dispatch_acquired_at = NULL${expectedPausedRevision === undefined ? "" : ", revision = revision + 1"}
       WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
         AND dispatch_token = ${sqlQuote(token)}
         ${expectedPausedRevision === undefined ? "" : `AND paused = TRUE AND revision = ${sqlInteger(expectedPausedRevision)}`}

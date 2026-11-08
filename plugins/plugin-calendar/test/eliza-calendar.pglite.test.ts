@@ -2283,6 +2283,161 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
+  it("lets the owner release a create that never reached Google, then sends it once on resume", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Never landed",
+      startAt: "2026-08-15T19:00:00.000Z",
+      endAt: "2026-08-15T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "never-landed-fixture",
+    });
+    if (!created.event) throw new Error("Expected a persisted built-in event");
+    const event = created.event;
+    const destination = {
+      connectorAccountId: "shawgotbags",
+      providerCalendarId: "reviewed-calendar",
+    };
+    const links = new LinkedCalendarRepository(runtime);
+    let link = await links.create({
+      agentId: AGENT_ID,
+      localEventId: event.id,
+      ...destination,
+      localRevision: 1,
+    });
+    link = await links.save(link, {
+      state: "quarantined",
+      lastErrorCode: "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
+    });
+    const controls = new LinkedCalendarControlRepository(runtime);
+    const selected = await controls.selectDestination(
+      (await controls.read()).revision,
+      destination,
+    );
+    const active = await controls.resume(selected.revision);
+    await controls.acquireDispatch(active.revision, link.id, destination);
+    let paused = await controls.pause(active.revision);
+    let googleEvent: Record<string, unknown> | null = null;
+    let releaseCreate: () => void = () => {};
+    let createStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      createStarted = resolve;
+    });
+    const createEvent = vi.fn(async (input: Record<string, unknown>) => {
+      createStarted();
+      await new Promise<void>((release) => {
+        releaseCreate = release;
+      });
+      googleEvent = {
+        id: "resent-event",
+        calendarId: destination.providerCalendarId,
+        title: input.title,
+        description: input.description,
+        location: input.location,
+        start: input.start,
+        end: input.end,
+        timeZone: input.timeZone,
+        attendees: [],
+        metadata: { etag: '"resent-v1"' },
+      };
+      return googleEvent;
+    });
+    const google = {
+      findEventByIdempotencyKey: vi.fn(async () => googleEvent),
+      listCalendars: async () => [
+        {
+          calendarId: destination.providerCalendarId,
+          summary: "Recovery calendar",
+          description: null,
+          primary: false,
+          accessRole: "owner",
+          backgroundColor: null,
+          foregroundColor: null,
+          timeZone: "America/New_York",
+          selected: true,
+        },
+      ],
+      createEvent,
+      updateEvent: async () => {
+        throw new Error("Recovery must not update an event");
+      },
+      deleteEvent: async () => {
+        throw new Error("Recovery must not delete an event");
+      },
+    };
+    const recovery = new CalendarService({
+      ...runtime,
+      getSetting: () => undefined,
+      getService: (name: string) =>
+        name === "google" ? google : runtime.getService(name),
+    } as unknown as IAgentRuntime);
+    recovery.setGate(connectedGoogleGate());
+
+    // Inside the settle window an absent create proves nothing yet.
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-too-soon",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_RECOVERY_UNRESOLVED",
+    });
+
+    const aged = "2026-08-01T00:00:00.000Z";
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_control SET dispatch_acquired_at = $1",
+      [aged],
+    );
+    await pg.query(
+      "UPDATE app_calendar.linked_calendar_events SET updated_at = $1 WHERE id = $2",
+      [aged, link.id],
+    );
+    const recovered = await recovery.executeLinkedCalendarControl(
+      INTERNAL_URL,
+      {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-not-landed",
+      },
+    );
+    expect(recovered.paused).toBe(true);
+    expect(recovered.pendingDispatch).toBeNull();
+    expect(createEvent).not.toHaveBeenCalled();
+    expect(await links.getById(AGENT_ID, link.id)).toMatchObject({
+      state: "dirty",
+      pendingOperation: "create",
+      lastErrorCode: "LINKED_CALENDAR_DISPATCH_NOT_LANDED",
+    });
+
+    const resumed = await recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+      operation: "resume",
+      expectedRevision: recovered.revision,
+      idempotencyKey: "resume-after-not-landed",
+    });
+    await started;
+    paused = await controls.pause(resumed.revision);
+    await expect(
+      recovery.executeLinkedCalendarControl(INTERNAL_URL, {
+        operation: "recover",
+        expectedRevision: paused.revision,
+        idempotencyKey: "recover-while-running",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "LINKED_CALENDAR_DISPATCH_ACTIVE",
+    });
+    releaseCreate();
+    await expect
+      .poll(async () => (await links.getById(AGENT_ID, link.id))?.state)
+      .toBe("clean");
+    expect(createEvent).toHaveBeenCalledOnce();
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: link.idempotencyKey }),
+    );
+    expect((await controls.read()).dispatch).toBeNull();
+  });
+
   it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Unscoped lookup",
