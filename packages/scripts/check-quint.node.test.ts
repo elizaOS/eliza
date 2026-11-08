@@ -232,6 +232,7 @@ test("the shared runner records positive liveness and expected unfair schedules 
       temporal UnfairProgress = eventually(state == 1)
       temporal FairProgress = advance.weakFair(state) implies eventually(state == 1)
       temporal FairSinks = advance.weakFair(state) implies eventually(always(state == 1))
+      temporal StableOnceReached = always((state == 1 implies next(state) == 1).orKeep(state))
     }`,
     [`${example}.cases.json`]: JSON.stringify({
       sources: [stateSource],
@@ -259,6 +260,18 @@ test("the shared runner records positive liveness and expected unfair schedules 
             },
           ],
         },
+        {
+          ...modelCase,
+          name: "transition-safety",
+          temporal: ["StableOnceReached"],
+          temporalChecks: [
+            {
+              property: "StableOnceReached",
+              expect: "holds",
+              assumptions: ["No scheduler fairness"],
+            },
+          ],
+        },
       ],
     }),
   });
@@ -277,12 +290,17 @@ test("the shared runner records positive liveness and expected unfair schedules 
       (item: { observedTemporalOutcome: string }) =>
         item.observedTemporalOutcome,
     ),
-    ["holds", "counterexample"],
+    ["holds", "counterexample", "holds"],
   );
   assert.deepEqual(temporal[0].temporalProperties, [
     "FairProgress",
     "FairSinks",
   ]);
+  assert.deepEqual(temporal[2].temporalProperties, ["StableOnceReached"]);
+  assert.doesNotMatch(
+    readFileSync(path.join(output, temporal[2].log), "utf8"),
+    /Checking (?:\d+ branches of )?temporal properties/,
+  );
   assert(
     temporal.every(
       (item: { matchedExpectation: boolean; temporalAssumptions: string[] }) =>
@@ -399,6 +417,31 @@ test("a missing temporal definition fails the shared runner rather than becoming
   );
   assert.equal(report.completed, false);
   assert.equal(report.results.at(-1).observedTemporalOutcome, "checker-error");
+});
+
+test("an implementation conformance failure fails the shared run", async () => {
+  const conformance = "packages/example/quint/check.mjs";
+  const directory = fixture({
+    ...checkedFiles,
+    [conformance]: "process.exitCode = 17;\n",
+    [`${example}.cases.json`]: JSON.stringify({
+      sources: [stateSource, conformance],
+      cases: [modelCase],
+      conformance,
+    }),
+  });
+  const output = path.join(directory, "test-results/quint");
+  await assert.rejects(
+    main(["--simulate"], directory, output),
+    /Quint checks failed/,
+  );
+  const report = JSON.parse(
+    readFileSync(path.join(output, "simulation.json"), "utf8"),
+  );
+  assert.equal(report.completed, false);
+  assert.equal(report.results.at(-1).command[0], "conformance");
+  assert.equal(report.results.at(-1).exitCode, 17);
+  assert.equal(report.results.at(-1).matchedExpectation, false);
 });
 
 const coveredEntry = {
@@ -591,31 +634,6 @@ test("the normal simulation entry point records one unchanged snapshot", async (
       simulationReceipt,
     );
   }
-});
-
-test("a failed implementation check leaves an incomplete model receipt", async () => {
-  const conformance = "packages/example/quint/conformance.mjs";
-  const directory = fixture({
-    ...checkedFiles,
-    [conformance]: "process.exitCode = 17;\n",
-    [`${example}.cases.json`]: JSON.stringify({
-      sources: [stateSource],
-      conformance,
-      cases: [modelCase],
-    }),
-  });
-  const output = path.join(directory, "test-results/quint");
-  await assert.rejects(
-    main(["--simulate"], directory, output),
-    /Quint checks failed/,
-  );
-  const report = JSON.parse(
-    readFileSync(path.join(output, "simulation.json"), "utf8"),
-  );
-  assert.equal(report.completed, false);
-  assert.equal(report.results.at(-1).command[0], "conformance");
-  assert.equal(report.results.at(-1).exitCode, 17);
-  assert.equal(report.results.at(-1).matchedExpectation, false);
 });
 
 test("the normal entry point rejects an unlisted dependency changed during conformance", async () => {

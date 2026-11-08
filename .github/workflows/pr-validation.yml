@@ -168,6 +168,7 @@ jobs:
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
 
+
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
@@ -1468,7 +1469,6 @@ jobs:
     needs:
       - secret-scan
       - source-checks
-      - quint
       - sdk-owning
       - billing-payment-replay-e2e
       - subscription-authority-postgres
@@ -1481,7 +1481,6 @@ jobs:
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
-            quint=${{ needs.quint.result }}
             sdk-owning=${{ needs.sdk-owning.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}

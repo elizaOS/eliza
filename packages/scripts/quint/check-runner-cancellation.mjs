@@ -54,7 +54,7 @@ if (
   !/^ok \d+ - TLC state and action properties retain their checked outcomes$/m.test(
     output,
   ) ||
-  !/^ok \d+ - a failed implementation check leaves an incomplete model receipt$/m.test(
+  !/^ok \d+ - an implementation conformance failure fails the shared run$/m.test(
     output,
   ) ||
   !/^# tests 25$/m.test(output) ||
