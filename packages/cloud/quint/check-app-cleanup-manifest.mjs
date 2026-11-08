@@ -89,6 +89,15 @@ const suites = [
       "the actual page removes a confirmed deletion from its authenticated cache despite a stale list response",
     ],
   },
+  {
+    name: "ui-detail",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-detail.test.tsx",
+    names: [
+      "actual detail page preserves pending deletion through principal",
+      "actual detail page preserves pending deletion through organization",
+      "actual detail page preserves pending deletion through missing-metadata",
+    ],
+  },
 ];
 for (const suite of suites) {
   const report = path.join(directory, `${suite.name}.xml`);

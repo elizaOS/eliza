@@ -2,11 +2,11 @@
  * Application detail — Settings tab (edit fields, allowed origins, danger zone).
  *
  * Bare `fetch` is replaced with the typed `updateApp` / `regenerateAppApiKey` /
- * `deleteApp` helpers; the single-app + list query keys are invalidated after a
- * save/delete so the detail page and list reflect changes without a full reload.
+ * `deleteApp` helpers. Confirmed deletion removes only this owner's list entry;
+ * an unmounted owner cannot publish a late success or navigation.
  */
 
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Key,
@@ -18,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
 import {
@@ -41,7 +41,6 @@ import { Switch } from "../../../components/ui/switch";
 import { Textarea } from "../../../components/ui/textarea";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
-  APPS_QUERY_KEY,
   type App,
   appQueryKey,
   deleteApp,
@@ -52,15 +51,29 @@ import { storeOneTimeAppApiKey } from "../lib/one-time-app-api-key";
 
 interface AppSettingsProps {
   app: App;
+  appsQueryKey: QueryKey;
+  onDeletingChange?: (pending: boolean) => void;
 }
 
-export function AppSettings({ app }: AppSettingsProps) {
+export function AppSettings({
+  app,
+  appsQueryKey,
+  onDeletingChange,
+}: AppSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const mounted = useRef(true);
+  const deletionInFlight = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(() => {
     const origins = app.allowed_origins;
@@ -90,7 +103,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: appQueryKey(app.id) }),
-        queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: appsQueryKey }),
       ]);
     } catch (error) {
       toast.error(
@@ -150,17 +163,24 @@ export function AppSettings({ app }: AppSettingsProps) {
   };
 
   const handleDelete = async () => {
+    if (deletionInFlight.current) return;
+    deletionInFlight.current = true;
     setIsDeleting(true);
+    onDeletingChange?.(true);
     try {
       await deleteApp(app.id);
+      if (!mounted.current) return;
+      queryClient.setQueryData<App[]>(appsQueryKey, (previous) =>
+        previous?.filter((candidate) => candidate.id !== app.id),
+      );
       toast.success(
         t("cloud.appSettings.deleteSuccess", {
           defaultValue: "App deleted successfully",
         }),
       );
-      await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });
       navigate("/cloud/apps");
     } catch (error) {
+      if (!mounted.current) return;
       toast.error(
         t("cloud.appSettings.deleteFailed", {
           defaultValue: "Failed to delete app",
@@ -175,7 +195,11 @@ export function AppSettings({ app }: AppSettingsProps) {
         },
       );
     } finally {
-      setIsDeleting(false);
+      deletionInFlight.current = false;
+      if (mounted.current) {
+        setIsDeleting(false);
+        onDeletingChange?.(false);
+      }
     }
   };
 

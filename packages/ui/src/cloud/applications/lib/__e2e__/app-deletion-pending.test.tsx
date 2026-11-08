@@ -185,7 +185,7 @@ test("settings disable save and key regeneration while the original deletion rec
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <CloudI18nProvider initialLang="en">
-          <AppSettings app={app} />
+          <AppSettings app={app} appsQueryKey={APPS_QUERY_KEY} />
         </CloudI18nProvider>
       </MemoryRouter>
     </QueryClientProvider>,

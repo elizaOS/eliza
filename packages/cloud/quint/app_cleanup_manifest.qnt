@@ -112,15 +112,15 @@ module app_cleanup_uploads {
 
 // One projected row; bulk operations apply the same local deleting set to each row.
 module app_cleanup_ui {
-  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool, authorized: bool, resync: bool }
+  type State = { deleting: bool, receipt: bool, row: bool, label: str, actions: bool, toast: bool, authorized: bool, resync: bool, navigated: bool }
   var s: State
-  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false,authorized:true,resync:false}
+  action init = s'={deleting:false,receipt:false,row:true,label:"Active",actions:true,toast:false,authorized:true,resync:false,navigated:false}
   action begin = all {s.row,not(s.deleting),s'={...s,deleting:true,label:"Deleting",actions:false}}
   action pollPending = all {s.deleting,not(s.receipt),s'=s}
   action receiveReceipt = all {s.deleting,s.authorized,s'={...s,receipt:true}}
-  action publishComplete = all {s.receipt,s.authorized,s'={...s,deleting:false,row:false,toast:true,resync:true}}
+  action publishComplete = all {s.receipt,s.authorized,s'={...s,deleting:false,row:false,toast:true,resync:true,navigated:true}}
   action refreshMissing = all {s.deleting,s'=s}
-  action authoritySwitch = s'={...s,authorized:false,deleting:false,row:false,actions:false,toast:false,resync:false}
+  action authoritySwitch = s'={...s,authorized:false,deleting:false,row:false,actions:false,toast:false,resync:false,navigated:false}
   action delayedRefresh = all {s.resync,s.authorized,s'={...s,resync:false}}
   action step = any {begin,pollPending,refreshMissing,authoritySwitch,receiveReceipt,publishComplete,delayedRefresh,s'=s}
   val safety = all {
@@ -128,11 +128,14 @@ module app_cleanup_ui {
     (not(s.row) and s.authorized) implies s.receipt,
     s.toast implies (s.receipt and s.authorized),
     s.resync implies s.authorized,
+    s.navigated implies (s.receipt and s.authorized),
   }
   run pendingRowThenReceiptTest = init.then(begin).then(pollPending).then(refreshMissing).then(receiveReceipt).then(publishComplete).expect(safety and s.toast and not(s.row))
   run authoritySwitchRetiresOldUiTest = init.then(begin).then(authoritySwitch).expect(safety and not(s.toast))
   action unsafeLateToast = s'={...s,receipt:true,toast:true}
   run retiredAuthorityToastWitnessTest = init.then(begin).then(authoritySwitch).then(unsafeLateToast).expect(not(safety))
+  action unsafeLateNavigation = s'={...s,receipt:true,navigated:true}
+  run retiredDetailNavigationWitnessTest = init.then(begin).then(authoritySwitch).then(unsafeLateNavigation).expect(not(safety))
   run completedOwnerRetiresTimerTest = init.then(begin).then(receiveReceipt).then(publishComplete).then(authoritySwitch).expect(safety and not(s.resync))
   action unsafeStaleTimer = s'={...s,resync:true}
   run staleRefreshWitnessTest = init.then(begin).then(receiveReceipt).then(publishComplete).then(authoritySwitch).then(unsafeStaleTimer).expect(not(safety))
