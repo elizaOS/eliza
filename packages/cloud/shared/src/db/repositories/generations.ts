@@ -145,6 +145,9 @@ async function prepareGenerationPayload(
   }
 
   const createdAt = data.created_at ?? context.created_at ?? new Date();
+  // A prepared batch owns new keys. Never replace bytes behind a committed
+  // pointer before the SQL update succeeds, including after a failed retry.
+  const version = randomUUID();
   const [prompt, negativePrompt, result, content] = await Promise.all([
     data.prompt === undefined
       ? Promise.resolve(null)
@@ -154,6 +157,8 @@ async function prepareGenerationPayload(
           objectId: context.id,
           field: "prompt",
           createdAt,
+          version,
+          immutable: true,
           value: data.prompt,
         }),
     data.negative_prompt === undefined
@@ -164,6 +169,8 @@ async function prepareGenerationPayload(
           objectId: context.id,
           field: "negative_prompt",
           createdAt,
+          version,
+          immutable: true,
           value: data.negative_prompt,
         }),
     data.result === undefined
@@ -174,6 +181,8 @@ async function prepareGenerationPayload(
           objectId: context.id,
           field: "result",
           createdAt,
+          version,
+          immutable: true,
           value: data.result,
           inlineValueWhenOffloaded: null,
         }),
@@ -185,6 +194,8 @@ async function prepareGenerationPayload(
           objectId: context.id,
           field: "content",
           createdAt,
+          version,
+          immutable: true,
           value: data.content,
         }),
   ]);
