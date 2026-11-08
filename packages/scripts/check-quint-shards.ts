@@ -143,6 +143,25 @@ export function validateQuintShardReports(
         undefined,
         "A command infrastructure error is not a proof",
       );
+      const kind = strings(result.command, "Invalid command")[0];
+      if (kind !== "verify") {
+        assert.equal(
+          result.exitCode,
+          0,
+          "Only verification may produce an expected counterexample",
+        );
+        for (const key of [
+          "expectedTemporalOutcome",
+          "observedTemporalOutcome",
+          "temporalProperties",
+        ]) {
+          assert.equal(
+            result[key],
+            undefined,
+            "Only verification may carry temporal evidence",
+          );
+        }
+      }
       if (result.expectedTemporalOutcome === "counterexample") {
         assert.equal(
           result.exitCode,
@@ -390,6 +409,6 @@ if (
     `${JSON.stringify(summary, null, 2)}\n`,
   );
   console.log(
-    `Verified ${summary.shards} shards covering every ${summary.models} models, ${summary.cases} cases and ${summary.commands} formal commands`,
+    `Verified ${summary.shards} shards covering all ${summary.models} models, ${summary.cases} cases and ${summary.commands} formal commands`,
   );
 }

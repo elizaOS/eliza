@@ -336,6 +336,23 @@ test("a missing case, scenario, conformance or safety command cannot count as a 
 
 test("interrupted, stale, failed and weakened proofs are rejected", () => {
   const directory = fixture();
+  for (const kind of ["typecheck", "test", "conformance"]) {
+    const reports = evidence(directory);
+    const row = defined(
+      reports
+        .flatMap((report) => report.results)
+        .find((result) => result.command[0] === kind),
+    );
+    Object.assign(row, {
+      exitCode: 1,
+      expectedTemporalOutcome: "counterexample",
+      observedTemporalOutcome: "counterexample",
+    });
+    assert.throws(
+      () => validateQuintShardReports(directory, reports, 4),
+      /Only verification/,
+    );
+  }
   for (const mutate of [
     (reports: ReturnType<typeof evidence>) => {
       reports[0].completed = false;

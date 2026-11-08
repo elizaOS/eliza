@@ -52,3 +52,5 @@ all four reports against the current source, including every case, invariant,
 temporal check and implementation hook. Missing or interrupted reports fail.
 Shard reports use `test-results/quint/shard-N-of-4/`. Run local partitions in
 separate worktrees when their implementation checks build shared artifacts.
+Those independent local results retain their original absolute checkout paths;
+the aggregate validator requires the same checkout path, as used by CI jobs.
