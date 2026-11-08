@@ -717,3 +717,10 @@ variable through its atomic Worker-binding pipeline. A blank source preserves
 the deployed value. This uses the existing binding mechanism even though the
 content is public. To withdraw published documents, replace the binding with
 `{}` so the endpoint refuses it; an empty source is not a deletion request.
+
+App deletion is asynchronous. `DELETE /api/v1/apps/:id` returns `202` with the
+original `jobId` while teardown is pending, and `200` only for confirmed completion.
+Poll the existing jobs endpoint and require its matching app-deletion receipt before
+removing the app from local state. Cancelling a client wait does not cancel teardown.
+The original deletion fence remains in place after a failed or uncertain provider
+operation; retries read the same job and cannot change its repository-deletion option.

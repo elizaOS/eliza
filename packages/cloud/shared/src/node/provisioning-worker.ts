@@ -50,12 +50,19 @@ import {
   enqueueAppCacheInvalidation,
   formatAppCacheInvalidationError,
 } from "../lib/services/app-cache-invalidation-job";
-import { dispatchAppDbDeprovisionJob } from "../lib/services/app-db-deprovision-job-service";
+import { executeAppDeletion } from "../lib/services/app-deletion";
+import { AppDeletionRecoveryPendingError } from "../lib/services/app-deletion-authority";
+import {
+  dispatchAppDeletionContainer,
+  readOriginalDeletionContainer,
+} from "../lib/services/app-deletion-container";
+import { dispatchAppDeletionDatabase } from "../lib/services/app-deletion-database";
 import { dispatchAppDeployJob, readAppDeployJobData } from "../lib/services/app-deploy-job-service";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   deploymentGenerationFromMetadata,
 } from "../lib/services/app-deployment-generation";
+import { buildContainerExecutorDeps } from "../lib/services/container-executor-deps";
 import {
   dispatchContainerJob,
   getContainerExecutorDeps,
@@ -2397,7 +2404,21 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
     }
     const providerAdmission = this.providerAdmissionForJob(job);
     if (!providerAdmission) {
-      await this.executeJobDispatch(job);
+      try {
+        await this.executeJobDispatch(job);
+      } catch (error) {
+        if (!(error instanceof AppDeletionRecoveryPendingError)) throw error;
+        const current = await jobsRepository.findByIdForWrite(job.id);
+        if (
+          !current ||
+          current.execution_generation !== job.execution_generation ||
+          current.status !== "in_progress"
+        )
+          throw new StaleJobExecutionError(job.id);
+        // Waiting is bounded; exhaustion leaves the original job/fence and its
+        // receipts visible for recovery. It never means teardown succeeded.
+        throw new RetryableProvisionTransportError(error.message, current, 120, { cause: error });
+      }
       return;
     }
     try {
@@ -2458,6 +2479,15 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       );
     }
     switch (job.type) {
+      case JOB_TYPES.APP_DELETE:
+        await executeAppDeletion({
+          jobId: job.id,
+          organizationId: job.organization_id,
+          executionGeneration: job.execution_generation!,
+          executionOwnerId: this.executionOwnerId,
+        });
+        await this.settleClaimedExecution(job, "completed", { completed_at: new Date() });
+        break;
       case JOB_TYPES.AGENT_COMPUTE_LEASE: {
         const result = await executeAgentComputeLeaseJob(job, () =>
           this.assertExecutionMutationLease(job),
@@ -2524,17 +2554,37 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       case JOB_TYPES.CONTAINER_UPGRADE:
       case JOB_TYPES.CONTAINER_LOGS:
         await this.assertExecutionMutationLease(job);
-        await dispatchContainerJob(
-          job,
-          getContainerExecutorDeps(
-            Object.freeze({
-              jobId: job.id,
-              organizationId: job.organization_id,
-              executionGeneration: job.execution_generation!,
-              executionOwnerId: this.executionOwnerId,
-            }),
-          ),
-        );
+        if (
+          job.type === JOB_TYPES.CONTAINER_DELETE &&
+          typeof job.data.appDeletionJobId === "string"
+        ) {
+          const authority = Object.freeze({
+            jobId: job.id,
+            organizationId: job.organization_id,
+            executionGeneration: job.execution_generation!,
+            executionOwnerId: this.executionOwnerId,
+          });
+          const original = await readOriginalDeletionContainer(authority);
+          if (original)
+            await dispatchAppDeletionContainer(
+              authority,
+              buildContainerExecutorDeps(authority, {
+                id: original.data.originalNodeId!,
+                hostname: original.data.originalNodeHost!,
+              }),
+            );
+        } else
+          await dispatchContainerJob(
+            job,
+            getContainerExecutorDeps(
+              Object.freeze({
+                jobId: job.id,
+                organizationId: job.organization_id,
+                executionGeneration: job.execution_generation!,
+                executionOwnerId: this.executionOwnerId,
+              }),
+            ),
+          );
         await this.settleClaimedExecution(job, "completed", {
           completed_at: new Date(),
         });
@@ -2581,7 +2631,16 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
       // via the injected deprovisioner (wired in apps-deploy-backend). (#8342)
       case JOB_TYPES.APP_DB_DEPROVISION: {
         await this.assertExecutionMutationLease(job);
-        const outcome = await dispatchAppDbDeprovisionJob(job);
+        if (typeof job.data.appDeletionJobId !== "string")
+          throw new AppDeletionRecoveryPendingError(
+            "Legacy database teardown has no original app-deletion authority",
+          );
+        await dispatchAppDeletionDatabase({
+          jobId: job.id,
+          organizationId: job.organization_id,
+          executionGeneration: job.execution_generation!,
+          executionOwnerId: this.executionOwnerId,
+        });
         // Mark terminal so recoverStaleJobs() can't re-sweep this job back to
         // `pending` after the stale threshold. A re-run would call
         // deprovisionTenantDbForApp -> releaseSlot() a SECOND time, and
@@ -2599,10 +2658,6 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
         // also close the micro-window where this updateStatus throws AFTER a
         // successful releaseSlot and the retry re-decrements.
         await this.settleClaimedExecution(job, "completed", {
-          result: {
-            deprovisioned: outcome.deprovisioned,
-            reason: outcome.reason ?? null,
-          },
           completed_at: new Date(),
         });
         break;

@@ -86,7 +86,9 @@ function afterNextRead(other: () => Promise<unknown>) {
 }
 
 beforeAll(async () => {
-  await dbWrite.execute(sql.raw("CREATE TABLE apps(id uuid PRIMARY KEY)"));
+  await dbWrite.execute(
+    sql.raw("CREATE TABLE apps(id uuid PRIMARY KEY, deletion_job_id uuid)"),
+  );
   await dbWrite.execute(sql.raw(`INSERT INTO apps(id) VALUES('${APP}')`));
   spyOn(appsService, "getById").mockResolvedValue({
     id: APP,

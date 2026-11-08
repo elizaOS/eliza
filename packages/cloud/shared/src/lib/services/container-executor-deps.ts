@@ -183,16 +183,22 @@ async function allocateHostPort(): Promise<number> {
  */
 export function buildContainerExecutorDeps(
   executionAuthority?: JobExecutionAuthority,
+  originalNode?: { id: string; hostname: string },
 ): ContainerExecutorDeps {
-  if (!appsContainersEnabled()) {
+  if (
+    !appsContainersEnabled() &&
+    (!originalNode ||
+      process.env.APPS_CONTAINERS_ENABLED === "0" ||
+      !(containersEnv.sshKey() || containersEnv.sshKeyPath()))
+  ) {
     throw new Error(
       "Apps container backend not configured (need CONTAINERS_DOCKER_NODES + CONTAINERS_SSH_KEY/_PATH). " +
         "A CONTAINER_* job was claimed but cannot be provisioned.",
     );
   }
-  const ssh = makeNodeSsh();
-  const nodeHost = selectNodeHost();
-  const nodeId = parseSeedNodeIdOrNull();
+  const ssh = originalNode ? makeBuilderSsh(originalNode.hostname) : makeNodeSsh();
+  const nodeHost = originalNode?.hostname ?? selectNodeHost();
+  const nodeId = originalNode?.id ?? parseSeedNodeIdOrNull();
   if (!nodeId) {
     throw new ElizaError("CONTAINERS_DOCKER_NODES has no durable node id", {
       code: "APP_CONTAINER_NODE_ID_MISSING",
@@ -249,6 +255,9 @@ export function buildContainerExecutorDeps(
   return {
     provider,
     store,
+    assertAppNotDeleting: async (appId) => {
+      if (isValidUUID(appId)) await appsService.assertNotDeleting(appId);
+    },
     assertExecutionCurrent: executionAuthority
       ? () =>
           dbWrite.transaction(async (tx) => {

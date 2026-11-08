@@ -28,12 +28,12 @@ const suites = [
     name: "pglite",
     file: "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.pglite.test.ts",
     names: [
-      "failed app deletion must preserve frontend content when the retained app is reactivated",
-      "a concurrent reactivation must not lose content before final deletion rejects the active app",
+      "failed app deletion retains frontend content behind the permanent deletion fence",
+      "a concurrent reactivation is rejected before original-job final deletion",
       "acknowledged app deletion removes frontend rows before their exact objects",
       "a lost committed app deletion reply retains objects without fabricating cleanup authority",
       "app deletion retains every manifest beyond the former thousand-row listing limit",
-      "the final app deletion snapshot includes frontends published after deactivation",
+      "the final app deletion snapshot includes frontends published before the permanent fence",
     ],
   },
   {

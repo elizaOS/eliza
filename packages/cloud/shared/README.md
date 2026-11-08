@@ -398,3 +398,10 @@ deletion retains unconfirmed signed sweeps until their original receipt is
 recorded. Legacy identity recovery pages through the complete candidate history.
 Matching original EVM receipts remain recoverable after receive-wallet rotation.
 Resubmission still requires the configured wallet to match the original signer.
+
+App teardown uses one immutable `app_delete` job and a permanent app fence.
+Database and container child jobs retain original resource identities and must
+record confirmed, quiescent outcomes before final cascade. Unknown legacy targets
+remain pending. The job stores no database URI; placement stays in `app_databases`.
+Migration 0566 normalizes future naive job-clock defaults to UTC without rewriting
+historical timestamps whose original timezone is unknown.

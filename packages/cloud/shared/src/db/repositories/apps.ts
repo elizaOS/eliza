@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   metadataForDeploymentGeneration,
@@ -51,9 +52,15 @@ import {
   type AppFrontendDeployment,
   appFrontendDeployments,
 } from "../schemas/app-frontend-deployments";
+import { jobs } from "../schemas/jobs";
 import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 import { materializeAppBillingAccounts } from "./app-billing-accounts";
+import {
+  type AppDeletionExecutionContext,
+  withAppDeletionExecution,
+} from "./app-deletion-execution";
+import { assertAppDeletionReady, removeAppDeletionMetadata } from "./app-deletion-finalization";
 import { assertJobExecutionAuthority, lockJobExecutionAuthority } from "./job-execution-authority";
 
 interface AppCacheFenceIdentity {
@@ -165,6 +172,13 @@ export class AppsRepository {
   /**
    * Finds an app by ID.
    */
+  /** Primary identity for trusted internal deletion callers; routes pass their own scope. */
+  async findByIdForWrite(id: string): Promise<App | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    const [app] = await dbWrite.select().from(apps).where(eq(apps.id, id));
+    return app;
+  }
+
   async findById(id: string): Promise<App | undefined> {
     if (!UUID_PATTERN.test(id)) {
       return undefined;
@@ -691,20 +705,37 @@ export class AppsRepository {
       );
     }
     /* global-scope: by-id mutation; route handlers authorize org ownership before calling. */
-    const [updated] = await dbWrite
-      .update(apps)
-      .set({
-        ...data,
-        updated_at: new Date(),
-      })
-      .where(eq(apps.id, id))
-      .returning();
+    const updated = await dbWrite.transaction(async (tx) => {
+      const [current] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
+      if (!current) return undefined;
+      if (current.deletion_job_id)
+        throw new AppDeletionInProgressError(id, current.deletion_job_id);
+      const [row] = await tx
+        .update(apps)
+        .set({ ...data, updated_at: new Date() })
+        .where(eq(apps.id, id))
+        .returning();
+      return row;
+    });
 
     if (updated) {
       await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
     }
 
     return updated;
+  }
+
+  async assertNotDeleting(id: string): Promise<void> {
+    const [app] = await dbWrite
+      .select({ deletionJobId: apps.deletion_job_id })
+      .from(apps)
+      .where(eq(apps.id, id));
+    if (!app)
+      throw new ElizaError("App no longer exists", {
+        code: "APP_NOT_FOUND",
+        context: { appId: id },
+      });
+    if (app.deletionJobId) throw new AppDeletionInProgressError(id, app.deletionJobId);
   }
 
   /**
@@ -725,7 +756,13 @@ export class AppsRepository {
         metadata: metadataForDeploymentGeneration(data.metadata, generation),
         updated_at: new Date(),
       })
-      .where(and(eq(apps.id, id), notInArray(apps.deployment_status, ["building", "deploying"])))
+      .where(
+        and(
+          eq(apps.id, id),
+          isNull(apps.deletion_job_id),
+          notInArray(apps.deployment_status, ["building", "deploying"]),
+        ),
+      )
       .returning();
 
     if (updated) {
@@ -742,6 +779,7 @@ export class AppsRepository {
       .where(
         and(
           eq(apps.id, id),
+          isNull(apps.deletion_job_id),
           sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
         ),
       )
@@ -774,6 +812,7 @@ export class AppsRepository {
         .where(
           and(
             eq(apps.id, id),
+            isNull(apps.deletion_job_id),
             generationFilter,
             statusFilter,
             executionAuthority
@@ -817,6 +856,7 @@ export class AppsRepository {
       .where(
         and(
           eq(apps.id, id),
+          isNull(apps.deletion_job_id),
           generationFilter,
           inArray(apps.deployment_status, ["building", "deploying"]),
         ),
@@ -847,6 +887,8 @@ export class AppsRepository {
       if (!existing) {
         return { existing: undefined, updated: undefined, revokedKeyHashes: [], revokedKeys: [] };
       }
+      if (existing.deletion_job_id)
+        throw new AppDeletionInProgressError(id, existing.deletion_job_id);
       const [updated] = await tx
         .update(apps)
         .set({ ...data, updated_at: now })
@@ -969,11 +1011,20 @@ export class AppsRepository {
   }
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */
-  async finalizeDelete(id: string): Promise<AppDeletionReceipt | undefined> {
+  async finalizeDelete(
+    id: string,
+    authority?: JobExecutionAuthority,
+  ): Promise<AppDeletionReceipt | undefined> {
     /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
-    const deleted = await dbWrite.transaction(async (tx) => {
+    const finalize = async (tx: DbTransaction, context?: AppDeletionExecutionContext) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) return undefined;
+      if (
+        existing.deletion_job_id &&
+        (!context || context.job.id !== existing.deletion_job_id || context.data.appId !== id)
+      )
+        throw new AppDeletionInProgressError(id, existing.deletion_job_id);
+      const confirmedChildIds = context ? await assertAppDeletionReady(tx, context) : undefined;
 
       const [grant] = await tx
         .select({ id: mobileAppAuthGrants.id })
@@ -985,7 +1036,10 @@ export class AppsRepository {
         .from(apiKeys)
         .where(
           and(
-            eq(apiKeys.source_app_id, id),
+            or(
+              eq(apiKeys.source_app_id, id),
+              existing.api_key_id ? eq(apiKeys.id, existing.api_key_id) : undefined,
+            ),
             or(eq(apiKeys.is_active, true), isNull(apiKeys.deleted_at)),
           ),
         )
@@ -1009,6 +1063,25 @@ export class AppsRepository {
         .where(eq(appFrontendDeployments.app_id, id))
         .orderBy(appFrontendDeployments.id)
         .for("update");
+      if (context) {
+        await removeAppDeletionMetadata(tx, id);
+        await assertJobExecutionAuthority(tx, authority!);
+        await tx
+          .update(jobs)
+          .set({
+            result: {
+              ...context.job.result,
+              appDeleted: true,
+              appId: id,
+              deletionJobId: context.job.id,
+              confirmedChildIds,
+            },
+            result_storage: "inline",
+            result_key: null,
+            updated_at: sql`clock_timestamp() AT TIME ZONE 'UTC'`,
+          })
+          .where(eq(jobs.id, context.job.id));
+      }
       const [removed] = await tx.delete(apps).where(eq(apps.id, id)).returning();
       if (!removed) {
         throw new ElizaError("App deletion did not return its locked row", {
@@ -1018,7 +1091,10 @@ export class AppsRepository {
         });
       }
       return { app: removed, frontendDeployments };
-    });
+    };
+    const deleted = authority
+      ? await withAppDeletionExecution(authority, (tx, context) => finalize(tx, context))
+      : await dbWrite.transaction((tx) => finalize(tx));
 
     if (deleted) {
       await invalidateAppCacheEntries(id, deleted.app.api_key_id, deleted.app.slug);

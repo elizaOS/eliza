@@ -3718,6 +3718,20 @@
       "when": 1796083200179,
       "tag": "0561_evm_sweep_nonce_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1796083200180,
+      "tag": "0563_app_deletion_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1796083200181,
+      "tag": "0566_job_utc_clock_defaults",
+      "breakpoints": true
     }
   ]
 }

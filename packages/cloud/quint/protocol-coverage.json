@@ -706,7 +706,9 @@
       "packages/cloud/shared/src/db/schemas/jobs.ts",
       "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
       "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
-      "packages/cloud/quint/check-job-time.ts"
+      "packages/cloud/quint/check-job-time.ts",
+      "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql",
+      "packages/cloud/shared/src/db/repositories/job-execution-authority.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -722,7 +724,8 @@
       "Verify implementation transitions and failure paths against the formal contract.",
       "The time-authority model covers retry/read/renewal boundaries only; complete scheduler and remote-effect protocols remain open.",
       "Required flow invariants: Leases fence stale workers | Retry budgets remain bounded | Cancellation establishes quiescence before replacement",
-      "Abstract states: pending, claimed, running, retrying, completed, canceled, failed, expired"
+      "Abstract states: pending, claimed, running, retrying, completed, canceled, failed, expired",
+      "Future naive SQL defaults, lease/claim comparisons and retry clocks use explicit UTC. Migration 0566 does not rewrite ambiguous historical values; any earlier local-wall-time rows need separate operational diagnosis."
     ]
   },
   {
@@ -1838,9 +1841,66 @@
     "limitations": [
       "One app, two immutable published deployment identities, reversible app deactivation/reactivation and one final deletion request with rollback, acknowledged commit or lost acknowledgement.",
       "The final deletion transaction locks the app, rechecks mobile revocation, locks and snapshots every current frontend row, then deletes the app and cascades those rows. Only its acknowledged return authorizes object deletion. The app foreign key serializes inserts with deletion; deployment locks serialize publication with the snapshot. Activation and final deletion acquire the same parent app row lock before deployment rows; a missing parent rejects activation.",
-      "Six real PGlite service/repository/public-serving cases: actual SQL-trigger rejection, normal reactivation during teardown, acknowledged cascade before object deletion, committed-but-lost deletion reply, 1002 retained manifests, and publication after deactivation. Controlled object storage and the user-database cleanup seam avoid live provider effects. PGlite does not prove independent-connection PostgreSQL contention. Two real PostgreSQL cases observe independent-session parent-lock blocking, including a queued third activation. An earlier uncommitted unordered snapshot control reproduces PostgreSQL 40P01.",
-      "No general TypeScript refinement, live R2 proof, arbitrary object counts, account authorization, account deletion, cache consistency, pending object uploads, crash orphan collection or concurrency of unrelated teardown providers. Database/container/GitHub teardown still has a separate app lifecycle authority gap; this repair only protects frontend objects. SQL acknowledgement loss and failed object deletes may leave orphans; no automatic recovery owner is introduced. The separate lock projection covers two fixed existing deployment rows and three one-shot operations only, not unbounded deadlock freedom. All participating workers must run the guarded protocol; mixed older writers are excluded until coordinated rollout completes.",
+      "Six real PGlite original-job service/repository/public-serving cases retain complete objects across rejected and lost final SQL writes, reject reactivation after the permanent deletion fence, and clean all 1002 retained manifests only after acknowledged cascade. Two separate PostgreSQL parent-lock cases retain the repository concurrency proof. Provider I/O remains controlled.",
+      "Object-retention projection only; the app_teardown_authority model owns the new irreversible lifecycle, provider receipts and pending API contract. Reactivation in this older model is a conservative overapproximation of unfenced same-owner operations, not permission to reactivate a deletion-fenced app. No general refinement, live R2, arbitrary-count proof or orphan GC; older mixed writers require coordinated rollout.",
       "A pending SQL operation settles under weak fairness of its continuation; acknowledged cleanup settles under weak fairness of cleanup. No provider availability, successful deletion, orphan cleanup or elapsed deadline guarantee."
+    ]
+  },
+  {
+    "id": "cloud-protocol-app-teardown-authority",
+    "model": "packages/cloud/quint/app_teardown_authority.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/migrations/0563_app_deletion_authority.sql",
+      "packages/cloud/shared/src/db/schemas/apps.ts",
+      "packages/cloud/shared/src/db/schemas/jobs.ts",
+      "packages/cloud/shared/src/db/schemas/app-databases.ts",
+      "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-operations.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-execution.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-plan.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-database.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-finalization.ts",
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/db/repositories/app-databases.ts",
+      "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-authority.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-database.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-container.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-github.ts",
+      "packages/cloud/shared/src/lib/services/tenant-db/tenant-db-provisioning.ts",
+      "packages/cloud/shared/src/lib/services/github-repos.ts",
+      "packages/cloud/shared/src/lib/services/apps.ts",
+      "packages/cloud/shared/src/lib/services/app-cleanup.ts",
+      "packages/cloud/shared/src/lib/services/app-factory.ts",
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/lib/services/provisioning-job-types.ts",
+      "packages/cloud/shared/src/lib/services/inference-policy-fence.ts",
+      "packages/cloud/shared/src/lib/services/container-executor-deps.ts",
+      "packages/cloud/api/v1/apps/[id]/route.ts",
+      "packages/cloud/sdk/src/types.ts",
+      "packages/ui/src/cloud/applications/lib/app-deletion-client.ts",
+      "packages/ui/src/cloud/applications/lib/apps.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deletion-admission.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deletion-lifecycle.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deletion-authority.postgres.integration.test.ts",
+      "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-client.test.ts",
+      "packages/cloud/quint/check-app-teardown-authority.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/cloud/shared/src/lib/api/cloud-worker-errors.ts",
+      "packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts",
+      "packages/cloud/shared/src/db/migrations/0566_job_utc_clock_defaults.sql"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One irreversible app deletion, one original database, one original container, one fixed provider identity per resource, two organizations/credential identities in a separate admission projection, and one GitHub deletion. Capacity starts at two with one other tenant preserved.",
+      "Existing jobs own root and deterministic child identities. Admission, credential revocation and permanent app fence commit together. Stable preflight/recheck acquires users and enrolled organization permits before the app. Children recheck the original lease and app/row identity after locks. Database capacity, original placement retirement and child receipt commit together. Final cascade requires immutable completed/quiescent child receipts. Only acknowledged final SQL grants artifact cleanup.",
+      "Real PGlite migration, route, admission, child resource and capacity tests; separate PostgreSQL connections prove queued cross-organization issuance/revocation ordering and post-lock lease expiry under UTC, America/New_York and Asia/Kathmandu. UI transport tests verify pending/terminal/cancellation outcomes. Provider operations and authenticated route principal are controlled local seams; no live infrastructure or credentials are used.",
+      "Finite protocol projection, not TypeScript refinement or unbounded deadlock freedom. Existing original job leases and process quiescence assumptions remain. No live provider/finality proof, all account-deletion phases, arbitrary writers or orphan GC. Legacy missing placement/host identity remains recovery-pending. GitHub only supports owner/name deletion: external rename/reuse between the last matching-ID read and DELETE is excluded. Unknown GitHub dispatches remain pending and are never repeated; no 404 is accepted as a deletion receipt. Mixed older deployed writers require coordinated rollout. Client cancellation stops only polling; bounded worker retries may require operator recovery without lifting the permanent fence.",
+      "Only a started final SQL continuation is weakly fair. No eventual deletion, successful provider request, retry availability, bounded wall time or recovery after an ambiguous external effect is promised."
     ]
   }
 ]

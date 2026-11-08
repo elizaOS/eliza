@@ -1,0 +1,488 @@
+/** Real jobs, lease, placement and route SQL. Only external providers/auth are controlled. */
+import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
+import { eq, sql } from "drizzle-orm";
+import { Hono } from "hono";
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.NODE_ENV = "test";
+process.env.MOCK_REDIS = "1";
+const database = await import("../../../db/client");
+const { dbWrite, getPgliteClientForTests } = database;
+const schema = {
+  ...(await import("../../../db/schemas/apps")),
+  ...(await import("../../../db/schemas/api-keys")),
+  ...(await import("../../../db/schemas/mobile-app-auth-grants")),
+  ...(await import("../../../db/schemas/jobs")),
+  ...(await import("../../../db/schemas/job-execution-leases")),
+  ...(await import("../../../db/schemas/app-databases")),
+  ...(await import("../../../db/schemas/tenant-db-clusters")),
+  ...(await import("../../../db/schemas/containers")),
+  ...(await import("../../../db/schemas/docker-nodes")),
+  ...(await import("../../../db/schemas/app-frontend-deployments")),
+  ...(await import("../../../db/schemas/managed-domains")),
+  ...(await import("../../../db/schemas/app-domains")),
+  ...(await import("../../../db/schemas/secrets")),
+};
+const { apps, jobs, appDatabases, tenantDbClusters, containers, jobExecutionLeases, dockerNodes } =
+  schema;
+const { appDeletionOperations } = await import("../../../db/repositories/app-deletion-operations");
+const { appsRepository } = await import("../../../db/repositories/apps");
+const { jobsRepository } = await import("../../../db/repositories/jobs");
+const { executeAppDeletion } = await import("../app-deletion");
+const { dispatchAppDeletionDatabase } = await import("../app-deletion-database");
+const { dispatchAppDeletionContainer } = await import("../app-deletion-container");
+const { setAppDbDeprovisioner } = await import("../app-db-deprovision-job-service");
+const { SqlTenantDbProvisioning } = await import("../tenant-db/tenant-db-provisioning");
+const { ContainerRepoAppContainerStore } = await import("../app-container-store");
+const { containersRepository } = await import("../../../db/repositories/containers");
+const { githubReposService } = await import("../github-repos");
+const { appsService } = await import("../apps");
+
+import type { ContainerExecutorDeps } from "../container-job-executors";
+import type { JobExecutionAuthority } from "../job-execution-authority";
+
+let organizationId: string, appId: string, userId: string;
+let providerCalls: string[], releaseCalls: string[];
+const spies: Array<{ mockRestore(): void }> = [];
+let currentPrincipal: string;
+const realAuth = await import("@elizaos/cloud-shared/auth");
+mock.module("@elizaos/cloud-shared/auth", () => ({
+  ...realAuth,
+  requireUserOrApiKeyWithOrg: async () => ({ id: userId, organization_id: currentPrincipal }),
+}));
+const { default: appRoute } = await import("../../../../../api/v1/apps/[id]/route");
+const { default: jobRoute } = await import("../../../../../api/v1/jobs/[jobId]/route");
+const router = new Hono();
+router.route("/api/v1/apps/:id", appRoute);
+router.route("/api/v1/jobs/:jobId", jobRoute);
+const request = () => ({ appId, organizationId, userId, deleteGitHubRepo: false });
+async function claim(type: string): Promise<JobExecutionAuthority> {
+  const owner = randomUUID();
+  const [job] = await jobsRepository.claimPendingJobs({
+    type,
+    limit: 1,
+    executionOwnerId: owner,
+    executionLeaseMs: 60_000,
+  });
+  if (!job?.execution_generation) throw new Error(`No claimed ${type}`);
+  return {
+    jobId: job.id,
+    organizationId,
+    executionGeneration: job.execution_generation,
+    executionOwnerId: owner,
+  };
+}
+async function settle(authority: JobExecutionAuthority) {
+  const job = await jobsRepository.findByIdForWrite(authority.jobId);
+  if (!job) throw new Error("Missing job");
+  await jobsRepository.settleExecution(job, "completed", undefined, authority.executionOwnerId);
+}
+async function start() {
+  await appDeletionOperations.admit(request());
+  return claim("app_delete");
+}
+async function addDatabase() {
+  const clusterId = randomUUID();
+  await dbWrite.insert(tenantDbClusters).values({
+    id: clusterId,
+    host: "original.invalid",
+    admin_dsn_encrypted: "test-admin",
+    database_count: 2,
+  });
+  await dbWrite.insert(appDatabases).values({
+    app_id: appId,
+    user_database_uri: "postgres://app:secret@original.invalid/app",
+    tenant_db_cluster_id: clusterId,
+    user_database_status: "ready",
+  });
+  return clusterId;
+}
+function provider(clusterId: string, effect: () => Promise<void> = async () => {}) {
+  setAppDbDeprovisioner(
+    new SqlTenantDbProvisioning({
+      pool: {
+        allocate: async () => {
+          throw new Error("No allocation during teardown");
+        },
+      },
+      decrypt: async (value) => value,
+      resolveClusterByHost: async () => ({ id: clusterId, adminDsnEncrypted: "test-admin" }),
+      makeProvisioner: () => ({
+        provision: async () => {
+          throw new Error("No new database");
+        },
+        deprovision: async (id) => {
+          providerCalls.push(id);
+          await effect();
+          return { existed: providerCalls.length === 1 };
+        },
+      }),
+      releaseSlot: async (id) => {
+        releaseCalls.push(id);
+      },
+      clearPlacement: async () => {
+        throw new Error("Placement must be released in the receipt transaction");
+      },
+    }),
+  );
+}
+async function count() {
+  return (await dbWrite.select().from(tenantDbClusters))[0]?.database_count;
+}
+
+beforeAll(async () => {
+  for (let statement of await generateMigration(
+    generateDrizzleJson({}),
+    generateDrizzleJson(schema),
+  )) {
+    if (statement.startsWith("ALTER TABLE") && statement.includes("FOREIGN KEY")) continue;
+    if (statement.startsWith('CREATE TABLE "apps"'))
+      statement = statement.replace(/\n\s*"deletion_job_id" uuid,/, "");
+    await dbWrite.execute(statement);
+  }
+  for (const statement of readFileSync(
+    new URL("../../../db/migrations/0563_app_deletion_authority.sql", import.meta.url),
+    "utf8",
+  ).split("--> statement-breakpoint"))
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  await getPgliteClientForTests().exec(
+    "ALTER TABLE app_frontend_deployments ADD CONSTRAINT fixture_frontend_app FOREIGN KEY(app_id) REFERENCES apps(id) ON DELETE CASCADE; ALTER TABLE app_databases ADD CONSTRAINT fixture_database_app FOREIGN KEY(app_id) REFERENCES apps(id) ON DELETE CASCADE;",
+  );
+}, 120_000);
+beforeEach(async () => {
+  await getPgliteClientForTests().exec(
+    "TRUNCATE apps CASCADE; TRUNCATE jobs CASCADE; TRUNCATE api_keys CASCADE; TRUNCATE mobile_app_auth_grants, containers, job_execution_leases, tenant_db_clusters, docker_nodes CASCADE",
+  );
+  organizationId = randomUUID();
+  appId = randomUUID();
+  userId = randomUUID();
+  currentPrincipal = organizationId;
+  providerCalls = [];
+  releaseCalls = [];
+  await dbWrite.insert(apps).values({
+    id: appId,
+    organization_id: organizationId,
+    name: "Teardown fixture",
+    slug: appId,
+    app_url: "https://app.example",
+    is_active: true,
+  });
+});
+afterEach(() => {
+  for (const spy of spies.splice(0)) spy.mockRestore();
+});
+afterAll(database.closeDatabaseConnectionsForTests);
+
+test("the actual DELETE route returns 202 until the original root has a confirmed completion receipt", async () => {
+  const pending = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+    method: "DELETE",
+  });
+  expect(pending.status).toBe(202);
+  const body = await pending.json();
+  expect(body.success).toBe(false);
+  expect(body.state).toBe("pending");
+  const root = await claim("app_delete");
+  expect(root.jobId).toBe(body.jobId);
+  await executeAppDeletion(root);
+  await settle(root);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+  const complete = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+    method: "DELETE",
+  });
+  expect(complete.status).toBe(200);
+  expect((await complete.json()).jobId).toBe(root.jobId);
+  await executeAppDeletion({ ...root, executionGeneration: randomUUID() }).then(
+    () => {
+      throw new Error("Stale execution accepted");
+    },
+    (error) => expect(error.name).toBe("StaleJobExecutionError"),
+  );
+  expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+});
+
+test("foreign and invalid DELETE requests cannot create a root or revoke the app", async () => {
+  currentPrincipal = randomUUID();
+  expect((await router.request(`/api/v1/apps/${appId}`, { method: "DELETE" })).status).toBe(403);
+  currentPrincipal = organizationId;
+  expect(
+    (await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=invalid`, { method: "DELETE" }))
+      .status,
+  ).toBe(400);
+  expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  expect((await appsRepository.findByIdForWrite(appId))?.is_active).toBe(true);
+  expect((await router.request("/api/v1/apps/invalid-id", { method: "DELETE" })).status).toBe(400);
+});
+
+test("public job status and failure receipts never expose the retained database URI", async () => {
+  await addDatabase();
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = (await dbWrite.select().from(jobs)).find(
+    (row) => row.type === "app_db_deprovision",
+  )!;
+  expect(JSON.stringify(child.data)).not.toContain("postgres://");
+  expect(JSON.stringify(child.data)).not.toContain("secret");
+  await dbWrite
+    .update(jobs)
+    .set({ error: "Connection failed: postgres://app:secret@original.invalid/app" })
+    .where(eq(jobs.id, child.id));
+  const response = await router.request(`/api/v1/jobs/${child.id}`);
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  expect(body).not.toContain("secret");
+  expect(body).not.toContain("postgres://");
+  expect(body).not.toContain("original.invalid");
+});
+
+test("a retry with different deletion options conflicts without another root", async () => {
+  await appDeletionOperations.admit(request());
+  const response = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=true`, {
+    method: "DELETE",
+  });
+  expect(response.status).toBe(409);
+  expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+});
+
+test("original database child confirmation releases capacity once and gates the final cascade", async () => {
+  const cluster = await addDatabase();
+  provider(cluster);
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  expect((await appsRepository.findByIdForWrite(appId))?.deletion_job_id).toBe(root.jobId);
+  const child = await claim("app_db_deprovision");
+  await dispatchAppDeletionDatabase(child);
+  await dispatchAppDeletionDatabase(child);
+  expect(providerCalls).toEqual([appId]);
+  expect(releaseCalls).toEqual([]);
+  expect(await count()).toBe(1);
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  await settle(child);
+  await executeAppDeletion(root);
+  await settle(root);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+  expect(await count()).toBe(1);
+});
+
+test("a provider DROP with a lost response is recoverable without double releasing capacity", async () => {
+  const cluster = await addDatabase();
+  let first = true;
+  provider(cluster, async () => {
+    if (first) {
+      first = false;
+      throw new Error("Controlled response loss after DROP");
+    }
+  });
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = await claim("app_db_deprovision");
+  await expect(dispatchAppDeletionDatabase(child)).rejects.toThrow("Controlled response loss");
+  expect(await count()).toBe(2);
+  await dispatchAppDeletionDatabase(child);
+  expect(await count()).toBe(1);
+  expect(providerCalls).toHaveLength(2);
+  expect(releaseCalls).toEqual([]);
+  await settle(child);
+  await executeAppDeletion(root);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+});
+
+test("a changed cluster or expired child lease cannot dispatch an original database DROP", async () => {
+  await addDatabase();
+  provider(randomUUID());
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = await claim("app_db_deprovision");
+  await expect(dispatchAppDeletionDatabase(child)).rejects.toThrow("cluster identity changed");
+  expect(providerCalls).toEqual([]);
+  await dbWrite
+    .update(jobExecutionLeases)
+    .set({ expires_at: sql`(clock_timestamp() AT TIME ZONE 'UTC') - interval '1 second'` })
+    .where(eq(jobExecutionLeases.job_id, child.jobId));
+  await expect(dispatchAppDeletionDatabase(child)).rejects.toMatchObject({
+    name: "StaleJobExecutionError",
+  });
+  expect(providerCalls).toEqual([]);
+  expect(await count()).toBe(2);
+});
+
+test("receipt write failure rolls back both placement release and capacity decrement", async () => {
+  const cluster = await addDatabase();
+  provider(cluster);
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = await claim("app_db_deprovision");
+  await getPgliteClientForTests().exec(
+    "CREATE FUNCTION fail_child_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.result->>'appDeletionConfirmed'='true' THEN RAISE EXCEPTION 'controlled receipt failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_child_receipt BEFORE UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION fail_child_receipt();",
+  );
+  try {
+    await expect(dispatchAppDeletionDatabase(child)).rejects.toThrow();
+  } finally {
+    await getPgliteClientForTests().exec(
+      "DROP TRIGGER fail_child_receipt ON jobs; DROP FUNCTION fail_child_receipt()",
+    );
+  }
+  expect(await count()).toBe(2);
+  expect((await dbWrite.select().from(appDatabases))[0]?.tenant_db_cluster_id).toBe(cluster);
+  await dispatchAppDeletionDatabase(child);
+  expect(await count()).toBe(1);
+});
+
+async function containerFixture() {
+  const containerId = randomUUID();
+  await dbWrite
+    .insert(dockerNodes)
+    .values({ node_id: "original-node", hostname: "original-node.invalid" });
+  await dbWrite.insert(containers).values({
+    id: containerId,
+    organization_id: organizationId,
+    user_id: userId,
+    name: `app-${appId}`,
+    project_name: appId,
+    port: 3000,
+    status: "running",
+    node_id: "original-node",
+    metadata: {
+      appId,
+      hostContainerId: "original-docker-id",
+      hostname: "original-node.invalid",
+      slotReleasedAt: "already-released-fixture",
+    },
+  });
+  const store = new ContainerRepoAppContainerStore({
+    readDatabase: dbWrite,
+    writeDatabase: dbWrite,
+    repository: containersRepository,
+    errorFactory: (message, options) => Object.assign(new Error(message), options),
+  });
+  const deps = {
+    store,
+    provider: {
+      targetNodeId: "original-node",
+      deleteById: async (id: string) => {
+        providerCalls.push(id);
+      },
+      deletePrimaryById: async (id: string) => {
+        providerCalls.push(id);
+      },
+    },
+  } as unknown as ContainerExecutorDeps;
+  return { containerId, deps };
+}
+
+test("container teardown confirms the captured Docker identity and node before the app can disappear", async () => {
+  const { containerId, deps } = await containerFixture();
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = await claim("container_delete");
+  await dispatchAppDeletionContainer(child, deps);
+  await dispatchAppDeletionContainer(child, deps);
+  expect(providerCalls).toEqual(["original-docker-id"]);
+  expect(
+    (await dbWrite.select().from(containers).where(eq(containers.id, containerId)))[0]?.status,
+  ).toBe("deleted");
+  await settle(child);
+  await executeAppDeletion(root);
+  expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+});
+
+test("a backend for a different node cannot falsely confirm container removal", async () => {
+  const { deps } = await containerFixture();
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  const child = await claim("container_delete");
+  Object.assign(deps.provider, { targetNodeId: "rotated-default-node" });
+  await expect(dispatchAppDeletionContainer(child, deps)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  expect(providerCalls).toEqual([]);
+});
+
+test("unconfirmed legacy containers and direct app deletion remain fenced", async () => {
+  const { containerId } = await containerFixture();
+  await dbWrite.update(containers).set({ metadata: {} }).where(eq(containers.id, containerId));
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  await expect(appsRepository.finalizeDelete(appId)).rejects.toMatchObject({
+    code: "APP_DELETION_IN_PROGRESS",
+  });
+  await expect(
+    getPgliteClientForTests().query("DELETE FROM apps WHERE id=$1", [appId]),
+  ).rejects.toMatchObject({ code: "23514" });
+  expect(providerCalls).toEqual([]);
+  expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+});
+
+test("a GitHub dispatch with an unknown outcome is never repeated or treated as successful", async () => {
+  await dbWrite
+    .update(apps)
+    .set({ github_repo: "original-owner/original-repo" })
+    .where(eq(apps.id, appId));
+  spies.push(
+    spyOn(githubReposService, "observeAppRepoForDeletion").mockResolvedValue({
+      owner: "original-owner",
+      name: "original-repo",
+      id: 123,
+    }),
+  );
+  const remove = spyOn(githubReposService, "deleteObservedAppRepo").mockImplementation(async () => {
+    throw new Error("controlled unknown repository result");
+  });
+  spies.push(remove);
+  await appDeletionOperations.admit({ ...request(), deleteGitHubRepo: true });
+  const root = await claim("app_delete");
+  await expect(executeAppDeletion(root)).rejects.toThrow("controlled unknown");
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect((await appsRepository.findByIdForWrite(appId))?.is_active).toBe(false);
+});
+
+test("original job replay after ownership changes remains a read without another policy mutation", async () => {
+  const first = await appDeletionOperations.admit(request());
+  await dbWrite.update(apps).set({ created_by_user_id: randomUUID() }).where(eq(apps.id, appId));
+  const replay = await appDeletionOperations.admit(request());
+  expect(replay?.job.id).toBe(first?.job.id);
+  expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+  expect((await appsService.delete(appId))?.jobId).toBe(first?.job.id);
+});
+
+test("a legacy deleted container status is not accepted without original provider identity", async () => {
+  await dbWrite.insert(containers).values({
+    organization_id: organizationId,
+    user_id: userId,
+    name: "legacy-deleted",
+    project_name: appId,
+    port: 3000,
+    status: "deleted",
+    metadata: {},
+  });
+  const root = await start();
+  await expect(executeAppDeletion(root)).rejects.toMatchObject({
+    code: "APP_DELETION_RECOVERY_PENDING",
+  });
+  expect((await appsRepository.findByIdForWrite(appId))?.deletion_job_id).toBe(root.jobId);
+  expect(providerCalls).toEqual([]);
+});

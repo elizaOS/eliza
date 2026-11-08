@@ -56,7 +56,7 @@ async function makeScope() {
   await control.connect();
   await observer.connect();
   await control.query(`CREATE SCHEMA ${schema}; SET search_path TO ${schema},pg_catalog,public`);
-  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY)");
+  await control.query("CREATE TABLE apps(id uuid PRIMARY KEY, deletion_job_id uuid)");
   for (const statement of await generateMigration(
     generateDrizzleJson({}),
     generateDrizzleJson({ appFrontendDeployments }),

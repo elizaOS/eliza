@@ -1,0 +1,158 @@
+/** Strict real SQL conformance for frontend publication and cleanup authority. */
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { SaxesParser } from "saxes";
+import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
+
+const root = fileURLToPath(new URL("../../../", import.meta.url));
+assert.equal(
+  path.resolve(root, process.argv[2] ?? ""),
+  path.join(root, "packages/cloud/quint/app_teardown_authority.qnt"),
+);
+const postgres =
+  process.env.APP_DELETION_TEST_POSTGRES_URL ??
+  process.env.INFERENCE_POLICY_TEST_POSTGRES_URL;
+assert.ok(
+  postgres,
+  "App teardown conformance requires an isolated loopback qa_* PostgreSQL URL",
+);
+const output = testOutputPath("quint-app-teardown-authority");
+await mkdir(output, { recursive: true });
+const directory = await mkdtemp(path.join(output, "run-"));
+const suites = [
+  {
+    name: "admission",
+    file: "packages/cloud/shared/src/lib/services/__tests__/app-deletion-admission.pglite.test.ts",
+    names: [
+      "admission binds one original job and revokes mobile credentials in the same transaction",
+      "the permanent deletion binding rejects ordinary and direct SQL reactivation",
+      "a retry cannot change the original deletion options or job payload",
+      "foreign organization admission creates no operation and does not fence the app",
+      "credential revocation failure rolls back the job and permanent app fence",
+      "an inconsistent ordinary app key cannot revoke another organization's credential",
+    ],
+  },
+  {
+    name: "lifecycle",
+    file: "packages/cloud/shared/src/lib/services/__tests__/app-deletion-lifecycle.pglite.test.ts",
+    names: [
+      "the actual DELETE route returns 202 until the original root has a confirmed completion receipt",
+      "foreign and invalid DELETE requests cannot create a root or revoke the app",
+      "public job status and failure receipts never expose the retained database URI",
+      "a retry with different deletion options conflicts without another root",
+      "original database child confirmation releases capacity once and gates the final cascade",
+      "a provider DROP with a lost response is recoverable without double releasing capacity",
+      "a changed cluster or expired child lease cannot dispatch an original database DROP",
+      "receipt write failure rolls back both placement release and capacity decrement",
+      "container teardown confirms the captured Docker identity and node before the app can disappear",
+      "a backend for a different node cannot falsely confirm container removal",
+      "unconfirmed legacy containers and direct app deletion remain fenced",
+      "a GitHub dispatch with an unknown outcome is never repeated or treated as successful",
+      "original job replay after ownership changes remains a read without another policy mutation",
+      "a legacy deleted container status is not accepted without original provider identity",
+    ],
+  },
+  {
+    name: "postgres",
+    file: "packages/cloud/shared/src/lib/services/__tests__/app-deletion-authority.postgres.integration.test.ts",
+    names: [
+      "a queued cross-organization mobile issuance is included by the stable key-set recheck",
+      "revocation waiting on a deletion shares policy order and exact replay opens no new permits",
+      "post-lock lease expiry uses naive UTC authority in UTC",
+      "post-lock lease expiry uses naive UTC authority in America/New_York",
+      "post-lock lease expiry uses naive UTC authority in Asia/Kathmandu",
+    ],
+  },
+  {
+    name: "ui",
+    file: "packages/ui/src/cloud/applications/lib/__e2e__/app-deletion-client.test.ts",
+    names: [
+      "the app helper waits for the original job receipt before reporting success",
+      "an acknowledged complete replay needs no additional request",
+      "a completed job with a different app receipt is rejected",
+      "legacy success false is not cast into a successful app deletion",
+      "cancelling the wait never sends a job cancellation or another DELETE",
+      "poll timeout stops only the client wait",
+      "a failed job never reports app deletion success",
+      "a cancelled job never reports app deletion success",
+    ],
+  },
+];
+for (const suite of suites) {
+  const report = path.join(directory, `${suite.name}.xml`);
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(root, "packages/scripts/run-with-deadline.ts"),
+      "180000",
+      "--",
+      "bun",
+      ...(suite.name === "ui"
+        ? [
+            "x",
+            "vitest",
+            "run",
+            "--config",
+            "./vitest.config.ts",
+            path.relative(
+              path.join(root, "packages/ui"),
+              path.join(root, suite.file),
+            ),
+            "--reporter=junit",
+            `--outputFile=${report}`,
+          ]
+        : [
+            "test",
+            "--conditions=eliza-source",
+            suite.file,
+            "--timeout=120000",
+            "--reporter=junit",
+            `--reporter-outfile=${report}`,
+          ]),
+    ],
+    {
+      cwd: suite.name === "ui" ? path.join(root, "packages/ui") : root,
+      env: {
+        ...process.env,
+        APP_DELETION_TEST_POSTGRES_URL: postgres,
+      },
+      encoding: "utf8",
+      timeout: 200000,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+  await writeFile(
+    path.join(directory, `${suite.name}.log`),
+    `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  );
+  if (result.error) throw result.error;
+  assert.equal(
+    result.status,
+    0,
+    `App teardown ${suite.name} conformance failed: ${directory}`,
+  );
+  assert.equal(result.signal, null);
+  const xml = await readFile(report, "utf8");
+  const summary = parseJunitSummary(xml);
+  assert.equal(summary.tests, suite.names.length);
+  assert.equal(summary.executedTests, suite.names.length);
+  assert.equal(summary.failures + summary.errors + summary.skipped, 0);
+  const names = [];
+  const parser = new SaxesParser({ xmlns: false });
+  parser.on("opentag", (tag) => {
+    if (tag.name === "testcase") names.push(tag.attributes.name);
+  });
+  parser.write(xml).close();
+  assert.deepEqual(names.sort(), suite.names.sort());
+  await writeFile(
+    path.join(directory, `${suite.name}-results.json`),
+    `${JSON.stringify({ status: "passed", names, summary }, null, 2)}\n`,
+  );
+}
+console.log(
+  `App teardown conformance passed strict admission, lifecycle, PostgreSQL and UI cases. Evidence ${directory}`,
+);

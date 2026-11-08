@@ -8,6 +8,7 @@
  */
 
 import { and, desc, eq, inArray, max, ne } from "drizzle-orm";
+import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AppFrontendDeployment,
@@ -47,6 +48,13 @@ export class AppFrontendDeploymentsRepository {
     for (let attempt = 1; ; attempt++) {
       try {
         return await dbWrite.transaction(async (tx) => {
+          const [app] = await tx
+            .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
+            .from(apps)
+            .where(eq(apps.id, input.appId))
+            .for("update");
+          if (!app) throw new DeploymentNotPromotable();
+          if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
           const [maxRow] = await tx
             .select({ maxVersion: max(appFrontendDeployments.version) })
             .from(appFrontendDeployments)
@@ -175,11 +183,12 @@ export class AppFrontendDeploymentsRepository {
       // A mutable active-first ordering alone is insufficient when another
       // activation changes the active row while a deletion snapshot waits.
       const [app] = await tx
-        .select({ id: apps.id })
+        .select({ id: apps.id, deletionJobId: apps.deletion_job_id })
         .from(apps)
         .where(eq(apps.id, appId))
         .for("update");
       if (!app) throw new DeploymentNotPromotable();
+      if (app.deletionJobId) throw new AppDeletionInProgressError(app.id, app.deletionJobId);
       await tx
         .update(appFrontendDeployments)
         .set({ status: "superseded", updated_at: new Date() })

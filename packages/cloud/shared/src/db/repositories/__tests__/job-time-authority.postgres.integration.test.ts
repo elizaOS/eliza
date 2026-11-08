@@ -98,7 +98,7 @@ async function withScope<T>(
 
 async function sampleDatabaseTime(control: Client): Promise<string> {
   const result = await control.query<{ observed_at: string }>(
-    "SELECT clock_timestamp()::timestamp::text AS observed_at",
+    "SELECT (clock_timestamp() AT TIME ZONE 'UTC')::text AS observed_at",
   );
   return result.rows[0].observed_at;
 }
@@ -106,7 +106,7 @@ async function sampleDatabaseTime(control: Client): Promise<string> {
 async function expectRetryWindow(control: Client, id: string, before: string) {
   const result = await control.query<{ within_window: boolean }>(
     `SELECT scheduled_for BETWEEN $2::timestamp + interval '30 seconds'
-      AND clock_timestamp()::timestamp + interval '30 seconds' AS within_window
+      AND (clock_timestamp() AT TIME ZONE 'UTC') + interval '30 seconds' AS within_window
       FROM jobs WHERE id=$1`,
     [id, before],
   );
