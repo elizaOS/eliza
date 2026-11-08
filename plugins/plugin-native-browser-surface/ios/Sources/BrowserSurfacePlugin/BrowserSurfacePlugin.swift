@@ -1,13 +1,15 @@
 /**
  * Native iOS half of `ElizaSurfaceManager` (#15245): layers one `WKWebView` per
- * Browser tab above the Capacitor host webview, each with its own WKProcessPool
- * and storage partition. A computed outer clip follows the rounded React host
- * while independent rounded occlusion holes expose host-rendered chrome without
- * resizing or hiding the live page.
+ * Browser tab above the Capacitor host webview. A computed outer clip follows
+ * the rounded React host while independent rounded occlusion holes expose
+ * host-rendered chrome without resizing or hiding the live page.
  *
- * An `isolated` process gets a fresh `WKProcessPool`; isolated storage gets a
- * non-persistent `WKWebsiteDataStore`. `shared` reuses a plugin-owned pool and
- * the default store, never an implicit policy.
+ * Isolated storage gets a non-persistent `WKWebsiteDataStore`; that is the
+ * isolation iOS guarantees. An `isolated` process asks for a fresh
+ * `WKProcessPool`, which WebKit treats as best effort since iOS 15 (pages may
+ * still share content processes): the reported `process` is the policy asked
+ * for, not a process boundary. `shared` reuses a plugin-owned pool and the
+ * default store, never an implicit policy.
  */
 import Foundation
 import Capacitor
@@ -15,7 +17,7 @@ import WebKit
 import UIKit
 
 @objc(ElizaSurfaceManagerPlugin)
-public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
+public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKUIDelegate {
     public let identifier = "ElizaSurfaceManagerPlugin"
     public let jsName = "ElizaSurfaceManager"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -51,6 +53,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         let epoch: Int
         var pageRevision = 0
         var pageError: String? = nil
+        var observations: [NSKeyValueObservation] = []
     }
 
     private var surfaces: [String: Surface] = [:]
@@ -137,6 +140,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     }
 
     private func dispose(_ surface: Surface) {
+        surface.observations.forEach { $0.invalidate() }
         surface.container.isHidden = true
         surface.webView.stopLoading()
         surface.webView.navigationDelegate = nil
@@ -191,7 +195,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             }
 
             let config = WKWebViewConfiguration()
-            // Fresh pool ⇒ a dedicated process-pool boundary; shared ⇒ the plugin pool.
+            // A fresh pool is a best-effort request on iOS 15+, not a process boundary.
             config.processPool = process == "isolated" ? WKProcessPool() : self.sharedProcessPool
             // Non-persistent store ⇒ private, per-surface cookies/localStorage.
             config.websiteDataStore = storage == "isolated"
@@ -205,10 +209,24 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             container.installContentView(webView)
             hostView.addSubview(container)
             webView.navigationDelegate = self
+            webView.uiDelegate = self
 
             if let urlString = urlString, let url = URL(string: urlString) {
                 webView.load(URLRequest(url: url))
             }
+            // Same-document moves (pushState, fragments) and history changes reach
+            // the host as they do on Android; didFinish alone misses them.
+            let observations = [
+                webView.observe(\.url, options: [.new]) { [weak self] view, _ in
+                    self?.pageStateChanged(view, addressChanged: true)
+                },
+                webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in
+                    self?.pageStateChanged(view, addressChanged: false)
+                },
+                webView.observe(\.canGoForward, options: [.new]) { [weak self] view, _ in
+                    self?.pageStateChanged(view, addressChanged: false)
+                },
+            ]
             self.surfaces[id] = Surface(
                 container: container,
                 webView: webView,
@@ -216,7 +234,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                 storage: storage,
                 owner: identity.owner,
                 session: identity.session,
-                epoch: identity.epoch
+                epoch: identity.epoch,
+                observations: observations
             )
             call.resolve()
         }
@@ -472,17 +491,99 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard let id = surfaces.first(where: { $0.value.webView === webView })?.key else { return }
         surfaces[id]?.pageError = error.localizedDescription
+        notifyNavigationChanged(webView)
     }
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         guard let id = surfaces.first(where: { $0.value.webView === webView })?.key else { return }
         surfaces[id]?.pageError = error.localizedDescription
+        notifyNavigationChanged(webView)
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        notifyNavigationChanged(webView)
+    }
+
+    // The page's content process crashed or iOS reclaimed it. The surface closes and
+    // its id is free, as on Android; it is not reloaded, so a page that keeps crashing
+    // cannot loop. WebKit does not say which of the two happened.
+    public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard let (id, surface) = surfaces.first(where: { $0.value.webView === webView }) else { return }
+        let url = webView.url
+        let live = isLive(surface)
+        dispose(surface)
+        surfaces.removeValue(forKey: id)
+        guard live else { return }
+        notifyListeners("surfaceCrashed", data: [
+            "id": id, "owner": surface.owner, "session": surface.session, "epoch": surface.epoch,
+            "didCrash": false, "url": url?.absoluteString ?? NSNull(),
+        ])
+    }
+
+    // A new window never opens. iOS surfaces do not hold navigations for the host, so a
+    // window the page opens loads its web address in place, as on Android without
+    // interception. WebKit asks here only for a tap or a gesture-started window.open.
+    public func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard navigationAction.targetFrame == nil,
+              let surface = surfaces.first(where: { $0.value.webView === webView })?.value,
+              isLive(surface),
+              let url = navigationAction.request.url,
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              url.user == nil, url.password == nil else { return nil }
+        webView.load(URLRequest(url: url))
+        return nil
+    }
+
+    // Nobody answers a page's dialog on iOS, so each is dismissed at once: nothing is
+    // accepted for the person, as on Android for a surface that does not intercept.
+    public func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        completionHandler()
+    }
+
+    public func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(false)
+    }
+
+    public func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+
+    private func isLive(_ surface: Surface) -> Bool {
+        guard let active = activeOwners[surface.owner] else { return false }
+        return active.session == surface.session && active.epoch == surface.epoch
+    }
+
+    private func pageStateChanged(_ webView: WKWebView, addressChanged: Bool) {
+        guard let id = surfaces.first(where: { $0.value.webView === webView })?.key else { return }
+        // A page read taken before the address moved must not be applied after it.
+        if addressChanged { surfaces[id]?.pageRevision += 1 }
+        notifyNavigationChanged(webView)
+    }
+
+    private func notifyNavigationChanged(_ webView: WKWebView) {
         guard let (id, surface) = surfaces.first(where: { $0.value.webView === webView }),
-              let active = activeOwners[surface.owner],
-              active.session == surface.session, active.epoch == surface.epoch else { return }
+              isLive(surface) else { return }
         notifyListeners("navigationChanged", data: [
             "id": id, "owner": surface.owner, "session": surface.session, "epoch": surface.epoch,
         ])
@@ -589,6 +690,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
                 "owner": surface.owner,
                 "session": surface.session,
                 "epoch": surface.epoch,
+                "canGoBack": surface.webView.canGoBack,
+                "canGoForward": surface.webView.canGoForward,
             ])
         }
     }
@@ -656,6 +759,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             "owner": surface.owner,
             "session": surface.session,
             "epoch": surface.epoch,
+            "canGoBack": surface.webView.canGoBack,
+            "canGoForward": surface.webView.canGoForward,
         ]
     }
 }

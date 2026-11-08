@@ -5,9 +5,9 @@
  * this package directly — `@elizaos/ui`'s
  * `capacitor-native-surface-shell.ts` models the same method set structurally
  * and calls it through the Capacitor `Plugins` registry — but the shapes here
- * are the source of truth for both native implementations (iOS `WKWebView` on a
- * dedicated `WKProcessPool` + `WKWebsiteDataStore`; Android platform-managed
- * out-of-app `WebView` renderer + androidx.webkit `Profile`).
+ * are the source of truth for both native implementations (iOS `WKWebView` with
+ * its own `WKWebsiteDataStore`; Android platform-managed out-of-app `WebView`
+ * renderer + androidx.webkit `Profile`).
  *
  * The load-bearing invariant every method upholds: an independent surface always
  * carries an EXPLICIT process + storage policy. `createSurface` rejects when
@@ -19,10 +19,13 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 
 /**
- * Native renderer policy. `isolated` means a dedicated pool on iOS and a
- * verified out-of-app sandboxed renderer on Android, which the OS may reuse
- * across sibling WebViews. `shared` selects the plugin pool on iOS and leaves
- * Android renderer placement to the platform.
+ * Native renderer policy. `isolated` means a verified out-of-app sandboxed
+ * renderer on Android, which the OS may reuse across sibling WebViews. On iOS it
+ * asks for a fresh `WKProcessPool`, which WebKit honours only as best effort
+ * since iOS 15, so it is no process boundary there: the iOS guarantee is
+ * storage isolation through a non-persistent `WKWebsiteDataStore`. `shared`
+ * selects the plugin pool on iOS and leaves Android renderer placement to the
+ * platform.
  */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
@@ -87,7 +90,8 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
    * loaded goes on without asking again only within the approved origin or its upgrade. A tapped new window is
    * reported with `newWindow: true`. Subframes are not intercepted. Default false: the
    * page navigates by itself, and a tapped new window opens in place. `setTaskOrigins`
-   * lets the page move between the origins of a task the host extended.
+   * lets the page move between the origins of a task the host extended. iOS does not
+   * intercept: a tapped new window's web address opens in place.
    */
   interceptNavigation?: boolean;
   /**
@@ -119,7 +123,7 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
  * The page is paused until `answerDialog`. Only surfaces created with
  * `interceptNavigation: true` hold dialogs; any other surface dismisses them at once.
  * Nothing is ever accepted for the person: a dialog of a hidden, closed or navigating
- * surface is dismissed (cancelled).
+ * surface is dismissed (cancelled). iOS dismisses every dialog and sends no event.
  */
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
@@ -166,8 +170,9 @@ export interface IdentityProviderRequestedEvent extends SurfaceIdOptions {
 }
 
 /**
- * The page's renderer crashed or Android reclaimed it. The surface is already closed and
- * its id is free; the host app keeps running. Recreate it to show `url` again.
+ * The page's renderer crashed or the OS reclaimed it. The surface is already closed and
+ * its id is free; the host app keeps running. Recreate it to show `url` again. iOS cannot
+ * tell the two apart and always reports `didCrash: false`.
  */
 export interface SurfaceCrashedEvent extends SurfaceIdOptions {
   didCrash: boolean;
@@ -280,6 +285,7 @@ export interface SurfaceState {
   exists: boolean;
   foregrounded: boolean;
   currentUrl: string | null;
+  /** The policy the surface was created with; on iOS not a process boundary. */
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
   owner: string | null;
