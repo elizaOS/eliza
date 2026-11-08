@@ -184,7 +184,18 @@ export const PostWorkbenchVfsGitRequestSchema = z
       "pull",
       "push",
     ]),
-    url: z.string().url().optional(),
+    url: z
+      .string()
+      .url()
+      .refine(
+        (value) => {
+          if (!URL.canParse(value.trim())) return true;
+          const url = new URL(value.trim());
+          return !url.username && !url.password;
+        },
+        { message: "Put Git credentials in auth, not in the URL" },
+      )
+      .optional(),
     remote: z.string().regex(/\S/).optional(),
     branch: z.string().regex(/\S/).optional(),
     ref: z.string().regex(/\S/).optional(),

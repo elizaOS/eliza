@@ -528,7 +528,13 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
             err.code === "INVALID_GIT_PATH" ||
             err.code === "MISSING_ARGUMENT"
           ? 400
-          : 500;
+          : err.code === "PROJECT_NOT_EMPTY"
+            ? 409
+            : err.code === "QUOTA_EXCEEDED"
+              ? 413
+              : err.code === "GIT_TIMEOUT"
+                ? 504
+                : 500;
     ctx.error(ctx.res, err.message, status);
     return;
   }

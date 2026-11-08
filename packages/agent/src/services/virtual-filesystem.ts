@@ -26,6 +26,7 @@ import {
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_SNAPSHOTS = 20;
 const projectOperations = new Map<string, Promise<void>>();
 
 export type VirtualFilesystemDiffStatus = "added" | "modified" | "deleted";
@@ -35,6 +36,8 @@ export interface VirtualFilesystemOptions {
   projectId: string;
   quotaBytes?: number;
   maxFileBytes?: number;
+  /** Snapshots kept per project; the oldest are removed on create. */
+  maxSnapshots?: number;
   now?: () => Date;
 }
 
@@ -80,7 +83,7 @@ export interface VirtualFilesystemExportFile extends VirtualFilesystemEntry {
   bytes: Buffer;
 }
 
-interface TreeStats {
+export interface TreeStats {
   bytes: number;
   fileCount: number;
 }
@@ -126,6 +129,7 @@ export class VirtualFilesystemService {
   readonly snapshotsRoot: string;
   readonly quotaBytes: number;
   readonly maxFileBytes: number;
+  readonly maxSnapshots: number;
   private readonly now: () => Date;
 
   constructor(options: VirtualFilesystemOptions) {
@@ -142,6 +146,10 @@ export class VirtualFilesystemService {
     this.snapshotsRoot = path.join(this.projectRoot, "snapshots");
     this.quotaBytes = options.quotaBytes ?? DEFAULT_QUOTA_BYTES;
     this.maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+    this.maxSnapshots = Math.max(
+      1,
+      options.maxSnapshots ?? DEFAULT_MAX_SNAPSHOTS,
+    );
     this.now = options.now ?? (() => new Date());
   }
 
@@ -310,8 +318,46 @@ export class VirtualFilesystemService {
     return this.withStorageOperation(() => this.createSnapshotUnlocked(note));
   }
 
+  /**
+   * Measure the live files. Call only inside withProjectOperation.
+   */
+  async measureFilesUnlocked(): Promise<TreeStats> {
+    return this.measureFiles();
+  }
+
+  /**
+   * Replace the live files with a prepared tree on the same disk. Call only
+   * inside withProjectOperation. The tree must hold no symlinks and fit the
+   * per-file cap and project quota; a rejected tree is left for the caller to
+   * remove.
+   */
+  async replaceFilesUnlocked(tree: string): Promise<TreeStats> {
+    const stats = await this.measureTree(tree, true);
+    if (stats.bytes > this.quotaBytes) {
+      throw new VirtualFilesystemError(
+        `Project quota exceeded: ${stats.bytes}/${this.quotaBytes} bytes`,
+        "QUOTA_EXCEEDED",
+      );
+    }
+    const previous = path.join(
+      this.projectRoot,
+      `.replaced-${crypto.randomUUID()}`,
+    );
+    await fsp.rename(this.filesRoot, previous);
+    try {
+      await fsp.rename(tree, this.filesRoot);
+    } catch (cause) {
+      // error-policy:J2 Put the previous tree back before reporting the failure.
+      await fsp.rename(previous, this.filesRoot);
+      throw cause;
+    }
+    await this.cleanupStaging(previous);
+    return stats;
+  }
+
   private async createSnapshotUnlocked(
     note?: string,
+    keep: readonly string[] = [],
   ): Promise<VirtualFilesystemSnapshot> {
     const id = snapshotId(this.now());
     const snapshotDir = path.join(this.snapshotsRoot, id);
@@ -334,9 +380,37 @@ export class VirtualFilesystemService {
       };
       await writeJsonAtomic(path.join(stage, "snapshot.json"), snapshot);
       await fsp.rename(stage, snapshotDir);
+      await this.pruneSnapshots([id, ...keep]);
       return snapshot;
     } finally {
       await this.cleanupStaging(stage);
+    }
+  }
+
+  /**
+   * Keep the newest maxSnapshots snapshots plus the ids in `keep`. Unreadable
+   * snapshot directories are left alone.
+   */
+  private async pruneSnapshots(keep: readonly string[]): Promise<void> {
+    const snapshots: VirtualFilesystemSnapshot[] = [];
+    for (const entry of await fsp.readdir(this.snapshotsRoot, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory()) continue;
+      try {
+        snapshots.push(await this.readSnapshot(entry.name));
+      } catch (error) {
+        // error-policy:J6 Retention never deletes what it cannot identify.
+        if (!(error instanceof VirtualFilesystemError)) throw error;
+      }
+    }
+    const newestFirst = snapshots.sort(compareSnapshotsNewestFirst);
+    for (const snapshot of newestFirst.slice(this.maxSnapshots)) {
+      if (keep.includes(snapshot.id)) continue;
+      await fsp.rm(path.join(this.snapshotsRoot, snapshot.id), {
+        recursive: true,
+        force: true,
+      });
     }
   }
 
@@ -355,12 +429,7 @@ export class VirtualFilesystemService {
         const snapshot = await this.readSnapshot(entry.name);
         snapshots.push(snapshot);
       }
-      return snapshots.sort((a, b) => {
-        const aTime = Date.parse(a.createdAt);
-        const bTime = Date.parse(b.createdAt);
-        if (bTime !== aTime) return bTime - aTime;
-        return a.id.localeCompare(b.id);
-      });
+      return snapshots.sort(compareSnapshotsNewestFirst);
     });
   }
 
@@ -402,6 +471,7 @@ export class VirtualFilesystemService {
         await this.validateSnapshotTree(snapshot, stage);
         const previous = await this.createSnapshotUnlocked(
           `pre-rollback:${snapshotId}`,
+          [snapshot.id],
         );
         const rollback: VirtualFilesystemRollback = {
           snapshotId,
@@ -591,11 +661,15 @@ export class VirtualFilesystemService {
           }
           if (!dirent.isFile()) continue;
           const stat = await fsp.lstat(realPath);
-          const bytes = await fsp.readFile(realPath);
+          const virtualPath = toVirtualPath(realPath, root);
+          let bytes = await fsp.readFile(realPath);
+          if (virtualPath === "/.git/config") {
+            bytes = Buffer.from(stripUrlCredentials(bytes.toString("utf8")));
+          }
           files.push({
-            path: toVirtualPath(realPath, root),
+            path: virtualPath,
             type: "file",
-            size: stat.size,
+            size: bytes.byteLength,
             mtimeMs: stat.mtimeMs,
             bytes,
           });
@@ -742,7 +816,7 @@ export class VirtualFilesystemService {
     if (stat.isFile()) {
       if (enforceFileLimit && stat.size > this.maxFileBytes) {
         throw new VirtualFilesystemError(
-          "Snapshot file exceeds the current file size limit",
+          `File exceeds max file size of ${this.maxFileBytes} bytes`,
           "QUOTA_EXCEEDED",
         );
       }
@@ -943,6 +1017,21 @@ async function lstatOrNull(realPath: string) {
     if (isNodeErrno(error, "ENOENT")) return null;
     throw error;
   }
+}
+
+function compareSnapshotsNewestFirst(
+  a: VirtualFilesystemSnapshot,
+  b: VirtualFilesystemSnapshot,
+): number {
+  const aTime = Date.parse(a.createdAt);
+  const bTime = Date.parse(b.createdAt);
+  if (bTime !== aTime) return bTime - aTime;
+  return a.id.localeCompare(b.id);
+}
+
+/** Drop `user:password@` from every URL in a Git config file. */
+function stripUrlCredentials(config: string): string {
+  return config.replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1");
 }
 
 function snapshotId(now: Date): string {
