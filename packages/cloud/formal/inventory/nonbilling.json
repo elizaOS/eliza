@@ -843,7 +843,7 @@
       "unmodeled": true,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite cache/rate-policy model yet.",
+        "SWR refresh lifetime is covered separately; cache invalidation and rate-policy admission still have no finite model.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
@@ -1240,6 +1240,69 @@
       "remainingWork": [
         "Model the OpenAI persistent per-encoding cache separately.",
         "Prove BPE algorithm equivalence and garbage collection bounds separately from cache lifecycle safety."
+      ]
+    },
+    {
+      "id": "cache-swr-refresh-lifetime",
+      "sources": [
+        "packages/cloud/shared/src/lib/cache/client.ts",
+        "packages/cloud/shared/src/lib/cache/client-swr.test.ts",
+        "packages/cloud/formal/conformance/cache-swr.ts"
+      ],
+      "states": [
+        "cached",
+        "refresh-loading",
+        "delivery-timed-out",
+        "publishing",
+        "retired"
+      ],
+      "invariants": [
+        "A delivery timeout cannot permit a second background loader while the original remains active.",
+        "Successful and failed delivery races clear their timers.",
+        "A result arriving after delivery timeout cannot publish cache data.",
+        "Loader and publication settlement both precede release of the original key owner."
+      ],
+      "assumptions": [
+        "Finite model of one stale key and three sequential refreshes. Cold-only loads remain non-coalesced.",
+        "Loaders do not recursively await a cold read of the same owned key; the current DB/provider loaders do not reenter SWR.",
+        "A permanently hung loader consumes its existing queue slot indefinitely; no liveness, cross-process coordination or whole-cache proof is claimed.",
+        "Actual HTTP regressions use the production memory adapter in CI; optional local Redis mode also delays publication."
+      ],
+      "models": ["cache_swr_lifecycle.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model cold-only stampedes, invalidation ordering, backend failures and cross-process refresh ownership.",
+        "Cancellation requires loader-specific support; no eventual completion or scheduler fairness has been established."
+      ]
+    },
+    {
+      "id": "in-memory-lru-lifetime",
+      "sources": [
+        "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.ts",
+        "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.test.ts",
+        "packages/cloud/shared/src/lib/services/shared-runtime/resolve-shared-agent.ts",
+        "packages/cloud/shared/src/lib/services/entity-settings/cache.ts"
+      ],
+      "states": ["absent", "live", "refreshed", "evicted", "cleared"],
+      "invariants": [
+        "Replacing a live key does not evict unrelated live keys.",
+        "A read or replacement promotes the key to most recent.",
+        "New-key insertion retains the existing capacity and eviction policy."
+      ],
+      "assumptions": [
+        "Five keys and capacity four; all entries remain live for the trace.",
+        "The shared-agent resolver refreshes validated hits at production capacity 1,000; real cache regressions exercise that capacity.",
+        "No expiry, payload ownership, tenant-authorization or whole-route performance claim is established."
+      ],
+      "models": ["in_memory_lru.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model expiry and wall-clock changes, payload aliasing and prefix deletion.",
+        "Measure served-route latency separately from the demonstrated unnecessary cache misses."
       ]
     }
   ]
