@@ -1,0 +1,20 @@
+[
+  {
+    "id": "FrontendActivationSwap",
+    "model": "packages/cloud/quint/FrontendActivationSwap.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+      "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
+      "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.activate-race.pglite.test.ts"
+    ],
+    "invariants": ["ExactlyOneLive", "CommittedEffectMatchesReceipt"],
+    "status": "partial",
+    "limitations": [
+      "One app, one active deployment and one superseded target. One rollback races one delete across their initial reads and guarded SQL writes.",
+      "Two maintained PGlite tests exercise both orderings through the real repository, hosting service and delete route. Their auth fixture and pre-write pauses are controlled. Separate transactions, migrations and remote artifacts are outside this test.",
+      "Progress requires each admitted handler to resume and receive a database outcome. Upload, finalize, competing activations, artifact cleanup and restart remain open."
+    ]
+  }
+]
