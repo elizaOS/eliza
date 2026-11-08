@@ -50,6 +50,7 @@ import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
   hasDirectCloudAccountTransport,
+  readPendingCloudLogin,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -1798,7 +1799,10 @@ export function useCloudState({
   useEffect(() => {
     if (nativeCloudSession) return;
     const sessionId = readCloudLoginReturnSessionId();
-    if (!sessionId) {
+    // A link can name any session id, including one an attacker signed in to
+    // their own account. Claim only a login this browser started (and so
+    // chose to replace its account with); strip anything else untouched.
+    if (!sessionId || !readPendingCloudLogin(sessionId)) {
       clearCloudLoginReturnParams();
       return;
     }
