@@ -1765,5 +1765,29 @@
       "Required flow invariants: Replacing a live key does not evict unrelated live keys. | A read or replacement promotes the key to most recent. | New-key insertion retains the existing capacity and eviction policy.",
       "Abstract states: absent, live, refreshed, evicted, cleared"
     ]
+  },
+  {
+    "id": "cloud-protocol-frontend-publication",
+    "model": "packages/cloud/quint/frontend_publication.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.pglite.test.ts",
+      "packages/cloud/quint/check-frontend-publication.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/scripts/run-with-deadline.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
+      "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. The model assumes immutable deployment IDs and complete acknowledged object writes.",
+      "No general TypeScript refinement, live R2 proof, account deletion or authorization proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid.",
+      "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised.",
+      "Ten real PGlite service/repository cases plus five real PostgreSQL cases. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
+    ]
   }
 ]
