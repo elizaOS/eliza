@@ -1110,6 +1110,71 @@ test("concurrent account checks share one parallel Cloud read until an account c
   assert.equal(revoked, 1);
 });
 
+for (const responseStage of ["headers", "body"]) {
+  test(`a stalled shared account ${responseStage} times out without revoking the key and a later check recovers`, async (t) => {
+    const deadline = new AbortController();
+    const realTimeout = AbortSignal.timeout;
+    let deadlines = 0;
+    t.mock.method(AbortSignal, "timeout", (milliseconds) => {
+      assert.equal(milliseconds, 20_000);
+      return ++deadlines === 1 ? deadline.signal : realTimeout(milliseconds);
+    });
+    let identityRequests = 0;
+    let held;
+    const bodyStarted = Promise.withResolvers();
+    const provider = http.createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      if (req.url === "/api/v1/user" && ++identityRequests === 1) {
+        held = res;
+        if (responseStage === "body") res.write("{");
+        bodyStarted.resolve();
+        return;
+      }
+      res.end("{}");
+    });
+    provider.listen(0, "127.0.0.1");
+    await once(provider, "listening");
+    t.after(async () => {
+      held?.end("}");
+      provider.closeAllConnections();
+      await new Promise((resolve) => provider.close(resolve));
+    });
+    let revoked = 0;
+    const routes = createCloudRoutes({
+      hostPolicy: policy,
+      initialApiKey: "private-test-credential",
+      speechVoice: { voiceId: "voice", modelId: "model" },
+      credentialRevocation: {
+        onRevoked: async () => {
+          revoked++;
+        },
+        status: async () => ({ revoked: false, localDataPending: false }),
+      },
+      fetchImpl: (url, init) =>
+        fetch(
+          `http://127.0.0.1:${provider.address().port}${new URL(url).pathname}`,
+          init,
+        ),
+    });
+    const first = routes.accountAccess();
+    const joined = routes.accountAccess();
+    await bodyStarted.promise;
+    deadline.abort(new DOMException("Account access deadline", "TimeoutError"));
+    const outcomes = await Promise.race([
+      Promise.all([first, joined]),
+      new Promise((resolve) => setTimeout(() => resolve(null), 1_000)),
+    ]);
+    assert.deepEqual(outcomes, [
+      { state: "unavailable" },
+      { state: "unavailable" },
+    ]);
+    assert.equal(revoked, 0);
+    assert.deepEqual(await routes.accountAccess(), { state: "active" });
+    assert.equal(identityRequests, 2);
+    assert.equal(deadlines, 2);
+  });
+}
+
 test("a check after a sign-in's credential write never joins an older read", async (t) => {
   const session = "12345678-1234-1234-1234-123456789012";
   const requests = [];

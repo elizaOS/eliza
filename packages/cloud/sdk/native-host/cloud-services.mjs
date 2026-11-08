@@ -22,6 +22,7 @@ const speechLanguageCode = (value) =>
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+const ACCOUNT_REQUEST_TIMEOUT_MS = 20_000;
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
 function invoiceProjection(value, id) {
   if (
@@ -932,8 +933,11 @@ export function createCloudRoutes({
     try {
       // Both reads start together. The identity answer is awaited first, so
       // its refusal still decides, as when the reads ran one after the other.
+      // One deadline covers headers and body parsing for both requests. A
+      // stalled response must not keep every later caller on this shared read.
+      const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
       const read = (path) =>
-        request(path, { key, authorityGeneration: epoch }).then(parse);
+        request(path, { key, authorityGeneration: epoch, signal }).then(parse);
       const userRead = read("/api/v1/user"),
         snapshotRead = read("/api/v1/billing/limits");
       snapshotRead.catch(() => {});
@@ -1013,7 +1017,7 @@ export function createCloudRoutes({
       .slice(0, 40)}`;
     let response;
     for (let attempt = 0; !response; attempt++) {
-      const timeout = AbortSignal.timeout(20000);
+      const timeout = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
       try {
         response = await request("/api/v1/subscription/redeem", {
           key,

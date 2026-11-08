@@ -41,6 +41,9 @@ module native_access_coalescing {
       cache: if (s.cache == r) -1 else s.cache,
       last: "settle", previousCache: s.cache, lastSettledRead: r }
   }
+  // The transport deadline aborts headers/body and settles the matching shared read.
+  // Timer scheduling and elapsed milliseconds remain environment assumptions.
+  action deadline(r: int): bool = settle(r)
   action deliver(c: int): bool = all {
     s.phase.get(c) == "waiting", s.settled.contains(s.callRead.get(c)),
     { val current = s.readGeneration.get(s.callRead.get(c)) == s.generation
@@ -62,7 +65,7 @@ module native_access_coalescing {
   }
   action step = any {
     { nondet c = Calls.oneOf(); any { begin(c), deliver(c) } },
-    { nondet r = Reads.oneOf(); settle(r) }, changeRevision, changeAccount, s' = s
+    { nondet r = Reads.oneOf(); any { settle(r), deadline(r) } }, changeRevision, changeAccount, s' = s
   }
   val safety = all {
     s.joinsCurrentRevision,
@@ -81,6 +84,8 @@ module native_access_coalescing {
     .expect(s.allocated == 2 and s.cache == 1 and s.callRead.get(2) == 1 and safety)
   run accountChangeRejectsPendingReadTest = init.then(begin(0)).then(changeAccount)
     .then(settle(0)).then(deliver(0)).expect(s.phase.get(0) == "rejected" and safety)
+  run stalledReadDeadlineAllowsRetryTest = init.then(begin(0)).then(begin(1))
+    .then(deadline(0)).then(begin(2)).expect(s.allocated == 2 and s.cache == 1 and safety)
   run settledReadIsNotCachedTest = init.then(begin(0)).then(settle(0)).then(begin(1))
     .expect(s.allocated == 2 and safety)
   run staleRevisionJoinDetectedTest = init.then(begin(0)).then(changeRevision)

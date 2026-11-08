@@ -346,7 +346,8 @@
         "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
         "A revision change prevents joining an older read. Existing callers may still receive an older revision; only generation fences returned data.",
         "The model checks shared-read identity, conditional finalizer cleanup and account-generation rejection. Native gateway and provider response classification are exercised by the conformance hook, not proved by this model.",
-        "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved."
+        "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved.",
+        "A shared 20-second AbortSignal deadline covers fetch and body parsing. Its callback must be scheduled and the transport must honor abort; timeout settles as unavailable, never as authorization success. Timer fairness and wall-clock delivery are not proved."
       ],
       "maxSteps": 25,
       "conformance": "packages/cloud/formal/conformance/native-access.ts"
