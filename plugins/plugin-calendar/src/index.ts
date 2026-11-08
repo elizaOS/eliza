@@ -138,7 +138,9 @@ export * from "./meetings/index.js";
 export * from "./microsoft/index.js";
 export {
   CALENDAR_MUTATION_PORT_SERVICE,
+  calendarApprovalRevision,
   resolveCalendarApproval,
+  resolveReviewedCalendarApproval,
 } from "./mutations/resolve.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
 export * from "./providers/index.js";

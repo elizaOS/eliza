@@ -11,91 +11,61 @@ vi.mock("@elizaos/core", async () => ({
 
 import { calendarReviewAction } from "./calendar-review.js";
 
-const acceptedAt = "2026-10-15T21:05:55.892Z";
-const succeeded = {
-  kind: "succeeded",
-  duplicateSuppressed: false,
-  attempt: { id: "attempt", operationKey: "stable-key" },
-  receipt: {
-    operation: "schedule_event",
-    providerEventId: "event",
-    providerVersion: '"etag"',
-    acceptedAt,
-    eventSnapshot: { title: "QA event" },
-  },
-};
-async function run() {
-  return calendarReviewAction.handler(
+const resolvedAt = "2026-10-15T21:05:55.892Z";
+async function run(decision: string) {
+  const callback = vi.fn();
+  const result = await calendarReviewAction.handler(
     {} as never,
     { id: "owner-message" } as never,
     undefined,
-    { parameters: { requestId: "review", decision: "approve" } },
-    vi.fn(),
+    { parameters: { requestId: "review", decision } },
+    callback,
   );
+  return { result, callback };
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  s.resolve.mockResolvedValue(succeeded);
+  s.resolve.mockResolvedValue({
+    kind: "rejected",
+    request: { id: "review", updatedAt: new Date(resolvedAt) },
+  });
 });
-it("grounds a terminal confirmation in actual provider acceptance", async () => {
-  const result = await run();
+it("never approves from a model tool call", async () => {
+  const { result, callback } = await run("approve");
+  expect(s.resolve).not.toHaveBeenCalled();
+  expect(result).toMatchObject({
+    success: false,
+    turnComplete: true,
+    userFacingText: "Approve this change in the review dialog.",
+  });
+  expect(result).not.toHaveProperty("effectReceipts");
+  expect(callback).toHaveBeenCalledWith({
+    text: "Approve this change in the review dialog.",
+  });
+});
+it("grounds rejection in the persisted approval record", async () => {
+  const { result } = await run("reject");
+  expect(s.resolve).toHaveBeenCalledWith({}, { id: "owner-message" }, {
+    requestId: "review",
+    decision: "reject",
+  });
   expect(result).toMatchObject({
     success: true,
     turnComplete: true,
-    verifiedUserFacing: true,
-    userFacingText: "Completed Calendar schedule event: QA event.",
-    userFacingEffectReceiptIds: ["calendar-review:review:attempt"],
+    userFacingText: "Calendar change declined. Nothing was changed.",
+    userFacingEffectReceiptIds: ["calendar-review:review:owner-message"],
     effectReceipts: [
       {
         outcome: "applied",
-        commit: {
-          kind: "provider_accepted",
-          id: "event",
-          committedAt: acceptedAt,
-        },
-        artifacts: [{ kind: "calendar.event", id: "event", version: '"etag"' }],
+        commit: { kind: "durable", id: "review", committedAt: resolvedAt },
+        artifacts: [],
       },
     ],
   });
   expect(calendarReviewAction.suppressPostActionContinuation).toBe(true);
 });
-it("reuses the ledger receipt on replay instead of claiming a new write", async () => {
-  s.resolve.mockResolvedValue({ ...succeeded, duplicateSuppressed: true });
-  expect(await run()).toMatchObject({
-    success: true,
-    turnComplete: true,
-    userFacingText: "Already completed Calendar schedule event: QA event.",
-    effectReceipts: [
-      { outcome: "noop", idempotency: { key: "stable-key", replayed: true } },
-    ],
-  });
-});
-it("never represents an unresolved provider outcome as applied", async () => {
-  s.resolve.mockResolvedValue({ kind: "reconciliation_required" });
-  expect(await run()).toMatchObject({
-    success: false,
-    turnComplete: true,
-    effectReceipts: [
-      {
-        outcome: "failed",
-        failure: { acceptance: "unknown", retryable: false },
-      },
-    ],
-  });
-});
-it("grounds rejection in the persisted approval record", async () => {
-  s.resolve.mockResolvedValue({
-    kind: "rejected",
-    request: { id: "review", updatedAt: new Date(acceptedAt) },
-  });
-  expect(await run()).toMatchObject({
-    success: true,
-    effectReceipts: [
-      {
-        outcome: "applied",
-        commit: { kind: "durable", id: "review" },
-        artifacts: [],
-      },
-    ],
-  });
+it("refuses a malformed decision before resolving", async () => {
+  const { result } = await run("yes");
+  expect(s.resolve).not.toHaveBeenCalled();
+  expect(result).toMatchObject({ success: false });
 });

@@ -67,6 +67,12 @@
       "import": "./dist/mutations/schema.js",
       "default": "./dist/mutations/schema.js"
     },
+    "./mutations/resolve": {
+      "eliza-source": "./src/mutations/resolve.ts",
+      "types": "./dist/mutations/resolve.d.ts",
+      "import": "./dist/mutations/resolve.js",
+      "default": "./dist/mutations/resolve.js"
+    },
     "./mutations/port": {
       "eliza-source": "./src/mutations/port.ts",
       "types": "./dist/mutations/port.d.ts",

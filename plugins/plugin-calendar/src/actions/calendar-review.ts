@@ -1,4 +1,7 @@
-/** Exact owner choice; never plans a new event or accepts an unbound approval. */
+/**
+ * Owner decline of a saved Calendar review. Approval is never a model tool
+ * call: it runs only from the review dialog, bound to the reviewed revision.
+ */
 import {
   type Action,
   normalizeEffectReceipt,
@@ -12,7 +15,7 @@ export const calendarReviewAction: Action & {
   contexts: ["calendar", "general", "tasks"],
   name: "CALENDAR_REVIEW",
   description:
-    "Approve or reject an existing saved Calendar approval using its exact requestId. Use this action when the owner says approve a Calendar request; CALENDAR create_event creates a new proposal and does not approve one. Requires the owner and the current persisted review message.",
+    "Decline an existing saved Calendar approval using its exact requestId. Approval happens only in the review dialog; when the owner asks to approve, choose decision approve and the reply points them there. CALENDAR create_event creates a new proposal and does not approve one.",
   similes: [
     "APPROVE_CALENDAR_CHANGE",
     "REJECT_CALENDAR_CHANGE",
@@ -57,101 +60,46 @@ export const calendarReviewAction: Action & {
         success: false,
         text: "Use the exact Calendar review and choose Approve or Deny.",
       };
+    if (input.decision === "approve") {
+      const text = "Approve this change in the review dialog.";
+      await callback?.({ text });
+      return {
+        success: false,
+        text,
+        userFacingText: text,
+        turnComplete: true,
+        data: { kind: "review_required", requestId: input.requestId },
+      };
+    }
     const result = await resolveCalendarApproval(runtime, message, {
       requestId: input.requestId,
-      decision: input.decision as "approve" | "reject",
+      decision: "reject",
     });
-    const succeeded = result.kind === "succeeded",
-      declined = result.kind === "rejected";
-    const text = succeeded
-      ? `${result.duplicateSuppressed ? "Already completed" : "Completed"} Calendar ${result.receipt.operation.replaceAll("_", " ")}: ${result.receipt.eventSnapshot?.title ?? "the reviewed event"}.`
-      : declined
-        ? "Calendar change declined. Nothing was changed."
-        : "Calendar change is not confirmed. Review its saved status before trying again.";
-    const base = {
-      receiptId: `calendar-review:${input.requestId}:${succeeded ? result.attempt.id : String(message.id)}`,
+    const text = "Calendar change declined. Nothing was changed.";
+    const effect = normalizeEffectReceipt({
+      receiptId: `calendar-review:${input.requestId}:${String(message.id)}`,
       operation: "calendar.approval.resolve",
       resource: { kind: "calendar.approval", id: input.requestId },
-      artifacts:
-        succeeded && result.receipt.providerEventId
-          ? [
-              {
-                kind: "calendar.event",
-                id: result.receipt.providerEventId,
-                ...(result.receipt.providerVersion
-                  ? { version: result.receipt.providerVersion }
-                  : {}),
-              },
-            ]
-          : [],
-      idempotency: {
-        key: succeeded ? result.attempt.operationKey : input.requestId,
-        replayed: succeeded && result.duplicateSuppressed,
+      artifacts: [],
+      idempotency: { key: input.requestId, replayed: false },
+      observedAt: result.request.updatedAt.toISOString(),
+      outcome: "applied",
+      commit: {
+        kind: "durable",
+        id: result.request.id,
+        committedAt: result.request.updatedAt.toISOString(),
       },
-      observedAt: succeeded
-        ? result.receipt.acceptedAt
-        : declined
-          ? result.request.updatedAt.toISOString()
-          : new Date().toISOString(),
-    };
-    const effect = normalizeEffectReceipt(
-      succeeded
-        ? result.duplicateSuppressed
-          ? {
-              ...base,
-              outcome: "noop",
-              reason:
-                "The saved provider receipt already confirms this request.",
-            }
-          : {
-              ...base,
-              outcome: "applied",
-              commit: {
-                kind: "provider_accepted",
-                id: result.receipt.providerEventId ?? result.attempt.id,
-                committedAt: result.receipt.acceptedAt,
-              },
-            }
-        : declined
-          ? {
-              ...base,
-              outcome: "applied",
-              commit: {
-                kind: "durable",
-                id: result.request.id,
-                committedAt: result.request.updatedAt.toISOString(),
-              },
-            }
-          : {
-              ...base,
-              outcome: "failed",
-              failure: {
-                code: "CALENDAR_REVIEW_UNCONFIRMED",
-                retryable: false,
-                acceptance: "unknown",
-              },
-            },
-    );
+    });
     await callback?.({ text });
     return {
-      success: succeeded || declined,
+      success: true,
       text,
       userFacingText: text,
       verifiedUserFacing: true,
       turnComplete: true,
       effectReceipts: [effect],
       userFacingEffectReceiptIds: [effect.receiptId],
-      data: {
-        kind: result.kind,
-        requestId: input.requestId,
-        ...(succeeded
-          ? {
-              receipt: result.receipt,
-              attemptId: result.attempt.id,
-              duplicateSuppressed: result.duplicateSuppressed,
-            }
-          : {}),
-      },
+      data: { kind: result.kind, requestId: input.requestId },
     };
   },
 };

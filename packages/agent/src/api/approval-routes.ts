@@ -5,6 +5,11 @@
  * on the user. It aggregates legacy owner approval rows, task-based approval
  * records, and pending planner prompts into the shared `PendingUserAction`
  * contract so clients render one list without knowing producer internals.
+ *
+ * `POST /api/approvals/:id/resolve` is the owner's decision from a review
+ * surface. It is compare-and-set on the revision the owner reviewed, so a
+ * changed or settled row is refused instead of approved. Calendar approvals
+ * are the only rows resolved here; chat turns can decline but never approve.
  */
 
 import type http from "node:http";
@@ -41,7 +46,22 @@ interface ApprovalRouteRuntime {
 
 export interface ApprovalRouteState {
   runtime: ApprovalRouteRuntime | null;
+  /** Verified caller; resolving an approval requires OWNER. */
+  callerAuthorization?: { ok: boolean; role: string };
 }
+
+type CalendarResolveModule =
+  typeof import("@elizaos/plugin-calendar/mutations/resolve");
+
+let calendarResolvePromise: Promise<CalendarResolveModule> | null = null;
+function getCalendarResolve(): Promise<CalendarResolveModule> {
+  calendarResolvePromise ??= import(
+    "@elizaos/plugin-calendar/mutations/resolve"
+  );
+  return calendarResolvePromise;
+}
+
+const RESOLVE_PATH = /^\/api\/approvals\/([^/]+)\/resolve$/;
 
 interface PendingUserActionServiceLike {
   listPendingUserActions: () =>
@@ -335,6 +355,12 @@ export async function handleApprovalRoute(
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/approvals")) return false;
 
+  const resolveMatch = RESOLVE_PATH.exec(pathname);
+  if (method === "POST" && resolveMatch) {
+    await resolveApproval(req, res, resolveMatch[1], state, helpers);
+    return true;
+  }
+
   if (method !== "GET" || pathname !== "/api/approvals") {
     helpers.error(res, "approval route not found", 404);
     return true;
@@ -396,4 +422,78 @@ export async function handleApprovalRoute(
     pendingUserActions: pending,
   });
   return true;
+}
+
+async function resolveApproval(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawId: string,
+  state: ApprovalRouteState,
+  helpers: RouteHelpers,
+): Promise<void> {
+  if (
+    !state.callerAuthorization?.ok ||
+    state.callerAuthorization.role !== "OWNER"
+  ) {
+    helpers.error(res, "Owner authorization required", 401);
+    return;
+  }
+  const runtime = state.runtime;
+  if (!runtime?.agentId || typeof runtime.getSetting !== "function") {
+    helpers.error(res, "Agent is not running", 503);
+    return;
+  }
+  let requestId: string;
+  try {
+    requestId = decodeURIComponent(rawId);
+  } catch {
+    helpers.error(res, "Invalid approval id", 400);
+    return;
+  }
+  const body = await helpers.readJsonBody<Record<string, unknown>>(req, res, {
+    maxBytes: 64 * 1024,
+  });
+  if (body === null) return;
+  const { decision, revision } = body;
+  if (
+    (decision !== "approve" && decision !== "reject") ||
+    typeof revision !== "string" ||
+    !revision
+  ) {
+    helpers.error(
+      res,
+      "decision must be approve or reject, with the reviewed revision",
+      400,
+    );
+    return;
+  }
+  const ownerEntityId = resolveOwnerEntityIdOrDefault(
+    runtime as Pick<IAgentRuntime, "agentId" | "getSetting">,
+  );
+  try {
+    const { resolveReviewedCalendarApproval } = await getCalendarResolve();
+    const result = await resolveReviewedCalendarApproval(
+      runtime as IAgentRuntime,
+      {
+        requestId,
+        decision,
+        revision,
+        ownerEntityId,
+        resolutionReason: "Owner review",
+      },
+    );
+    helpers.json(res, { requestId, result });
+  } catch (error) {
+    const status = (error as { status?: unknown }).status;
+    const name = (error as { name?: unknown }).name;
+    if (typeof status === "number" && status >= 400 && status < 600) {
+      helpers.error(res, (error as Error).message, status);
+    } else if (name === "ApprovalStateTransitionError") {
+      helpers.error(res, "This review is no longer pending.", 409);
+    } else if (name === "ApprovalNotFoundError") {
+      helpers.error(res, "Approval not found.", 404);
+    } else {
+      throw error;
+    }
+  }
 }

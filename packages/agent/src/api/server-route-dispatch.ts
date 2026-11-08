@@ -73,6 +73,7 @@ interface DispatchRouteContext extends DispatchRouteHelpers {
   url: URL;
   state: ServerState;
   inboxCallerAuthorization?: InboxRouteCallerAuthorization;
+  approvalCallerAuthorization?: AgentHttpRequestAuthorization;
   callerAuthorization?: AgentHttpRequestAuthorization;
 }
 
@@ -92,6 +93,7 @@ export async function handleInboxAndCloudRelayRouteGroup({
   error,
   readJsonBody,
   inboxCallerAuthorization,
+  approvalCallerAuthorization,
 }: DispatchRouteContext): Promise<boolean> {
   // Push-token routes share the /api/notifications namespace but are owned by
   // the push delivery service, so they must be checked BEFORE the notification
@@ -125,7 +127,10 @@ export async function handleInboxAndCloudRelayRouteGroup({
       res,
       pathname,
       method,
-      { runtime: state.runtime ?? null },
+      {
+        runtime: state.runtime ?? null,
+        callerAuthorization: approvalCallerAuthorization,
+      },
       { json, error, readJsonBody },
     );
   }

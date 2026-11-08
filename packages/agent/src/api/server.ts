@@ -2881,6 +2881,17 @@ async function handleRequestForViewClient(
       hostAuthorization,
     );
   }
+  // Approval resolution acts for the owner, so the route needs the verified
+  // caller role, resolved the same way as inbox sends.
+  let approvalCallerAuthorization: AgentHttpRequestAuthorization | undefined;
+  if (method === "POST" && pathname.startsWith("/api/approvals/")) {
+    approvalCallerAuthorization = resolveInboxRequestAuthorization(
+      req,
+      method,
+      pathname,
+      await resolveHostSessionAuthorization(),
+    );
+  }
   if (
     await handleInboxAndCloudRelayRouteGroup({
       req,
@@ -2893,6 +2904,7 @@ async function handleRequestForViewClient(
       error,
       readJsonBody,
       inboxCallerAuthorization,
+      approvalCallerAuthorization,
     })
   ) {
     return;
