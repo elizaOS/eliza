@@ -861,8 +861,12 @@ export function nextRecurrenceOccurrence(args: {
   after: Date;
 }): Date | null {
   if (args.rule.beyondExpansionSubset) return null;
+  // A DATE UNTIL names a calendar day in the series time zone, while
+  // untilMs is the end of that day in UTC. Capping the expansion at
+  // untilMs would drop the last evening occurrence west of UTC before
+  // pastUntil can admit it, so let pastUntil enforce the day boundary.
   const ruleEnd =
-    args.rule.untilMs === undefined
+    args.rule.untilMs === undefined || args.rule.untilDate !== undefined
       ? MAX_ICS_RECURRENCE_INSTANT
       : new Date(
           Math.min(args.rule.untilMs + 1, MAX_ICS_RECURRENCE_INSTANT.getTime()),
