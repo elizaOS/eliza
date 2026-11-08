@@ -14,7 +14,10 @@ const reason =
   "Failed to refresh google token: unauthorized_client. User may need to reconnect.";
 let failure: Error = new AgentGoogleConnectorError(409, reason);
 mock.module("@elizaos/cloud-shared/auth", () => ({
-  requireUserOrApiKeyWithOrg: async () => ({ id: "owner-1", organization_id: "org-1" }),
+  requireUserOrApiKeyWithOrg: async () => ({
+    id: "owner-1",
+    organization_id: "org-1",
+  }),
   requirePrivateOwnerAccess: async () => {},
 }));
 mock.module(

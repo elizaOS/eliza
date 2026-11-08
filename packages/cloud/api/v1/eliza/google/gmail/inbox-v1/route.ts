@@ -41,7 +41,10 @@ async function selected(context: AppContext) {
 function unknownFailure(error: Error, context: AppContext) {
   if (error instanceof AgentGoogleConnectorError && error.status === 409)
     return context.json(
-      { error: "Reconnect Google to keep using Gmail.", code: "reauth_required" },
+      {
+        error: "Reconnect Google to keep using Gmail.",
+        code: "reauth_required",
+      },
       409,
     );
   return failureResponse(context, error);

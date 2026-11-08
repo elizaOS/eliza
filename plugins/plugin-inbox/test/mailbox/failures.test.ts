@@ -107,6 +107,9 @@ describe("managed Gmail failures", () => {
         classifyGmailFailure(coded(409, "something_new"), "read", true).kind,
       ).toBe("revoked");
       expect(
+        classifyGmailFailure(coded(409, "constructor"), "operation", true).kind,
+      ).toBe("stale");
+      expect(
         classifyGmailFailure(
           new (ErrorClass as typeof CloudProtocolError)("http", 409, {
             error: "x",

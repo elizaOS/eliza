@@ -203,7 +203,11 @@ export function classifyGmailFailure(
   const failure = protocolFailure(error);
   if (failure) {
     if (failure.code !== "http") return result("unavailable");
-    const known = failure.reason ? reasonKinds[failure.reason] : undefined;
+    // Own keys only: a code such as "constructor" is not a known reason.
+    const known =
+      failure.reason && Object.hasOwn(reasonKinds, failure.reason)
+        ? reasonKinds[failure.reason]
+        : undefined;
     if (known) return result(known);
     const status = failure.status;
     if (status === 403 || status === 404) return result("revoked");
