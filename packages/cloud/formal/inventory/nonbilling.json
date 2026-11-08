@@ -1203,6 +1203,44 @@
         "Model upstream room allocation, task presentation, stream acknowledgement and process shutdown beyond the admission/dispatch/reply checks.",
         "Model startup credential replay, provider error classification and account changes during a remote round trip."
       ]
+    },
+    {
+      "id": "provider-tokenizer-cache",
+      "sources": [
+        "plugins/plugin-elizacloud/src/models/tokenization.ts",
+        "plugins/plugin-elizacloud/__tests__/lazy-tokenizer.test.ts",
+        "plugins/plugin-openai/utils/tokenization.ts",
+        "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts",
+        "packages/cloud/formal/conformance/tokenizer-cache.ts",
+        "packages/scripts/vitest/source-aliases.ts"
+      ],
+      "states": [
+        "unloaded",
+        "loading",
+        "retained",
+        "replaced",
+        "idle_released",
+        "load_failed"
+      ],
+      "invariants": [
+        "Returned encoders retain the caller's requested encoding.",
+        "A rejected old load cannot clear a newer cached encoder.",
+        "A failed current load does not prevent a fresh request."
+      ],
+      "assumptions": [
+        "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+        "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+        "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook.",
+        "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved."
+      ],
+      "models": ["tokenizer_cache.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model the OpenAI persistent per-encoding cache separately.",
+        "Prove BPE algorithm equivalence and garbage collection bounds separately from cache lifecycle safety."
+      ]
     }
   ]
 }
