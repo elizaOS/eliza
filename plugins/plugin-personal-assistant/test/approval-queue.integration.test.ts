@@ -1859,6 +1859,83 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     }
   }, 60_000);
 
+  it("sends the cancellation queued by a repeated cancel that gives no reason", async () => {
+    const { negotiationId } = await createOpeningApproval({
+      suffix: "recancel-no-reason",
+    });
+    const subjectUserId = String(runtime.agentId);
+    const message = {
+      id: runtime.agentId,
+      entityId: subjectUserId,
+      roomId: runtime.agentId,
+      content: { text: "Cancel the school logistics scheduling" },
+    } as never;
+    const cancel = (reason?: string) =>
+      runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "cancel",
+            negotiationId,
+            ...(reason ? { reason } : {}),
+          },
+        } as never,
+        async () => [],
+      );
+
+    // The owner turns down a draft that names the reason, then cancels again
+    // without one. Execution re-drafts from the stored reason, so the stored
+    // reason has to follow the newer draft.
+    const first = await cancel("the offsite moved");
+    expect(first).toMatchObject({ success: true });
+    await queue.reject(
+      (first.data as { approvalRequestId: string }).approvalRequestId,
+      subjectUserId,
+      {
+        resolvedBy: subjectUserId,
+        resolutionReason: "do not share the reason",
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const repeated = await cancel();
+    expect(repeated).toMatchObject({ success: true });
+    const approvalId = (repeated.data as { approvalRequestId: string })
+      .approvalRequestId;
+    const pending = await queue.byId(approvalId, subjectUserId);
+    if (pending?.payload.action !== "send_email") {
+      throw new Error("expected an email cancellation draft");
+    }
+    expect(pending.payload.body).not.toContain("the offsite moved");
+    const approved = await queue.approve(approvalId, subjectUserId, {
+      resolvedBy: subjectUserId,
+      resolutionReason: "reviewed the exact cancellation draft",
+    });
+
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(async (payload: unknown) =>
+      receiptResult(payload, "scheduling-recancel"),
+    );
+    email.send = send;
+    try {
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(result).toMatchObject({ success: true });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(send.mock.calls[0])).not.toContain(
+        "the offsite moved",
+      );
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
   it("invalidates a contact mutation that lands after preflight but before the transactional claim", async () => {
     const { request } = await createOpeningApproval({
       suffix: "contact-race-1009",

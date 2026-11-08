@@ -607,8 +607,12 @@ export class SchedulingDomain {
     if (!negotiation) {
       fail(404, `negotiation ${id} not found`);
     }
+    // Approval execution re-drafts the cancellation from the stored reason,
+    // so a cancel without a reason must not keep an earlier cancel's reason.
+    const { cancellationReason: _previousReason, ...metadata } =
+      negotiation.metadata;
     const nextMetadata = {
-      ...negotiation.metadata,
+      ...metadata,
       ...(reason ? { cancellationReason: reason } : {}),
     };
     const now = isoNow();
