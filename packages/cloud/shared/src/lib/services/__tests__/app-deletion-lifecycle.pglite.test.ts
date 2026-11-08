@@ -220,17 +220,15 @@ test("foreign and invalid DELETE requests cannot create a root or revoke the app
 test("public job status and failure receipts never expose the retained database URI", async () => {
   const foreignOrg = randomUUID(),
     foreignKey = randomUUID();
-  await dbWrite
-    .insert(schema.apiKeys)
-    .values({
-      id: foreignKey,
-      name: "foreign mobile",
-      key_hash: foreignKey,
-      key_prefix: "eliza_mobile_",
-      user_id: randomUUID(),
-      organization_id: foreignOrg,
-      source_app_id: appId,
-    });
+  await dbWrite.insert(schema.apiKeys).values({
+    id: foreignKey,
+    name: "foreign mobile",
+    key_hash: foreignKey,
+    key_prefix: "eliza_mobile_",
+    user_id: randomUUID(),
+    organization_id: foreignOrg,
+    source_app_id: appId,
+  });
   await addDatabase();
   const root = await start();
   await expect(executeAppDeletion(root)).rejects.toMatchObject({
