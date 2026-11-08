@@ -221,18 +221,23 @@
   },
   {
     "id": "cloud-flow-platform-subscription-commands",
-    "model": null,
+    "model": "packages/cloud/quint/PlatformSubscriptionCommand.qnt",
     "sources": [
-      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts"
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/migrations/0373_subscription_authority.sql",
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.pglite.test.ts",
+      "packages/cloud/quint/check-platform-subscription-command.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["safety"],
+    "status": "partial",
     "limitations": [
-      "Finite models cover only their documented bounds; implementation refinement is not established.",
-      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
-      "Model the platform command protocol separately from app-scoped worker leases.",
-      "Required flow invariants: Provider dispatch retains one immutable request identity. | Only provably unstarted commands can be superseded.",
-      "Abstract states: PREPARED, OUTCOME_UNKNOWN, SUCCEEDED, APPLIED, FAILED, SUPERSEDED"
+      "One original command, one platform organization, a foreign tenant and an app scope; checkout and upgrade representatives plus explicit generic-dispatch refusal for cancel/resume. Revisions 0..4, generations 0..2, two digest/error identities and three retained-history equivalence classes.",
+      "Each command mutation is one committed organization/authority/command transaction. Rollback stutters. Row-lock mechanics, SQL isolation, caller authentication and paid-work/deletion admission are not implemented by this abstraction; repository locks alone do not authorize provider I/O.",
+      "Repository dispatch commits OUTCOME_UNKNOWN before external I/O but is not an exclusive provider lease. Multiple callers may replay the same immutable key. Provider acceptance, idempotency retention, network ambiguity and recovery orchestration are excluded; no remote exactly-once claim is made.",
+      "The history set abstracts append-only matching own checkout source/plan/subscription/digest records. Code 3 represents a foreign or mismatched candidate. Current-plan change does not remove history. Cryptographic digest correctness and unbounded histories are not proved.",
+      "Concurrent different command keys, live-checkout uniqueness and contradictory command admission are exercised by the existing SQL fixture but not exhaustively modeled here. Full app-scoped execution, dedicated leased cancellation/resumption, upgrades and scheduled downgrade protocols need their own models.",
+      "Strict conformance requires eight named real PGlite repository scenarios; it is not trace-by-trace refinement or PostgreSQL multi-session lock evidence."
     ]
   },
   {
