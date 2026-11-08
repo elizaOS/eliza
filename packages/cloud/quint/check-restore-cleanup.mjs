@@ -28,6 +28,7 @@ const result = spawnSync(
     "--",
     "bun",
     "test",
+    "--conditions=eliza-source",
     "packages/cloud/shared/src/lib/services/__tests__/agent-backup-restore-coordinator.pglite.test.ts",
     "--max-concurrency=1",
     "--reporter=junit",
