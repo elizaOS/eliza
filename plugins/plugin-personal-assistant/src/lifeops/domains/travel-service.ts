@@ -135,13 +135,29 @@ function resolveOfferPassengerId(
   );
 }
 
-function buildItinerarySummary(offer: DuffelOffer): string {
-  const firstSlice = offer.slices[0];
-  const lastSlice = offer.slices[offer.slices.length - 1];
-  if (!firstSlice || !lastSlice) {
-    return "Flight itinerary";
+/**
+ * Every stop of the itinerary, in order. A slice that leaves from where the
+ * previous one landed continues the same chain, so a round trip reads
+ * "SFO -> JFK -> SFO" rather than "SFO -> SFO".
+ */
+function describeItineraryRoute(offer: DuffelOffer): string | null {
+  const chains: string[][] = [];
+  for (const slice of offer.slices) {
+    const chain = chains[chains.length - 1];
+    if (chain && chain[chain.length - 1] === slice.origin) {
+      chain.push(slice.destination);
+    } else {
+      chains.push([slice.origin, slice.destination]);
+    }
   }
-  return `${firstSlice.origin} -> ${lastSlice.destination}`;
+  if (chains.length === 0) {
+    return null;
+  }
+  return chains.map((chain) => chain.join(" -> ")).join(", ");
+}
+
+function buildItinerarySummary(offer: DuffelOffer): string {
+  return describeItineraryRoute(offer) ?? "Flight itinerary";
 }
 
 function buildCalendarTitle(
@@ -205,12 +221,7 @@ function buildCalendarLocation(
   if (custom) {
     return custom;
   }
-  const firstSlice = offer.slices[0];
-  const lastSlice = offer.slices[offer.slices.length - 1];
-  if (!firstSlice || !lastSlice) {
-    return "";
-  }
-  return `${firstSlice.origin} -> ${lastSlice.destination}`;
+  return describeItineraryRoute(offer) ?? "";
 }
 
 /**

@@ -416,6 +416,85 @@ function installTravelAndCalendarFetchStub(options?: {
   return fetchMock;
 }
 
+function installRoundTripOfferFetchStub() {
+  const slice = (
+    from: { iata_code: string; time_zone: string },
+    to: { iata_code: string; time_zone: string },
+    departingAt: string,
+    arrivingAt: string,
+    flightNumber: string,
+  ) => ({
+    origin: from,
+    destination: to,
+    duration: "PT5H30M",
+    fare_brand_name: "Economy",
+    segments: [
+      {
+        origin: from,
+        destination: to,
+        departing_at: departingAt,
+        arriving_at: arrivingAt,
+        operating_carrier: { iata_code: "UA" },
+        flight_number: flightNumber,
+        duration: "PT5H30M",
+      },
+    ],
+  });
+  const sfo = { iata_code: "SFO", time_zone: "America/Los_Angeles" };
+  const jfk = { iata_code: "JFK", time_zone: "America/New_York" };
+  // A return search gives one slice per direction: SFO -> JFK, JFK -> SFO.
+  const offer = {
+    id: "off_round_trip_1",
+    total_amount: "612.40",
+    total_currency: "USD",
+    expires_at: "2026-06-01T18:00:00Z",
+    passengers: [
+      {
+        id: "pas_offer_1",
+        type: "adult",
+        given_name: "Tony",
+        family_name: "Stark",
+      },
+    ],
+    payment_requirements: {
+      requires_instant_payment: false,
+      price_guarantee_expires_at: "2026-06-01T18:00:00Z",
+      payment_required_by: "2026-06-02T18:00:00Z",
+    },
+    slices: [
+      slice(sfo, jfk, "2026-06-15T08:00:00", "2026-06-15T16:30:00", "UA1"),
+      slice(jfk, sfo, "2026-06-22T18:00:00", "2026-06-22T21:30:00", "UA2"),
+    ],
+  };
+  const fetchMock = vi
+    .fn()
+    .mockImplementation(async (input: string | URL | Request) => {
+      const url = String(
+        typeof input === "string" || input instanceof URL ? input : input.url,
+      );
+      if (url.includes("/air/offer_requests")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: { id: "ofr_round_trip_1", offers: [offer] },
+          }),
+        } as Response;
+      }
+      if (url.includes(`/air/offers/${offer.id}`)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: offer }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+  originalFetch ??= globalThis.fetch;
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 function installApprovalResolutionModelStub(requestId: string, reason: string) {
   const originalUseModel = runtime.useModel.bind(runtime);
   runtime.useModel = (async (modelType, input) => {
@@ -780,5 +859,57 @@ describe("BOOK_TRAVEL approval execution", () => {
       orderId: "ord_test_123",
       paymentId: "pay_test_123",
     });
+  });
+
+  it("names the destination of a round trip in the approval request", async () => {
+    installRoundTripOfferFetchStub();
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+
+    const queued = await runBookTravelHandler(
+      runtime,
+      ownerMessage(
+        "Book a round trip from SFO to JFK on June 15, back June 22, after I approve it.",
+      ),
+      {} as never,
+      {
+        parameters: {
+          origin: "SFO",
+          destination: "JFK",
+          departureDate: "2026-06-15",
+          returnDate: "2026-06-22",
+          passengers: [
+            {
+              givenName: "Tony",
+              familyName: "Stark",
+              bornOn: "1980-07-24",
+              email: "tony@example.com",
+              phoneNumber: "+15551234567",
+            },
+          ],
+        },
+      } as never,
+      undefined,
+    );
+
+    expect(queued?.success).toBe(true);
+    const pending = await queue.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      action: "book_travel",
+      limit: 10,
+    });
+    const payload = pending
+      .map((entry) => entry.payload)
+      .find(
+        (entry) =>
+          entry.action === "book_travel" &&
+          entry.offerId === "off_round_trip_1",
+      );
+    expect(payload?.action === "book_travel" ? payload.summary : null).toBe(
+      "SFO -> JFK -> SFO",
+    );
+    expect(String(queued?.text ?? "")).toContain(
+      "Queued travel approval for SFO -> JFK -> SFO.",
+    );
   });
 });
