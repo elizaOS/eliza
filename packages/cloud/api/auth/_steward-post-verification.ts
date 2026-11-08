@@ -8,6 +8,10 @@
 
 import { primeVerifiedUserSessionCache } from "@elizaos/cloud-shared/lib/auth/session-user-cache";
 import {
+  type StewardVerifyEnv,
+  stewardSessionKeyFingerprint,
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
+import {
   getIpKey,
   getRequestIp,
   RateLimitPresets,
@@ -121,7 +125,7 @@ export async function emitStewardLogin(
  * session cache is primed for the first authenticated request.
  */
 export function syncVerifiedStewardUser(
-  token: string,
+  session: { token: string; expiration: number; env: StewardVerifyEnv },
   executionCtx: StewardSyncExecutionContext | undefined,
   input: Omit<SyncInput, "executionCtx" | "afterRequiredSignupProvisioning">,
 ): Promise<SyncedStewardUser> {
@@ -129,12 +133,17 @@ export function syncVerifiedStewardUser(
     ...input,
     executionCtx,
     afterRequiredSignupProvisioning: async (user) => {
+      const signingKeyFingerprint = stewardSessionKeyFingerprint(session.env);
+      if (!signingKeyFingerprint) return;
       try {
         // The first authenticated browser request follows immediately.
         // Prime its authorization projection after strict API-key
         // readiness but before optional onboarding work starts, so that
         // request does not race into the slower durable cache-miss path.
-        await primeVerifiedUserSessionCache(token, user);
+        await primeVerifiedUserSessionCache(session.token, user, {
+          expiration: session.expiration,
+          signingKeyFingerprint,
+        });
       } catch (error) {
         // error-policy:J4 Cache priming is a latency optimization. Identity is
         // already durable and the ordinary authenticated cache-miss path can

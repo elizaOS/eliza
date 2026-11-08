@@ -340,17 +340,21 @@ app.post("/", async (c) => {
       cloudUser = boundCloudUser;
     } else {
       try {
-        cloudUser = await syncVerifiedStewardUser(token, executionCtx, {
-          stewardUserId: claims.userId,
-          email: claims.email,
-          walletAddress: claims.walletAddress ?? claims.address,
-          walletChainType: claims.walletChain,
-          verifiedPhone,
-          verifiedTelegramId,
-          telegramContinuation: telegramContinuation ?? undefined,
-          sharedRuntimeConversationNamespace:
-            c.env.SHARED_RUNTIME_CONVERSATIONS,
-        });
+        cloudUser = await syncVerifiedStewardUser(
+          { token, expiration: claims.expiration, env: c.env },
+          executionCtx,
+          {
+            stewardUserId: claims.userId,
+            email: claims.email,
+            walletAddress: claims.walletAddress ?? claims.address,
+            walletChainType: claims.walletChain,
+            verifiedPhone,
+            verifiedTelegramId,
+            telegramContinuation: telegramContinuation ?? undefined,
+            sharedRuntimeConversationNamespace:
+              c.env.SHARED_RUNTIME_CONVERSATIONS,
+          },
+        );
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {
           logStewardAuth("verified-phone-conflict", null);

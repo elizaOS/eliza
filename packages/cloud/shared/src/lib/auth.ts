@@ -6,18 +6,23 @@ import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   verifyPlaywrightTestSessionToken,
 } from "./auth/playwright-test-session";
-import { hashSessionToken } from "./auth/session-user-cache";
+import {
+  hashSessionToken,
+  primeVerifiedUserSessionCache,
+  readVerifiedUserSessionCache,
+} from "./auth/session-user-cache";
 import { loadVerifiedStagingSessionUser } from "./auth/staging-session-binding";
 import {
   invalidateStewardTokenCache,
   isStagingSessionTokenCandidate,
   type StewardVerifyEnv,
+  stewardSessionKeyFingerprint,
   verifyStewardTokenCached,
 } from "./auth/steward-client";
 import { readStewardAccessCookieFromHeader } from "./auth/steward-cookies";
 import { verifyWalletSignature } from "./auth/wallet-auth";
 import { cache as redisCache } from "./cache/client";
-import { CacheKeys, CacheTTL } from "./cache/keys";
+import { CacheKeys } from "./cache/keys";
 import { getCookieValueFromHeader } from "./http/cookie-header";
 import { getCloudAwareEnv } from "./runtime/cloud-bindings";
 import { adminService } from "./services/admin";
@@ -148,11 +153,12 @@ export async function getCurrentUserFromRequest(
       });
     }
 
-    const tokenHash = hashSessionToken(stewardToken);
-    const cacheKey = CacheKeys.session.user(tokenHash);
+    const verifyEnv = getStewardVerifyEnv();
+    const keyFingerprint = stewardSessionKeyFingerprint(verifyEnv);
 
-    // Check Redis cache first - avoids JWT AND DB calls
-    const cachedUser = await redisCache.get<UserWithOrganization>(cacheKey);
+    // Check Redis cache first - avoids JWT AND DB calls. The entry carries the
+    // token's exp and verifying key, so it dies with the token or the key.
+    const cachedUser = await readVerifiedUserSessionCache(stewardToken, keyFingerprint);
     if (cachedUser) {
       // The session key is a token hash that usersService.invalidateCache
       // cannot address. Confirm the cached projection against the Steward-id
@@ -173,11 +179,11 @@ export async function getCurrentUserFromRequest(
         }
         return current;
       }
-      await redisCache.del(cacheKey);
+      await invalidateUserSessionCache(stewardToken);
     }
 
     logger.debug("[AUTH] Verifying steward session cookie");
-    const stewardClaims = await verifyStewardTokenCached(getStewardVerifyEnv(), stewardToken);
+    const stewardClaims = await verifyStewardTokenCached(verifyEnv, stewardToken);
     if (!stewardClaims) return null;
 
     let user = await usersService.getByStewardId(stewardClaims.userId);
@@ -220,8 +226,13 @@ export async function getCurrentUserFromRequest(
     // Plant the authorization-bearing user projection only after required API
     // key readiness succeeds. Otherwise a failed heal could leave a cache hit
     // that bypasses the only repair path for the entire session TTL.
-    await redisCache.set(cacheKey, user, CacheTTL.session.user);
-    logger.debug("[AUTH] Cached user session data");
+    if (keyFingerprint) {
+      await primeVerifiedUserSessionCache(stewardToken, user, {
+        expiration: stewardClaims.expiration,
+        signingKeyFingerprint: keyFingerprint,
+      });
+      logger.debug("[AUTH] Cached user session data");
+    }
 
     if (user.organization_id) {
       void trackSessionActivity(user.id, user.organization_id, stewardToken);

@@ -389,12 +389,16 @@ app.post("/", async (c) => {
   const executionCtx = getWorkerExecutionContext(c);
   let cloudUser: SyncedStewardUser;
   try {
-    cloudUser = await syncVerifiedStewardUser(token, executionCtx, {
-      stewardUserId: claims.userId,
-      email: claims.email,
-      walletAddress: claims.walletAddress ?? claims.address,
-      walletChainType: claims.walletChain,
-    });
+    cloudUser = await syncVerifiedStewardUser(
+      { token, expiration: claims.expiration, env: c.env },
+      executionCtx,
+      {
+        stewardUserId: claims.userId,
+        email: claims.email,
+        walletAddress: claims.walletAddress ?? claims.address,
+        walletChainType: claims.walletChain,
+      },
+    );
   } catch (error) {
     logExchange("sync-failed");
     // Workers Logs indexes only the message STRING — an Error passed in the

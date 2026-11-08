@@ -18,7 +18,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { createHash } from "crypto";
-import { decodeProtectedHeader, type JWTPayload, jwtVerify, SignJWT } from "jose";
+import { decodeProtectedHeader, errors, type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -356,6 +356,21 @@ function fingerprintSigningKey(secret: Uint8Array): string {
 }
 
 /**
+ * Fingerprint of the key that verifies ordinary Steward sessions, or null when
+ * none is configured. Caches derived from a verified session store it so a key
+ * rotation invalidates them.
+ */
+export function stewardSessionKeyFingerprint(env: StewardVerifyEnv): string | null {
+  const secret = resolveJwtSecret(env);
+  return secret ? fingerprintSigningKey(secret) : null;
+}
+
+/** A signed token whose claims have the wrong shape: a rejected credential. */
+class StewardClaimShapeError extends Error {
+  override readonly name = "StewardClaimShapeError";
+}
+
+/**
  * In-memory LRU cache for Steward token verification (30s TTL, max 200).
  * Eliminates Redis round-trip for repeated requests within the same
  * serverless function instance.
@@ -369,7 +384,7 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
   const raw = payload.eliza_staging_session;
   if (raw === undefined) return undefined;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Invalid staging session binding claim");
+    throw new StewardClaimShapeError("Invalid staging session binding claim");
   }
   const record = raw as Record<string, unknown>;
   if (
@@ -381,7 +396,7 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
     typeof record.sessionIssuedAt !== "number" ||
     typeof record.sessionMaxExpiresAt !== "number"
   ) {
-    throw new Error("Invalid staging session binding claim");
+    throw new StewardClaimShapeError("Invalid staging session binding claim");
   }
   return {
     version: STAGING_SESSION_EXCHANGE_VERSION,
@@ -419,7 +434,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
   let telegramId: string | undefined;
   if (authMethod === "telegram") {
     if (!isValidStewardTelegramId(payload.telegramId)) {
-      throw new Error("Invalid Telegram identity claims");
+      throw new StewardClaimShapeError("Invalid Telegram identity claims");
     }
     telegramId = payload.telegramId;
   }
@@ -752,18 +767,24 @@ export async function verifyStewardTokenCached(
   } catch (error) {
     // error-policy:J3 invalid credentials return null; strict callers receive
     // infrastructure failures separately so they cannot report false logout success.
+    // Every jose error here describes the presented token (bad format, alg,
+    // signature, claims or lifetime), never the verifier's own health.
     const isExpectedFailure =
-      error instanceof Error &&
-      (error.message.includes("JWSInvalid") ||
-        error.message.includes("JWTExpired") ||
-        error.message.includes("JWTClaimValidationFailed") ||
-        error.message.includes("Invalid Compact JWS") ||
-        error.message.includes("signature verification failed") ||
-        ("code" in error &&
-          (error.code === "ERR_JWS_INVALID" ||
-            error.code === "ERR_JWT_EXPIRED" ||
-            error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ||
-            error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED")));
+      error instanceof errors.JOSEError ||
+      error instanceof StewardClaimShapeError ||
+      (error instanceof Error &&
+        (error.message.includes("JWSInvalid") ||
+          error.message.includes("JWTExpired") ||
+          error.message.includes("JWTClaimValidationFailed") ||
+          error.message.includes("Invalid Compact JWS") ||
+          error.message.includes("signature verification failed") ||
+          ("code" in error &&
+            (error.code === "ERR_JWS_INVALID" ||
+              error.code === "ERR_JWT_EXPIRED" ||
+              error.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ||
+              error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" ||
+              error.code === "ERR_JWT_INVALID" ||
+              error.code === "ERR_JOSE_ALG_NOT_ALLOWED"))));
 
     if (isExpectedFailure) {
       logger.debug(
