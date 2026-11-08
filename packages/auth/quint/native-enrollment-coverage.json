@@ -46,8 +46,32 @@
     ],
     "status": "partial",
     "limitations": [
-      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. Deletion preflight and commit, encrypted legacy upgrade, remaining pool-metadata persistence and route orchestration stay outside this model.",
+      "Conditional identity metadata writes are modeled for canonical encrypted records with a captured generation. The label represents the owned identity fields. AccountProviderDeletion covers provider-wide deletion under separate bounds. Explicit account-list deletion, encrypted legacy upgrade, remaining pool-metadata persistence and route orchestration stay outside these cases.",
       "AccountStorageLock and AccountStorageReset own cross-process lock and reset recovery. This case assumes atomic locked storage calls and does not cover filesystem failures."
+    ]
+  },
+  {
+    "id": "auth.AccountProviderDeletion",
+    "model": "packages/auth/quint/AccountProviderDeletion.qnt",
+    "sources": [
+      "packages/auth/src/auth/account-storage.ts",
+      "packages/auth/src/auth/credentials.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "OutsideProviderUntouched",
+      "RefusedPlanRetainsFiles",
+      "CompleteValidationBeforeUnlink",
+      "UnlinksStayInsidePlan",
+      "SuccessConfirmsExactlyPlan",
+      "RollbackRestoresCiphertext"
+    ],
+    "status": "partial",
+    "limitations": [
+      "Two initial credential files for one provider, one optional new account, and an unrelated provider with the same account id. At most two preflights and one cooperating write between preflight and commit. A noncanonical inventory name can reject preflight.",
+      "The lock prevents other authorized readers and writers during validation, unlinks and rollback. The stat tuple is an opaque fingerprint. The modeled atomic replacement changes that tuple. Restoration preserves ciphertext, while file identity may change.",
+      "The failure branch injects an error on the second unlink after one successful unlink, with successful restoration. Directory sync failure, rollback failure, process death and reset interleavings are outside this bound.",
+      "Explicit account-list plans, nonregular paths, multi-provider plans, byte changes with equal stat tuples and malicious filesystem mutation are separate cases. Cryptographic correctness is assumed. An unsubmitted plan can be abandoned without writing."
     ]
   },
   {
@@ -104,7 +128,7 @@
     "status": "partial",
     "limitations": [
       "Two providers share an account id. Two one-shot refresh or metadata callers and one explicit save bound replacement generations. Atomic storage calls and unique generation UUIDs are assumed.",
-      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. Transactional deletion plans and legacy migration remain separate gaps.",
+      "Generated traces replay the public APIs against actual encrypted files and check the returned metadata record. Deletion and replacement interleave with captured generations. AccountProviderDeletion covers provider-wide deletion plans separately. Explicit account-list plans and legacy migration remain gaps.",
       "Progress assumes weak fairness of completion and eventual access to the storage commit. Caller cancellation and permanent provider or storage failure remain outside this projection."
     ]
   },
