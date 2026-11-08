@@ -15,7 +15,10 @@ import {
   resetAccountCredentialStorage,
   saveAccount,
 } from "./account-storage.ts";
-import { getAccessToken } from "./credentials.ts";
+import {
+  getAccessToken,
+  getAccessTokenCredentialReceipt,
+} from "./credentials.ts";
 import type {
   AccountCredentialProvider,
   OAuthSubscriptionProvider,
@@ -225,6 +228,11 @@ for (const provider of ["openai-codex", "anthropic-subscription"] as const) {
         outcome: true,
       });
       expect(outcome).toMatchObject({ ok: false, kind: failure.kind });
+      expect(getAccessTokenCredentialReceipt(outcome)).toEqual({
+        provider,
+        accountId: "account",
+        credentialGeneration: before.credentialGeneration,
+      });
       expect(requests).toBe(1);
       expect(
         await getAccessToken(provider, "account", { storagePolicy: policy }),
@@ -352,16 +360,25 @@ for (const provider of ["openai-codex", "anthropic-subscription"] as const) {
     });
     await waitForRequests(1);
     releaseResponse(successBody(provider, "new"));
-    expect(await first).toMatchObject({
+    const firstOutcome = await first;
+    const secondOutcome = await second;
+    expect(firstOutcome).toMatchObject({
       ok: true,
       accessToken: accessToken(provider, "new"),
       refreshed: true,
     });
-    expect(await second).toMatchObject({
+    expect(secondOutcome).toMatchObject({
       ok: true,
       accessToken: accessToken(provider, "new"),
       refreshed: false,
     });
+    const stored = loadAccount(provider, "account", policy);
+    expect(
+      getAccessTokenCredentialReceipt(firstOutcome)?.credentialGeneration,
+    ).toBe(stored?.credentialGeneration);
+    expect(
+      getAccessTokenCredentialReceipt(secondOutcome)?.credentialGeneration,
+    ).toBe(stored?.credentialGeneration);
     expect(requests).toBe(1);
   });
 

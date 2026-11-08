@@ -26,6 +26,7 @@ module AccessTokenResolution {
     responseLifetime: int,
     outcome: str,
     resultToken: int,
+    resultGeneration: int,
     resultExpires: int,
     decisionTime: int,
     refreshed: bool,
@@ -55,7 +56,7 @@ module AccessTokenResolution {
     phase: phase, root: root, process: process, policyEpoch: policy,
     buffer: if (buffer > 1) buffer else 1, requestedBuffer: buffer,
     observed: absent, issuedRefresh: 0, responseToken: 0, responseRefresh: 0,
-    responseLifetime: 0, outcome: "pending", resultToken: 0, resultExpires: 0,
+    responseLifetime: 0, outcome: "pending", resultToken: 0, resultGeneration: 0, resultExpires: 0,
     decisionTime: 0, refreshed: false, didPublish: false,
     committedGeneration: 0, errorFamily: "",
   }
@@ -97,7 +98,8 @@ module AccessTokenResolution {
       ...state,
       requests: state.requests.set(c, {
         ...r, phase: "done", outcome: outcome, resultToken: if (outcome == "ok") selected.token else 0,
-        resultExpires: selected.expires, decisionTime: state.now, refreshed: refreshed,
+        resultExpires: selected.expires, resultGeneration: selected.generation,
+        decisionTime: state.now, refreshed: refreshed,
       }),
       queues: state.queues.set(r.process, state.queues.get(r.process).select(id => id != c)),
       active: if (state.active.get(r.process) == c) state.active.set(r.process, 0) else state.active,
@@ -121,7 +123,7 @@ module AccessTokenResolution {
       else if (usable(record, s.now, r.buffer)) finished(observed, c, "ok", record, false)
       else if (s.kind == "fixed") finished(observed, c,
         if (record.expires <= s.now) "auth" else if (r.buffer == 1) "ok" else "insufficient", record, false)
-      else if (s.kind.in(Set("external", "unavailable"))) finished(observed, c, "auth", absent, false)
+      else if (s.kind.in(Set("external", "unavailable"))) finished(observed, c, "auth", record, false)
       else {
         ...observed,
         requests: observed.requests.set(c, { ...r, phase: "queued", observed: record }),
@@ -177,7 +179,7 @@ module AccessTokenResolution {
         ...s, previousRecords: s.records, lastAction: "provider-failure", lastCaller: c,
         usedGrants: if (consumed) s.usedGrants.union(Set(r.issuedRefresh)) else s.usedGrants,
         requests: s.requests.set(c, { ...r, errorFamily: reason }),
-      }, c, kind, absent, false),
+      }, c, kind, r.observed, false),
     }
   }
   // The provider has settled. The storage CAS owns its own linearization point.
@@ -196,7 +198,7 @@ module AccessTokenResolution {
     all {
       r.phase == "commit",
       s' = if (not(policyValid(c))) finished(before, c, "storage-error", absent, false)
-      else if (current.generation == 0) finished(before, c, "auth", absent, false)
+      else if (current.generation == 0) finished(before, c, "auth", r.observed, false)
       else if (current.generation != r.observed.generation) finished(before, c,
         if (usable(current, s.now, r.buffer)) "ok"
         else if (current.expires > s.now) "insufficient" else "auth",
@@ -277,6 +279,20 @@ module AccessTokenResolution {
     val r = s.requests.get(c)
     (r.outcome == "ok") == (r.resultToken > 0)
   })
+  val SuccessfulOutcomeOwnsGeneration = callers.forall(c => {
+    val r = s.requests.get(c)
+    r.outcome == "ok" implies r.resultGeneration > 0
+  })
+  val RejectedGrantKeepsCapturedGeneration = s.lastAction == "provider-failure" implies {
+    val r = s.requests.get(s.lastCaller)
+    r.resultGeneration == r.observed.generation
+  }
+  val CommitReceiptMatchesDecision = s.lastAction == "commit" implies {
+    val r = s.requests.get(s.lastCaller)
+    r.outcome == "storage-error" or r.resultGeneration ==
+      (if (s.previousRecords.get(r.root).generation == 0) r.observed.generation
+       else s.records.get(r.root).generation)
+  }
   val ExplicitPolicyBeforeGrant = callers.forall(c =>
     s.requests.get(c).issuedRefresh == 0 or s.requests.get(c).policyEpoch != -2)
   val ActiveQueueOwnership = callers.forall(c => {
@@ -331,6 +347,7 @@ module AccessTokenResolution {
   })
   val invariant = and {
     TypeOK, RequestedLifetimeNormalized, TokenResultMatchesOutcome,
+    SuccessfulOutcomeOwnsGeneration, RejectedGrantKeepsCapturedGeneration, CommitReceiptMatchesDecision,
     ExplicitPolicyBeforeGrant, ActiveQueueOwnership, QueueRereadsCurrentRecord,
     StalePolicyCommitThrows, ReplacementResultUsesCurrentCredential,
     RefreshedRequiresPublication,
