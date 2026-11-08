@@ -539,10 +539,14 @@ function mergeAccountPatch(
 	account: ConnectorAccount,
 	patch: ConnectorAccountPatch,
 ): ConnectorAccount {
+	// A field the patch leaves undefined keeps its stored value.
+	const setFields = Object.fromEntries(
+		Object.entries(patch).filter(([, value]) => value !== undefined),
+	) as ConnectorAccountPatch;
 	return normalizeAccount(
 		{
 			...account,
-			...patch,
+			...setFields,
 			provider: account.provider,
 			id: account.id,
 			accountKey: patch.accountKey ?? account.accountKey,
