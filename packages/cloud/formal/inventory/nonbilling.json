@@ -727,7 +727,7 @@
       "remainingWork": [
         "Only container placement publication and stale cleanup identity are modeled; build, ingress and complete deployment flow remain open.",
         "Verify implementation transitions and failure paths against the formal contract.",
-        "Fence app publication against job-lease revocation within the same app generation."
+        "Verify composition between the separate job-execution and app-generation publication models; retain provider-quiescence and cross-job routing gaps."
       ]
     },
     {

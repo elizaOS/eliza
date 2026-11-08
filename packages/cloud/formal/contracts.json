@@ -167,7 +167,7 @@
         "Original database timestamp text identifies the row; privileged reuse of both UUID and exact timestamp is excluded. Publication retains original tenant/app generation across provider I/O.",
         "Retirement and publication serialize at the database write. Stale cleanup can release only the original row/generation slot.",
         "Provider truth, physical node reincarnation, later ingress publication, unbounded liveness and TypeScript refinement remain unproved.",
-        "Job-lease revocation without a changed app generation is outside this model; execution-lease fencing requires separate integration."
+        "Job-lease revocation without a changed app generation is outside this model. The separate provisioning-execution model and runtime gate do not establish model composition."
       ],
       "maxSteps": 35
     },
