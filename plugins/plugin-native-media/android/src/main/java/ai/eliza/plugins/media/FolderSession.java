@@ -1,7 +1,9 @@
 package ai.eliza.plugins.media;
 
+import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -175,7 +177,7 @@ public final class FolderSession<U> {
 
   /** {@link #cursorOffset}: the cursor names another folder (or no folder is listed). */
   public static final int OTHER_FOLDER = -1;
-  /** {@link #cursorOffset}: the cursor's offset is malformed or not positive. */
+  /** {@link #cursorOffset}: the cursor is malformed, from an older build, or not positive. */
   public static final int MALFORMED = -2;
 
   /**
@@ -184,13 +186,30 @@ public final class FolderSession<U> {
    */
   public static int cursorOffset(String cursor, String folderId) {
     if (cursor == null || folderId == null) return OTHER_FOLDER;
-    int split = cursor.lastIndexOf(':');
+    int last = cursor.lastIndexOf(':');
+    int split = last < 1 ? -1 : cursor.lastIndexOf(':', last - 1);
+    if (split < 0 || cursorLast(cursor) == null) return MALFORMED;
     if (split < 1 || !cursor.substring(0, split).equals(folderId)) return OTHER_FOLDER;
     try {
-      int offset = Integer.parseInt(cursor.substring(split + 1));
+      int offset = Integer.parseInt(cursor.substring(split + 1, last));
       return offset < 1 ? MALFORMED : offset;
     } catch (NumberFormatException malformed) {
       return MALFORMED;
+    }
+  }
+
+  /**
+   * The provider document id of the last row the page before a "Load more" cursor showed, or null
+   * when the cursor is malformed. The next page continues only while that row is still in place.
+   */
+  public static String cursorLast(String cursor) {
+    int last = cursor == null ? -1 : cursor.lastIndexOf(':');
+    if (last < 0 || last == cursor.length() - 1) return null;
+    try {
+      return new String(
+          Base64.getUrlDecoder().decode(cursor.substring(last + 1)), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException malformed) {
+      return null;
     }
   }
 
@@ -202,9 +221,18 @@ public final class FolderSession<U> {
     return name + "|" + mime + "|" + size + "|" + modified + "|" + flags;
   }
 
-  /** A "Load more" cursor for the next page of a folder. */
-  public static String cursor(String folderId, int shown) {
-    return folderId + ":" + shown;
+  /**
+   * A "Load more" cursor for the next page of a folder: the folder, the number of rows shown and
+   * the provider document id of the last one.
+   */
+  public static String cursor(String folderId, int shown, String lastDocumentId) {
+    return folderId
+        + ":"
+        + shown
+        + ":"
+        + Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(lastDocumentId.getBytes(StandardCharsets.UTF_8));
   }
 
   /**

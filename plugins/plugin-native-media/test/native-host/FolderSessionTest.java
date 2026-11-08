@@ -136,17 +136,51 @@ public final class FolderSessionTest {
             .equals("Docs|vnd.android.document/directory|-1|-1|8"),
         "unknown size and time");
 
-    // Cursors name the folder they continue; anything else asks for a refresh.
-    check(FolderSession.cursorOffset(FolderSession.cursor("e3", 250), "e3") == 250, "cursor");
-    check(FolderSession.cursorOffset("e4:250", "e3") == FolderSession.OTHER_FOLDER, "other folder");
-    check(FolderSession.cursorOffset(":5", "") == FolderSession.OTHER_FOLDER, "no folder id");
-    check(FolderSession.cursorOffset("e3:x", "e3") == FolderSession.MALFORMED, "malformed");
-    check(FolderSession.cursorOffset("e3:0", "e3") == FolderSession.MALFORMED, "not positive");
-    check(FolderSession.cursorOffset("a:b:7", "a:b") == 7, "ids may contain colons");
+    // Cursors name the folder they continue and the last row shown; anything else asks for a
+    // refresh.
+    String more = FolderSession.cursor("e3", 250, "primary:Download/a:b é.pdf");
+    check(FolderSession.cursorOffset(more, "e3") == 250, "cursor offset");
+    check(
+        "primary:Download/a:b é.pdf".equals(FolderSession.cursorLast(more)),
+        "cursor round-trips the last document id");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("e4", 250, "d"), "e3")
+            == FolderSession.OTHER_FOLDER,
+        "other folder");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("", 5, "d"), "")
+            == FolderSession.OTHER_FOLDER,
+        "no folder id");
+    check(FolderSession.cursorOffset("e3:x:ZA", "e3") == FolderSession.MALFORMED, "malformed");
+    check(FolderSession.cursorOffset("e3:0:ZA", "e3") == FolderSession.MALFORMED, "not positive");
+    check(FolderSession.cursorOffset("e3:250:", "e3") == FolderSession.MALFORMED, "no last row");
+    check(FolderSession.cursorOffset("e3:250:*", "e3") == FolderSession.MALFORMED, "bad last row");
+    check(
+        FolderSession.cursorOffset("e3:250", "e3") == FolderSession.MALFORMED
+            && FolderSession.cursorLast("e3:250:") == null,
+        "an older build's cursor is refused");
+    check(
+        FolderSession.cursorOffset(FolderSession.cursor("a:b", 7, "d"), "a:b") == 7,
+        "ids may contain colons");
+
+    // A page continues only while the row before it is unchanged: the host compares the provider
+    // row at offset-1 with the cursor's last document id.
+    List<String> rows = new ArrayList<>();
+    for (int i = 0; i < 300; i++) rows.add("doc" + i);
+    String page = FolderSession.cursor("e3", 250, rows.get(249));
+    int at = FolderSession.cursorOffset(page, "e3") - 1;
+    check(rows.get(at).equals(FolderSession.cursorLast(page)), "unchanged folder continues");
+    List<String> removed = new ArrayList<>(rows);
+    removed.remove(9);
+    check(!removed.get(at).equals(FolderSession.cursorLast(page)), "a removal is a conflict");
+    List<String> added = new ArrayList<>(rows);
+    added.add(0, "new");
+    check(!added.get(at).equals(FolderSession.cursorLast(page)), "an insertion is a conflict");
 
     // Child names: one path segment, no control characters.
     check(FolderSession.childName("  Reports  ").equals("Reports"), "trimmed");
-    for (String bad : new String[] {"", " ", ".", "..", "a/b", "a\\b", "a\nb", "x".repeat(256)})
+    for (String bad :
+        new String[] {"", " ", ".", "..", "a/b", "Q3/Q4 receipts", "a\\b", "a\nb", "x".repeat(256)})
       rejects(() -> FolderSession.childName(bad), "name " + bad.length());
     rejects(() -> FolderSession.childName(null), "null name");
     System.out.println("folder session checks: " + checks);

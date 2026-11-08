@@ -77,8 +77,8 @@ test("folder changes are revision-checked, confirmed and never broaden access", 
     'if(!info.optBoolean("canDelete"))',
     "if(!confirmPermanent)",
     "if(!current(info,expectedRevision))",
-    'list(item);if(!contents.optBoolean("complete"))',
-    'if(contents.getJSONArray("entries").length()>0)',
+    "BooleannonEmpty=hasChildren(item);if(nonEmpty==null)",
+    "if(nonEmpty)",
     "DocumentsContract.deleteDocument(",
   ].map((step) => remove.indexOf(step));
   assert.ok(
@@ -93,8 +93,8 @@ test("folder changes are revision-checked, confirmed and never broaden access", 
       batch.indexOf("DocumentsContract.deleteDocument("),
   );
   assert.ok(
-    batch.indexOf('if(!contents.optBoolean("complete"))') > 0 &&
-      batch.indexOf('if(!contents.optBoolean("complete"))') <
+    batch.indexOf("if(nonEmpty==null)") > 0 &&
+      batch.indexOf("if(nonEmpty==null)") <
         batch.indexOf("DocumentsContract.deleteDocument("),
     "a folder the provider is still loading is never deleted as empty",
   );

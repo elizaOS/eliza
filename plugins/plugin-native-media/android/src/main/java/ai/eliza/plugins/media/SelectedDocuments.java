@@ -37,8 +37,11 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
- * Opaque capabilities for documents the owner selected in Android's picker. The renderer holds a
- * random selection ID, never a content URI, and every use resolves it again. Only grants Android
+ * Opaque capabilities for documents the owner selected in Android's picker. Every call names a
+ * random selection ID, resolved again on each use; a URI from the renderer is never accepted. The
+ * renderer does receive the document's content URI, which a host may pass to Capacitor's
+ * convertFileSrc for previews or scan import; it reads only through this app's existing grant, so
+ * grants and selection IDs remain the authority boundary. Only grants Android
  * actually offered are persisted; a revoked grant is forgotten and reported, never repaired. A
  * persisted grant that a saved item's source link still names (see {@link SourceReferences}) is
  * kept when its selection is forgotten or evicted. The registry is device-local and never sent to

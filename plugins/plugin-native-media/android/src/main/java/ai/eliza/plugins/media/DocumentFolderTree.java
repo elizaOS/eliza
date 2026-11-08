@@ -24,9 +24,11 @@ import org.json.JSONObject;
 
 /**
  * One user-selected Storage Access Framework folder tree. The renderer browses it through opaque
- * entry ids ({@link FolderSession}); it never supplies or receives authority from a URI or path,
- * and nothing here asks for broad storage permission or falls back to another provider. Android
- * grants the folder in place: nothing is copied or imported.
+ * entry ids ({@link FolderSession}) and never supplies a URI or path; the tree grant and those ids
+ * are the authority boundary. {@link #select} also returns the document's content URI, which a host
+ * may pass to Capacitor's convertFileSrc for a preview; it reads only through this app's existing
+ * grant and never authorizes a call here. Nothing here asks for broad storage permission or falls
+ * back to another provider. Android grants the folder in place: nothing is copied or imported.
  *
  * <p>Every change names the revision the renderer listed (name, type, size, modification time and
  * provider flags) and is refused when the provider's current row differs. Deletion is permanent
@@ -47,6 +49,8 @@ public final class DocumentFolderTree {
   public static final int PAGE = 250;
 
   private static final String KEY = "root";
+  private static final String NAME_HINT =
+      "Use a different name: no / or \\, not . or .., up to 255 characters.";
   private static final Pattern PREFERENCES = Pattern.compile("[a-z][a-z0-9-]{0,63}");
   private static final int GRANTS =
       Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
@@ -219,11 +223,16 @@ public final class DocumentFolderTree {
   }
 
   private JSObject list(FolderSession.Entry<Uri> folder) throws Exception {
-    return list(folder, 0);
+    return list(folder, 0, null);
   }
 
-  /** The cursor is the offset into the provider's child query for this folder. */
-  private JSObject list(FolderSession.Entry<Uri> folder, int offset) throws Exception {
+  /**
+   * One page from {@code offset} into the provider's child query for this folder. A later page
+   * continues only while the row before it still has the document id {@code last}; otherwise rows
+   * were added or removed since the previous page and the folder must be reloaded.
+   */
+  private JSObject list(FolderSession.Entry<Uri> folder, int offset, String last)
+      throws Exception {
     if (folder == null)
       return result("unavailable", "Choose a folder in Android to browse its contents.");
     JSObject details = describe(folder);
@@ -235,6 +244,7 @@ public final class DocumentFolderTree {
         DocumentsContract.buildChildDocumentsUriUsingTree(
             tree, DocumentsContract.getDocumentId(folder.location()));
     JSArray rows = new JSArray();
+    String lastShown = null;
     boolean truncated = false, full = false, loading, error;
     int total;
     try (Cursor cursor = resolver().query(children, CHILD_FIELDS, null, null, null)) {
@@ -245,7 +255,8 @@ public final class DocumentFolderTree {
       loading = extras != null && extras.getBoolean(DocumentsContract.EXTRA_LOADING, false);
       error = extras != null && extras.getString(DocumentsContract.EXTRA_ERROR) != null;
       total = cursor.getCount();
-      if (offset > 0 && !cursor.moveToPosition(offset - 1)) offset = total;
+      if (offset > 0 && (!cursor.moveToPosition(offset - 1) || !last.equals(cursor.getString(5))))
+        return result("conflict", "This folder changed. Reload it to see every item.");
       while (cursor.moveToNext()) {
         if (rows.length() >= PAGE) {
           truncated = true;
@@ -263,6 +274,7 @@ public final class DocumentFolderTree {
           break;
         }
         rows.put(row(child, cursor, write));
+        lastShown = cursor.getString(5);
       }
     }
     int shown = offset + rows.length();
@@ -290,8 +302,34 @@ public final class DocumentFolderTree {
     out.put("rootId", session.rootId());
     out.put("offset", offset);
     out.put("total", total);
-    if (truncated && !full) out.put("cursor", FolderSession.cursor(folder.id, shown));
+    if (truncated && !full) out.put("cursor", FolderSession.cursor(folder.id, shown, lastShown));
     return out;
+  }
+
+  /**
+   * Whether a folder has any child, from one child query of document ids that neither describes
+   * nor authorizes the children, so it never evicts listed entries. Null while the provider is
+   * still loading the folder or reported an error: a partial cursor is never proof of emptiness.
+   */
+  private Boolean hasChildren(FolderSession.Entry<Uri> folder) throws Exception {
+    Uri children =
+        DocumentsContract.buildChildDocumentsUriUsingTree(
+            tree, DocumentsContract.getDocumentId(folder.location()));
+    try (Cursor cursor =
+        resolver()
+            .query(
+                children,
+                new String[] {DocumentsContract.Document.COLUMN_DOCUMENT_ID},
+                null,
+                null,
+                null)) {
+      if (cursor == null) throw new IllegalStateException();
+      Bundle extras = cursor.getExtras();
+      if (extras != null
+          && (extras.getBoolean(DocumentsContract.EXTRA_LOADING, false)
+              || extras.getString(DocumentsContract.EXTRA_ERROR) != null)) return null;
+      return cursor.getCount() > 0;
+    }
   }
 
   /**
@@ -383,8 +421,10 @@ public final class DocumentFolderTree {
         folder == null ? FolderSession.OTHER_FOLDER : FolderSession.cursorOffset(cursor, folder.id);
     if (offset == FolderSession.OTHER_FOLDER)
       return result("conflict", "This folder changed. Refresh it before loading more.");
-    if (offset < 1) return result("conflict", "Refresh this folder before loading more.");
-    return list(folder, offset);
+    String last = FolderSession.cursorLast(cursor);
+    if (offset < 1 || last == null)
+      return result("conflict", "Refresh this folder before loading more.");
+    return list(folder, offset, last);
   }
 
   private static JSObject outcome(String id, String status, String message) {
@@ -420,19 +460,32 @@ public final class DocumentFolderTree {
       if (!describe(destination).optBoolean("canCreate"))
         return result("unsupported", "This provider does not allow moving files into that folder.");
     }
+    // Every confirmed item (and a moved item's listed folder) is resolved before anything changes,
+    // so session eviction during the batch cannot drop an item the owner already confirmed.
+    int count = items.length();
+    String[] ids = new String[count];
+    ArrayList<FolderSession.Entry<Uri>> resolved = new ArrayList<>(), parents = new ArrayList<>();
+    Set<String> seen = new HashSet<>();
+    for (int i = 0; i < count; i++) {
+      JSONObject request = items.optJSONObject(i);
+      ids[i] = request == null ? "" : request.optString("id", "");
+      FolderSession.Entry<Uri> item = seen.add(ids[i]) ? entry(ids[i]) : null;
+      resolved.add(item);
+      parents.add(move && item != null ? entry(item.parent) : null);
+    }
     JSArray outcomes = new JSArray();
     int done = 0;
     boolean expired = false;
-    Set<String> seen = new HashSet<>();
-    for (int i = 0; i < items.length() && !expired; i++) {
+    seen.clear();
+    for (int i = 0; i < count && !expired; i++) {
       JSONObject request = items.optJSONObject(i);
-      String id = request == null ? "" : request.optString("id", "");
+      String id = ids[i];
       String expected = request == null ? "" : request.optString("expectedRevision", "");
       if (!seen.add(id)) {
         outcomes.put(outcome(id, "unsupported", "Duplicate selection."));
         continue;
       }
-      FolderSession.Entry<Uri> item = entry(id);
+      FolderSession.Entry<Uri> item = resolved.get(i);
       if (item == null) {
         outcomes.put(outcome(id, missing(), "Reload this folder."));
         continue;
@@ -449,13 +502,13 @@ public final class DocumentFolderTree {
             continue;
           }
           if (info.optBoolean("directory")) {
-            JSObject contents = list(item);
-            if (!contents.optBoolean("complete")) {
+            Boolean nonEmpty = hasChildren(item);
+            if (nonEmpty == null) {
               outcomes.put(
                   outcome(id, "conflict", "Still loading from the provider. Refresh first."));
               continue;
             }
-            if (contents.getJSONArray("entries").length() > 0) {
+            if (nonEmpty) {
               outcomes.put(outcome(id, "unsupported", "Only empty folders can be deleted here."));
               continue;
             }
@@ -478,7 +531,7 @@ public final class DocumentFolderTree {
           }
           // The listed parent can leave the bounded session; the item then needs a reload, not a
           // revoked session.
-          FolderSession.Entry<Uri> parent = entry(item.parent);
+          FolderSession.Entry<Uri> parent = parents.get(i);
           if (parent == null) {
             outcomes.put(outcome(id, missing(), "Reload this folder."));
             continue;
@@ -615,7 +668,18 @@ public final class DocumentFolderTree {
     return out;
   }
 
-  public JSObject createFolder(String id, String name) throws Exception {
+  /** The trimmed child name, or null when {@link FolderSession#childName} refuses it. */
+  private static String validName(String raw) {
+    try {
+      return FolderSession.childName(raw);
+    } catch (IllegalArgumentException invalid) {
+      return null;
+    }
+  }
+
+  public JSObject createFolder(String id, String raw) throws Exception {
+    String name = validName(raw);
+    if (name == null) return result("unsupported", NAME_HINT);
     FolderSession.Entry<Uri> folder = entry(id);
     if (folder == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(folder);
@@ -626,7 +690,7 @@ public final class DocumentFolderTree {
             resolver(),
             folder.location(),
             DocumentsContract.Document.MIME_TYPE_DIR,
-            FolderSession.childName(name));
+            name);
     if (created == null)
       return result(
           "failed", "The provider did not confirm folder creation. Refresh before retrying.");
@@ -635,7 +699,9 @@ public final class DocumentFolderTree {
     return out;
   }
 
-  public JSObject rename(String id, String name, String expectedRevision) throws Exception {
+  public JSObject rename(String id, String raw, String expectedRevision) throws Exception {
+    String name = validName(raw);
+    if (name == null) return result("unsupported", NAME_HINT);
     FolderSession.Entry<Uri> item = entry(id);
     if (item == null) return result(missing(), "Reload this folder.");
     JSObject info = describe(item);
@@ -644,7 +710,7 @@ public final class DocumentFolderTree {
     if (!current(info, expectedRevision))
       return result("conflict", "This item changed. Refresh before renaming.");
     Uri renamed =
-        DocumentsContract.renameDocument(resolver(), item.location(), FolderSession.childName(name));
+        DocumentsContract.renameDocument(resolver(), item.location(), name);
     if (renamed == null)
       return result("failed", "Rename was not confirmed. Refresh before retrying.");
     session.renamed(item, renamed);
@@ -667,11 +733,11 @@ public final class DocumentFolderTree {
     if (!current(info, expectedRevision))
       return result("conflict", "This item changed. Refresh before deleting.");
     if (info.optBoolean("directory")) {
-      JSObject contents = list(item);
-      if (!contents.optBoolean("complete"))
+      Boolean nonEmpty = hasChildren(item);
+      if (nonEmpty == null)
         return result(
             "conflict", "This folder is still loading from the provider. Refresh before deleting.");
-      if (contents.getJSONArray("entries").length() > 0)
+      if (nonEmpty)
         return result(
             "unsupported",
             "Only empty folders can be deleted here. Manage nonempty folders in Android Files.");
