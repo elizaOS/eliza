@@ -1,7 +1,10 @@
 /** Owner-scoped Cloud writes through the existing private host transport. */
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { ApprovalPayload } from "@elizaos/plugin-assistant";
-import { createManagedCalendarRead } from "../service/managed-calendar-read.js";
+import {
+  createManagedCalendarRead,
+  managedCalendarRefusal,
+} from "../service/managed-calendar-read.js";
 import {
   calendarMutationApprovalSha256,
   calendarMutationOperationKey,
@@ -30,6 +33,24 @@ const deleteUnavailable = () =>
     "Deleting events from the managed Google Calendar is not available on this device yet. Nothing was changed.",
     { retryable: false },
   );
+// Host refusals that are decided before any provider call: nothing changed.
+const notAccepted = (error: unknown) => {
+  const reason = managedCalendarRefusal(error);
+  if (reason === "changes-off")
+    return new CalendarMutationNotAcceptedError(
+      "CALENDAR_MANAGED_CHANGES_OFF",
+      "Calendar edits are off in Settings. Nothing was changed.",
+      undefined,
+      error,
+    );
+  if (reason === "request-too-large")
+    return new CalendarMutationNotAcceptedError(
+      "CALENDAR_MANAGED_REQUEST_TOO_LARGE",
+      "This Calendar change is too large to send. Nothing was changed.",
+      undefined,
+      error,
+    );
+};
 function object(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v))
     throw Error("Invalid managed Calendar response");
@@ -156,11 +177,14 @@ export function createManagedCalendarMutationPort(
       try {
         caps = await capabilities(preflight.sourceId, preflight.calendarId);
       } catch (error) {
-        throw new CalendarMutationNotAcceptedError(
-          "CALENDAR_MANAGED_WRITE_UNAVAILABLE",
-          "Calendar write access could not be verified. Nothing was changed.",
-          undefined,
-          error,
+        throw (
+          notAccepted(error) ??
+          new CalendarMutationNotAcceptedError(
+            "CALENDAR_MANAGED_WRITE_UNAVAILABLE",
+            "Calendar write access could not be verified. Nothing was changed.",
+            undefined,
+            error,
+          )
         );
       }
       if (caps.accountId !== preflight.managedAccountId)
@@ -169,8 +193,9 @@ export function createManagedCalendarMutationPort(
           "Calendar account changed after review. Nothing was changed.",
           { retryable: false },
         );
-      const raw = object(
-        await call({
+      let executed: Record<string, unknown>;
+      try {
+        executed = await call({
           operation: "write-execute",
           grantId: preflight.sourceId,
           calendarId: preflight.calendarId,
@@ -181,8 +206,12 @@ export function createManagedCalendarMutationPort(
             providerVersion: preflight.providerVersion,
             idempotencyKey: preflight.idempotencyKey,
           },
-        }),
-      );
+        });
+      } catch (error) {
+        // Any other failure may follow a provider call and stays ambiguous.
+        throw notAccepted(error) ?? error;
+      }
+      const raw = object(executed);
       if (raw.calendarFailure) {
         const f = object(raw.calendarFailure);
         if (

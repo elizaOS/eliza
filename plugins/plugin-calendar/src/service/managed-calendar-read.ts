@@ -51,6 +51,57 @@ const fail = (attempt?: ReadAttempt, code?: ReadDiagnostic["code"]) => {
     });
   return error;
 };
+// Closed host refusal reasons the Calendar transports act on. Others keep the
+// unavailable failure above.
+const refusalReasons = [
+  "changes-off",
+  "request-too-large",
+  "result-too-large",
+] as const;
+export type ManagedCalendarRefusal = (typeof refusalReasons)[number];
+const refusalKey = Symbol.for("eliza.calendar.managed-refusal.v1");
+export const MANAGED_CALENDAR_RANGE_TOO_LARGE =
+  "MANAGED_CALENDAR_RANGE_TOO_LARGE";
+/** The host read the source but its events do not fit one result. */
+const rangeTooLarge = () =>
+  new ElizaError(
+    "This Calendar range has too many events to read at once. Narrow the range.",
+    { code: MANAGED_CALENDAR_RANGE_TOO_LARGE, severity: "fatal" },
+  );
+/** The closed host refusal reason carried by a transport failure, if any. */
+export function managedCalendarRefusal(
+  error: unknown,
+): ManagedCalendarRefusal | undefined {
+  if (!(error instanceof ElizaError)) return;
+  const marker = Object.getOwnPropertyDescriptor(error, refusalKey);
+  const value: unknown = marker && "value" in marker ? marker.value : undefined;
+  return refusalReasons.find((reason) => reason === value);
+}
+/** Read a small refusal body for its reason only; anything else is ignored. */
+async function refusalReason(
+  body: ReadableStream<Uint8Array> | null,
+): Promise<ManagedCalendarRefusal | undefined> {
+  if (!body) return;
+  const reader = body.getReader(),
+    chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 4096) return;
+      chunks.push(value);
+    }
+    const data: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const reason = record(data) ? data.reason : undefined;
+    return refusalReasons.find((known) => known === reason);
+  } catch {
+    return;
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 const scoped = (v: unknown): v is string =>
@@ -293,8 +344,14 @@ export function createManagedCalendarRead(
           // Optional header diagnostics cannot replace the original refusal.
         }
       }
-      await r.body?.cancel();
-      throw fail(attempt, !r.ok ? "HTTP_STATUS" : "BODY_MISSING");
+      let reason: ManagedCalendarRefusal | undefined;
+      if (r.status === 409) reason = await refusalReason(r.body);
+      else await r.body?.cancel();
+      if (reason === "result-too-large" && attempt?.operation === "feed")
+        throw rangeTooLarge();
+      const error = fail(attempt, !r.ok ? "HTTP_STATUS" : "BODY_MISSING");
+      if (reason) Object.defineProperty(error, refusalKey, { value: reason });
+      throw error;
     }
     const reader = r.body.getReader(),
       chunks: Uint8Array[] = [];
@@ -397,11 +454,11 @@ export function createManagedCalendarRead(
     } catch (error) {
       const start = Date.parse(timeMin),
         end = Date.parse(timeMax);
-      if (
-        managedCalendarReadDiagnostic(error)?.code !== "BODY_LIMIT" ||
-        depth >= FEED_SPLIT_DEPTH ||
-        !(end - start > DAY_MS)
-      )
+      const tooLarge =
+        managedCalendarReadDiagnostic(error)?.code === "BODY_LIMIT" ||
+        (error instanceof ElizaError &&
+          error.code === MANAGED_CALENDAR_RANGE_TOO_LARGE);
+      if (!tooLarge || depth >= FEED_SPLIT_DEPTH || !(end - start > DAY_MS))
         throw error;
       const middle = new Date(
         start + Math.ceil((end - start) / 2),

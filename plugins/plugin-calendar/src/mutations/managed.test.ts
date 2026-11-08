@@ -15,10 +15,10 @@ vi.mock("../service/managed-calendar-read.js", async (importOriginal) => {
             "http://127.0.0.1:1/__alpha-owner-gmail",
           ELIZA_API_TOKEN: "a".repeat(64),
         },
-        (async (_url, init) =>
-          Response.json(
-            await state.call(JSON.parse(String(init?.body)).calendar),
-          )) as typeof fetch,
+        (async (_url, init) => {
+          const out = await state.call(JSON.parse(String(init?.body)).calendar);
+          return out instanceof Response ? out : Response.json(out);
+        }) as typeof fetch,
       ),
   };
 });
@@ -29,6 +29,7 @@ vi.mock("./ledger.js", () => ({
 vi.mock("@elizaos/core", () => ({ ElizaError: class extends Error {} }));
 
 import { createManagedCalendarMutationPort } from "./managed.js";
+import { CalendarMutationNotAcceptedError } from "./types.js";
 
 const source = `alpha-google:${"a".repeat(64)}`;
 const caps = {
@@ -252,4 +253,52 @@ it("treats a capability failure before dispatch as not accepted, not unknown", a
       ([input]) => input.operation !== "write-execute",
     ),
   ).toBe(true);
+});
+
+describe("host refusals on write-execute", () => {
+  const preflight = {
+    sourceId: source,
+    calendarId: "calendar",
+    managedAccountId: "account",
+  } as never;
+  const refused = (reason: string) =>
+    Response.json({ reason }, { status: 409 });
+  it.each([
+    ["changes-off", "CALENDAR_MANAGED_CHANGES_OFF", "edits are off"],
+    ["request-too-large", "CALENDAR_MANAGED_REQUEST_TOO_LARGE", "too large"],
+  ])("%s is a definite non-acceptance", async (reason, code, text) => {
+    state.call
+      .mockResolvedValueOnce(caps)
+      .mockResolvedValueOnce(refused(reason));
+    const failure = await make()
+      .port.execute(approval, preflight)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(CalendarMutationNotAcceptedError);
+    expect((failure as CalendarMutationNotAcceptedError).failure).toMatchObject(
+      { code, message: expect.stringContaining(text) },
+    );
+  });
+  it("changes-off on the capability check names the setting", async () => {
+    state.call.mockResolvedValueOnce(refused("changes-off"));
+    const failure = await make()
+      .port.execute(approval, preflight)
+      .catch((error: unknown) => error);
+    expect((failure as CalendarMutationNotAcceptedError).failure.code).toBe(
+      "CALENDAR_MANAGED_CHANGES_OFF",
+    );
+    expect(state.call).toHaveBeenCalledTimes(1);
+  });
+  it.each(["outcome-unconfirmed", "permission-needed", "unknown"])(
+    "%s after dispatch stays ambiguous",
+    async (reason) => {
+      state.call
+        .mockResolvedValueOnce(caps)
+        .mockResolvedValueOnce(refused(reason));
+      const failure = await make()
+        .port.execute(approval, preflight)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(CalendarMutationNotAcceptedError);
+    },
+  );
 });
