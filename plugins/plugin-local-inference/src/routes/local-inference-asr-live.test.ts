@@ -325,6 +325,40 @@ describe("POST /api/asr/local-inference/live", () => {
 		});
 	});
 
+	it("reopens a session on the current runtime after a runtime swap", async () => {
+		const old = makeState(true);
+		const next = makeState(true);
+		const state: CompatRuntimeState = { current: old.state.current };
+		await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-start" }],
+			frames: frames(30),
+		});
+		await new Promise((r) => setImmediate(r));
+		expect(old.events.length).toBeGreaterThan(0);
+		const oldCount = old.events.length;
+
+		state.current = next.state.current;
+		await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-start" }],
+			frames: frames(50),
+		});
+		await new Promise((r) => setImmediate(r));
+		const res = await post(state, {
+			sessionId: "s",
+			vad: [{ type: "speech-end" }],
+		});
+		expect(res.json().final).toMatchObject({ text: "what time is it" });
+		expect(liveAsrSessionCount()).toBe(1);
+		// Everything after the swap goes to the new runtime's bus only.
+		expect(old.events.length).toBe(oldCount);
+		const phases = next.events.map((e) => e.data.phase);
+		expect(phases[0]).toBe("speech-start");
+		expect(phases).toContain("partial");
+		expect(phases.at(-1)).toBe("final");
+	});
+
 	it("validates the body and caps concurrent sessions", async () => {
 		const { state } = makeState(true);
 		expect((await post(state, { frames: [] })).statusCode).toBe(400);
