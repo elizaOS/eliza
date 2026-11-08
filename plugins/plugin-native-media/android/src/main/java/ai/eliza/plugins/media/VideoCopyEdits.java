@@ -716,8 +716,10 @@ public final class VideoCopyEdits {
       files(token);
       return receipt(token, "saved", id);
     }
-    if (found != null
-        && (record.has("failureStage") || record.optString("status").equals("failed")))
+    // A save that failed cleanly (failureStage, still exporting) left an owned row that is still
+    // pending, so it was never published: the guarded delete below settles it as failed. Only a
+    // row already settled as failed while pending stays for recovery review.
+    if (found != null && record.optString("status").equals("failed"))
       throw new IOException("Pending video copy needs recovery review");
     if (found != null
         && context.getContentResolver().delete(found, "is_pending=1 AND owner_package_name=?",
