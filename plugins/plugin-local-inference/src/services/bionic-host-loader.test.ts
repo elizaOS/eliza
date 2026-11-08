@@ -964,5 +964,32 @@ describe("BionicHostLoader voice bundle", () => {
 			await loader.unloadModel();
 			expect(bundleDir()).toBe(voiceBundle);
 		});
+		it("keeps TTS on a voice bundle that has no asr/", async () => {
+			const voiceBundle = fs.mkdtempSync(
+				path.join(os.tmpdir(), "eliza-bionic-tts-only-"),
+			);
+			tempDirs.push(voiceBundle);
+			fs.mkdirSync(path.join(voiceBundle, "tts", "paradee"), {
+				recursive: true,
+			});
+			process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR = voiceBundle;
+			const seen: Array<Record<string, unknown>> = [];
+			const sock = `${SOCK}-tts-only`;
+			host = startHost(sock, (req) => {
+				seen.push(req);
+				return JSON.stringify({
+					ok: true,
+					sampleRate: 24000,
+					samples: 1,
+					pcmBase64: Buffer.alloc(4).toString("base64"),
+				});
+			});
+			const loader = new BionicHostLoader(sock);
+			await loader.loadModel({ modelPath: makeBundleModelPath() });
+			await loader.synthesize({ text: "Hello." });
+			expect(seen.map((r) => [r.op, r.bundleDir])).toEqual([
+				["tts", voiceBundle],
+			]);
+		});
 	});
 });

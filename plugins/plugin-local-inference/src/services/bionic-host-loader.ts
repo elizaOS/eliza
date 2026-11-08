@@ -272,14 +272,28 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		);
 	}
 	/**
-	 * Bundle for ASR and TTS: the installed voice bundle when it has an ASR
-	 * model (or no text bundle is loaded), else the text model's bundle (a
-	 * full Eliza-1 bundle carries its own asr/ and tts/).
+	 * Bundle for ASR: the installed voice bundle when it has an ASR model (or
+	 * no text bundle is loaded), else the text model's bundle (a full Eliza-1
+	 * bundle carries its own asr/ and tts/).
 	 */
 	private voiceDir(): string {
 		if (
 			this.voiceBundleDir &&
 			(!this.textBundleDir || bundleHasAsrModelFiles(this.voiceBundleDir))
+		) {
+			return this.voiceBundleDir;
+		}
+		return this.textBundleDir;
+	}
+	/**
+	 * Bundle for TTS, chosen the same way by its tts/paradee/ files: a voice
+	 * bundle without asr/ still speaks after a text model loads.
+	 */
+	private ttsDir(): string {
+		if (
+			this.voiceBundleDir &&
+			(!this.textBundleDir ||
+				existsSync(path.join(this.voiceBundleDir, "tts", "paradee")))
 		) {
 			return this.voiceBundleDir;
 		}
@@ -623,7 +637,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (!text) {
 			throw new Error("[BionicHostLoader] host tts requires non-empty text");
 		}
-		const bundleDir = this.voiceDir();
+		const bundleDir = this.ttsDir();
 		if (!bundleDir) {
 			// Same rule as transcribe: an empty bundleDir would make the host
 			// synthesize from its own default bundle, not the active one.
@@ -712,9 +726,11 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (!signal) return pending;
 		return new Promise<T>((resolve, reject) => {
 			const onAbort = () => {
+				// The bundle of the call being cancelled; resolving it again here
+				// could throw inside the abort listener.
 				this.roundTrip<BionicTextResponse>({
 					op: cancelOp,
-					bundleDir: this.voiceDir(),
+					bundleDir: request.bundleDir,
 				}).catch((err: unknown) => {
 					logger.warn(
 						`[BionicHostLoader] ${cancelOp} failed: ${err instanceof Error ? err.message : String(err)}`,
