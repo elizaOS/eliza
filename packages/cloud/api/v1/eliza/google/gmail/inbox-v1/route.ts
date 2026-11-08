@@ -107,6 +107,8 @@ app.route(
     authenticate: (context) => identity(context as AppContext),
     review: (owner, proposal, requestId) =>
       managedInboxProvider.review(owner, proposal, requestId),
+    evidence: (owner, receipt) =>
+      managedInboxProvider.sentEvidence(owner, receipt),
     onError: (error, context) => failureResponse(context as AppContext, error),
   }),
 );

@@ -115,6 +115,20 @@ export class InboxReceipts {
     );
     return this.get(owner, requestId);
   }
+  /**
+   * Settles an outcome-unknown request as succeeded from positive provider evidence.
+   * Only outcome-unknown moves, and only to succeeded: nothing is claimed or dispatched.
+   */
+  async settle(
+    owner: InboxOwner,
+    requestId: string,
+    evidence: Record<string, unknown>,
+  ): Promise<InboxReceipt> {
+    await this.database(
+      sql`UPDATE managed_gmail_operation_receipts SET state='succeeded',provider_result=${JSON.stringify(evidence)}::jsonb WHERE ${this.scope(owner, requestId)} AND state='outcome-unknown'`,
+    );
+    return this.get(owner, requestId);
+  }
   async observe(owner: InboxOwner, requestId: string): Promise<InboxReceipt> {
     // A process may have died on either side of provider dispatch. Never reclaim it.
     await this.database(

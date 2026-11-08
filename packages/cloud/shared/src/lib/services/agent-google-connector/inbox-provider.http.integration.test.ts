@@ -1204,3 +1204,183 @@ test("reviewed mark-read and mark-unread over a closed transport: review digest,
     ).rejects.toMatchObject({ status: 403 });
   expect(calls.length).toBe(callsBeforeScope);
 }, 60000);
+
+test("an outcome-unknown send settles as succeeded only on the exact sent Message-ID, never by resending", async () => {
+  const { InboxGoogleProvider } = await import("./inbox-provider");
+  const scratch = new PGlite();
+  try {
+    await scratch.exec(
+      "CREATE TABLE organizations(id uuid PRIMARY KEY);CREATE TABLE users(id uuid PRIMARY KEY);",
+    );
+    await scratch.query("INSERT INTO organizations VALUES ($1)", [org]);
+    await scratch.query("INSERT INTO users VALUES ($1)", [user]);
+    const migration = (name: string) =>
+      scratch.exec(
+        readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), "utf8"),
+      );
+    for (const name of [
+      "0509_managed_gmail_operation_receipts.sql",
+      "0535_managed_gmail_read_state_operations.sql",
+      "0558_managed_gmail_receipt_cancel.sql",
+    ])
+      await migration(name);
+    const scratchReceipts = new InboxReceipts(async (query: SQL) => {
+        const prepared = dialect.sqlToQuery(query);
+        return { rows: (await scratch.query(prepared.sql, prepared.params)).rows as any[] };
+      }),
+      owner = { organizationId: org, userId: user, grantId: grant },
+      digest = "b".repeat(64);
+    // Gmail state seen by the closed transport: what the search finds, and its labels and header.
+    let found: { id: string; labels: string[]; header: (requestId: string) => string }[] = [],
+      searches: string[] = [];
+    const closedFetch = async (input: Parameters<typeof fetch>[0]) => {
+      const url = new URL(String(input));
+      if (url.origin !== "https://gmail.googleapis.com")
+        throw new Error("closed transport: unexpected origin");
+      if (url.pathname === "/gmail/v1/users/me/messages") {
+        searches.push(url.searchParams.get("q") ?? "");
+        return Response.json(
+          found.length ? { messages: found.map((row) => ({ id: row.id, threadId: "t1" })) } : {},
+        );
+      }
+      const row = found.find((item) => url.pathname === `/gmail/v1/users/me/messages/${item.id}`);
+      if (!row) return new Response("unexpected", { status: 404 });
+      const requestId = /eliza-([0-9a-f-]+)@/.exec(searches.at(-1) ?? "")?.[1] ?? "";
+      return Response.json({
+        id: row.id,
+        threadId: "t1",
+        labelIds: row.labels,
+        payload: { headers: [{ name: "Message-ID", value: row.header(requestId) }] },
+      });
+    };
+    const provider = new InboxGoogleProvider({
+      grant: async () => ({
+        token: "synthetic-only",
+        email: "owner@example.invalid",
+        scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      }),
+      fetch: closedFetch,
+    });
+    let performed = 0;
+    const routes = createInboxOperationRoutes({
+      receipts: scratchReceipts,
+      async authenticate() {
+        return { organizationId: org, userId: user };
+      },
+      async review() {
+        return {
+          kind: "send",
+          digest,
+          review: {},
+          perform: async () => {
+            performed++;
+            throw new Error("Ambiguous Google response");
+          },
+        };
+      },
+      evidence: (who, receipt) => provider.sentEvidence(who, receipt),
+    });
+    const call = (path: string, body?: unknown) =>
+      routes.request("http://fixture" + path, {
+        method: body ? "POST" : "GET",
+        headers: { "content-type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    const check = async (requestId: string) =>
+      ((await (await call(`/operations/${requestId}?grantId=${grant}`)).json()) as any).receipt;
+    const unknownSend = async () => {
+      const requestId = crypto.randomUUID(),
+        proposal = { kind: "send" };
+      await call("/operations", { grantId: grant, requestId, proposal });
+      const dispatched = (await (
+        await call(`/operations/${requestId}/dispatch`, {
+          grantId: grant,
+          reviewDigest: digest,
+          proposal,
+        })
+      ).json()) as any;
+      expect(dispatched.receipt.state).toBe("outcome-unknown");
+      return { requestId, proposal };
+    };
+
+    const { requestId, proposal } = await unknownSend();
+    expect(performed).toBe(1);
+    // Before the migration the database refuses outcome-unknown -> succeeded.
+    await expect(
+      scratchReceipts.settle(owner, requestId, { messageId: "sent-1" }),
+    ).rejects.toThrow();
+    await migration("0559_managed_gmail_receipt_evidence.sql");
+    // No match: the receipt stays unknown, never rejected.
+    expect((await check(requestId)).state).toBe("outcome-unknown");
+    expect(searches.at(-1)).toBe(`rfc822msgid:<eliza-${requestId}@message.invalid>`);
+    // A draft, an unsent message, another Message-ID or two matches are not evidence.
+    const exact = (id: string) => `<eliza-${id}@message.invalid>`;
+    for (const rows of [
+      [{ id: "d1", labels: ["DRAFT"], header: exact }],
+      [{ id: "s1", labels: ["SENT", "DRAFT"], header: exact }],
+      [{ id: "i1", labels: ["INBOX"], header: exact }],
+      [{ id: "s1", labels: ["SENT"], header: () => "<other@message.invalid>" }],
+      [
+        { id: "s1", labels: ["SENT"], header: exact },
+        { id: "s2", labels: ["SENT"], header: exact },
+      ],
+    ]) {
+      found = rows;
+      expect((await check(requestId)).state).toBe("outcome-unknown");
+    }
+    // The exact sent message settles it with the found message id.
+    found = [{ id: "s1", labels: ["SENT", "INBOX"], header: exact }];
+    const settled = await check(requestId);
+    expect(settled).toMatchObject({
+      state: "succeeded",
+      providerResult: { messageId: "s1", threadId: "t1", evidence: "sent-message-id" },
+      rejectionCode: null,
+    });
+    expect(settled.dispatchedAt).not.toBeNull();
+    // A later dispatch or check never reaches the provider again.
+    await call(`/operations/${requestId}/dispatch`, {
+      grantId: grant,
+      reviewDigest: digest,
+      proposal,
+    });
+    expect((await check(requestId)).state).toBe("succeeded");
+    expect(performed).toBe(1);
+    // A failed lookup leaves another unknown receipt readable and unknown.
+    const second = await unknownSend();
+    found = [];
+    const failing = createInboxOperationRoutes({
+      receipts: scratchReceipts,
+      authenticate: async () => ({ organizationId: org, userId: user }),
+      review: async () => {
+        throw new Error("not used");
+      },
+      evidence: async () => {
+        throw new Error("Google unavailable");
+      },
+    });
+    const response = await failing.request(
+      `http://fixture/operations/${second.requestId}?grantId=${grant}`,
+    );
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as any).receipt.state).toBe("outcome-unknown");
+    // The database still refuses every other move out of outcome-unknown.
+    await expect(
+      scratch.query(
+        "UPDATE managed_gmail_operation_receipts SET state='rejected',rejection_code='403' WHERE request_id=$1",
+        [second.requestId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      scratch.query(
+        "UPDATE managed_gmail_operation_receipts SET state='prepared',dispatched_at=NULL,finished_at=NULL WHERE request_id=$1",
+        [second.requestId],
+      ),
+    ).rejects.toThrow();
+    // Other kinds are never settled from a search.
+    expect(
+      await provider.sentEvidence(owner, { requestId: second.requestId, kind: "archive" }),
+    ).toBeNull();
+  } finally {
+    await scratch.close();
+  }
+});

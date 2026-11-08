@@ -5,6 +5,7 @@ import {
   InboxContractError,
   type InboxEffectKind,
   type InboxOwner,
+  type InboxReceipt,
   type InboxReceipts,
 } from "./inbox-receipts";
 
@@ -20,6 +21,11 @@ export interface InboxOperationRouteDependencies {
   authenticate(context: Context): Promise<Omit<InboxOwner, "grantId">>;
   /** Must resolve the exact managed owner grant and validate scopes/content on each call. */
   review(owner: InboxOwner, proposal: unknown, requestId: string): Promise<InboxReviewedEffect>;
+  /**
+   * Positive provider evidence that an outcome-unknown request was carried out, or null.
+   * Absence of evidence never settles a request: Gmail search can lag.
+   */
+  evidence?(owner: InboxOwner, receipt: InboxReceipt): Promise<Record<string, unknown> | null>;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function id(value: unknown): string {
@@ -154,12 +160,15 @@ export function createInboxOperationRoutes(dependencies: InboxOperationRouteDepe
   });
   app.get("/operations/:requestId", async (context) => {
     const identity = await dependencies.authenticate(context),
-      owner = { ...identity, grantId: id(context.req.query("grantId")) };
-    return context.json({
-      version: 1,
-      receipt: await dependencies.receipts.observe(owner, id(context.req.param("requestId"))),
-      providerExactlyOnce: false,
-    });
+      owner = { ...identity, grantId: id(context.req.query("grantId")) },
+      requestId = id(context.req.param("requestId"));
+    let receipt = await dependencies.receipts.observe(owner, requestId);
+    if (receipt.state === "outcome-unknown" && dependencies.evidence) {
+      // A failed lookup leaves the receipt unknown; the caller can still read it.
+      const found = await dependencies.evidence(owner, receipt).catch(() => null);
+      if (found) receipt = await dependencies.receipts.settle(owner, requestId, found);
+    }
+    return context.json({ version: 1, receipt, providerExactlyOnce: false });
   });
   return app;
 }

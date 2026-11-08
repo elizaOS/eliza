@@ -656,6 +656,47 @@ export class InboxGoogleProvider {
       },
     };
   }
+  /**
+   * Positive evidence that an outcome-unknown send reached Gmail: exactly one sent,
+   * non-draft message carrying the request's own Message-ID. Anything else is null,
+   * and other kinds are never settled here (their receipt names no target to read).
+   */
+  async sentEvidence(
+    owner: InboxOwner,
+    receipt: { requestId: string; kind: string },
+  ): Promise<Record<string, unknown> | null> {
+    if (receipt.kind !== "send") return null;
+    const grant = await this.dependencies.grant(owner);
+    requireScope(grant, "read");
+    const messageId = `<eliza-${receipt.requestId}@message.invalid>`,
+      params = new URLSearchParams({
+        q: `rfc822msgid:${messageId}`,
+        maxResults: "2",
+        includeSpamTrash: "true",
+      }),
+      rows = (await this.request(grant, `/messages?${params}`)).messages;
+    if (!Array.isArray(rows) || rows.length !== 1) return null;
+    const id = providerId(object(rows[0]).id),
+      message = await this.request(
+        grant,
+        `/messages/${id}?format=metadata&metadataHeaders=Message-ID`,
+      ),
+      labels = message.labelIds;
+    if (
+      message.id !== id ||
+      !Array.isArray(labels) ||
+      !labels.includes("SENT") ||
+      labels.includes("DRAFT") ||
+      payloadHeader(object(message.payload ?? {}), "Message-ID") !== messageId
+    )
+      return null;
+    await this.assertCurrentGrant(owner, grant, "read");
+    return {
+      messageId: id,
+      threadId: providerId(message.threadId),
+      evidence: "sent-message-id",
+    };
+  }
   async review(
     owner: InboxOwner,
     proposal: unknown,
