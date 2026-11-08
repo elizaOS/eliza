@@ -208,6 +208,20 @@ export interface SurfaceCrashedEvent extends SurfaceIdOptions {
   url: string | null;
 }
 
+/**
+ * A native page change. On Android the event also carries the `getSurfaceState` fields
+ * (`currentUrl`, `title`, `canGoBack`, `canGoForward`, `progress` and the rest) as they
+ * were when it was sent. Every listener receives every surface's events, so use the
+ * fields only when `exists` is true and `owner`, `session` and `epoch` match your own
+ * identity (`getSurfaceState` checks that for you). They are a snapshot: one taken before
+ * a command the host has not seen settle can be older than that command, and a title
+ * or progress that changes later sends no event. iOS sends only the surface id and
+ * owner; read `getSurfaceState` when the fields are absent.
+ */
+export interface NavigationChangedEvent
+  extends SurfaceIdOptions,
+    Partial<Omit<SurfaceState, keyof SurfaceOwnerOptions>> {}
+
 /** A surface closed by the plugin, for example when its keyed profile was purged. */
 export interface SurfaceClosedEvent extends SurfaceIdOptions {
   reason: "profile-purged";
@@ -579,10 +593,10 @@ export interface ElizaSurfaceManagerPlugin {
       reason: "website-opened" | "permission-revoked";
     }) => void,
   ): Promise<PluginListenerHandle>;
-  /** Signals a native page change; consumers read current state before applying it. */
+  /** Signals a native page change; see `NavigationChangedEvent` for the state it carries. */
   addListener(
     eventName: "navigationChanged",
-    listener: (event: SurfaceIdOptions) => void,
+    listener: (event: NavigationChangedEvent) => void,
   ): Promise<PluginListenerHandle>;
   /** An intercepting surface held a cross-origin navigation; `navigate()` to allow it. */
   addListener(
