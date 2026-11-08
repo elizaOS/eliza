@@ -40,12 +40,63 @@ Do not assume that every shipped client retries automatically. Existing
 objects still have their retirement alarms in the API namespace, but that
 does not prove that a new revoke request reaches an old object after cutover.
 
-For the staging cutover, stop the QA voice clients and verify their settlement
-and retirement before changing the API binding. Start new sessions only after
-the binding readback. Test Stop, cancellation, revocation and retirement on
-the new namespace. Production stays unchanged until that lifecycle and the
-latency measurements pass. A live production cutover needs its own reviewed
-plan for sessions that span the binding change.
+For the first staging switch, the protected release Environment must supply
+`STAGING_SPEECH_CUTOVER_ATTESTATION`. The release checks the current API's
+`VOICE_SPEECH_RELAY_ENABLED=false` binding, exact namespace owners/IDs, and the
+attestation before release mutations and again immediately before API publish.
+It fails closed on missing or incomplete provider inventory. Already-active
+speech-host updates need no new attestation. Production is unchanged.
+
+This is **human-trusted drain evidence**, not a measured session count. Stop QA
+clients, set the old API's speech admission flag false, and wait for every
+already-admitted request and session to settle and retire. Keep admission and
+clients quiesced across all serving versions until the binding switch: a point-in-time empty population
+alone is insufficient. The existing flag blocks consent, mint and WebSocket
+entry but preserves revoke; it cannot recall an in-flight request. The release
+lock serializes releases, not independent administrative changes to the flag.
+
+Set the protected secret to this strict JSON shape, using the exact release
+commit and IDs from the current Cloudflare inventory. Use canonical UTC
+millisecond timestamps; expiry must be after issuance and at most 15 minutes
+later. The evidence field identifies the operator's drain record; the script
+does not verify that record. Never put provider credentials in it.
+
+```json
+{
+  "version": 1,
+  "sourceSha": "<40 lowercase hex characters>",
+  "fromWorker": "eliza-cloud-api-staging",
+  "fromNamespaceId": "<32 lowercase hex characters>",
+  "toWorker": "eliza-cloud-speech-staging",
+  "toNamespaceId": "<32 lowercase hex characters>",
+  "issuedAt": "2026-11-08T16:00:00.000Z",
+  "expiresAt": "2026-11-08T16:15:00.000Z",
+  "legacySessionsDrained": true,
+  "legacyAdmissionHeld": true,
+  "evidence": "<operator drain record>"
+}
+```
+
+The ordinary staging release cannot perform the first cutover until host
+provisioning, freeze, drain and attestation are complete. First provision only
+the target host from the candidate source; this command does not deploy the API
+or change its binding. Use the staging account and the same voice usage backend
+as the API, then provision the required secrets through the protected operator
+channel. The host has no public route or caller until the API binding switches.
+
+```bash
+bun packages/cloud/speech-worker/verify-staging-contract.ts
+bunx wrangler deploy --config packages/cloud/speech-worker/wrangler.toml \
+  --var ELIZA_DEPLOY_COMMIT:"$CANDIDATE_SHA" \
+  --var CLOUD_VOICE_USAGE_BACKEND:"$CLOUD_VOICE_USAGE_BACKEND" --tag "$CANDIDATE_SHA"
+```
+
+Read back both actual namespace IDs after this host-only provisioning and use
+them in the attestation. A missing target stops activation with a bootstrap
+instruction; its namespace is never invented from config. Start new sessions
+only after the final API binding readback. Test Stop, cancellation, revocation
+and retirement on the new namespace. A production cutover needs its own
+reviewed plan for sessions spanning the binding change.
 
 ## Dependencies (declared here, provisioned by the operator)
 
@@ -88,8 +139,17 @@ The Voice Live E2E staging measurement in the PR checklist covers those.
 
 ## Rollback
 
-Revert the speech host change and run the staging release. Removing only
+Before reverting, stop clients and freeze admission on the speech-host side;
+confirm its in-flight requests and sessions have settled and retired. A revert
+alone does not drain that namespace. Revert the speech host change and run the
+staging release. Removing only
 `script_name` from `SPEECH_RELAY_SESSIONS` fails the source contract and blocks
 the API deploy. After the revert, new sessions return to the retained API
 namespace. Keep the speech Worker, its class, and its secrets until the last
 sessions expire and their settlement and retirement are confirmed.
+
+The registered `speech_host_cutover.qnt` model separates enforced identity,
+expiry and admission checks from the truthful-human-drain assumption. Its
+negative witnesses retain the unsafe un-gated switch, a false drain claim,
+and admission thaw after attestation. Workerd regressions exercise the real
+old/new namespace routing and old-namespace settlement behavior.

@@ -266,9 +266,34 @@ describe("committed Cloud CF workflow matches the policy", () => {
       ).script_name,
     ).toBe("eliza-cloud-speech-staging");
     const parsed = Bun.YAML.parse(cloudCfRelease);
-    const deploy = parsed.jobs["deploy-api"].steps.find(
+    expect(
+      parsed.on.workflow_call.secrets.STAGING_SPEECH_CUTOVER_ATTESTATION
+        .required,
+    ).toBe(false);
+    const steps = parsed.jobs["deploy-api"].steps;
+    const preflight = steps.find((step) => step.id === "speech-cutover");
+    expect(preflight.if).toContain("deploy_environment == 'staging'");
+    expect(preflight.env.STAGING_SPEECH_CUTOVER_ATTESTATION).toBe(
+      `\${{ secrets.STAGING_SPEECH_CUTOVER_ATTESTATION }}`,
+    );
+    expect(preflight.run).toContain("speech-host-cutover-admission.mjs");
+    expect(preflight.run).toContain('>> "$GITHUB_OUTPUT"');
+    expect(steps.indexOf(preflight)).toBeLessThan(
+      steps.findIndex(
+        (step) =>
+          step.name === "Disable staging session exchange before cutover",
+      ),
+    );
+    const deployStep = steps.find(
       (step) => step.name === "Deploy to Cloudflare Workers",
-    ).run;
+    );
+    expect(deployStep.env.STAGING_SPEECH_CUTOVER_ATTESTATION).toBe(
+      preflight.env.STAGING_SPEECH_CUTOVER_ATTESTATION,
+    );
+    expect(deployStep.env.SPEECH_CUTOVER_EXPECTED_FINGERPRINT).toBe(
+      `\${{ steps.speech-cutover.outputs.fingerprint }}`,
+    );
+    const deploy = deployStep.run;
     const fragment = deploy.match(
       /recheck_canonical_source\nif \[ "\$DEPLOY_ENVIRONMENT" = "staging" \]; then\n[\s\S]*?bunx wrangler deploy "\$\{args\[@\]\}"\n/,
     )?.[0];
@@ -302,6 +327,9 @@ bun() {
 }
 node() {
   case "$1" in
+    *speech-host-cutover-admission.mjs)
+      printf 'recheck-speech-cutover\n' >&2
+      [ "$FAILURE" != speech-cutover ] || return 28 ;;
     *verify-worker-secret-binding-names.ts)
       shift
       printf 'speech-secrets %s\n' "$*" >&2
@@ -358,6 +386,7 @@ ${fragment}`,
     // The speech host is validated and its secret names are present before
     // it is published, and both happen before the API that binds it.
     expect(staging.stderr).toContain("validate-speech");
+    expect(staging.stderr).toContain("recheck-speech-cutover");
     expect(staging.stderr).toContain(
       "speech-secrets CARTESIA_API_KEY DATABASE_URL",
     );
@@ -373,13 +402,14 @@ ${fragment}`,
       "speech-validation",
       "speech-secrets",
       "speech",
+      "speech-cutover",
     ]) {
       const stopped = run("staging", failure);
       expect(stopped.status).not.toBe(0);
       expect(stopped.stdout).not.toContain("api wrangler deploy");
       if (failure === "validation")
         expect(stopped.stdout).not.toContain("admission wrangler deploy");
-      if (failure !== "speech")
+      if (failure !== "speech" && failure !== "speech-cutover")
         expect(stopped.stdout).not.toContain("speech wrangler deploy");
     }
   });
