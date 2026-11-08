@@ -23,6 +23,15 @@ interface IoRedisLike {
   get(key: string): Promise<string | null>;
   set(...args: Array<string | number>): Promise<string | null>;
   setex(key: string, seconds: number, value: string): Promise<string>;
+  setexIfLocked?(
+    lockKey: string,
+    token: string,
+    key: string,
+    seconds: number,
+    value: string,
+    condition?: (current: string | null) => boolean,
+  ): Promise<boolean>;
+  delIfLocked?(lockKey: string, token: string, key: string): Promise<boolean>;
   getdel(key: string): Promise<string | null>;
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
@@ -125,6 +134,30 @@ class InMemoryRedis implements IoRedisLike {
   async setex(key: string, seconds: number, value: string): Promise<string> {
     GLOBAL_STORE.set(key, { kind: "string", value, expireAt: nowMs() + seconds * 1000 });
     return "OK";
+  }
+
+  // Read and mutation run in the same synchronous turn, matching Redis Lua.
+  async setexIfLocked(
+    lockKey: string,
+    token: string,
+    key: string,
+    seconds: number,
+    value: string,
+    condition?: (current: string | null) => boolean,
+  ): Promise<boolean> {
+    const lock = this.read(lockKey);
+    if (lock?.kind !== "string" || lock.value !== token) return false;
+    const current = this.read(key);
+    if (condition && !condition(current?.kind === "string" ? current.value : null)) return false;
+    GLOBAL_STORE.set(key, { kind: "string", value, expireAt: nowMs() + seconds * 1000 });
+    return true;
+  }
+
+  async delIfLocked(lockKey: string, token: string, key: string): Promise<boolean> {
+    const lock = this.read(lockKey);
+    if (lock?.kind !== "string" || lock.value !== token) return false;
+    GLOBAL_STORE.delete(key);
+    return true;
   }
 
   async getdel(key: string): Promise<string | null> {
@@ -408,6 +441,27 @@ export class MockSocketRedis {
 
   async pexpire(key: string, ms: number): Promise<number> {
     return this.client.pexpire(key, ms);
+  }
+
+  async setexIfLocked(
+    lockKey: string,
+    token: string,
+    key: string,
+    seconds: number,
+    value: unknown,
+    condition?: (current: string | null) => boolean,
+  ): Promise<boolean> {
+    if (!this.client.setexIfLocked) {
+      throw new TypeError("The supplied mock client does not support atomic lock mutations");
+    }
+    return this.client.setexIfLocked(lockKey, token, key, seconds, serializeArg(value), condition);
+  }
+
+  async delIfLocked(lockKey: string, token: string, key: string): Promise<boolean> {
+    if (!this.client.delIfLocked) {
+      throw new TypeError("The supplied mock client does not support atomic lock mutations");
+    }
+    return this.client.delIfLocked(lockKey, token, key);
   }
 
   async pttl(key: string): Promise<number | null> {
