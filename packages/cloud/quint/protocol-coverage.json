@@ -944,7 +944,7 @@
     "limitations": [
       "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
       "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "FrontendActivationSwap covers the active-row swap when rollback and deletion race. Build, upload and publication remain unmodeled.",
+      "FrontendActivationSwap checks rollback racing one inactive deployment deletion. frontend_publication checks bounded upload, finalization and publication. app_frontend_deletion checks final app deletion and its shared parent lock. Build job orchestration and composition across these models remain open.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Only complete artifacts are published | Active deployment changes atomically | Rollback retains immutable artifact identity",
       "Abstract states: queued, building, uploading, finalizing, ready, active, superseded, failed, deleted"
@@ -1363,7 +1363,7 @@
     "status": "unmodeled",
     "limitations": [
       "Reviewed source families: shared/src/lib/services/app-deploy, shared/src/lib/services/apps-deploy, shared/src/db/repositories/app-frontend",
-      "FrontendActivationSwap covers the active-row swap for one rollback and deletion. Upload, finalize, concurrent activations and ingress publication remain unmodeled."
+      "FrontendActivationSwap, frontend_publication and app_frontend_deletion cover bounded frontend row swaps, publication and whole-app deletion. Backend deployment orchestration, ingress publication and concurrent activations beyond the bounded lock projection remain open."
     ]
   },
   {
