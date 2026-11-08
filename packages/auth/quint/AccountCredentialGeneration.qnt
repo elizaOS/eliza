@@ -1,7 +1,7 @@
 // src/auth/account-storage.ts: storage-owned replacement generations and the
-// updateAccountCredentialsIfUnchanged refresh commit. Two providers share an
-// account id, two refresh callers retain earlier generations, and metadata can
-// change while refresh waits. Each storage API call is atomic under its lock.
+// refresh and identity metadata compare-and-swap commits. Two providers share
+// an account id and two callers can retain older generations. Each storage API
+// call is atomic under its lock.
 module AccountCredentialGeneration {
   val accountKeys = Set(1, 2)
   val readers = Set(1, 2)
@@ -93,15 +93,32 @@ module AccountCredentialGeneration {
     },
   }
 
-  action metadata(key: int, value: int): bool = {
-    val record = s.records.get(key)
+  pure def updateLabel(state: State, key: int, value: int, expected: int): State = {
+    val record = state.records.get(key)
     val present = record.generation > 0
-    s' = {
-      ...s,
-      records: if (present) s.records.set(key, { ...record, label: value }) else s.records,
-      previous: s.records, operation: "metadata", key: key, value: value,
-      includesIdToken: false, expected: 0,
-      result: if (present) "updated" else "missing",
+    // Zero represents an omitted expectation. A captured generation is positive.
+    val admitted = present and (expected == 0 or record.generation == expected)
+    {
+      ...state,
+      records: if (admitted) state.records.set(key, { ...record, label: value }) else state.records,
+      previous: state.records,
+      operation: if (expected == 0) "metadata" else "conditional-metadata",
+      key: key, value: value, includesIdToken: false, expected: expected,
+      result: if (not(present)) "missing" else if (admitted) "updated" else "changed",
+    }
+  }
+  action metadata(key: int, value: int): bool = s' = updateLabel(s, key, value, 0)
+
+  // The login path can retain a generation while the profile write is pending.
+  action conditionalMetadata(reader: int, value: int): bool = {
+    val held = s.readers.get(reader)
+    all {
+      held.stage == "waiting",
+      s' = {
+        ...updateLabel(s, held.key, value, held.generation),
+        readers: s.readers.set(reader, { ...held, stage: "done" }),
+        reader: reader,
+      },
     }
   }
 
@@ -111,6 +128,16 @@ module AccountCredentialGeneration {
     expected: 0, result: "deleted",
   }
 
+  action complete(reader: int): bool = any {
+    {
+      nondet withToken = Set(false, true).oneOf()
+      refresh(reader, withToken)
+    },
+    {
+      nondet value = accountKeys.oneOf()
+      conditionalMetadata(reader, value)
+    },
+  }
   action step = any {
     {
       nondet reader = readers.oneOf()
@@ -119,8 +146,7 @@ module AccountCredentialGeneration {
     },
     {
       nondet reader = readers.oneOf()
-      nondet withToken = Set(false, true).oneOf()
-      refresh(reader, withToken)
+      complete(reader)
     },
     {
       nondet key = accountKeys.oneOf()
@@ -173,20 +199,28 @@ module AccountCredentialGeneration {
     (s.operation == "refresh" and s.result == "updated" and not(s.includesIdToken))
       .implies(s.records.get(s.key).idToken == s.previous.get(s.key).idToken)
   val MetadataPreservesCredentials =
-    (s.operation == "metadata").implies(accountKeys.forall(k => and {
+    s.operation.in(Set("metadata", "conditional-metadata")).implies(accountKeys.forall(k => and {
       s.records.get(k).generation == s.previous.get(k).generation,
       s.records.get(k).credential == s.previous.get(k).credential,
       s.records.get(k).idToken == s.previous.get(k).idToken,
     }))
+  val ConditionalMetadataHonorsGeneration = (s.operation == "conditional-metadata").implies({
+    val generation = s.previous.get(s.key).generation
+    if (generation == s.expected) {
+      s.result == "updated" and s.records.get(s.key).label == s.value
+    } else {
+      s.records == s.previous and
+        s.result == (if (generation == 0) "missing" else "changed")
+    }
+  })
   val ProviderIsolation = accountKeys.forall(k =>
     (k != s.key).implies(s.records.get(k) == s.previous.get(k)))
   val invariant = TypeOK and FreshGenerations and StaleRefreshCannotReplace and
     RefreshCannotResurrect and RefreshPreservesCurrentLabel and
-    MissingIdTokenIsCarriedForward and MetadataPreservesCredentials and ProviderIsolation
+    MissingIdTokenIsCarriedForward and MetadataPreservesCredentials and
+    ConditionalMetadataHonorsGeneration and ProviderIsolation
 
-  temporal FairRefreshCompletion = readers.forall(reader =>
-    refresh(reader, false).weakFair(s) and refresh(reader, true).weakFair(s))
-  temporal RefreshCallsSettle = FairRefreshCompletion.implies(
+  temporal AccountRequestsSettle = readers.forall(reader => complete(reader).weakFair(s)).implies(
     readers.forall(reader => always((s.readers.get(reader).stage == "waiting").implies(
       eventually(s.readers.get(reader).stage != "waiting")))))
 
@@ -201,4 +235,13 @@ module AccountCredentialGeneration {
   run metadataSurvivesRefreshTest = init.then(begin(1, 1)).then(metadata(1, 2))
     .then(refresh(1, false))
     .expect(s.records.get(1).label == 2 and s.records.get(1).idToken == 1)
+  run oldProfileCannotEditIdenticalReplacementTest = init.then(begin(1, 1))
+    .then(save(1, 1, true)).then(conditionalMetadata(1, 2))
+    .expect(s.result == "changed" and s.records.get(1).label == 1)
+  run oldProfileCannotRecreateDeletedRecordTest = init.then(begin(1, 1))
+    .then(remove(1)).then(conditionalMetadata(1, 2))
+    .expect(s.result == "missing" and s.records.get(1) == absent)
+  run currentProfilePreservesGenerationTest = init.then(begin(1, 1))
+    .then(metadata(1, 2)).then(conditionalMetadata(1, 1))
+    .expect(s.result == "updated" and s.records.get(1).generation == 1 and s.records.get(1).label == 1)
 }
