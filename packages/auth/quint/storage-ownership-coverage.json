@@ -39,7 +39,7 @@
     "status": "partial",
     "limitations": [
       "Two original artifacts, two pending writes, one reset, one reset-process crash and one optional recovery-process crash. Artifact ciphertext is opaque; cryptographic correctness is assumed.",
-      "Source-backed delete plans, atomic legacy migration, pool metadata read/write and full host config rollback need separate models.",
+      "AccountProviderDeletion separately models bounded provider-wide deletion. Explicit account-list plans, legacy migration, remaining pool metadata operations and full host config rollback need separate models.",
       "An interrupted reset has an unknown outcome. Recovery rolls credential deletion forward and never replays the host callback. Fsync and atomic rename supply durable ordering under the filesystem contract."
     ]
   }
