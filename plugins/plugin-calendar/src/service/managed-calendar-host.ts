@@ -340,14 +340,16 @@ export async function calendarAgentWrite(
       signal,
     );
     // The feed expands series (singleEvents), so a series master is read back
-    // through its first instance in the window, or from Cloud's own snapshot
+    // through its instance at the master's start, or from Cloud's own snapshot
     // when the rule skips the master's start.
     const series = (semantic.recurrence?.length ?? 0) > 0;
     const row =
       feed.events.find((row) => row.externalId === snapshot.eventId) ??
       (series
         ? feed.events.find(
-            (row) => row.metadata.recurringEventId === snapshot.eventId,
+            (row) =>
+              row.metadata.recurringEventId === snapshot.eventId &&
+              Date.parse(row.startAt) === start,
           )
         : undefined);
     const instance = !!row && row.externalId !== snapshot.eventId;

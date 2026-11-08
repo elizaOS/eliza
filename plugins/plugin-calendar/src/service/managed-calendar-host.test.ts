@@ -145,6 +145,30 @@ describe("managed Calendar write readback", () => {
     expect(f.writes()).toHaveLength(1);
   });
 
+  it("skips an earlier instance that ends at the master's start", async () => {
+    const f = cloud();
+    f.feed((snapshot) => [
+      f.row(snapshot, {
+        externalId: "series-1_20261109T143000Z",
+        startAt: "2026-11-09T14:30:00.000Z",
+        endAt: "2026-11-09T15:00:00.000Z",
+        metadata: { recurringEventId: "series-1" },
+      }),
+      f.row(snapshot, {
+        externalId: "series-1_20261109T150000Z",
+        metadata: { recurringEventId: "series-1" },
+      }),
+    ]);
+    const { event } = await f.execute({
+      ...weekly,
+      recurrence: ["RRULE:FREQ=MINUTELY;INTERVAL=30"],
+    });
+    expect(event).toMatchObject({
+      externalId: "series-1",
+      startAt: "2026-11-09T15:00:00.000Z",
+    });
+  });
+
   it("builds the receipt from Cloud's snapshot when the window has no instance", async () => {
     const f = cloud();
     f.feed(() => []);
