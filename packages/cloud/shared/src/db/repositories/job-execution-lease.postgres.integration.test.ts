@@ -83,6 +83,55 @@ async function expire(job: Job): Promise<void> {
   );
 }
 
+async function seedCommittedCanary(organizationId: string): Promise<Job> {
+  const id = randomUUID();
+  const userId = randomUUID();
+  const agentId = randomUUID();
+  const startedAt = new Date(Date.now() - 172_800_000).toISOString();
+  const cutoverAt = new Date(Date.now() - 86_400_000).toISOString();
+  const sourceDigest = `sha256:${"a".repeat(64)}`;
+  const targetDigest = `sha256:${"b".repeat(64)}`;
+  const auditIdentity = {
+    operation: "upgrade",
+    rolloutId: randomUUID(),
+    actorUserId: userId,
+    decisionAt: startedAt,
+    agentId,
+    organizationId,
+    targetOwnerUserId: userId,
+    sourceImage: `ghcr.io/elizaos/eliza@${sourceDigest}`,
+    sourceDigest,
+    targetImage: `ghcr.io/elizaos/eliza-demo@${targetDigest}`,
+    targetDigest,
+  };
+  return await claim(
+    await seed({
+      id,
+      type: "agent_admin_canary_image",
+      organization_id: organizationId,
+      user_id: userId,
+      agent_id: agentId,
+      attempts: 2,
+      execution_interruptions: 4,
+      retryable_requeues: 2,
+      data: { ...auditIdentity, userId },
+      result: {
+        ...auditIdentity,
+        jobId: id,
+        success: false,
+        cleanupPending: true,
+        startedAt,
+        cutoverAt,
+        finishedAt: cutoverAt,
+        oldNodeId: "old-node",
+        oldContainerName: "old-container",
+        newNodeId: "new-node",
+        newContainerName: "new-container",
+      },
+    }),
+  );
+}
+
 (url ? describe : describe.skip)("job generation leases on real PostgreSQL", () => {
   beforeAll(async () => {
     const parsed = new URL(url!);
@@ -107,6 +156,9 @@ async function expire(job: Job): Promise<void> {
     }
     await setup.query(
       "ALTER TABLE job_execution_leases ADD FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE",
+    );
+    await setup.query(
+      "CREATE TABLE job_failure_receipts (job_id uuid PRIMARY KEY, note text NOT NULL)",
     );
     parsed.searchParams.set("options", `-c search_path=${schema},pg_catalog`);
     scopedUrl = parsed.toString();
@@ -621,4 +673,512 @@ async function expire(job: Job): Promise<void> {
     await setup.query("DELETE FROM jobs WHERE id=ANY($1::uuid[])", [[claimed.id, foreignJob.id]]);
     await setup.query("DELETE FROM agent_sandboxes WHERE id=$1", [agent.id]);
   });
+
+  test("ordinary failure retries use exponential backoff and roll back failed writebacks", async () => {
+    const organizationId = randomUUID();
+    const claimed = await claim(
+      await seed({
+        organization_id: organizationId,
+        attempts: 1,
+        execution_interruptions: 2,
+        retryable_requeues: 2,
+      }),
+    );
+    const before = Date.now();
+    const first = await run(() =>
+      repository.jobsRepository.incrementAttempt(
+        claimed.id,
+        "ordinary failure",
+        3,
+        undefined,
+        claimed.execution_generation!,
+        owner1,
+      ),
+    );
+    expect(first).toMatchObject({
+      status: "pending",
+      attempts: 2,
+      execution_interruptions: 2,
+      retryable_requeues: 2,
+    });
+    expect(first!.scheduled_for.getTime()).toBeGreaterThanOrEqual(before + 120_000);
+    await setup.query("UPDATE jobs SET scheduled_for=NOW() WHERE id=$1", [claimed.id]);
+    const next = await claim(claimed);
+    await expect(
+      run(() =>
+        repository.jobsRepository.incrementAttempt(
+          next.id,
+          "terminal failure",
+          3,
+          async (tx, failed) => {
+            await tx.execute(
+              sql`INSERT INTO job_failure_receipts VALUES (${failed.id}, 'rolled back')`,
+            );
+            throw Error("dependent failure");
+          },
+          next.execution_generation!,
+          owner1,
+        ),
+      ),
+    ).rejects.toBeDefined();
+    expect(
+      (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [next.id])).rows,
+    ).toEqual([{ status: "in_progress", attempts: 2 }]);
+    expect(
+      (await setup.query("SELECT * FROM job_failure_receipts WHERE job_id=$1", [next.id])).rows,
+    ).toEqual([]);
+    const final = await run(() =>
+      repository.jobsRepository.incrementAttempt(
+        next.id,
+        "terminal failure",
+        3,
+        async (tx, failed) => {
+          await tx.execute(
+            sql`INSERT INTO job_failure_receipts VALUES (${failed.id}, 'committed')`,
+          );
+        },
+        next.execution_generation!,
+        owner1,
+      ),
+    );
+    expect(final).toMatchObject({
+      status: "failed",
+      attempts: 3,
+      execution_interruptions: 2,
+      retryable_requeues: 2,
+    });
+    expect(
+      (await setup.query("SELECT note FROM job_failure_receipts WHERE job_id=$1", [next.id])).rows,
+    ).toEqual([{ note: "committed" }]);
+    await setup.query("DELETE FROM jobs WHERE id=$1", [next.id]);
+  });
+
+  test("concurrent ordinary failures spend one attempt and stale generations spend none", async () => {
+    const organizationId = randomUUID();
+    const claimed = await claim(await seed({ organization_id: organizationId }));
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        run(() =>
+          repository.jobsRepository.incrementAttempt(
+            claimed.id,
+            "concurrent failure",
+            3,
+            undefined,
+            claimed.execution_generation!,
+            owner1,
+          ),
+        ),
+      ),
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(
+      (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [claimed.id])).rows,
+    ).toEqual([{ status: "pending", attempts: 1 }]);
+    await setup.query("UPDATE jobs SET scheduled_for=NOW() WHERE id=$1", [claimed.id]);
+    const current = await claim(claimed, owner2);
+    expect(
+      await run(() =>
+        repository.jobsRepository.incrementAttempt(
+          claimed.id,
+          "stale failure",
+          3,
+          undefined,
+          claimed.execution_generation!,
+          owner1,
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      await run(() =>
+        repository.jobsRepository.incrementAttempt(
+          current.id,
+          "fenced failure",
+          3,
+          undefined,
+          current.execution_generation!,
+          owner2,
+          sql`FALSE`,
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [claimed.id])).rows,
+    ).toEqual([{ status: "in_progress", attempts: 1 }]);
+    await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+  });
+
+  test("durable timeout preserves attempts while restart spends interruptions", async () => {
+    const organizationId = randomUUID();
+    const claimed = await claim(
+      await seed({
+        organization_id: organizationId,
+        type: "app_cache_invalidate",
+        attempts: 2,
+        execution_interruptions: 4,
+        retryable_requeues: 2,
+      }),
+    );
+    await expire(claimed);
+    expect(
+      await run(() =>
+        repository.jobsRepository.recoverStaleJobs({
+          type: claimed.type,
+          organizationId,
+          staleThresholdMs: 1,
+        }),
+      ),
+    ).toMatchObject({ retried: 1, failures: [] });
+    expect(
+      (
+        await setup.query(
+          "SELECT attempts,execution_interruptions,retryable_requeues FROM jobs WHERE id=$1",
+          [claimed.id],
+        )
+      ).rows,
+    ).toEqual([{ attempts: 2, execution_interruptions: 4, retryable_requeues: 2 }]);
+    const next = await claim(claimed);
+    await expire(next);
+    expect(
+      await run(() =>
+        repository.jobsRepository.recoverInProgressJobsStartedBefore({
+          type: next.type,
+          organizationId,
+          startedBefore: new Date(),
+        }),
+      ),
+    ).toMatchObject({ retried: 1, failures: [] });
+    expect(
+      (
+        await setup.query(
+          "SELECT attempts,execution_interruptions,retryable_requeues FROM jobs WHERE id=$1",
+          [next.id],
+        )
+      ).rows,
+    ).toEqual([{ attempts: 2, execution_interruptions: 5, retryable_requeues: 2 }]);
+    await setup.query("DELETE FROM jobs WHERE id=$1", [next.id]);
+  });
+
+  test.each([0, 5, 10])(
+    "bounded requeue allowance %i is spent separately from attempts",
+    async (bound) => {
+      if (bound > 0) {
+        const organizationId = randomUUID();
+        const claimed = await claim(
+          await seed({
+            organization_id: organizationId,
+            attempts: 2,
+            execution_interruptions: 2,
+            retryable_requeues: bound - 1,
+          }),
+        );
+        const before = Date.now();
+        const pending = await run(() =>
+          repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+            claimed,
+            "transient",
+            120_000,
+            owner1,
+            { maxRequeues: bound },
+          ),
+        );
+        expect(pending).toMatchObject({
+          status: "pending",
+          attempts: 2,
+          execution_interruptions: 2,
+          retryable_requeues: bound,
+        });
+        expect(pending!.scheduled_for.getTime()).toBeGreaterThanOrEqual(before + 120_000);
+        await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+      }
+      const organizationId = randomUUID();
+      const claimed = await claim(
+        await seed({
+          organization_id: organizationId,
+          attempts: 2,
+          execution_interruptions: 2,
+          retryable_requeues: bound,
+        }),
+      );
+      const originalSchedule = (
+        await setup.query("SELECT scheduled_for::text AS value FROM jobs WHERE id=$1", [claimed.id])
+      ).rows[0].value;
+      await expect(
+        run(() =>
+          repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+            claimed,
+            "exhausted",
+            120_000,
+            owner1,
+            {
+              maxRequeues: bound,
+              onExhaustedInTx: async (tx, failed) => {
+                await tx.execute(
+                  sql`INSERT INTO job_failure_receipts VALUES (${failed.id}, 'rolled back')`,
+                );
+                throw Error("dependent requeue write failed");
+              },
+            },
+          ),
+        ),
+      ).rejects.toBeDefined();
+      expect(
+        (await setup.query("SELECT status,retryable_requeues FROM jobs WHERE id=$1", [claimed.id]))
+          .rows,
+      ).toEqual([{ status: "in_progress", retryable_requeues: bound }]);
+      expect(
+        (await setup.query("SELECT * FROM job_failure_receipts WHERE job_id=$1", [claimed.id]))
+          .rows,
+      ).toEqual([]);
+      const exhaust = () =>
+        run(() =>
+          repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+            claimed,
+            "exhausted",
+            120_000,
+            owner1,
+            {
+              maxRequeues: bound,
+              onExhaustedInTx: async (tx, row) => {
+                await tx.execute(
+                  sql`INSERT INTO job_failure_receipts VALUES (${row.id}, 'committed')`,
+                );
+              },
+            },
+          ),
+        );
+      const outcomes = await Promise.all([exhaust(), exhaust()]);
+      expect(outcomes.filter(Boolean)).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome === undefined)).toHaveLength(1);
+      const failed = outcomes.find((outcome) => outcome !== undefined);
+      expect(failed).toMatchObject({
+        status: "failed",
+        attempts: 2,
+        execution_interruptions: 2,
+        retryable_requeues: bound + 1,
+      });
+      expect(
+        (
+          await setup.query("SELECT scheduled_for::text AS value FROM jobs WHERE id=$1", [
+            claimed.id,
+          ])
+        ).rows[0].value,
+      ).toBe(originalSchedule);
+      expect(
+        (await setup.query("SELECT note FROM job_failure_receipts WHERE job_id=$1", [claimed.id]))
+          .rows,
+      ).toEqual([{ note: "committed" }]);
+      expect(
+        (await setup.query("SELECT job_id FROM job_execution_leases WHERE job_id=$1", [claimed.id]))
+          .rows,
+      ).toEqual([]);
+      await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+    },
+  );
+
+  test("requeue refuses a stale payload and unbounded retry preserves all counters", async () => {
+    const organizationId = randomUUID();
+    const claimed = await claim(
+      await seed({
+        organization_id: organizationId,
+        attempts: 2,
+        execution_interruptions: 2,
+        retryable_requeues: 5,
+      }),
+    );
+    const current = await run(() =>
+      repository.jobsRepository.updateForExecution(
+        claimed,
+        { result: { progress: "fresh" } },
+        owner1,
+      ),
+    );
+    expect(
+      await run(() =>
+        repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+          claimed,
+          "stale snapshot",
+          0,
+          owner1,
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      await run(() =>
+        repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+          current,
+          "wrong owner",
+          0,
+          owner2,
+        ),
+      ),
+    ).toBeUndefined();
+    const pending = await run(() =>
+      repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+        current,
+        "gate disabled",
+        600_000,
+        owner1,
+      ),
+    );
+    expect(pending).toMatchObject({
+      status: "pending",
+      attempts: 2,
+      execution_interruptions: 2,
+      retryable_requeues: 5,
+      result: { progress: "fresh" },
+    });
+    await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+  });
+
+  test("committed canary recovery preserves both attempt and interruption budgets", async () => {
+    const organizationId = randomUUID();
+    const claimed = await seedCommittedCanary(organizationId);
+    await expire(claimed);
+    expect(
+      await run(() =>
+        repository.jobsRepository.recoverStaleJobs({
+          type: claimed.type,
+          organizationId,
+          staleThresholdMs: 1,
+        }),
+      ),
+    ).toMatchObject({ retried: 1, failures: [] });
+    const next = await claim(claimed);
+    await expire(next);
+    expect(
+      await run(() =>
+        repository.jobsRepository.recoverInProgressJobsStartedBefore({
+          type: next.type,
+          organizationId,
+          startedBefore: new Date(),
+        }),
+      ),
+    ).toMatchObject({ retried: 1, failures: [] });
+    expect(
+      (
+        await setup.query(
+          "SELECT attempts,execution_interruptions,retryable_requeues FROM jobs WHERE id=$1",
+          [next.id],
+        )
+      ).rows,
+    ).toEqual([{ attempts: 2, execution_interruptions: 4, retryable_requeues: 2 }]);
+    await setup.query("DELETE FROM jobs WHERE id=$1", [next.id]);
+  });
+
+  test("changed canary evidence invalidates a selected preservation snapshot", async () => {
+    const organizationId = randomUUID();
+    const claimed = await seedCommittedCanary(organizationId);
+    await expire(claimed);
+    await locker.query("BEGIN");
+    await locker.query("SELECT id FROM jobs WHERE id=$1 FOR UPDATE", [claimed.id]);
+    const lockerPid = (await locker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const recovery = run(() =>
+      repository.jobsRepository.recoverStaleJobs({
+        type: claimed.type,
+        organizationId,
+        staleThresholdMs: 1,
+      }),
+    );
+    try {
+      let waiting = false;
+      for (let poll = 0; poll < 100; poll++) {
+        waiting = (
+          await setup.query(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))) AS waiting",
+            [lockerPid],
+          )
+        ).rows[0].waiting;
+        if (waiting) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      await locker.query(
+        "UPDATE jobs SET result=jsonb_set(result, '{jobId}', to_jsonb($2::text)), updated_at=clock_timestamp() WHERE id=$1",
+        [claimed.id, randomUUID()],
+      );
+    } finally {
+      await locker.query("COMMIT");
+    }
+    expect(await recovery).toMatchObject({ unchanged: 1, retried: 0, failures: [] });
+    expect(
+      (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [claimed.id])).rows,
+    ).toEqual([{ status: "in_progress", attempts: 2 }]);
+    expect(
+      await run(() =>
+        repository.jobsRepository.recoverStaleJobs({
+          type: claimed.type,
+          organizationId,
+          staleThresholdMs: 1,
+        }),
+      ),
+    ).toMatchObject({ permanentlyFailed: 1, failures: [] });
+    expect(
+      (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [claimed.id])).rows,
+    ).toEqual([{ status: "failed", attempts: 3 }]);
+    await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+  }, 30_000);
+
+  test("concurrent exhausted recovery commits one counter and dependent receipt", async () => {
+    const organizationId = randomUUID();
+    const claimed = await claim(await seed({ organization_id: organizationId, attempts: 2 }));
+    await setup.query(
+      "UPDATE jobs SET data_storage='r2',data_key='concurrent-budget-recovery' WHERE id=$1",
+      [claimed.id],
+    );
+    await expire(claimed);
+    let reads = 0;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    storage.setRuntimeR2Bucket({
+      async get() {
+        reads++;
+        if (reads === 2) entered.resolve();
+        await release.promise;
+        return {
+          async text() {
+            return JSON.stringify(claimed.data);
+          },
+        };
+      },
+      async put() {
+        return {};
+      },
+      async delete() {},
+    });
+    const recover = () =>
+      run(() =>
+        repository.jobsRepository.recoverStaleJobs({
+          type: claimed.type,
+          organizationId,
+          staleThresholdMs: 1,
+          buildFailureWriteback: () => async (tx, failed) => {
+            await tx.execute(
+              sql`INSERT INTO job_failure_receipts VALUES (${failed.id}, 'recovered once')`,
+            );
+          },
+        }),
+      );
+    const attempts = [recover(), recover()];
+    try {
+      await entered.promise;
+    } finally {
+      release.resolve();
+    }
+    try {
+      const results = await Promise.all(attempts);
+      expect(results.map((result) => result.permanentlyFailed).sort()).toEqual([0, 1]);
+      expect(results.map((result) => result.unchanged).sort()).toEqual([0, 1]);
+      expect(results.flatMap((result) => result.failures)).toEqual([]);
+      expect(
+        (await setup.query("SELECT status,attempts FROM jobs WHERE id=$1", [claimed.id])).rows,
+      ).toEqual([{ status: "failed", attempts: 3 }]);
+      expect(
+        (await setup.query("SELECT note FROM job_failure_receipts WHERE job_id=$1", [claimed.id]))
+          .rows,
+      ).toEqual([{ note: "recovered once" }]);
+    } finally {
+      storage.setRuntimeR2Bucket(null);
+    }
+    await setup.query("DELETE FROM jobs WHERE id=$1", [claimed.id]);
+  }, 30_000);
 });

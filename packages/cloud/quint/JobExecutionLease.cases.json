@@ -43,7 +43,9 @@
           "expect": "holds",
           "assumptions": [
             "Checked formula in JobExecutionLease_plain: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
           ]
         }
       ]
@@ -70,7 +72,9 @@
           "expect": "holds",
           "assumptions": [
             "Checked formula in JobExecutionLease_lifecycle: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
           ]
         }
       ]
@@ -97,7 +101,9 @@
           "expect": "holds",
           "assumptions": [
             "Checked formula in JobExecutionLease_legacy: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
           ]
         }
       ]
@@ -124,7 +130,9 @@
           "expect": "holds",
           "assumptions": [
             "Checked formula in JobExecutionLease_missing_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
           ]
         }
       ]
@@ -151,7 +159,9 @@
           "expect": "holds",
           "assumptions": [
             "Checked formula in JobExecutionLease_foreign_resource: RecoveryCallsSettle = Workers.forall(w => Recover(w, true).weakFair(s)) implies eventually(always(Workers.forall(w => s.recoveries.get(w).phase != \"prepared\")))",
-            "The property is conditional on its written model fairness and environmental premises. Real scheduler fairness, provider completion and implementation refinement are not proved."
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
           ]
         }
       ]
