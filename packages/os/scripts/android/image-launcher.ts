@@ -493,9 +493,11 @@ export function verifyStagedLauncher(
   );
   const assistantRole = brand.assistantRole !== false;
   if (
-    assistant.includes(
-      `<string name="config_defaultAssistant" translatable="false">${descriptor.packageName}</string>`,
-    ) !== assistantRole ||
+    (assistantRole
+      ? !assistant.includes(
+          `<string name="config_defaultAssistant" translatable="false">${descriptor.packageName}</string>`,
+        )
+      : /config_defaultAssistant/.test(assistant)) ||
     /config_default(Dialer|Sms)/.test(assistant)
   )
     fail(

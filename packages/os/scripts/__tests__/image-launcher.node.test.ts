@@ -412,6 +412,23 @@ test("a brand without the assistant role stages and verifies no assistant defaul
     /config_defaultAssistant/,
   );
   assert.deepEqual(verifyStagedLauncher(roleless, brand), evidence);
+  const config = path.join(
+    roleless,
+    "provisioning/overlay/frameworks/base/core/res/res/values/config.xml",
+  );
+  fs.writeFileSync(
+    config,
+    fs
+      .readFileSync(config, "utf8")
+      .replace(
+        "<resources>",
+        '<resources>\n    <string name="config_defaultAssistant" translatable="false">com.example.other</string>',
+      ),
+  );
+  assert.throws(
+    () => verifyStagedLauncher(roleless, brand),
+    /must assign only Autofill/,
+  );
 });
 
 test("the staged product makefile refuses a product it was not staged for", (t) => {

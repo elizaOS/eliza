@@ -8,8 +8,9 @@
  * MAIN/HOME/DEFAULT activity, ACTION_ASSIST activity, and the exported
  * BIND_AUTOFILL_SERVICE-protected AutofillService. A product that does not
  * take the assistant role (`assistant: false`) gets no config_defaultAssistant;
- * its APK may then declare only disabled ACTION_ASSIST activities. This is staging output only;
- * the defaults are proven only by booting the built image (separate gate).
+ * its APK may then declare only disabled ACTION_ASSIST activities. This is
+ * staging output only; the defaults are proven only by booting the built image
+ * (separate gate).
  */
 import fs from "node:fs";
 import path from "node:path";
