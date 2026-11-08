@@ -510,6 +510,14 @@ export interface ApprovalQueue {
    * Executing and uncertain deliveries require reconciliation, not expiry.
    */
   markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  /**
+   * Return an `approved` row that never claimed an execution attempt to
+   * `pending`, for a pre-dispatch check that failed after the owner's approve.
+   */
+  revertApprovedToPending(
+    id: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest>;
   removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
