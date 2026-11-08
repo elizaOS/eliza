@@ -52,6 +52,22 @@ const suites = [
       "suppressed writer quiescence cannot publish or authorize app cleanup",
     ],
   },
+  {
+    name: "postgres",
+    file: "packages/cloud/shared/src/lib/services/__tests__/app-deletion-authority.postgres.integration.test.ts",
+    names: [
+      "a queued cross-organization mobile issuance is included by the stable key-set recheck",
+      "revocation waiting on a deletion shares policy order and exact replay opens no new permits",
+      "post-lock lease expiry uses naive UTC authority in UTC",
+      "post-lock lease expiry uses naive UTC authority in America/New_York",
+      "post-lock lease expiry uses naive UTC authority in Asia/Kathmandu",
+      "competing cleanup acknowledgements advance one original cursor and retain the organization",
+      "cleanup acknowledgement rejects a lease that expires during its job lock wait in UTC",
+      "cleanup acknowledgement rejects a lease that expires during its job lock wait in America/New_York",
+      "cleanup acknowledgement rejects a lease that expires during its job lock wait in Asia/Kathmandu",
+      "a paused PostgreSQL uploader retains its full plan until deletion admission stops and quiesces it",
+    ],
+  },
 ];
 for (const suite of suites) {
   const report = path.join(directory, `${suite.name}.xml`);
@@ -109,5 +125,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed twenty-two PGlite and nine PostgreSQL cases. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-two PGlite and ten PostgreSQL cases. Evidence ${directory}`,
 );

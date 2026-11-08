@@ -83,6 +83,7 @@ const suites = [
       "post-lock lease expiry uses naive UTC authority in America/New_York",
       "post-lock lease expiry uses naive UTC authority in Asia/Kathmandu",
       "competing cleanup acknowledgements advance one original cursor and retain the organization",
+      "a paused PostgreSQL uploader retains its full plan until deletion admission stops and quiesces it",
       "cleanup acknowledgement rejects a lease that expires during its job lock wait in UTC",
       "cleanup acknowledgement rejects a lease that expires during its job lock wait in America/New_York",
       "cleanup acknowledgement rejects a lease that expires during its job lock wait in Asia/Kathmandu",

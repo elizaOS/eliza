@@ -52,6 +52,14 @@ const suites = [
       "suppressed writer quiescence cannot publish or authorize app cleanup",
     ],
   },
+  {
+    name: "postgres",
+    file: "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
+    names: [
+      "app deletion and rollback activation share the parent app lock",
+      "a queued third activation cannot bypass the pending app deletion parent lock",
+    ],
+  },
 ];
 for (const suite of suites) {
   const report = path.join(directory, `${suite.name}.xml`);

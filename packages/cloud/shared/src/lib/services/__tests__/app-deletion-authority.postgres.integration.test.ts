@@ -622,4 +622,74 @@ async function seedMobileExchange() {
         ).rows[0].cursor,
       ).toBe("0");
     }, 30000);
+
+  test("a paused PostgreSQL uploader retains its full plan until deletion admission stops and quiesces it", async () => {
+    await control.query("TRUNCATE inference_policy_authorities CASCADE");
+    const { setRuntimeR2Bucket } = await import("../../storage/r2-runtime-binding");
+    const { appFrontendHostingService } = await import("../app-frontend-hosting");
+    const { buildAppDeletionCleanupPlan } = await import("../app-deletion-cleanup-plan");
+    const { appFrontendDeployments } = await import("../../../db/schemas/app-frontend-deployments");
+    let arrived!: () => void,
+      release!: () => void,
+      puts = 0;
+    const seen = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    setRuntimeR2Bucket({
+      get: async () => null,
+      delete: async () => {},
+      put: async () => {
+        puts++;
+        arrived();
+        await resume;
+        return {};
+      },
+    });
+    const upload = run(
+      () =>
+        appFrontendHostingService.deployBundle({
+          app: { id: appId, organization_id: organizationId },
+          files: [
+            { path: "index.html", content: "original" },
+            { path: "second.txt", content: "second" },
+          ],
+        }),
+      "UTC",
+      false,
+    );
+    void upload.catch(() => {});
+    try {
+      await seen;
+      const [inFlight] = await run(
+        () => database.dbWrite.select().from(appFrontendDeployments),
+        "UTC",
+        false,
+      );
+      expect(inFlight?.upload_plan?.files).toHaveLength(2);
+      expect(inFlight?.upload_quiesced_at).toBeNull();
+      const root = await run(() => deletion.appDeletionOperations.admit(input()), "UTC", false);
+      expect(root?.job.id).toBeDefined();
+      expect(() => buildAppDeletionCleanupPlan([inFlight!])).toThrow(
+        "Frontend upload completion is unconfirmed",
+      );
+      release();
+      await expect(upload).rejects.toMatchObject({ code: "FRONTEND_UPLOAD_AUTHORITY_LOST" });
+      const [quiescent] = await run(
+        () => database.dbWrite.select().from(appFrontendDeployments),
+        "UTC",
+        false,
+      );
+      expect(quiescent?.upload_quiesced_at).toBeInstanceOf(Date);
+      expect(quiescent?.status).toBe("failed");
+      expect(buildAppDeletionCleanupPlan([quiescent!]).objectCount).toBe(2);
+      expect(puts).toBe(1);
+    } finally {
+      release();
+      await upload.catch(() => {});
+      setRuntimeR2Bucket(null);
+    }
+  }, 30000);
 });
