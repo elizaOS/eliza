@@ -2383,9 +2383,25 @@ export class CalendarService extends Service {
       (record) =>
         record.providerEventId !== null && changed.has(record.providerEventId),
     );
+    const failures: unknown[] = [];
     for (const record of records) {
-      await this.runLinkedCalendarOperation(record);
+      try {
+        await this.runLinkedCalendarOperation(record);
+      } catch (error) {
+        // One unrepresentable Google event must not stop its peers; the
+        // caller still sees the failure after the batch.
+        failures.push(error);
+        this.runtime.reportError("calendar:linked-provider-change", error, {
+          linkId: record.id,
+          connectorAccountId: record.connectorAccountId,
+        });
+      }
     }
+    if (failures.length > 0)
+      throw new AggregateError(
+        failures,
+        "Some linked Google calendar changes could not be reconciled.",
+      );
   }
 
   private async reconcileLinkedGoogleChanges(

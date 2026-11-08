@@ -271,6 +271,12 @@ export class CalendarLinkedStore
     return (await this.read())?.links || [];
   }
 
+  async reload(expected: Link): Promise<Link | null> {
+    return (
+      (await this.read())?.links.find((row) => row.id === expected.id) ?? null
+    );
+  }
+
   async link(localEventId: string, localRevision: string): Promise<Link> {
     if (!text(localEventId) || !text(localRevision)) throw refuse();
     const before = await this.read(),

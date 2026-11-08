@@ -100,6 +100,25 @@ export interface LinkedCalendarCheckpointStore<
     >,
     now?: Date,
   ): Promise<LinkedCalendarEventRecord<Revision>>;
+  /** Re-reads a row whose save lost a race, so a landed write can still be checkpointed. */
+  reload?(
+    record: LinkedCalendarEventRecord<Revision>,
+  ): Promise<LinkedCalendarEventRecord<Revision> | null>;
+}
+
+type LinkedCalendarCheckpointPatch<Revision extends string | number> = Partial<
+  Omit<
+    LinkedCalendarEventRecord<Revision>,
+    "id" | "agentId" | "localEventId" | "createdAt"
+  >
+>;
+
+function localCasRejected(error: unknown, code: string): boolean {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 function googleMutationFailure(error: unknown): {
@@ -203,46 +222,96 @@ export class LinkedCalendarReconciler<
     if (!local) {
       if (record.pendingOperation === "delete") {
         const provider = await this.provider.get(record);
-        try {
-          if (provider) {
-            this.onProviderMutation?.();
-            await this.provider.delete(record);
-          }
-        } catch (error) {
-          const mutationFailure = googleMutationFailure(error);
-          if (mutationFailure?.outcome === "not_accepted") {
-            await this.repository.save(record, {
-              state: "dirty",
-              pendingOperation: "delete",
-              lastErrorCode: mutationFailure.code,
-              lastErrorMessage: mutationFailure.message,
-            });
-            return "dirty";
-          }
-          if (mutationFailure?.outcome === "precondition_failed") {
+        let pending = record;
+        if (provider) {
+          // A fresh ETag only absorbs non-semantic Google changes. After a
+          // semantic Google edit the stored ETag makes the delete fail as a
+          // conflict instead of removing the owner's edit.
+          const unchanged =
+            (await linkedCalendarSemanticDigest(provider.event)) ===
+            record.lastCommonSemanticHash;
+          const providerEtag = unchanged ? provider.etag : record.providerEtag;
+          if (!providerEtag && !unchanged) {
             await this.repository.save(record, {
               state: "conflicted",
               pendingOperation: null,
-              lastErrorCode: mutationFailure.code,
-              lastErrorMessage: mutationFailure.message,
+              providerEventId: provider.eventId,
+              lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
+              lastErrorMessage:
+                "Eliza deleted the event after Google changed it.",
             });
             return "conflicted";
           }
-          return this.quarantine(
-            record,
-            "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
-            error instanceof Error ? error.message : String(error),
-          );
+          pending = await this.repository.save(record, {
+            providerEventId: provider.eventId,
+            providerEtag,
+          });
+          try {
+            this.onProviderMutation?.();
+            await this.provider.delete(pending);
+          } catch (error) {
+            const mutationFailure = googleMutationFailure(error);
+            if (mutationFailure?.outcome === "not_accepted") {
+              await this.repository.save(pending, {
+                state: "dirty",
+                pendingOperation: "delete",
+                lastErrorCode: mutationFailure.code,
+                lastErrorMessage: mutationFailure.message,
+              });
+              return "dirty";
+            }
+            if (mutationFailure?.outcome === "precondition_failed") {
+              await this.repository.save(pending, {
+                state: "conflicted",
+                pendingOperation: null,
+                lastErrorCode: mutationFailure.code,
+                lastErrorMessage: mutationFailure.message,
+              });
+              return "conflicted";
+            }
+            return this.quarantine(
+              pending,
+              "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
         }
-        await this.repository.save(record, {
-          state: "paused",
-          pendingOperation: null,
-          providerEtag: null,
-          lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
-          lastErrorMessage:
-            "The Eliza event was deleted and the linked Google event was removed.",
-        });
+        await this.checkpointLanded(
+          pending,
+          {
+            providerEventId: pending.providerEventId,
+            providerEtag: null,
+            lastCommonSemanticHash: pending.lastCommonSemanticHash,
+          },
+          {
+            state: "paused",
+            pendingOperation: null,
+            lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+            lastErrorMessage:
+              "The Eliza event was deleted and the linked Google event was removed.",
+          },
+          pending.localRevision,
+          "delete",
+          false,
+        );
         return "pushed";
+      }
+      if (!record.providerEventId) {
+        const provider = await this.provider.get(record);
+        if (!provider) {
+          await this.repository.save(record, {
+            state: "paused",
+            pendingOperation: null,
+            lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+            lastErrorMessage:
+              "The Eliza event was deleted before it reached Google.",
+          });
+          return "paused";
+        }
+        record = await this.repository.save(record, {
+          providerEventId: provider.eventId,
+          providerEtag: provider.etag,
+        });
       }
       return this.quarantine(
         record,
@@ -255,7 +324,11 @@ export class LinkedCalendarReconciler<
     const providerHash = provider
       ? await linkedCalendarSemanticDigest(provider.event)
       : null;
-    const localChanged = record.lastCommonSemanticHash !== localHash;
+    // A pending update is a local change even when the edit reverted to the
+    // common version, so a revert is never silently overwritten by Google.
+    const localChanged =
+      record.lastCommonSemanticHash !== localHash ||
+      (record.state === "dirty" && record.pendingOperation === "update");
     const providerChanged =
       providerHash !== null && record.lastCommonSemanticHash !== providerHash;
 
@@ -280,6 +353,12 @@ export class LinkedCalendarReconciler<
         try {
           await this.local.delete(local.eventId, local.revision);
         } catch (error) {
+          // A concurrent local edit already marked the row dirty; the next
+          // pass sees both sides changed.
+          if (
+            localCasRejected(error, "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED")
+          )
+            return "dirty";
           return this.quarantine(
             record,
             "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
@@ -308,22 +387,32 @@ export class LinkedCalendarReconciler<
           local.revision,
         );
       } catch (error) {
+        if (localCasRejected(error, "LINKED_CALENDAR_LOCAL_CAS_REJECTED"))
+          return "dirty";
         return this.quarantine(
           record,
           "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
           error instanceof Error ? error.message : String(error),
         );
       }
-      await this.repository.save(record, {
-        localRevision: applied.revision,
-        providerEventId: provider.eventId,
-        providerEtag: provider.etag,
-        lastCommonSemanticHash: providerHash,
-        state: "clean",
-        pendingOperation: null,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      });
+      await this.checkpointLanded(
+        record,
+        {
+          providerEventId: provider.eventId,
+          providerEtag: provider.etag,
+          lastCommonSemanticHash: providerHash,
+        },
+        {
+          localRevision: applied.revision,
+          state: "clean",
+          pendingOperation: null,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        },
+        record.localRevision,
+        record.pendingOperation,
+        true,
+      );
       return "pulled";
     }
 
@@ -331,6 +420,10 @@ export class LinkedCalendarReconciler<
       try {
         await this.local.delete(local.eventId, local.revision);
       } catch (error) {
+        if (
+          localCasRejected(error, "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED")
+        )
+          return "dirty";
         return this.quarantine(
           record,
           "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
@@ -346,6 +439,24 @@ export class LinkedCalendarReconciler<
           "Google deleted the linked event; the Eliza event was removed and the retained link was paused.",
       });
       return "pulled";
+    }
+
+    if (
+      !provider &&
+      record.providerEventId &&
+      localChanged &&
+      !local.event.deleted
+    ) {
+      // Re-creating under the old idempotency key could revive or collide
+      // with the deleted Google event; the owner chooses instead.
+      await this.repository.save(record, {
+        state: "conflicted",
+        pendingOperation: null,
+        lastErrorCode: "LINKED_CALENDAR_PROVIDER_DELETED_LOCAL_EDITED",
+        lastErrorMessage:
+          "Google deleted the linked event after it was changed in Eliza.",
+      });
+      return "conflicted";
     }
 
     if (!provider || (localChanged && localHash !== providerHash)) {
@@ -449,6 +560,34 @@ export class LinkedCalendarReconciler<
       );
     }
     if (strategy === "keep_google") {
+      if (provider.event.deleted) {
+        try {
+          await this.local.delete(local.eventId, local.revision);
+        } catch (error) {
+          if (
+            localCasRejected(error, "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED")
+          )
+            return "conflicted";
+          return this.quarantine(
+            record,
+            "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        await this.repository.save(record, {
+          state: "paused",
+          pendingOperation: null,
+          providerEventId: provider.eventId,
+          providerEtag: provider.etag,
+          lastCommonSemanticHash: await linkedCalendarSemanticDigest(
+            provider.event,
+          ),
+          lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
+          lastErrorMessage:
+            "Google deleted the linked event; the Eliza event was removed and the retained link was paused.",
+        });
+        return "pulled";
+      }
       let applied: LinkedCalendarLocalSnapshot<Revision>;
       try {
         applied = await this.local.applyProviderEvent(
@@ -457,6 +596,8 @@ export class LinkedCalendarReconciler<
           local.revision,
         );
       } catch (error) {
+        if (localCasRejected(error, "LINKED_CALENDAR_LOCAL_CAS_REJECTED"))
+          return "conflicted";
         return this.quarantine(
           record,
           "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
@@ -508,51 +649,34 @@ export class LinkedCalendarReconciler<
       : provider
         ? "update"
         : "create";
-    let pending = record;
-    if (record.pendingOperation !== operation || record.state !== "dirty") {
-      pending = await this.repository.save(record, {
-        state: "dirty",
-        pendingOperation: operation,
-        localRevision: local.revision,
-      });
-    }
+    const localHash = await linkedCalendarSemanticDigest(local.event);
+    // A provider here is semantically unchanged since the common version, so
+    // its fresh ETag only absorbs non-semantic Google changes. A create's
+    // common hash is its own value: if the write lands but its checkpoint is
+    // lost, the next pass sees Google unchanged rather than a conflict.
+    const pending = await this.repository.save(record, {
+      state: "dirty",
+      pendingOperation: operation,
+      localRevision: local.revision,
+      ...(provider
+        ? { providerEventId: provider.eventId, providerEtag: provider.etag }
+        : {}),
+      ...(operation === "create" ? { lastCommonSemanticHash: localHash } : {}),
+    });
+    let written: LinkedCalendarProviderSnapshot | null = null;
     try {
       if (operation === "delete") {
         if (provider) {
           this.onProviderMutation?.();
           await this.provider.delete(pending);
         }
-        await this.repository.save(pending, {
-          providerEventId: provider?.eventId ?? pending.providerEventId,
-          providerEtag: null,
-          lastCommonSemanticHash: await linkedCalendarSemanticDigest(
-            local.event,
-          ),
-          state: "clean",
-          pendingOperation: null,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-        });
       } else {
         this.onProviderMutation?.();
-        const written =
+        written =
           operation === "create"
             ? await this.provider.create(pending, local.event)
             : await this.provider.update(pending, local.event);
-        await this.repository.save(pending, {
-          providerEventId: written.eventId,
-          providerEtag: written.etag,
-          localRevision: local.revision,
-          lastCommonSemanticHash: await linkedCalendarSemanticDigest(
-            written.event,
-          ),
-          state: "clean",
-          pendingOperation: null,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-        });
       }
-      return "pushed";
     } catch (error) {
       const mutationFailure = googleMutationFailure(error);
       if (mutationFailure) {
@@ -573,6 +697,82 @@ export class LinkedCalendarReconciler<
         "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
         error instanceof Error ? error.message : String(error),
       );
+    }
+    await this.checkpointLanded(
+      pending,
+      written
+        ? {
+            providerEventId: written.eventId,
+            providerEtag: written.etag,
+            lastCommonSemanticHash: await linkedCalendarSemanticDigest(
+              written.event,
+            ),
+          }
+        : {
+            providerEventId: provider?.eventId ?? pending.providerEventId,
+            providerEtag: null,
+            lastCommonSemanticHash: localHash,
+          },
+      {
+        localRevision: local.revision,
+        state: "clean",
+        pendingOperation: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      },
+      local.revision,
+      operation,
+      written !== null,
+    );
+    return "pushed";
+  }
+
+  /**
+   * Checkpoints a write that already happened. If a local edit raced the
+   * write, the row is reloaded and keeps that newer edit pending while
+   * recording the landed provider identity, ETag and common hash, so the next
+   * pass pushes the edit instead of the dispatch being held forever.
+   */
+  private async checkpointLanded(
+    pending: LinkedCalendarEventRecord<Revision>,
+    landed: Pick<
+      LinkedCalendarEventRecord<Revision>,
+      "providerEventId" | "providerEtag" | "lastCommonSemanticHash"
+    >,
+    settled: LinkedCalendarCheckpointPatch<Revision>,
+    expectedRevision: Revision,
+    expectedOperation: LinkedCalendarOperation | null,
+    eventExists: boolean,
+  ): Promise<LinkedCalendarEventRecord<Revision>> {
+    try {
+      return await this.repository.save(pending, { ...landed, ...settled });
+    } catch (error) {
+      if (!this.repository.reload) throw error;
+      let failure = error;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const fresh = await this.repository.reload(pending);
+        if (!fresh) throw failure;
+        const unchanged =
+          fresh.localRevision === expectedRevision &&
+          fresh.pendingOperation === expectedOperation;
+        try {
+          return await this.repository.save(
+            fresh,
+            unchanged
+              ? { ...landed, ...settled }
+              : {
+                  ...landed,
+                  pendingOperation:
+                    eventExists && fresh.pendingOperation === "create"
+                      ? "update"
+                      : fresh.pendingOperation,
+                },
+          );
+        } catch (retry) {
+          failure = retry;
+        }
+      }
+      throw failure;
     }
   }
 

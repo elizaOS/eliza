@@ -181,7 +181,15 @@ class MemoryStore implements LinkedCalendarCheckpointStore {
     current: LinkedCalendarEventRecord,
     patch: Partial<LinkedCalendarEventRecord>,
   ) {
-    expect(current.updatedAt).toBe(this.current.updatedAt);
+    if (current.updatedAt !== this.current.updatedAt)
+      throw new Error("Concurrent checkpoint update rejected");
+    return this.mutate(patch);
+  }
+  async reload() {
+    return this.current;
+  }
+  /** Stands in for a concurrent markLocalDirty on the same row. */
+  mutate(patch: Partial<LinkedCalendarEventRecord>) {
     this.revision += 1;
     this.current = {
       ...this.current,
@@ -956,6 +964,385 @@ describe("LinkedCalendarReconciler", () => {
       providerEventId: "google-event-1",
       lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
     });
+  });
+});
+
+describe("linked reconciler races and missing sides", () => {
+  const precondition = () =>
+    Object.assign(new Error("Provider revision changed"), {
+      outcome: "precondition_failed",
+      code: "GOOGLE_CALENDAR_PRECONDITION_FAILED",
+    });
+
+  /** Google-like provider: conditional update and delete against its ETag. */
+  function google(initial: LinkedCalendarProviderSnapshot | null) {
+    let current = initial;
+    let version = 10;
+    const calls: Array<{ op: string; etag: string | null }> = [];
+    const f = {
+      calls,
+      duringWrite: undefined as (() => void) | undefined,
+      current: () => current,
+      set(next: LinkedCalendarProviderSnapshot | null) {
+        current = next;
+      },
+      port: {
+        async get() {
+          return current;
+        },
+        async create(
+          _record: LinkedCalendarEventRecord,
+          event: LinkedCalendarSemanticEvent,
+        ) {
+          calls.push({ op: "create", etag: null });
+          version += 1;
+          current = { eventId: "google-event-1", etag: `"g${version}"`, event };
+          f.duringWrite?.();
+          return current;
+        },
+        async update(
+          record: LinkedCalendarEventRecord,
+          event: LinkedCalendarSemanticEvent,
+        ) {
+          calls.push({ op: "update", etag: record.providerEtag });
+          if (!current || record.providerEtag !== current.etag)
+            throw precondition();
+          version += 1;
+          current = { eventId: current.eventId, etag: `"g${version}"`, event };
+          f.duringWrite?.();
+          return current;
+        },
+        async delete(record: LinkedCalendarEventRecord) {
+          calls.push({ op: "delete", etag: record.providerEtag });
+          if (!current || record.providerEtag !== current.etag)
+            throw precondition();
+          current = null;
+          f.duringWrite?.();
+        },
+      } satisfies LinkedCalendarProviderPort,
+    };
+    return f;
+  }
+
+  function eliza(initial: LinkedCalendarLocalSnapshot | null) {
+    const f = {
+      value: initial,
+      casError: undefined as unknown,
+      port: {
+        async get() {
+          return f.value;
+        },
+        async applyProviderEvent(
+          eventId: string,
+          event: LinkedCalendarSemanticEvent,
+          expected: number,
+        ) {
+          if (f.casError) throw f.casError;
+          f.value = { eventId, event, revision: expected + 1 };
+          return f.value;
+        },
+        async delete() {
+          if (f.casError) throw f.casError;
+          f.value = null;
+        },
+      } satisfies LinkedCalendarLocalPort,
+    };
+    return f;
+  }
+
+  const linked = (overrides: Partial<LinkedCalendarEventRecord> = {}) =>
+    record({
+      state: "clean",
+      pendingOperation: null,
+      providerEventId: "google-event-1",
+      providerEtag: '"g1"',
+      lastCommonSemanticHash: linkedCalendarSemanticHash(baseEvent),
+      ...overrides,
+    });
+  const edit = (title: string) => ({ ...baseEvent, title });
+
+  it("keeps a local edit made while an update was in flight and pushes it next", async () => {
+    const store = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "update", localRevision: 2 }),
+    );
+    const local = eliza({
+      eventId: "local-1",
+      revision: 2,
+      event: edit("First edit"),
+    });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g1"',
+      event: baseEvent,
+    });
+    remote.duringWrite = () => {
+      remote.duringWrite = undefined;
+      local.value = { eventId: "local-1", revision: 3, event: edit("Second") };
+      store.mutate({ localRevision: 3 });
+    };
+    const engine = new LinkedCalendarReconciler(store, local.port, remote.port);
+
+    expect(await engine.reconcile(store.current)).toBe("pushed");
+    expect(store.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "update",
+      localRevision: 3,
+      providerEtag: remote.current()?.etag,
+      lastCommonSemanticHash: linkedCalendarSemanticHash(edit("First edit")),
+    });
+    expect(await engine.reconcile(store.current)).toBe("pushed");
+    expect(remote.current()?.event.title).toBe("Second");
+    expect(store.current).toMatchObject({ state: "clean", localRevision: 3 });
+  });
+
+  it("keeps a delete made while an update was in flight and deletes next", async () => {
+    const store = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "update", localRevision: 2 }),
+    );
+    const local = eliza({
+      eventId: "local-1",
+      revision: 2,
+      event: edit("First edit"),
+    });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g1"',
+      event: baseEvent,
+    });
+    remote.duringWrite = () => {
+      remote.duringWrite = undefined;
+      local.value = null;
+      store.mutate({ localRevision: 3, pendingOperation: "delete" });
+    };
+    const engine = new LinkedCalendarReconciler(store, local.port, remote.port);
+
+    expect(await engine.reconcile(store.current)).toBe("pushed");
+    const landedEtag = remote.current()?.etag;
+    expect(store.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "delete",
+      providerEtag: landedEtag,
+    });
+    expect(await engine.reconcile(store.current)).toBe("pushed");
+    expect(remote.current()).toBeNull();
+    expect(remote.calls.at(-1)).toEqual({ op: "delete", etag: landedEtag });
+    expect(store.current.state).toBe("paused");
+  });
+
+  it("sends the fresh ETag after a non-semantic Google change", async () => {
+    const store = new MemoryStore(linked());
+    const local = eliza({
+      eventId: "local-1",
+      revision: 2,
+      event: edit("Local edit"),
+    });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g1-reminder"',
+      event: baseEvent,
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        local.port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("pushed");
+    expect(remote.calls).toEqual([{ op: "update", etag: '"g1-reminder"' }]);
+    expect(store.current.state).toBe("clean");
+  });
+
+  it("conflicts instead of deleting an event the owner edited in Google", async () => {
+    const store = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "delete", localRevision: 2 }),
+    );
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g2"',
+      event: edit("Google edit"),
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        eliza(null).port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("conflicted");
+    expect(remote.calls).toEqual([{ op: "delete", etag: '"g1"' }]);
+    expect(remote.current()?.event.title).toBe("Google edit");
+    expect(store.current.state).toBe("conflicted");
+  });
+
+  it("leaves a pull refused by a concurrent local edit dirty, not quarantined", async () => {
+    const initial = linked();
+    const store = new MemoryStore(initial);
+    const local = eliza({ eventId: "local-1", revision: 1, event: baseEvent });
+    local.casError = Object.assign(new Error("changed"), {
+      code: "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+    });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g2"',
+      event: edit("Google edit"),
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        local.port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("dirty");
+    expect(store.current).toEqual(initial);
+  });
+
+  it("conflicts when Google deleted an event that was edited in Eliza", async () => {
+    const store = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "update", localRevision: 2 }),
+    );
+    const remote = google(null);
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        eliza({ eventId: "local-1", revision: 2, event: edit("Local edit") })
+          .port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("conflicted");
+    expect(store.current).toMatchObject({
+      state: "conflicted",
+      lastErrorCode: "LINKED_CALENDAR_PROVIDER_DELETED_LOCAL_EDITED",
+    });
+    expect(remote.calls).toEqual([]);
+  });
+
+  it("pauses a never-pushed link whose local event was deleted", async () => {
+    const store = new MemoryStore(record());
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        eliza(null).port,
+        google(null).port,
+      ).reconcile(store.current),
+    ).toBe("paused");
+    expect(store.current).toMatchObject({
+      state: "paused",
+      pendingOperation: null,
+      lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+    });
+  });
+
+  it("records a landed create before quarantining its missing local event", async () => {
+    const store = new MemoryStore(record());
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g1"',
+      event: baseEvent,
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        eliza(null).port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("quarantined");
+    expect(store.current).toMatchObject({
+      providerEventId: "google-event-1",
+      lastErrorCode: "LINKED_LOCAL_EVENT_MISSING",
+    });
+    expect(remote.current()).not.toBeNull();
+  });
+
+  it("keeping a cancelled Google event deletes the Eliza event and pauses", async () => {
+    const store = new MemoryStore(
+      linked({ state: "conflicted", lastCommonSemanticHash: "old" }),
+    );
+    const local = eliza({
+      eventId: "local-1",
+      revision: 4,
+      event: edit("Local"),
+    });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g5"',
+      event: { ...baseEvent, deleted: true },
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        local.port,
+        remote.port,
+      ).resolveConflict(store.current, "keep_google"),
+    ).toBe("pulled");
+    expect(local.value).toBeNull();
+    expect(store.current).toMatchObject({
+      state: "paused",
+      lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
+    });
+  });
+
+  it("conflicts when Eliza reverted its edit and Google changed", async () => {
+    const store = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "update", localRevision: 3 }),
+    );
+    const local = eliza({ eventId: "local-1", revision: 3, event: baseEvent });
+    const remote = google({
+      eventId: "google-event-1",
+      etag: '"g2"',
+      event: edit("Google edit"),
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        local.port,
+        remote.port,
+      ).reconcile(store.current),
+    ).toBe("conflicted");
+    expect(local.value?.event.title).toBe(baseEvent.title);
+
+    const unchanged = new MemoryStore(
+      linked({ state: "dirty", pendingOperation: "update", localRevision: 3 }),
+    );
+    const same = google({
+      eventId: "google-event-1",
+      etag: '"g1"',
+      event: baseEvent,
+    });
+    expect(
+      await new LinkedCalendarReconciler(
+        unchanged,
+        local.port,
+        same.port,
+      ).reconcile(unchanged.current),
+    ).toBe("clean");
+    expect(same.calls).toEqual([]);
+  });
+
+  it("pushes a later edit as an update after a create whose checkpoint was lost", async () => {
+    const memory = new MemoryStore(record());
+    let saves = 0;
+    const store: LinkedCalendarCheckpointStore = {
+      async save(current, patch) {
+        saves += 1;
+        if (saves === 2) throw new Error("process stopped");
+        return memory.save(current, patch);
+      },
+    };
+    const local = eliza({ eventId: "local-1", revision: 1, event: baseEvent });
+    const remote = google(null);
+    const engine = new LinkedCalendarReconciler(store, local.port, remote.port);
+    await expect(engine.reconcile(memory.current)).rejects.toThrow(
+      "process stopped",
+    );
+    expect(memory.current).toMatchObject({
+      state: "dirty",
+      pendingOperation: "create",
+    });
+
+    local.value = { eventId: "local-1", revision: 2, event: edit("Later") };
+    expect(await engine.reconcile(memory.current)).toBe("pushed");
+    expect(remote.calls.map((call) => call.op)).toEqual(["create", "update"]);
+    expect(remote.current()?.event.title).toBe("Later");
+    expect(memory.current.state).toBe("clean");
   });
 });
 

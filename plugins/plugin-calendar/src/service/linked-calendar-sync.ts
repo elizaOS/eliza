@@ -401,6 +401,12 @@ export class LinkedCalendarRepository {
     return rows[0] ? parseRecord(rows[0]) : null;
   }
 
+  async reload(
+    record: LinkedCalendarEventRecord,
+  ): Promise<LinkedCalendarEventRecord | null> {
+    return this.getById(record.agentId, record.id);
+  }
+
   async getByProviderEvent(args: {
     agentId: string;
     connectorAccountId: string;

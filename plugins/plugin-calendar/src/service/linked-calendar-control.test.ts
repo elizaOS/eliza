@@ -9,7 +9,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CalendarService } from "./CalendarService.js";
 import type { CalendarHostGate } from "./gate.js";
 import { LinkedCalendarControlRepository } from "./linked-calendar-control.js";
-import { LinkedCalendarRepository } from "./linked-calendar-sync.js";
+import {
+  type LinkedCalendarLocalPort,
+  type LinkedCalendarLocalSnapshot,
+  type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot,
+  LinkedCalendarReconciler,
+  LinkedCalendarRepository,
+  linkedCalendarSemanticHash,
+} from "./linked-calendar-sync.js";
 import {
   ensureLinkedCalendarControlTable,
   ensureLinkedCalendarEventTable,
@@ -933,4 +941,207 @@ it("selects and resumes an exact managed owner destination without a local Googl
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   }
+});
+
+describe("linked Google change dispatch", { timeout: 30_000 }, () => {
+  const event = {
+    title: "School pickup",
+    description: "",
+    location: "",
+    startAt: "2026-09-01T19:00:00.000Z",
+    endAt: "2026-09-01T20:00:00.000Z",
+    timeZone: "UTC",
+    isAllDay: false,
+    attendees: [],
+  };
+
+  /** A service whose linked reconciler uses deterministic Eliza and Google ports. */
+  async function dispatchFixture(provider: LinkedCalendarProviderPort) {
+    const h = await harness();
+    const initial = await h.controls().read();
+    const selected = await h
+      .controls()
+      .selectDestination(initial.revision, destination);
+    await h.controls().resume(selected.revision);
+    const links = new LinkedCalendarRepository(h.runtime());
+    const locals = new Map<string, LinkedCalendarLocalSnapshot>();
+    const local: LinkedCalendarLocalPort & { casError?: unknown } = {
+      async get(id) {
+        return locals.get(id) ?? null;
+      },
+      async applyProviderEvent(id, next, expected) {
+        if (local.casError) throw local.casError;
+        const applied = { eventId: id, event: next, revision: expected + 1 };
+        locals.set(id, applied);
+        return applied;
+      },
+      async delete(id) {
+        locals.delete(id);
+      },
+    };
+    const link = async (localEventId: string, providerEventId: string) => {
+      locals.set(localEventId, { eventId: localEventId, revision: 1, event });
+      const created = await links.create({
+        agentId: h.runtime().agentId,
+        localEventId,
+        ...destination,
+        localRevision: 1,
+      });
+      return links.save(created, {
+        state: "clean",
+        pendingOperation: null,
+        providerEventId,
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: linkedCalendarSemanticHash(event),
+      });
+    };
+    const runtime = {
+      ...h.runtime(),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const service = new CalendarService(runtime);
+    const internals = service as unknown as {
+      activeLinkedCalendarTarget: () => Promise<typeof destination>;
+      linkedReconciler: (
+        account: string,
+        onProviderMutation?: () => void,
+      ) => LinkedCalendarReconciler;
+    };
+    vi.spyOn(internals, "activeLinkedCalendarTarget").mockResolvedValue(
+      destination,
+    );
+    vi.spyOn(internals, "linkedReconciler").mockImplementation(
+      (_account, onProviderMutation) =>
+        new LinkedCalendarReconciler(
+          links,
+          local,
+          provider,
+          onProviderMutation,
+        ),
+    );
+    return { h, links, locals, local, link, service, runtime };
+  }
+
+  it("settles the dispatch when a local edit races a landed Google update", async () => {
+    let remote: LinkedCalendarProviderSnapshot = {
+      eventId: "google-a",
+      etag: '"g1"',
+      event,
+    };
+    let race: (() => Promise<void>) | undefined;
+    const f = await dispatchFixture({
+      async get() {
+        return remote;
+      },
+      async create() {
+        throw Error("Unexpected create");
+      },
+      async update(_record, next) {
+        remote = { eventId: "google-a", etag: '"g2"', event: next };
+        await race?.();
+        return remote;
+      },
+      async delete() {
+        throw Error("Unexpected delete");
+      },
+    });
+    const row = await f.link("local-a", "google-a");
+    f.locals.set("local-a", {
+      eventId: "local-a",
+      revision: 2,
+      event: { ...event, title: "First edit" },
+    });
+    const dirty = await f.links.markLocalDirty({
+      agentId: row.agentId,
+      localEventId: "local-a",
+      localRevision: 2,
+    });
+    race = async () => {
+      race = undefined;
+      f.locals.set("local-a", {
+        eventId: "local-a",
+        revision: 3,
+        event: { ...event, title: "Second edit" },
+      });
+      await f.links.markLocalDirty({
+        agentId: row.agentId,
+        localEventId: "local-a",
+        localRevision: 3,
+      });
+    };
+
+    await f.service.executeLinkedCalendarProviderChanges(["google-a"]);
+    expect((await f.h.controls().read()).dispatch).toBeNull();
+    expect(await f.links.getById(row.agentId, row.id)).toMatchObject({
+      id: dirty?.id,
+      state: "dirty",
+      pendingOperation: "update",
+      localRevision: 3,
+      providerEtag: '"g2"',
+    });
+  });
+
+  it("settles the dispatch and keeps the row when a pull loses the local CAS", async () => {
+    const f = await dispatchFixture({
+      async get() {
+        return {
+          eventId: "google-a",
+          etag: '"g2"',
+          event: { ...event, title: "Google edit" },
+        };
+      },
+      async create() {
+        throw Error("Unexpected create");
+      },
+      async update() {
+        throw Error("Unexpected update");
+      },
+      async delete() {
+        throw Error("Unexpected delete");
+      },
+    });
+    const row = await f.link("local-a", "google-a");
+    f.local.casError = Object.assign(new Error("changed"), {
+      code: "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+    });
+
+    await f.service.executeLinkedCalendarProviderChanges(["google-a"]);
+    expect((await f.h.controls().read()).dispatch).toBeNull();
+    expect(await f.links.getById(row.agentId, row.id)).toEqual(row);
+  });
+
+  it("reconciles the rest of a batch after one Google event cannot be read", async () => {
+    const f = await dispatchFixture({
+      async get(record) {
+        if (record.providerEventId === "google-a")
+          throw Error("Google event is missing its start or end time");
+        return {
+          eventId: "google-b",
+          etag: '"g2"',
+          event: { ...event, title: "Google edit" },
+        };
+      },
+      async create() {
+        throw Error("Unexpected create");
+      },
+      async update() {
+        throw Error("Unexpected update");
+      },
+      async delete() {
+        throw Error("Unexpected delete");
+      },
+    });
+    await f.link("local-a", "google-a");
+    const second = await f.link("local-b", "google-b");
+
+    await expect(
+      f.service.executeLinkedCalendarProviderChanges(["google-a", "google-b"]),
+    ).rejects.toBeInstanceOf(AggregateError);
+    expect(f.locals.get("local-b")?.event.title).toBe("Google edit");
+    expect((await f.links.getById(second.agentId, second.id))?.state).toBe(
+      "clean",
+    );
+    expect(f.runtime.reportError).toHaveBeenCalledTimes(1);
+    expect((await f.h.controls().read()).dispatch).toBeNull();
+  });
 });
