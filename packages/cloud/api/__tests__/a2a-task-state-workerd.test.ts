@@ -56,6 +56,16 @@ describe("Cloudflare A2A tasks through the existing service", () => {
     expect(r.status).toBe(200);
     return r.json();
   };
+  const raw = (organization: string, payload: Record<string, unknown>) =>
+    call({ operation: "raw", organization, payload });
+  const rawOk = async (
+    organization: string,
+    payload: Record<string, unknown>,
+  ) => {
+    const response = await raw(organization, payload);
+    expect(response.status).toBe(200);
+    return response.json();
+  };
   const entry = (taskId: string, organizationId: string): TaskStoreEntry => ({
     task: {
       id: taskId,
@@ -147,6 +157,242 @@ describe("Cloudflare A2A tasks through the existing service", () => {
         })
       ).status,
     ).toBe(503);
+  });
+  test("versioned competing updates retry without losing content order or duplicates", async () => {
+    const organizationId = "versioned";
+    const original = entry("versioned-task", organizationId);
+    const input = { organizationId, taskId: original.task.id };
+    await rawOk(organizationId, {
+      ...input,
+      operation: "set",
+      entry: original,
+    });
+    const [first, second] = (await Promise.all([
+      rawOk(organizationId, { ...input, operation: "get" }),
+      rawOk(organizationId, { ...input, operation: "get" }),
+    ])) as Array<{ entry: TaskStoreEntry; version: string }>;
+    expect(first!.version).toBe(second!.version);
+    const duplicate = {
+      role: "agent" as const,
+      parts: [{ type: "text" as const, text: "同じ é" }],
+    };
+    const append = (snapshot: TaskStoreEntry): TaskStoreEntry => ({
+      ...snapshot,
+      task: {
+        ...snapshot.task,
+        history: [...snapshot.task.history!, duplicate],
+      },
+    });
+    expect(
+      await rawOk(organizationId, {
+        ...input,
+        operation: "set",
+        version: first!.version,
+        entry: append(first!.entry),
+      }),
+    ).toBe(true);
+    expect(
+      await rawOk(organizationId, {
+        ...input,
+        operation: "set",
+        version: second!.version,
+        entry: append(second!.entry),
+      }),
+    ).toBe(false);
+    const current = (await rawOk(organizationId, {
+      ...input,
+      operation: "get",
+    })) as {
+      entry: TaskStoreEntry;
+      version: string;
+    };
+    expect(current.version).not.toBe(first!.version);
+    expect(
+      await rawOk(organizationId, {
+        ...input,
+        operation: "set",
+        version: current.version,
+        entry: append(current.entry),
+      }),
+    ).toBe(true);
+    const stored = (await ok({
+      operation: "get",
+      taskId: original.task.id,
+      organization: organizationId,
+    })) as TaskStoreEntry;
+    expect(stored.task.history).toEqual([
+      ...original.task.history!,
+      duplicate,
+      duplicate,
+    ]);
+    expect(stored.task.metadata).toEqual(original.task.metadata);
+  });
+  test("deletion and recreation refuse the original version receipt", async () => {
+    const organizationId = "recreated";
+    const original = entry("recreated-task", organizationId);
+    const input = { organizationId, taskId: original.task.id };
+    await rawOk(organizationId, {
+      ...input,
+      operation: "set",
+      entry: original,
+    });
+    const stale = (await rawOk(organizationId, {
+      ...input,
+      operation: "get",
+    })) as {
+      entry: TaskStoreEntry;
+      version: string;
+    };
+    expect(await rawOk(organizationId, { ...input, operation: "delete" })).toBe(
+      true,
+    );
+    const replacement = {
+      ...original,
+      task: { ...original.task, metadata: { replacement: true } },
+    };
+    await rawOk(organizationId, {
+      ...input,
+      operation: "set",
+      entry: replacement,
+    });
+    expect(
+      await rawOk(organizationId, {
+        ...input,
+        operation: "set",
+        entry: stale.entry,
+        version: stale.version,
+      }),
+    ).toBe(false);
+    const stored = (await rawOk(organizationId, {
+      ...input,
+      operation: "get",
+    })) as {
+      entry: TaskStoreEntry;
+      version: string;
+    };
+    expect(stored.version).not.toBe(stale.version);
+    expect(stored.entry).toEqual(replacement);
+  });
+  test("expired task versions cannot restore deleted content or listing entries", async () => {
+    const organizationId = "expired-version";
+    const original = entry("expiring-task", organizationId);
+    const input = { organizationId, taskId: original.task.id };
+    await rawOk(organizationId, {
+      organizationId,
+      operation: "import",
+      sourceQuiesced: true,
+      entries: [
+        {
+          taskId: original.task.id,
+          entry: original,
+          score: 1,
+          expiresAt: Date.now() + 1000,
+        },
+      ],
+    });
+    const stale = (await rawOk(organizationId, {
+      ...input,
+      operation: "get",
+    })) as {
+      entry: TaskStoreEntry;
+      version: string;
+    };
+    await Bun.sleep(1100);
+    expect(
+      await rawOk(organizationId, {
+        ...input,
+        operation: "set",
+        entry: original,
+        version: stale.version,
+      }),
+    ).toBe(false);
+    expect(
+      await rawOk(organizationId, { ...input, operation: "get" }),
+    ).toBeNull();
+    expect(
+      await rawOk(organizationId, {
+        organizationId,
+        operation: "list",
+        limit: 0,
+      }),
+    ).toEqual([]);
+  });
+  test("rejected foreign requests retain the owner's open import phase", async () => {
+    const organizationId = "import-owner";
+    const original = entry("import-owner-task", organizationId);
+    const transfer = {
+      organizationId,
+      operation: "import",
+      sourceQuiesced: true,
+      entries: [
+        {
+          taskId: original.task.id,
+          entry: original,
+          score: 1,
+          expiresAt: Date.now() + 60_000,
+        },
+      ],
+    };
+    expect(await rawOk(organizationId, transfer)).toBe(1);
+    const denied = await raw(organizationId, {
+      organizationId: "foreign",
+      operation: "get",
+      taskId: original.task.id,
+    });
+    expect(denied.status).toBe(403);
+    expect(await rawOk(organizationId, transfer)).toBe(1);
+    expect(
+      await rawOk(organizationId, {
+        organizationId,
+        operation: "list",
+        limit: 0,
+      }),
+    ).toEqual([original]);
+    expect((await raw(organizationId, transfer)).status).toBe(409);
+  });
+  test("conflicting import batches do not retain preceding new rows or receipts", async () => {
+    const organizationId = "atomic-import";
+    const original = entry("original-import-task", organizationId);
+    const first = {
+      taskId: original.task.id,
+      entry: original,
+      score: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    const transfer = {
+      organizationId,
+      operation: "import",
+      sourceQuiesced: true,
+    };
+    expect(await rawOk(organizationId, { ...transfer, entries: [first] })).toBe(
+      1,
+    );
+    const extra = entry("uncommitted-import-task", organizationId);
+    const conflict = await raw(organizationId, {
+      ...transfer,
+      entries: [
+        {
+          taskId: extra.task.id,
+          entry: extra,
+          score: 2,
+          expiresAt: first.expiresAt,
+        },
+        { ...first, score: 3 },
+      ],
+    });
+    expect(conflict.status).toBe(409);
+    const receipts = (await ok({
+      operation: "inspect-imports",
+      organization: organizationId,
+    })) as Array<{ id: string }>;
+    expect(receipts.map((row) => row.id)).toEqual([original.task.id]);
+    expect(
+      await rawOk(organizationId, {
+        organizationId,
+        operation: "list",
+        limit: 0,
+      }),
+    ).toEqual([original]);
   });
   test("import retains ordering and expiry, rejects conflicts and permanently closes after use", async () => {
     const snapshots = [

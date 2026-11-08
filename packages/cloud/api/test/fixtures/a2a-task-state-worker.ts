@@ -34,9 +34,18 @@ export default {
         text: string;
         limit?: number;
         snapshots: A2ATaskSnapshot[];
+        payload: Record<string, unknown>;
       };
       try {
         switch (input.operation) {
+          case "raw": {
+            if (!env.A2A_TASK_STATE) throw new Error("Missing fixture binding");
+            const owner = `a2a-v1:${createHash("sha256").update(input.organization).digest("hex")}`;
+            return env.A2A_TASK_STATE.getByName(owner).fetch(
+              "https://a2a-state.internal/",
+              { method: "POST", body: JSON.stringify(input.payload) },
+            );
+          }
           case "inspect-imports": {
             if (!env.A2A_TASK_STATE) throw new Error("Missing fixture binding");
             const owner = `a2a-v1:${createHash("sha256").update(input.organization).digest("hex")}`;

@@ -116,17 +116,19 @@
     "model": "packages/cloud/quint/a2a_task_store.qnt",
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
-      "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts"
+      "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+      "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
       "One task, two writers and tenants, versions 1..6, clock 0..4, three history elements and two import fingerprints.",
       "CAS retries, expiry and deletion, owner filtering and pre-serving idempotent import are modeled.",
-      "Arbitrary unconditional replacement, the Redis backend, semantic task status transitions and implementation refinement are excluded.",
-      "A foreign read closes the abstract import phase, conservatively earlier than implementation; this restricts import interleavings.",
       "History is set-valued in this model; ordering, multiplicity, and byte fidelity are not proved.",
-      "No temporal or fairness claim. Implementation refinement remains unproved."
+      "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
+      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim."
     ]
   },
   {
@@ -508,7 +510,9 @@
     "sources": [
       "packages/cloud/api/src/a2a-task-state.ts",
       "packages/cloud/shared/src/lib/services/cloudflare-a2a-task-store.ts",
-      "packages/cloud/shared/src/lib/services/a2a-task-store.ts"
+      "packages/cloud/shared/src/lib/services/a2a-task-store.ts",
+      "packages/cloud/api/__tests__/a2a-task-state-workerd.test.ts",
+      "packages/cloud/api/test/fixtures/a2a-task-state-worker.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
@@ -516,11 +520,11 @@
       "One task, two optimistic writers, two organizations and fresh bounded versions.",
       "History is a set of abstract complete items; order, byte content and duplicate client retries are not modeled.",
       "Initial create/import and append updates only; arbitrary unconditional overwrites, Redis and semantic task status policy are excluded.",
-      "A rejected foreign read conservatively closes import in this model; the implementation rejects ownership first.",
       "Bounded Cloudflare store projection; Redis and arbitrary unconditional overwrite are excluded.",
-      "Verify implementation transitions and failure paths against the formal contract.",
       "Required flow invariants: Stale optimistic writes cannot erase acknowledged appends | Import fingerprints are immutable and import closes after serving | Expired or deleted records are not revived by old versions",
-      "Abstract states: absent, present, expired, deleted, importing, serving"
+      "Abstract states: absent, present, expired, deleted, importing, serving",
+      "Foreign-owner requests are rejected before closing the owned import phase. Ten real workerd/SQLite tests check version conflicts, recreation, expiry, tenant isolation, ordered complete content with duplicate retention, import conflict atomicity and process restart.",
+      "The hook checks selected implementation scenarios. General trace equivalence, Redis coordination, arbitrary replacements and semantic task-state policy remain outside this model. No temporal or fairness claim."
     ]
   },
   {
