@@ -1,7 +1,7 @@
 /** Replay bounded Quint draft protocols through the shipped controller and CAS. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,18 +46,19 @@ function decode(value) {
     assert(Number.isSafeInteger(result));
     return result;
   }
+  if ("#set" in value) return new Set(value["#set"].map(decode));
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, decode(item)]),
   );
 }
 
-function controllerFixture() {
+function controllerFixture(initialText = "draft") {
   const rows = new Map([
-    ["one", { version: 1, binding: "one", revision: "1", text: "draft" }],
+    ["one", { version: 1, binding: "one", revision: "1", text: initialText }],
     ["two", null],
   ]);
   let revision = 1;
-  let editor = "draft";
+  let editor = initialText;
   let fault = "ok";
   let nextWriteGate;
   const store = (binding) => ({
@@ -514,18 +515,874 @@ async function replayQueuedHandoff(states) {
   }
 }
 
+async function replayOpenRecovery(states) {
+  const initial = states[0];
+  let editor = initial.editor;
+  let factoryCalls = 0;
+  let readCalls = 0;
+  let pendingFactory;
+  let pendingRead;
+  let timer;
+  let elapsed = 0;
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, delay) => {
+    assert.equal(timer, undefined, "Only one retry timer may be pending");
+    timer = { callback, delay };
+    elapsed = 0;
+    return 1;
+  };
+  const row = {
+    version: 1,
+    binding: "one",
+    revision: "1",
+    text: "saved",
+    ...(initial.marked ? { sending: true } : {}),
+  };
+  const store = {
+    read() {
+      readCalls++;
+      return new Promise((resolve, reject) => {
+        pendingRead = { resolve, reject };
+      });
+    },
+    async save(expected, text) {
+      return replaceDurableDraft(row, expected, "one", text, {
+        revision: () => "2",
+      });
+    },
+  };
+  const controller = new DurableDraftController(
+    () => {
+      factoryCalls++;
+      return new Promise((resolve, reject) => {
+        pendingFactory = { resolve, reject };
+      });
+    },
+    () => editor,
+    (value, expected, current) => {
+      if (editor === expected && current()) editor = value;
+    },
+    () => {},
+  );
+  const opening = controller.open("one");
+  try {
+    for (let index = 0; index < states.length; index++) {
+      const state = states[index];
+      const previous = states[index - 1];
+      if (index > 0 && previous.phase !== "done") {
+        switch (state.event) {
+          case "factory-opened":
+            assert(pendingFactory);
+            pendingFactory.resolve(store);
+            pendingFactory = undefined;
+            break;
+          case "factory-failed":
+            assert(pendingFactory);
+            pendingFactory.reject(new Error("Factory unavailable"));
+            pendingFactory = undefined;
+            break;
+          case "read-opened":
+            assert(pendingRead);
+            pendingRead.resolve(row);
+            pendingRead = undefined;
+            break;
+          case "read-failed":
+            assert(pendingRead);
+            pendingRead.reject(new Error("Read unavailable"));
+            pendingRead = undefined;
+            break;
+          case "before-deadline":
+            assert(timer);
+            elapsed = timer.delay - 1;
+            break;
+          case "retry": {
+            assert(timer);
+            assert(elapsed < timer.delay);
+            const callback = timer.callback;
+            timer = undefined;
+            callback();
+            break;
+          }
+          case "edit":
+            editor = "typed";
+            controller.edit(editor);
+            break;
+          case "join":
+            assert.equal(controller.open("one"), opening);
+            break;
+          case "retire":
+            controller.retire();
+            editor = "other";
+            controller.edit(editor);
+            break;
+          default:
+            throw new Error(`Unexpected opening event ${state.event}`);
+        }
+      }
+      await settleQueues();
+      assert.deepEqual(
+        {
+          editor,
+          factoryCalls,
+          readCalls,
+          retryMs: timer?.delay ?? 0,
+          opening: controller.state.opening,
+          conflict: controller.state.conflict,
+          unsettled: controller.state.unsettled,
+          failed: controller.state.error || controller.state.conflict,
+        },
+        {
+          editor: state.editor,
+          factoryCalls: state.factoryCalls,
+          readCalls: state.readCalls,
+          retryMs: state.retryMs,
+          opening: state.opening,
+          conflict: state.conflict,
+          unsettled: state.unsettled,
+          failed: state.failed,
+        },
+        `Opening trace state ${index} (${state.event})`,
+      );
+    }
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+}
+
+async function replayRestoreOwnership(states) {
+  const mode = states[0].mode;
+  let editor = mode === "review" ? "typed" : mode === "open" ? "" : "saved";
+  let row = { version: 1, binding: "one", revision: "1", text: "saved" };
+  let revision = 1;
+  let authority = true;
+  let storageFault = "ok";
+  let update;
+  let result = "pending";
+  const store = {
+    async read() {
+      return row;
+    },
+    async save(expected, text, _signal, write) {
+      if (storageFault === "before") throw new Error("Store unavailable");
+      row = replaceDurableDraft(row, expected, "one", text, {
+        revision: () => String(++revision),
+        sending: write?.sending,
+      });
+      if (storageFault === "after")
+        throw new Error("Write acknowledgement lost");
+      return row;
+    },
+  };
+  const controller = new DurableDraftController(
+    async () => store,
+    () => editor,
+    (text, expected, current) =>
+      new Promise((resolve, reject) => {
+        update = {
+          apply() {
+            if (current() && editor === expected) editor = text;
+          },
+          resolve,
+          reject,
+        };
+      }),
+    () => {},
+  );
+  let operation;
+  if (mode === "open") operation = controller.open("one");
+  else {
+    await controller.open("one");
+    if (mode === "review") operation = controller.restoreSaved();
+    else if (mode === "consume")
+      operation = controller.consume("saved", () => authority);
+    else {
+      await controller.hold("saved");
+      editor = "";
+      controller.edit(editor);
+      storageFault = states[0].storageFault;
+      operation = controller.release();
+    }
+  }
+  const completion = Promise.resolve(operation).then(
+    () => {
+      result = "fulfilled";
+    },
+    () => {
+      result = "rejected";
+    },
+  );
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && !(previous.acknowledged && previous.applied)) {
+      switch (state.event) {
+        case "apply":
+          update.apply();
+          break;
+        case "acknowledge":
+          update.resolve();
+          break;
+        case "reject":
+          update.reject(new Error("Host update rejected"));
+          break;
+        case "edit":
+          editor = "new";
+          controller.edit(editor);
+          break;
+        case "retire":
+          controller.retire();
+          editor = "other";
+          controller.edit(editor);
+          break;
+        case "keep":
+          controller.keepCurrent();
+          break;
+        case "revoke":
+          authority = false;
+          break;
+        default:
+          throw new Error(`Unsupported restore event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    assert(update, "A host update must be pending");
+    if (state.acknowledged) await completion;
+    assert.deepEqual(
+      {
+        editor,
+        saved: row.text,
+        marked: row.sending === true,
+        unsettled: controller.state.unsettled,
+        holding: controller.holding,
+        consuming: controller.state.consuming,
+        opening: controller.state.opening,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+        result,
+      },
+      {
+        editor: state.editor,
+        saved: state.saved === "saved+new" ? "saved\nnew" : state.saved,
+        marked: state.marked,
+        unsettled: state.unsettled,
+        holding: state.holding,
+        consuming: state.consuming,
+        opening: state.opening,
+        conflict: state.conflict,
+        error: state.error,
+        result: state.result,
+      },
+      `Restore ${mode}, state ${index} (${state.event})`,
+    );
+    if (!state.acknowledged && state.active) {
+      await assert.rejects(controller.hold(editor));
+      if (mode !== "open") await assert.rejects(controller.flush());
+    }
+  }
+}
+
+async function replayConsumeRollback(states) {
+  let editor = "saved";
+  let row = { version: 1, binding: "one", revision: "0", text: "saved" };
+  let revision = 0;
+  let authority = true;
+  let readFailure = false;
+  let result = "not-started";
+  let completion;
+  const writes = [];
+  const store = {
+    async read() {
+      if (readFailure) throw new Error("Review read failed");
+      return row;
+    },
+    save(expected, text) {
+      return new Promise((resolve, reject) => {
+        writes.push({ expected, text, resolve, reject });
+      });
+    },
+  };
+  const controller = new DurableDraftController(
+    async () => store,
+    () => editor,
+    (text, expected, current) => {
+      if (current() && editor === expected) editor = text;
+    },
+    () => {},
+  );
+  await controller.open("one");
+  function externalWrite() {
+    row = replaceDurableDraft(row, row, "one", "external", {
+      revision: () => String(++revision),
+    });
+  }
+  function finishWrite(fault) {
+    const write = writes.shift();
+    assert(write, "A store write must be pending");
+    try {
+      if (fault === "before") throw new Error("Store rejected before write");
+      row = replaceDurableDraft(row, write.expected, "one", write.text, {
+        revision: () => String(++revision),
+      });
+      if (fault === "after") throw new Error("Write acknowledgement lost");
+      write.resolve(row);
+    } catch (error) {
+      write.reject(error);
+    }
+  }
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && previous.phase !== 5) {
+      switch (state.event) {
+        case "begin":
+          result = "pending";
+          completion = controller
+            .consume("saved", () => authority)
+            .then(
+              () => {
+                result = "fulfilled";
+              },
+              () => {
+                result = "rejected";
+              },
+            );
+          break;
+        case "interleave":
+          if (state.mutation === "edit") {
+            editor = "new";
+            controller.edit(editor);
+          } else if (state.mutation === "retire") {
+            controller.retire();
+            editor = "other";
+            controller.edit(editor);
+          } else if (state.mutation === "revoke") authority = false;
+          else if (state.mutation === "external") externalWrite();
+          break;
+        case "finish-clear":
+          readFailure = state.readFailure;
+          finishWrite(state.clearFault);
+          break;
+        case "external-rollback":
+          externalWrite();
+          break;
+        case "wait-rollback":
+          break;
+        case "finish-rollback":
+          finishWrite(state.rollbackFault);
+          break;
+        default:
+          throw new Error(`Unexpected consume event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    if (state.phase === 5) await completion;
+    assert.deepEqual(
+      {
+        editor,
+        saved: row.text,
+        revision,
+        result,
+        consuming: controller.state.consuming,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+      },
+      {
+        editor: state.editor,
+        saved: state.saved,
+        revision: state.revision,
+        result: state.result,
+        consuming: state.consuming,
+        conflict: state.conflict,
+        error: state.error,
+      },
+      `Consume state ${index} (${state.event})`,
+    );
+  }
+}
+
+async function replayRepeatedSend(states) {
+  const fixture = controllerFixture("first");
+  await fixture.controller.open("one");
+  let authority = true;
+  let accepted = 0;
+  let rejected = 0;
+  let marking;
+  let releaseMark;
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && !(previous.phase === 4 && previous.round === 1)) {
+      switch (state.event) {
+        case "begin": {
+          releaseMark = fixture.blockNextWrite();
+          const expected = fixture.editor;
+          const count = (operation) =>
+            operation.then(
+              () => {
+                accepted++;
+              },
+              () => {
+                rejected++;
+              },
+            );
+          marking = Promise.all([
+            count(fixture.controller.hold(expected, () => authority)),
+            count(fixture.controller.hold(expected, () => authority)),
+          ]);
+          break;
+        }
+        case "interleave":
+          if (state.mutation === "edit") fixture.type("new");
+          if (state.mutation === "revoke") authority = false;
+          break;
+        case "finish-mark":
+          fixture.setFault(state.fault);
+          releaseMark();
+          await marking;
+          if (accepted) fixture.type("");
+          break;
+        case "settle":
+          if (fixture.controller.holding) {
+            if (state.editor === "new" || state.editor.endsWith("+new"))
+              fixture.type("new");
+            await fixture.controller.settle(state.outcome);
+          }
+          break;
+        case "next-round":
+          await fixture.controller.retry();
+          if (fixture.controller.state.conflict)
+            fixture.controller.keepCurrent();
+          await settleQueues();
+          fixture.type("second");
+          accepted = 0;
+          rejected = 0;
+          authority = true;
+          break;
+        default:
+          throw new Error(`Unexpected repeated-send event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    const text = (value) => value.replace("+new", "\nnew");
+    assert.deepEqual(
+      {
+        editor: fixture.editor,
+        saved: fixture.rows.get("one").text,
+        marked: fixture.rows.get("one").sending === true,
+        held: fixture.controller.holding,
+        conflict: fixture.controller.state.conflict,
+        accepted,
+        rejected,
+      },
+      {
+        editor: text(state.editor),
+        saved: text(state.saved),
+        marked: state.marked,
+        held: state.held,
+        conflict: state.conflict,
+        accepted: state.accepted,
+        rejected: state.rejected,
+      },
+      `Repeated send state ${index} (${state.event})`,
+    );
+  }
+}
+
+async function replayConsumeHandoff(states) {
+  const fixture = controllerFixture("draft");
+  await fixture.controller.open("one");
+  const controller = fixture.controller;
+  let consume = "not-started";
+  let flush = "not-started";
+  let consuming;
+  let flushing;
+  let releaseClear;
+  let releaseRollback;
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && previous.phase !== 8) {
+      switch (state.event) {
+        case "begin":
+          releaseClear = fixture.blockNextWrite();
+          consume = "pending";
+          consuming = controller.consume("draft").then(
+            () => {
+              consume = "fulfilled";
+            },
+            () => {
+              consume = "rejected";
+            },
+          );
+          break;
+        case "rebind":
+          controller.retire();
+          fixture.type(state.sameKey ? "draft" : "");
+          await controller.open(state.sameKey ? "one" : "two");
+          break;
+        case "flush":
+          flush = "pending";
+          flushing = controller.flush().then(
+            () => {
+              flush = "fulfilled";
+            },
+            () => {
+              flush = "rejected";
+            },
+          );
+          break;
+        case "finish-clear":
+          releaseRollback = fixture.blockNextWrite();
+          releaseClear();
+          break;
+        case "finish-rollback":
+          fixture.setFault(state.rollbackFault);
+          releaseRollback();
+          await consuming;
+          await flushing;
+          break;
+        case "retry":
+          await controller.retry();
+          break;
+        case "write-new":
+          if (controller.state.conflict) controller.keepCurrent();
+          await settleQueues();
+          fixture.type("new");
+          break;
+        case "flush-again":
+          flush = await controller.flush().then(
+            () => "fulfilled",
+            () => "rejected",
+          );
+          break;
+        default:
+          throw new Error(`Unexpected consume handoff event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    assert.deepEqual(
+      {
+        editor: fixture.editor,
+        saved: fixture.rows.get("one").text,
+        otherSaved: fixture.rows.get("two")?.text ?? "",
+        consume,
+        flush,
+        conflict: controller.state.conflict,
+      },
+      {
+        editor: state.editor,
+        saved: state.saved,
+        otherSaved: state.otherSaved,
+        consume: state.consume,
+        flush: state.flush,
+        conflict: state.conflict,
+      },
+      `Consume handoff state ${index} (${state.event})`,
+    );
+  }
+}
+
+async function replayConsumeRetention(states) {
+  const initial = states[0];
+  let editor = "reviewed";
+  let row = { version: 1, binding: "one", revision: "0", text: editor };
+  let revision = 0;
+  let writes = 0;
+  let update;
+  let inlineRestore = false;
+  let consumeResult = "pending";
+  let consuming;
+  const store = {
+    async read() {
+      if (writes >= 2 && initial.readFailure)
+        throw new Error("Conflict readback failed");
+      return row;
+    },
+    async save(expected, text) {
+      writes++;
+      if (writes === 2 && initial.fault === "before")
+        throw new Error("Rollback failed before write");
+      if (writes === 2 && initial.fault === "external") {
+        row = replaceDurableDraft(row, row, "one", "external", {
+          revision: () => String(++revision),
+        });
+        throw new Error("Another writer replaced the clear");
+      }
+      row = replaceDurableDraft(row, expected, "one", text, {
+        revision: () => String(++revision),
+      });
+      if (writes === 2 && initial.fault === "after")
+        throw new Error("Rollback acknowledgement lost");
+      return row;
+    },
+  };
+  const controller = new DurableDraftController(
+    async () => store,
+    () => editor,
+    (text, expected, current) => {
+      if (inlineRestore) {
+        if (current() && editor === expected) editor = text;
+        return;
+      }
+      return new Promise((resolve, reject) => {
+        update = { text, expected, current, resolve, reject };
+      });
+    },
+    () => {},
+  );
+  await controller.open("one");
+  const review = async (choice) => {
+    if (choice === "restore") await controller.restoreSaved();
+    if (choice === "keep") controller.keepCurrent();
+  };
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    const previous = states[index - 1];
+    if (index > 0 && previous.phase !== 4) {
+      switch (state.event) {
+        case "begin":
+          consuming = controller.consume("reviewed").then(
+            () => {
+              consumeResult = "fulfilled";
+            },
+            () => {
+              consumeResult = "rejected";
+            },
+          );
+          break;
+        case "host-rejected":
+          assert(update.current() && editor === update.expected);
+          editor = update.text;
+          update.reject(new Error("Host rejected after applying"));
+          await consuming;
+          inlineRestore = true;
+          break;
+        case "review":
+          await review(state.choice);
+          break;
+        case "review-again":
+          if (
+            previous.choice !== "none" &&
+            previous.conflict &&
+            previous.offered === "external"
+          )
+            await review(state.secondChoice);
+          break;
+        default:
+          throw new Error(`Unknown retained-consume event ${state.event}`);
+      }
+    }
+    await settleQueues();
+    if (state.phase >= 2) assert.equal(consumeResult, "rejected");
+    assert.deepEqual(
+      {
+        editor,
+        stored: row.text,
+        offered: controller.state.savedText,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+        consuming: controller.state.consuming,
+      },
+      {
+        editor: state.editor,
+        stored: state.stored,
+        offered: state.offered,
+        conflict: state.conflict,
+        error: state.error,
+        consuming: state.consuming,
+      },
+      `Consume retention state ${index} (${state.event})`,
+    );
+  }
+}
+
+async function replayRetiredConsumeRecovery(states) {
+  const initial = states[0];
+  let editor = "draft";
+  let row = { version: 1, binding: "one", revision: "0", text: "draft" };
+  let revision = 0;
+  let owners = 0;
+  let consume = "idle";
+  let flush = "idle";
+  let consuming;
+  const gates = new Map();
+  const releases = new Map();
+  for (const name of ["clear", "rollback", "newer"]) {
+    gates.set(
+      name,
+      new Promise((resolve) => {
+        releases.set(name, resolve);
+      }),
+    );
+  }
+  const controller = new DurableDraftController(
+    async () => {
+      const owner = ++owners;
+      let writes = 0;
+      return {
+        async read() {
+          return row;
+        },
+        async save(expected, text) {
+          writes++;
+          if (owner === 1) {
+            await gates.get(writes === 1 ? "clear" : "rollback");
+            if (writes === 2 && !initial.rollbackAfter)
+              throw new Error("Rollback unavailable before write");
+          } else if (text === "newer") await gates.get("newer");
+          row = replaceDurableDraft(row, expected, "one", text, {
+            revision: () => String(++revision),
+          });
+          if (owner === 1 && writes === 2)
+            throw new Error("Rollback acknowledgement lost");
+          return row;
+        },
+      };
+    },
+    () => editor,
+    (text, expected, current) => {
+      if (current() && editor === expected) editor = text;
+    },
+    () => {},
+  );
+  await controller.open("one");
+  const type = (text) => {
+    editor = text;
+    controller.edit(text);
+  };
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    if (index > 0 && states[index - 1].phase !== 8) {
+      switch (state.phase) {
+        case 1:
+          consume = "pending";
+          consuming = controller.consume("draft").then(
+            () => {
+              consume = "fulfilled";
+            },
+            () => {
+              consume = "rejected";
+            },
+          );
+          break;
+        case 2:
+          if (state.typed) type("edited");
+          controller.retire();
+          if (state.mode === "newer") {
+            await controller.open("one");
+            type("newer");
+          } else type("");
+          break;
+        case 3:
+          if (state.mode === "newer" && state.newerFirst)
+            releases.get("newer")();
+          else {
+            releases.get("clear")();
+            await settleQueues();
+            if (state.mode === "recover") {
+              if (state.early) {
+                if (state.equalEditor) type(state.typed ? "edited" : "draft");
+                await controller.open("one");
+              }
+            } else {
+              releases.get("rollback")();
+              await consuming;
+            }
+          }
+          break;
+        case 4:
+          if (state.mode === "recover") {
+            releases.get("rollback")();
+            await consuming;
+            if (!state.early) {
+              if (state.equalEditor) type(state.typed ? "edited" : "draft");
+              await controller.open("one");
+            }
+          } else if (state.newerFirst) {
+            releases.get("clear")();
+            await consuming;
+          } else releases.get("newer")();
+          break;
+        case 5:
+          if (state.mode === "recover") await controller.restoreSaved();
+          else if (controller.state.conflict) controller.keepCurrent();
+          break;
+        case 6:
+        case 8:
+          flush = await controller.flush().then(
+            () => "fulfilled",
+            () => "rejected",
+          );
+          break;
+        case 7:
+          controller.retire();
+          type("");
+          await controller.open("one");
+          flush = "idle";
+          break;
+        default:
+          throw new Error(`Unknown retired consume phase ${state.phase}`);
+      }
+    }
+    await settleQueues();
+    assert.deepEqual(
+      {
+        editor,
+        stored: row.text,
+        offered: controller.state.savedText,
+        conflict: controller.state.conflict,
+        error: controller.state.error,
+        consuming: controller.state.consuming,
+        consume,
+        flush,
+      },
+      {
+        editor: state.editor,
+        stored: state.stored,
+        offered: state.offered,
+        conflict: state.conflict,
+        error: state.error,
+        consuming: state.consuming,
+        consume: state.consume,
+        flush: state.flush,
+      },
+      `Retired consume ${state.mode}, phase ${state.phase}`,
+    );
+  }
+}
+
 const protocols = {
   DraftSendRecovery: replaySendRecovery,
   DraftMarkRace: replayMarkRace,
   DraftQueuedHandoff: replayQueuedHandoff,
+  DraftOpenRecovery: replayOpenRecovery,
+  DraftRestoreOwnership: replayRestoreOwnership,
+  DraftConsumeRollback: replayConsumeRollback,
+  DraftRepeatedSend: replayRepeatedSend,
+  DraftConsumeHandoff: replayConsumeHandoff,
+  DraftConsumeRetention: replayConsumeRetention,
+  DraftRetiredConsumeRecovery: replayRetiredConsumeRecovery,
 };
 const requested = process.argv[2] && path.resolve(process.argv[2]);
 let steps = 0;
 for (const [name, replay] of Object.entries(protocols)) {
   const spec = path.join(root, "packages/ui/quint", `${name}.qnt`);
   if (requested && requested !== spec) continue;
-  const output = testOutputPath("quint-draft-controller", name);
-  await mkdir(output, { recursive: true });
+  const parent = testOutputPath("quint-draft-controller", name);
+  await mkdir(parent, { recursive: true });
+  const output = await mkdtemp(path.join(parent, "run-"));
+  const maxSteps = {
+    DraftMarkRace: 4,
+    DraftQueuedHandoff: 9,
+    DraftOpenRecovery: 20,
+    DraftRestoreOwnership: 10,
+    DraftConsumeRollback: 5,
+    DraftRepeatedSend: 9,
+    DraftConsumeHandoff: 8,
+    DraftConsumeRetention: 4,
+    DraftRetiredConsumeRecovery: 8,
+    DraftSendRecovery: 7,
+  }[name];
   const result = spawnSync(
     process.execPath,
     [
@@ -536,7 +1393,7 @@ for (const [name, replay] of Object.entries(protocols)) {
       "--seed=20261107",
       "--max-samples=256",
       "--n-traces=256",
-      `--max-steps=${name === "DraftMarkRace" ? 4 : name === "DraftQueuedHandoff" ? 9 : 7}`,
+      `--max-steps=${maxSteps}`,
       "--invariant=invariant",
       `--out-itf=${path.join(output, "trace-{seq}.itf.json")}`,
       "--verbosity=0",
@@ -544,6 +1401,7 @@ for (const [name, replay] of Object.entries(protocols)) {
     { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
   );
   if (result.error) throw result.error;
+  if (result.signal) process.kill(process.pid, result.signal);
   assert.equal(
     result.status,
     0,
@@ -557,6 +1415,7 @@ for (const [name, replay] of Object.entries(protocols)) {
     const trace = JSON.parse(await readFile(path.join(output, file), "utf8"));
     assert.equal(trace.vars.length, 1);
     const states = trace.states.map((row) => decode(row[trace.vars[0]]));
+    assert.equal(states.length, maxSteps + 1);
     await replay(states);
     steps += states.length - 1;
   }
