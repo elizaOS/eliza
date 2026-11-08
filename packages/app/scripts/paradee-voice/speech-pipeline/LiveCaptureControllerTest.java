@@ -112,6 +112,47 @@ public final class LiveCaptureControllerTest {
    await(warming);controller.stop(B,false,System.currentTimeMillis(),new Stop());await(warmStopped.done);
    check(LiveCaptureController.CANCELLED.equals(warmStopped.refused)&&!host.events.contains("mic:"+B),"stop during warm-up is a cancellation");
 
+   // A call that starts while the agent session warms refuses the start with the call-active code
+   // and stops waiting for the agent; the microphone never opens.
+   host.events.clear();CountDownLatch callWarming=new CountDownLatch(1),callCancelled=new CountDownLatch(1);
+   LiveSegmentPipe.Transport callWarm=new LiveSegmentPipe.Transport(){
+    public void check(){}
+    public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");callWarming.countDown();LiveCaptureControllerTest.check(callCancelled.await(5,TimeUnit.SECONDS),"warm cancelled by the call");throw new java.io.IOException("cancelled");}
+    public void cancelInFlight(){callCancelled.countDown();}
+   };
+   Result duringCall=new Result();controller.start(controller.reserve(A,4),false,()->callWarm,null,false,duringCall);
+   await(callWarming);controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE);await(duringCall.done);
+   check(LiveCaptureController.INTERRUPTED.equals(duringCall.refused)&&SpeechAudioFocusPolicy.CALL_ACTIVE.equals(duringCall.code),"call during warm-up refused as call-active: "+duringCall.refused);
+   check(!host.events.contains("mic:"+A),"no microphone after a call during warm-up");
+   // A call during native startup (after the warm-up) is refused the same way.
+   host.events.clear();Transport callStartup=new Transport(host.events);Result duringStartup=new Result();
+   host.beforeOpen.set(()->controller.interrupt(SpeechAudioFocusPolicy.CALL_ACTIVE));
+   controller.start(controller.reserve(B,4),false,()->callStartup,null,false,duringStartup);await(duringStartup.done);
+   check(SpeechAudioFocusPolicy.CALL_ACTIVE.equals(duringStartup.code),"call during native startup refused as call-active: "+duringStartup.refused);
+   check(host.events.stream().noneMatch(e->e.startsWith("ended:")),"refused start reports no end");
+
+   // An agent that fails the warm-up refuses the start with the transport failure, not a
+   // cancellation, and no transcript event goes out for a capture that never started.
+   host.events.clear();
+   LiveSegmentPipe.Transport down=new LiveSegmentPipe.Transport(){
+    public void check(){}
+    public JSONObject post(JSONObject body)throws Exception{return new JSONObject().put("status",body.optBoolean("close")?200:503).put("body","{}");}
+   };
+   Result warmFailed=new Result();controller.start(controller.reserve(A,4),false,()->down,null,false,warmFailed);await(warmFailed.done);
+   check(LiveCaptureController.SESSION_UNAVAILABLE.equals(warmFailed.refused)&&"TRANSPORT".equals(warmFailed.code),"warm failure names the transport: "+warmFailed.refused+"/"+warmFailed.code);
+   check(host.events.stream().noneMatch(e->e.startsWith("transcript:")||e.startsWith("mic:")),"no transcript or microphone for a failed warm-up");
+
+   // A pause while the reservation waits on its permission prompt keeps it; the grant then starts.
+   host.events.clear();LiveCaptureAdmission.Ticket prompted=controller.reserve(B,8);
+   controller.pause(List.of(prompted));check(controller.current(prompted),"reservation survives the prompt's pause");
+   Result granted=new Result();controller.start(prompted,false,null,null,false,granted);await(granted.done);
+   check(granted.refused==null&&host.events.contains("mic:"+B),"capture starts after the grant: "+granted.refused);
+   // A pause during a running capture stops it and reports it ended once, as paused.
+   host.ended=new CountDownLatch(1);controller.pause(List.of(prompted));
+   for(int i=0;i<100&&host.sources.get(host.sources.size()-1).closed.getCount()>0;i++)Thread.sleep(20);
+   check(host.sources.get(host.sources.size()-1).closed.getCount()==0,"pause stops the running microphone");
+   check(host.events.stream().filter(e->e.startsWith("ended:")).toList().equals(List.of("ended:"+B+":"+LiveCaptureController.PAUSED)),"paused end reported once: "+host.events);
+
    // Interruption ends the running capture with its reason; cancelAll closes its pipe.
    host.events.clear();host.ended=new CountDownLatch(1);Transport third=new Transport(host.events);Result running=new Result();
    controller.start(controller.reserve(A,5),true,()->third,null,false,running);await(running.done);check(running.refused==null,"second capture");
@@ -120,6 +161,7 @@ public final class LiveCaptureControllerTest {
    controller.cancelAll();
    for(int i=0;i<100&&!host.events.contains("close:"+A);i++)Thread.sleep(20);
    check(host.events.contains("close:"+A),"cancelAll closes the pipe");
+   check(!host.events.contains("ended:"+A+":"+LiveCaptureController.PAUSED),"an ended capture is not reported again on pause");
 
    // A microphone failure is reported once and discards the pipe.
    host.events.clear();host.ended=new CountDownLatch(1);host.failReads.set(true);Transport fourth=new Transport(host.events);Result failing=new Result();

@@ -146,10 +146,14 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   File[] stale=getContext().getCacheDir().listFiles((dir,name)->name.startsWith(playbackPrefix));
   if(stale!=null)for(File file:stale)file.delete();
  }
- @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
- @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
+ @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);resumeLive();super.handleOnResume();}
+ /**
+  * A permission prompt pauses the activity: the reservations and epoch it holds survive the pause
+  * (a running capture still stops), so granting it starts the capture that asked.
+  */
+ @Override protected void handleOnPause(){speechForeground=false;rejectResumedLive();live.pause(livePermissionEpochs.values());scheduleLocalRelease(30000);if(permissionEpochs.isEmpty()&&livePermissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
-  destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
+  destroyed=true;gate.destroy();main.post(()->{if(focus!=null)focus.close();});live.shutdown();livePermissionEpochs.clear();rejectResumedLive();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();
   if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);
   submitWork(localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();
  }
@@ -473,7 +477,24 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),ticket);if(!launch(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
   startLive(call,ticket);
  }
- @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){
+  LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());
+  if(destroyed||ticket==null||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}
+  // The result can arrive before the activity resumes: the capture then starts on resume.
+  if(!speechForeground){rejectResumedLive();resumedLiveCall=call;resumedLiveTicket=ticket;return;}
+  startLive(call,ticket);
+ }
+ // A granted live capture waiting for the activity to resume. Main thread only.
+ private PluginCall resumedLiveCall;
+ private LiveCaptureAdmission.Ticket resumedLiveTicket;
+ private void resumeLive(){
+  PluginCall call=resumedLiveCall;LiveCaptureAdmission.Ticket ticket=resumedLiveTicket;resumedLiveCall=null;resumedLiveTicket=null;
+  if(call==null)return;
+  if(destroyed||!live.current(ticket)||ticket.epoch!=epoch.get()){call.reject(LiveCaptureController.CANCELLED);return;}
+  startLive(call,ticket);
+ }
+ private void rejectResumedLive(){PluginCall call=resumedLiveCall;resumedLiveCall=null;resumedLiveTicket=null;if(call!=null)call.reject(LiveCaptureController.CANCELLED);}
  private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
   String owner=call.getString("ownerId","");
   LiveCaptureController.Route route=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?residentRoute(owner):null;

@@ -33,8 +33,20 @@ public final class LiveSegmentPipeTest {
    check(blocked.bodies.size()==2&&blocked.bodies.get(1).optBoolean("close"),"cancel discards queued PCM");check(cancelled.finals.isEmpty(),"no cancelled final");
 
    Sink full=new Sink();LiveSegmentPipe overflow=new LiveSegmentPipe(new Transport(),full,ID,null);
-   for(int i=0;i<LiveSegmentPipe.MAX_BATCHES;i++)check(overflow.offer(frames(i),new JSONArray()),"bounded capacity");
-   check(!overflow.offer(frames(9),new JSONArray())&&full.errors.equals(List.of("BACKPRESSURE")),"overflow fails closed");overflow.start(worker);check(overflow.close(true,10).get(3,TimeUnit.SECONDS),"overflow cleanup");
+   for(int i=0;i<LiveSegmentPipe.MAX_QUEUED_FRAMES;i++)check(overflow.offer(frames(i),new JSONArray()),"bounded capacity");
+   check(!overflow.offer(frames(LiveSegmentPipe.MAX_QUEUED_FRAMES),new JSONArray())&&full.errors.equals(List.of("BACKPRESSURE")),"overflow fails closed");overflow.start(worker);check(overflow.close(true,10).get(3,TimeUnit.SECONDS),"overflow cleanup");
+
+   // A 2 s ASR stall (the POST carrying speech-end waits for the final) queues the speech behind it
+   // without BACKPRESSURE: about 21 capture events of three 32 ms frames, then all of it is sent.
+   CountDownLatch stalled=new CountDownLatch(1),finalReady=new CountDownLatch(1);
+   Transport slowFinal=new Transport(){public JSONObject post(JSONObject body)throws Exception{if(!body.optBoolean("close")&&body.getJSONArray("frames").length()>0&&stalled.getCount()>0){stalled.countDown();await(finalReady);}return super.post(body);}};
+   Sink patient=new Sink();LiveSegmentPipe stall=new LiveSegmentPipe(slowFinal,patient,ID,null);stall.start(worker);check(stall.ready().get(3,TimeUnit.SECONDS),"stall pipe ready");
+   check(stall.offer(new JSONArray().put(frames(0).get(0)),new JSONArray().put(new JSONObject().put("type","speech-end").put("timestampMs",0))),"speech-end batch");await(stalled);
+   int events=2000/96;
+   for(int i=1;i<=events;i++){JSONArray three=new JSONArray();for(int f=0;f<3;f++)three.put(frames(i*96+f*32).get(0));check(stall.offer(three,new JSONArray()),"queued during stall "+i);}
+   check(patient.errors.isEmpty(),"no BACKPRESSURE during a 2 s stall");
+   finalReady.countDown();check(stall.close(false,Double.POSITIVE_INFINITY).get(3,TimeUnit.SECONDS),"stalled pipe closes");
+   check(patient.errors.isEmpty()&&slowFinal.bodies.size()==events+3,"every queued batch sent after the stall");
 
    CountDownLatch staleFailure=new CountDownLatch(1);Transport changed=new Transport();Sink stale=new Sink(){public void failed(String code){super.failed(code);staleFailure.countDown();}};LiveSegmentPipe changedPipe=new LiveSegmentPipe(changed,stale,ID,null);changedPipe.start(worker);check(changedPipe.ready().get(3,TimeUnit.SECONDS),"original enrollment admitted");changed.current=false;await(staleFailure);
    check(!changedPipe.close(false,1).get(3,TimeUnit.SECONDS)&&changed.bodies.size()==1,"re-enrollment forbids further dispatch and cleanup using new authority");
