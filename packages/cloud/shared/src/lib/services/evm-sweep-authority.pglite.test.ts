@@ -98,6 +98,10 @@ const { dbWrite, getPgliteClientForTests, closeDatabaseConnectionsForTests } = a
 const { settlementDigest } = await import("./settlement-digest");
 const { directWalletPaymentsService } = await import("./direct-wallet-payments");
 const service = directWalletPaymentsService as unknown as {
+  drainSweepOutbox: (
+    env: ReturnType<typeof environment>,
+    limit?: number,
+  ) => Promise<{ processed: number; delivered: number; deferred: number }>;
   processSweepForPayment: (
     env: ReturnType<typeof environment>,
     id: string,
@@ -112,6 +116,8 @@ function environment(key = KEY) {
     CRYPTO_DIRECT_BASE_RPC_URL: "http://controlled.invalid",
   };
 }
+const organizationId = "20000000-0000-4000-8000-000000000001";
+const userId = "30000000-0000-4000-8000-000000000001";
 const ids = ["10000000-0000-4000-8000-000000000001", "10000000-0000-4000-8000-000000000002"];
 async function seed(id: string, units = 100) {
   const payload = {
@@ -124,7 +130,13 @@ async function seed(id: string, units = 100) {
     receivedUnits: String(units),
     sweepTo: environment().CRYPTO_DIRECT_BASE_SECURE_ADDRESS,
   };
-  await dbWrite.execute(sql`INSERT INTO crypto_payments(id,status) VALUES (${id},'confirmed')`);
+  await dbWrite.execute(
+    sql`INSERT INTO organizations(id) VALUES (${organizationId}) ON CONFLICT DO NOTHING`,
+  );
+  await dbWrite.execute(sql`INSERT INTO users(id) VALUES (${userId}) ON CONFLICT DO NOTHING`);
+  await dbWrite.execute(
+    sql`INSERT INTO crypto_payments(id,status,organization_id,user_id) VALUES (${id},'confirmed',${organizationId},${userId}) ON CONFLICT DO NOTHING`,
+  );
   await dbWrite.execute(
     sql`INSERT INTO crypto_sweep_outbox(payment_id,payload,payload_digest) VALUES (${id},${JSON.stringify(payload)}::jsonb,${settlementDigest(payload)})`,
   );
@@ -154,7 +166,7 @@ function mine(hash: string) {
 beforeAll(async () => {
   const pg = getPgliteClientForTests();
   await pg.exec(
-    "CREATE TABLE crypto_payments(id uuid PRIMARY KEY,transaction_hash text,status text,metadata jsonb DEFAULT '{}'::jsonb,updated_at timestamptz DEFAULT now())",
+    "CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE users(id uuid PRIMARY KEY); CREATE TABLE crypto_payments(id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, user_id uuid REFERENCES users(id) ON DELETE CASCADE, transaction_hash text,status text,metadata jsonb DEFAULT '{}'::jsonb,updated_at timestamptz DEFAULT now())",
   );
   for (const name of ["0255_crypto_settlement_outboxes.sql", "0561_evm_sweep_nonce_authority.sql"])
     await pg.exec(await readFile(new URL(`../../db/migrations/${name}`, import.meta.url), "utf8"));
@@ -168,7 +180,7 @@ beforeEach(async () => {
   submissions.length = 0;
   failAfterAcceptance = false;
   expireDuringPreparation = false;
-  await dbWrite.execute(sql`DELETE FROM crypto_sweep_outbox`);
+  await dbWrite.execute(sql`TRUNCATE crypto_sweep_outbox`);
   await dbWrite.execute(sql`DELETE FROM crypto_payments`);
   await seed(ids[0]);
   await seed(ids[1], 200);
@@ -298,6 +310,8 @@ test("prepared bytes and wallet nonce identity are immutable in the database", a
   for (const change of [
     sql`evm_nonce=8`,
     sql`evm_sender=NULL`,
+    sql`payload=payload || '{"changed":true}'::jsonb`,
+    sql`payload_digest='changed'`,
     sql`prepared_transaction='0x00'`,
     sql`prepared_metadata='{}'::jsonb`,
   ])
@@ -322,9 +336,18 @@ test("legacy signed bytes recover their actual sender and keep an unconfirmed no
     prepared_metadata: Record<string, unknown>;
   }>;
   const { sender: _sender, ...legacyMetadata } = prepared_metadata;
-  await dbWrite.execute(sql`DELETE FROM crypto_sweep_outbox WHERE id=${first.id}`);
+  // Reconstruct a pre-migration fixture. TRUNCATE is confined to this isolated database.
+  await dbWrite.execute(sql`TRUNCATE crypto_sweep_outbox`);
+  await seed(ids[1], 200);
   await dbWrite.execute(sql`INSERT INTO crypto_sweep_outbox(payment_id,payload,payload_digest,state,delivered_at,prepared_transaction,sweep_transaction_hash,prepared_metadata)
     VALUES (${first.payment_id},${JSON.stringify(payload)}::jsonb,${payload_digest},'delivered',now(),${first.prepared_transaction},${first.sweep_transaction_hash},${JSON.stringify(legacyMetadata)}::jsonb)`);
+  await expect(
+    Promise.resolve(
+      dbWrite.execute(
+        sql`UPDATE crypto_sweep_outbox SET prepared_transaction='0x00' WHERE payment_id=${first.payment_id}`,
+      ),
+    ),
+  ).rejects.toHaveProperty("cause.message", "Prepared EVM sweep authority is immutable");
   await expect(service.processSweepForPayment(environment(), ids[1])).rejects.toThrow("nonce");
   const legacy = (await rows()).find((row) => row.payment_id === ids[0])!;
   expect(legacy.evm_sender).toBe(environment().CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS.toLowerCase());
@@ -365,4 +388,119 @@ test("a confirmed receipt survives a crash before local acknowledgement", async 
   expect(await service.processSweepForPayment(environment(), ids[0])).toBe(true);
   expect(prepared).toHaveLength(1);
   expect(submissions).toHaveLength(1);
+});
+
+test("account deletion retains unconfirmed EVM authority through both ownership cascades", async () => {
+  const { countUnconfirmedAccountEvmSweeps } = await import("./account-deletion-crypto-sweeps");
+  expect(await countUnconfirmedAccountEvmSweeps(userId, organizationId)).toBe(0);
+  await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("awaiting");
+  const first = (await rows())[0];
+  expect(await countUnconfirmedAccountEvmSweeps(userId, organizationId)).toBe(1);
+  expect(await countUnconfirmedAccountEvmSweeps(crypto.randomUUID(), crypto.randomUUID())).toBe(0);
+  await expect(
+    Promise.resolve(dbWrite.execute(sql`DELETE FROM organizations WHERE id=${organizationId}`)),
+  ).rejects.toHaveProperty("cause.message", "Unconfirmed EVM sweep authority cannot be erased");
+  await expect(
+    Promise.resolve(dbWrite.execute(sql`DELETE FROM users WHERE id=${userId}`)),
+  ).rejects.toHaveProperty("cause.message", "Unconfirmed EVM sweep authority cannot be erased");
+  expect((await rows())[0].prepared_transaction).toBe(first.prepared_transaction);
+  mine(first.sweep_transaction_hash!);
+  advance();
+  expect(await service.processSweepForPayment(environment(), ids[0])).toBe(true);
+  expect(await countUnconfirmedAccountEvmSweeps(userId, organizationId)).toBe(0);
+  await dbWrite.execute(sql`DELETE FROM organizations WHERE id=${organizationId}`);
+  expect(await rows()).toHaveLength(0);
+});
+
+for (const prior of ["terminal", "delivered"] as const)
+  for (const interrupted of [false, true])
+    test(`${prior} EVM recovery remains read-only after ${interrupted ? "an interrupted claim" : "a clean claim"}`, async () => {
+      await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow(
+        "awaiting",
+      );
+      const first = (await rows())[0];
+      await dbWrite.execute(
+        sql`UPDATE crypto_sweep_outbox SET state=${interrupted ? "processing" : prior},
+      terminal_at=CASE WHEN ${prior}='terminal' THEN now() ELSE NULL END,
+      delivered_at=CASE WHEN ${prior}='delivered' THEN now() ELSE NULL END,
+      lease_expires_at=now()-interval '1 second', next_attempt_at=now() WHERE id=${first.id}`,
+      );
+      await dbWrite.execute(
+        sql`UPDATE crypto_sweep_outbox SET next_attempt_at=now()+interval '1 day' WHERE payment_id=${ids[1]}`,
+      );
+      accepted.delete(first.sweep_transaction_hash!);
+      advance();
+      expect(await service.drainSweepOutbox(environment())).toEqual({
+        processed: 1,
+        delivered: 0,
+        deferred: 1,
+      });
+      expect((await rows())[0].state).toBe(prior);
+      expect(submissions).toHaveLength(1);
+      receipts.add(first.sweep_transaction_hash!);
+      advance();
+      expect(await service.drainSweepOutbox(environment())).toEqual({
+        processed: 1,
+        delivered: 1,
+        deferred: 0,
+      });
+      expect((await rows())[0].state).toBe("delivered");
+      expect(submissions).toHaveLength(1);
+    });
+
+test("drain recovers a processing row whose lease is absent", async () => {
+  await dbWrite.execute(
+    sql`UPDATE crypto_sweep_outbox SET state='processing',lease_expires_at=NULL WHERE payment_id=${ids[0]}`,
+  );
+  await dbWrite.execute(
+    sql`UPDATE crypto_sweep_outbox SET next_attempt_at=now()+interval '1 day' WHERE payment_id=${ids[1]}`,
+  );
+  expect(await service.drainSweepOutbox(environment())).toEqual({
+    processed: 1,
+    delivered: 0,
+    deferred: 1,
+  });
+  expect(prepared).toHaveLength(1);
+  expect(submissions).toHaveLength(1);
+});
+
+test("legacy identity recovery visits the complete history across batches", async () => {
+  await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("awaiting");
+  const first = (await rows())[0];
+  const [saved] = (
+    await dbWrite.execute(
+      sql`SELECT payload,payload_digest,prepared_metadata FROM crypto_sweep_outbox WHERE id=${first.id}`,
+    )
+  ).rows as Array<{
+    payload: object;
+    payload_digest: string;
+    prepared_metadata: Record<string, unknown>;
+  }>;
+  const foreignRaw = await privateKeyToAccount(OTHER_KEY).signTransaction({
+    chainId: 8453,
+    nonce: 7,
+    to: environment().CRYPTO_DIRECT_BASE_SECURE_ADDRESS as Hex,
+    value: 1n,
+    gas: 21000n,
+    maxFeePerGas: 10n,
+    maxPriorityFeePerGas: 1n,
+    type: "eip1559",
+  });
+  await dbWrite.execute(sql`TRUNCATE crypto_sweep_outbox`);
+  await seed(ids[1], 200);
+  await dbWrite.execute(sql`INSERT INTO crypto_payments(id,status,organization_id,user_id)
+    SELECT ('70000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,'confirmed',${organizationId},${userId} FROM generate_series(1,150) i`);
+  await dbWrite.execute(sql`INSERT INTO crypto_sweep_outbox(id,payment_id,payload,payload_digest,prepared_transaction,sweep_transaction_hash,prepared_metadata)
+    SELECT ('00000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,('70000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,'{}','legacy-foreign',${foreignRaw},${viem.keccak256(foreignRaw)},${JSON.stringify({ network: "base", nonce: "7", sweepTo: environment().CRYPTO_DIRECT_BASE_SECURE_ADDRESS })}::jsonb FROM generate_series(1,150) i`);
+  const { sender: _sender, ...legacyMetadata } = saved.prepared_metadata;
+  await dbWrite.execute(sql`INSERT INTO crypto_sweep_outbox(id,payment_id,payload,payload_digest,prepared_transaction,sweep_transaction_hash,prepared_metadata)
+    VALUES('ffffffff-ffff-4fff-8fff-ffffffffffff',${ids[0]},${JSON.stringify(saved.payload)}::jsonb,${saved.payload_digest},${first.prepared_transaction},${first.sweep_transaction_hash},${JSON.stringify(legacyMetadata)}::jsonb)`);
+  await expect(service.processSweepForPayment(environment(), ids[1])).rejects.toThrow("nonce");
+  const [restored] = (
+    await dbWrite.execute(
+      sql`SELECT evm_sender FROM crypto_sweep_outbox WHERE id='ffffffff-ffff-4fff-8fff-ffffffffffff'`,
+    )
+  ).rows;
+  expect(restored.evm_sender).toBe(environment().CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS.toLowerCase());
+  expect(prepared).toHaveLength(1);
 });

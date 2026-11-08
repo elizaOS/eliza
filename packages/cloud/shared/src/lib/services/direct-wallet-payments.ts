@@ -9,7 +9,7 @@ import {
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
-import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import {
   createPublicClient,
   createWalletClient,
@@ -57,6 +57,26 @@ import {
 } from "./evm-sweep-authority";
 import { invoicesService } from "./invoices";
 import { settlementDigest } from "./settlement-digest";
+
+/** Same due-state predicate for discovery and the locked claim. */
+function recoverableSweepState() {
+  return or(
+    eq(cryptoSweepOutbox.state, "pending"),
+    and(
+      inArray(cryptoSweepOutbox.state, ["delivered", "terminal"]),
+      isNull(cryptoSweepOutbox.evm_confirmed_at),
+      isNotNull(cryptoSweepOutbox.prepared_transaction),
+      sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
+    ),
+    and(
+      eq(cryptoSweepOutbox.state, "processing"),
+      or(
+        isNull(cryptoSweepOutbox.lease_expires_at),
+        lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),
+      ),
+    ),
+  );
+}
 
 export type DirectWalletNetwork = "base" | "bsc" | "solana";
 
@@ -1222,7 +1242,7 @@ async function submitPreparedEvmSweep(
     };
   }
   if (readOnly)
-    throw new EvmSweepDeferredError("Legacy EVM sweep requires read-only receipt reconciliation");
+    throw new EvmSweepDeferredError("EVM sweep requires read-only receipt reconciliation");
   let known = false;
   try {
     const existing = await client.getTransaction({ hash: prepared.transactionHash as Hex });
@@ -2229,41 +2249,34 @@ export class DirectWalletPaymentsService {
           and(
             eq(cryptoSweepOutbox.payment_id, paymentId),
             lte(cryptoSweepOutbox.next_attempt_at, sql`clock_timestamp()`),
-            or(
-              eq(cryptoSweepOutbox.state, "pending"),
-              and(
-                eq(cryptoSweepOutbox.state, "delivered"),
-                isNull(cryptoSweepOutbox.evm_confirmed_at),
-                sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
-                sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
-              ),
-              and(
-                eq(cryptoSweepOutbox.state, "processing"),
-                or(
-                  isNull(cryptoSweepOutbox.lease_expires_at),
-                  lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),
-                ),
-              ),
-            ),
+            recoverableSweepState(),
           ),
         )
         .for("update")
         .limit(1);
       if (!candidate) return null;
+      // Retain read-only provenance across a crash while state is processing.
+      const recoveryState =
+        candidate.state === "terminal" || candidate.terminal_at !== null
+          ? ("terminal" as const)
+          : candidate.state === "delivered" || candidate.delivered_at !== null
+            ? ("delivered" as const)
+            : null;
       const [row] = await tx
         .update(cryptoSweepOutbox)
         .set({
           state: "processing",
           claim_token: claimToken,
           lease_expires_at: sql`clock_timestamp()+interval '120 seconds'`,
-          attempts: candidate.attempts + 1,
+          attempts: candidate.attempts + (recoveryState === null ? 1 : 0),
           updated_at: sql`clock_timestamp()`,
         })
         .where(eq(cryptoSweepOutbox.id, candidate.id))
         .returning();
-      return row ?? null;
+      return row ? { ...row, recoveryState } : null;
     });
     if (!claimed) return false;
+    const readOnlyRecovery = claimed.recoveryState !== null;
 
     let externalSweepReturned = false;
     let replayableEvm = false;
@@ -2354,6 +2367,10 @@ export class DirectWalletPaymentsService {
           throw new Error("Crypto sweep lease was lost before transaction preparation");
         }
       };
+      if (!prepared && readOnlyRecovery)
+        throw new EvmSweepDeferredError(
+          "Read-only EVM recovery requires its original signed transaction",
+        );
       if (!prepared) {
         prepared = await prepare();
         if (prepared?.metadata.network === "solana") await persistPrepared(prepared, null);
@@ -2373,11 +2390,7 @@ export class DirectWalletPaymentsService {
             }
           }
         } else {
-          evmConfirmation = await submitPreparedEvmSweep(
-            cfg,
-            prepared,
-            claimed.delivered_at !== null && claimed.evm_confirmed_at === null,
-          );
+          evmConfirmation = await submitPreparedEvmSweep(cfg, prepared, readOnlyRecovery);
         }
       }
       externalSweepReturned = true;
@@ -2446,13 +2459,14 @@ export class DirectWalletPaymentsService {
       await dbWrite
         .update(cryptoSweepOutbox)
         .set({
-          state: terminal
-            ? "terminal"
-            : replayableEvm && claimed.delivered_at !== null && claimed.evm_confirmed_at === null
-              ? "delivered"
-              : "pending",
-          ...(deferred ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
-          terminal_at: terminal ? sql`clock_timestamp()` : null,
+          state: claimed.recoveryState ?? (terminal ? "terminal" : "pending"),
+          ...(deferred && !readOnlyRecovery ? { attempts: Math.max(0, claimed.attempts - 1) } : {}),
+          terminal_at:
+            claimed.recoveryState === "terminal"
+              ? (claimed.terminal_at ?? sql`clock_timestamp()`)
+              : terminal
+                ? sql`clock_timestamp()`
+                : null,
           next_attempt_at: sql`clock_timestamp()+(${deferred ? 30_000 : Math.min(3_600_000, 2 ** claimed.attempts * 1_000)} * interval '1 millisecond')`,
           claim_token: null,
           lease_expires_at: null,
@@ -2476,32 +2490,9 @@ export class DirectWalletPaymentsService {
       .from(cryptoSweepOutbox)
       .where(
         and(
-          lte(cryptoSweepOutbox.next_attempt_at, sql`clock_timestamp()`),
-          or(
-            eq(cryptoSweepOutbox.state, "pending"),
-            and(
-              eq(cryptoSweepOutbox.state, "delivered"),
-              isNull(cryptoSweepOutbox.evm_confirmed_at),
-              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
-              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
-            ),
-            and(
-              eq(cryptoSweepOutbox.state, "delivered"),
-              isNull(cryptoSweepOutbox.evm_confirmed_at),
-              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
-              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
-            ),
-            and(
-              eq(cryptoSweepOutbox.state, "delivered"),
-              isNull(cryptoSweepOutbox.evm_confirmed_at),
-              sql`${cryptoSweepOutbox.prepared_metadata}->>'network' IN ('base','bsc')`,
-              sql`${cryptoSweepOutbox.delivered_at} IS NOT NULL`,
-            ),
-            and(
-              eq(cryptoSweepOutbox.state, "processing"),
-              lte(cryptoSweepOutbox.lease_expires_at, sql`clock_timestamp()`),
-            ),
-          ),
+          // Discovery uses a stable index bound; the locked claim rechecks live DB time.
+          lte(cryptoSweepOutbox.next_attempt_at, sql`statement_timestamp()`),
+          recoverableSweepState(),
         ),
       )
       .orderBy(cryptoSweepOutbox.next_attempt_at, cryptoSweepOutbox.created_at)

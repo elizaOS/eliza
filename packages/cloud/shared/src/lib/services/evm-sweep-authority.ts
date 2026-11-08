@@ -58,73 +58,92 @@ async function restoreLegacyIdentities(
   sender: string,
   deadline: number,
 ): Promise<void> {
-  const rows = await dbWrite
-    .select()
-    .from(cryptoSweepOutbox)
-    .where(
-      and(
-        isNull(cryptoSweepOutbox.evm_sender),
-        not(isNull(cryptoSweepOutbox.prepared_transaction)),
-        sql`${cryptoSweepOutbox.prepared_metadata}->>'network'=${network}`,
-      ),
-    )
-    .orderBy(cryptoSweepOutbox.id);
-  for (const row of rows) {
+  let afterId: string | undefined;
+  for (;;) {
     if (performance.now() >= deadline)
       throw new EvmSweepDeferredError("Legacy EVM sweep identity recovery will continue on retry");
-    if (!row.prepared_transaction)
-      throw new EvmSweepDeferredError("Legacy EVM sweep signature requires reconciliation");
-    const legacySender = (
-      await recoverTransactionAddress({
-        serializedTransaction: row.prepared_transaction as TransactionSerialized,
+    const rows = await dbWrite
+      .select({
+        id: cryptoSweepOutbox.id,
+        prepared_transaction: cryptoSweepOutbox.prepared_transaction,
+        sweep_transaction_hash: cryptoSweepOutbox.sweep_transaction_hash,
+        prepared_metadata: cryptoSweepOutbox.prepared_metadata,
       })
-    ).toLowerCase();
-    if (legacySender !== sender) continue;
-    const metadata = row.prepared_metadata;
-    if (
-      !row.prepared_transaction ||
-      !row.sweep_transaction_hash ||
-      !metadata ||
-      typeof metadata.nonce !== "string" ||
-      typeof metadata.sweepTo !== "string"
-    )
-      throw new EvmSweepDeferredError("Legacy EVM sweep identity requires reconciliation");
-    const identity = await signedEvmSweepIdentity({
-      rawTransaction: row.prepared_transaction,
-      transactionHash: row.sweep_transaction_hash,
-      metadata: { network, nonce: metadata.nonce, sweepTo: metadata.sweepTo },
-    });
-    if (identity.chainId !== BigInt(network === "base" ? 8453 : 56))
-      throw new EvmSweepDeferredError("Legacy EVM sweep chain requires reconciliation");
-    try {
-      await dbWrite
-        .update(cryptoSweepOutbox)
-        .set({
-          evm_sender: identity.sender,
-          evm_chain_id: identity.chainId,
-          evm_nonce: identity.nonce,
-        })
-        .where(
-          and(
-            eq(cryptoSweepOutbox.id, row.id),
-            isNull(cryptoSweepOutbox.evm_sender),
-            eq(cryptoSweepOutbox.prepared_transaction, row.prepared_transaction),
-            eq(cryptoSweepOutbox.sweep_transaction_hash, row.sweep_transaction_hash),
-          ),
-        );
-    } catch (error) {
-      if (
-        error &&
-        typeof error === "object" &&
-        "cause" in error &&
-        error.cause &&
-        typeof error.cause === "object" &&
-        "code" in error.cause &&
-        error.cause.code === "23505"
+      .from(cryptoSweepOutbox)
+      .where(
+        and(
+          isNull(cryptoSweepOutbox.evm_sender),
+          not(isNull(cryptoSweepOutbox.prepared_transaction)),
+          sql`${cryptoSweepOutbox.prepared_metadata}->>'network'=${network}`,
+          afterId ? gt(cryptoSweepOutbox.id, afterId) : undefined,
+        ),
       )
-        throw new EvmSweepDeferredError("Legacy EVM sweep nonce collision requires reconciliation");
-      throw error;
+      .orderBy(cryptoSweepOutbox.id)
+      .limit(100);
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      afterId = row.id;
+      if (performance.now() >= deadline)
+        throw new EvmSweepDeferredError(
+          "Legacy EVM sweep identity recovery will continue on retry",
+        );
+      if (!row.prepared_transaction)
+        throw new EvmSweepDeferredError("Legacy EVM sweep signature requires reconciliation");
+      const legacySender = (
+        await recoverTransactionAddress({
+          serializedTransaction: row.prepared_transaction as TransactionSerialized,
+        })
+      ).toLowerCase();
+      if (legacySender !== sender) continue;
+      const metadata = row.prepared_metadata;
+      if (
+        !row.prepared_transaction ||
+        !row.sweep_transaction_hash ||
+        !metadata ||
+        typeof metadata.nonce !== "string" ||
+        typeof metadata.sweepTo !== "string"
+      )
+        throw new EvmSweepDeferredError("Legacy EVM sweep identity requires reconciliation");
+      const identity = await signedEvmSweepIdentity({
+        rawTransaction: row.prepared_transaction,
+        transactionHash: row.sweep_transaction_hash,
+        metadata: { network, nonce: metadata.nonce, sweepTo: metadata.sweepTo },
+      });
+      if (identity.chainId !== BigInt(network === "base" ? 8453 : 56))
+        throw new EvmSweepDeferredError("Legacy EVM sweep chain requires reconciliation");
+      try {
+        await dbWrite
+          .update(cryptoSweepOutbox)
+          .set({
+            evm_sender: identity.sender,
+            evm_chain_id: identity.chainId,
+            evm_nonce: identity.nonce,
+          })
+          .where(
+            and(
+              eq(cryptoSweepOutbox.id, row.id),
+              isNull(cryptoSweepOutbox.evm_sender),
+              eq(cryptoSweepOutbox.prepared_transaction, row.prepared_transaction),
+              eq(cryptoSweepOutbox.sweep_transaction_hash, row.sweep_transaction_hash),
+            ),
+          );
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "cause" in error &&
+          error.cause &&
+          typeof error.cause === "object" &&
+          "code" in error.cause &&
+          error.cause.code === "23505"
+        )
+          throw new EvmSweepDeferredError(
+            "Legacy EVM sweep nonce collision requires reconciliation",
+          );
+        throw error;
+      }
     }
+    if (rows.length < 100) return;
   }
 }
 

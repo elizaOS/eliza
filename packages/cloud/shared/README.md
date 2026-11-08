@@ -392,4 +392,7 @@ successful receipt is observed. Other sweeps from that wallet wait; pending nonc
 ambiguity or legacy identity conflicts require reconciliation without replacing
 signed bytes. Different senders proceed independently.
 Legacy EVM delivery rows require a matching receipt before releasing their nonce;
-recovery of those rows performs provider reads without issuing another transfer.
+recovery of those rows and terminal attempts performs provider reads without
+issuing another transfer, including after a worker loses its lease. Account
+deletion retains unconfirmed signed sweeps until their original receipt is
+recorded. Legacy identity recovery pages through the complete candidate history.
