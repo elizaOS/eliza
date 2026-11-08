@@ -141,7 +141,27 @@
     "invariants": [],
     "status": "unmodeled",
     "limitations": [
-      "Android pending state/expiry, acknowledgement retry budget, credential-slot ownership, cancellation and activity recreation are not covered by the Node native-host projection."
+      "NativeAndroidAckRecovery covers startup receipt eligibility and acknowledgement retry under separate bounds. Android pending sign-in state, credential issuance and replacement, and composed cancellation or activity recreation remain outside the Node native-host projection."
+    ]
+  },
+  {
+    "id": "auth.NativeAndroidAckRecovery",
+    "model": "packages/auth/quint/NativeAndroidAckRecovery.qnt",
+    "sources": [
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+      "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInFlow.java"
+    ],
+    "invariants": [
+      "RetryBudget",
+      "AckUsesCurrentUnexpiredReceipt",
+      "RecoveryNeverReplacesSavedKey",
+      "RemoveOnlyStaleOrAcknowledged"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One Android deployment, one credential and receipt slot, two startup invocations and three acknowledgement rounds per invocation. Deadline, storage availability and response classes are explicit.",
+      "Conformance executes the exact Java startup recovery and acknowledgement methods with synthetic storage and HTTPS boundaries in the existing JVM harness.",
+      "The model assumes a stable credential and receipt during an invocation. Other plugin instances, multi-deployment worker composition, storage durability, native device execution and credential issuance remain separate."
     ]
   },
   {
