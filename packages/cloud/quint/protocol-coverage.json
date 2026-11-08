@@ -1065,7 +1065,7 @@
     "status": "partial",
     "limitations": [
       "Checks one stable redirect and one trusted platform session with two candidate claim lineages and account pairs. Workerd checks exact re-entry, denial and cleanup against stored platform and account scope records.",
-      "OnboardingGreetingLease separately checks greeting lease ownership. Transcript migration, replay alarm pagination, cross-shard binding races and authentication-state ownership remain separate."
+      "OnboardingGreetingLease checks greeting lease ownership. OnboardingReplayCleanup checks replay alarm pagination and writes during a scan. Transcript migration, cross-shard binding races and authentication-state ownership remain separate."
     ]
   },
   {
