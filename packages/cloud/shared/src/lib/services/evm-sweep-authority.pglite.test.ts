@@ -504,3 +504,33 @@ test("legacy identity recovery visits the complete history across batches", asyn
   expect(restored.evm_sender).toBe(environment().CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS.toLowerCase());
   expect(prepared).toHaveLength(1);
 });
+
+test("a confirmed original receipt remains recoverable after receive-wallet rotation", async () => {
+  await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("awaiting");
+  const original = (await rows())[0];
+  mine(original.sweep_transaction_hash!);
+  advance();
+  expect(await service.processSweepForPayment(environment(OTHER_KEY), ids[0])).toBe(true);
+  const recovered = (await rows())[0];
+  expect(recovered.evm_confirmed_at).not.toBeNull();
+  expect(recovered.evm_sender).toBe(environment().CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS.toLowerCase());
+  expect(recovered.prepared_transaction).toBe(original.prepared_transaction);
+  expect(submissions).toHaveLength(1);
+  expect(prepared).toHaveLength(1);
+  await dbWrite.execute(sql`DELETE FROM crypto_payments WHERE id=${ids[0]}`);
+  expect((await rows()).some((row) => row.payment_id === ids[0])).toBe(false);
+});
+
+test("wallet rotation cannot authorize resending an original transaction with no receipt", async () => {
+  await expect(service.processSweepForPayment(environment(), ids[0])).rejects.toThrow("awaiting");
+  const original = (await rows())[0];
+  accepted.delete(original.sweep_transaction_hash!);
+  advance();
+  await expect(service.processSweepForPayment(environment(OTHER_KEY), ids[0])).rejects.toThrow(
+    "wallet requires reconciliation",
+  );
+  expect((await rows())[0].prepared_transaction).toBe(original.prepared_transaction);
+  expect((await rows())[0].evm_confirmed_at).toBeNull();
+  expect(submissions).toHaveLength(1);
+  expect(prepared).toHaveLength(1);
+});

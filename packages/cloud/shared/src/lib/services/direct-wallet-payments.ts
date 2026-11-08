@@ -1204,12 +1204,8 @@ async function submitPreparedEvmSweep(
 ) {
   if (prepared.metadata.network === "solana") throw new Error("Expected EVM sweep metadata");
   const identity = await signedEvmSweepIdentity({ ...prepared, metadata: prepared.metadata });
-  if (
-    identity.chainId !== BigInt(cfg.chainId ?? 0) ||
-    !cfg.receiveAddress ||
-    identity.sender !== getAddress(cfg.receiveAddress).toLowerCase()
-  )
-    throw new Error("Prepared EVM sweep no longer matches the configured receive wallet");
+  if (identity.chainId !== BigInt(cfg.chainId ?? 0))
+    throw new Error("Prepared EVM sweep no longer matches the configured chain");
   const client = createPublicClient({
     chain: cfg.network === "base" ? base : bsc,
     transport: http(cfg.rpcUrl, { timeout: 10_000, retryCount: 0 }),
@@ -1243,6 +1239,10 @@ async function submitPreparedEvmSweep(
   }
   if (readOnly)
     throw new EvmSweepDeferredError("EVM sweep requires read-only receipt reconciliation");
+  // A receipt belongs to the original immutable transaction even after wallet
+  // rotation. Current wallet authority is required only before resubmission.
+  if (!cfg.receiveAddress || identity.sender !== getAddress(cfg.receiveAddress).toLowerCase())
+    throw new EvmSweepDeferredError("Original EVM sweep wallet requires reconciliation");
   let known = false;
   try {
     const existing = await client.getTransaction({ hash: prepared.transactionHash as Hex });
