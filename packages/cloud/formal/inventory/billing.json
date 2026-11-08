@@ -76,12 +76,11 @@
         "Finite models cover only their documented bounds; implementation refinement is not established.",
         "Provider truth, network effects, database isolation and cryptographic validation need independent evidence."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["subscription_commands.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "Implement and verify the planned bounded model before claiming coverage.",
         "Connect the bounded lease model to real Postgres contention and provider-idempotency tests.",
         "Model individual cancellation, import, scheduled downgrade and deletion authorities."
       ]
@@ -138,12 +137,11 @@
         "Finite models cover only their documented bounds; implementation refinement is not established.",
         "Provider truth, network effects, database isolation and cryptographic validation need independent evidence."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["payment_delivery.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "Implement and verify the planned bounded model before claiming coverage.",
         "Model each provider binding, duplicate transaction/event identities and terminal payment transitions.",
         "The current model abstracts one failure event and one successful event."
       ]
@@ -163,12 +161,11 @@
         "Finite models cover only their documented bounds; implementation refinement is not established.",
         "Provider truth, network effects, database isolation and cryptographic validation need independent evidence."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["payment_delivery.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "Implement and verify the planned bounded model before claiming coverage.",
         "Qualify expiry, claim ownership, supersession and receiver idempotency with implementation regressions.",
         "Do not claim exactly-once external callback effects."
       ]
@@ -198,9 +195,9 @@
         "Finite models cover only their documented bounds; implementation refinement is not established.",
         "Provider truth, network effects, database isolation and cryptographic validation need independent evidence."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["auto_topup_lock_order.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
         "Model claim takeover, provider ambiguity, cutover controls and two-stage credit/cache recovery."
