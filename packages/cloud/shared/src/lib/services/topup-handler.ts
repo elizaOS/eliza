@@ -551,7 +551,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
     }
 
     const pendingTransaction = req.headers.get("X-PAYMENT-TRANSACTION")?.trim();
-    let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
+    let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>> | undefined;
     if (pendingTransaction) {
       const confirmation = await confirmPendingTopup({
         transaction: pendingTransaction,
@@ -562,8 +562,22 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
       if (confirmation instanceof Response) return confirmation;
       settlement = confirmation;
     } else {
+      // An earlier attempt broadcast this authorization. Read that transfer
+      // instead of sending it again; settle anew only once it reverted.
+      if (intent.transaction) {
+        const prior = await x402FacilitatorService.confirmSettlement({
+          transaction: intent.transaction,
+          requirements: requirements as Parameters<
+            typeof x402FacilitatorService.confirmSettlement
+          >[0]["requirements"],
+          payer: identity.payer,
+          authorizationNonce:
+            requirements.scheme === "exact" ? paymentPayload.payload.authorization?.nonce : undefined,
+        });
+        if (prior.success || prior.pending) settlement = prior;
+      }
       const intentId = intent.id;
-      settlement = await x402FacilitatorService.settle(
+      settlement ??= await x402FacilitatorService.settle(
         paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
         requirements as Parameters<typeof x402FacilitatorService.settle>[1],
         {

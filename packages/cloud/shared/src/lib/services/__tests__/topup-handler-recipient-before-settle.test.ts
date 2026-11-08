@@ -665,6 +665,40 @@ test("a broadcast top-up with an unknown outcome returns 202 and credits nothing
   expect(addCredits).not.toHaveBeenCalled();
 });
 
+test("a retry after an unconfirmed broadcast reads that transfer instead of sending it again", async () => {
+  stubWalletUser();
+  const settle = spyOn(x402FacilitatorService, "settle").mockImplementation(
+    async (_payload, _requirements, options) => {
+      await options?.onBroadcast?.({ transaction: pendingHash, network: "eip155:8453" });
+      return {
+        success: false,
+        pending: true,
+        transaction: pendingHash,
+        network: "eip155:8453",
+        payer: account.address,
+        errorReason: "settlement_unconfirmed",
+      } as Settlement;
+    },
+  );
+  expect((await unsignedTopup(account.address)).status).toBe(202);
+
+  const confirm = spyOn(x402FacilitatorService, "confirmSettlement").mockResolvedValue({
+    success: true,
+    transaction: pendingHash,
+    network: "eip155:8453",
+    payer: account.address,
+  } as Settlement);
+  const response = await unsignedTopup(account.address);
+
+  expect(response.status).toBe(200);
+  expect(settle).toHaveBeenCalledTimes(1);
+  expect(confirm.mock.calls[0]?.[0]).toMatchObject({
+    transaction: pendingHash,
+    authorizationNonce: `0x${"1".repeat(64)}`,
+  });
+  expect(creditsService.addCredits).toHaveBeenCalledTimes(1);
+});
+
 test("a confirmed pending top-up credits the payer once, keyed on its hash", async () => {
   stubWalletUser();
   const settle = spyOn(x402FacilitatorService, "settle");
