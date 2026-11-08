@@ -1954,7 +1954,9 @@ export class JobsRepository {
           completed_at: exhausted ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
-          scheduled_for: exhausted ? claimedJob.scheduled_for : scheduledFor,
+          // Raw claim rows can carry timestamp strings. Exhaustion keeps the
+          // stored schedule without decoding and re-encoding its precision.
+          ...(exhausted ? {} : { scheduled_for: scheduledFor }),
         })
         .where(
           and(
