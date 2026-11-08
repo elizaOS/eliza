@@ -268,6 +268,7 @@ export {
   type V5MessageHandlerOutput,
 } from "./runtime/message-handler.ts";
 export * from "./runtime/model-pricing";
+export * from "./runtime/native-owned-domains.ts";
 export {
   FAILED_TOOL_FALLBACK_MESSAGE,
   runPlannerLoop,

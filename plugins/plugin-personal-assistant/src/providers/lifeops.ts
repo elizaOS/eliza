@@ -33,6 +33,10 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+  type NativeOwnedDomain,
+  nativeOwnedDomains,
+} from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
@@ -334,10 +338,28 @@ function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
   return lines;
 }
 
+const OWNER_ROUTES: ReadonlyArray<[NativeOwnedDomain, string]> = [
+  ["todos", "todos to OWNER_TODOS"],
+  ["reminders", "reminders to OWNER_REMINDERS"],
+  ["alarms", "alarms to OWNER_ALARMS"],
+];
+
+/**
+ * Routing guidance names only owner surfaces this host registers: a domain in
+ * ELIZA_NATIVE_OWNED_DOMAINS has its OWNER_* umbrella withheld at registration.
+ */
+export function lifeOpsProviderDescription(
+  withheld: ReadonlySet<NativeOwnedDomain>,
+): string {
+  const routes = OWNER_ROUTES.filter(([domain]) => !withheld.has(domain)).map(
+    ([, route]) => `${route}, `,
+  );
+  return `Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route ${routes.join("")}habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. On-demand morning/daily briefs and tracked-work recaps use BRIEF (compose_morning, compose_evening, compose_weekly). Automatic morning/night briefings run through existing scheduled tasks. Available in private owner conversations, including Discord.`;
+}
+
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
-  description:
-    "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. On-demand morning/daily briefs and tracked-work recaps use BRIEF (compose_morning, compose_evening, compose_weekly). Automatic morning/night briefings run through existing scheduled tasks. Available in private owner conversations, including Discord.",
+  description: lifeOpsProviderDescription(nativeOwnedDomains()),
   descriptionCompressed:
     "Owner operations overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
