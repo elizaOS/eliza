@@ -337,6 +337,7 @@ describe("SubscriptionBillingOperationsRepository", () => {
       expect(await repository.markCommandOutcomeUnknown({ ...dispatch, ...changed })).toBeNull();
     }
     const first = await repository.markCommandOutcomeUnknown(dispatch);
+    if (!first) throw new Error("Expected the original dispatch fence");
     expect(first).toMatchObject({
       status: "OUTCOME_UNKNOWN",
       state_revision: 2,
@@ -386,6 +387,7 @@ describe("SubscriptionBillingOperationsRepository", () => {
       repository.resolveCommandOutcome({ ...failure, errorCode: null }),
     ).rejects.toMatchObject({ code: "SUBSCRIPTION_BILLING_OPERATIONS_INVALID" });
     const first = await repository.resolveCommandOutcome(failure);
+    if (!first) throw new Error("Expected the original failure receipt");
     expect(first).toMatchObject({ status: "FAILED", state_revision: 3, execution_generation: 1 });
     expect(await repository.resolveCommandOutcome(failure)).toEqual(first);
     expect(
