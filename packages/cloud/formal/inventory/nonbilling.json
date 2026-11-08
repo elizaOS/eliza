@@ -1230,6 +1230,34 @@
         "Model the OpenAI persistent per-encoding cache separately.",
         "Prove BPE algorithm equivalence and garbage collection bounds separately from cache lifecycle safety."
       ]
+    },
+    {
+      "id": "in-memory-lru-lifetime",
+      "sources": [
+        "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.ts",
+        "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.test.ts",
+        "packages/cloud/shared/src/lib/services/shared-runtime/resolve-shared-agent.ts",
+        "packages/cloud/shared/src/lib/services/entity-settings/cache.ts"
+      ],
+      "states": ["absent", "live", "refreshed", "evicted", "cleared"],
+      "invariants": [
+        "Replacing a live key does not evict unrelated live keys.",
+        "A read or replacement promotes the key to most recent.",
+        "New-key insertion retains the existing capacity and eviction policy."
+      ],
+      "assumptions": [
+        "Five keys and capacity four; all entries remain live for the trace.",
+        "The shared-agent resolver refreshes validated hits at production capacity 1,000; real cache regressions exercise that capacity.",
+        "No expiry, payload ownership, tenant-authorization or whole-route performance claim is established."
+      ],
+      "models": ["in_memory_lru.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": true,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model expiry and wall-clock changes, payload aliasing and prefix deletion.",
+        "Measure served-route latency separately from the demonstrated unnecessary cache misses."
+      ]
     }
   ]
 }
