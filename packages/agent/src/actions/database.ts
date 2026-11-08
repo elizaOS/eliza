@@ -28,15 +28,17 @@ import {
   type TableInfo,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
+import { resolveDistributionProfile } from "@elizaos/host/protocol";
 
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
-
 import {
   parseRequestedSchema,
   qualifiedTable,
   quoteIdent,
   resolveTableSchema,
 } from "../shared/database-table.ts";
+import { isHostManagedInference } from "./host-operation-policy.ts";
 
 // ---------------------------------------------------------------------------
 // Op dispatch
@@ -530,15 +532,27 @@ async function opQuery(
     };
   }
 
-  const allowWrites = params.allowWrites === true;
+  // Raw SQL writes follow the TERMINAL gate: direct builds only, and never
+  // under a store distribution profile or a product host policy.
+  const writesPermitted =
+    isLocalCodeExecutionAllowed() &&
+    resolveDistributionProfile() !== "store" &&
+    !isHostManagedInference();
+  const allowWrites = params.allowWrites === true && writesPermitted;
   if (!allowWrites) {
     const guard = checkReadOnly(sqlText);
     if (!guard.ok) {
       const reason = "reason" in guard ? guard.reason : "not read-only";
+      const writesRefused = params.allowWrites === true && !writesPermitted;
       return {
         success: false,
-        text: `Query rejected: ${reason}`,
-        values: { error: "DATABASE_QUERY_FAILED", reason: "MUTATION_BLOCKED" },
+        text: writesRefused
+          ? "Database writes are off on this build. Read-only queries still work."
+          : `Query rejected: ${reason}`,
+        values: {
+          error: "DATABASE_QUERY_FAILED",
+          reason: writesRefused ? "WRITES_DISABLED" : "MUTATION_BLOCKED",
+        },
         data: { actionName: "DATABASE", op: "query" },
       };
     }
@@ -841,7 +855,8 @@ export const databaseAction: Action = {
     },
     {
       name: "allowWrites",
-      description: "query: permit mutations (INSERT/UPDATE/DELETE/DDL).",
+      description:
+        "query: permit mutations (INSERT/UPDATE/DELETE/DDL). Direct builds only.",
       required: false,
       schema: { type: "boolean" as const, default: false },
     },
