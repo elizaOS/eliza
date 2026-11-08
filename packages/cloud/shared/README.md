@@ -405,6 +405,12 @@ record confirmed, quiescent outcomes before final cascade. Unknown legacy target
 remain pending. The job stores no database URI; placement stays in `app_databases`.
 Migration 0566 normalizes future naive job-clock defaults to UTC without rewriting
 historical timestamps whose original timezone is unknown.
-The final app-deletion receipt does not prove orphan-object collection. Frontend
-cleanup after an acknowledged cascade is still best effort; retaining complete
-manifests for a durable post-cascade cleanup owner remains separate work.
+Version-2 roots retain every frontend manifest in immutable job data during the
+metadata cascade. Small progress receipts acknowledge exact object deletes; only
+confirmed cleanup completes the root or permits its organization to disappear.
+Upload rows retain the full planned key set before the first PUT. A matching
+writer must acknowledge every issued PUT and stop before cleanup; unknown PUT
+outcomes and legacy ambiguous uploads require explicit recovery. Time passing
+is not writer quiescence. Recovery requires the original storage binding and
+immutable keys. Legacy
+version-1 roots retain their prior best-effort semantics and possible orphan debt.

@@ -149,6 +149,11 @@ beforeAll(async () => {
     "utf8",
   ).split("--> statement-breakpoint"))
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  for (const statement of readFileSync(
+    new URL("../../../db/migrations/0567_app_cleanup_manifest.sql", import.meta.url),
+    "utf8",
+  ).split("--> statement-breakpoint"))
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
   await getPgliteClientForTests().exec(
     "ALTER TABLE app_frontend_deployments ADD CONSTRAINT fixture_frontend_app FOREIGN KEY(app_id) REFERENCES apps(id) ON DELETE CASCADE; ALTER TABLE app_databases ADD CONSTRAINT fixture_database_app FOREIGN KEY(app_id) REFERENCES apps(id) ON DELETE CASCADE;",
   );
@@ -913,4 +918,95 @@ test("app deletion receipt guards do not freeze unrelated job result fields", as
     .where(eq(jobs.id, id))
     .returning();
   expect(updated?.result).toEqual({ appDeleted: false, ordinaryResult: "updated" });
+});
+
+test("public job status omits the retained private frontend cleanup manifest", async () => {
+  const { setRuntimeR2Bucket } = await import("../../storage/r2-runtime-binding");
+  const privatePrefix = `private-storage/${appId}/original-deployment/`;
+  await dbWrite.insert(schema.appFrontendDeployments).values({
+    app_id: appId,
+    version: 1,
+    status: "active",
+    r2_prefix: privatePrefix,
+    manifest: {
+      entrypoint: "private-entry.html",
+      spaFallback: false,
+      files: [
+        { path: "private-entry.html", hash: "a".repeat(64), contentType: "text/html", size: 1 },
+      ],
+    },
+  });
+  setRuntimeR2Bucket({
+    get: async () => null,
+    put: async () => {
+      throw new Error("No upload");
+    },
+    delete: async () => {},
+  });
+  try {
+    const authority = await start();
+    await executeAppDeletion(authority);
+    await settle(authority);
+    const stored = await jobsRepository.findByIdForWrite(authority.jobId);
+    expect(JSON.stringify(stored?.data)).toContain(privatePrefix);
+    const response = await router.request(`/api/v1/jobs/${authority.jobId}`);
+    expect(response.status).toBe(200);
+    const serialized = await response.text();
+    expect(serialized).not.toContain("frontendCleanupPlan");
+    expect(serialized).not.toContain(privatePrefix);
+    expect(serialized).not.toContain("private-entry.html");
+    expect(JSON.parse(serialized).data.result.cleanupConfirmed).toBe(true);
+  } finally {
+    setRuntimeR2Bucket(null);
+  }
+});
+
+test("the DELETE route stays pending after metadata cascade until original artifact cleanup is acknowledged", async () => {
+  const { setRuntimeR2Bucket } = await import("../../storage/r2-runtime-binding");
+  await dbWrite.insert(schema.appFrontendDeployments).values({
+    app_id: appId,
+    version: 1,
+    status: "active",
+    r2_prefix: `original/${appId}/`,
+    manifest: {
+      entrypoint: "index.html",
+      spaFallback: false,
+      files: [{ path: "index.html", hash: "b".repeat(64), contentType: "text/html", size: 1 }],
+    },
+  });
+  let unavailable = true;
+  setRuntimeR2Bucket({
+    get: async () => null,
+    put: async () => {
+      throw new Error("No upload");
+    },
+    delete: async () => {
+      if (unavailable) throw new Error("controlled unavailable");
+    },
+  });
+  try {
+    const first = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+      method: "DELETE",
+    });
+    expect(first.status).toBe(202);
+    const authority = await claim("app_delete");
+    await expect(executeAppDeletion(authority)).rejects.toMatchObject({
+      code: "APP_DELETION_RECOVERY_PENDING",
+    });
+    expect(await appsRepository.findByIdForWrite(appId)).toBeUndefined();
+    const pending = await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+      method: "DELETE",
+    });
+    expect(pending.status).toBe(202);
+    expect((await pending.json()).success).toBe(false);
+    unavailable = false;
+    await executeAppDeletion(authority);
+    await settle(authority);
+    expect(
+      (await router.request(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, { method: "DELETE" }))
+        .status,
+    ).toBe(200);
+  } finally {
+    setRuntimeR2Bucket(null);
+  }
 });

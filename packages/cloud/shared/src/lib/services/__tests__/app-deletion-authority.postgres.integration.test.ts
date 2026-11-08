@@ -199,6 +199,7 @@ async function seedMobileExchange() {
       tables.mobileAppAuthGrants,
       tables.jobs,
       tables.jobExecutionLeases,
+      tables.appFrontendDeployments,
     ]) {
       const config = getTableConfig(table);
       for (const column of config.columns) {
@@ -243,6 +244,7 @@ async function seedMobileExchange() {
       "0553_inference_policy_snapshot_fence.sql",
       "0563_app_deletion_authority.sql",
       "0566_job_utc_clock_defaults.sql",
+      "0567_app_cleanup_manifest.sql",
     ]) {
       for (const statement of readFileSync(
         new URL(`../../../db/migrations/${name}`, import.meta.url),
@@ -250,6 +252,9 @@ async function seedMobileExchange() {
       ).split("--> statement-breakpoint"))
         if (statement.trim()) await control.query(statement);
     }
+    await control.query(
+      "ALTER TABLE jobs ADD CONSTRAINT cleanup_test_org_fk FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+    );
     database = await import("../../../db/client");
     bindings = await import("../../runtime/cloud-bindings");
     deletion = await import("../../../db/repositories/app-deletion-operations");
@@ -473,4 +478,148 @@ async function seedMobileExchange() {
       await expect(pending).rejects.toMatchObject({ name: "StaleJobExecutionError" });
       expect(changed).toBe(false);
     }, 30_000);
+  async function preparedCleanup() {
+    await control.query("TRUNCATE inference_policy_authorities CASCADE");
+    const admitted = await run(() => deletion.appDeletionOperations.admit(input()), "UTC", false);
+    if (!admitted) throw new Error("No original root");
+    const owner = randomUUID();
+    const repository = (await import("../../../db/repositories/jobs")).jobsRepository;
+    const [job] = await run(
+      () =>
+        repository.claimPendingJobs({
+          type: "app_delete",
+          organizationId,
+          limit: 1,
+          executionOwnerId: owner,
+          executionLeaseMs: 60000,
+        }),
+      "UTC",
+      false,
+    );
+    if (!job?.execution_generation) throw new Error("No cleanup lease");
+    const plan = (await import("../app-deletion-cleanup-plan")).buildAppDeletionCleanupPlan([
+      {
+        id: randomUUID(),
+        r2_prefix: "original/",
+        status: "ready",
+        manifest: {
+          entrypoint: "a",
+          spaFallback: false,
+          files: [0, 1].map((n) => ({
+            path: String(n),
+            hash: String(n).repeat(64),
+            contentType: "text/plain",
+            size: 1,
+          })),
+        },
+      },
+    ]);
+    await control.query(
+      "UPDATE jobs SET data=data || jsonb_build_object('frontendCleanupPlan',$2::jsonb), result=$3 WHERE id=$1",
+      [
+        job.id,
+        JSON.stringify(plan),
+        JSON.stringify({
+          appDeleted: true,
+          appId,
+          deletionJobId: job.id,
+          cleanupManifestDigest: plan.digest,
+          cleanupObjectCount: 2,
+          cleanupCursor: 0,
+          cleanupConfirmed: false,
+        }),
+      ],
+    );
+    await control.query("DELETE FROM apps WHERE id=$1", [appId]);
+    return {
+      authority: {
+        jobId: job.id,
+        organizationId,
+        executionGeneration: job.execution_generation,
+        executionOwnerId: owner,
+      },
+      plan,
+    };
+  }
+
+  test("competing cleanup acknowledgements advance one original cursor and retain the organization", async () => {
+    const { authority, plan } = await preparedCleanup();
+    const { advanceAppDeletionCleanup } = await import(
+      "../../../db/repositories/app-deletion-cleanup"
+    );
+    await control.query("BEGIN");
+    await control.query("SELECT id FROM jobs WHERE id=$1 FOR UPDATE", [authority.jobId]);
+    const blocker = (await control.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const first = run(
+      () => advanceAppDeletionCleanup(authority, plan.digest, 2, 0, true),
+      "UTC",
+      false,
+    );
+    void first.catch(() => {});
+    const firstPid = await waitsFor(blocker);
+    const second = run(
+      () => advanceAppDeletionCleanup(authority, plan.digest, 2, 0, true),
+      "UTC",
+      false,
+    );
+    void second.catch(() => {});
+    const secondPid = await waitsFor([blocker, firstPid], "UTC", firstPid);
+    expect(secondPid).not.toBe(firstPid);
+    await control.query("COMMIT");
+    const outcomes = await Promise.allSettled([first, second]);
+    expect(outcomes.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((x) => x.status === "rejected")).toHaveLength(1);
+    expect(
+      (
+        await observer.query("SELECT result->>'cleanupCursor' AS cursor FROM jobs WHERE id=$1", [
+          authority.jobId,
+        ])
+      ).rows[0].cursor,
+    ).toBe("1");
+    await control.query("DELETE FROM inference_policy_mutations WHERE organization_id=$1", [
+      organizationId,
+    ]);
+    await expect(
+      control.query("DELETE FROM organizations WHERE id=$1", [organizationId]),
+    ).rejects.toMatchObject({ code: "23514" });
+    expect(
+      (await observer.query("SELECT id FROM organizations WHERE id=$1", [organizationId])).rowCount,
+    ).toBe(1);
+    await run(() => advanceAppDeletionCleanup(authority, plan.digest, 2, 1, true), "UTC", false);
+    await control.query("DELETE FROM organizations WHERE id=$1", [organizationId]);
+    expect(
+      (await observer.query("SELECT id FROM jobs WHERE id=$1", [authority.jobId])).rowCount,
+    ).toBe(0);
+  }, 30000);
+
+  for (const zone of ["UTC", "America/New_York", "Asia/Kathmandu"])
+    test(`cleanup acknowledgement rejects a lease that expires during its job lock wait in ${zone}`, async () => {
+      const { authority, plan } = await preparedCleanup();
+      const { advanceAppDeletionCleanup } = await import(
+        "../../../db/repositories/app-deletion-cleanup"
+      );
+      await control.query("BEGIN");
+      await control.query("SELECT id FROM jobs WHERE id=$1 FOR UPDATE", [authority.jobId]);
+      const blocker = (await control.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      const attempt = run(
+        () => advanceAppDeletionCleanup(authority, plan.digest, 2, 0, true),
+        zone,
+        false,
+      );
+      void attempt.catch(() => {});
+      await waitsFor(blocker, zone);
+      await control.query(
+        "UPDATE job_execution_leases SET expires_at=(clock_timestamp() AT TIME ZONE 'UTC')-interval '1 second' WHERE job_id=$1",
+        [authority.jobId],
+      );
+      await control.query("COMMIT");
+      await expect(attempt).rejects.toMatchObject({ name: "StaleJobExecutionError" });
+      expect(
+        (
+          await observer.query("SELECT result->>'cleanupCursor' AS cursor FROM jobs WHERE id=$1", [
+            authority.jobId,
+          ])
+        ).rows[0].cursor,
+      ).toBe("0");
+    }, 30000);
 });

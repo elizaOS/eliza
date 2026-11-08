@@ -1903,5 +1903,43 @@
       "Finite protocol projection, not TypeScript refinement or unbounded deadlock freedom. Existing original job leases and process quiescence assumptions remain. No live provider/finality proof, all account-deletion phases, arbitrary writers or orphan GC. Legacy missing placement/host identity remains recovery-pending. GitHub only supports owner/name deletion: external rename/reuse between the last matching-ID read and DELETE is excluded. Unknown GitHub dispatches remain pending and are never repeated; no 404 is accepted as a deletion receipt. Mixed older deployed writers require coordinated rollout. Client cancellation stops only polling; bounded worker retries may require operator recovery without lifting the permanent fence. Existing post-cascade object cleanup remains best effort; appDeleted does not prove removal of every orphan object. Retained manifests and a durable object cleanup owner remain a separate follow-up. Known other-app offloaded jobs do not block; unknown or concurrently changed payloads remain unavailable.",
       "Only a started final SQL continuation is weakly fair. No eventual deletion, successful provider request, retry availability, bounded wall time or recovery after an ambiguous external effect is promised."
     ]
+  },
+  {
+    "id": "cloud-protocol-app-cleanup-manifest",
+    "model": "packages/cloud/quint/app_cleanup_manifest.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/apps.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-operations.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-cleanup.ts",
+      "packages/cloud/shared/src/db/repositories/app-deletion-execution.ts",
+      "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+      "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql",
+      "packages/cloud/shared/src/lib/services/app-deletion.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-authority.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-cleanup.ts",
+      "packages/cloud/shared/src/lib/services/app-deletion-cleanup-plan.ts",
+      "packages/cloud/shared/src/lib/services/settlement-digest.ts",
+      "packages/cloud/shared/src/lib/services/account-deletion-provider-adapters.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.pglite.test.ts",
+      "packages/cloud/shared/src/lib/services/__tests__/app-deletion-authority.postgres.integration.test.ts",
+      "packages/cloud/quint/check-app-cleanup-manifest.mjs",
+      "packages/scripts/lib/junit-summary.ts",
+      "packages/scripts/run-with-deadline.ts",
+      "packages/scripts/lib/test-output.ts",
+      "packages/cloud/shared/src/lib/services/app-frontend-hosting.ts",
+      "packages/cloud/shared/src/db/repositories/app-frontend-deployments.ts",
+      "packages/cloud/shared/src/db/schemas/app-frontend-deployments.ts",
+      "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two immutable original object keys, one deletion root and two lease generations. Successful idempotent delete, lost replies, takeover and cursor acknowledgement are separate transitions.",
+      "Final SQL publication atomically retains all original manifests in v2 job.data and marks app metadata deleted. Small result cursors require original live job lease; v2 job/org deletion waits for cleanup confirmation. Legacy v1 jobs retain prior semantics and may have orphan debt.",
+      "Assumes original R2 binding and immutable deployment-key ownership remain stable; no live R2, bucket rotation, remote atomicity, arbitrary-count proof or general TypeScript refinement is established. A timed-out in-flight exact-key delete may finish after lease loss.",
+      "Progress requires eventual provider/SQL availability, retained original queue, fair scheduling, and a successful acknowledged attempt before bounded no-progress retries exhaust. This safety model does not prove temporal liveness. Forward progress resets the bounded retry counter; one invocation handles at most 64 objects.",
+      "Complete plans intentionally remain inline and immutable in job.data, with small independently updated result receipts. Physical PostgreSQL write-cost measurements are experimental evidence, not a worst-case bound.",
+      "Upload execution requires actual original-writer quiescence. Pending unstarted rows can retire; legacy ambiguous or unknown-PUT rows block and need operator reconciliation. No time-based quiescence or general upload recovery is claimed."
+    ]
   }
 ]

@@ -3732,6 +3732,13 @@
       "when": 1796083200181,
       "tag": "0566_job_utc_clock_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1796083200182,
+      "tag": "0567_app_cleanup_manifest",
+      "breakpoints": true
     }
   ]
 }

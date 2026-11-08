@@ -34,14 +34,22 @@ const suites = [
       "a lost committed app deletion reply retains objects without fabricating cleanup authority",
       "app deletion retains every manifest beyond the former thousand-row listing limit",
       "the final app deletion snapshot includes frontends published before the permanent fence",
-    ],
-  },
-  {
-    name: "postgres",
-    file: "packages/cloud/shared/src/lib/services/__tests__/app-frontend-deletion.postgres.integration.test.ts",
-    names: [
-      "app deletion and rollback activation share the parent app lock",
-      "a queued third activation cannot bypass the pending app deletion parent lock",
+      "failed artifact deletion retains the complete original cleanup plan and resumes after cascade",
+      "lost final SQL acknowledgement recovers exact original artifacts from the retained job",
+      "an acknowledged object prefix is not deleted again after a later object fails",
+      "unconfirmed marked cleanup blocks job removal and account provider completion after app cascade",
+      "historical version-one jobs without cleanup manifests do not become permanent account blockers",
+      "suppressed object acknowledgement keeps the cursor unchanged and retries only its original key",
+      "the complete manifest remains inline above the ordinary object-offload ceiling",
+      "the immutable cleanup plan and confirmed receipt cannot be replaced or rewound",
+      "a bounded cleanup invocation retains pending status and resets retry budget only after durable progress",
+      "a locked pending empty draft retires without inventing any uploaded artifacts",
+      "an ambiguous legacy failed empty draft remains explicitly recovery-required",
+      "deletion waits for the original paused uploader and then cleans its complete planned keys",
+      "an unknown PUT outcome retains upload authority and prevents a false cleanup receipt",
+      "invalid bundle validation performs no partial upload or orphan draft creation",
+      "cleanup authority rejects missing or non-typed digest count and confirmation fields",
+      "suppressed writer quiescence cannot publish or authorize app cleanup",
     ],
   },
 ];
@@ -101,5 +109,5 @@ for (const suite of suites) {
   );
 }
 console.log(
-  `App frontend deletion conformance passed six PGlite and two PostgreSQL cases. Evidence ${directory}`,
+  `App frontend deletion conformance passed twenty-two PGlite and two PostgreSQL cases. Evidence ${directory}`,
 );

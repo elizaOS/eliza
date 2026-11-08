@@ -6,7 +6,7 @@ import { ElizaError } from "@elizaos/core";
 export const APP_DELETION_JOB_TYPE = "app_delete";
 
 export interface AppDeletionJobData {
-  version: 1;
+  version: 1 | 2;
   appId: string;
   organizationId: string;
   deleteGitHubRepo: boolean;
@@ -153,7 +153,10 @@ export function appDeletionProgress(job: {
     job.result && typeof job.result === "object" ? (job.result as Record<string, unknown>) : null;
   if (
     job.status === "completed" &&
-    (result?.appDeleted !== true || result.appId !== data.appId || result.deletionJobId !== job.id)
+    (result?.appDeleted !== true ||
+      result.appId !== data.appId ||
+      result.deletionJobId !== job.id ||
+      (data.version === 2 && result.cleanupConfirmed !== true))
   ) {
     throw new ElizaError("App deletion completion receipt is missing", {
       code: "APP_DELETION_COMPLETION_UNCONFIRMED",
@@ -189,7 +192,7 @@ export function readAppDeletionJobData(value: unknown): AppDeletionJobData {
   const data = value as Record<string, unknown>;
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (
-    data.version !== 1 ||
+    (data.version !== 1 && data.version !== 2) ||
     typeof data.appId !== "string" ||
     !uuid.test(data.appId) ||
     typeof data.organizationId !== "string" ||
@@ -217,7 +220,7 @@ export function readAppDeletionJobData(value: unknown): AppDeletionJobData {
     });
   }
   return {
-    version: 1,
+    version: data.version,
     appId: data.appId,
     organizationId: data.organizationId,
     deleteGitHubRepo: data.deleteGitHubRepo,

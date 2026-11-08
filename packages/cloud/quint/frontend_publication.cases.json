@@ -8,13 +8,14 @@
     "packages/scripts/lib/junit-summary.ts",
     "packages/cloud/shared/src/lib/services/__tests__/frontend-publication.postgres.integration.test.ts",
     "packages/scripts/lib/test-output.ts",
-    "packages/scripts/run-with-deadline.ts"
+    "packages/scripts/run-with-deadline.ts",
+    "packages/cloud/shared/src/db/migrations/0567_app_cleanup_manifest.sql"
   ],
   "conformance": "packages/cloud/quint/check-frontend-publication.mjs",
   "bounds": {
     "domain": "One immutable deployment with a complete abstract object set and one pre-existing active deployment; one upload, publication request, retirement request and deletion. Both known and transport-ambiguous SQL outcomes are represented.",
     "atomicity": "The primary database evaluates status guards under its row lock. Publication stores the exact prefix and manifest together. A delayed finalizer cannot publish after acknowledged retirement. The model assumes immutable deployment IDs and complete acknowledged object writes.",
-    "gaps": "No general TypeScript refinement, live R2 proof, account deletion or authorization proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid.",
+    "gaps": "No general TypeScript refinement, live R2 proof, account deletion or authorization proof, multi-upload version allocation, object integrity proof or general orphan collection. Unacknowledged retirement and deletion retain objects. Existing active content and request admission are assumed valid. The separate app_cleanup_manifest model owns upload plans, writer quiescence and app-delete cleanup. This publication projection retains its original manifest/retirement authority.",
     "progress": "Fair continuation of outstanding storage operations gives a terminal result; success, availability, cleanup after lost receipts and elapsed deadlines are not promised.",
     "conformance": "Ten real PGlite service/repository cases plus five real PostgreSQL cases. Four PG tests observe row-lock wait chains across separate connections; the fifth loses the reply after publication and activation committed. These selected interleavings do not establish general SQL refinement."
   },

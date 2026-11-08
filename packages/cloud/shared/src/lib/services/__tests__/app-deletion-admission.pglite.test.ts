@@ -17,6 +17,7 @@ const appSchema = await import("../../../db/schemas/apps");
 const { apps } = appSchema;
 const { apiKeys } = await import("../../../db/schemas/api-keys");
 const { mobileAppAuthGrants } = await import("../../../db/schemas/mobile-app-auth-grants");
+const { appFrontendDeployments } = await import("../../../db/schemas/app-frontend-deployments");
 const { jobs } = await import("../../../db/schemas/jobs");
 const { appDeletionOperations } = await import("../../../db/repositories/app-deletion-operations");
 const { appsRepository } = await import("../../../db/repositories/apps");
@@ -28,7 +29,13 @@ const request = () => ({ appId, organizationId, userId, deleteGitHubRepo: false 
 beforeAll(async () => {
   for (let statement of await generateMigration(
     generateDrizzleJson({}),
-    generateDrizzleJson({ ...appSchema, apiKeys, mobileAppAuthGrants, jobs }),
+    generateDrizzleJson({
+      ...appSchema,
+      apiKeys,
+      mobileAppAuthGrants,
+      jobs,
+      appFrontendDeployments,
+    }),
   )) {
     if (statement.startsWith("ALTER TABLE") && statement.includes("FOREIGN KEY")) continue;
     // Build the pre-0563 schema, then execute the actual additive migration.
@@ -41,6 +48,11 @@ beforeAll(async () => {
     "utf8",
   );
   for (const statement of migration.split("--> statement-breakpoint"))
+    if (statement.trim()) await getPgliteClientForTests().exec(statement);
+  for (const statement of readFileSync(
+    new URL("../../../db/migrations/0567_app_cleanup_manifest.sql", import.meta.url),
+    "utf8",
+  ).split("--> statement-breakpoint"))
     if (statement.trim()) await getPgliteClientForTests().exec(statement);
 }, 120_000);
 beforeEach(async () => {

@@ -171,7 +171,7 @@ export const appDeletionOperations = {
               user_id: input.userId ?? null,
               data_storage: "inline",
               data: {
-                version: 1,
+                version: 2,
                 appId: input.appId,
                 organizationId: input.organizationId,
                 deleteGitHubRepo: input.deleteGitHubRepo,

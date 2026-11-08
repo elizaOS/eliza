@@ -4,6 +4,7 @@ import { withAppDeletionExecution } from "../../db/repositories/app-deletion-exe
 import { prepareAppDeletionPlan } from "../../db/repositories/app-deletion-plan";
 import { appsRepository } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
+import { finishAppDeletionCleanup } from "./app-deletion-cleanup";
 import { deleteOriginalAppRepository } from "./app-deletion-github";
 import { appFrontendHostingService } from "./app-frontend-hosting";
 import type { JobExecutionAuthority } from "./job-execution-authority";
@@ -12,11 +13,19 @@ export async function executeAppDeletion(authority: JobExecutionAuthority): Prom
   const original = await withAppDeletionExecution(authority, async (_tx, context) => ({
     appId: context.data.appId,
     complete: context.appDeleted,
+    version: context.data.version,
   }));
-  if (original.complete) return;
+  if (original.complete) {
+    if (original.version === 2) await finishAppDeletionCleanup(authority);
+    return;
+  }
   await prepareAppDeletionPlan(authority);
   await deleteOriginalAppRepository(authority);
   const receipt = await appsRepository.finalizeDelete(original.appId, authority);
+  if (original.version === 2) {
+    await finishAppDeletionCleanup(authority);
+    return;
+  }
   if (!receipt) return;
   // Only an acknowledged cascade authorizes object cleanup. A lost SQL reply
   // leaves retained bytes for later orphan reconciliation, never a live-site loss.

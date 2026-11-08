@@ -18,6 +18,7 @@ import {
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
 import { AppDeletionInProgressError } from "../../lib/services/app-deletion-authority";
+import { buildAppDeletionCleanupPlan } from "../../lib/services/app-deletion-cleanup-plan";
 import {
   APP_DEPLOYMENT_GENERATION_KEY,
   metadataForDeploymentGeneration,
@@ -1070,13 +1071,30 @@ export class AppsRepository {
         .orderBy(appFrontendDeployments.id)
         .for("update");
       if (context) {
+        const cleanupPlan =
+          context.data.version === 2 ? buildAppDeletionCleanupPlan(frontendDeployments) : null;
         await removeAppDeletionMetadata(tx, id);
         await assertJobExecutionAuthority(tx, authority!);
         const [receipt] = await tx
           .update(jobs)
           .set({
+            ...(cleanupPlan
+              ? {
+                  data: { ...context.job.data, frontendCleanupPlan: cleanupPlan },
+                  data_storage: "inline",
+                  data_key: null,
+                }
+              : {}),
             result: {
               ...context.job.result,
+              ...(cleanupPlan
+                ? {
+                    cleanupManifestDigest: cleanupPlan.digest,
+                    cleanupObjectCount: cleanupPlan.objectCount,
+                    cleanupCursor: 0,
+                    cleanupConfirmed: cleanupPlan.objectCount === 0,
+                  }
+                : {}),
               appDeleted: true,
               appId: id,
               deletionJobId: context.job.id,
