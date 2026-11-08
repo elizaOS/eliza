@@ -1539,21 +1539,30 @@ describe("splitSpokenSentences and timing", () => {
 });
 
 describe("VoiceAssistantSession streamed replies", () => {
-  it("plays the first complete sentence while the reply streams; the confirmed reply supplies the rest once", async () => {
-    const h = harness();
+  // A confirmed model frame of a reply the transport proved to be a plain direct reply.
+  const direct = { origin: "model", direct: true } as const;
+  const submit = async (h: ReturnType<typeof harness>, text: string) => {
     await h.session.start();
-    await h.say("what should I cook tonight");
+    await h.say(text);
     await h.clock.advance(longGapMs);
     expect(h.log.sends).toHaveLength(1);
-    const { input } = at(h.replies, 0);
-    input.onText?.("How about a simple pasta");
+    return at(h.replies, 0).input;
+  };
+  const spoken = (h: ReturnType<typeof harness>) =>
+    h.speeches.map((s) => s.input.text);
+
+  it("plays the first complete sentence while the reply streams; the confirmed reply supplies the rest once", async () => {
+    const h = harness();
+    const input = await submit(h, "what should I cook tonight");
+    input.onText?.("How about a simple pasta", direct);
     await flush();
     expect(h.speeches).toHaveLength(0);
     input.onText?.(
       "How about a simple pasta with garlic and lemon? It takes twenty",
+      direct,
     );
     await flush();
-    expect(h.speeches.map((s) => s.input.text)).toEqual([
+    expect(spoken(h)).toEqual([
       "How about a simple pasta with garlic and lemon?",
     ]);
     at(h.speeches, 0).input.onStarted();
@@ -1565,7 +1574,7 @@ describe("VoiceAssistantSession streamed replies", () => {
       "How about a simple pasta with garlic and lemon? It takes twenty minutes and uses pantry staples.",
     );
     await flush();
-    expect(h.speeches.map((s) => s.input.text)).toEqual([
+    expect(spoken(h)).toEqual([
       "How about a simple pasta with garlic and lemon?",
       "It takes twenty minutes and uses pantry staples.",
     ]);
@@ -1580,47 +1589,253 @@ describe("VoiceAssistantSession streamed replies", () => {
     });
   });
 
-  it("keeps spoken sentences counted when the confirmed text differs; the rest follows the confirmed reply", async () => {
+  it("never speaks a provisional frame, and after one waits for the confirmed reply, which plays in full", async () => {
     const h = harness();
-    await h.session.start();
-    await h.say("tell me something");
-    await h.clock.advance(longGapMs);
-    const { input } = at(h.replies, 0);
-    input.onText?.("Here is a first thought for you. And more");
+    const input = await submit(h, "move my dentist appointment");
+    input.onText?.("Checking your calendar for the dentist now. One", {
+      origin: "action_callback",
+      provisional: true,
+      direct: true,
+    });
     await flush();
-    input.onText?.("A rewritten opening. And more");
+    expect(h.speeches).toHaveLength(0);
+    // A provisional draft without an origin is held the same way.
+    const draft = harness();
+    const draftInput = await submit(draft, "tell me something");
+    draftInput.onText?.("A draft opening that may change. More", {
+      provisional: true,
+      direct: true,
+    });
     await flush();
-    expect(h.speeches.map((s) => s.input.text)).toEqual([
-      "Here is a first thought for you.",
+    expect(draft.speeches).toHaveLength(0);
+    // Confirmed frames after a provisional one are not spoken early either.
+    input.onText?.(
+      "Your dentist appointment moved to Friday at ten. I also told",
+      direct,
+    );
+    await flush();
+    expect(h.speeches).toHaveLength(0);
+    h.answer(
+      0,
+      "Your dentist appointment moved to Friday at ten. I also told the office.",
+    );
+    await flush();
+    expect(spoken(h)).toEqual([
+      "Your dentist appointment moved to Friday at ten.",
     ]);
     at(h.speeches, 0).done.resolve();
     await flush();
+    expect(spoken(h)).toEqual([
+      "Your dentist appointment moved to Friday at ten.",
+      "I also told the office.",
+    ]);
+  });
+
+  it("holds streamed text until the transport proves a plain direct reply", async () => {
+    const h = harness();
+    const input = await submit(h, "what is on today");
+    input.onText?.("You have two meetings this morning. The first", {
+      origin: "model",
+    });
+    input.onText?.("You have two meetings this morning. The first");
+    await flush();
+    expect(h.speeches).toHaveLength(0);
+    h.answer(0, "You have two meetings this morning. The first is at nine.");
+    await flush();
+    expect(spoken(h)).toEqual(["You have two meetings this morning."]);
+  });
+
+  it("a rewritten stream never drops a confirmed sentence: the reply plays from the first sentence not spoken identically", async () => {
+    const h = harness();
+    const input = await submit(h, "tell me something");
+    input.onText?.(
+      "Here is a first thought for you. Here is a second one. And more",
+      direct,
+    );
+    await flush();
+    // The second sentence waits behind the first.
+    expect(spoken(h)).toEqual(["Here is a first thought for you."]);
+    input.onText?.("A rewritten opening. And more", direct);
+    await flush();
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    // The rewrite withdrew the sentence that had not started.
+    expect(spoken(h)).toEqual(["Here is a first thought for you."]);
     h.answer(
       0,
       "Something else entirely, said differently. Then a second sentence here.",
     );
     await flush();
-    expect(h.speeches.map((s) => s.input.text)).toEqual([
-      "Here is a first thought for you.",
-      "Then a second sentence here.",
-    ]);
     at(h.speeches, 1).done.resolve();
     await flush();
+    expect(spoken(h)).toEqual([
+      "Here is a first thought for you.",
+      "Something else entirely, said differently.",
+      "Then a second sentence here.",
+    ]);
+    at(h.speeches, 2).done.resolve();
+    await flush();
     expect(h.phase()).toBe("listening");
+    expect(h.log.heard.at(-1)).toMatchObject({
+      replyId: "a-0",
+      heard:
+        "Here is a first thought for you. Something else entirely, said differently. Then a second sentence here.",
+    });
   });
 
-  it("Stop speaking during a streamed sentence cancels the unconfirmed reply and plays nothing more", async () => {
+  it("a confirmed reply that revises a streamed sentence withdraws the unstarted ones and keeps every confirmed sentence", async () => {
     const h = harness();
-    await h.session.start();
-    await h.say("read me the news");
-    await h.clock.advance(longGapMs);
-    const { input } = at(h.replies, 0);
-    input.onText?.("First headline here. Second headline follows. Third");
+    const input = await submit(h, "read me the plan");
+    input.onText?.(
+      "First we pack the car together. Then we drive to the coast. Last",
+      direct,
+    );
+    await flush();
+    expect(spoken(h)).toEqual(["First we pack the car together."]);
+    h.answer(
+      0,
+      "First we pack the car together. Then we take the train north. Last we unpack.",
+    );
+    await flush();
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(spoken(h)).toEqual([
+      "First we pack the car together.",
+      "Then we take the train north.",
+      "Last we unpack.",
+    ]);
+  });
+
+  it("a paused reply is not spoken before review, and the resumed reply plays in full", async () => {
+    const h = harness();
+    const input = await submit(h, "share my packing note with Sam");
+    // Not proven direct: the reply may still pause, so nothing is spoken early.
+    input.onText?.("I can share your packing note with Sam. Share", {
+      origin: "model",
+    });
+    await flush();
+    expect(h.speeches).toHaveLength(0);
+    h.answer(0, "I can share your packing note with Sam. Share it?", {
+      complete: false,
+      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+    });
+    await flush();
+    const pause = h.session.getSnapshot().awaitingUserInput;
+    if (!pause) throw new Error("expected a pause");
+    expect(h.speeches).toHaveLength(0);
+    expect(
+      h.session.resume({
+        pause,
+        reply: {
+          requestId: pause.requestId,
+          conversationId: "room-1",
+          userMessageId: pause.userMessageId,
+          assistantMessageId: "a-2",
+          complete: true,
+          text: "Shared it with Sam. Passport, charger and boots are on it.",
+        },
+      }),
+    ).toBe(true);
+    await flush();
+    expect(spoken(h)).toEqual([
+      "Shared it with Sam. Passport, charger and boots are on it.",
+    ]);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.heard.at(-1)).toMatchObject({
+      replyId: "a-2",
+      heard: "Shared it with Sam. Passport, charger and boots are on it.",
+      interrupted: false,
+    });
+  });
+
+  it("a reply streamed as direct that then pauses stops its streamed speech and still plays the resumed reply in full", async () => {
+    const h = harness();
+    const input = await submit(h, "share my packing note with Sam");
+    input.onText?.(
+      "I can share your packing note with Sam right away. Share",
+      direct,
+    );
+    await flush();
+    expect(spoken(h)).toEqual([
+      "I can share your packing note with Sam right away.",
+    ]);
+    at(h.speeches, 0).input.onStarted();
+    h.answer(0, "I can share your packing note with Sam right away. Share?", {
+      complete: false,
+      awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+    });
+    await flush();
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    const pause = h.session.getSnapshot().awaitingUserInput;
+    if (!pause) throw new Error("expected a pause");
+    h.session.resume({
+      pause,
+      reply: {
+        requestId: pause.requestId,
+        conversationId: "room-1",
+        userMessageId: pause.userMessageId,
+        assistantMessageId: "a-2",
+        complete: true,
+        text: "Shared it with Sam. Passport, charger and boots are on it.",
+      },
+    });
+    await flush();
+    expect(spoken(h)).toEqual([
+      "I can share your packing note with Sam right away.",
+      "Shared it with Sam. Passport, charger and boots are on it.",
+    ]);
+    at(h.speeches, 1).input.onStarted();
+    expect(h.phase()).toBe("speaking");
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.log.heard.at(-1)).toMatchObject({
+      replyId: "a-2",
+      heard: "Shared it with Sam. Passport, charger and boots are on it.",
+    });
+  });
+
+  it("a proposal reply streamed without proof is never spoken", async () => {
+    const h = harness();
+    const input = await submit(h, "delete the dentist appointment");
+    input.onText?.("I will delete the dentist appointment now. Review", {
+      origin: "model",
+    });
+    await flush();
+    h.answer(0, "I will delete the dentist appointment now. Review below.", {
+      complete: false,
+    });
+    await flush();
+    expect(h.speeches).toHaveLength(0);
+    expect(h.phase()).toBe("error");
+  });
+
+  it("a failed turn stops the streamed sentence that is playing", async () => {
+    const h = harness();
+    const input = await submit(h, "read me the news");
+    input.onText?.("First headline here. Second", direct);
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    at(h.replies, 0).reply.reject(new Error("transport lost"));
+    await flush();
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    expect(h.phase()).toBe("error");
+  });
+
+  it("Stop speaking during a streamed sentence cancels the reply and reports exactly what was heard", async () => {
+    const h = harness();
+    const input = await submit(h, "read me the news");
+    input.onText?.(
+      "First headline here. Second headline follows. Third",
+      direct,
+    );
     await flush();
     at(h.speeches, 0).input.onStarted();
     at(h.speeches, 0).done.resolve();
     await flush();
-    expect(h.speeches.map((s) => s.input.text)).toEqual([
+    expect(spoken(h)).toEqual([
       "First headline here.",
       "Second headline follows.",
     ]);
@@ -1629,11 +1844,38 @@ describe("VoiceAssistantSession streamed replies", () => {
     expect(at(h.replies, 0).input.signal.aborted).toBe(true);
     input.onText?.(
       "First headline here. Second headline follows. Third headline. Fourth",
+      direct,
     );
     await flush();
     expect(h.speeches).toHaveLength(2);
-    // No confirmed reply id yet: nothing is recorded as heard for this turn.
-    expect(h.log.heard).toHaveLength(0);
+    // Not confirmed yet: the host finds the reply by the turn's request id.
+    expect(h.log.heard).toEqual([
+      {
+        turnId: input.turnId,
+        replyId: "",
+        heard: "First headline here.",
+        unheard: "Second headline follows.",
+        interrupted: true,
+      },
+    ]);
     expect(h.phase()).toBe("listening");
+  });
+
+  it("Stop during the first streamed sentence reports it unheard", async () => {
+    const h = harness();
+    const input = await submit(h, "read me the news");
+    input.onText?.("First headline here. Second", direct);
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    await h.session.stop();
+    expect(h.log.heard).toEqual([
+      {
+        turnId: input.turnId,
+        replyId: "",
+        heard: "",
+        unheard: "First headline here.",
+        interrupted: true,
+      },
+    ]);
   });
 });
