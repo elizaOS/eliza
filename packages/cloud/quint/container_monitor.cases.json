@@ -24,12 +24,8 @@
       "main": "container_monitor",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "PendingObservationCompletes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["PendingObservationCompletes"],
       "maxSteps": 35,
       "samples": 1000,
       "deadlock": false,

@@ -34,12 +34,8 @@
       "main": "app_container_publication",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "PendingPublicationCompletes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["PendingPublicationCompletes"],
       "maxSteps": 35,
       "samples": 1000,
       "deadlock": false,
@@ -59,12 +55,8 @@
       "main": "app_container_publication_owned",
       "init": "ownedInit",
       "step": "ownedStep",
-      "invariants": [
-        "ownedSafety"
-      ],
-      "temporal": [
-        "PendingOwnedMutationCompletes"
-      ],
+      "invariants": ["ownedSafety"],
+      "temporal": ["PendingOwnedMutationCompletes"],
       "temporalChecks": [
         {
           "property": "PendingOwnedMutationCompletes",

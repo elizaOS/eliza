@@ -29,12 +29,8 @@
       "main": "provisioning_execution",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "safety"
-      ],
-      "temporal": [
-        "PendingDependentWriteCompletes"
-      ],
+      "invariants": ["safety"],
+      "temporal": ["PendingDependentWriteCompletes"],
       "maxSteps": 40,
       "samples": 1000,
       "deadlock": false,
