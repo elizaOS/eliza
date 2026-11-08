@@ -241,7 +241,10 @@ module ConversationSelection {
   val invariant = finiteBounds and knownOwner and terminalCallsStayFinite
   // Expected negative result. The mounted scope is not part of this callback's
   // source guard, even though its caller uses that scope for the final anchor.
-  temporal NoRetiredSelectionWrites = always(not(s.retiredWrite))
+  val NoRetiredSelectionWrites = not(s.retiredWrite)
+  // The retired-write witness is sticky. A safe suffix exists only if no
+  // retired write occurred; the expected failure includes a looping trace.
+  temporal EventuallyNoRetiredWriteWitness = eventually(always(NoRetiredSelectionWrites))
   temporal SettlesUnderFairReplies =
     (callIds.forall(id => primaryReply(id, "ok").weakFair(s))
       and callIds.forall(id => listReply(id, 0).weakFair(s))
