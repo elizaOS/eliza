@@ -600,10 +600,15 @@ public final class SelectedDocuments {
           return null;
         wait(left);
       }
-      return reply;
+      Bundle out = reply;
+      reply = null;
+      return out;
     }
+    /** Ends the wait; a reply that arrived after the caller timed out is released here. */
     synchronized void abandon() {
       done = true;
+      release(reply);
+      reply = null;
     }
     private static void release(Bundle data) {
       try {

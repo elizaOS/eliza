@@ -466,12 +466,13 @@ public final class DocumentFolderTree {
     String[] ids = new String[count];
     ArrayList<FolderSession.Entry<Uri>> resolved = new ArrayList<>(), parents = new ArrayList<>();
     Set<String> seen = new HashSet<>();
+    boolean open = move || root() != null;
     for (int i = 0; i < count; i++) {
       JSONObject request = items.optJSONObject(i);
       ids[i] = request == null ? "" : request.optString("id", "");
-      FolderSession.Entry<Uri> item = seen.add(ids[i]) ? entry(ids[i]) : null;
+      FolderSession.Entry<Uri> item = open && seen.add(ids[i]) ? session.get(ids[i]) : null;
       resolved.add(item);
-      parents.add(move && item != null ? entry(item.parent) : null);
+      parents.add(move && item != null ? session.get(item.parent) : null);
     }
     JSArray outcomes = new JSArray();
     int done = 0;
@@ -544,7 +545,11 @@ public final class DocumentFolderTree {
             continue;
           }
           session.remove(item.id);
-          session.authorize(moved, destination.id);
+          try {
+            session.authorize(moved, destination.id);
+          } catch (IllegalStateException full) {
+            // The move is done; the destination lists it after a reload.
+          }
           outcomes.put(outcome(id, "moved", "Moved."));
           done++;
         }
