@@ -15,7 +15,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to 1–20
+ * Native, one-shot review of a favorite, Recently deleted or permanent-removal change to selected
  * permitted library items. The owner confirms a native dialog naming every item, then Android's own
  * MediaStore write request; the change is applied only to the reviewed revisions after the activity
  * resumes. Activity recreation discards authority; it never replays a write.
@@ -132,9 +132,10 @@ public final class PermittedMediaReview implements AutoCloseable {
   private void request(PluginCall call, List<String> ids, List<String> revisions, boolean favorite,
       boolean desired, boolean batch, boolean permanent) {
     Request request = new Request(call, ids, revisions, favorite, desired, batch, permanent);
-    if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > 20
+    int max = batch && !permanent ? PhotoLibraryAccess.REVIEWED_BATCH : PhotoLibraryAccess.REVIEWED;
+    if (closed || Build.VERSION.SDK_INT < 30 || ids.isEmpty() || ids.size() > max
         || new HashSet<>(ids).size() != ids.size() || ids.size() != revisions.size()) {
-      call.reject("Select 1–20 distinct permitted items.");
+      call.reject("Select 1–" + max + " distinct permitted items.");
       return;
     }
     if (!pending.compareAndSet(null, request)) {

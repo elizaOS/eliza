@@ -442,7 +442,8 @@ public abstract class PhotosPlugin extends PermittedPhotosPlugin {
         String operation = call.getString("operation", "");
         boolean[] change = PhotoLibraryAccess.batchChange(operation);
         JSArray items = call.getArray("items");
-        List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED);
+        // The owned library retains its own 20-item bound; permitted changes share one review.
+        List<PhotoLibraryAccess.Reviewed> reviewed = PhotoLibraryAccess.reviewed(items, PhotoLibraryAccess.REVIEWED_BATCH);
         if (PhotoLibraryAccess.anyPermitted(reviewed)) {
           mediaReview.request(call, PhotoLibraryAccess.ids(reviewed), PhotoLibraryAccess.revisions(reviewed),
               change[0], change[1], true);

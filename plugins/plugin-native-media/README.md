@@ -56,7 +56,8 @@ Full permitted library (other apps' media, as far as Android grants it):
   version and generation; a changed library or revoked access refuses the read instead of
   returning stale rows. Observation runs only while a host view watches.
 - `PermittedMediaReview` – one-shot native review of favorite, Recently deleted and permanent
-  removal for 1–20 items: a native dialog naming every item, then Android's MediaStore write
+  removal: up to 500 items for favorite, trash and restore, and 20 for permanent removal.
+  A native dialog names every item, then Android's MediaStore write
   request. Changes apply only to the reviewed revisions after the activity resumes; recreation
   discards authority and never replays a write. Hosts inject their launch gate.
 - `SelectedPhotoCopy` – exact provider-readable bytes of one selected still photo (PNG, JPEG,
@@ -77,7 +78,7 @@ Capacitor bindings (a host registers a subclass under its own plugin name):
 - `PhotosPlugin` – the Photos bridge over the engines above, built on `PermittedPhotosPlugin`: library access (`libraryAccess`,
   `requestLibraryAccess` from an explicit control only, `openLibrarySettings`), permitted and owned
   listings with bounded previews (`list`, `listPermitted`, `read`, `readPermitted`, `summary`),
-  favorite and Recently deleted changes (single and 1–20 item batches, permitted items through the
+  favorite and Recently deleted changes (single and 1–20 owned or 1–500 permitted item batches through the
   native review), two-step permanent removal, custom albums, still-photo and video edit copies,
   explicit capture keeps, single and multi-item share, and same-origin video playback. Every
   permitted read is published only under the catalog ticket it started with; pausing the activity
