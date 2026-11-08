@@ -244,6 +244,8 @@ async function remainingDelay(control: Client, id: string) {
           const deadline = Date.now() + 10_000;
           let ready = false;
           while (Date.now() < deadline) {
+            // The lock-holding transaction otherwise retains old activity data.
+            await control.query("SELECT pg_stat_clear_snapshot()");
             const {
               rows: [{ waited }],
             } = await control.query(
