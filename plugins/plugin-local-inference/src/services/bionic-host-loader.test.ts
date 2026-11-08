@@ -6,7 +6,11 @@ import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
 import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import { afterEach, describe, expect, it } from "vitest";
-import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
+import {
+	BIONIC_PAYLOAD_FRAME_LIMIT_BYTES,
+	BionicHostLoader,
+	deriveBundleDir,
+} from "./bionic-host-loader";
 
 /**
  * Real-IPC test: stand up an actual abstract-namespace AF_UNIX server (the same
@@ -315,6 +319,27 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			mmprojPath: "",
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
+	});
+
+	it("refuses audio and images over the host frame limit before sending", async () => {
+		let received = false;
+		host = startHost(SOCK, () => {
+			received = true;
+			return JSON.stringify({ ok: true, text: "never" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		const oversize = "A".repeat(BIONIC_PAYLOAD_FRAME_LIMIT_BYTES);
+		await expect(
+			loader.transcribe({ pcmBase64: oversize, sampleRate: 16000 }),
+		).rejects.toMatchObject({
+			code: "FRAME_TOO_LARGE",
+			context: { limitBytes: BIONIC_PAYLOAD_FRAME_LIMIT_BYTES },
+		});
+		await expect(
+			loader.describeImage({ imageBase64: oversize }),
+		).rejects.toMatchObject({ code: "FRAME_TOO_LARGE" });
+		expect(received).toBe(false);
 	});
 
 	it("transcribe throws on host ok:false", async () => {

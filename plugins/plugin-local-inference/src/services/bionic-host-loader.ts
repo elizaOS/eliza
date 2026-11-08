@@ -74,6 +74,11 @@ import {
 const REQUEST_TIMEOUT_MS = 120000;
 /** Defensive ceiling on a single response frame (a full completion). */
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
+/**
+ * The host's cap on an audio or image request frame
+ * (ElizaBionicInferenceServer.MAX_PAYLOAD_FRAME_BYTES).
+ */
+export const BIONIC_PAYLOAD_FRAME_LIMIT_BYTES = 16 * 1024 * 1024;
 const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
 const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
 interface BionicGenerateResponse {
@@ -120,6 +125,19 @@ interface BionicTextResponse {
 	ok: boolean;
 	text?: string;
 	error?: string;
+}
+/** Refuse an audio or image request the host would answer with FRAME_TOO_LARGE. */
+function assertPayloadFrameFits(
+	request: Record<string, unknown>,
+	message: string,
+): void {
+	const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
+	if (byteLength > BIONIC_PAYLOAD_FRAME_LIMIT_BYTES) {
+		throw new ElizaError(message, {
+			code: "FRAME_TOO_LARGE",
+			context: { byteLength, limitBytes: BIONIC_PAYLOAD_FRAME_LIMIT_BYTES },
+		});
+	}
 }
 /**
  * Derive the fused-bundle root from a model GGUF path. The host's
@@ -423,13 +441,18 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		signal?: AbortSignal;
 	}): Promise<string> {
 		this.assertAsrBundle();
+		const request = {
+			op: "asr",
+			bundleDir: this.bundleDir,
+			pcmBase64: args.pcmBase64,
+			sampleRate: args.sampleRate,
+		};
+		assertPayloadFrameFits(
+			request,
+			"Audio exceeds the Android host frame limit; send shorter audio or use the ASR stream",
+		);
 		const res = await this.cancellableRoundTrip<BionicTextResponse>(
-			{
-				op: "asr",
-				bundleDir: this.bundleDir,
-				pcmBase64: args.pcmBase64,
-				sampleRate: args.sampleRate,
-			},
+			request,
 			"asr_cancel",
 			args.signal,
 		);
@@ -636,13 +659,18 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		mmprojPath?: string;
 		prompt?: string;
 	}): Promise<string> {
-		const res = await this.roundTrip<BionicTextResponse>({
+		const request = {
 			op: "image",
 			bundleDir: this.bundleDir,
 			imageBase64: args.imageBase64,
 			mmprojPath: args.mmprojPath ?? "",
 			prompt: args.prompt ?? "",
-		});
+		};
+		assertPayloadFrameFits(
+			request,
+			"Image exceeds the Android host frame limit; send a smaller image",
+		);
+		const res = await this.roundTrip<BionicTextResponse>(request);
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host image describe failed: ${res.error ?? "unknown error"}`,

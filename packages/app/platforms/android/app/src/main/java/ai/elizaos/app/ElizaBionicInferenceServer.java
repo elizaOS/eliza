@@ -59,12 +59,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Streaming ASR ({@code asr_stream_supported / open / feed / partial /
  * finish / close / cancel}) keeps one connection open per stream; see
  * {@link BionicAsrStreams} for the protocol and bounds.
+ *
+ * <p>Only this app's UID may connect: an abstract socket name is not an
+ * authentication boundary. Model paths a request names ({@code bundleDir},
+ * {@code mmprojPath}, {@code drafterPath}) must resolve inside the app's data
+ * directory. A request frame over its limit is answered with
+ * {@code {ok:false, code:"FRAME_TOO_LARGE", limitBytes}}.
  */
 final class ElizaBionicInferenceServer {
 
     private static final String TAG = "ElizaBionicInfer";
-    /** Hard cap on a single request frame (1 MiB) — prompts, not payloads. */
-    private static final int MAX_FRAME_BYTES = 1 << 20;
+    /** Cap on a prompt request frame (1 MiB). */
+    static final int MAX_PROMPT_FRAME_BYTES = 1 << 20;
+    /**
+     * Cap on an audio or image request frame ({@code asr}, {@code image},
+     * {@code asr_stream_feed}). Each frame is read whole into memory, so this
+     * stays small enough for a low-RAM phone.
+     */
+    static final int MAX_PAYLOAD_FRAME_BYTES = 16 << 20;
 
     /**
      * Poll-based memory-pressure probe supplied by the owning service
@@ -94,6 +106,10 @@ final class ElizaBionicInferenceServer {
     /** Idle-unload timeout; {@code 0} disables the idle lever (#11760). */
     private final long idleUnloadMs;
     private final MemoryPressureProbe pressureProbe;
+    /** Request-supplied model paths must resolve under this directory. */
+    private final File modelRoot;
+    /** Set by {@link #stop}; the generate step loop checks it between native steps. */
+    private volatile boolean cancelRequested = false;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile LocalServerSocket serverSocket;
     private volatile Thread acceptThread;
@@ -188,8 +204,10 @@ final class ElizaBionicInferenceServer {
             InferenceMemoryPolicy.RamClass ramClass,
             long idleUnloadMs,
             MemoryPressureProbe pressureProbe,
-            NetworkStateProbe networkStateProbe) {
+            NetworkStateProbe networkStateProbe,
+            File modelRoot) {
         this.socketName = socketName;
+        this.modelRoot = modelRoot;
         this.defaultBundleDir = defaultBundleDir;
         this.ramClass = ramClass;
         this.idleUnloadMs = idleUnloadMs;
@@ -256,6 +274,11 @@ final class ElizaBionicInferenceServer {
         }
     }
 
+    /**
+     * Throws {@link IllegalStateException} when the fused engine does not load
+     * or the socket does not bind, so the caller can retract delegation
+     * instead of advertising a host that is not listening.
+     */
     synchronized void start() {
         if (running.get()) {
             return;
@@ -265,16 +288,16 @@ final class ElizaBionicInferenceServer {
         // the dlopen + Vulkan-device init; also fail fast + loud if the GPU host
         // isn't actually usable, so the agent's refuse-and-fallback can engage.
         if (!ElizaVoiceNative.ensureLoaded()) {
-            Log.e(TAG, "fused native engine failed to load; bionic inference host NOT started: "
-                + ElizaVoiceNative.getLoadError());
-            return;
+            throw new IllegalStateException(
+                "fused native engine failed to load; bionic inference host not started: "
+                    + ElizaVoiceNative.getLoadError());
         }
         try {
             serverSocket = new LocalServerSocket(socketName);
         } catch (IOException e) {
-            Log.e(TAG, "failed to bind abstract UDS \"" + socketName + "\"", e);
-            return;
+            throw new IllegalStateException("failed to bind abstract UDS \"" + socketName + "\"", e);
         }
+        cancelRequested = false;
         running.set(true);
         acceptThread = new Thread(this::acceptLoop, "eliza-bionic-infer-accept");
         acceptThread.setDaemon(true);
@@ -286,8 +309,20 @@ final class ElizaBionicInferenceServer {
             + ", idleUnloadMs=" + idleUnloadMs + ")");
     }
 
+    /**
+     * Stop accepting and free the resident state. A running decode or speech
+     * pass is cancelled first, so the wait for it is one native step, not the
+     * whole pass (this runs on the main thread from onDestroy).
+     */
     synchronized void stop() {
         running.set(false);
+        cancelRequested = true;
+        try {
+            signalTtsCancel();
+            asrStreams.cancelCurrent(this::signalBatchAsrCancel);
+        } catch (Throwable t) {
+            Log.w(TAG, "could not signal the running voice pass to stop", t);
+        }
         ScheduledExecutorService exec = memoryPolicyExecutor;
         memoryPolicyExecutor = null;
         if (exec != null) {
@@ -470,29 +505,45 @@ final class ElizaBionicInferenceServer {
         try (LocalSocket sock = client;
              DataInputStream in = new DataInputStream(sock.getInputStream());
              DataOutputStream out = new DataOutputStream(sock.getOutputStream())) {
+            final int peerUid = sock.getPeerCredentials().getUid();
+            if (peerUid != android.os.Process.myUid()) {
+                Log.w(TAG, "refused connection from uid " + peerUid);
+                return;
+            }
             // One request per connection for the buffered slice; loop so a future
             // streaming/keep-alive client can reuse the connection.
             while (running.get()) {
-                final String requestJson;
+                final byte[] frame;
                 try {
-                    requestJson = readFrame(in);
+                    frame = readFrame(in);
+                } catch (FrameTooLargeException tooLarge) {
+                    // The body was not read, so the connection cannot continue.
+                    writeFrame(out, frameTooLargeJson(tooLarge.length, MAX_PAYLOAD_FRAME_BYTES));
+                    out.flush();
+                    break;
                 } catch (IOException eof) {
                     break; // peer closed
                 }
-                if (requestJson == null) {
+                if (frame == null) {
                     break;
+                }
+                final String requestJson = new String(frame, StandardCharsets.UTF_8);
+                final String op = opOf(requestJson);
+                if (frame.length > MAX_PROMPT_FRAME_BYTES && !isPayloadOp(op)) {
+                    writeFrame(out, frameTooLargeJson(frame.length, MAX_PROMPT_FRAME_BYTES));
+                    out.flush();
+                    continue;
                 }
                 // op="generateStream" server-pushes one frame per decode step on
                 // this same connection (handled inline so it can write many
                 // frames); every other op is one-request/one-response.
-                if ("generateStream".equals(opOf(requestJson))) {
+                if ("generateStream".equals(op)) {
                     generateStreamRequest(requestJson, out);
                     out.flush();
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                     continue;
                 }
                 String responseJson;
-                final String op = opOf(requestJson);
                 if (BionicAsrStreams.isStreamOp(op)) {
                     responseJson = handleAsrStream(asrClient, op, requestJson);
                 } else if ("nativeSourceRead".equals(op)) {
@@ -509,7 +560,7 @@ final class ElizaBionicInferenceServer {
                 out.flush();
                 // Every op (generate/embed/tts/asr/image) touches the shared
                 // resident context — refresh the idle clock on completion (#11760).
-                if (!"networkPolicy".equals(opOf(requestJson)) && !"nativeSourceRead".equals(opOf(requestJson))) {
+                if (!"networkPolicy".equals(op) && !"nativeSourceRead".equals(op)) {
                     lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                 }
             }
@@ -539,7 +590,7 @@ final class ElizaBionicInferenceServer {
             if ("asr_stream_cancel".equals(op)) {
                 return asrStreams.cancel(req.optString("streamId", ""));
             }
-            String bundleDir = req.optString("bundleDir", "");
+            String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             final String bundle = bundleDir.isEmpty() ? defaultBundleDir : bundleDir;
             synchronized (residentLock) {
                 try {
@@ -564,7 +615,7 @@ final class ElizaBionicInferenceServer {
                 return new JSONObject().put("ok", true)
                     .put("state", networkStateProbe.read()).toString();
             }
-            String bundleDir = req.optString("bundleDir", "");
+            String bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
@@ -572,7 +623,7 @@ final class ElizaBionicInferenceServer {
                 return cancelVoice("tts_cancel".equals(op));
             }
             if ("embed".equals(op)) {
-                return embed(req.getString("bundleDir"), req.getString("text"),
+                return embed(confined(req.getString("bundleDir"), "bundleDir"), req.getString("text"),
                     req.optJSONArray("expectedTokenIds"), req.optString("embeddingSpace", ""));
             }
             if ("tts".equals(op)) {
@@ -585,13 +636,13 @@ final class ElizaBionicInferenceServer {
             }
             if ("image".equals(op)) {
                 return describeImage(bundleDir, req.optString("imageBase64", ""),
-                    req.optString("mmprojPath", ""), req.optString("prompt", ""));
+                    confined(req.optString("mmprojPath", ""), "mmprojPath"), req.optString("prompt", ""));
             }
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
             String prompt = req.optString("prompt", "");
-            String drafterPath = req.optString("drafterPath", "");
+            String drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
             int maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             List<String> stopSequences = readStopSequences(req);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
@@ -613,6 +664,9 @@ final class ElizaBionicInferenceServer {
                         bundleDir, drafterPath, prompt, maxTokens, stopSequences);
                     Log.i(TAG, "GENERATE result (resident): " + generateLogSummary(r));
                     return r;
+                } catch (CancellationException stopping) {
+                    // The host is stopping; stop() frees the resident state.
+                    return cancelledJson("generate");
                 } catch (Throwable t) {
                     Log.w(TAG, "resident generate failed; falling back to reload-per-call", t);
                     resetResident();
@@ -678,6 +732,9 @@ final class ElizaBionicInferenceServer {
     /** One bounded native decode step on the resident stream, parsed for the loop. */
     private BionicDecodeLoop.Step residentStreamStep(int stepCap)
             throws org.json.JSONException {
+        if (cancelRequested) {
+            throw new CancellationException("bionic inference host is stopping");
+        }
         final String stepJson =
             ElizaVoiceNative.nativeLlmStreamNext(residentStream, stepCap);
         if (stepJson == null) return null;
@@ -708,16 +765,16 @@ final class ElizaBionicInferenceServer {
         List<String> stopSequences = Collections.emptyList();
         try {
             JSONObject req = new JSONObject(requestJson);
-            bundleDir = req.optString("bundleDir", "");
+            bundleDir = confined(req.optString("bundleDir", ""), "bundleDir");
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
-            drafterPath = req.optString("drafterPath", "");
+            drafterPath = confined(req.optString("drafterPath", ""), "drafterPath");
             prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             streamStep = req.optInt("streamStep", 0);
             stopSequences = readStopSequences(req);
-        } catch (org.json.JSONException e) {
+        } catch (org.json.JSONException | IllegalArgumentException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
@@ -874,6 +931,11 @@ final class ElizaBionicInferenceServer {
                     + ") @ " + String.format(java.util.Locale.US, "%.2f", tokS)
                     + " tok/s");
             }
+        } catch (IOException clientGone) {
+            // Only frame writes throw IOException: the client closed mid-reply
+            // (an aborted turn). Keep the context and other connections' ASR
+            // streams; the next turn resets the KV past the shared prefix.
+            Log.i(TAG, "generate_stream client went away; resident context kept");
         } catch (Throwable t) {
             Log.w(TAG, "generate_stream failed", t);
             resetResident();
@@ -1119,16 +1181,29 @@ final class ElizaBionicInferenceServer {
      * once; the pass itself returns {@code code:"CANCELLED"}.
      */
     private String cancelVoice(boolean tts) throws org.json.JSONException {
+        // asr_cancel stops the batch transcription only; a stream decode on
+        // the same context is cancelled by its own asr_stream_cancel.
+        final boolean signalled = tts
+            ? signalTtsCancel()
+            : asrStreams.cancelBatch(this::signalBatchAsrCancel);
+        return new JSONObject().put("ok", true).put("signalled", signalled).toString();
+    }
+
+    private boolean signalTtsCancel() {
         synchronized (cancelLock) {
             if (residentCtx == 0L) {
-                return new JSONObject().put("ok", true).put("signalled", false).toString();
+                return false;
             }
-            if (tts) {
-                ElizaVoiceNative.nativeCancelTts(residentCtx);
-            } else {
+            ElizaVoiceNative.nativeCancelTts(residentCtx);
+            return true;
+        }
+    }
+
+    private void signalBatchAsrCancel() {
+        synchronized (cancelLock) {
+            if (residentCtx != 0L) {
                 ElizaVoiceNative.nativeAsrCancel(residentCtx);
             }
-            return new JSONObject().put("ok", true).put("signalled", true).toString();
         }
     }
 
@@ -1164,7 +1239,13 @@ final class ElizaBionicInferenceServer {
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                String text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                final String text;
+                asrStreams.beginBatch();
+                try {
+                    text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                } finally {
+                    asrStreams.endBatch();
+                }
                 Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> "
                     + text.length() + " chars");
                 return new JSONObject()
@@ -1250,18 +1331,62 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    /** Read one length-prefixed UTF-8 frame, or null on a clean length-0 frame. */
-    private static String readFrame(DataInputStream in) throws IOException {
+    /**
+     * The confined form of a request-supplied model path: empty stays empty,
+     * anything else must resolve (symlinks followed) inside {@link #modelRoot}.
+     */
+    private String confined(String path, String field) {
+        if (path.isEmpty()) {
+            return path;
+        }
+        try {
+            final String root = modelRoot.getCanonicalPath();
+            if (new File(path).getCanonicalPath().startsWith(root + File.separator)) {
+                return path;
+            }
+        } catch (IOException unresolvable) {
+            // Treated as outside the root below.
+        }
+        throw new IllegalArgumentException(field + " is outside the app's model storage");
+    }
+
+    private static boolean isPayloadOp(String op) {
+        return "asr".equals(op) || "image".equals(op) || "asr_stream_feed".equals(op);
+    }
+
+    private static String frameTooLargeJson(long length, int limitBytes) {
+        try {
+            return new JSONObject().put("ok", false).put("code", "FRAME_TOO_LARGE")
+                .put("limitBytes", limitBytes)
+                .put("error", "request frame of " + length + " bytes exceeds the "
+                    + limitBytes + "-byte limit").toString();
+        } catch (org.json.JSONException e) {
+            return "{\"ok\":false,\"code\":\"FRAME_TOO_LARGE\"}";
+        }
+    }
+
+    /** A request frame longer than {@link #MAX_PAYLOAD_FRAME_BYTES}; its body is unread. */
+    private static final class FrameTooLargeException extends IOException {
+        final int length;
+
+        FrameTooLargeException(int length) {
+            super("frame too large: " + length);
+            this.length = length;
+        }
+    }
+
+    /** Read one length-prefixed frame, or null on a clean length-0 frame. */
+    private static byte[] readFrame(DataInputStream in) throws IOException {
         int len = in.readInt(); // big-endian; throws EOFException when peer closes
         if (len <= 0) {
             return null;
         }
-        if (len > MAX_FRAME_BYTES) {
-            throw new IOException("frame too large: " + len);
+        if (len > MAX_PAYLOAD_FRAME_BYTES) {
+            throw new FrameTooLargeException(len);
         }
         byte[] buf = new byte[len];
         in.readFully(buf);
-        return new String(buf, StandardCharsets.UTF_8);
+        return buf;
     }
 
     private static void writeFrame(DataOutputStream out, String json) throws IOException {

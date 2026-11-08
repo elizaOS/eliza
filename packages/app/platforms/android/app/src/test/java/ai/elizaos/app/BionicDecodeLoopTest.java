@@ -5,9 +5,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import org.junit.Test;
 
 /**
@@ -325,5 +327,41 @@ public final class BionicDecodeLoopTest {
     public void stepValueObjectNormalizesNullText() {
         final BionicDecodeLoop.Step s = new BionicDecodeLoop.Step(null, 1, false);
         assertEquals("", s.text);
+    }
+    @Test
+    public void sinkIOExceptionStopsDecodingAndReachesTheCallerUnwrapped() throws Exception {
+        // The host keeps its resident context only for an IOException (client
+        // gone), so the loop must neither wrap it nor take another native step.
+        final GreedyFake fake = new GreedyFake();
+        try {
+            BionicDecodeLoop.run(fake, 64, 8, text -> {
+                throw new IOException("Broken pipe");
+            });
+            fail("expected the sink failure");
+        } catch (IOException expected) {
+            assertEquals("Broken pipe", expected.getMessage());
+        }
+        assertEquals(Arrays.asList(8), fake.requestedCaps);
+    }
+
+    @Test
+    public void cancelRequestedBetweenStepsStopsTheLoop() throws Exception {
+        // The host's step function throws once stop() sets cancelRequested.
+        final boolean[] cancelRequested = {false};
+        final List<Integer> caps = new ArrayList<>();
+        final List<String> frames = new ArrayList<>();
+        try {
+            BionicDecodeLoop.run(stepCap -> {
+                if (cancelRequested[0]) throw new CancellationException("stopping");
+                caps.add(stepCap);
+                cancelRequested[0] = caps.size() == 2;
+                return new BionicDecodeLoop.Step("ab", stepCap, false);
+            }, 256, 8, frames::add);
+            fail("expected the cancellation");
+        } catch (CancellationException expected) {
+            assertEquals("stopping", expected.getMessage());
+        }
+        assertEquals(2, caps.size());
+        assertEquals(Arrays.asList("ab", "ab"), frames);
     }
 }

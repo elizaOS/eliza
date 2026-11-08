@@ -1424,7 +1424,8 @@ public class ElizaAgentService extends Service {
         return new ElizaBionicInferenceServer(
             BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir, ramClass,
             inferenceIdleUnloadMs(ramClass), probe,
-            () -> ai.eliza.plugins.networkpolicy.NetworkPolicyReader.INSTANCE.readNetworkState(this));
+            () -> ai.eliza.plugins.networkpolicy.NetworkPolicyReader.INSTANCE.readNetworkState(this),
+            getDataDir());
     }
 
     // ── Asset extraction ─────────────────────────────────────────────────
@@ -2232,10 +2233,10 @@ public class ElizaAgentService extends Service {
      * from {@code libelizainference} + the staged bundle and needs no LLM, so its
      * lifecycle is decoupled from agent inference here.
      *
-     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
-     * (it logs + returns on lib-load / socket-bind failure), so this is purely
-     * additive: worst case the host stays down and TalkMode falls back to system
-     * TTS exactly as before — it cannot affect agent startup.
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and throws on
+     * lib-load or socket-bind failure; the catch below leaves no host recorded,
+     * so this is purely additive: worst case the host stays down and TalkMode
+     * falls back to system TTS exactly as before — it cannot affect agent startup.
      */
     private File prepareVoiceBundle() throws IOException {
         if (ai.eliza.voice.VoiceBundleAssets.isPackaged(this)) {
