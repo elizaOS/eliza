@@ -258,7 +258,7 @@ function isBlockedIp(ip: string): boolean {
  *
  * Returns a validation result including a pinned host IP when successful.
  */
-async function validateDbHost(
+export async function validateDbHost(
   creds: PostgresCredentials,
   opts: {
     allowUnresolvedHostnames?: boolean;
@@ -511,29 +511,46 @@ function handleGetConfig(
 ): void {
   const config = loadElizaConfig();
   const dbConfig: DatabaseConfig = config.database ?? { provider: "pglite" };
-  // Mask the password in the response
-  const sanitized = { ...dbConfig };
-  if (sanitized.postgres?.password) {
-    sanitized.postgres = {
-      ...sanitized.postgres,
-      password: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
-    };
-  }
-  if (sanitized.postgres?.connectionString) {
-    // Mask password in connection string
-    sanitized.postgres = {
-      ...sanitized.postgres,
-      connectionString: sanitized.postgres.connectionString.replace(
-        /:([^@]+)@/,
-        ":\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022@",
-      ),
-    };
-  }
   sendJson(res, {
-    config: sanitized,
+    config: sanitizeDatabaseConfig(dbConfig),
     activeProvider: detectCurrentProvider(),
     needsRestart: (dbConfig.provider ?? "pglite") !== detectCurrentProvider(),
   });
+}
+const MASKED_PASSWORD = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+/**
+ * Mask the password in a Postgres connection string, keeping the scheme,
+ * user, host and params. An unparseable string is masked whole.
+ */
+export function maskConnectionString(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    if (url.password) url.password = "***";
+    if (url.searchParams.has("password")) {
+      url.searchParams.set("password", "***");
+    }
+    return url.toString();
+  } catch {
+    return MASKED_PASSWORD;
+  }
+}
+/** Copy of a database config with the Postgres password and DSN masked. */
+export function sanitizeDatabaseConfig(
+  dbConfig: DatabaseConfig,
+): DatabaseConfig {
+  const sanitized = { ...dbConfig };
+  if (sanitized.postgres?.password) {
+    sanitized.postgres = { ...sanitized.postgres, password: MASKED_PASSWORD };
+  }
+  if (sanitized.postgres?.connectionString) {
+    sanitized.postgres = {
+      ...sanitized.postgres,
+      connectionString: maskConnectionString(
+        sanitized.postgres.connectionString,
+      ),
+    };
+  }
+  return sanitized;
 }
 /**
  * PUT /api/database/config
@@ -564,7 +581,6 @@ async function handlePutConfig(
   const existingDb = config.database ?? {};
   const effectiveProvider =
     body.provider ?? existingDb.provider ?? ("pglite" as DatabaseProviderType);
-  let validatedPostgres: PostgresCredentials | null = null;
   if (body.postgres) {
     const pg = body.postgres;
     if (effectiveProvider === "postgres" && !pg.connectionString && !pg.host) {
@@ -581,9 +597,9 @@ async function handlePutConfig(
       sendJsonError(res, validation.error);
       return;
     }
-    validatedPostgres = validation.pinnedHost
-      ? withPinnedHost(pg, validation.pinnedHost)
-      : pg;
+    // The host is stored as entered: pinning to the resolved IP would break
+    // TLS name checks and DNS failover. Boot re-validates and pins per
+    // connection (see applyPinnedPostgresUrl in runtime/eliza.ts).
   }
   // Merge: keep existing postgres/pglite sub-configs unless explicitly provided
   const merged: DatabaseConfig = {
@@ -594,7 +610,7 @@ async function handlePutConfig(
   if (merged.provider === "postgres" && body.postgres) {
     merged.postgres = {
       ...existingDb.postgres,
-      ...(validatedPostgres ?? body.postgres),
+      ...body.postgres,
     };
   }
   // If switching to pglite, ensure pglite config is present
@@ -612,7 +628,7 @@ async function handlePutConfig(
   );
   sendJson(res, {
     saved: true,
-    config: merged,
+    config: sanitizeDatabaseConfig(merged),
     needsRestart: (merged.provider ?? "pglite") !== detectCurrentProvider(),
   });
 }

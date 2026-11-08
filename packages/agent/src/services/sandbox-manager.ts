@@ -615,3 +615,15 @@ export class SandboxManager {
     };
   }
 }
+
+// The runtime owns the started manager; the API server reads it from here so
+// terminal and sandbox routes run through the same sandbox.
+let activeSandboxManager: SandboxManager | null = null;
+
+export function setActiveSandboxManager(manager: SandboxManager | null): void {
+  activeSandboxManager = manager;
+}
+
+export function getActiveSandboxManager(): SandboxManager | null {
+  return activeSandboxManager;
+}

@@ -42,6 +42,7 @@ import {
   registerCustomActionLive,
   unregisterCustomActionLive,
 } from "../runtime/custom-actions.ts";
+import { getActiveSandboxManager } from "../services/sandbox-manager.ts";
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
 import { parseOptionalBooleanQuery } from "./query-parameters.ts";
@@ -608,7 +609,7 @@ export async function handleMiscRoutes(
             onStderr: (text) => appendAndEmit("stderr", text),
             toolName: "terminal.run",
           },
-          null,
+          { resolveSandboxManager: async () => getActiveSandboxManager() },
         );
       })
       .then((result) => {
