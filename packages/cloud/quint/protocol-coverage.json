@@ -326,6 +326,23 @@
   },
   {
     "id": "cloud-flow-subscription-provider-event-receipts",
+    "model": null,
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
+      "packages/cloud/shared/src/db/schemas/subscription-billing-operations.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Finite models cover only their documented bounds; implementation refinement is not established.",
+      "Provider truth, network effects, database isolation and cryptographic validation need independent evidence.",
+      "Build the finite transition model and connect adversarial implementation tests.",
+      "Required flow invariants: A current receipt lease is required for application or retry release. | Receipt and subscription projection commit together.",
+      "Abstract states: received, processing, applied, ignored, failed, quarantined"
+    ]
+  },
+  {
+    "id": "cloud-protocol-subscription-terminal-receipt",
     "model": "packages/cloud/quint/SubscriptionTerminalReceipt.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/subscription-billing-operations.ts",
@@ -1761,6 +1778,34 @@
       "Measure served-route latency separately from the demonstrated unnecessary cache misses.",
       "Required flow invariants: Replacing a live key does not evict unrelated live keys. | A read or replacement promotes the key to most recent. | New-key insertion retains the existing capacity and eviction policy.",
       "Abstract states: absent, live, refreshed, evicted, cleared"
+    ]
+  },
+  {
+    "id": "cloud-flow-responses-adaptation",
+    "model": null,
+    "sources": [
+      "packages/cloud/api/v1/responses/route.ts",
+      "packages/cloud/api/v1/chat/completions/route.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "Responses adaptation remains a distinct implementation obligation. ChatSdkStreamSettlement models the admitted chat SDK callback owner only; it does not establish Responses request or stream translation, complete context preservation, buffering, cancellation propagation or response event ordering.",
+      "Preserve the authorized complete request and response representations. Model the adaptation and its failure/recovery boundaries, and connect implementation conformance before claiming coverage."
+    ]
+  },
+  {
+    "id": "cloud-flow-personal-shared-conversation",
+    "model": null,
+    "sources": [
+      "packages/cloud/api/src/shared-runtime-conversation.ts",
+      "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
+    ],
+    "invariants": [],
+    "status": "unmodeled",
+    "limitations": [
+      "PersonalSharedConsent models consent and durable delivery authorization only. The shared runtime conversation and message route remain distinct obligations for membership-scoped context selection, complete retained content, provider send composition and reconciliation.",
+      "Do not infer conversation or request-boundary correctness from the consent repository model. Source selection, restoration, cancellation and cross-component failure interleavings need their own models and implementation conformance."
     ]
   }
 ]
