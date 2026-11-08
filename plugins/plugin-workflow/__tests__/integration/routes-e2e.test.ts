@@ -322,32 +322,35 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     expect(listeners.size).toBe(0);
   });
 
-  test('the event stream of a finished run ends after the snapshot', async () => {
-    const listeners = new Set<unknown>();
-    const embedded = {
-      subscribe: (_runId: string, listener: unknown) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-    };
-    const event = { id: 'exec-001:1', sequence: 1, runId: 'exec-001', type: 'RunFinished' };
-    const base = await startServer(
-      makeRuntime({
-        embedded,
-        service: {
-          getExecutionDetail: async () => ({ id: 'exec-001', finished: true, events: [event] }),
+  test.each([true, false])(
+    'the event stream ends after a snapshot that ends the run (finished: %s)',
+    async (finished) => {
+      const listeners = new Set<unknown>();
+      const embedded = {
+        subscribe: (_runId: string, listener: unknown) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
         },
-      })
-    );
+      };
+      const event = { id: 'exec-001:1', sequence: 1, runId: 'exec-001', type: 'RunFinished' };
+      const base = await startServer(
+        makeRuntime({
+          embedded,
+          service: {
+            getExecutionDetail: async () => ({ id: 'exec-001', finished, events: [event] }),
+          },
+        })
+      );
 
-    const res = await fetch(`${base}/api/workflow/executions/exec-001/events`);
+      const res = await fetch(`${base}/api/workflow/executions/exec-001/events`);
 
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('text/event-stream');
-    const text = await res.text();
-    expect(text).toBe(`id: 1\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
-    expect(listeners.size).toBe(0);
-  });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      const text = await res.text();
+      expect(text).toBe(`id: 1\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
+      expect(listeners.size).toBe(0);
+    }
+  );
 
   test('a live stream sends events after the snapshot once and ends on the terminal event', async () => {
     const listeners = new Set<(event: WorkflowRunEvent) => void>();

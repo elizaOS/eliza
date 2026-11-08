@@ -183,7 +183,10 @@ async function streamEvents(
     const snapshot = execution.events ?? [];
     for (const event of snapshot)
       write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
-    if (execution.finished) return end();
+    // The terminal event is recorded before the run is marked finished, so a
+    // snapshot can end with it while finished is still false.
+    const last = snapshot.at(-1);
+    if (execution.finished || (last && TERMINAL_RUN_EVENTS.has(last.type))) return end();
     lastSequence = snapshot.reduce((max, event) => Math.max(max, event.sequence), 0);
     for (const event of pending.splice(0)) {
       if (event.sequence <= lastSequence) continue;
