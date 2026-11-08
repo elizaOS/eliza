@@ -265,6 +265,20 @@
         "This is a bounded time-gate model, not a proof of provider key retention, network arrival time, remote exactly-once behavior or implementation refinement."
       ],
       "maxSteps": 35
+    },
+    {
+      "id": "sse-segmentation",
+      "file": "sse_segmentation.qnt",
+      "sources": [
+        "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Two fixed line grammars, chunks of one to three atoms, and explicit EOF or abort.",
+        "Atoms abstract complete JSON payloads; this checks segmentation and terminal behavior, not arbitrary JSON, UTF-8 decoding, provider usage, billing or TypeScript refinement.",
+        "Runtime tests separately exercise full payload bytes, Unicode, CRLF, usage receipts and cancellation."
+      ],
+      "maxSteps": 25
     }
   ],
   "pendingDomains": [

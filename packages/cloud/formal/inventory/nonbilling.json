@@ -296,7 +296,8 @@
       "id": "inference-provider-streaming",
       "sources": [
         "packages/cloud/api/v1/chat/completions/route.ts",
-        "packages/cloud/api/v1/responses/route.ts"
+        "packages/cloud/api/v1/responses/route.ts",
+        "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
       ],
       "states": [
         "admitted",
@@ -312,15 +313,15 @@
         "Buffered data is bounded without silent truncation"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "The finite model covers only two line grammars and chunk segmentation, EOF and abort.",
+        "JSON and UTF-8 details are exercised by runtime regressions; provider execution, transport, funding and settlement remain outside the model."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["sse_segmentation.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite provider-stream model yet.",
+        "Model provider usage, funding, cancellation and exact billing settlement through every terminal outcome.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
