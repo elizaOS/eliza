@@ -113,6 +113,13 @@ public class NativeProviderAdmission {
   }else throw new IllegalArgumentException();
   env.put("ELIZA_HOST_CONTEXT_REVISION",hostRevision);
  }
+ /** New Cloud speech must honor the selected mode. Cleanup uses its captured old credential. */
+ public static void requireCloudVoiceSelection(String saved,String credentialId)throws Exception {
+  if(saved==null)return; // Existing default Cloud choice before its first resident binding.
+  JSONObject selected=new JSONObject(saved);
+  if(selected.optBoolean("unbound")||!"elizacloud".equals(selected.optString("provider"))
+    ||!credentialId.equals(selected.optString("credentialId")))throw new SecurityException("Cloud voice is not selected");
+ }
  /** Settings may show which hosted provider and model are configured; the key never leaves native storage. */
  public static JSONObject providerIdentity(String saved) {
   JSONObject result=new JSONObject();

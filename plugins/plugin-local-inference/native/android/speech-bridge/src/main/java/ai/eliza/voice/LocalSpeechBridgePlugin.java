@@ -146,6 +146,13 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   File[] stale=getContext().getCacheDir().listFiles((dir,name)->name.startsWith(playbackPrefix));
   if(stale!=null)for(File file:stale)file.delete();
  }
+ /** A host credential change or protected secret surface retires capture and playback without
+  * changing activity foreground state. Already-owned transport cleanup still runs normally. */
+ protected final void retireSpeechAuthority(){
+  epoch.incrementAndGet();live.cancelAll();gate.cancelAll();
+  main.post(()->{if(capture!=null)capture.stopAutomatically();clearPlayback();});
+ }
+ protected boolean sensitiveSurfaceActive(){return false;}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  @Override protected void handleOnPause(){speechForeground=false;live.cancelAll();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();gate.cancelAll();main.post(this::clearPlayback);super.handleOnPause();}
  @Override protected void handleOnDestroy(){
@@ -196,6 +203,7 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   * {@code request.failure}/{@code failureCode}; a request that resolved early settles nothing.
   */
  protected final void submit(PluginCall call,Work work){
+  if(sensitiveSurfaceActive()){call.reject("Close the protected credential surface before using speech.");return;}
   final String id;try{id=required(call.getString("requestId"),256);}catch(Exception error){call.reject("Invalid request");return;}
   SpeechRequestGate.Admission admission=gate.admit(id,!Boolean.FALSE.equals(call.getBoolean("replace",true)));
   if(admission.request==null){if(admission.refusal==SpeechRequestGate.Refusal.BUSY)call.reject("Speaker is in use","playback-busy");else call.reject("Voice request already active or unavailable");return;}
