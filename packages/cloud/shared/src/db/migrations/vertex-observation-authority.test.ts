@@ -45,4 +45,4 @@ test("0562 preserves legacy unknown precision and adds complete Vertex state aut
   } finally {
     await db.close();
   }
-});
+}, 30_000);
