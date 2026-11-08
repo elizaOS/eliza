@@ -531,7 +531,12 @@
       "sources": [
         "packages/cloud/shared/src/db/repositories/jobs.ts",
         "packages/cloud/shared/src/node/provisioning-worker.ts",
-        "packages/cloud/services/coding-remote-runner/src/index.ts"
+        "packages/cloud/services/coding-remote-runner/src/index.ts",
+        "packages/cloud/shared/src/db/repositories/job-timestamp-fence.ts",
+        "packages/cloud/shared/src/db/schemas/jobs.ts",
+        "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+        "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
+        "packages/cloud/formal/conformance/job-time.ts"
       ],
       "states": [
         "pending",
@@ -550,15 +555,21 @@
       ],
       "assumptions": [
         "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
+        "One durable job, two execution generations, two retries, database clock0..6, application and database timezone offsets -2/0/2, and a two-tick delay/lease.",
+        "Committed job and lease writes are atomic. Original generation, owner and snapshot/payload fences remain required; decoded millisecond timestamps alone are not ABA authority.",
+        "Raw claim timestamps use the same column decoder as typed reads. Job timestamp-without-timezone comparison values are bound as UTC text; database-local SQL clock expressions own relative schedules.",
+        "Renewal waits may outlive their transaction-start lease. The new expiry is sampled after acquiring the job row; another generation cannot be overwritten.",
+        "No scheduler fairness, eventual execution, provider quiescence, unbounded clock behavior, DST transition semantics or TypeScript/SQL refinement is proved. Real PostgreSQL tests separately cover process and database timezone matrices and lock waits."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["job_time_authority.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
         "No complete scheduler model yet.",
-        "Verify implementation transitions and failure paths against the formal contract."
+        "Verify implementation transitions and failure paths against the formal contract.",
+        "The time-authority model covers retry/read/renewal boundaries only; complete scheduler and remote-effect protocols remain open."
       ]
     },
     {
