@@ -10,6 +10,7 @@ import {
 	BIONIC_PAYLOAD_FRAME_LIMIT_BYTES,
 	BionicHostLoader,
 	deriveBundleDir,
+	pruneOrphanFlatBundleViews,
 } from "./bionic-host-loader";
 
 /**
@@ -152,6 +153,59 @@ describe("deriveBundleDir", () => {
 
 		expect(deriveBundleDir(modelPath)).toBe("");
 		expect(fs.existsSync(path.join(modelsDir, ".bionic-bundles"))).toBe(false);
+	});
+
+	it("relinks a republished flat GGUF of the same size", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-republish-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		fs.writeFileSync(modelPath, "OLD1");
+		const bundleDir = deriveBundleDir(modelPath);
+		const staged = path.join(bundleDir, "text", "eliza-1-2b-128k.gguf");
+		expect(fs.readFileSync(staged, "utf8")).toBe("OLD1");
+		// Republish by rename, as a download does: same size, new inode.
+		fs.writeFileSync(`${modelPath}.part`, "NEW2");
+		fs.renameSync(`${modelPath}.part`, modelPath);
+		expect(deriveBundleDir(modelPath)).toBe(bundleDir);
+		expect(fs.readFileSync(staged, "utf8")).toBe("NEW2");
+	});
+
+	it("prunes bundle views whose flat GGUF was removed and keeps live ones", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-prune-"),
+		);
+		tempDirs.push(modelsDir);
+		const kept = path.join(modelsDir, "eliza-1-keep.gguf");
+		const removed = path.join(modelsDir, "eliza-1-gone.gguf");
+		fs.writeFileSync(kept, "GGUF");
+		fs.writeFileSync(removed, "GGUF");
+		const keptView = deriveBundleDir(kept);
+		const removedView = deriveBundleDir(removed);
+		const dangling = path.join(
+			modelsDir,
+			".bionic-bundles",
+			"eliza-1-dangling",
+			"text",
+		);
+		fs.mkdirSync(dangling, { recursive: true });
+		fs.symlinkSync(
+			path.join(modelsDir, "eliza-1-dangling.gguf"),
+			path.join(dangling, "eliza-1-dangling.gguf"),
+		);
+		fs.unlinkSync(removed);
+
+		pruneOrphanFlatBundleViews(modelsDir);
+
+		expect(fs.existsSync(keptView)).toBe(true);
+		expect(fs.readFileSync(kept, "utf8")).toBe("GGUF");
+		expect(fs.existsSync(removedView)).toBe(false);
+		expect(
+			fs.existsSync(
+				path.join(modelsDir, ".bionic-bundles", "eliza-1-dangling"),
+			),
+		).toBe(false);
 	});
 
 	it("keeps flat text-only bundle aliases behind the ASR bundle gate", async () => {
@@ -849,8 +903,9 @@ describe("BionicHostLoader voice bundle", () => {
 		});
 	});
 	const bundleDir = () =>
-		(new BionicHostLoader("sock") as unknown as { bundleDir: string })
-			.bundleDir;
+		(
+			new BionicHostLoader("sock") as unknown as { voiceDir(): string }
+		).voiceDir();
 	it("uses the installed voice bundle before any text model loads", () => {
 		delete process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR;
 		process.env.ELIZA_ANDROID_APP_DATA_DIR = "/data/data/example.app";
@@ -865,5 +920,49 @@ describe("BionicHostLoader voice bundle", () => {
 	it("has no bundle outside an Android app", () => {
 		for (const key of keys) delete process.env[key];
 		expect(bundleDir()).toBe("");
+	});
+	describeLinuxOnly("with a text model loaded", () => {
+		it("keeps ASR on the voice bundle and generate on the text bundle", async () => {
+			const voiceBundle = path.dirname(path.dirname(makeBundleModelPath()));
+			process.env.ELIZA_ANDROID_VOICE_BUNDLE_DIR = voiceBundle;
+			const modelsDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "eliza-bionic-voice-split-"),
+			);
+			tempDirs.push(modelsDir);
+			const flat = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+			const generic = path.join(modelsDir, "other-model.gguf");
+			fs.writeFileSync(flat, "GGUF");
+			fs.writeFileSync(generic, "GGUF");
+			const seen: Array<Record<string, unknown>> = [];
+			const sock = `${SOCK}-voice-split`;
+			host = startHost(sock, (req) => {
+				seen.push(req);
+				return JSON.stringify(
+					req.op === "asr_stream_supported"
+						? { ok: true, supported: true }
+						: { ok: true, text: "hi" },
+				);
+			});
+			const loader = new BionicHostLoader(sock);
+			for (const modelPath of [flat, generic]) {
+				seen.length = 0;
+				await loader.loadModel({ modelPath });
+				expect(await loader.asrStreamSupported()).toBe(true);
+				await loader.generate({ prompt: "x" });
+				await loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 });
+				expect(seen.map((r) => [r.op, r.bundleDir])).toEqual([
+					["asr_stream_supported", voiceBundle],
+					[
+						"generate",
+						modelPath === flat
+							? path.join(modelsDir, ".bionic-bundles", "eliza-1-2b-128k")
+							: "",
+					],
+					["asr", voiceBundle],
+				]);
+			}
+			await loader.unloadModel();
+			expect(bundleDir()).toBe(voiceBundle);
+		});
 	});
 });

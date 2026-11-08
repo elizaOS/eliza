@@ -159,15 +159,19 @@ export async function handleLiveAsrRoute(
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const loader = resolveLoader(state);
 		let streaming: boolean | null = null;
+		let reason: string | null = null;
 		if (loader?.asrStreamSupported) {
+			// A throwing probe means ASR cannot run at all (no installed asr/
+			// bundle); false still serves the route through batch op="asr".
 			try {
 				streaming = await loader.asrStreamSupported();
-			} catch {
-				streaming = null;
+			} catch (err) {
+				reason = err instanceof Error ? err.message : String(err);
 			}
 		}
 		sendJson(res, 200, {
-			ready: loader !== null,
+			ready: loader !== null && reason === null,
+			...(reason !== null ? { reason } : {}),
 			streaming,
 			sessions: sessions.size,
 			maxSessions: LIVE_ASR_MAX_SESSIONS,
@@ -298,10 +302,11 @@ export async function handleLiveAsrRoute(
 	}
 	const closing = body.close === true;
 	try {
-		const final = closing
-			? await session.endTurn()
-			: closesTurn
-				? await session.waitForFinal()
+		// A close that carried its own speech-end already closed the turn above.
+		const final = closesTurn
+			? await session.waitForFinal()
+			: closing
+				? await session.endTurn()
 				: null;
 		sendJson(res, 200, {
 			ok: true,
@@ -315,6 +320,8 @@ export async function handleLiveAsrRoute(
 		sendJson(res, 502, {
 			error: `Live ASR error: ${err instanceof Error ? err.message : String(err)}`,
 			code: "ASR_FAILED",
+			// The finally below disposes the session either way.
+			...(closing ? { closed: true } : {}),
 		});
 	} finally {
 		if (closing) disposeSession(sessionId);

@@ -26,8 +26,11 @@
 import {
 	existsSync,
 	linkSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
+	realpathSync,
+	rmSync,
 	statSync,
 	symlinkSync,
 	unlinkSync,
@@ -163,14 +166,10 @@ export function deriveBundleDir(modelPath: string): string {
 	const stagedPath = path.join(textDir, modelName);
 	try {
 		mkdirSync(textDir, { recursive: true });
-		if (existsSync(stagedPath)) {
-			try {
-				const source = statSync(modelPath);
-				const staged = statSync(stagedPath);
-				if (source.size === staged.size) return bundleRoot;
-			} catch {
-				// Recreate stale or broken aliases below.
-			}
+		if (isStagedAlias(stagedPath)) {
+			// A republished model of the same size is a new file: relink unless
+			// the alias still names the current one.
+			if (aliasesSameFile(stagedPath, modelPath)) return bundleRoot;
 			unlinkSync(stagedPath);
 		}
 		try {
@@ -186,6 +185,65 @@ export function deriveBundleDir(modelPath: string): string {
 	}
 	return "";
 }
+function isStagedAlias(stagedPath: string): boolean {
+	try {
+		lstatSync(stagedPath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function aliasesSameFile(stagedPath: string, modelPath: string): boolean {
+	try {
+		if (lstatSync(stagedPath).isSymbolicLink()) {
+			return realpathSync(stagedPath) === realpathSync(modelPath);
+		}
+		const source = statSync(modelPath);
+		const staged = statSync(stagedPath);
+		return source.ino === staged.ino && source.dev === staged.dev;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Remove flat-model bundle views whose source GGUF is gone: a hardlink that is
+ * the file's last link, or a dangling symlink. Otherwise an uninstalled model
+ * keeps its bytes on disk through the hidden alias. Only touches
+ * `<modelsDir>/.bionic-bundles`; removing a link never removes its source.
+ */
+export function pruneOrphanFlatBundleViews(modelsDir: string): void {
+	if (!modelsDir) return;
+	const root = path.join(modelsDir, BIONIC_FLAT_BUNDLE_DIR);
+	let views: string[];
+	try {
+		views = readdirSync(root);
+	} catch {
+		return;
+	}
+	for (const view of views) {
+		const staged = path.join(root, view, "text", `${view}.gguf`);
+		let orphan: boolean;
+		try {
+			const link = lstatSync(staged);
+			orphan = link.isSymbolicLink()
+				? !existsSync(staged)
+				: link.isFile() && link.nlink === 1;
+		} catch {
+			orphan = true;
+		}
+		if (!orphan) continue;
+		try {
+			rmSync(path.join(root, view), { recursive: true, force: true });
+		} catch (err) {
+			logger.warn(
+				`[BionicHostLoader] could not remove orphaned bundle view "${view}": ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+}
+
 /**
  * The app's installed voice bundle. Speech must not wait for a text model: a
  * phone with hosted text inference never calls loadModel. The host passes the
@@ -201,11 +259,32 @@ function installedVoiceBundleDir(): string {
 
 export class BionicHostLoader implements LocalInferenceLoader {
 	private modelPath: string | null = null;
-	private bundleDir = installedVoiceBundleDir();
+	/** Bundle of the loaded text model (generate, image). */
+	private textBundleDir = "";
+	/** The app's installed voice bundle; loading a text model never replaces it. */
+	private readonly voiceBundleDir = installedVoiceBundleDir();
 	private embeddingModelPath: string | null = null;
 	private embeddingBundleDir = "";
 	/** @param socketName abstract-namespace socket name (no leading NUL). */
-	constructor(private readonly socketName: string) {}
+	constructor(private readonly socketName: string) {
+		pruneOrphanFlatBundleViews(
+			process.env.MODELS_DIR?.trim() || elizaModelsDir(),
+		);
+	}
+	/**
+	 * Bundle for ASR and TTS: the installed voice bundle when it has an ASR
+	 * model (or no text bundle is loaded), else the text model's bundle (a
+	 * full Eliza-1 bundle carries its own asr/ and tts/).
+	 */
+	private voiceDir(): string {
+		if (
+			this.voiceBundleDir &&
+			(!this.textBundleDir || bundleHasAsrModelFiles(this.voiceBundleDir))
+		) {
+			return this.voiceBundleDir;
+		}
+		return this.textBundleDir;
+	}
 	async prepareEmbeddingModel(modelPath?: string): Promise<void> {
 		const configured =
 			modelPath ??
@@ -346,13 +425,15 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	}
 	async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
 		this.modelPath = args.modelPath;
-		this.bundleDir = deriveBundleDir(args.modelPath);
+		pruneOrphanFlatBundleViews(path.dirname(args.modelPath));
+		this.textBundleDir = deriveBundleDir(args.modelPath);
 		logger.info(
-			`[BionicHostLoader] active model ${args.modelPath} (bundle ${this.bundleDir || "<host-default>"})`,
+			`[BionicHostLoader] active model ${args.modelPath} (bundle ${this.textBundleDir || "<host-default>"})`,
 		);
 	}
 	async unloadModel(): Promise<void> {
 		this.modelPath = null;
+		this.textBundleDir = "";
 	}
 	currentModelPath(): string | null {
 		return this.modelPath;
@@ -371,7 +452,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		// omitted them upstream, so the host cannot decode into the next role.
 		const stopSequences = mergeElizaTurnStopSequences(args.stopSequences);
 		const request = {
-			bundleDir: this.bundleDir,
+			bundleDir: this.textBundleDir,
 			prompt: args.prompt,
 			...(args.maxTokens !== undefined ? { maxTokens: args.maxTokens } : {}),
 			temperature: args.temperature ?? 0,
@@ -440,10 +521,10 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		sampleRate: number;
 		signal?: AbortSignal;
 	}): Promise<string> {
-		this.assertAsrBundle();
+		const bundleDir = this.assertAsrBundle();
 		const request = {
 			op: "asr",
-			bundleDir: this.bundleDir,
+			bundleDir,
 			pcmBase64: args.pcmBase64,
 			sampleRate: args.sampleRate,
 		};
@@ -463,19 +544,24 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		}
 		return res.text ?? "";
 	}
-	/** Refuse ASR on a missing or non-pinned bundle (shared by batch and streaming). */
-	private assertAsrBundle(): void {
-		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
+	/**
+	 * Refuse ASR on a missing or non-pinned bundle (shared by batch and
+	 * streaming); returns the bundle to send.
+	 */
+	private assertAsrBundle(): string {
+		const bundleDir = this.voiceDir();
+		if (!bundleDir || !bundleHasAsrModelFiles(bundleDir)) {
 			throw new Error(
 				"[BionicHostLoader] host asr requires an active bundle with an asr/ model (the Phonon-2 GGUF); refusing to use the bionic host default bundle",
 			);
 		}
-		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
+		const blockers = readBundleAsrProvenanceBlockers(bundleDir);
 		if (blockers.length > 0) {
 			throw new Error(
 				`[BionicHostLoader] host asr refused non-Phonon-2 ASR provenance: ${blockers.join("; ")}`,
 			);
 		}
+		return bundleDir;
 	}
 	/**
 	 * Whether the host's ASR backend streams (op="asr_stream_supported"). The
@@ -484,10 +570,10 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	 * library built without the Parakeet-TDT backend.
 	 */
 	async asrStreamSupported(): Promise<boolean> {
-		this.assertAsrBundle();
+		const bundleDir = this.assertAsrBundle();
 		const res = await bionicAsrOneShot(bionicSocketPath(this.socketName), {
 			op: "asr_stream_supported",
-			bundleDir: this.bundleDir,
+			bundleDir,
 		});
 		if (!res.ok) {
 			throw new Error(
@@ -504,10 +590,10 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	async openAsrStream(args: {
 		sampleRate: number;
 	}): Promise<BionicAsrStream | null> {
-		this.assertAsrBundle();
+		const bundleDir = this.assertAsrBundle();
 		return openBionicAsrStream({
 			socketPath: bionicSocketPath(this.socketName),
-			bundleDir: this.bundleDir,
+			bundleDir,
 			sampleRate: args.sampleRate,
 		});
 	}
@@ -537,7 +623,8 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (!text) {
 			throw new Error("[BionicHostLoader] host tts requires non-empty text");
 		}
-		if (!this.bundleDir) {
+		const bundleDir = this.voiceDir();
+		if (!bundleDir) {
 			// Same rule as transcribe: an empty bundleDir would make the host
 			// synthesize from its own default bundle, not the active one.
 			throw new Error(
@@ -556,7 +643,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const res = await this.cancellableRoundTrip<BionicTtsResponse>(
 			{
 				op: "tts",
-				bundleDir: this.bundleDir,
+				bundleDir,
 				text,
 				language: "en-US",
 				speed,
@@ -627,7 +714,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			const onAbort = () => {
 				this.roundTrip<BionicTextResponse>({
 					op: cancelOp,
-					bundleDir: this.bundleDir,
+					bundleDir: this.voiceDir(),
 				}).catch((err: unknown) => {
 					logger.warn(
 						`[BionicHostLoader] ${cancelOp} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -661,7 +748,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	}): Promise<string> {
 		const request = {
 			op: "image",
-			bundleDir: this.bundleDir,
+			bundleDir: this.textBundleDir,
 			imageBase64: args.imageBase64,
 			mmprojPath: args.mmprojPath ?? "",
 			prompt: args.prompt ?? "",

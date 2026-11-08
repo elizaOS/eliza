@@ -32,6 +32,12 @@ public final class LiveSegmentPipeTest {
    cancellation.offer(frames(2),new JSONArray());CompletableFuture<Boolean> end=cancellation.close(true,3);release.countDown();check(end.get(3,TimeUnit.SECONDS),"cancel closes server");
    check(blocked.bodies.size()==2&&blocked.bodies.get(1).optBoolean("close"),"cancel discards queued PCM");check(cancelled.finals.isEmpty(),"no cancelled final");
 
+   Sink lastFailed=new Sink();Transport failedTail=new Transport(){public JSONObject post(JSONObject body)throws Exception{super.post(body);return body.optBoolean("close")?new JSONObject().put("status",502).put("body",new JSONObject().put("code","ASR_FAILED").put("closed",true).toString()):response(new JSONObject());}};
+   LiveSegmentPipe tail=new LiveSegmentPipe(failedTail,lastFailed,ID,null);tail.start(worker);check(tail.ready().get(3,TimeUnit.SECONDS),"tail ready");
+   check(tail.close(false,5).get(3,TimeUnit.SECONDS)&&lastFailed.errors.equals(List.of("ASR_FAILED")),"failed last segment still confirms the server close");
+   Transport unconfirmed=new Transport(){public JSONObject post(JSONObject body)throws Exception{super.post(body);return body.optBoolean("close")?new JSONObject().put("status",502).put("body",new JSONObject().put("code","ASR_FAILED").toString()):response(new JSONObject());}};
+   LiveSegmentPipe noAck=new LiveSegmentPipe(unconfirmed,new Sink(),ID,null);noAck.start(worker);check(noAck.ready().get(3,TimeUnit.SECONDS),"noAck ready");check(!noAck.close(false,5).get(3,TimeUnit.SECONDS),"502 without closed is not a confirmed close");
+
    Sink full=new Sink();LiveSegmentPipe overflow=new LiveSegmentPipe(new Transport(),full,ID,null);
    for(int i=0;i<LiveSegmentPipe.MAX_BATCHES;i++)check(overflow.offer(frames(i),new JSONArray()),"bounded capacity");
    check(!overflow.offer(frames(9),new JSONArray())&&full.errors.equals(List.of("BACKPRESSURE")),"overflow fails closed");overflow.start(worker);check(overflow.close(true,10).get(3,TimeUnit.SECONDS),"overflow cleanup");
@@ -41,7 +47,7 @@ public final class LiveSegmentPipeTest {
    Sink refused=new Sink();ExecutorService stopped=Executors.newSingleThreadExecutor();stopped.shutdown();LiveSegmentPipe busy=new LiveSegmentPipe(new Transport(),refused,ID,null);
    check(!busy.start(stopped)&&refused.errors.equals(List.of("BUSY"))&&!busy.ready().get(1,TimeUnit.SECONDS)&&!busy.close(true,1).get(1,TimeUnit.SECONDS),"refused worker fails closed without dispatch");
    try{new LiveSegmentPipe(new Transport(),new Sink(),"not-a-session",null);throw new AssertionError("invalid session accepted");}catch(IllegalArgumentException expected){}
-   System.out.println("PASS live segment pipe: cutoff, close, cancel, bounded queue, re-enrollment, refused worker");
+   System.out.println("PASS live segment pipe: cutoff, close, failed-tail close, cancel, bounded queue, re-enrollment, refused worker");
   }finally{worker.shutdownNow();}
  }
 }
