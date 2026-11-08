@@ -848,7 +848,7 @@ function parseTrajectoryStepsJson(value: unknown): {
 	try {
 		const parsed = JSON.parse(value) as unknown;
 		return Array.isArray(parsed)
-			? { steps: parsed as TrajectoryStepRecord[], invalid: false }
+			? { steps: recordsOf<TrajectoryStepRecord>(parsed), invalid: false }
 			: { steps: [], invalid: true };
 	} catch {
 		// error-policy:J4 plaintext rendering remains available for a corrupt
@@ -861,16 +861,19 @@ function collectTrajectorySteps(
 	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
 ): TrajectoryStepRecord[] {
 	const record = trajectoryRecordFromInput(input);
-	const directSteps =
-		isRecord(input) && Array.isArray(input.steps)
-			? (input.steps as TrajectoryStepRecord[])
-			: [];
-	const nestedSteps =
-		record !== input && Array.isArray(record.steps)
-			? (record.steps as TrajectoryStepRecord[])
-			: [];
-	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson).steps;
-	return [...directSteps, ...nestedSteps, ...jsonSteps];
+	// steps and stepsJson describe the same run; use one source so calls are
+	// not counted twice.
+	const steps = Array.isArray(input.steps)
+		? input.steps
+		: Array.isArray(record.steps)
+			? record.steps
+			: null;
+	if (steps) return recordsOf<TrajectoryStepRecord>(steps);
+	return parseTrajectoryStepsJson(record.stepsJson).steps;
+}
+
+function recordsOf<T>(value: unknown): T[] {
+	return Array.isArray(value) ? (value.filter(isRecord) as T[]) : [];
 }
 
 function collectLlmCalls(
@@ -880,7 +883,9 @@ function collectLlmCalls(
 		isRecord(input) && Array.isArray(input.llmCalls) ? input.llmCalls : [];
 	return [
 		...(direct as TrajectoryLlmCallRecord[]),
-		...collectTrajectorySteps(input).flatMap((step) => step.llmCalls ?? []),
+		...collectTrajectorySteps(input).flatMap((step) =>
+			recordsOf<TrajectoryLlmCallRecord>(step.llmCalls),
+		),
 	];
 }
 
@@ -893,8 +898,8 @@ function collectProviderAccesses(
 			: [];
 	return [
 		...(direct as TrajectoryProviderAccessRecord[]),
-		...collectTrajectorySteps(input).flatMap(
-			(step) => step.providerAccesses ?? [],
+		...collectTrajectorySteps(input).flatMap((step) =>
+			recordsOf<TrajectoryProviderAccessRecord>(step.providerAccesses),
 		),
 	];
 }

@@ -155,7 +155,6 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
-import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
 import {
   AgentBackupClientDisconnectedError,
   writeAgentBackupJsonResponse,
@@ -2766,20 +2765,6 @@ async function handleRequestForViewClient(
           canUseLocalTradeExecution,
           detectRuntimeModel,
           resolveProviderFromModel,
-          getAwarenessRegistry: (): AwarenessRegistryLike | null => {
-            const service = state.runtime?.getService("AWARENESS_REGISTRY");
-            if (!service || typeof service !== "object") return null;
-            const composeSummary = (
-              service as {
-                composeSummary?: unknown;
-              }
-            ).composeSummary;
-            if (typeof composeSummary !== "function") return null;
-            return {
-              composeSummary: (activeRuntime) =>
-                Promise.resolve(composeSummary.call(service, activeRuntime)),
-            };
-          },
         },
       });
     })())

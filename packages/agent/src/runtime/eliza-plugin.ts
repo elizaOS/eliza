@@ -56,7 +56,6 @@ import {
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
 import { dstackOperatorAttestationRoute } from "../api/tee-attestation-routes.ts";
-import { resolveDefaultSessionStorePath } from "../config/paths.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -98,21 +97,18 @@ import {
 } from "./view-navigation.ts";
 export type ElizaPluginConfig = {
   workspaceDir?: string;
-  sessionStorePath?: string;
   agentId?: string;
 };
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
     config?.workspaceDir ?? resolveDefaultAgentWorkspaceDir();
   const agentId = config?.agentId ?? "main";
-  const sessionStorePath =
-    config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
   const baseProviders = [
     createWorkspaceProvider({ workspaceDir }),
     adminTrustProvider,
     adminPanelProvider,
     createSessionKeyProvider({ defaultAgentId: agentId }),
-    ...getSessionProviders({ storePath: sessionStorePath }),
+    ...getSessionProviders(),
     pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),

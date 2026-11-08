@@ -13,10 +13,6 @@ import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface AwarenessRegistryLike {
-  composeSummary: (runtime: unknown) => Promise<string>;
-}
-
 export interface AgentStatusRouteDeps {
   getWalletAddresses: () => {
     evmAddress: string | null;
@@ -41,7 +37,6 @@ export interface AgentStatusRouteDeps {
     config: ElizaConfig,
   ) => string | undefined;
   resolveProviderFromModel: (model: string) => string | null;
-  getAwarenessRegistry: () => AwarenessRegistryLike | null;
 }
 
 export interface AgentStatusRouteState {
@@ -96,16 +91,6 @@ export async function handleAgentStatusRoutes(
     );
     const canTrade = Boolean(evmAddress) && bscRpcReady;
     const automationMode = capability.automationMode;
-
-    let registrySummary: string | null = null;
-    const registry = deps.getAwarenessRegistry();
-    if (registry && state.runtime) {
-      try {
-        registrySummary = await registry.composeSummary(state.runtime);
-      } catch {
-        // Non-fatal
-      }
-    }
 
     const resolvedModel =
       state.model ??
@@ -218,7 +203,6 @@ export async function handleAgentStatusRoutes(
         canConfigurePlugins: true,
         canConfigureConnectors: true,
       },
-      ...(registrySummary !== null ? { registrySummary } : {}),
     });
     return true;
   }

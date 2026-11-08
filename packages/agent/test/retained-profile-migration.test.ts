@@ -43,10 +43,7 @@ it("keeps retired session, segment and insight rows during host migration", asyn
       (id, session_id, owner_id, agent_id, segment_ids_json, created_at, updated_at)
       VALUES ('insight', 'session', 'owner', 'agent', '["segment"]', '2026-09-23', '2026-09-23')`);
     migrations.discoverAndRegisterPluginSchemas([
-      createElizaPlugin({
-        workspaceDir: directory,
-        sessionStorePath: join(directory, "sessions.json"),
-      }),
+      createElizaPlugin({ workspaceDir: directory }),
     ]);
     await migrations.runAllPluginMigrations();
     const sessions = await adapter.db.execute(
