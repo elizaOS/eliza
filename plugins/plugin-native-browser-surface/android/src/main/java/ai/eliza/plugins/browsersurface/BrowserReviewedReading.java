@@ -30,7 +30,7 @@ public final class BrowserReviewedReading {
  private AlertDialog dialog;
  private PluginCall pending;
  private BooleanSupplier current;
- private String binding, token, text, requestId;
+ private String binding, token, text, requestId, tabId;
  private long generation, expires;
  private boolean approved;
  /**
@@ -50,17 +50,17 @@ public final class BrowserReviewedReading {
   if(uri.getHost()==null||(!"https".equals(uri.getScheme())&&!local)||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!"".equals(uri.getRawPath()))throw new IllegalArgumentException();
   return new JSONObject().put("origin",origin).put("owner",owner).put("session",session).put("expires",expires).toString();
  }
- void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
-  review(call,web,world,stillCurrent,false);
+ void review(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){
+  review(call,tab,web,world,stillCurrent,false);
  }
- void reviewQuestion(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,web,world,stillCurrent,true);}
+ void reviewQuestion(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,tab,web,world,stillCurrent,true);}
  /**
   * Stable reject codes, so the renderer never parses message text (J05). A missing isolated world
   * may fall back to a pasted excerpt; a sensitive page never may.
   */
  private static final String ISOLATED_MESSAGE="Isolated page reading is unavailable. Update Android System WebView, then reload this page.";
- private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
-  cancel();final long expected=generation;
+ private void review(PluginCall call,String tab,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
+  cancel();final long expected=generation;tabId=tab;
   // The provider cannot read in isolation: say so before anything else. No speech route, other page or reload can help, and nothing falls back to the page's own world.
   if(world==null||!world.available()){call.reject(BrowserPageReading.UNSUPPORTED_MESSAGE,BrowserPageReading.READING_UNSUPPORTED);return;}
   try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
@@ -95,9 +95,12 @@ public final class BrowserReviewedReading {
  public String consume(PluginCall call)throws Exception{
   if(!approved||!valid()||!Objects.equals(token,call.getString("readingToken"))||!Objects.equals(binding,binding(call)))throw new IllegalStateException("Reading approval expired");
   requestId=call.getString("requestId");if(requestId==null||requestId.isBlank()||requestId.length()>256)throw new IllegalArgumentException();approved=false;token=null;String result=text;text=null;
-  if("device".equals(call.getString("execution"))){expires=System.currentTimeMillis()+20*60*1000;scheduleTimeout(++generation,20*60*1000);}
-  dialog=new AlertDialog.Builder(activity).setTitle("device".equals(call.getString("execution"))?"Reading on this device":"Reading with selected agent").setMessage("Reading aloud.").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
+  // Playback outlives the review deadline on either route; Stop reading, the page or the tab ends it sooner.
+  expires=System.currentTimeMillis()+20*60*1000;scheduleTimeout(++generation,20*60*1000);
+  dialog=new AlertDialog.Builder(activity).setTitle("device".equals(call.getString("execution"))?"Reading on this device":"Reading with selected agent").setNegativeButton("Stop reading",(d,w)->cancel()).setOnCancelListener(d->cancel()).create();dialog.show();return result;
  }
  void check(){if(current!=null&&!valid())cancel();}
- void cancel(){generation++;PluginCall rejected=pending;pending=null;AlertDialog old=dialog;dialog=null;String active=requestId;requestId=null;current=null;binding=null;token=null;text=null;approved=false;if(old!=null)old.dismiss();if(rejected!=null)rejected.reject("Reading cancelled or page unavailable");if(active!=null)cancelSpeech.accept(active);}
+ /** Cancels only a reading of the given tab: another tab's load, close or crash leaves it alone. */
+ void cancelFor(String tab){if(Objects.equals(tabId,tab))cancel();}
+ void cancel(){generation++;tabId=null;PluginCall rejected=pending;pending=null;AlertDialog old=dialog;dialog=null;String active=requestId;requestId=null;current=null;binding=null;token=null;text=null;approved=false;if(old!=null)old.dismiss();if(rejected!=null)rejected.reject("Reading cancelled or page unavailable");if(active!=null)cancelSpeech.accept(active);}
 }

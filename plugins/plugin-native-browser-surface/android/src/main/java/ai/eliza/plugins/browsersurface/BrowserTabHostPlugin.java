@@ -291,7 +291,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void clearTimeout(Tab t) { if(t.timeout!=null) navigationHandler.removeCallbacks(t.timeout); t.timeout=null; }
  private void loading(Tab t) { loading(t,false); }
  private void loading(Tab t,boolean startedCallback) {
-  if(reading!=null)reading.cancel();
+  if(reading!=null)reading.cancelFor(t.id);
   if(startedCallback&&t.autofillEnabled&&!paused&&Objects.equals(presentedId,t.id))commitAutofill(t);
   else disableAutofill(t);
   if(downloads!=null)downloads.cancelReview(t.id);
@@ -311,7 +311,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void dispose(Tab t) {
   if(t.readingWorld!=null)t.readingWorld.close();
   if(t.capture!=null)t.capture.close();
-  if(reading!=null)reading.cancel();
+  if(reading!=null)reading.cancelFor(t.id);
   disableAutofill(t);
   if(downloads!=null){downloads.cancelReview(t.id);if(t.priv)downloads.forgetPrivate(t.id);}
   if(siteDialogTab==t)dismissSiteDialogs();
@@ -414,7 +414,8 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      String target = r.getUrl().toString();
      // mailto/tel/intent/market belong to other apps. The current page stays.
      if (BrowserExternalHandoff.external(target)) { if (r.isForMainFrame()) handoff(t, target, r.hasGesture()); return true; }
-     if (!safe(target)) { if (r.isForMainFrame()) fail(t,"This address type is not supported."); return true; }
+     // A page that already shows keeps showing: only a tap gets a notice, a script's scheme probe stays silent.
+     if (!safe(target)) { if (r.isForMainFrame()) { if (t.committed && t.error.isEmpty()) { if (r.hasGesture()) notice(t,"This address type is not supported."); } else fail(t,"This address type is not supported."); } return true; }
      if (r.isForMainFrame()) t.pendingMain=target;
      return false;
     }
@@ -434,7 +435,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
      // retry links and traffic challenges. Transport/TLS failures remain fatal.
      if (r.isForMainFrame()) { t.httpStatus=response.getStatusCode(); emit(t); }
     }
-    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancel();disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
+    @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) { finishAuthSave(t,null); if(t.readingWorld!=null)t.readingWorld.close(); if(reading!=null)reading.cancelFor(t.id);disableAutofill(t); if(t.fields!=null)t.fields.close(); clearTimeout(t); t.dead=true; if(siteDialogTab==t)dismissSiteDialogs(); if(fullscreenTab==t)exitFullscreen(true); t.loading=false; t.committed=false; t.error="Browser renderer stopped. Close this tab and open a new one."; t.frame.removeView(v); v.destroy(); t.message.setText(t.error); t.message.setVisibility(View.VISIBLE); JSObject event=new JSObject(); event.put("session",session); event.put("id",t.id); event.put("sequence",++sequence); event.put("error",t.error); event.put("loading",false); notifyListeners("stateChanged",event); return true; }
    });
    t.web.setWebChromeClient(new WebChromeClient() {
     @Override public void onProgressChanged(WebView v,int p) { if(p==100 && t.committed && t.error.isEmpty()) t.loading=false; syncAutofill(t); emit(t); }
@@ -462,7 +463,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
     }
     /** A capture-enabled image input offers the camera only after an explicit choice. */
     private void offerCamera(Tab t,FileChooserParams params) {
-     AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Add a photo?").setMessage(Uri.parse(t.url).getHost()+" asks for a photo. Take one with the camera, or choose an existing file. A camera photo is also saved to Pictures.")
+     AlertDialog dialog=new AlertDialog.Builder(getActivity()).setTitle("Add a photo?").setMessage(Uri.parse(t.url).getHost()+" asks for a photo. Camera photos are also saved to Pictures.")
       .setPositiveButton("Use camera",(d,w)->{siteDialogCancel=null;cameraForFile(t);})
       .setNeutralButton("Choose file",(d,w)->{siteDialogCancel=null;if(fileTab==t&&t.navigation==fileNavigation)openPicker(t,params);else{pickerOutstanding=false;cancelFile();}})
       .setNegativeButton("Cancel",null).create();
@@ -503,20 +504,24 @@ public abstract class BrowserTabHostPlugin extends Plugin {
  private void showSiteDialog(Tab t,AlertDialog dialog,Runnable cancel){
   dismissSiteDialogs();siteDialog=dialog;siteDialogTab=t;siteDialogCancel=cancel;siteDialogAutofill=false;siteDialogRevoke=null;
   for(Tab tab:tabs.values())disableAutofill(tab);
-  dialog.setOnDismissListener(d->{if(siteDialog!=dialog)return;revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();
-   // The overlay is gone: the presented tab may become fillable again.
-   Tab shown=presentedId==null?null:tabs.get(presentedId);if(shown!=null&&!shown.dead)syncAutofill(shown);});
+  dialog.setOnDismissListener(d->{
+   if(siteDialog==dialog){revokeSiteDialogAutofill();Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;siteDialogAutofill=false;if(pending!=null)pending.run();}
+   // The overlay is gone (unless a newer prompt replaced it): the presented tab may become fillable again.
+   if(siteDialog!=null)return;Tab shown=presentedId==null?null:tabs.get(presentedId);if(shown!=null&&!shown.dead)syncAutofill(shown);});
   dialog.show();
  }
- /** Dismiss the open site prompt; its request is denied or cancelled exactly once. A prompt
-  * with Autofill fields ends its framework session with cancel() first, so neither the
+ /** Dismiss the open site prompt; its request is denied or cancelled exactly once, here and
+  * now, since the dismiss callback arrives later, possibly after a newer prompt took its place.
+  * A prompt with Autofill fields ends its framework session with cancel() first, so neither the
   * dismissal (a provider may save when all fields become invisible) nor a later commit can
   * offer Save for values the site never accepted. */
  private void dismissSiteDialogs(){
   AlertDialog dialog=siteDialog;if(dialog==null)return;
   revokeSiteDialogAutofill();
   if(siteDialogAutofill){siteDialogAutofill=false;AutofillManager manager=getActivity().getSystemService(AutofillManager.class);if(manager!=null)manager.cancel();}
+  Runnable pending=siteDialogCancel;siteDialog=null;siteDialogTab=null;siteDialogCancel=null;
   dialog.dismiss();
+  if(pending!=null)pending.run();
  }
  private void revokeSiteDialogAutofill(){Runnable revoke=siteDialogRevoke;siteDialogRevoke=null;if(revoke!=null)revoke.run();}
  /** Whether the open site prompt has Autofill-bound fields (the HTTP sign-in prompt). */
@@ -895,7 +900,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   Tab tab=tabs.get(call.getString("id"));String owner=session,url=call.getString("url"),navigation=call.getString("navigation");
   java.util.function.BooleanSupplier current=()->!destroyed&&!paused&&Objects.equals(owner,session)&&Objects.equals(session,call.getString("session"))&&tab!=null&&tabs.get(tab.id)==tab&&!tab.dead&&Objects.equals(presentedId,tab.id)&&tab.web.isShown()&&tab.committed&&!tab.loading&&tab.error.isEmpty()&&Objects.equals(url,tab.url)&&Objects.equals(url,tab.web.getUrl())&&Objects.equals(navigation,String.valueOf(tab.navigation))&&url!=null&&url.startsWith("https://");
   if(!current.getAsBoolean()){call.reject("Load a visible HTTPS page before reading");return;}
-  if(question)reading.reviewQuestion(call,tab.web,tab.readingWorld,current);else reading.review(call,tab.web,tab.readingWorld,current);
+  if(question)reading.reviewQuestion(call,tab.id,tab.web,tab.readingWorld,current);else reading.review(call,tab.id,tab.web,tab.readingWorld,current);
  }); }
  @PluginMethod public void cancelReading(PluginCall call) { getActivity().runOnUiThread(()->{if(closed(call))return;if(Objects.equals(session,call.getString("session")))reading.cancel();call.resolve();}); }
  /** Releases the approved excerpt once to the host's bound speech request. */
