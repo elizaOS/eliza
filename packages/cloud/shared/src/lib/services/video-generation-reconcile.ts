@@ -25,7 +25,12 @@
  * price while the ledger falsely claimed a refund (#11942).
  */
 
-import { type Generation, generationsRepository } from "../../db/repositories/generations";
+import { ElizaError } from "@elizaos/core";
+import {
+  generationsRepository,
+  type PendingVideoSettlementRecord,
+  type VideoSettlementUpdate,
+} from "../../db/repositories/generations";
 import { findVideoProvider } from "../providers/video/registry";
 import {
   VIDEO_PENDING_SETTLEMENT_MARKER,
@@ -115,7 +120,7 @@ export function parseVideoPendingSettlement(
 }
 
 async function settleHold(
-  generation: Generation,
+  generation: PendingVideoSettlementRecord,
   settlement: VideoPendingSettlement,
   actualCost: number,
 ): Promise<CreditReconciliationResult> {
@@ -168,7 +173,7 @@ async function settleHold(
  * race, instead of silently degrading to "refund zero times".
  */
 async function ensureHoldRefunded(
-  generation: Generation,
+  generation: PendingVideoSettlementRecord,
   settlement: VideoPendingSettlement,
   reconciliation: CreditReconciliationResult,
 ): Promise<void> {
@@ -191,12 +196,25 @@ async function ensureHoldRefunded(
   });
 }
 
+async function persistSettlementUpdate(
+  generation: PendingVideoSettlementRecord,
+  update: VideoSettlementUpdate,
+): Promise<void> {
+  const receipt = await generationsRepository.updateVideoSettlement(generation.id, update);
+  if (!receipt) {
+    throw new ElizaError("Video settlement update did not persist its original row", {
+      code: "GENERATION_SETTLEMENT_NOT_PERSISTED",
+      context: { generationId: generation.id },
+    });
+  }
+}
+
 async function markFailed(
-  generation: Generation,
+  generation: PendingVideoSettlementRecord,
   settlementState: "refunded" | "refunded_expired",
   error: string,
 ): Promise<void> {
-  await generationsRepository.update(generation.id, {
+  await persistSettlementUpdate(generation, {
     status: "failed",
     error,
     metadata: { ...generation.metadata, settlement_state: settlementState },
@@ -209,8 +227,8 @@ async function markFailed(
  * (a probe that keeps failing, a still-running job) rotate to the back
  * instead of holding every batch and hiding newer settlements.
  */
-async function markReconcileAttempt(generation: Generation): Promise<void> {
-  await generationsRepository.update(generation.id, {
+async function markReconcileAttempt(generation: PendingVideoSettlementRecord): Promise<void> {
+  await persistSettlementUpdate(generation, {
     metadata: {
       ...generation.metadata,
       [VIDEO_RECONCILE_ATTEMPTED_AT_KEY]: new Date().toISOString(),
@@ -287,7 +305,7 @@ export async function reconcilePendingVideoGenerations(params: {
 
     if (job.state === "succeeded") {
       await settleHold(generation, settlement, settlement.billed_cost);
-      await generationsRepository.update(generation.id, {
+      await persistSettlementUpdate(generation, {
         status: "completed",
         storage_url: job.result.video.url,
         thumbnail_url: job.result.video.url,

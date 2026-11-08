@@ -3,7 +3,6 @@
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
-import { getTuningJobStatus } from "@elizaos/cloud-shared/lib/services/vertex-tuning";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -71,9 +70,8 @@ async function __hono_GET(request: Request) {
         );
       }
 
-      const job = await getTuningJobStatus(jobName);
       return Response.json({
-        job,
+        job: synced.job.last_remote_payload,
         jobRecord: synced.job,
         tunedModelRecord: synced.tunedModel,
       });
