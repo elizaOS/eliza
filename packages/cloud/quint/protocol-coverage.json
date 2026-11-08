@@ -458,9 +458,9 @@
     "limitations": [
       "One issuance request, one grant, two candidate credential identities with at most one persisted credential, two exchange attempts, two acknowledgement attempts, clock 0..3 measured from issuance, code deadline 1 and credential deadline 3. Attempts do not reuse slots.",
       "Client, redirect, environment, state and PKCE bytes are abstracted into matching or invalid input classes. Cryptographic algorithms and inference-policy authorities remain external assumptions.",
-      "The service captures a fresh confirmation timestamp after KMS, before awaiting SQL. Confirmation uses that captured value; transport delivery can occur after the code deadline.",
+      "The service captures a fresh confirmation timestamp after KMS, before awaiting SQL. Confirmation uses that captured value. Transport delivery can occur after the code deadline.",
       "Completed request-local timestamps and snapshots are cleared. Persistent grant, credential and reply identities remain in the state.",
-      "The credential model treats safe cleanup atomically. MobileAppGrantCleanup models planning and batch transactions separately; composition is not mechanically established.",
+      "The credential model treats safe cleanup atomically. MobileAppGrantCleanup models planning and batch transactions separately. Composition is not mechanically established.",
       "Repeated failures beyond the two attempts, arbitrary database corruption, native durable storage and multi-grant authentication traffic remain outside the credential instance."
     ]
   },
@@ -1344,8 +1344,8 @@
     "status": "partial",
     "limitations": [
       "Two grants, three credential identities, one absent-credential sentinel, two sweeps, two batches per sweep, batch sizes 1 and 2, and clock 0..3. Fifteen initial classes include shared/foreign/missing references, malformed lifecycle data, and valid/invalid tombstones.",
-      "Grant ordering is the source lexicographic expiry/creation/id order represented by distinct expiry/id ranks; creation ranks are fixed. Deleted future timestamps outside the clock horizon are represented by an invalid-time flag.",
-      "One pre-admitted acknowledgement or owner rewrite per grant may race the planner. Row locks exclude competing commits; key and reference checks follow row locking.",
+      "Grant ordering is the source lexicographic expiry/creation/id order represented by distinct expiry/id ranks. Creation ranks are fixed. Deleted future timestamps outside the clock horizon are represented by an invalid-time flag.",
+      "One pre-admitted acknowledgement or owner rewrite per grant may race the planner. Row locks exclude competing commits. Key and reference checks follow row locking.",
       "Live reference counts include both modeled grants. Arbitrary new references introduced by privileged SQL, unbounded backlogs and concurrent cleanup workers are outside this instance.",
       "Grant lifecycle validity and credential provenance group their exact source field comparisons into predicates. Secret bytes, cryptography and inference-policy admission remain external.",
       "Weak fairness settles started sweeps. Repeated cron scheduling and eventual removal of corrupt rows are not promised."
