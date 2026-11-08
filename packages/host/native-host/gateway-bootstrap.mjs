@@ -59,8 +59,8 @@ export async function startLocalGateway({
     credentialGate,
   });
   const inferenceConfigured = config.native
-    ? async () => {
-        await credentialGate();
+    ? async ({ credentialGate: checkAccount = credentialGate } = {}) => {
+        await checkAccount();
         const binding = JSON.parse(await readFile(config.bindingPath, "utf8"));
         return binding.inferenceConfigured === true;
       }

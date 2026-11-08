@@ -627,6 +627,182 @@ for (const transition of ["reset", "rotate"]) {
   });
 }
 
+test("a message's inference check and owner share one account check", async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  // Account checks for one message: a host check that ignores the gateway's
+  // check, then one that uses it in place of its own.
+  const checksPerMessage = async (useGatewayCheck) => {
+    let checks = 0;
+    const credentialGate = async () => {
+      checks++;
+      return "owner";
+    };
+    const gateway = createLocalAgentGateway({
+      upstream: target,
+      token: "upstream-authority",
+      inboundToken: "host-authority",
+      credentialGate,
+      hostPolicy: policy,
+      inferenceConfigured: async (context) => {
+        await (useGatewayCheck ? context.credentialGate : credentialGate)();
+        return true;
+      },
+    });
+    const base = await listen(gateway);
+    const post = (path, body = {}) =>
+      fetch(base + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer host-authority",
+        },
+        body: JSON.stringify(body),
+      });
+    try {
+      assert.equal((await post("/conversations")).status, 200);
+      const before = checks;
+      const sent = await post(`/conversations/${id}/messages`, {
+        text: "hello",
+      });
+      assert.equal(sent.status, 200);
+      return checks - before;
+    } finally {
+      await close(gateway);
+    }
+  };
+  try {
+    const own = await checksPerMessage(false);
+    assert.equal(await checksPerMessage(true), own - 1);
+  } finally {
+    await close(upstream);
+  }
+});
+
+test("a gateway without a credential gate passes no account check to the host", async () => {
+  const upstream = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  const contexts = [];
+  const gateway = createLocalAgentGateway({
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    hostPolicy: policy,
+    inferenceConfigured: async (context) => {
+      contexts.push(context);
+      return true;
+    },
+  });
+  const base = await listen(gateway);
+  const post = (path, body = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    const sent = await post(`/conversations/${id}/messages`, {
+      text: "hello",
+    });
+    assert.equal(sent.status, 200);
+    assert.ok(contexts.length > 0);
+    // No gate here: the host falls back to its own account check.
+    for (const context of contexts)
+      assert.equal(context?.credentialGate, undefined);
+  } finally {
+    await close(gateway);
+    await close(upstream);
+  }
+});
+
+test("a reset during the inference check refuses the retired message", async () => {
+  let owner = "first",
+    holdNext = false;
+  const owners = [];
+  let messageRequests = 0;
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const upstream = http.createServer((req, res) => {
+    if (req.url.endsWith("/messages")) messageRequests++;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({ conversation: { id, roomId: id }, text: "reply" }),
+    );
+  });
+  const target = await listen(upstream);
+  const gateway = createLocalAgentGateway({
+    upstream: target,
+    token: "upstream-authority",
+    inboundToken: "host-authority",
+    credentialGate: async () => {
+      owners.push(owner);
+      return owner;
+    },
+    hostPolicy: policy,
+    taskGateway: { revoke: async () => {} },
+    cloudHandler: async (req, res, url, { json }) => {
+      if (url.pathname !== "/identity/logout") return false;
+      json(res, 200, { disconnected: true });
+      return true;
+    },
+    inferenceConfigured: async ({ credentialGate } = {}) => {
+      if (!holdNext) return true;
+      holdNext = false;
+      // The shared check reads the account before the reset.
+      assert.equal(await (credentialGate ? credentialGate() : Promise.resolve(owner)), "first");
+      entered.resolve();
+      await release.promise;
+      return true;
+    },
+  });
+  const base = await listen(gateway);
+  const post = (path, body = {}) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer host-authority",
+      },
+      body: JSON.stringify(body),
+    });
+  try {
+    assert.equal((await post("/conversations")).status, 200);
+    holdNext = true;
+    const pending = post(`/conversations/${id}/messages`, { text: "hello" });
+    await entered.promise;
+    // Sign-out, then the next account opens the conversation as its own.
+    assert.equal((await post("/identity/logout")).status, 200);
+    owner = "second";
+    assert.equal((await post("/conversations")).status, 200);
+    owners.length = 0;
+    release.resolve();
+    // This message began before reset. Never dispatch its old input under
+    // the new account, even when that account holds the same conversation id.
+    const refused = await pending;
+    assert.equal(refused.status, 409);
+    assert.equal((await refused.json()).code, "CONVERSATION_NOT_OWNED");
+    assert.equal(messageRequests, 0);
+  } finally {
+    release.resolve();
+    await close(gateway);
+    await close(upstream);
+  }
+});
+
 const predicatePolicy = {
   ...policy,
   origins: undefined,
