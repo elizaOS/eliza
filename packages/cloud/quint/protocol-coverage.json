@@ -897,21 +897,21 @@
   },
   {
     "id": "cloud-flow-personal-shared-consent",
-    "model": null,
+    "model": "packages/cloud/quint/PersonalSharedConsent.qnt",
     "sources": [
       "packages/cloud/shared/src/db/repositories/personal-shared-group-consent-lifecycle.ts",
-      "packages/cloud/api/src/shared-runtime-conversation.ts",
-      "packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts"
+      "packages/cloud/shared/src/db/repositories/personal-shared-group-consent.ts",
+      "packages/cloud/shared/src/db/repositories/personal-shared-groups.ts",
+      "packages/cloud/shared/src/db/repositories/users.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["Safety"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite membership or group-consent model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Membership and consent bind the requesting identity | Revocation fences subsequent delivery | Conversation updates preserve complete retained content",
-      "Abstract states: invited, pending, approved, active, revoked, expired, removed"
+      "One already active all-adults binding requires its eligible owner and one eligible linked participant. Exact authority scope represents binding, owner, agent, platform, project, connector and provider chat. Policy, membership, other quorum sizes, and multi-binding transactions remain outside this projection.",
+      "An authenticated confirmation is projected as an exact challenge identifier. Provider identity and control classification are trusted inputs. User eligibility, consent loss, expiry, account retirement and explicit reactivation retain separate transitions.",
+      "The retry request records caller intent in the model. Production has no durable account-mutation queue. A live lease leaves a failed mutation retryable, and retirement keeps existing committed attempt authority.",
+      "A committed slot can retire as uncertain at the recovery horizon. Exact late receipts can reconcile it even after authority changes. Provider proof, partial or conflicting receipt sets, old-writer compatibility, real provider sends, and conversation content are separate coverage.",
+      "The hook executes actual PGlite repository transactions. Account, consent and lease mutations are represented as atomic steps. Database locking implementation, provider idempotency and wall-clock completion are outside this finite proof."
     ]
   },
   {
