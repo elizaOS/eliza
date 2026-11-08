@@ -9,8 +9,8 @@ import java.util.Locale;
  * <p>Pure JVM, no Android types, so hosts and tests share exactly one definition. An origin is
  * {@code scheme://host[:port]} for http and https only, lower case, with the scheme's default port
  * elided. Addresses with user info, without a host, with control characters, whitespace or a
- * backslash, or longer than {@link #MAX_URL} have no origin. Anything this class cannot parse has no origin: callers treat
- * {@code null} as "share nothing".
+ * backslash, or longer than {@link #MAX_URL} have no origin. Anything this class cannot parse has
+ * no origin: callers treat {@code null} as "share nothing".
  */
 public final class BrowserWebOrigin {
   public static final int MAX_URL = 8192;
