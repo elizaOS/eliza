@@ -19,6 +19,25 @@ import { orgStorageQuotaRepository } from "./org-storage-quota";
 
 export type { Generation, NewGeneration };
 
+/** Settlement authority only; this type does not claim hydrated media payloads. */
+export type PendingVideoSettlementRecord = Pick<
+  Generation,
+  "id" | "organization_id" | "user_id" | "model" | "job_id" | "metadata" | "created_at"
+>;
+
+export type VideoSettlementUpdate = Pick<
+  Partial<NewGeneration>,
+  | "status"
+  | "error"
+  | "metadata"
+  | "storage_url"
+  | "thumbnail_url"
+  | "file_size"
+  | "mime_type"
+  | "result"
+  | "completed_at"
+>;
+
 export type GenerationSummary = Omit<
   Generation,
   | "prompt"
@@ -357,9 +376,18 @@ export class GenerationsRepository {
    * sweep has not tried yet come first, oldest first; rows it tried and left
    * pending follow by their last attempt, so they cannot hold every batch.
    */
-  async listPendingVideoSettlements(limit = 50): Promise<Generation[]> {
+  async listPendingVideoSettlements(limit = 50): Promise<PendingVideoSettlementRecord[]> {
     const boundedLimit = Math.min(Math.max(limit, 1), 200);
     const rows = await dbRead.query.generations.findMany({
+      columns: {
+        id: true,
+        organization_id: true,
+        user_id: true,
+        model: true,
+        job_id: true,
+        metadata: true,
+        created_at: true,
+      },
       where: and(
         eq(generations.type, "video"),
         eq(generations.status, "pending"),
@@ -372,7 +400,7 @@ export class GenerationsRepository {
       ],
       limit: boundedLimit,
     });
-    return await Promise.all(rows.map(hydrateGeneration));
+    return rows;
   }
 
   /**
@@ -499,6 +527,23 @@ export class GenerationsRepository {
    * Updates an existing generation.
    */
   async update(id: string, data: Partial<NewGeneration>): Promise<Generation | undefined> {
+    const updated = await this.persistUpdate(id, data);
+    return updated ? await hydrateGeneration(updated) : undefined;
+  }
+
+  /** Persist coordinator fields without fetching unrelated prompt/media objects. */
+  async updateVideoSettlement(
+    id: string,
+    data: VideoSettlementUpdate,
+  ): Promise<{ id: string } | undefined> {
+    const updated = await this.persistUpdate(id, data);
+    return updated ? { id: updated.id } : undefined;
+  }
+
+  private async persistUpdate(
+    id: string,
+    data: Partial<NewGeneration>,
+  ): Promise<Generation | undefined> {
     let updateData = data;
     if (hasPayloadUpdates(data)) {
       const existing = await dbWrite.query.generations.findFirst({
@@ -520,7 +565,7 @@ export class GenerationsRepository {
       })
       .where(eq(generations.id, id))
       .returning();
-    return updated ? await hydrateGeneration(updated) : undefined;
+    return updated;
   }
 
   /**
