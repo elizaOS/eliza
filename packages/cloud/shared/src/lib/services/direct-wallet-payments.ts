@@ -2397,6 +2397,18 @@ export class DirectWalletPaymentsService {
       const completedAt = new Date();
       await hooks?.afterExternalSweep?.();
       await dbWrite.transaction(async (tx) => {
+        // Account deletion cascades from payment to outbox. Use the same order
+        // so receipt publication cannot hold the child while waiting on its parent.
+        const [payment] = await tx
+          .select({ id: cryptoPayments.id })
+          .from(cryptoPayments)
+          .where(eq(cryptoPayments.id, paymentId))
+          .for("update")
+          .limit(1);
+        if (!payment)
+          throw new ElizaError("Crypto sweep payment was removed before acknowledgement", {
+            code: "CRYPTO_SWEEP_PAYMENT_MISSING",
+          });
         const [owned] = await tx
           .select()
           .from(cryptoSweepOutbox)
