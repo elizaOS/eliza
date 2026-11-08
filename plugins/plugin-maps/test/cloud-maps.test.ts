@@ -598,7 +598,7 @@ describe("Cloud Maps coverage", () => {
       data: { action: "coverage", status: "reported" },
     });
     expect(reply?.text).toBe(
-      "Maps covers Monaco (dataset osm-monaco-2026-09-29). Routes: driving, walking and cycling, with alternatives. No live traffic, transit schedules or offline use. Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations. " +
+      "Maps covers Monaco (dataset osm-monaco-2026-09-29). Routes: driving, walking and cycling, with alternatives. No live traffic, transit schedules or offline use. Searches, search areas and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations. " +
         `Data: ${ELIZA_CLOUD_MAPS_ATTRIBUTION}`,
     );
   });

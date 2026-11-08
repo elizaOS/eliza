@@ -22,6 +22,7 @@ import { planCoveredRoutes } from "../src/components/plan-covered-routes.js";
 import { offeredTravelModes } from "../src/coverage.js";
 import { MapsError } from "../src/errors.js";
 import { serverInteract } from "../src/interact.js";
+import { mapsPlugin } from "../src/plugin.js";
 import {
   type MapsHostSavedPlace,
   parseHostSavedPlaces,
@@ -377,6 +378,62 @@ describe("saved places reconciled with the phone's list", () => {
     expect(await run(service, { action: "saved" })).toMatchObject({
       data: { device: "none" },
     });
+  });
+
+  it("says a MAPS_SAVE is the assistant's only while no phone list is registered", async () => {
+    let commit = 0;
+    const writes: SavedPlace[] = [];
+    const service = new MapsService(undefined, {
+      ...store([]),
+      save: async (request) => {
+        commit += 1;
+        const row = saved(
+          request.place,
+          request.label ?? request.place.name,
+          commit,
+        );
+        writes.push(row);
+        return {
+          savedPlace: row,
+          replayed: false,
+          commitId: `c${commit}`,
+          committedAt: "2026-10-01T00:00:00.000Z",
+          idempotencyKey: `k${commit}`,
+          currentlyApplied: true,
+          currentSavedPlace: row,
+        };
+      },
+    });
+    const mapsSave = mapsPlugin.actions?.find(
+      (action) => action.name === "MAPS_SAVE",
+    );
+    const parameters = {
+      action: "save",
+      latitude: 43.7,
+      longitude: 7.4,
+      name: "Pin",
+      label: "Dentist",
+    };
+    const save = () =>
+      mapsSave?.handler?.(
+        runtimeWith(service),
+        message(parameters),
+        undefined,
+        { parameters } as HandlerOptions,
+      );
+    expect(await save()).toMatchObject({
+      success: true,
+      text: "Saved Dentist with your assistant. It isn't in the phone's Maps list.",
+    });
+    service.registerSavedPlacesHost({
+      namespace: "phone.maps.saved-places.v1",
+      list: async () => [],
+    });
+    expect(await save()).toMatchObject({
+      success: true,
+      text: "Saved Dentist.",
+    });
+    expect(writes).toHaveLength(2);
   });
 });
 

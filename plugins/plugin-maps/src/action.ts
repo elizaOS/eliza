@@ -867,7 +867,11 @@ async function execute(
           ? saved.currentlyApplied
             ? `${saved.savedPlace.label} was already saved.`
             : `${saved.savedPlace.label} was saved previously; the current saved label is ${saved.currentSavedPlace?.label ?? "no longer available"}.`
-          : `Saved ${saved.savedPlace.label}.`;
+          : service.hasSavedPlacesHost()
+            ? `Saved ${saved.savedPlace.label}.`
+            : // MAPS_SAVE writes only the agent's store; without a device host the
+              // phone's own Maps list does not get the place.
+              `Saved ${saved.savedPlace.label} with your assistant. It isn't in the phone's Maps list.`;
         return result(
           action,
           {

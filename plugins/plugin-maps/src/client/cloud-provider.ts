@@ -61,6 +61,8 @@ export type CloudMapsServiceLimit = Readonly<{
 export type CloudMapsOptions = Readonly<{
   /** Reads the limit from a refusal; hosts may pass their shared subscription reader. */
   serviceLimit?: (error: unknown, now: number) => CloudMapsServiceLimit | null;
+  /** Whether a transport error means the device is offline; hosts may pass their connection classifier. */
+  isOffline?: (error: unknown) => boolean;
 }>;
 
 /** Human wait time for a retry, rounded up. */
@@ -70,6 +72,22 @@ export function retryWait(ms: number): string {
   const minutes = Math.ceil(secs / 60);
   if (minutes < 90) return `about ${minutes} minutes`;
   return `about ${Math.ceil(minutes / 60)} hours`;
+}
+
+/**
+ * Default offline test for a transport error. "Connection request failed" is
+ * what the native and browser connection transports reject with. A cancelled
+ * request is never offline.
+ */
+export function cloudMapsOffline(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (/cancel/i.test(error.message)) return false;
+  return (
+    error.message === "Connection request failed" ||
+    /network|offline|timed out|failed to fetch|load failed|internet/i.test(
+      error.message,
+    )
+  );
 }
 
 const DAY_MS = 86_400_000;
@@ -140,7 +158,7 @@ export function describeLocationRecipients(
       ),
   ];
   return targets.length
-    ? `Searches and route points are sent to ${targets.join(" and ")}.`
+    ? `Searches, search areas and route points are sent to ${targets.join(" and ")}.`
     : "";
 }
 
@@ -246,6 +264,7 @@ export function cloudMapsFailure(
   serviceLimit: NonNullable<
     CloudMapsOptions["serviceLimit"]
   > = cloudMapsServiceLimit,
+  isOffline: NonNullable<CloudMapsOptions["isOffline"]> = cloudMapsOffline,
 ): MapsFailure {
   if (error instanceof MapsFailure) return error;
   if (signal?.aborted)
@@ -361,12 +380,7 @@ export function cloudMapsFailure(
         );
     }
   }
-  if (
-    error instanceof Error &&
-    /network|offline|timed out|failed to fetch|load failed|internet/i.test(
-      error.message,
-    )
-  )
+  if (isOffline(error))
     return new MapsFailure(
       "offline",
       "Cloud Maps is unreachable. Check the connection.",
@@ -388,6 +402,7 @@ export function createCloudMaps(
   options: CloudMapsOptions = {},
 ) {
   const serviceLimit = options.serviceLimit ?? cloudMapsServiceLimit;
+  const isOffline = options.isOffline ?? cloudMapsOffline;
   let generation = 0;
   let coverage: CloudMapsCoverage | undefined;
   // Only a provider this instance installed is retired; another configured provider is left alone.
@@ -398,7 +413,7 @@ export function createCloudMaps(
       configure({ status: "unconfigured" });
     }
   };
-  const diagnostic = { configured: false, error: "" };
+  const diagnostic = { configured: false, error: "", message: "" };
   async function call(
     request: CloudMapsRequest,
     route: CloudMapsRoute,
@@ -408,7 +423,7 @@ export function createCloudMaps(
     try {
       return await request(route, signal, body);
     } catch (error) {
-      throw cloudMapsFailure(error, signal, serviceLimit);
+      throw cloudMapsFailure(error, signal, serviceLimit, isOffline);
     }
   }
   class CloudProvider implements MapsProvider {
@@ -429,14 +444,21 @@ export function createCloudMaps(
     async search(
       query: string,
       signal: AbortSignal,
+      options: Readonly<{ near?: Coordinate }> = {},
     ): Promise<readonly Place[]> {
       const text = query.trim();
       if (!text) return [];
       if (text.length > 300)
         throw new MapsFailure("unsupported", "Search text is too long.");
+      // `near` is a point already on the map; the caller never reads location for it.
+      const near = options.near ? coordinate(options.near) : undefined;
       return this.places(
-        (await call(this.send, "places/search", signal, { query: text }))
-          .places,
+        (
+          await call(this.send, "places/search", signal, {
+            query: text,
+            ...(near ? { near } : {}),
+          })
+        ).places,
       );
     }
     async detail(id: string, signal: AbortSignal): Promise<Place | null> {
@@ -502,6 +524,7 @@ export function createCloudMaps(
     uninstall();
     diagnostic.configured = true;
     diagnostic.error = "";
+    diagnostic.message = "";
     try {
       const captured = captureRequest();
       const request: CloudMapsRequest = async (route, signal, body) => {
@@ -599,7 +622,9 @@ export function createCloudMaps(
     } catch (error) {
       if (attempt !== generation) return;
       coverage = undefined;
-      diagnostic.error = cloudMapsFailure(error, signal, serviceLimit).code;
+      const failed = cloudMapsFailure(error, signal, serviceLimit, isOffline);
+      diagnostic.error = failed.code;
+      diagnostic.message = failed.message;
     }
   }
   return {
@@ -608,6 +633,7 @@ export function createCloudMaps(
       ++generation;
       coverage = undefined;
       diagnostic.error = "unauthorized";
+      diagnostic.message = "Sign in to Cloud to use Maps.";
       uninstall();
     },
     cloudMapsCoverage: () => coverage,
