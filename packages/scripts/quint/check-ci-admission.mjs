@@ -80,6 +80,17 @@ assert.equal(
   ).with["if-no-files-found"],
   "error",
 );
+for (const [job, name] of [
+  [shardJob, "Upload Quint evidence"],
+  [shardJob, "Upload required Quint shard manifest"],
+  [shardGate, "Upload complete Quint evidence summary"],
+]) {
+  assert.equal(
+    job.steps.find((step) => step.name === name).with.overwrite,
+    true,
+    "A retried job must replace its previous report without losing other shards",
+  );
+}
 assert.deepEqual(shardGate.needs, ["quint-models"]);
 assert.equal(shardGate.if, "always()");
 const shardGuard = shardGate.steps.find(
