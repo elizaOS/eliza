@@ -3274,6 +3274,7 @@ describe("request-bound Notes negative constraints", () => {
           evaluate: async () => ({
             success: false,
             decision: "CONTINUE" as const,
+            thought: "The final reply is still incomplete.",
             requestFullyCovered: false,
             messageToUser: "",
           }),
