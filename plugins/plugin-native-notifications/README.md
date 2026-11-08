@@ -196,5 +196,7 @@ advances it; a baseline or expired history starts future observation quietly and
 incomplete catch-up; only hydrated INBOX+UNREAD arrivals (not Sent, Spam or Trash) notify;
 dispatch is reserved before posting and an uncertain post is never replayed; at most 1,000
 unresolved notice identities are kept and overflow refuses the page instead of truncating
-it. Notices name no sender, subject or body; a tap carries only a ledger key and opens no
+it; at most five notices show at once, the oldest withdrawn first. A 403/409 from the history
+route retries and reports `grant-unavailable` after three in a row without withdrawing
+shown notices; a 401 or a failed owner/grant check withdraws them. Notices name no sender, subject or body; a tap carries only a ledger key and opens no
 message. `node --test test/native-host/mail.node.mjs` runs the JVM checks.
