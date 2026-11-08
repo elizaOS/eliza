@@ -376,6 +376,21 @@ describe("createCameraSession recording", () => {
     expect(await h.session.finishRecording()).toBe("saved");
   });
 
+  it("a bridge that throws synchronously on stop never leaves the session busy", async () => {
+    const h = harness();
+    h.camera.stopRecording.mockImplementationOnce(() => {
+      throw new Error("plugin missing");
+    });
+    await h.session.start();
+    await h.session.startRecording();
+    expect(await h.session.finishRecording()).toBe("failed");
+    expect(h.hooks.recordingFailed).toHaveBeenCalledTimes(1);
+    expect(h.session.finalizing).toBe(false);
+    expect(h.session.busy).toBe(false);
+    expect(await h.session.startRecording()).toBe("recording");
+    expect(await h.session.finishRecording()).toBe("saved");
+  });
+
   it("classifies a microphone denial", async () => {
     const h = harness({
       startRecording: async () => {

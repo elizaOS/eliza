@@ -209,6 +209,9 @@ export function createCameraSession<
     if (!recording) return Promise.resolve("failed");
     recording = false;
     const flight = (async (): Promise<CameraRecordingOutcome> => {
+      // Yield first so `finalizing` holds this flight before a bridge that throws synchronously
+      // can settle it; otherwise the settled flight would be assigned after `finally` and stick.
+      await Promise.resolve();
       notify(hooks.recordingFinishing);
       try {
         const receipt = await camera.stopRecording();
