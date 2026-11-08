@@ -1,5 +1,5 @@
 /** Runs source-linked Quint cases. Full verification is the default. */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { testOutputPath } from "./lib/test-output.ts";
+import { MAX_TIMER_DELAY_MS, runWithDeadline } from "./run-with-deadline.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const version = "0.33.1";
@@ -684,43 +685,21 @@ export async function main(
   }
 }
 
-/** Keep process-group supervision outside the synchronous compiler worker. */
-async function superviseQuintCli(args: string[]): Promise<void> {
-  const child = spawn(
-    process.execPath,
+/** Keep group ownership in this responsive controller until every child is gone. */
+function superviseQuintCli(args: string[]): void {
+  runWithDeadline(
     [
-      fileURLToPath(new URL("./run-with-deadline.ts", import.meta.url)),
-      // Use Node's maximum timer delay. CI and callers set the task deadline.
-      String(2_147_483_647),
+      String(MAX_TIMER_DELAY_MS),
       "--",
       process.execPath,
       fileURLToPath(import.meta.url),
       "--quint-worker",
       ...args,
     ],
-    { stdio: "inherit" },
+    // Leave room for the two-second reap check before an enclosing default
+    // ten-second supervisor can terminate this controller.
+    3_000,
   );
-  let interrupted: NodeJS.Signals | undefined;
-  const interrupt = (signal: NodeJS.Signals) => {
-    interrupted ??= signal;
-    child.kill(signal);
-  };
-  const onInterrupt = () => interrupt("SIGINT");
-  const onTerminate = () => interrupt("SIGTERM");
-  process.on("SIGINT", onInterrupt);
-  process.on("SIGTERM", onTerminate);
-  try {
-    process.exitCode = await new Promise<number>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("close", (code, signal) => {
-        const observed = interrupted ?? signal;
-        resolve(observed === "SIGINT" ? 130 : observed ? 143 : (code ?? 1));
-      });
-    });
-  } finally {
-    process.removeListener("SIGINT", onInterrupt);
-    process.removeListener("SIGTERM", onTerminate);
-  }
 }
 
 if (
