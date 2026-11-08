@@ -210,7 +210,9 @@
       "id": "checkout-credit-orders",
       "sources": [
         "packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts",
-        "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts"
+        "packages/cloud/shared/src/db/schemas/stripe-checkout-orders.ts",
+        "packages/cloud/api/src/checkout-reconciliation.ts",
+        "packages/cloud/api/stripe/create-checkout-session/route.ts"
       ],
       "states": [
         "quoted",
@@ -225,15 +227,15 @@
         "A settled order has one immutable credit receipt."
       ],
       "assumptions": [
-        "Finite models cover only their documented bounds; implementation refinement is not established.",
-        "Provider truth, network effects, database isolation and cryptographic validation need independent evidence."
+        "The bounded settlement and retry-time models have separate finite domains and external provider assumptions.",
+        "Their composition and correspondence to the TypeScript implementation remain unproved."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["checkout_credit_settlement.qnt", "checkout_retry_clock.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "Build the finite transition model and connect adversarial implementation tests."
+        "Verify complete provider receipt provenance, delayed arrival and recovery interleavings against the implementation."
       ]
     },
     {

@@ -3,7 +3,7 @@
 // one PaymentIntent, one organization. A step represents a complete DB transaction
 // or one external effect. Provider response loss is independent of acceptance.
 // Stable provider idempotency is assumed only inside its original retention window;
-// checkout_retry_clock.qnt separately exposes the current retry-clock gap.
+// checkout_retry_clock.qnt separately models the immutable dispatch-time gate.
 // No fairness, SDK refinement, cryptography, arbitrary decimal, SQL lock or payout proof.
 module checkout_credit_settlement {
   type State = {

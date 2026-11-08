@@ -99,7 +99,7 @@ export async function installStripeCheckoutTestSchema(
   await execute(
     await readFile(
       new URL(
-        "../../../db/migrations/0558_stripe_checkout_provider_started_at.sql",
+        "../../../db/migrations/0559_stripe_checkout_provider_started_at.sql",
         import.meta.url,
       ),
       "utf8",

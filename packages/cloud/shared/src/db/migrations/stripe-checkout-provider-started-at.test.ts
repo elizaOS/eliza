@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 const db = new PGlite();
 afterAll(async () => db.close());
 
-test("0558 preserves unknown historical dispatch and enforces write-once new dispatch", async () => {
+test("0559 preserves unknown historical dispatch and enforces write-once new dispatch", async () => {
   await db.exec(`
     CREATE TABLE organizations(id uuid PRIMARY KEY);
     CREATE TABLE users(id uuid PRIMARY KEY, organization_id uuid);
@@ -30,7 +30,7 @@ test("0558 preserves unknown historical dispatch and enforces write-once new dis
     "UPDATE stripe_checkout_orders SET status='provider_started'; UPDATE stripe_checkout_orders SET status='provider_ambiguous'",
   );
   const migration = await readFile(
-    new URL("./0558_stripe_checkout_provider_started_at.sql", import.meta.url),
+    new URL("./0559_stripe_checkout_provider_started_at.sql", import.meta.url),
     "utf8",
   );
   await db.exec(migration);
