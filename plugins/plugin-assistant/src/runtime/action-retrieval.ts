@@ -188,13 +188,15 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_REMINDERS: ["TRIGGER"],
   OWNER_ALARMS: ["TRIGGER"],
   OWNER_ROUTINES: ["TRIGGER"],
-  // Alarm-shaped candidates: same dual hint as reminders/habits — the
-  // owner umbrella plus the always-registered TRIGGER scheduler.
-  ADD_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  SET_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  ALARM_CREATE: ["OWNER_ALARMS", "TRIGGER"],
-  WAKE_ME_UP: ["OWNER_ALARMS", "TRIGGER"],
+  // Alarm-shaped candidates hint the device Clock proposal first: it is the
+  // only path that rings, and it validates only on an authenticated device
+  // turn, so hosts without one keep the owner umbrella plus the
+  // always-registered TRIGGER scheduler.
+  ADD_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  SET_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  ALARM_CREATE: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
+  WAKE_ME_UP: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   // Coding/repo-shaped candidates bind to the TASKS coding umbrella. Stage-1
   // invents CODE_*/PR spellings for repo asks ("add a one-line description to
   // the readme and put up a pr" → CODE_EDIT + CODE_PR_CREATE, live
@@ -349,7 +351,7 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
   OWNER_DELETE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_CREATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
   OWNER_DELETE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
-  OWNER_CREATE_ALARM: ["OWNER_ALARMS", "TRIGGER"],
+  OWNER_CREATE_ALARM: ["PROPOSE_DEVICE_ACTION", "OWNER_ALARMS", "TRIGGER"],
   OWNER_DELETE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   OWNER_CREATE_ROUTINE: ["OWNER_ROUTINES", "TRIGGER"],
   // Bare "SEARCH" is a routine Stage-1 invention for open-web asks ("latest

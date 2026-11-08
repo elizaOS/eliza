@@ -290,6 +290,7 @@ export { registerLocalCalendarUpdatePlanner } from "./services/device-actions/ca
 export {
   DEVICE_VIEWS,
   DeviceActionError,
+  deviceOperationSupportedByCapabilities,
   validateDeviceOperation,
 } from "./services/device-actions/contract.ts";
 export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";

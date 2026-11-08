@@ -43,6 +43,7 @@ describe("candidate hints for native-owned domains", () => {
   it("keeps today's owner and scheduler hints without the setting", () => {
     vi.stubEnv("ELIZA_NATIVE_OWNED_DOMAINS", "");
     expect(parentAliasesForCandidateAction("WAKE_ME_UP")).toEqual([
+      "PROPOSE_DEVICE_ACTION",
       "OWNER_ALARMS",
       "TRIGGER",
     ]);
@@ -50,5 +51,21 @@ describe("candidate hints for native-owned domains", () => {
       "OWNER_REMINDERS",
       "TRIGGER",
     ]);
+  });
+
+  it.each([
+    "ADD_ALARM",
+    "SET_ALARM",
+    "CREATE_ALARM",
+    "ALARM_CREATE",
+    "WAKE_ME_UP",
+    "OWNER_CREATE_ALARM",
+  ])("hints the device Clock proposal before OWNER_ALARMS for %s", (name) => {
+    vi.stubEnv("ELIZA_NATIVE_OWNED_DOMAINS", "");
+    const aliases = parentAliasesForCandidateAction(name);
+    expect(aliases[0]).toBe("PROPOSE_DEVICE_ACTION");
+    expect(aliases.indexOf("PROPOSE_DEVICE_ACTION")).toBeLessThan(
+      aliases.indexOf("OWNER_ALARMS"),
+    );
   });
 });

@@ -11,7 +11,7 @@ describe("lifeops provider routing text", () => {
 
   it("keeps every owner route without the setting", () => {
     expect(lifeOpsProviderDescription(new Set())).toContain(
-      "Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES,",
+      "Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to the device Clock proposal (PROPOSE_DEVICE_ACTION) when the turn offers clock handoff, otherwise OWNER_ALARMS (an in-app reminder that does not ring), habits/routines to OWNER_ROUTINES,",
     );
   });
 });

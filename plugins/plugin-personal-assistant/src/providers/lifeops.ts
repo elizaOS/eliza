@@ -21,7 +21,7 @@ import type {
 import {
   ElizaError,
   evaluateOwnerExclusiveDisclosure,
-  getAccountPrivacy,
+  getActiveRoutingContextsForTurn,
   getConnectorAccountManager,
   type IAgentRuntime,
   logger,
@@ -48,10 +48,6 @@ import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
-import {
-  canSurfaceForAudience,
-  type LifeOpsAudience,
-} from "../lifeops/privacy.js";
 import {
   canSurfaceConnectorAccountData,
   connectorAccountPrivacyKey,
@@ -285,11 +281,23 @@ function summarizeGmailTriage(summary: LifeOpsGmailTriageSummary): string[] {
   return [`Inbox: ${parts.join(", ")}`];
 }
 
-function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
+/**
+ * The name always renders (timezone is in the timing facts). Relationship,
+ * orientation, gender, age, location and travel preferences are sensitive and
+ * render only on a turn routed to stored personal facts (`memory`), never on
+ * an unrelated calendar or email turn.
+ */
+function summarizeOwnerProfile(
+  profile: LifeOpsOwnerProfile,
+  profileTurn: boolean,
+): string[] {
+  if (!profileTurn) return [`Owner profile: name=${profile.name}`];
   return [
     `Owner profile: name=${profile.name} | relationship=${profile.relationshipStatus} | partner=${profile.partnerName} | orientation=${profile.orientation} | gender=${profile.gender} | age=${profile.age} | location=${profile.location} | travelPrefs=${profile.travelBookingPreferences}`,
   ];
 }
+
+const OWNER_PROFILE_CONTEXT = "memory";
 
 function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
   const timezone = facts.timezone?.value;
@@ -341,7 +349,10 @@ function summarizeOwnerTimingFacts(facts: OwnerFacts): string[] {
 const OWNER_ROUTES: ReadonlyArray<[NativeOwnedDomain, string]> = [
   ["todos", "todos to OWNER_TODOS"],
   ["reminders", "reminders to OWNER_REMINDERS"],
-  ["alarms", "alarms to OWNER_ALARMS"],
+  [
+    "alarms",
+    "alarms to the device Clock proposal (PROPOSE_DEVICE_ACTION) when the turn offers clock handoff, otherwise OWNER_ALARMS (an in-app reminder that does not ring)",
+  ],
 ];
 
 /**
@@ -376,6 +387,7 @@ export const lifeOpsProvider: Provider = {
     "screen_time",
     "browser",
     "messaging",
+    OWNER_PROFILE_CONTEXT,
   ],
   contextGate: {
     anyOf: [
@@ -390,6 +402,7 @@ export const lifeOpsProvider: Provider = {
       "screen_time",
       "browser",
       "messaging",
+      OWNER_PROFILE_CONTEXT,
     ],
   },
   cacheScope: "turn",
@@ -397,7 +410,7 @@ export const lifeOpsProvider: Provider = {
   async get(
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
+    state: State,
     context?: ProviderExecutionContext,
   ): Promise<ProviderResult> {
     // The destination decides the audience, never the sender's claim about
@@ -406,9 +419,10 @@ export const lifeOpsProvider: Provider = {
     // this provider with OWNER_EXCLUSIVE_DISCLOSURE_GATE via
     // `ownerPrivateProvider`, and this check is the same evidence read inside
     // the provider so a direct call cannot bypass it.
+    // Past this gate the audience is always the owner, so the per-account
+    // owner_only/public redaction never applies below.
     const disclosure = evaluateOwnerExclusiveDisclosure(message);
-    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
-    if (audience !== "owner") {
+    if (!disclosure.allowed) {
       return { text: "", values: {}, data: {} };
     }
     const isOwner = await hasLifeOpsAccess(runtime, message);
@@ -436,7 +450,9 @@ export const lifeOpsProvider: Provider = {
         ownerProfile,
         ownerFacts,
         { overview, completedToday },
-        connectorAccounts,
+        ,
+        // The hole above is the connector-account inventory: it is read only
+        // so its failure stays fatal (the unavailable block).
         privacyPolicies,
         googleAccountsRead,
         connectorDegradationLines,
@@ -512,43 +528,6 @@ export const lifeOpsProvider: Provider = {
         agentId: runtime.agentId,
         entityId: message.entityId,
       });
-      const privacyByAccountKey = new Map<
-        string,
-        ReturnType<typeof getAccountPrivacy>
-      >();
-      for (const account of connectorAccounts) {
-        const privacy = getAccountPrivacy(account);
-        privacyByAccountKey.set(account.id, privacy);
-        if (account.externalId) {
-          privacyByAccountKey.set(account.externalId, privacy);
-        }
-        const email =
-          typeof account.metadata?.email === "string"
-            ? account.metadata.email.toLowerCase()
-            : null;
-        if (email) {
-          privacyByAccountKey.set(`email:${email}`, privacy);
-        }
-      }
-
-      const resolveAccountPrivacy = (
-        connectorAccountId: string | null,
-        identityEmail: string | null,
-      ): ReturnType<typeof getAccountPrivacy> => {
-        if (connectorAccountId) {
-          const direct = privacyByAccountKey.get(connectorAccountId);
-          if (direct) return direct;
-        }
-        if (identityEmail) {
-          const byEmail = privacyByAccountKey.get(
-            `email:${identityEmail.toLowerCase()}`,
-          );
-          if (byEmail) return byEmail;
-        }
-        return "owner_only";
-      };
-
-      let privacyFilteredCount = 0;
       const ownerLines = summarizeOccurrences(
         "Owner active items:",
         overview.owner.occurrences,
@@ -565,6 +544,7 @@ export const lifeOpsProvider: Provider = {
       const accountLines: string[] = [];
       let nextEventContext: LifeOpsNextCalendarEventContext | null = null;
       let calendarReadDeferred = false;
+      let calendarReadAttempted = false;
       let gmailSummary: LifeOpsGmailTriageSummary | null = null;
 
       try {
@@ -581,20 +561,6 @@ export const lifeOpsProvider: Provider = {
               ? (account.grant.connectorAccountId ??
                 deriveConnectorAccountIdFromGrant(account.grant))
               : null;
-            const identityEmail =
-              typeof (account.identity as Record<string, unknown> | null)
-                ?.email === "string"
-                ? String((account.identity as Record<string, unknown>).email)
-                : null;
-            const accountPrivacy = resolveAccountPrivacy(
-              connectorAccountId,
-              identityEmail,
-            );
-            if (!canSurfaceForAudience(accountPrivacy, audience)) {
-              privacyFilteredCount += 1;
-              accountLines.push("- Google account [redacted: owner_only]");
-              continue;
-            }
             const policy = connectorAccountId
               ? (privacyPolicies.get(
                   connectorAccountPrivacyKey("google", connectorAccountId),
@@ -631,22 +597,6 @@ export const lifeOpsProvider: Provider = {
             ? (status.grant.connectorAccountId ??
               deriveConnectorAccountIdFromGrant(status.grant))
             : null;
-          const statusIdentityEmail =
-            typeof (status.identity as Record<string, unknown> | null)
-              ?.email === "string"
-              ? String((status.identity as Record<string, unknown>).email)
-              : null;
-          const statusPrivacy = resolveAccountPrivacy(
-            connectorAccountId,
-            statusIdentityEmail,
-          );
-          const statusAllowedByMetadataPrivacy = canSurfaceForAudience(
-            statusPrivacy,
-            audience,
-          );
-          if (!statusAllowedByMetadataPrivacy) {
-            privacyFilteredCount += 1;
-          }
           const policy = connectorAccountId
             ? (privacyPolicies.get(
                 connectorAccountPrivacyKey("google", connectorAccountId),
@@ -661,9 +611,8 @@ export const lifeOpsProvider: Provider = {
           );
 
           if (hasCalendar) {
-            if (!statusAllowedByMetadataPrivacy) {
-              calendarLines.push("Calendar context [redacted: owner_only]");
-            } else if (
+            calendarReadAttempted = true;
+            if (
               !canSurfaceConnectorAccountData({
                 context: egressContext,
                 provider: "google",
@@ -698,9 +647,7 @@ export const lifeOpsProvider: Provider = {
           }
 
           if (hasGmail) {
-            if (!statusAllowedByMetadataPrivacy) {
-              emailLines.push("Gmail context [redacted: owner_only]");
-            } else if (
+            if (
               !canSurfaceConnectorAccountData({
                 context: egressContext,
                 provider: "google",
@@ -736,7 +683,7 @@ export const lifeOpsProvider: Provider = {
           }
         }
 
-        if (calendarLines.length === 0 && audience === "owner") {
+        if (!calendarReadAttempted) {
           if (context?.referenceBodyDeferred === true) {
             calendarReadDeferred = true;
             calendarLines.push(CALENDAR_READ_DEFERRED_LINE);
@@ -774,12 +721,6 @@ export const lifeOpsProvider: Provider = {
         );
       }
 
-      if (privacyFilteredCount > 0) {
-        logger.debug(
-          `[LifeOpsPrivacy] filtered ${privacyFilteredCount} accounts of provider google for audience ${audience}`,
-        );
-      }
-
       const instructions = [
         "## Owner Operations",
         // Per-action routing ("Use OWNER_TODOS for…") is not repeated here: every
@@ -801,11 +742,14 @@ export const lifeOpsProvider: Provider = {
         "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
         "Confirm reminders and scheduling by naming the thing and the time ('I'll remind you the morning of the 27th'); never mention trigger kinds or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
         "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
-        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
+        "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile. Its full fields are listed below only on a turn routed to stored personal facts (memory context); otherwise only the name is shown, and an unshown field is not missing. If a field is not n/a, treat it as known instead of saying it is missing.",
         "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
       ];
+      const profileTurn = getActiveRoutingContextsForTurn(state, message).some(
+        (active) => `${active}`.toLowerCase() === OWNER_PROFILE_CONTEXT,
+      );
       const ownerContext = [
-        ...summarizeOwnerProfile(ownerProfile),
+        ...summarizeOwnerProfile(ownerProfile, profileTurn),
         ...summarizeOwnerTimingFacts(ownerFacts),
       ];
       return {
