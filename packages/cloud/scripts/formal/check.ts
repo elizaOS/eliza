@@ -32,6 +32,7 @@ const manifest = JSON.parse(
     invariants: string[];
     assumptions: string[];
     maxSteps: number;
+    conformance?: string;
   }>;
 };
 const files = readdirSync(path.join(formal, "models")).filter((name) =>
@@ -51,6 +52,9 @@ for (const model of manifest.models) {
     throw new Error(`Incomplete contract: ${model.id}`);
   }
   for (const source of model.sources) readFileSync(path.join(root, source));
+  if (model.conformance && !model.sources.includes(model.conformance)) {
+    throw new Error(`Conformance script is not source-hashed: ${model.id}`);
+  }
 }
 for (const file of files) {
   if (!manifest.models.some((model) => model.file === file)) {
@@ -174,14 +178,19 @@ for (const model of modelsToRun) {
           `--seed=${seed}`,
         ]),
       ];
+  if (model.conformance) commands.push(["conformance", model.conformance]);
   for (const [index, args] of commands.entries()) {
     console.log(`${model.id}: ${args[0]}`);
-    const result = spawnSync(process.execPath, [cli, ...args], {
-      cwd: output,
-      encoding: "utf8",
-      timeout: verifying ? 300_000 : 120_000,
-      maxBuffer: 16 * 1024 * 1024,
-    });
+    const result = spawnSync(
+      process.execPath,
+      args[0] === "conformance" ? [path.join(root, args[1])] : [cli, ...args],
+      {
+        cwd: output,
+        encoding: "utf8",
+        timeout: verifying ? 300_000 : 120_000,
+        maxBuffer: 16 * 1024 * 1024,
+      },
+    );
     const log = `${result.stdout ?? ""}${result.stderr ?? ""}`;
     writeFileSync(path.join(output, `${model.id}-${index}.log`), log);
     results.push({

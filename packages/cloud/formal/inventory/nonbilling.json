@@ -1151,6 +1151,47 @@
         "Model worker admission, queue capacity, provider readiness and process-to-GPU lifecycle.",
         "Verify deployed model completion and readiness against the actual GPU and model configuration."
       ]
+    },
+    {
+      "id": "native-cloud-paid-access",
+      "sources": [
+        "packages/cloud/sdk/native-host/cloud-services.mjs",
+        "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/native-host/gateway.e2e.test.mjs",
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/host/native-host/gateway-bootstrap.test.mjs",
+        "packages/cloud/formal/conformance/native-access.ts"
+      ],
+      "states": [
+        "idle",
+        "shared_read",
+        "replaced_read",
+        "settled",
+        "generation_rejected"
+      ],
+      "invariants": [
+        "Only callers with the current generation and revision join a pending read.",
+        "Completion of an older read cannot clear its replacement.",
+        "A response from a retired account generation is rejected."
+      ],
+      "assumptions": [
+        "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
+        "A revision change prevents joining an older read. Existing callers may still receive an older revision; only generation fences returned data.",
+        "The model checks shared-read identity, conditional finalizer cleanup and account-generation rejection. Native gateway and provider response classification are exercised by the conformance hook, not proved by this model.",
+        "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved."
+      ],
+      "models": [
+        "native_access_coalescing.qnt",
+        "native_gateway_admission.qnt"
+      ],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model upstream room allocation, task presentation, stream acknowledgement and process shutdown beyond the admission/dispatch/reply checks.",
+        "Model startup credential replay, provider error classification and account changes during a remote round trip."
+      ]
     }
   ]
 }

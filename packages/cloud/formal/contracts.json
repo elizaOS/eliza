@@ -328,6 +328,47 @@
         "No unbounded backlog, new arrivals, worker availability, general liveness or implementation refinement is proved."
       ],
       "maxSteps": 20
+    },
+    {
+      "id": "native-access-coalescing",
+      "file": "native_access_coalescing.qnt",
+      "sources": [
+        "packages/cloud/sdk/native-host/cloud-services.mjs",
+        "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/native-host/gateway.e2e.test.mjs",
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/host/native-host/gateway-bootstrap.test.mjs",
+        "packages/cloud/formal/conformance/native-access.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
+        "A revision change prevents joining an older read. Existing callers may still receive an older revision; only generation fences returned data.",
+        "The model checks shared-read identity, conditional finalizer cleanup and account-generation rejection. Native gateway and provider response classification are exercised by the conformance hook, not proved by this model.",
+        "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved."
+      ],
+      "maxSteps": 25,
+      "conformance": "packages/cloud/formal/conformance/native-access.ts"
+    },
+    {
+      "id": "native-gateway-admission",
+      "file": "native_gateway_admission.qnt",
+      "sources": [
+        "packages/agent/native-host/gateway.mjs",
+        "packages/agent/native-host/gateway.e2e.test.mjs",
+        "packages/host/native-host/gateway-bootstrap.mjs",
+        "packages/host/native-host/gateway-bootstrap.test.mjs",
+        "packages/cloud/formal/conformance/native-access.ts"
+      ],
+      "invariants": ["safety"],
+      "assumptions": [
+        "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
+        "Matches source admission timing: requestEpoch is captured after inference readiness. A reset during inference discards the memo and reads current ownership again.",
+        "Dispatch and reply separately recheck current ownership. Upstream conversation-ID allocation, credential-provider truth, task presentation, streaming and process shutdown are outside this model."
+      ],
+      "maxSteps": 25,
+      "conformance": "packages/cloud/formal/conformance/native-access.ts"
     }
   ],
   "pendingDomains": [
