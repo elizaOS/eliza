@@ -58,6 +58,7 @@ import {
 import {
   type AccessTokenOutcome,
   getAccessToken,
+  getAccessTokenCredentialReceipt,
   saveCredentials,
 } from "../auth/credentials.js";
 import { accountRefreshMutex } from "../auth/refresh-mutex.js";
@@ -939,11 +940,19 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             // Only flag for re-auth on a genuine auth failure; a transient
             // network/5xx blip must not pull a healthy account out of rotation.
             if (accessTokenFailureIsAuth(resolveOutcome, resolveError)) {
-              await pool.markNeedsReauth(
-                account.id,
-                "No valid credential / token refresh failed",
-                { providerId },
-              );
+              const receipt = resolveOutcome
+                ? getAccessTokenCredentialReceipt(resolveOutcome)
+                : undefined;
+              if (receipt) {
+                await pool.markNeedsReauth(
+                  account.id,
+                  "No valid credential / token refresh failed",
+                  {
+                    providerId,
+                    expectedCredentialGeneration: receipt.credentialGeneration,
+                  },
+                );
+              }
             }
             continue;
           }
@@ -991,19 +1000,22 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       if (providerId === "openai-codex") {
         await adoptRotatedCodexTokens(accountId);
       }
+      let expectedCredentialGeneration: string | undefined;
       try {
         const tokenOutcome = await getAccessToken(providerId, accountId, {
           outcome: true,
           storagePolicy: accountStoragePolicy(),
         });
+        const receipt = getAccessTokenCredentialReceipt(tokenOutcome);
+        expectedCredentialGeneration = receipt?.credentialGeneration;
         if (tokenOutcome.ok) {
           const token = tokenOutcome.accessToken;
           if (isSubscriptionProvider(providerId)) {
-            const record = pool.get(accountId, providerId);
             await pool.refreshUsage(accountId, token, {
               providerId,
-              ...(record?.organizationId
-                ? { codexAccountId: record.organizationId }
+              expectedCredentialGeneration,
+              ...(receipt?.organizationId
+                ? { codexAccountId: receipt.organizationId }
                 : {}),
             });
           } else if (isDirectAccountProvider(providerId)) {
@@ -1018,7 +1030,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             const probe = await probeDirectApiKey(providerId, token);
             if (!probe.ok) {
               if (probe.status === 401 || probe.status === 403) {
-                return pool.markNeedsReauth(accountId, detail, { providerId });
+                if (expectedCredentialGeneration) {
+                  await pool.markNeedsReauth(accountId, detail, {
+                    providerId,
+                    expectedCredentialGeneration,
+                  });
+                }
+                return;
               }
               logger.info(
                 `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify was inconclusive (probe status ${probe.status}${probe.error ? `: ${probe.error}` : ""}) — leaving rotation state to the keep-alive sweep`,
@@ -1045,7 +1063,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           return;
         }
       }
-      return pool.markNeedsReauth(accountId, detail, { providerId });
+      if (expectedCredentialGeneration) {
+        await pool.markNeedsReauth(accountId, detail, {
+          providerId,
+          expectedCredentialGeneration,
+        });
+      }
     },
     async recordUsage(providerId: LinkedAccountProviderId, accountId, result) {
       // Session end is the natural sync point for tokens a Codex CLI rotated

@@ -31,7 +31,10 @@
       "RotatedGrantIsRetained",
       "QueueRereadsCurrentRecord",
       "StalePolicyCommitThrows",
-      "ReplacementResultUsesCurrentCredential"
+      "ReplacementResultUsesCurrentCredential",
+      "SuccessfulOutcomeOwnsGeneration",
+      "RejectedGrantKeepsCapturedGeneration",
+      "CommitReceiptMatchesDecision"
     ],
     "status": "partial",
     "limitations": [
