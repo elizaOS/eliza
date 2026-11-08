@@ -53,6 +53,20 @@ describe("PseudonymSession restore", () => {
 		expect(swapped).not.toContain("Apt 4");
 		expect(session.restoreText(swapped)).toBe(`Ship to ${ADDRESS} Apt 4`);
 	});
+
+	it("restores a surrogate echoed twice to the real address", async () => {
+		const session = newSession();
+		await session.learn(PROMPT);
+		const first = session.substituteText(`Ship to ${ADDRESS} Apt 4`);
+		await session.learn(first);
+		const second = `Leave at ${session.substituteText(first).slice(8)} Unit 9`;
+		await session.learn(second);
+		const swapped = session.substituteText(second);
+		expect(swapped).not.toContain("Unit 9");
+		expect(session.restoreText(swapped)).toBe(
+			`Leave at ${ADDRESS} Apt 4 Unit 9`,
+		);
+	});
 });
 
 describe("model dispatch with PII swap", () => {

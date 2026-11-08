@@ -996,7 +996,7 @@ export class RuntimeModelDispatch {
 		};
 	}
 
-	/** Resolve an action chain once; nested attempts clear the routing context. */
+	/** Resolve an action chain once; nested attempts clear only modelClass. */
 	private routeActionModel<T extends keyof ModelParamsMap, R>(
 		modelType: T,
 		params: ModelParamsMap[T],

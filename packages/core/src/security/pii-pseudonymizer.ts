@@ -861,17 +861,23 @@ export class PseudonymSession {
 			to: e.value,
 		}));
 		// A learned value can contain an earlier surrogate (a model reply echoed
-		// into a later prompt, e.g. "<surrogate> Apt 4"). Restore that inner
-		// surrogate too, so restore always yields the user's real text.
+		// into a later prompt, e.g. "<surrogate> Apt 4"), and that value's own
+		// surrogate can be echoed again. Restore inner surrogates to a fixed point,
+		// so restore always yields the user's real text.
 		const inner = compileReplacer(restorePairs);
-		this.restoreReplacer =
-			inner &&
-			compileReplacer(
-				restorePairs.map(({ from, to }) => ({
-					from,
-					to: to.replace(inner.regex, (m) => inner.map.get(m) ?? m),
-				})),
-			);
+		const resolve = (text: string): string => {
+			if (!inner) return text;
+			for (let depth = 0; depth < restorePairs.length; depth += 1) {
+				inner.regex.lastIndex = 0;
+				const next = text.replace(inner.regex, (m) => inner.map.get(m) ?? m);
+				if (next === text) break;
+				text = next;
+			}
+			return text;
+		};
+		this.restoreReplacer = compileReplacer(
+			restorePairs.map(({ from, to }) => ({ from, to: resolve(to) })),
+		);
 		this.replacersDirty = false;
 	}
 
