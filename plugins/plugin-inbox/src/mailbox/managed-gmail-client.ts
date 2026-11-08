@@ -143,6 +143,12 @@ export class ManagedGmailMailboxClient {
   private optionalString(value: unknown): string | null {
     return value == null ? null : this.string(value);
   }
+  /** A blank From header still lists the message, so the page keeps its rows. */
+  private sender(value: unknown): string {
+    if (value == null) return "Unknown sender";
+    if (typeof value !== "string") throw this.invalid();
+    return value.trim() ? value : "Unknown sender";
+  }
   private async call(
     path: string,
     signal: AbortSignal,
@@ -235,7 +241,7 @@ export class ManagedGmailMailboxClient {
       id: this.string(data.externalId),
       threadId: this.string(data.threadId),
       subject: data.subject,
-      from: this.string(data.from),
+      from: this.sender(data.from),
       fromEmail: this.optionalString(data.fromEmail),
       to: data.to.map((row) => this.string(row)),
       cc: Array.isArray(data.cc) ? data.cc.map((row) => this.string(row)) : [],

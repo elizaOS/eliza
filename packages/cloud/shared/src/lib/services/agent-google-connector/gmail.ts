@@ -140,7 +140,7 @@ function parseMailbox(value: string): {
   email: string | null;
 } {
   const trimmed = value.trim();
-  const match = trimmed.match(/^(.*?)(?:<([^>]+)>)$/);
+  const match = trimmed.match(/^(.*?)(?:<([^>]*)>)$/);
   if (match) {
     const display = stripQuotedDisplayName(match[1] ?? "").trim();
     const email = (match[2] ?? "").trim().toLowerCase();
@@ -334,7 +334,7 @@ export function normalizeGoogleGmailMessage(
     externalId,
     threadId,
     subject,
-    from: fromMailbox.display,
+    from: fromMailbox.display || fromMailbox.email || "Unknown sender",
     fromEmail: fromMailbox.email,
     replyTo: replyToMailbox?.email || replyToMailbox?.display || null,
     to,
@@ -381,7 +381,7 @@ function normalizeGoogleGmailSubscriptionHeader(
       ? new Date(receivedAtMs).toISOString()
       : new Date().toISOString(),
     subject: readHeaderValue(headers, "Subject") || "(no subject)",
-    fromDisplay: from.display,
+    fromDisplay: from.display || from.email || "Unknown sender",
     fromEmail: from.email,
     listId: readHeaderValue(headers, "List-Id") || null,
     listUnsubscribe: readHeaderValue(headers, "List-Unsubscribe") || null,

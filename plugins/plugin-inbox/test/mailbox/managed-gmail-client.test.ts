@@ -166,6 +166,32 @@ describe("ManagedGmailMailboxClient", () => {
     ).rejects.toThrow(TypeError);
   });
 
+  it("labels a blank sender 'Unknown sender' and keeps the whole page", async () => {
+    const rows = Array.from({ length: 25 }, (_, i) => ({
+      ...message,
+      externalId: `m${i}`,
+      from: i === 7 ? "" : i === 8 ? "  " : "F",
+    }));
+    const { client } = fixture({
+      "/gmail/search?": () => ({
+        messages: rows,
+        syncedAt: "2026-10-08T00:00:00Z",
+      }),
+      "/gmail/read?": () => ({
+        message: { ...message, from: 42 },
+        bodyText: "",
+      }),
+    });
+    const page = await client.gmailSearch("grant", "in:inbox", signal(), 25);
+    expect(page.messages).toHaveLength(25);
+    expect(page.messages[7]?.from).toBe("Unknown sender");
+    expect(page.messages[8]?.from).toBe("Unknown sender");
+    expect(page.messages[9]?.from).toBe("F");
+    await expect(client.gmailRead("grant", "m1", signal())).rejects.toThrow(
+      "invalid-response",
+    );
+  });
+
   it("defaults absent capabilities to false and one outgoing attachment", async () => {
     const base = {
       version: 1,
