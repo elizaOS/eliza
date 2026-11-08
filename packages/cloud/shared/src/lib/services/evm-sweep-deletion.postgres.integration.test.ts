@@ -1,8 +1,8 @@
 /** Cross-session proof that a deletion cascade cannot erase newly prepared bytes. */
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
-import { type Hex, keccak256 } from "viem";
+import { encodeFunctionData, erc20Abi, type Hex, keccak256 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { resolveAccountDeletionTestDatabase } from "../../db/account-deletion-test-database";
 
@@ -21,6 +21,18 @@ const userId = "40000000-0000-4000-8000-000000000002";
 const paymentId = "40000000-0000-4000-8000-000000000003";
 const outboxId = "40000000-0000-4000-8000-000000000004";
 const claimToken = "40000000-0000-4000-8000-000000000005";
+const sweepTo = "0x0000000000000000000000000000000000000001";
+const tokenAddress = "0x0000000000000000000000000000000000000002";
+const payload = {
+  paymentId,
+  network: "base",
+  tokenKind: "erc20",
+  tokenAddress,
+  tokenMint: null,
+  tokenDecimals: 6,
+  receivedUnits: "1",
+  sweepTo,
+};
 const account = privateKeyToAccount(`0x${"33".repeat(32)}` as Hex);
 
 beforeAll(async () => {
@@ -41,6 +53,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   if (!realPostgres) return;
   const { sql } = await import("drizzle-orm");
+  const { settlementDigest } = await import("./settlement-digest");
   await db.execute(
     "TRUNCATE crypto_sweep_outbox; DELETE FROM crypto_payments; DELETE FROM organizations; DELETE FROM users",
   );
@@ -50,7 +63,7 @@ beforeEach(async () => {
     sql`INSERT INTO crypto_payments(id,organization_id,user_id,status) VALUES(${paymentId},${organizationId},${userId},'confirmed')`,
   );
   await db.execute(sql`INSERT INTO crypto_sweep_outbox(id,payment_id,payload,payload_digest,state,claim_token,lease_expires_at)
-    VALUES(${outboxId},${paymentId},'{}','test-only','processing',${claimToken},clock_timestamp()+interval '2 minutes')`);
+    VALUES(${outboxId},${paymentId},${JSON.stringify(payload)}::jsonb,${settlementDigest(payload)},'processing',${claimToken},clock_timestamp()+interval '2 minutes')`);
 });
 afterAll(async () => {
   await close?.();
@@ -59,9 +72,10 @@ async function signed(nonce: number) {
   const rawTransaction = await account.signTransaction({
     chainId: 8453,
     nonce,
-    to: "0x0000000000000000000000000000000000000001",
-    value: 1n,
-    gas: 21000n,
+    to: tokenAddress,
+    data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [sweepTo, 1n] }),
+    value: 0n,
+    gas: 100000n,
     maxFeePerGas: 10n,
     maxPriorityFeePerGas: 1n,
     type: "eip1559",
@@ -186,5 +200,111 @@ test.skipIf(!realPostgres)(
     expect(
       (await db.execute(sql`SELECT id FROM crypto_sweep_outbox WHERE id=${outboxId}`)).rows,
     ).toHaveLength(0);
+  },
+);
+
+test.skipIf(!realPostgres)(
+  "receipt publication locks payment before outbox while deletion waits",
+  async () => {
+    const prepared = await prepare();
+    const { sql } = await import("drizzle-orm");
+    const viem = await import("viem");
+    mock.module("viem", () => ({
+      ...viem,
+      createPublicClient: () => ({
+        getTransactionReceipt: async ({ hash }: { hash: string }) => ({
+          transactionHash: hash,
+          status: "success",
+          blockHash: `0x${"ab".repeat(32)}`,
+          blockNumber: 100n,
+        }),
+      }),
+    }));
+    const { directWalletPaymentsService } = await import("./direct-wallet-payments");
+    const service = directWalletPaymentsService as unknown as {
+      processSweepForPayment: (
+        env: Record<string, string>,
+        id: string,
+        hooks: { afterExternalSweep: () => Promise<void> },
+      ) => Promise<boolean>;
+    };
+    await db.execute(sql`UPDATE crypto_sweep_outbox SET state='pending',claim_token=NULL,
+      lease_expires_at=NULL WHERE id=${outboxId}`);
+    const control = new Client({ connectionString: process.env.DATABASE_URL });
+    const observer = new Client({ connectionString: process.env.DATABASE_URL });
+    await control.connect();
+    await observer.connect();
+    const receiptReached = Promise.withResolvers<void>();
+    let publication: Promise<boolean | Error> | undefined;
+    try {
+      await control.query("BEGIN; SET LOCAL lock_timeout='3s'");
+      const {
+        rows: [owner],
+      } = await control.query("SELECT pg_backend_pid() AS pid");
+      await control.query("SELECT id FROM crypto_payments WHERE id=$1 FOR UPDATE", [paymentId]);
+      publication = service
+        .processSweepForPayment(
+          {
+            CRYPTO_DIRECT_BASE_PRIVATE_KEY: `0x${"33".repeat(32)}`,
+            CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS: account.address,
+            CRYPTO_DIRECT_BASE_SECURE_ADDRESS: sweepTo,
+            CRYPTO_DIRECT_BASE_RPC_URL: "http://controlled.invalid",
+          },
+          paymentId,
+          {
+            afterExternalSweep: async () => {
+              receiptReached.resolve();
+            },
+          },
+        )
+        .catch((error: Error) => error);
+      await Promise.race([
+        receiptReached.promise,
+        publication.then((outcome) => {
+          throw new Error(`Publication missed receipt barrier: ${outcome}`);
+        }),
+      ]);
+      const deadline = Date.now() + 5000;
+      let blocked = false;
+      while (Date.now() < deadline) {
+        const { rows } = await observer.query(
+          "SELECT pid FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) AND wait_event_type='Lock'",
+          [owner.pid],
+        );
+        if (rows.length === 1) {
+          blocked = true;
+          break;
+        }
+        await Bun.sleep(10);
+      }
+      expect(blocked).toBe(true);
+      const deletion = await control
+        .query("DELETE FROM crypto_payments WHERE id=$1", [paymentId])
+        .then(
+          () => null,
+          (error: Error) => error,
+        );
+      expect(deletion).toBeInstanceOf(Error);
+      expect(deletion?.message).toBe("Unconfirmed EVM sweep authority cannot be erased");
+      await control.query("ROLLBACK");
+      expect(await publication).toBe(true);
+      const {
+        rows: [row],
+      } = await observer.query(
+        "SELECT state,evm_confirmed_receipt FROM crypto_sweep_outbox WHERE id=$1",
+        [outboxId],
+      );
+      expect(row.state).toBe("delivered");
+      expect(row.evm_confirmed_receipt.transactionHash).toBe(prepared.transactionHash);
+      await control.query("DELETE FROM crypto_payments WHERE id=$1", [paymentId]);
+      expect(
+        (await observer.query("SELECT id FROM crypto_sweep_outbox WHERE id=$1", [outboxId])).rows,
+      ).toHaveLength(0);
+    } finally {
+      await control.query("ROLLBACK");
+      await publication;
+      await control.end();
+      await observer.end();
+    }
   },
 );
