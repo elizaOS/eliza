@@ -391,15 +391,15 @@ export function createMailReviewController(
 
   /**
    * Explicit retry after a classified failure. It never confirms or dispatches:
-   * a stale review is discarded (it was never dispatched) and the message
-   * reloaded; otherwise the idempotent review is reloaded or the saved receipt
-   * is checked.
+   * a stale review, or one for a message Gmail no longer has, is discarded
+   * (it was never dispatched) and the message reloaded; otherwise the
+   * idempotent review is reloaded or the saved receipt is checked.
    */
   async function retry() {
     const record = operation?.snapshot();
     if (!record) return;
     if (
-      failure === "stale" &&
+      (failure === "stale" || failure === "gone") &&
       (record.phase === "preparing" || record.phase === "review")
     ) {
       await run(async (owned, check) => {
@@ -674,7 +674,11 @@ export function createMailReviewController(
         },
         canRetry: !!failure && !!record && !busy,
         retryLabel:
-          failure === "stale" ? "Retry with the current message" : "Retry",
+          failure === "stale"
+            ? "Retry with the current message"
+            : failure === "gone"
+              ? "Refresh"
+              : "Retry",
         retry: () => void retry(),
         confirm: () => {
           if (doubleTap()) return;

@@ -330,6 +330,35 @@ export function createMailDraftsController(
     status = "",
     recipientDetails = false;
   let fromSwitch: { count(): number; cycle(): void } | null = null;
+  /**
+   * Cc and Bcc as typed, for the draft they were typed in. The draft holds the
+   * parsed lists; the typed text is shown while it still parses to them, so a
+   * comma or space being typed is not removed.
+   */
+  let typed: { id: string; cc: string; bcc: string } | null = null;
+  const addressList = (value: string) =>
+    value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  const typedList = (current: LocalMailDraft, key: "cc" | "bcc") =>
+    typed?.id === current.id &&
+    same(addressList(typed[key]), current[key] || [])
+      ? typed[key]
+      : (current[key] || []).join(", ");
+  function typeList(key: "cc" | "bcc", value: string) {
+    if (busy || !draft) return;
+    typed = {
+      id: draft.id,
+      cc: typedList(draft, "cc"),
+      bcc: typedList(draft, "bcc"),
+      [key]: value,
+    };
+    draft[key] = addressList(value);
+    status = "Unsaved local draft";
+    persist();
+    publish();
+  }
   /** A provider-confirmed send waiting for this account's local copies to load. */
   let sent: {
       draftId: string;
@@ -966,7 +995,9 @@ export function createMailDraftsController(
       return;
     const token = epoch;
     if (!(await setAside()) || token !== epoch) return;
-    draft = structuredClone(row.draft);
+    // The earlier-version mark stays on the shelved row, as with fromSaved().
+    const { earlierThanSent: _earlier, ...copy } = structuredClone(row.draft);
+    draft = copy as LocalMailDraft;
     toQ = row.toQ;
     baseRevision = null;
     staleBase = false;
@@ -1213,8 +1244,12 @@ export function createMailDraftsController(
     }
   }
 
+  /** Gmail threads a reply on its subject, so a reply keeps the subject it was given. */
+  const fixedSubject = (d: LocalMailDraft) =>
+    d.mode === "reply" || d.mode === "reply-all" || (!d.mode && !!d.reply);
+
   function edit(key: "subject" | "body", value: string) {
-    if (draft && !busy) {
+    if (draft && !busy && !(key === "subject" && fixedSubject(draft))) {
       draft[key] = value;
       status = "Unsaved local draft";
       persist();
@@ -1505,6 +1540,26 @@ export function createMailDraftsController(
             JSON.stringify(proposal.attachments || []))
       )
         return false;
+      if (!draft && saved) {
+        // The saved local copy of this same Gmail draft has the newer text: open it.
+        if (
+          saved.provider?.draftId === reference.draftId &&
+          saved.provider.providerDigest === reference.providerDigest
+        ) {
+          draft = fromSaved();
+          baseRevision = saved.revision;
+          staleBase = false;
+          open = true;
+          confirm = false;
+          toQ = "";
+          status = "Editing the copy of this Gmail draft saved on this device.";
+          publish();
+          return true;
+        }
+        // Any other saved draft moves to the shelf instead of being replaced.
+        const token = epoch;
+        if (!(await setAside()) || token !== epoch) return false;
+      }
       draft = {
         version: 1,
         id: crypto.randomUUID(),
@@ -1832,31 +1887,19 @@ export function createMailDraftsController(
               addRaw: add,
               hasSugg: false,
               sugg: [],
-              cc: (current.cc || []).join(", "),
-              bcc: (current.bcc || []).join(", "),
-              onCc: (e: Bag) => {
-                if (!busy && draft) {
-                  draft.cc = String(e.target.value)
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean);
-                  status = "Unsaved local draft";
-                  persist();
-                  publish();
-                }
-              },
-              onBcc: (e: Bag) => {
-                if (!busy && draft) {
-                  draft.bcc = String(e.target.value)
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean);
-                  status = "Unsaved local draft";
-                  persist();
+              cc: typedList(current, "cc"),
+              bcc: typedList(current, "bcc"),
+              onCc: (e: Bag) => typeList("cc", String(e.target.value)),
+              onBcc: (e: Bag) => typeList("bcc", String(e.target.value)),
+              // Leaving the field shows the parsed list.
+              onRecipientsBlur: () => {
+                if (typed) {
+                  typed = null;
                   publish();
                 }
               },
               subject: current.subject,
+              subjectReadOnly: fixedSubject(current),
               body: current.body,
               onSubj: (e: Bag) => edit("subject", String(e.target.value)),
               onBody: (e: Bag) => edit("body", String(e.target.value)),

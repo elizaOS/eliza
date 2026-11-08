@@ -16,6 +16,7 @@ class CloudProtocolError extends Error {
   constructor(
     readonly code: string,
     readonly status?: number,
+    readonly data?: unknown,
   ) {
     super(`Cloud ${code}`);
     this.name = "CloudProtocolError";
@@ -81,10 +82,58 @@ describe("managed Gmail failures", () => {
     ).toMatch(/Check its receipt/);
   });
 
+  it("classifies by the Cloud error code first and keeps the status mapping without one", () => {
+    for (const ErrorClass of [CloudProtocolError, ManagedGmailProtocolError]) {
+      const coded = (status: number, code: string) =>
+        new (ErrorClass as typeof CloudProtocolError)("http", status, {
+          error: "x",
+          code,
+        });
+      for (const context of ["read", "operation"] as const) {
+        expect(
+          classifyGmailFailure(coded(409, "reauth_required"), context, true)
+            .kind,
+        ).toBe("revoked");
+        expect(
+          classifyGmailFailure(coded(409, "stale_revision"), context, true)
+            .kind,
+        ).toBe("stale");
+        expect(
+          classifyGmailFailure(coded(404, "not_found"), context, true).kind,
+        ).toBe("gone");
+      }
+      // An unknown code falls back to the status, like an older Cloud.
+      expect(
+        classifyGmailFailure(coded(409, "something_new"), "read", true).kind,
+      ).toBe("revoked");
+      expect(
+        classifyGmailFailure(
+          new (ErrorClass as typeof CloudProtocolError)("http", 409, {
+            error: "x",
+          }),
+          "operation",
+          true,
+        ).kind,
+      ).toBe("stale");
+    }
+    expect(
+      classifyGmailFailure(
+        new CloudProtocolError("http", 404, { code: "not_found" }),
+        "read",
+        true,
+      ).message,
+    ).toMatch(/no longer in Gmail/);
+  });
+
   it("treats an attachment's invalid response as a refusal of the file", () => {
     expect(
       attachmentRefused(
         attachmentReadFailure(new CloudProtocolError("invalid-response")),
+      ),
+    ).toBe(true);
+    expect(
+      attachmentRefused(
+        attachmentReadFailure(new CloudProtocolError("http", 413)),
       ),
     ).toBe(true);
     const other = new CloudProtocolError("http", 500);

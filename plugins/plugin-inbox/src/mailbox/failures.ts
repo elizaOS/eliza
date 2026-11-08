@@ -35,19 +35,35 @@ export class ManagedGmailProtocolError extends Error {
   }
 }
 
+/**
+ * The protocol error's transport code and HTTP status, plus the machine code
+ * of the Cloud error body (`data.code`) when the host kept the body. Older
+ * Cloud deployments send no code.
+ */
 function protocolFailure(
   error: unknown,
-): { code: unknown; status: unknown } | null {
+): { code: unknown; status: unknown; reason?: string } | null {
   if (!error || typeof error !== "object") return null;
   const candidate = error as {
     name?: unknown;
     code?: unknown;
     status?: unknown;
+    data?: unknown;
   };
-  return typeof candidate.name === "string" &&
-    MANAGED_PROTOCOL_ERROR_NAMES.includes(candidate.name)
-    ? { code: candidate.code, status: candidate.status }
-    : null;
+  if (
+    typeof candidate.name !== "string" ||
+    !MANAGED_PROTOCOL_ERROR_NAMES.includes(candidate.name)
+  )
+    return null;
+  const reason =
+    candidate.data && typeof candidate.data === "object"
+      ? (candidate.data as { code?: unknown }).code
+      : undefined;
+  return {
+    code: candidate.code,
+    status: candidate.status,
+    ...(typeof reason === "string" ? { reason } : {}),
+  };
 }
 
 /**
@@ -72,12 +88,14 @@ export const attachmentRefused = (error: unknown): boolean =>
 
 /**
  * `refused` is this client's own refusal of an attachment's bytes, name or
- * size: Gmail answered, and a retry would get the same file.
+ * size: Gmail answered, and a retry would get the same file. `gone` is a
+ * message or draft Gmail no longer has: close it and refresh the list.
  */
 export type GmailFailureKind =
   | "offline"
   | "revoked"
   | "stale"
+  | "gone"
   | "unavailable"
   | "refused";
 
@@ -106,6 +124,11 @@ const messages: Record<
     operation:
       "This message changed in Gmail since it was loaded. Retry to reload it; nothing was changed.",
   },
+  gone: {
+    read: "This message is no longer in Gmail. Refresh the list.",
+    operation:
+      "This message or draft is no longer in Gmail. Refresh the list; nothing was changed.",
+  },
   refused: {
     read: "This attachment does not match its type or is too large. It was not opened or saved.",
     operation:
@@ -122,11 +145,19 @@ function online(): boolean {
   return typeof navigator === "undefined" || navigator.onLine !== false;
 }
 
+/** Cloud error-body codes and the failure each one means, in reads and operations alike. */
+const reasonKinds: Record<string, GmailFailureKind> = {
+  reauth_required: "revoked",
+  stale_revision: "stale",
+  not_found: "gone",
+};
+
 /**
- * Classifies a failed Gmail request. Reads and reviewed operations interpret
- * HTTP 409 differently: the managed read routes use 409 for a grant that needs
- * authorization again, while operation review uses it for a message or draft
- * that changed after it was loaded.
+ * Classifies a failed Gmail request. The Cloud error code decides when the
+ * response has one. Without it (older Cloud), reads and reviewed operations
+ * interpret HTTP 409 differently: the managed read routes use 409 for a grant
+ * that needs authorization again, while operation review uses it for a
+ * message or draft that changed after it was loaded.
  */
 export function classifyGmailFailure(
   error: unknown,
@@ -143,6 +174,8 @@ export function classifyGmailFailure(
   const failure = protocolFailure(error);
   if (failure) {
     if (failure.code !== "http") return result("unavailable");
+    const known = failure.reason ? reasonKinds[failure.reason] : undefined;
+    if (known) return result(known);
     const status = failure.status;
     if (status === 403 || status === 404) return result("revoked");
     if (status === 409) return result(context === "read" ? "revoked" : "stale");
@@ -161,13 +194,15 @@ export function classifyGmailFailure(
 
 /**
  * The client reports its own checks of a returned attachment (bytes against the
- * declared type, size, hash and name) as an invalid response. For an attachment
- * download that response is the file itself failing those checks, so it is
- * rethrown as a refusal; every other failure is unchanged.
+ * declared type, size, hash and name) as an invalid response, and Cloud
+ * answers 413 for an attachment over its size limit. For an attachment
+ * download either is the file itself failing those checks, so it is rethrown
+ * as a refusal; every other failure is unchanged.
  */
 export function attachmentReadFailure(error: unknown): unknown {
   const failure = protocolFailure(error);
-  return failure?.code === "invalid-response"
+  return failure?.code === "invalid-response" ||
+    (failure?.code === "http" && failure.status === 413)
     ? new AttachmentRefusedError()
     : error;
 }

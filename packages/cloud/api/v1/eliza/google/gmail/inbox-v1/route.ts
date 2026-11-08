@@ -9,8 +9,8 @@ import {
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-managed";
 import { createInboxOperationRoutes } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-operation-routes";
 import {
-  DefiniteProviderRejection,
   InboxContractError,
+  inboxErrorResponse,
 } from "@elizaos/cloud-shared/lib/services/agent-google-connector/inbox-receipts";
 import type {
   AppContext,
@@ -36,19 +36,12 @@ async function selected(context: AppContext) {
     throw new InboxContractError(400, "Explicit grant UUID required");
   return { ...user, grantId };
 }
-app.onError((error, context) =>
-  error instanceof DefiniteProviderRejection
-    ? context.json(
-        {
-          error:
-            "The selected Google account or message is unavailable. Reconnect Google or refresh the selection.",
-        },
-        error.code === "404" ? 404 : 409,
-      )
-    : error instanceof InboxContractError
-      ? context.json({ error: error.message }, error.status)
-      : failureResponse(context, error),
-);
+app.onError((error, context) => {
+  const known = inboxErrorResponse(error);
+  return known
+    ? context.json(known.body, known.status)
+    : failureResponse(context, error);
+});
 app.get("/capabilities", async (context) =>
   context.json(
     await managedInboxProvider.capabilities(await selected(context)),
