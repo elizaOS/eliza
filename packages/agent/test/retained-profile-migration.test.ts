@@ -45,7 +45,6 @@ it("keeps retired session, segment and insight rows during host migration", asyn
     migrations.discoverAndRegisterPluginSchemas([
       createElizaPlugin({
         workspaceDir: directory,
-        sessionStorePath: join(directory, "sessions.json"),
       }),
     ]);
     await migrations.runAllPluginMigrations();

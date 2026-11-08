@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import {
   type Action,
   type ActionResult,
-  type AwarenessRegistry,
   getValidationKeywordTerms,
   type HandlerOptions,
   type IAgentRuntime,
@@ -33,27 +32,12 @@ type RuntimeOp = (typeof RUNTIME_OPS)[number];
 const RESTART_SOURCES = ["self-edit", "user", "plugin-install"] as const;
 type RestartSource = (typeof RESTART_SOURCES)[number];
 
-const SELF_STATUS_MODULES = [
-  "all",
-  "runtime",
-  "permissions",
-  "wallet",
-  "provider",
-  "pluginHealth",
-  "connectors",
-  "cloud",
-  "features",
-] as const;
-type SelfStatusModule = (typeof SELF_STATUS_MODULES)[number];
-
 interface RuntimeParams {
   action?: string;
   view?: "summary" | "counts";
   filter?: string;
   reason?: string;
   source?: RestartSource;
-  module?: string;
-  detailLevel?: "brief" | "full";
 }
 
 /** Small delay (ms) before restarting so the response has time to flush. */
@@ -75,19 +59,6 @@ function isRestartSource(value: string | undefined): value is RestartSource {
   return (
     typeof value === "string" &&
     (RESTART_SOURCES as readonly string[]).includes(value)
-  );
-}
-
-function isSelfStatusModule(value: string): value is SelfStatusModule {
-  return (SELF_STATUS_MODULES as readonly string[]).includes(value);
-}
-
-function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "getDetail" in value &&
-    typeof (value as { getDetail?: unknown }).getDetail === "function"
   );
 }
 
@@ -163,44 +134,14 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   };
 }
 
-async function selfStatusOp(
+function selfStatusOp(
   runtime: IAgentRuntime,
   params: RuntimeParams,
-): Promise<ActionResult> {
-  const service = runtime.getService("AWARENESS_REGISTRY");
-  const registry = isAwarenessRegistry(service) ? service : null;
-  if (!registry) {
-    // error-policy:J4 designed degrade — the awareness registry is an
-    // optional enrichment; without it the live runtime status snapshot is
-    // still a real answer. Hard-failing here fed the planner's failed-tool
-    // fallback for simple self-description questions (live incident: "what
-    // are your app-build routing rules?" answered with a generic apology).
-    const snapshot = statusOp(runtime, params);
-    return {
-      ...snapshot,
-      text: `Self-awareness registry is not loaded; answering from the live runtime status snapshot instead.\n${snapshot.text ?? ""}`,
-    };
-  }
-
-  const rawModule = typeof params.module === "string" ? params.module : "all";
-  const module: SelfStatusModule = isSelfStatusModule(rawModule)
-    ? rawModule
-    : "all";
-  const detailLevel = params.detailLevel === "full" ? "full" : "brief";
-
-  const rawText = await registry.getDetail(runtime, module, detailLevel);
-  const text = toWellFormedUnicode(rawText);
+): ActionResult {
+  const snapshot = statusOp(runtime, params);
   return {
-    success: true,
-    text,
-    values: { module, detailLevel },
-    data: {
-      actionName: "RUNTIME",
-      op: "self_status",
-      module,
-      detailLevel,
-      truncated: false,
-    },
+    ...snapshot,
+    data: { ...snapshot.data, op: "self_status" },
   };
 }
 
@@ -456,7 +397,7 @@ export const runtimeAction: Action = {
     "CHECK_SELF",
   ],
   description:
-    "Polymorphic runtime control. action=status snapshots registered actions/providers/services; action=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); action=describe_actions lists registered actions, optionally filtered; action=reload_config re-applies hot-reloadable fields from eliza.json; action=restart bounces the process via the registered RestartHandler.",
+    "Polymorphic runtime control. action=status snapshots registered actions/providers/services; action=self_status returns the same live snapshot for questions about the agent itself; action=describe_actions lists registered actions, optionally filtered; action=reload_config re-applies hot-reloadable fields from eliza.json; action=restart bounces the process via the registered RestartHandler.",
   descriptionCompressed:
     "polymorphic runtime control: status, self_status, describe_actions, reload_config, restart",
   validate: async () => true,
@@ -504,32 +445,12 @@ export const runtimeAction: Action = {
     },
     {
       name: "view",
-      description: "status only: 'summary' (default) or 'counts'.",
+      description: "status and self_status: 'summary' (default) or 'counts'.",
       required: false,
       schema: {
         type: "string" as const,
         enum: ["summary", "counts"],
         default: "summary",
-      },
-    },
-    {
-      name: "module",
-      description:
-        "self_status only: which module to inspect (all, runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features). Default: all.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: [...SELF_STATUS_MODULES],
-      },
-    },
-    {
-      name: "detailLevel",
-      description:
-        "self_status only: 'brief' (~200 tokens, default) or 'full' (~2000 tokens).",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: ["brief", "full"],
       },
     },
     {

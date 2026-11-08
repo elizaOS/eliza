@@ -838,6 +838,10 @@ function trajectoryRecordFromInput(
 		: record;
 }
 
+function recordsIn<T>(value: unknown): T[] {
+	return Array.isArray(value) ? (value.filter(isRecord) as unknown as T[]) : [];
+}
+
 function parseTrajectoryStepsJson(value: unknown): {
 	steps: TrajectoryStepRecord[];
 	invalid: boolean;
@@ -848,7 +852,7 @@ function parseTrajectoryStepsJson(value: unknown): {
 	try {
 		const parsed = JSON.parse(value) as unknown;
 		return Array.isArray(parsed)
-			? { steps: parsed as TrajectoryStepRecord[], invalid: false }
+			? { steps: recordsIn<TrajectoryStepRecord>(parsed), invalid: false }
 			: { steps: [], invalid: true };
 	} catch {
 		// error-policy:J4 plaintext rendering remains available for a corrupt
@@ -860,41 +864,38 @@ function parseTrajectoryStepsJson(value: unknown): {
 function collectTrajectorySteps(
 	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
 ): TrajectoryStepRecord[] {
+	// `steps` and `stepsJson` hold the same run in two forms, so read one
+	// source: live steps when present, else the persisted JSON.
 	const record = trajectoryRecordFromInput(input);
-	const directSteps =
-		isRecord(input) && Array.isArray(input.steps)
-			? (input.steps as TrajectoryStepRecord[])
-			: [];
-	const nestedSteps =
-		record !== input && Array.isArray(record.steps)
-			? (record.steps as TrajectoryStepRecord[])
-			: [];
-	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson).steps;
-	return [...directSteps, ...nestedSteps, ...jsonSteps];
+	if (isRecord(input) && Array.isArray(input.steps)) {
+		return recordsIn<TrajectoryStepRecord>(input.steps);
+	}
+	if (record !== input && Array.isArray(record.steps)) {
+		return recordsIn<TrajectoryStepRecord>(record.steps);
+	}
+	return parseTrajectoryStepsJson(record.stepsJson).steps;
 }
 
 function collectLlmCalls(
 	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
 ): TrajectoryLlmCallRecord[] {
-	const direct =
-		isRecord(input) && Array.isArray(input.llmCalls) ? input.llmCalls : [];
+	const direct = isRecord(input) ? input.llmCalls : undefined;
 	return [
-		...(direct as TrajectoryLlmCallRecord[]),
-		...collectTrajectorySteps(input).flatMap((step) => step.llmCalls ?? []),
+		...recordsIn<TrajectoryLlmCallRecord>(direct),
+		...collectTrajectorySteps(input).flatMap((step) =>
+			recordsIn<TrajectoryLlmCallRecord>(step.llmCalls),
+		),
 	];
 }
 
 function collectProviderAccesses(
 	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
 ): TrajectoryProviderAccessRecord[] {
-	const direct =
-		isRecord(input) && Array.isArray(input.providerAccesses)
-			? input.providerAccesses
-			: [];
+	const direct = isRecord(input) ? input.providerAccesses : undefined;
 	return [
-		...(direct as TrajectoryProviderAccessRecord[]),
-		...collectTrajectorySteps(input).flatMap(
-			(step) => step.providerAccesses ?? [],
+		...recordsIn<TrajectoryProviderAccessRecord>(direct),
+		...collectTrajectorySteps(input).flatMap((step) =>
+			recordsIn<TrajectoryProviderAccessRecord>(step.providerAccesses),
 		),
 	];
 }

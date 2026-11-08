@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+	createSendPolicyProvider,
 	createSessionProvider,
 	createSessionSkillsProvider,
 } from "../src/runtime/session-provider.ts";
@@ -59,5 +60,20 @@ describe("session providers", () => {
 			state,
 		);
 		expect(result.text).toBe("Session ID: agent:alpha:main");
+	});
+
+	it("show the deny notice once when session and send policy both run", async () => {
+		const denied = {
+			sessionId: "agent:alpha:main",
+			metadata: {
+				session: { sessionId: "agent:alpha:main", sendPolicy: "deny" },
+			},
+			content: { text: "hi" },
+		} as unknown as Memory;
+		const session = await createSessionProvider().get(runtime, denied, state);
+		const policy = await createSendPolicyProvider().get(runtime, denied, state);
+		const text = `${session.text}\n${policy.text}`;
+		expect(text.match(/SEND POLICY: DENY/g)).toHaveLength(1);
+		expect(policy.values).toEqual({ sendPolicy: "deny", canSend: false });
 	});
 });

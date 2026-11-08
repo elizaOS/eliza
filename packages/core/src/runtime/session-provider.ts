@@ -59,8 +59,6 @@ export function extractSessionContext(memory: Memory): {
  * @returns Provider instance
  */
 export function createSessionProvider(options?: {
-	/** Path to session store (defaults to runtime's configured store) */
-	storePath?: string;
 	/** Custom name for the provider */
 	name?: string;
 }): Provider {
@@ -115,10 +113,6 @@ export function createSessionProvider(options?: {
 				if (entry.thinkingLevel) {
 					lines.push(`Thinking Level: ${entry.thinkingLevel}`);
 				}
-				if (entry.sendPolicy === "deny") {
-					lines.push("");
-					lines.push("⚠️ SEND POLICY: DENY - Do not send messages externally.");
-				}
 				if (entry.totalTokens) {
 					lines.push(`Total Tokens Used: ${entry.totalTokens}`);
 				}
@@ -151,7 +145,6 @@ export function createSessionProvider(options?: {
  * @returns Provider instance
  */
 export function createSessionSkillsProvider(options?: {
-	storePath?: string;
 	name?: string;
 }): Provider {
 	return {
@@ -213,21 +206,22 @@ export function createSessionSkillsProvider(options?: {
 // Send Policy Provider
 
 /**
- * Create a provider that enforces session send policy.
+ * Create a provider that carries the session send policy into the prompt.
  *
- * When sendPolicy is "deny", adds strong guidance to prevent
- * the agent from sending external messages.
+ * When sendPolicy is "deny", adds guidance telling the agent not to send
+ * external messages. This is prompt guidance only: no action gate reads it.
+ * It is the only provider that renders the deny notice, so selecting it
+ * with the session provider shows the notice once.
  *
  * @param options - Provider options
  * @returns Provider instance
  */
 export function createSendPolicyProvider(options?: {
-	storePath?: string;
 	name?: string;
 }): Provider {
 	return {
 		name: options?.name ?? "sendPolicy",
-		description: "Session send policy enforcement",
+		description: "Session send policy guidance",
 		dynamic: true,
 		// High position to appear prominently in context
 		position: 100,
@@ -295,15 +289,12 @@ export function createSendPolicyProvider(options?: {
 /**
  * Get all default session providers.
  *
- * @param options - Provider options
  * @returns Array of session providers
  */
-export function getSessionProviders(options?: {
-	storePath?: string;
-}): Provider[] {
+export function getSessionProviders(): Provider[] {
 	return [
-		createSessionProvider(options),
-		createSessionSkillsProvider(options),
-		createSendPolicyProvider(options),
+		createSessionProvider(),
+		createSessionSkillsProvider(),
+		createSendPolicyProvider(),
 	];
 }

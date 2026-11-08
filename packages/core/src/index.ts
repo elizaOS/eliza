@@ -48,7 +48,6 @@ export {
 	isDiscoveryActionName,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
-export * from "./capabilities/account-selection";
 export {
 	getApps,
 	getConnectors,
