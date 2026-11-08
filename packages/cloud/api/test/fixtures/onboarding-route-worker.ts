@@ -65,6 +65,21 @@ export default {
     env: Record<string, unknown>,
   ): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/fixture/coordinator") {
+      const { owner, path, body } = (await request.json()) as {
+        owner: string;
+        path: string;
+        body: unknown;
+      };
+      const namespace = env.ONBOARDING_SESSIONS as DurableObjectNamespace;
+      return namespace
+        .getByName(owner)
+        .fetch(`https://onboarding.internal/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+    }
     if (url.pathname === "/fixture/replay-case") {
       const namespace = env.ONBOARDING_SESSIONS as DurableObjectNamespace;
       const sessionId = "replay-fixture-browser";
