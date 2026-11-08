@@ -1764,6 +1764,11 @@ class AdvertisingService {
       return parsed;
     };
     let totalSpendUsd = accounting("total_spend");
+    // accounting() is the fail-closed validator for this field here — the
+    // same plain-unsigned-decimal / finite / non-negative check as the strict
+    // parser, with a coded error (AD_CAMPAIGN_INVALID_ACCOUNTING) instead of
+    // a field-named message. The strict parser still guards the other five
+    // credits_allocated reads (update paths, delete refund line, report).
     const creditsAllocated = accounting("credits_allocated");
     const budgetAmountUsd = accounting("budget_amount");
     const internalSpentCredits = accounting("credits_spent");
@@ -1848,7 +1853,10 @@ class AdvertisingService {
         ...deleted,
         external_campaign_id: null,
       });
-      const creditsRemaining = Math.max(0, parseFloat(deleted.credits_allocated) - creditsSpent);
+      const creditsRemaining = Math.max(
+        0,
+        parseAdCampaignCreditsAllocated(deleted.credits_allocated) - creditsSpent,
+      );
       if (creditsRemaining > 0) {
         const refund = await creditsService.refundCredits({
           organizationId,
@@ -1980,7 +1988,7 @@ class AdvertisingService {
 
     const metrics = await this.getCampaignMetrics(campaignId, organizationId, dateRange);
     const budgetAmount = parseFloat(campaign.budget_amount);
-    const creditsAllocated = parseFloat(campaign.credits_allocated);
+    const creditsAllocated = parseAdCampaignCreditsAllocated(campaign.credits_allocated);
     const creditsSpent = parseFloat(campaign.credits_spent);
 
     return {
