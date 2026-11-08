@@ -8,6 +8,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   ModelType,
+  parseJsonModelRecord,
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import { z } from "zod";
@@ -58,16 +59,13 @@ export async function extractFamilyIntake(
           { code: "FAMILY_INTAKE_EXTRACTION_UNAVAILABLE", cause },
         );
       }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(output);
-      } catch (cause) {
-        // error-policy:J3 Invalid model JSON cannot become a fabricated proposal.
+      // Invalid model JSON cannot become a fabricated proposal.
+      const parsed = parseJsonModelRecord(output);
+      if (!parsed)
         throw new ElizaError(
           "The extraction model did not return valid JSON; retry extraction",
-          { code: "FAMILY_INTAKE_EXTRACTION_INVALID", cause },
+          { code: "FAMILY_INTAKE_EXTRACTION_INVALID" },
         );
-      }
       const result = familyIntakeExtractionSchema.safeParse(parsed);
       if (!result.success)
         throw new ElizaError(

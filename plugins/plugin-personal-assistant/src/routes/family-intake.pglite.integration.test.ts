@@ -25,6 +25,7 @@ it("selects a canonical source, extracts private proposals and preserves review/
   let prompt = "";
   let modelOutput = "";
   let malformedOutput = false;
+  let fencedOutput = false;
   let extractionCalls = 0;
   const quote = "Please confirm pickup at 3 PM.";
   const complete = `${"Earlier correspondence.\n".repeat(8000)}${quote}`;
@@ -52,7 +53,9 @@ it("selects a canonical source, extracts private proposals and preserves review/
             },
           ],
         });
-        return modelOutput;
+        return fencedOutput
+          ? `\`\`\`json\n${modelOutput}\n\`\`\``
+          : modelOutput;
       },
     },
   };
@@ -577,6 +580,26 @@ it("selects a canonical source, extracts private proposals and preserves review/
         (review: { id: string }) => review.id === failedSelection.id,
       ),
     ).toEqual(failedSelection);
+    malformedOutput = false;
+    fencedOutput = true;
+    const fencedImport = await post("/import", {
+      id: randomUUID(),
+      periodKey: "2027-02",
+      title: "Synthetic fenced extraction",
+      text: `Hi! ${quote} Thanks.`,
+    });
+    expect(fencedImport.status).toBe(201);
+    const fencedSelection = (await fencedImport.json()).review;
+    const fencedExtraction = await post(`/${fencedSelection.id}/extract`, {
+      expectedRevision: fencedSelection.revision,
+    });
+    expect(fencedExtraction.status, await fencedExtraction.clone().text()).toBe(
+      200,
+    );
+    expect((await fencedExtraction.json()).review).toMatchObject({
+      status: "proposed",
+      facts: [{ sourceQuote: quote }],
+    });
     for (const text of [
       "Concurrent synthetic audience decisions",
       "SGVsbG8gV29ybGQh",
