@@ -908,9 +908,13 @@ export class NativeAcpClient {
         resolve();
       });
     });
-    const capture = (chunk: Buffer) => {
+    // Each stream decodes with its own stateful decoder, so a UTF-8 character
+    // that a command writes across two chunks stays whole.
+    proc.stdout.setEncoding("utf8");
+    proc.stderr.setEncoding("utf8");
+    const capture = (chunk: string) => {
       if (record.truncated) return;
-      record.output += chunk.toString("utf8");
+      record.output += chunk;
       if (Buffer.byteLength(record.output, "utf8") > record.limit) {
         record.truncated = true;
         // Never expose a prefix or tail as if it were the complete command result.

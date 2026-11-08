@@ -160,3 +160,61 @@ test("an actual child crash rejects its pending prompt instead of fabricating co
     await rm(root, { recursive: true, force: true });
   }
 }, 10_000);
+
+// The peer runs a terminal command whose output splits one UTF-8 character
+// across two writes, then stores what terminal/output returned.
+const terminalPeer = String.raw`
+import { createInterface } from 'node:readline';
+import { writeFileSync } from 'node:fs';
+const send = value => process.stdout.write(JSON.stringify(value)+'\n');
+const command = "process.stdout.write(Buffer.from([0x63,0x61,0x66,0xc3]));setTimeout(()=>process.stdout.write(Buffer.from([0xa9,0x0a])),50);";
+let prompt, terminalId;
+const lines=createInterface({input:process.stdin});
+lines.on('line', line => {
+ const m=JSON.parse(line);
+ if(m.method==='initialize') send({jsonrpc:'2.0',id:m.id,result:{protocolVersion:1,agentCapabilities:{}}});
+ else if(m.method==='session/new') send({jsonrpc:'2.0',id:m.id,result:{sessionId:'session'}});
+ else if(m.method==='session/prompt') {
+  prompt=m.id;
+  send({jsonrpc:'2.0',id:'create',method:'terminal/create',params:{sessionId:'session',command:process.execPath,args:['-e',command]}});
+ }
+ else if(m.id==='create') {
+  terminalId=m.result.terminalId;
+  send({jsonrpc:'2.0',id:'wait',method:'terminal/wait_for_exit',params:{sessionId:'session',terminalId}});
+ }
+ else if(m.id==='wait') send({jsonrpc:'2.0',id:'output',method:'terminal/output',params:{sessionId:'session',terminalId}});
+ else if(m.id==='output') {
+  writeFileSync('terminal.json',JSON.stringify(m.result ?? m.error));
+  send({jsonrpc:'2.0',id:prompt,result:{stopReason:'end_turn'}});
+ }
+ else if(m.method==='session/close') send({jsonrpc:'2.0',id:m.id,result:{}});
+});
+lines.on('close',()=>process.exit(0));
+`;
+
+test("terminal output keeps a UTF-8 character that the command wrote in two parts", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "acp-terminal-")));
+  const script = join(root, "peer.mjs");
+  await writeFile(script, terminalPeer);
+  const client = new NativeAcpClient({
+    command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+    cwd: root,
+    approvalPreset: "autonomous",
+    timeoutMs: 10_000,
+    env: { PATH: dirname(process.execPath) },
+  });
+  try {
+    await client.start();
+    const session = await client.createSession(root);
+    expect(await client.prompt(session.sessionId, "run")).toMatchObject({
+      stopReason: "end_turn",
+    });
+    expect(await json(join(root, "terminal.json"))).toMatchObject({
+      output: "café\n",
+      exitStatus: { exitCode: 0 },
+    });
+  } finally {
+    await client.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 20_000);
