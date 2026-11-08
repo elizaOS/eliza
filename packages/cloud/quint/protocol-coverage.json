@@ -1838,5 +1838,35 @@
       "The 47-case conformance hook retains 41 receipt/publication checks and six command regressions, including expiry after provisional projection, rollback and response-loss replay. It is not a general refinement proof or a PostgreSQL lock-scheduling proof.",
       "The commit action abstracts the final lease-guarded SQL write and successful atomic transaction under row locks. appliedAt is that decision clock, not a bound on COMMIT or HTTP acknowledgement time; storage and transport may finish later."
     ]
+  },
+  {
+    "id": "cloud-protocol-object-field-full-reads",
+    "model": "packages/cloud/quint/object_field_hydration.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/storage/object-store.ts",
+      "packages/cloud/shared/src/lib/storage/r2-runtime-binding.ts",
+      "packages/cloud/shared/src/db/repositories/conversations.ts",
+      "packages/cloud/shared/src/db/repositories/generations.ts",
+      "packages/cloud/shared/src/db/repositories/agent-events.ts",
+      "packages/cloud/shared/src/db/repositories/seo-requests.ts",
+      "packages/cloud/shared/src/db/repositories/seo-provider-calls.ts",
+      "packages/cloud/shared/src/db/repositories/seo-artifacts.ts",
+      "packages/cloud/shared/src/db/schemas/conversations.ts",
+      "packages/cloud/shared/src/db/schemas/generations.ts",
+      "packages/cloud/shared/src/db/schemas/agent-events.ts",
+      "packages/cloud/shared/src/db/schemas/seo.ts",
+      "packages/cloud/shared/src/db/repositories/__tests__/object-field-full-reads.pglite.test.ts",
+      "packages/cloud/quint/check-object-field-hydration.mjs",
+      "packages/scripts/lib/junit-summary.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One already authorized immutable row snapshot and one field: valid inline, valid object/key, missing object key, unknown storage kind or conflicting inline/key. Text and JSON, full and explicit preview reads are distinct finite modes.",
+      "A provider read returns its complete body, absence or failure. Empty text is complete; empty or malformed JSON is invalid. Exact object generation, byte hashes, streaming transport correctness and arbitrary JSON schema validation are not proved.",
+      "Full reads in six repositories set strict mode for all thirteen offloaded fields. Explicit generation summary APIs retain their preview contract. Container logs, Vertex registry, optional job hydration and phone-message reads are separate protocols.",
+      "Real PGlite conformance uses canonical columns, defaults, enums and indexes, with cross-domain foreign keys omitted. Controlled R2 outcomes establish repository behavior, not live provider availability, authorization, source-replacement races, account deletion, retries or cancellation.",
+      "A started read settles only if provider resolution and the validation continuation are weakly fair. An unavailable or malformed field may settle as an error; successful remote availability is not assumed."
+    ]
   }
 ]

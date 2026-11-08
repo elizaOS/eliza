@@ -55,21 +55,25 @@ async function hydrateGeneration(generation: Generation): Promise<Generation> {
       storage: generation.prompt_storage,
       key: generation.prompt_key,
       inlineValue: generation.prompt,
+      strict: true,
     }),
     hydrateTextField({
       storage: generation.negative_prompt_storage,
       key: generation.negative_prompt_key,
       inlineValue: generation.negative_prompt,
+      strict: true,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: generation.result_storage,
       key: generation.result_key,
       inlineValue: generation.result ?? null,
+      strict: true,
     }),
     hydrateTextField({
       storage: generation.content_storage,
       key: generation.content_key,
       inlineValue: generation.content,
+      strict: true,
     }),
   ]);
 
