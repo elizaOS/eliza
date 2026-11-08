@@ -21,6 +21,9 @@ import { type CameraAccessKind, cameraAccessDenied } from "./host-ports";
 
 export type CameraSessionPhase = "off" | "starting" | "ready" | "error";
 
+/** Bridge rejection code for a recording start that also lost the preview. */
+export const PREVIEW_STOPPED = "PREVIEW_STOPPED";
+
 /** The receipt fields the session checks; hosts may carry more. */
 export interface CameraRecordingReceipt {
   path: string;
@@ -340,6 +343,10 @@ export function createCameraSession<
         denied = "microphone";
         return "denied";
       }
+      // The bridge could not restore the viewfinder after the failed start: the preview is gone,
+      // so the host must offer `start(true)` instead of a dead shutter.
+      if ((error as { code?: unknown } | null)?.code === PREVIEW_STOPPED)
+        phase = "error";
       return "failed";
     } finally {
       recordingStarting = false;

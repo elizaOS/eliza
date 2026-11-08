@@ -400,6 +400,27 @@ describe("createCameraSession recording", () => {
     expect(g.session.denied).toBeUndefined();
   });
 
+  it("a recording start that lost the preview moves the session to error", async () => {
+    const h = harness({
+      startRecording: async () => {
+        throw { code: "PREVIEW_STOPPED" };
+      },
+    });
+    await h.session.start();
+    expect(await h.session.startRecording()).toBe("failed");
+    expect(h.session.phase).toBe("error");
+    expect(await h.session.start()).toEqual({ status: "skipped" });
+    expect(await h.session.start(true)).toEqual({ status: "ready" });
+    const g = harness({
+      startRecording: async () => {
+        throw { code: "RECORDING_ERROR" };
+      },
+    });
+    await g.session.start();
+    expect(await g.session.startRecording()).toBe("failed");
+    expect(g.session.phase).toBe("ready");
+  });
+
   it("stopping the surface finishes an active recording before releasing the preview", async () => {
     const h = harness();
     await h.session.start();

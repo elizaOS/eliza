@@ -35,9 +35,17 @@ export interface CameraPreviewOptions {
    * preview and ignore it.
    */
   element?: HTMLElement;
+  /**
+   * A `deviceId` from `getDevices`; it wins over `direction`. Android rejects
+   * an unknown id with `INVALID_OPTIONS`.
+   */
   deviceId?: string;
   direction?: CameraDirection;
   resolution?: CameraResolution;
+  /**
+   * Preview frame rate. Android rejects it with `INVALID_OPTIONS`; set
+   * `frameRate` on the recording options instead.
+   */
   frameRate?: number;
   mirror?: boolean;
 }
@@ -68,6 +76,11 @@ export interface PhotoCaptureOptions {
    */
   width?: number;
   height?: number;
+  /**
+   * Also save the photo to the gallery. On Android an unscaled JPEG saves the
+   * camera's own file with its EXIF; other saves carry the camera's tags
+   * (never GPS) on the re-encoded image.
+   */
   saveToGallery?: boolean;
   exifOrientation?: boolean;
 }
@@ -166,6 +179,7 @@ export interface CameraPlugin {
    * Switch to a different camera
    */
   switchCamera(options: {
+    /** Android switches by direction only and rejects this with `INVALID_OPTIONS`. */
     deviceId?: string;
     direction?: CameraDirection;
   }): Promise<CameraPreviewResult>;
@@ -176,7 +190,9 @@ export interface CameraPlugin {
   capturePhoto(options?: PhotoCaptureOptions): Promise<PhotoResult>;
 
   /**
-   * Start recording video
+   * Start recording video. On Android a failed start keeps the preview live;
+   * when the preview could not be restored it rejects `PREVIEW_STOPPED` and
+   * the host must start the preview again.
    */
   startRecording(options?: VideoCaptureOptions): Promise<void>;
 
