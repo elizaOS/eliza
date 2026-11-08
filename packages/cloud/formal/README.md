@@ -3,6 +3,8 @@
 Quint models describe bounded backend protocols. `contracts.json` links each
 model to its implementation, invariants, assumptions, and remaining work.
 These models do not prove that the TypeScript implementation refines the model.
+A model may declare a source-hashed `conformance` script. Every model run executes
+that script and fails if its implementation checks fail.
 
 From the repository root:
 

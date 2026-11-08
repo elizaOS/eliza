@@ -160,6 +160,9 @@ const calendarReadBrokerClasses = [
   "unknown",
 ] as const;
 
+/** Maximum UTF-8 JSON size for a private managed Calendar feed response. */
+export const MANAGED_CALENDAR_FEED_RESPONSE_MAX_BYTES = 512 * 1024;
+
 /** Authenticated read-refusal diagnostics only. These fields cannot establish
  * identity, authorization, freshness, availability or a committed operation.
  */

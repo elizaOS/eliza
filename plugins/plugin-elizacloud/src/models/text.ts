@@ -26,6 +26,7 @@ import {
   MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   createPreparedModelRequestGuard,
   ElizaError,
+  HANDLE_RESPONSE_TOOL_NAME,
   logger,
   ModelType,
   parseProviderRateLimit,
@@ -1389,6 +1390,36 @@ function applyOpenRouterPassthroughFields(
   }
 }
 
+function projectQwenHandleResponseTool(tool: unknown): unknown {
+  const entry = asRecord(tool);
+  const definition = recordAt(entry, "function");
+  const schema = recordAt(definition, "parameters");
+  if (
+    definition.name !== HANDLE_RESPONSE_TOOL_NAME ||
+    definition.strict !== true ||
+    !Object.hasOwn(recordAt(schema, "properties"), "calendarReadBindings")
+  ) {
+    return tool;
+  }
+  // Calendar validates these string bounds and source evidence locally. Omit
+  // only these provider-unsupported keywords so Qwen can enforce intents as an array.
+  const parameters = structuredClone(schema);
+  const calendar = recordAt(
+    recordAt(parameters, "properties"),
+    "calendarReadBindings"
+  );
+  const calendarFields = recordAt(recordAt(calendar, "items"), "properties");
+  const evidence = recordAt(calendarFields, "filterEvidence");
+  const evidenceFields = recordAt(recordAt(evidence, "items"), "properties");
+  for (const field of ["query", "quote"]) {
+    const property = recordAt(evidenceFields, field);
+    if (property.type !== "string") continue;
+    delete property.minLength;
+    delete property.maxLength;
+  }
+  return { ...entry, function: { ...definition, parameters } };
+}
+
 function buildNativeRequestBody(
   params: GenerateTextParamsWithNativeOptions,
   modelName: string,
@@ -1403,18 +1434,25 @@ function buildNativeRequestBody(
   // a model name or caller providerOptions alone cannot select this behavior.
   // Normalize before final serialization/quote/hash; never rewrite after quote.
   if (runtime && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b" &&
-      usesCanonicalCerebrasNativeSerialization(runtime)) {
+      usesCanonicalCerebrasNativeSerialization(runtime, { stagingMobileTools: true })) {
     // Cerebras accepts one strictness mode for the entire tool batch. If any
     // tool needs non-strict provider decoding, retain every schema and use
     // non-strict decoding consistently; execution still validates arguments.
-    const needsCompatibleToolBatch = tools?.some(tool => {
-      const definition = asRecord(asRecord(tool).function);
-      return definition.strict !== true || hasQwenUnsupportedStrictStringKeywords(definition.parameters);
+    const projected = tools?.map(projectQwenHandleResponseTool);
+    const needsCompatibleToolBatch = projected?.some((tool) => {
+      const definition = recordAt(asRecord(tool), "function");
+      return (
+        definition.strict !== true ||
+        hasQwenUnsupportedStrictStringKeywords(definition.parameters)
+      );
     });
-    if (needsCompatibleToolBatch) tools = tools?.map(tool => {
-      const entry = asRecord(tool), definition = asRecord(entry.function);
-      return { ...entry, function: { ...definition, strict: false } };
-    });
+    tools = needsCompatibleToolBatch
+      ? tools?.map((tool) => {
+          const entry = asRecord(tool);
+          const definition = recordAt(entry, "function");
+          return { ...entry, function: { ...definition, strict: false } };
+        })
+      : projected;
   }
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
   let responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
@@ -2815,10 +2853,20 @@ function onlyNativeCacheBookkeeping(options:Record<string,unknown>,raw:unknown,k
 
 /** Formatting only. Reuse Core's actual selected handlers and the normal Cloud
  * transport tuple; no mirrored registry, lease, financial or permission state. */
-function usesCanonicalCerebrasNativeSerialization(runtime: IAgentRuntime): boolean {
+function usesCanonicalCerebrasNativeSerialization(
+  runtime: IAgentRuntime,
+  options?: { stagingMobileTools: true },
+): boolean {
   try {
     const tuple = resolveCloudSdkAuthorityTuple(runtime);
-    if (!tuple.outboundAllowed || !tuple.apiKey || tuple.apiBaseUrl.replace(/\/+$/, "") !== "https://api.eliza.app/api/v1") return false;
+    if (!tuple.outboundAllowed || !tuple.apiKey) return false;
+    const base = tuple.apiBaseUrl.replace(/\/+$/, "");
+    const stagingMobileTools =
+      options?.stagingMobileTools &&
+      tuple.authority === "staging-explicit" &&
+      base === "https://api-staging.eliza.app/api/v1" &&
+      tuple.apiKey.startsWith("eliza_mobile_");
+    if (base !== "https://api.eliza.app/api/v1" && !stagingMobileTools) return false;
     const ownHandlers: ReadonlyArray<readonly [ModelTypeName, unknown]> = [
       [TEXT_NANO_MODEL_TYPE, handleTextNano], [TEXT_SMALL_MODEL_TYPE, handleTextSmall],
       [TEXT_MEDIUM_MODEL_TYPE, handleTextMedium], [TEXT_LARGE_MODEL_TYPE, handleTextLarge],
