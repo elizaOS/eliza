@@ -36,7 +36,18 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
+          ]
+        }
+      ]
     },
     {
       "name": "lifecycle",
@@ -53,7 +64,18 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
+          ]
+        }
+      ]
     },
     {
       "name": "legacy",
@@ -70,7 +92,18 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
+          ]
+        }
+      ]
     },
     {
       "name": "missing-resource",
@@ -87,7 +120,18 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
+          ]
+        }
+      ]
     },
     {
       "name": "foreign-resource",
@@ -104,7 +148,18 @@
       ],
       "temporal": ["RecoveryCallsSettle"],
       "maxSteps": 50,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "RecoveryCallsSettle",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Recover(worker,true) action while its bounded recovery snapshot remains prepared.",
+            "Database/storage completion eventually returns; a changed generation or live renewed lease may produce an unchanged result.",
+            "The model does not assume successful provider work or eventual job completion."
+          ]
+        }
+      ]
     }
   ]
 }

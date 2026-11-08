@@ -22,7 +22,8 @@
     "Exhaustion preserves the stored scheduled_for value, including PostgreSQL microseconds. The model represents an unchanged due deadline; the real normal-claim regression checks raw timestamp input and exact retained SQL value.",
     "Normal detached calls supply the exact owner and generation. Generic non-detached updates, administrative rearm/reset, provider side effects and global shared capacity are outside this model.",
     "The PostgreSQL fixture uses production column types/defaults and the job lease foreign key. A dependent receipt table exercises callback commit and rollback. Individual app, agent and container failure-writeback business rules require their own models.",
-    "RequeueBound=-1 is a model sentinel for omitting the optional bounded argument. The implementation rejects negative maxRequeues. The restart case represents all non-canary restart policies, including durable cache jobs."
+    "RequeueBound=-1 is a model sentinel for omitting the optional bounded argument. The implementation rejects negative maxRequeues. The restart case represents all non-canary restart policies, including durable cache jobs.",
+    "After a successful budget commit, the source status/generation CAS permanently refuses other prepared calls from that generation. Their pending phase is retained, while obsolete payload/counter locals are collapsed to one stale sentinel. Job state, counters, lease/quiescence, the last committed transition, and dependent receipts remain unchanged. Both live prepared calls remain distinct before the first commit. Real PostgreSQL tests check one winner, undefined/unchanged losers, and one durable receipt."
   ],
   "cases": [
     {
@@ -43,7 +44,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "timeout",
@@ -63,7 +75,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "restart",
@@ -83,7 +106,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "transport-five",
@@ -103,7 +137,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "capture-ten",
@@ -123,7 +168,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "unbounded-gate",
@@ -143,7 +199,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "durable-cache",
@@ -163,7 +230,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "committed-canary",
@@ -183,7 +261,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     },
     {
       "name": "mixed-zero-bound",
@@ -203,7 +292,18 @@
       ],
       "temporal": ["PendingCallsFinish"],
       "maxSteps": 120,
-      "samples": 1000
+      "samples": 1000,
+      "temporalChecks": [
+        {
+          "property": "PendingCallsFinish",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness holds for each Finish(call,true) action while that repository call remains prepared.",
+            "A completed call may commit, lose its generation/status/snapshot fence, or have already completed with a storage error.",
+            "This property establishes bounded call completion and does not assume eventual worker scheduling, provider success, or a terminal outcome for counter-preserving retries."
+          ]
+        }
+      ]
     }
   ]
 }

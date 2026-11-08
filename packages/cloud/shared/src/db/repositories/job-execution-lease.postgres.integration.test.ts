@@ -929,22 +929,27 @@ async function seedCommittedCanary(organizationId: string): Promise<Job> {
         (await setup.query("SELECT * FROM job_failure_receipts WHERE job_id=$1", [claimed.id]))
           .rows,
       ).toEqual([]);
-      const failed = await run(() =>
-        repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
-          claimed,
-          "exhausted",
-          120_000,
-          owner1,
-          {
-            maxRequeues: bound,
-            onExhaustedInTx: async (tx, row) => {
-              await tx.execute(
-                sql`INSERT INTO job_failure_receipts VALUES (${row.id}, 'committed')`,
-              );
+      const exhaust = () =>
+        run(() =>
+          repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
+            claimed,
+            "exhausted",
+            120_000,
+            owner1,
+            {
+              maxRequeues: bound,
+              onExhaustedInTx: async (tx, row) => {
+                await tx.execute(
+                  sql`INSERT INTO job_failure_receipts VALUES (${row.id}, 'committed')`,
+                );
+              },
             },
-          },
-        ),
-      );
+          ),
+        );
+      const outcomes = await Promise.all([exhaust(), exhaust()]);
+      expect(outcomes.filter(Boolean)).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome === undefined)).toHaveLength(1);
+      const failed = outcomes.find((outcome) => outcome !== undefined);
       expect(failed).toMatchObject({
         status: "failed",
         attempts: 2,

@@ -35,7 +35,8 @@
       "Exhaustion preserves the stored scheduled_for value, including PostgreSQL microseconds. The model represents an unchanged due deadline; the real normal-claim regression checks raw timestamp input and exact retained SQL value.",
       "Normal detached calls supply the exact owner and generation. Generic non-detached updates, administrative rearm/reset, provider side effects and global shared capacity are outside this model.",
       "The PostgreSQL fixture uses production column types/defaults and the job lease foreign key. A dependent receipt table exercises callback commit and rollback. Individual app, agent and container failure-writeback business rules require their own models.",
-      "RequeueBound=-1 is a model sentinel for omitting the optional bounded argument. The implementation rejects negative maxRequeues. The restart case represents all non-canary restart policies, including durable cache jobs."
+      "RequeueBound=-1 is a model sentinel for omitting the optional bounded argument. The implementation rejects negative maxRequeues. The restart case represents all non-canary restart policies, including durable cache jobs.",
+      "After a successful budget commit, the source status/generation CAS permanently refuses other prepared calls from that generation. Their pending phase is retained, while obsolete payload/counter locals are collapsed to one stale sentinel. Job state, counters, lease/quiescence, the last committed transition, and dependent receipts remain unchanged. Both live prepared calls remain distinct before the first commit. Real PostgreSQL tests check one winner, undefined/unchanged losers, and one durable receipt."
     ]
   }
 ]

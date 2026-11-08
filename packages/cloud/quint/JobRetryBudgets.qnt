@@ -1,6 +1,12 @@
 // Detached-job budget transitions from jobs.ts. One live generation can have
 // two concurrent repository calls. Completed calls release their snapshots.
 // UUIDs are fresh bounded integers; all rows and callbacks share one tenant.
+// A successful budget commit leaves in_progress. Every other prepared call
+// from that generation must lose the source status/generation CAS before a
+// dependent writeback can run. Keep its pending-completion phase but discard
+// fields that can no longer affect job counters, leases or durable receipts.
+// Pre-commit storage preparation can still fail; its contents are outside this
+// database projection and remain the Finish(storageSucceeds=false) outcome.
 // The lease authority model separately covers missing and foreign resources.
 module JobRetryBudgets {
   const Operations: Set[str]
@@ -90,6 +96,10 @@ module JobRetryBudgets {
     val afterCounters = NextCounters(call)
     val failed = Exhausted(call, afterCounters)
     val done = s.calls.set(id, {...EmptyCall, phase: "done"})
+    val committedCalls = Callers.mapBy(other =>
+      if (other == id) {...EmptyCall, phase: "done"}
+      else if (s.calls.get(other).phase == "prepared") {...EmptyCall, phase: "prepared"}
+      else s.calls.get(other))
     val delay = if (failed or IsRecovery(call.operation)) 0
       else if (call.operation == "attempt") 4.ipow(afterCounters.attempts - 1) * 30000
       else RequeueDelayMs
@@ -97,7 +107,7 @@ module JobRetryBudgets {
       call.phase == "prepared",
       s' = if (not(storageSucceeds) or not(Current(call))) {...s, calls: done}
       else {
-        ...s, calls: done, status: if (failed) "failed" else "pending", counters: afterCounters,
+        ...s, calls: committedCalls, status: if (failed) "failed" else "pending", counters: afterCounters,
         leaseOwner: 0, leaseAge: 0, quiesced: true,
         due: if (IsRecovery(call.operation)) s.due else delay == 0,
         dependentFailed: failed,
