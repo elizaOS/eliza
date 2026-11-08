@@ -7,10 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { SaxesParser } from "saxes";
-import { parseJunitSummary } from "../../../scripts/lib/junit-summary.ts";
-import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
-const root = fileURLToPath(new URL("../../../../", import.meta.url));
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: this uncached proof requires an isolated QA PostgreSQL database.
 const databaseUrl = process.env.INFERENCE_POLICY_TEST_POSTGRES_URL;
 assert(

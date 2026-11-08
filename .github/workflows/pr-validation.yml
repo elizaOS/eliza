@@ -52,6 +52,7 @@ jobs:
       # the separately capped 2 GiB lint process on the 16 GiB runner.
       NODE_OPTIONS: "--max-old-space-size=8192"
       RUN_TURBO_CONCURRENCY: "1"
+      CLOUD_FORMAL_POSTGRES_IMAGE: postgres:16-alpine
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -1467,6 +1468,7 @@ jobs:
     needs:
       - secret-scan
       - source-checks
+      - quint
       - sdk-owning
       - billing-payment-replay-e2e
       - subscription-authority-postgres
@@ -1478,6 +1480,7 @@ jobs:
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
+            quint=${{ needs.quint.result }}
             sdk-owning=${{ needs.sdk-owning.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}

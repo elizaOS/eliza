@@ -763,7 +763,7 @@
       "packages/cloud/shared/src/db/schemas/jobs.ts",
       "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
       "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
-      "packages/cloud/formal/conformance/job-time.ts"
+      "packages/cloud/quint/check-job-time.ts"
     ],
     "invariants": [],
     "status": "unmodeled",
@@ -1710,7 +1710,7 @@
       "packages/cloud/shared/src/db/schemas/jobs.ts",
       "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
       "packages/cloud/shared/src/db/repositories/__tests__/job-time-authority.postgres.integration.test.ts",
-      "packages/cloud/formal/conformance/job-time.ts",
+      "packages/cloud/quint/check-job-time.ts",
       "packages/scripts/lib/junit-summary.ts"
     ],
     "invariants": ["safety"],
@@ -1724,6 +1724,143 @@
       "No complete scheduler model yet.",
       "Verify implementation transitions and failure paths against the formal contract.",
       "The time-authority model covers retry/read/renewal boundaries only; complete scheduler and remote-effect protocols remain open."
+    ]
+  },
+  {
+    "id": "cloud-model-native-access-coalescing",
+    "model": "packages/cloud/quint/native_access_coalescing.qnt",
+    "sources": [
+      "packages/cloud/sdk/native-host/cloud-services.mjs",
+      "packages/cloud/sdk/native-host/cloud-services.test.mjs",
+      "packages/agent/native-host/gateway.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs",
+      "packages/host/native-host/gateway-bootstrap.mjs",
+      "packages/host/native-host/gateway-bootstrap.test.mjs",
+      "packages/cloud/quint/check-native-access.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Three callers and physical reads; generation and revision range over 0..2. Credential startup and queued credential writes have settled before modeled read allocation.",
+      "A revision change prevents joining an older read. Existing callers may still receive an older revision; only generation fences returned data.",
+      "The model checks shared-read identity, conditional finalizer cleanup and account-generation rejection. Native gateway and provider response classification are exercised by the conformance hook, not proved by this model.",
+      "Provider state can change within one network round trip. No network fairness, permission freshness beyond that window, JavaScript refinement or external-system liveness is proved.",
+      "A shared 20-second AbortSignal deadline covers fetch and body parsing. Its callback must be scheduled and the transport must honor abort; timeout settles as unavailable, never as authorization success. Timer fairness and wall-clock delivery are not proved.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+    ]
+  },
+  {
+    "id": "cloud-model-native-gateway-admission",
+    "model": "packages/cloud/quint/native_gateway_admission.qnt",
+    "sources": [
+      "packages/agent/native-host/gateway.mjs",
+      "packages/agent/native-host/gateway.e2e.test.mjs",
+      "packages/host/native-host/gateway-bootstrap.mjs",
+      "packages/host/native-host/gateway-bootstrap.test.mjs",
+      "packages/cloud/quint/check-native-access.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One request, two owner identities, epochs 0..2; inference and owner reads acknowledge independently.",
+      "Matches source admission timing: requestEpoch is captured after inference readiness. A reset during inference discards the memo and reads current ownership again.",
+      "Dispatch and reply separately recheck current ownership. Upstream conversation-ID allocation, credential-provider truth, task presentation, streaming and process shutdown are outside this model.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+    ]
+  },
+  {
+    "id": "cloud-model-tokenizer-cache",
+    "model": "packages/cloud/quint/tokenizer_cache.qnt",
+    "sources": [
+      "plugins/plugin-elizacloud/src/models/tokenization.ts",
+      "plugins/plugin-elizacloud/__tests__/lazy-tokenizer.test.ts",
+      "plugins/plugin-openai/utils/tokenization.ts",
+      "plugins/plugin-openai/__tests__/lazy-tokenizer.test.ts",
+      "packages/cloud/quint/check-tokenizer-cache.ts",
+      "packages/scripts/vitest/source-aliases.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/server-boot-graph.test.ts",
+      "packages/agent/src/api/model-config-routes.ts",
+      "packages/agent/src/api/todo-cutover-import.ts",
+      "plugins/plugin-openai/build.ts",
+      "plugins/plugin-wallet/build.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One retained Cloud encoder slot, two encoding kinds, three asynchronous loads and two callers.",
+      "Each caller retains its own load promise. Replacing the cached encoding does not replace an existing caller's result; failure clears only the matching cache entry.",
+      "Timer cancellation and callbacks follow a single JavaScript event loop. Rank-module contents, exact BPE output and idle-release behavior are checked by the real implementation conformance hook. The hook also checks the real API-server import graph.",
+      "The OpenAI per-encoding persistent cache is regression-tested by the hook but is not represented by the one-slot model. No GC reclamation deadline, network/scheduler fairness or TypeScript refinement is proved.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+    ]
+  },
+  {
+    "id": "cloud-model-cache-swr-lifecycle",
+    "model": "packages/cloud/quint/cache_swr_lifecycle.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/cache/client.ts",
+      "packages/cloud/shared/src/lib/cache/client-swr.test.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/memory-cache-adapter.ts",
+      "packages/cloud/shared/src/lib/cache/adapters/node-redis-adapter.ts",
+      "packages/cloud/shared/src/lib/services/analytics.ts",
+      "packages/cloud/shared/src/lib/services/user-metrics.ts",
+      "packages/cloud/shared/src/lib/services/model-catalog-cache.ts",
+      "packages/cloud/quint/check-cache-swr.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "One stale key and at most three sequential background loaders; delivery expiry, loader completion, cache publication and ownership release are separate events.",
+      "A delivery timeout cannot cancel the loader. Permanently hung uncancellable work retains its key and consumes one queue slot; no eventual recovery or provider-success guarantee is claimed.",
+      "Cold misses and cache-read failures join a retained background result. Cold-only loads keep their existing non-coalesced policy and are outside the finite single-owner property.",
+      "Loaders must not recursively await a cold read of the same owned key. In-tree SWR callers delegate to leaf database queries or provider catalog reads.",
+      "Cache writes succeed atomically in the model; real local Redis regression separately delays a write. Cross-process ownership, invalidation races, backend outages and elapsed wall time remain unproved.",
+      "The default conformance hook uses real HTTP and the production MemoryCacheAdapter with a 100 ms test deadline. Optional CACHE_SWR_TEST_REDIS_BINARY and CACHE_SWR_TEST_REAL_DEADLINE=1 run local Redis and the production 30 second timeout.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+    ]
+  },
+  {
+    "id": "cloud-model-in-memory-lru",
+    "model": "packages/cloud/quint/in_memory_lru.qnt",
+    "sources": [
+      "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.ts",
+      "packages/cloud/shared/src/lib/cache/in-memory-lru-cache.test.ts",
+      "packages/cloud/shared/src/lib/services/shared-runtime/resolve-shared-agent.ts",
+      "packages/cloud/shared/src/lib/services/entity-settings/cache.ts",
+      "packages/cloud/quint/check-in-memory-lru.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Five keys and capacity four. Inserting a new key at capacity evicts the oldest key to the existing 75 percent target before insertion.",
+      "Entries do not expire during this trace. Reads and replacements promote recency; replacement preserves all other keys.",
+      "TTL expiry, wall-clock changes, payload aliasing, prefix matching and caller authorization are outside this finite model.",
+      "Real implementation regressions also exercise replacement at the shared-agent resolver production capacity of 1,000 entries and its 15,000 ms TTL, without claiming full-route latency or authorization proof.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
+    ]
+  },
+  {
+    "id": "cloud-model-speech-host-cutover",
+    "model": "packages/cloud/quint/speech_host_cutover.qnt",
+    "sources": [
+      "packages/cloud/speech-worker/wrangler.toml",
+      "packages/cloud/speech-worker/README.md",
+      "packages/cloud/api/wrangler.toml",
+      "packages/cloud/api/v1/voice/speech/route.ts",
+      "packages/cloud/api/src/speech-relay-coordinator.ts",
+      ".github/workflows/cloud-cf-release.yml",
+      "packages/cloud/scripts/speech-host-cutover-admission.mjs",
+      "packages/cloud/scripts/speech-host-cutover-admission.test.ts",
+      "packages/cloud/api/__tests__/speech-relay-worker.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Two namespaces and one old session plus one already-admitted preparation. The real binding switch retains the old namespace but does not route old session IDs to it.",
+      "The target namespace must first exist through operator host-only provisioning; missing target blocks activation. The release gate checks live admission freeze, exact source/namespace identity and decision-time attestation expiry twice. Drain is human-trusted evidence, not measured by the gate. The proved step assumes that claim is true, includes all in-flight preparations, and admission remains quiesced until the switch; excluded false-claim and thaw witnesses violate safety.",
+      "Provider closure and terminal accounting are separate abstract acknowledgements. Namespace retention and receipt ordering do not prove eventual retirement, Cloudflare propagation, rollout readiness, live latency or TypeScript refinement. Real Workerd tests demonstrate the old-session routing boundary; metadata and shell tests exercise the release gate.",
+      "Finite-state checks and runtime regressions do not establish whole-backend or TypeScript refinement."
     ]
   }
 ]
