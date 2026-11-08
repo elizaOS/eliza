@@ -295,13 +295,6 @@ function normalizeMemoryHit(
   };
 }
 
-/**
- * Load the originating orchestrator task a session serves — its goal, acceptance
- * criteria, and the latest decisions — so a resumed or child-spawned session can
- * read back what it is working on. Returns null when the session was not spawned
- * from an orchestrator task (no `taskId` in metadata), the task store is absent,
- * or the task no longer exists.
- */
 function getTaskService(
   ctx: RouteContext,
 ): OrchestratorTaskServiceShape | null {
@@ -320,6 +313,13 @@ async function loadTask(
   return (await getTaskService(ctx)?.getTask(taskId)) ?? null;
 }
 
+/**
+ * Load the originating orchestrator task a session serves — its goal, acceptance
+ * criteria, and the latest decisions — so a resumed or child-spawned session can
+ * read back what it is working on. Returns null when the session was not spawned
+ * from an orchestrator task (no `taskId` in metadata), the task store is absent,
+ * or the task no longer exists.
+ */
 async function loadOriginatingTask(
   ctx: RouteContext,
   metadata: Record<string, unknown>,

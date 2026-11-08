@@ -28,9 +28,9 @@ const IDENTITY_FILENAMES = ["AGENTS.md"] as const;
  * The operating manual template. Deliberately self-contained — a sub-agent never
  * has to chase a possibly-stale skill file to know it is non-interactive. Bridge
  * facts are stated accurately: `memory` is semantic search scoped to the task's
- * project world or origin room (not that room's recent messages), `parent-context` exposes the originating
- * task goal + latest decisions, and the endpoints only work when
- * `ORCHESTRATOR_SESSION_ID` is wired.
+ * project world or origin room (not that room's recent messages),
+ * `parent-context` exposes the originating task goal + latest decisions, and the
+ * endpoints only work when `ORCHESTRATOR_SESSION_ID` is wired.
  *
  * Carries a `{{BROKER_SECTION}}` placeholder that {@link buildSubAgentIdentityMd}
  * fills with the parent-agent broker section only when the broker is actually
