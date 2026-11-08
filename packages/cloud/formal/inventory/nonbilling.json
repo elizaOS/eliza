@@ -296,7 +296,8 @@
       "id": "inference-provider-streaming",
       "sources": [
         "packages/cloud/api/v1/chat/completions/route.ts",
-        "packages/cloud/api/v1/responses/route.ts"
+        "packages/cloud/api/v1/responses/route.ts",
+        "packages/cloud/shared/src/lib/services/inference-passthrough.ts"
       ],
       "states": [
         "admitted",
@@ -312,15 +313,15 @@
         "Buffered data is bounded without silent truncation"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "The finite model covers only two line grammars and chunk segmentation, EOF and abort.",
+        "JSON and UTF-8 details are exercised by runtime regressions; provider execution, transport, funding and settlement remain outside the model."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["sse_segmentation.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite provider-stream model yet.",
+        "Model provider usage, funding, cancellation and exact billing settlement through every terminal outcome.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
@@ -451,7 +452,11 @@
       "sources": [
         "packages/cloud/shared/src/lib/services/containers.ts",
         "packages/cloud/shared/src/db/repositories/containers.ts",
-        "packages/cloud/services/container-control-plane/src/index.ts"
+        "packages/cloud/services/container-control-plane/src/index.ts",
+        "packages/cloud/shared/src/db/repositories/job-execution-authority.ts",
+        "packages/cloud/shared/src/lib/services/app-container-store.ts",
+        "packages/cloud/shared/src/lib/services/container-job-executors.ts",
+        "packages/cloud/shared/src/node/provisioning-worker.ts"
       ],
       "states": [
         "queued",
@@ -470,16 +475,18 @@
         "Stale probes cannot revive a retired generation"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "One container, two original-row identities, bounded placement changes and one restart are modeled.",
+        "The canonical revision advances on placement changes; exact database timestamp text distinguishes row identity. Provider truth and transport reliability remain assumptions.",
+        "The separate execution model has one job and two execution generations. It treats the job/lease/resource write as atomic and does not establish composition with provider-side effects."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["container_monitor.qnt", "provisioning_execution.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No complete container model yet.",
-        "Verify implementation transitions and failure paths against the formal contract."
+        "Health observations and job-owned publication are modeled; provider creation/deletion quiescence and cross-job routing remain open.",
+        "Verify implementation transitions and failure paths against the formal contract.",
+        "The execution model checks same-transaction job/lease/resource publication authority. Remote cancellation, delayed mutable-name provider effects and cross-job routing ownership remain unproved."
       ]
     },
     {
@@ -487,7 +494,9 @@
       "sources": [
         "packages/cloud/shared/src/lib/services/eliza-sandbox.ts",
         "packages/cloud/shared/src/lib/storage/agent-backup-object-store.ts",
-        "packages/cloud/api/v1/cron/agent-backups/route.ts"
+        "packages/cloud/api/v1/cron/agent-backups/route.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-serving.ts",
+        "packages/cloud/shared/src/lib/services/agent-backup-restore-coordinator.ts"
       ],
       "states": [
         "admitted",
@@ -505,15 +514,15 @@
         "Cleanup cannot remove the active replacement"
       ],
       "assumptions": [
-        "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-        "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
+        "Terminal cleanup models one immutable attempt, two concurrent trusted turns and two node occurrences.",
+        "Valid exact provider proofs and atomic receipt/capacity transactions are assumed; capture, streaming and activation need separate models."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["exact_restore_recovery.qnt", "restore_cleanup_rotation.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite restore/activation model yet.",
+        "Only terminal exact cleanup is modeled; capture, restore materialization and activation remain open.",
         "Verify implementation transitions and failure paths against the formal contract."
       ]
     },
@@ -714,13 +723,14 @@
         "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
         "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims."
       ],
-      "models": [],
-      "coverage": "none",
-      "unmodeled": true,
+      "models": ["app_container_publication.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
       "implementationRefinementEstablished": false,
       "remainingWork": [
-        "No finite deployment model yet.",
-        "Verify implementation transitions and failure paths against the formal contract."
+        "Only container placement publication and stale cleanup identity are modeled; build, ingress and complete deployment flow remain open.",
+        "Verify implementation transitions and failure paths against the formal contract.",
+        "Verify composition between the separate job-execution and app-generation publication models; retain provider-quiescence and cross-job routing gaps."
       ]
     },
     {
@@ -1113,6 +1123,33 @@
       "remainingWork": [
         "No finite MCP session model yet.",
         "Verify implementation transitions and failure paths against the formal contract."
+      ]
+    },
+    {
+      "id": "native-inference-worker-supervision",
+      "sources": [
+        "packages/cloud/services/vast-pyworker/onstart-vllm.sh",
+        "packages/cloud/services/vast-pyworker/observability.py",
+        "packages/cloud/services/vast-pyworker/worker.py",
+        "packages/training/scripts/inference/heartbeat.py"
+      ],
+      "states": ["unstarted", "locked", "running", "stopping", "stopped"],
+      "invariants": [
+        "At most one cooperating observer owns the metrics and heartbeat writers.",
+        "Restart preserves existing observation history.",
+        "Graceful shutdown joins the heartbeat before releasing ownership."
+      ],
+      "assumptions": [
+        "Two observer attempts, one process-owned kernel lock and one heartbeat thread per owner.",
+        "Legacy untracked processes must be retired during upgrade; distributed storage locking, disk failure and GPU readiness are not proved."
+      ],
+      "models": ["vast_worker_supervision.qnt"],
+      "coverage": "partial-bounded-model",
+      "unmodeled": false,
+      "implementationRefinementEstablished": false,
+      "remainingWork": [
+        "Model worker admission, queue capacity, provider readiness and process-to-GPU lifecycle.",
+        "Verify deployed model completion and readiness against the actual GPU and model configuration."
       ]
     }
   ]

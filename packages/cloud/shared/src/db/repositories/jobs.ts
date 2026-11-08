@@ -4,6 +4,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { StaleJobExecutionError } from "../../lib/services/job-execution-authority";
+
+export { StaleJobExecutionError } from "../../lib/services/job-execution-authority";
+
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
@@ -343,13 +347,6 @@ export function jobInterruptionBoundError(interruptions: number): string {
 /** Recovery provenance written when a restart-interrupted job is re-queued. */
 export function jobInterruptionRecoveredError(interruptions: number): string {
   return `Job interrupted by worker restart - recovered for retry (interruption ${interruptions}/${MAX_JOB_INTERRUPTIONS})`;
-}
-
-export class StaleJobExecutionError extends Error {
-  constructor(jobId: string) {
-    super(`Job execution generation is no longer current: ${jobId}`);
-    this.name = "StaleJobExecutionError";
-  }
 }
 
 function requireExecutionGeneration(job: Job): string {
