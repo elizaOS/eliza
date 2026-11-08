@@ -1501,12 +1501,13 @@ export class GmailDomain {
       "sendGmailReply",
     );
     const threading = requireGmailReplyThreading(read.message);
+    const replyRecipient = read.message.replyTo ?? read.message.fromEmail;
     const sent = await sendGmailReply({
       accountId: accountIdForGrant(grant),
       to: request.to?.length
         ? request.to
-        : read.message.fromEmail
-          ? [read.message.fromEmail]
+        : replyRecipient
+          ? [replyRecipient]
           : [],
       cc: request.cc,
       subject:
