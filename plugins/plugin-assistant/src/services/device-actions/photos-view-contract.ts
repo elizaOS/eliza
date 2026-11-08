@@ -34,6 +34,7 @@ export type PhotosFilterAlbum =
 export const PHOTOS_ALBUM_NAME_MAX = 80;
 export const PHOTOS_SHARE_MAX = 100;
 const CUSTOM_ALBUM = /^custom:[A-Za-z0-9_-]{1,80}$/;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: names and query text must reject control characters.
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 export type PhotosViewOperation =

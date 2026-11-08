@@ -29,29 +29,65 @@ describe("files.browser.v1 operations", () => {
     }
   });
   it("carries the reviewed identity of each moved or trashed file", () => {
-    const reviewed = [{ size: 3, modified: 1_800_000_000_000 }, { size: 0, modified: 1 }];
+    const reviewed = [
+      { size: 3, modified: 1_800_000_000_000 },
+      { size: 0, modified: 1 },
+    ];
     for (const op of [
-      { type: "files_move", paths: ["Download/a.pdf", "Download/Folder"], dest: "Documents", reviewed },
-      { type: "files_trash", paths: ["Download/a.pdf", "Download/Folder"], reviewed },
+      {
+        type: "files_move",
+        paths: ["Download/a.pdf", "Download/Folder"],
+        dest: "Documents",
+        reviewed,
+      },
+      {
+        type: "files_trash",
+        paths: ["Download/a.pdf", "Download/Folder"],
+        reviewed,
+      },
     ]) {
       const valid = validateFilesOperation(op);
       expect(valid).toEqual(op);
       expect(validateFilesOperation(valid)).toEqual(valid);
     }
     for (const bad of [
-      { type: "files_trash", paths: ["a", "b"], reviewed: [{ size: 1, modified: 1 }] },
-      { type: "files_trash", paths: ["a"], reviewed: [{ size: -1, modified: 1 }] },
-      { type: "files_trash", paths: ["a"], reviewed: [{ size: 1, modified: 1.5 }] },
-      { type: "files_trash", paths: ["a"], reviewed: [{ size: 1, modified: 1, path: "a" }] },
+      {
+        type: "files_trash",
+        paths: ["a", "b"],
+        reviewed: [{ size: 1, modified: 1 }],
+      },
+      {
+        type: "files_trash",
+        paths: ["a"],
+        reviewed: [{ size: -1, modified: 1 }],
+      },
+      {
+        type: "files_trash",
+        paths: ["a"],
+        reviewed: [{ size: 1, modified: 1.5 }],
+      },
+      {
+        type: "files_trash",
+        paths: ["a"],
+        reviewed: [{ size: 1, modified: 1, path: "a" }],
+      },
       { type: "files_move", paths: ["a"], dest: "", reviewed: {} },
-      { type: "files_share", paths: ["a"], reviewed: [{ size: 1, modified: 1 }] },
+      {
+        type: "files_share",
+        paths: ["a"],
+        reviewed: [{ size: 1, modified: 1 }],
+      },
     ])
       expect(() => validateFilesOperation(bad)).toThrow();
-    expect(filesNeedsIdentity({ type: "files_trash", paths: ["a"] })).toBe(true);
-    expect(filesNeedsIdentity({ type: "files_share", paths: ["a"] })).toBe(false);
+    expect(filesNeedsIdentity({ type: "files_trash", paths: ["a"] })).toBe(
+      true,
+    );
+    expect(filesNeedsIdentity({ type: "files_share", paths: ["a"] })).toBe(
+      false,
+    );
     // The agent's tool schema never offers it.
     for (const schema of FILES_OPERATION_SCHEMAS)
-      expect(Object.keys(schema.properties)).not.toContain("reviewed");
+      expect(Object.keys(schema.properties ?? {})).not.toContain("reviewed");
   });
   it("rejects escapes, duplicates, hidden folders, empty filters and extra fields", () => {
     for (const bad of [
@@ -70,10 +106,16 @@ describe("files.browser.v1 operations", () => {
   it("runs only filter and open directly; changes need Files on the unlocked screen", () => {
     expect([...FILES_DIRECT_TYPES]).toEqual(["files_filter", "files_open"]);
     expect(
-      filesContextAllowed({ type: "files_trash", paths: ["a"] }, { view: "home" }),
+      filesContextAllowed(
+        { type: "files_trash", paths: ["a"] },
+        { view: "home" },
+      ),
     ).toBe(false);
     expect(
-      filesContextAllowed({ type: "files_trash", paths: ["a"] }, { view: "files" }),
+      filesContextAllowed(
+        { type: "files_trash", paths: ["a"] },
+        { view: "files" },
+      ),
     ).toBe(true);
     expect(
       filesContextAllowed(
@@ -87,17 +129,30 @@ describe("files.browser.v1 operations", () => {
         paths: ["Download/a.pdf"],
         dest: "Documents/Taxes",
       }),
-    ).toEqual({ title: "Move 1 item", description: "a.pdf → Documents › Taxes" });
+    ).toEqual({
+      title: "Move 1 item",
+      description: "a.pdf → Documents › Taxes",
+    });
   });
   it("is advertised only to a phone that negotiated files.browser.v1", () => {
     for (const type of FILES_OPERATION_TYPES) {
       expect(isFilesOperation({ type })).toBe(true);
-      expect(deviceOperationSupportedByCapabilities(type, [FILES_CAPABILITY])).toBe(true);
-      expect(deviceOperationSupportedByCapabilities(type, ["camera.capture-photo.v1"])).toBe(false);
-      expect(deviceOperationSupportedByCapabilities(type, undefined)).toBe(false);
+      expect(
+        deviceOperationSupportedByCapabilities(type, [FILES_CAPABILITY]),
+      ).toBe(true);
+      expect(
+        deviceOperationSupportedByCapabilities(type, [
+          "camera.capture-photo.v1",
+        ]),
+      ).toBe(false);
+      expect(deviceOperationSupportedByCapabilities(type, undefined)).toBe(
+        false,
+      );
     }
     expect(
-      FILES_OPERATION_SCHEMAS.flatMap((schema) => schema.properties.type.enum),
+      FILES_OPERATION_SCHEMAS.flatMap(
+        (schema) => schema.properties?.type.enum ?? [],
+      ),
     ).toEqual([
       "files_filter",
       "files_open",

@@ -25,6 +25,12 @@ import {
   validateClockOperation,
 } from "./clock-contract.ts";
 import {
+  FILES_CAPABILITY,
+  type FilesAgentOperation,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   type ForegroundReviewOperation,
   foregroundReviewCapabilityAvailable,
   isForegroundReviewType,
@@ -65,12 +71,6 @@ import {
   type SmsSendOperation,
   validateSmsSend,
 } from "./sms-contract.ts";
-import {
-  FILES_CAPABILITY,
-  type FilesAgentOperation,
-  isFilesOperation,
-  validateFilesOperation,
-} from "./files-browser-contract.ts";
 import {
   validateWorkflowBinding,
   validateWorkflowReadOperation,

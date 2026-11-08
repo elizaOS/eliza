@@ -276,10 +276,16 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     // View state only: no data change (receipts are built by photosViewReceiptReason).
     case "photos_filter":
     case "photos_open":
+    case "files_filter":
+    case "files_open":
       return true;
     // A data change and an outward share, each opened as an owner review.
     case "photos_album_create":
     case "photos_share":
+    case "files_share":
+    case "files_move":
+    case "files_trash":
+    case "files_folder_create":
       return false;
     case "notes_named":
     case "reminder_named":

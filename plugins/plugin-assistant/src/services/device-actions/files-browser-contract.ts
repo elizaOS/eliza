@@ -21,6 +21,8 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
+import type { ActionParameterSchema } from "@elizaos/core";
+
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [
   "files_filter",
@@ -94,9 +96,9 @@ export function validFilesName(value: unknown): string {
 }
 /** A volume-relative path; "" (the volume root) only where a folder is allowed. */
 export function validFilesPath(value: unknown, allowRoot = false): string {
-  if (typeof value !== "string" || value.length > 1024)
+  if (typeof value !== "string" || value.length > 1024 || value.startsWith("/"))
     throw Error("Invalid path");
-  const path = value.replace(/^\/+|\/+$/g, "");
+  const path = value.replace(/\/+$/g, "");
   if (!path) {
     if (allowRoot) return "";
     throw Error("Invalid path");
@@ -146,9 +148,7 @@ function isoDate(value: unknown): string {
   return value;
 }
 
-export function isFilesOperation(
-  value: unknown,
-): value is FilesAgentOperation {
+export function isFilesOperation(value: unknown): value is FilesAgentOperation {
   return (
     !!value &&
     typeof value === "object" &&
@@ -179,7 +179,9 @@ export function validateFilesOperation(value: unknown): FilesAgentOperation {
         out.text = op.text.trim();
       }
       if (op.kind !== undefined) {
-        if (!(FILES_FILTER_KINDS as readonly string[]).includes(String(op.kind)))
+        if (
+          !(FILES_FILTER_KINDS as readonly string[]).includes(String(op.kind))
+        )
           throw Error("Invalid filter kind");
         out.kind = op.kind as FilesFilterKind;
       }
@@ -251,7 +253,9 @@ const KIND_LABELS: Record<FilesFilterKind, string> = {
   folder: "Folders",
 };
 /** The chip a filter shows, for example `“lease” · PDFs · in Download`. */
-export function filesFilterLabel(op: Omit<FilesFilterOperation, "type">): string {
+export function filesFilterLabel(
+  op: Omit<FilesFilterOperation, "type">,
+): string {
   return [
     op.text ? `“${op.text}”` : "",
     op.kind ? KIND_LABELS[op.kind] : "",
@@ -317,7 +321,7 @@ const filesPaths = {
   description: "1-50 paths on Internal storage",
 } as const;
 /** Tool schema branches (one per operation, disjoint by `type`). */
-export const FILES_OPERATION_SCHEMAS = [
+export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,
@@ -328,7 +332,8 @@ export const FILES_OPERATION_SCHEMAS = [
       kind: { type: "string", enum: [...FILES_FILTER_KINDS] },
       folder: {
         type: "string",
-        description: 'Folder path, for example "Download"; "" is Internal storage',
+        description:
+          'Folder path, for example "Download"; "" is Internal storage',
       },
       from: { type: "string", description: "Modified on or after, YYYY-MM-DD" },
       to: { type: "string", description: "Modified on or before, YYYY-MM-DD" },
@@ -356,7 +361,10 @@ export const FILES_OPERATION_SCHEMAS = [
     properties: {
       type: { type: "string", enum: ["files_move"] },
       paths: filesPaths,
-      dest: { ...filesPath, description: 'Destination folder; "" is Internal storage' },
+      dest: {
+        ...filesPath,
+        description: 'Destination folder; "" is Internal storage',
+      },
     },
   },
   {
@@ -365,7 +373,10 @@ export const FILES_OPERATION_SCHEMAS = [
     required: ["type", "parent", "name"],
     properties: {
       type: { type: "string", enum: ["files_folder_create"] },
-      parent: { ...filesPath, description: 'Parent folder; "" is Internal storage' },
+      parent: {
+        ...filesPath,
+        description: 'Parent folder; "" is Internal storage',
+      },
       name: { type: "string" },
     },
   },

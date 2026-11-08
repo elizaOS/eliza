@@ -116,9 +116,9 @@ describe("notes organize contract", () => {
       folder: null,
     });
     expect(invalid({ type: "notes_move", target })).toThrow("Missing folder");
-    expect(
-      invalid({ type: "notes_move", target, folder: undefined }),
-    ).toThrow("Invalid folder name");
+    expect(invalid({ type: "notes_move", target, folder: undefined })).toThrow(
+      "Invalid folder name",
+    );
     expect(
       invalid({ type: "notes_move", target, folder: "x".repeat(41) }),
     ).toThrow("Invalid folder name");
@@ -145,9 +145,10 @@ describe("notes organize contract", () => {
   });
 
   it("validates notes_folder_create", () => {
-    expect(valid({ type: "notes_folder_create", name: "  Recipes " })).toEqual(
-      { type: "notes_folder_create", name: "Recipes" },
-    );
+    expect(valid({ type: "notes_folder_create", name: "  Recipes " })).toEqual({
+      type: "notes_folder_create",
+      name: "Recipes",
+    });
     expect(invalid({ type: "notes_folder_create" })).toThrow(
       "Invalid folder name",
     );
@@ -220,9 +221,9 @@ describe("notes organize contract", () => {
       );
     }
     // The capability does not widen unrelated operations.
-    expect(
-      deviceOperationSupportedByCapabilities("notes_query", full),
-    ).toBe(false);
+    expect(deviceOperationSupportedByCapabilities("notes_query", full)).toBe(
+      false,
+    );
   });
 
   it("describes each change for the review card", () => {

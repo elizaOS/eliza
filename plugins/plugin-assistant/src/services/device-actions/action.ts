@@ -36,16 +36,16 @@ import {
 } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
+  DEVICE_APPROVAL_REVIEW_TEXT,
+  deviceActionEffectReceipts,
+  deviceApprovalPersistenceReceipt,
+} from "./effect-receipts.ts";
+import {
   FILES_CAPABILITY,
   FILES_GUIDANCE,
   FILES_OPERATION_SCHEMAS,
   isFilesOperation,
 } from "./files-browser-contract.ts";
-import {
-  DEVICE_APPROVAL_REVIEW_TEXT,
-  deviceActionEffectReceipts,
-  deviceApprovalPersistenceReceipt,
-} from "./effect-receipts.ts";
 import {
   isForegroundReviewOperation,
   isForegroundReviewType,
@@ -53,11 +53,13 @@ import {
 } from "./foreground-review-contract.ts";
 import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
-import {
-  isNotesOrganizeType,
-  NOTES_KINDS,
-} from "./notes-organize-contract.ts";
+import { isNotesOrganizeType, NOTES_KINDS } from "./notes-organize-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
+import {
+  isPhoneDial,
+  phoneDialResultText,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
 import { LIBRARY_LIMITS } from "./photo-library-contract.ts";
 import {
   isPhotosViewOperation,
@@ -66,11 +68,6 @@ import {
   PHOTOS_SHARE_MAX,
   validatePhotosViewResult,
 } from "./photos-view-contract.ts";
-import {
-  isPhoneDial,
-  phoneDialResultText,
-  validatePhoneDialResult,
-} from "./phone-dial-contract.ts";
 import {
   isReminderOperation,
   validateReminderResult,

@@ -87,7 +87,6 @@ import {
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
-import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
 import {
   DeviceActionError,
   type DeviceActionPayload,
@@ -100,6 +99,7 @@ import {
   validateDevicePayload,
 } from "./contract.ts";
 import { deviceActionEffectReceipts } from "./effect-receipts.ts";
+import { FILES_OPERATION_TYPES } from "./files-browser-contract.ts";
 import {
   FOREGROUND_REVIEW_TYPES,
   foregroundReviewOperationAvailable,
@@ -121,21 +121,13 @@ import {
   validateNotesOperation,
   validateNotesResult,
 } from "./notes-contract.ts";
+import { notesDeleteAfterReadPlan } from "./notes-delete-continuation.ts";
+import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import {
   isNotesOrganizeOperation,
   NOTES_ORGANIZE_CAPABILITY,
   NOTES_ORGANIZE_TYPES,
 } from "./notes-organize-contract.ts";
-import { notesDeleteAfterReadPlan } from "./notes-delete-continuation.ts";
-import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
-import {
-  isPhotosViewOperation,
-  PHOTOS_VIEW_CAPABILITY,
-  PHOTOS_VIEW_TYPES,
-  photosViewCapabilityAvailable,
-  validatePhotosViewResult,
-} from "./photos-view-contract.ts";
-import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
 import {
@@ -146,6 +138,14 @@ import {
   phoneDialReceiptOutcome,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
+import { PHOTO_LIBRARY_CAPABILITY } from "./photo-library-contract.ts";
+import {
+  isPhotosViewOperation,
+  PHOTOS_VIEW_CAPABILITY,
+  PHOTOS_VIEW_TYPES,
+  photosViewCapabilityAvailable,
+  validatePhotosViewResult,
+} from "./photos-view-contract.ts";
 import {
   assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
