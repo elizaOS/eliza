@@ -29,15 +29,34 @@ type Owner = { active: boolean; child?: Promise<void> };
 /** Records decoded per page by mapAll. */
 const MAP_PAGE_ROWS = 256;
 
-/** Persist the published name and any ancestors created for a new backup directory. */
+/**
+ * Persist the published name and any ancestors created for a new backup directory.
+ *
+ * Windows flushes only handles opened for writing, so directories are opened
+ * "r+" there ("r" makes fsync fail with EPERM). An ancestor the user cannot
+ * write, such as C:\Users or a drive root, refuses that handle with EPERM and
+ * is skipped. The directory that holds the published name must still flush.
+ */
 function syncDirectoryChain(directory: string): void {
+  const windows = process.platform === "win32";
   let current = directory;
   for (;;) {
-    const fd = openSync(current, "r");
+    let fd: number | undefined;
     try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+      fd = openSync(current, windows ? "r+" : "r");
+    } catch (error) {
+      const unwritableAncestor =
+        windows &&
+        current !== directory &&
+        (error as NodeJS.ErrnoException).code === "EPERM";
+      if (!unwritableAncestor) throw error;
+    }
+    if (fd !== undefined) {
+      try {
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
     }
     const parent = dirname(current);
     if (parent === current) return;
@@ -508,7 +527,8 @@ export class SQLiteStorageBase implements IStorage {
         const snapshot = join(staging, "snapshot.sqlite");
         this.connection().prepare("VACUUM INTO ?").run(snapshot);
         chmodSync(snapshot, 0o600);
-        const snapshotFd = openSync(snapshot, "r");
+        // Windows flushes only handles opened for writing; "r" fails with EPERM.
+        const snapshotFd = openSync(snapshot, "r+");
         try {
           fsyncSync(snapshotFd);
         } finally {
