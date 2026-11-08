@@ -15,6 +15,7 @@ assert.equal(
   path.join(root, model),
 );
 const backendCases = [
+  "persistent first-queue removal failure cannot starve later queues",
   "bounded adoption preserves backlog and same-call delivery",
   "foreign marker cannot discard original Stripe work",
   "mismatched retained payload remains unchanged",

@@ -252,7 +252,17 @@ async function adoptLegacyStripeQueue(): Promise<number> {
       }
       // KV list removal is a read/modify/write. All old queue producers must
       // be quiescent; concurrent removers can only resurrect adopted entries.
-      await cache.removeQueueValue(key, raw);
+      try {
+        await cache.removeQueueValue(key, raw);
+      } catch (error) {
+        // error-policy:J7 the receipt is durable; retry this raw without starving other work.
+        logger.warn("[Stripe Outbox] Legacy removal unavailable; receipt retained", {
+          code: "stripe_legacy_removal_failed",
+          key,
+          digest,
+          failureType: error instanceof Error ? error.name : "unknown",
+        });
+      }
     }
     if (lastAttempted && lastAttempted !== selection.digests[0]) {
       try {

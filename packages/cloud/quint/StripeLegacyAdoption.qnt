@@ -78,6 +78,10 @@ module StripeLegacyAdoption {
         s.queue.exclude(Set(worker.held)) else worker.removal,
         workers: s.workers.set(w, {...worker, phase: "select"})} }
   }
+  action RemovalFailed(w: int): bool = all {
+    Set("remove-read", "remove-write").contains(s.workers.get(w).phase),
+    s' = {...s, workers: s.workers.set(w, {...s.workers.get(w), phase: "select"})}
+  }
   action Finish(w: int): bool = {
     val worker = s.workers.get(w)
     val eligible = worker.phase == "select" and
@@ -100,7 +104,7 @@ module StripeLegacyAdoption {
     nondet replied = Set(false, true).oneOf()
     nondet applied = Set(false, true).oneOf()
     any { Snapshot(w), Reserve(w, replied), Choose(w), Adopt(w, committed, replied),
-      ReadRemoval(w), Remove(w, applied), Finish(w) }
+      ReadRemoval(w), Remove(w, applied), RemovalFailed(w), Finish(w) }
   }
   action step = {
     nondet w = Workers.oneOf()
@@ -127,6 +131,9 @@ module StripeLegacyAdoption_redis {
     .then(Adopt(1, true, false)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "pending")
   run failedSqlRetainsRawTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
     .then(Adopt(1, false, false)).expect(safety and s.queue.contains(1) and s.sql.get(1) == "none")
+  run failedRemovalContinuesReservedWorkTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Choose(1))
+    .then(Adopt(1, true, true)).then(RemovalFailed(1)).then(Choose(1)).then(Adopt(1, true, true))
+    .expect(safety and s.queue.contains(1) and s.sql.get(2) == "pending")
   run lostCursorReplyIsNotAdoptionTest = init.then(Snapshot(1)).then(Reserve(1, false))
     .expect(safety and s.cursor == 1 and s.queue.contains(1) and s.sql.get(1) == "none")
   run timeBudgetCannotAdvancePastUnattemptedTest = init.then(Snapshot(1)).then(Reserve(1, true)).then(Budget(1))
@@ -137,6 +144,37 @@ module StripeLegacyAdoption_redis {
     .expect(safety and s.cursor == 2)
   run cleanupBeforeReceiptNegativeWitnessTest = init.then(UnsafeDrop(1)).expect(not(safety))
   run unboundedAdoptionNegativeWitnessTest = init.then(UnsafeUnboundedBatch(1)).expect(not(safety))
+}
+
+// The production owner visits all three legacy lists in the same cron call.
+// A permanent remove error in the first list leaves its matching receipt/raw
+// intact and must not abort selection of the processing and dead-letter lists.
+module StripeLegacyAdoption_queues {
+  pure val Lists = Set(1, 2, 3)
+  var s: { list: int, phase: str, raw: Set[int], receipts: Set[int] }
+  action init = s' = { list: 1, phase: "adopt", raw: Lists, receipts: Set() }
+  action Adopt = all {
+    s.phase == "adopt",
+    s' = {...s, receipts: s.receipts.union(Set(s.list)), phase: "remove"}
+  }
+  action Remove = all {
+    s.phase == "remove", s.receipts.contains(s.list),
+    s' = {...s, raw: if (s.list == 1) s.raw else s.raw.exclude(Set(s.list)), phase: "next"}
+  }
+  action Next = all {
+    s.phase == "next",
+    s' = if (s.list == 3) {...s, phase: "done"} else {...s, list: s.list + 1, phase: "adopt"}
+  }
+  action step = any { Adopt, Remove, Next, s' = s }
+  val safety = Lists.forall(list => not(s.raw.contains(list)) implies s.receipts.contains(list))
+  val AllTransferred = s.receipts == Lists
+  temporal LaterListsProgress = (Adopt.weakFair(s) and Remove.weakFair(s) and Next.weakFair(s)) implies eventually(AllTransferred)
+  action UnsafeAbortOnRemoval = all { s.phase == "remove", s' = {...s, phase: "done"} }
+  run permanentFirstRemovalFailureRetainsReceiptAndReachesLaterListsTest = init
+    .then(Adopt).then(Remove).then(Next).then(Adopt).then(Remove).then(Next)
+    .then(Adopt).then(Remove).then(Next).expect(safety and AllTransferred and s.raw == Set(1))
+  run abortingOnFirstRemovalFailureNegativeWitnessTest = init.then(Adopt).then(UnsafeAbortOnRemoval)
+    .expect(safety and not(AllTransferred) and s.raw == Lists)
 }
 module StripeLegacyAdoption_kv {
   import StripeLegacyAdoption(AtomicRemoval=false, ForeignReceipt=false).*

@@ -182,6 +182,29 @@ async function drain(seen: string[] = []) {
 }
 
 for (const mode of ["kv", "redis"] as const) {
+  test(`${mode}: persistent first-queue removal failure cannot starve later queues`, async () => {
+    useBackend(mode);
+    const keys = ["stripe-events", "stripe-events:processing", "stripe-events:dlq"];
+    const bodies = keys.map((_, index) => message(`evt_remove_failure_${index}`));
+    for (const [index, key] of keys.entries()) await seed(envelope(bodies[index]), key);
+    spies.push(
+      spyOn(cache, "removeQueueValue").mockImplementation(async (key, raw) => {
+        if (key === keys[0]) throw new Error("Persistent first-list removal failure");
+        return adapter.lrem(prefix + key, 1, raw);
+      }),
+    );
+    const seen: string[] = [];
+    await drain(seen);
+    expect(seen.sort()).toEqual(bodies.map((body) => body.eventId).sort());
+    expect(await remaining(keys[0])).toEqual([envelope(bodies[0])]);
+    expect(await remaining(keys[1])).toEqual([]);
+    expect(await remaining(keys[2])).toEqual([]);
+    for (const body of bodies)
+      expect((await repo.findByEventIdPrimary(body.eventId))?.delivery_completed_at).not.toBeNull();
+    await drain(seen);
+    expect(seen.length).toBe(3);
+  });
+
   test(`${mode}: bounded adoption preserves backlog and same-call delivery`, async () => {
     useBackend(mode);
     const raws = Array.from({ length: 64 }, (_, i) => envelope(message(`evt_backlog_${i}`)));
