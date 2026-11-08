@@ -218,6 +218,54 @@ describe("onboarding coordinator error integration", () => {
     };
   }
 
+  async function continuation(name: string) {
+    const namespace = await miniflare.getDurableObjectNamespace(
+      "ONBOARDING_SESSIONS",
+    );
+    const id = `platform:continuation-${name}`;
+    const session = {
+      id,
+      platform: "telegram",
+      platformIdentityTrusted: true,
+      platformUserId: "fixture-telegram",
+      createdAt: new Date().toISOString(),
+      history: [],
+    };
+    const claim = {
+      claimId: "original-lineage",
+      telegramId: session.platformUserId,
+      phoneNumber: "+15550100000",
+    };
+    const account = { userId: "fixture-user", organizationId: "fixture-org" };
+    const send = async (owner: string, path: string, body: unknown) => {
+      const response = await namespace
+        .getByName(owner)
+        .fetch(`https://onboarding.internal/${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      return { status: response.status, body: await response.json() };
+    };
+    const token = `continuation-fixture-${name}`;
+    expect(await send(token, "bind", { sessionId: id })).toMatchObject({
+      status: 200,
+    });
+    return {
+      id,
+      claim,
+      account,
+      request: (path: string, body: unknown) => send(token, path, body),
+      seed: async (
+        fields: Partial<typeof session> & Partial<typeof account>,
+      ) => {
+        expect(
+          await send(id, "fixture/session", { ...session, ...fields }),
+        ).toMatchObject({ status: 200 });
+      },
+    };
+  }
+
   test("public route maps a typed coordinator rejection to fail-closed 403", async () => {
     const response = await miniflare.dispatchFetch(
       "https://cloud.test/api/eliza-app/onboarding/chat",
@@ -321,5 +369,62 @@ describe("onboarding coordinator error integration", () => {
       }),
     ).toEqual({ acknowledged: 1 });
     expect(await queue("drain-greetings", {})).toEqual({ greetings: [] });
+  });
+
+  test("continuation pins the original lineage and account through exact completion", async () => {
+    const { id, claim, account, request, seed } = await continuation("owner");
+    await seed({});
+    expect(await request("claim", claim)).toEqual({
+      status: 200,
+      body: { status: "acquired", sessionId: id },
+    });
+    expect(
+      await request("claim", { ...claim, claimId: "other-lineage" }),
+    ).toMatchObject({ status: 409 });
+    const owned = { ...claim, ...account };
+    expect(await request("claim", owned)).toMatchObject({ status: 200 });
+    expect(
+      await request("claim", { ...owned, userId: "other-account" }),
+    ).toMatchObject({ status: 409 });
+    expect(await request("complete-claim", owned)).toMatchObject({
+      status: 409,
+    });
+    await seed(account);
+    expect(
+      await request("complete-claim", { ...owned, claimId: "other-lineage" }),
+    ).toMatchObject({ status: 409 });
+    expect(await request("complete-claim", owned)).toEqual({
+      status: 200,
+      body: { status: "completed" },
+    });
+    expect(await request("claim", owned)).toEqual({
+      status: 200,
+      body: { status: "completed", sessionId: id, ...account },
+    });
+  });
+
+  test("continuation rejects invalid sessions and recovers a retained completed claim", async () => {
+    const { id, claim, account, request, seed } =
+      await continuation("recovery");
+    await seed({ platformIdentityTrusted: false });
+    expect(await request("claim", claim)).toMatchObject({ status: 403 });
+    await seed({
+      createdAt: new Date(Date.now() - 15 * 24 * 60 * 60_000).toISOString(),
+    });
+    expect(await request("claim", claim)).toMatchObject({ status: 403 });
+    await seed({});
+    expect(
+      await request("claim", { ...claim, telegramId: "other-telegram" }),
+    ).toMatchObject({ status: 403 });
+    expect(await request("claim", claim)).toMatchObject({ status: 200 });
+    await seed(account);
+    const owned = { ...claim, ...account };
+    expect(await request("claim", owned)).toEqual({
+      status: 200,
+      body: { status: "completed", sessionId: id, ...account },
+    });
+    expect(await request("complete-claim", owned)).toMatchObject({
+      status: 409,
+    });
   });
 });

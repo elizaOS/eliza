@@ -7,9 +7,13 @@ import { parseJunitSummary } from "../../scripts/lib/junit-summary.ts";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
-assert.equal(
-  path.resolve(root, process.argv[2] ?? ""),
-  path.join(import.meta.dirname, "OnboardingGreetingLease.qnt"),
+const model = path.resolve(root, process.argv[2] ?? "");
+assert.equal(path.dirname(model), import.meta.dirname);
+assert(
+  ["OnboardingGreetingLease.qnt", "OnboardingContinuationClaim.qnt"].includes(
+    path.basename(model),
+  ),
+  "Expected an onboarding coordinator model",
 );
 const suite =
   "packages/cloud/api/__tests__/onboarding-coordinator-errors.miniflare.test.ts";
@@ -17,8 +21,10 @@ const expected = [
   "public route maps a typed coordinator rejection to fail-closed 403",
   "concurrent greeting drains lease the original enqueue to one poller",
   "an expired lease can be replaced and its delayed acknowledgement has no effect",
+  "continuation pins the original lineage and account through exact completion",
+  "continuation rejects invalid sessions and recovers a retained completed claim",
 ];
-const output = testOutputPath("quint-onboarding-greeting");
+const output = testOutputPath("quint-onboarding-coordinator");
 mkdirSync(output, { recursive: true });
 const report = path.join(mkdtempSync(path.join(output, "run-")), "results.xml");
 const child = spawnSync(

@@ -918,21 +918,17 @@
   },
   {
     "id": "cloud-flow-onboarding-sessions",
-    "model": null,
+    "model": "packages/cloud/quint/OnboardingContinuationClaim.qnt",
     "sources": [
       "packages/cloud/api/src/onboarding-session-coordinator.ts",
       "packages/cloud/api/src/authentication-state.ts",
       "packages/cloud/shared/src/lib/auth/authentication-state.ts"
     ],
-    "invariants": [],
-    "status": "unmodeled",
+    "invariants": ["SingleBoundAuthority"],
+    "status": "partial",
     "limitations": [
-      "These lifecycle milestones and invariants are review obligations, not a verified transition relation.",
-      "External services, storage failures, concurrency, cancellation and restart require explicit modeling before proof claims.",
-      "No finite onboarding model yet.",
-      "Verify implementation transitions and failure paths against the formal contract.",
-      "Required flow invariants: Onboarding completion belongs to the original session | Single-use proofs are not replayed | Expiry does not become renewed authority",
-      "Abstract states: created, pending, verified, completed, expired"
+      "Checks one stable redirect and one trusted platform session with two candidate claim lineages and account pairs. Workerd checks exact re-entry, denial and cleanup against stored platform and account scope records.",
+      "OnboardingGreetingLease separately checks greeting lease ownership. Transcript migration, replay alarm pagination, cross-shard binding races and authentication-state ownership remain separate."
     ]
   },
   {
