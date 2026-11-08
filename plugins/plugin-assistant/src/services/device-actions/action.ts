@@ -36,6 +36,12 @@ import {
 } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
+  FILES_CAPABILITY,
+  FILES_GUIDANCE,
+  FILES_OPERATION_SCHEMAS,
+  isFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   DEVICE_APPROVAL_REVIEW_TEXT,
   deviceActionEffectReceipts,
   deviceApprovalPersistenceReceipt,
@@ -654,6 +660,8 @@ export const proposeDeviceAction: Action = {
     " " +
     FOREGROUND_REVIEW_GUIDANCE +
     " " +
+    FILES_GUIDANCE +
+    " " +
     CLOCK_ALARM_GUIDANCE +
     " " +
     CLOCK_PROPOSAL_GUIDANCE,
@@ -724,6 +732,7 @@ export const proposeDeviceAction: Action = {
               },
             },
           },
+          ...FILES_OPERATION_SCHEMAS,
           ...calendarSchemas,
           calendarAvailabilitySchema,
           ...notesSchemas,
@@ -1260,6 +1269,7 @@ export function deviceActionForCapabilities(
 ): Action {
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const navigation = usesCompletedActionNavigation(messageMetadata);
+  const files = capabilities?.includes(FILES_CAPABILITY) === true;
   return {
     ...action,
     description:
@@ -1272,7 +1282,8 @@ export function deviceActionForCapabilities(
           : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
         : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
           ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
-          : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`),
+          : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`
+      ).replace(files ? "" : ` ${FILES_GUIDANCE}`, ""),
     parameters: action.parameters?.map((parameter) => {
       if (parameter.name !== "operation") return parameter;
       const schema = structuredClone(parameter.schema);
@@ -1334,6 +1345,7 @@ export function deviceActionForCapabilities(
             typeof type === "string" &&
             (capabilities === undefined
               ? type !== "camera_capture_photo" &&
+                !isFilesOperation({ type }) &&
                 type !== "sms_send" &&
                 type !== "phone_dial" &&
                 type !== "clock_alarm" &&
