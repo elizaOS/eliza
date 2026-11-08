@@ -437,7 +437,7 @@ export async function deviceGmailRequestConsent(
     message.entityId !== original.entityId ||
     message.roomId !== original.roomId ||
     message.roomId !== current.replyConversation.roomId ||
-    message.entityId !== current.credential.subjectUserId ||
+    !isRequestOwner(current, message) ||
     message.content.text !== original.content.text ||
     !message.createdAt ||
     message.createdAt < current.startedAt ||
@@ -470,6 +470,17 @@ export async function deviceGmailRequestConsent(
   if (effect?.disposition === "deny") return "denied";
   return "review";
 }
+/** The credential subject is the auth identity; the message carries the
+ * mapped owner entity. Only the authenticated caller binding links the two. */
+function isRequestOwner(current: DeviceTurn, message: Memory): boolean {
+  const caller = current.requestCaller;
+  return (
+    !!caller &&
+    caller.subjectUserId === current.credential.subjectUserId &&
+    caller.role === "OWNER" &&
+    message.entityId === caller.entityId
+  );
+}
 /** Use only this active authenticated request's typed selection to select the
  * native store. A capability advertises a bridge; it does not migrate ownership. */
 export function currentReminderRecordSource(
@@ -487,7 +498,7 @@ export function currentReminderRecordSource(
   if (
     !message ||
     message.agentId !== runtime.agentId ||
-    message.entityId !== current.credential.subjectUserId
+    !isRequestOwner(current, message)
   )
     return "runtime";
   const context = turnObservation(message.content.metadata);
@@ -545,10 +556,7 @@ export function currentAppRecordSource(
   if (
     !message ||
     message.agentId !== runtime.agentId ||
-    !current.requestCaller ||
-    current.requestCaller.subjectUserId !== current.credential.subjectUserId ||
-    current.requestCaller.role !== "OWNER" ||
-    message.entityId !== current.requestCaller.entityId
+    !isRequestOwner(current, message)
   )
     return "unavailable";
   if (
@@ -756,10 +764,7 @@ export function setDeviceActionRequestMessage(
     typeof message.roomId !== "string" ||
     !message.roomId ||
     message.agentId !== runtime.agentId ||
-    !current.requestCaller ||
-    current.requestCaller.subjectUserId !== current.credential.subjectUserId ||
-    current.requestCaller.role !== "OWNER" ||
-    message.entityId !== current.requestCaller.entityId ||
+    !isRequestOwner(current, message) ||
     message.entityId === runtime.agentId ||
     message.content.role === "system" ||
     message.content.source === "voice_lifecycle" ||
