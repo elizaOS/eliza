@@ -101,8 +101,14 @@ process loss between intent and dispatch can leave a notice permanently unknown.
 Approval IDs have the form `approval-` plus 64 lowercase hex characters. Call `withdrawApproval(id, now)` before dropping a decided approval route, even
 if no notice was published. A withdrawal before publish stores an opaque-ID receipt
 for the configured maximum approval lifetime; it needs no missing binding or content.
-A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts are bounded at 512
-and approval receipts at 256; reaching capacity refuses new entries.
+A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts and their routes
+are bounded at 512. At the cap, a new step notice retires the oldest settled receipts
+(succeeded, failed, withdrawn or unknown) once they are older than `RETENTION_MS` (seven days),
+so journal recovery can still read a recent outcome; an applying receipt is never retired. A
+route goes with its receipt unless it holds a pending tap, and a route prepared for a refused
+publish is released with `release(id)`. Receipts written before retention have no creation time
+and retire first. When nothing can retire, new entries are refused. Approval receipts are
+bounded at 256 and removed at expiry.
 
 ## Host notice routes, owner fence and recovery
 

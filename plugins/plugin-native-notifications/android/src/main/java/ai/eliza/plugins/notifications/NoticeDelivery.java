@@ -32,18 +32,34 @@ public final class NoticeDelivery {
  /** Time until the approval expires, or -1 when it already expired. */
  public long approvalTimeout(long expiresAt,long now){if(expiresAt-now>config.maximumApprovalMs)throw new IllegalArgumentException("Approval expiry exceeds the reviewed bound");return expiresAt<=now?-1:expiresAt-now;}
  private static final Object LOCK=new Object();
+ /** Result notice receipts kept at once; at the cap a new notice retires the oldest retirable ones. */
+ public static final int MAX_RECEIPTS=512;
+ /** A result receipt stays at least this long, so journal recovery can still read the original outcome. */
+ public static final long RETENTION_MS=7L*24*60*60*1000;
  private final Config config;
- private final Storage storage;private final Poster poster;
- public NoticeDelivery(Config config,Storage storage,Poster poster){this.config=java.util.Objects.requireNonNull(config);this.storage=java.util.Objects.requireNonNull(storage);this.poster=java.util.Objects.requireNonNull(poster);}
+ private final Storage storage;private final Poster poster;private final java.util.function.LongSupplier clock;
+ public NoticeDelivery(Config config,Storage storage,Poster poster){this(config,storage,poster,System::currentTimeMillis);}
+ public NoticeDelivery(Config config,Storage storage,Poster poster,java.util.function.LongSupplier clock){this.config=java.util.Objects.requireNonNull(config);this.storage=java.util.Objects.requireNonNull(storage);this.poster=java.util.Objects.requireNonNull(poster);this.clock=java.util.Objects.requireNonNull(clock);}
+ /** A result receipt: binding, digest and status, plus its creation time when written by this version. */
+ static boolean stepReceipt(JSONObject record){
+  if(record.length()==3&&!record.has("at"))return true;
+  Object at=record.opt("at");return record.length()==4&&(at instanceof Integer||at instanceof Long);
+ }
+ /** Settled (not applying) and past {@link #RETENTION_MS}; a receipt without a creation time predates retention and is oldest. */
+ static boolean retirable(JSONObject record,long now){
+  if(!Set.of("succeeded","failed","unknown","withdrawn").contains(record.optString("status")))return false;
+  return !record.has("at")||now-record.optLong("at")>=RETENTION_MS;
+ }
+ static long createdAt(JSONObject record){return record==null||!record.has("at")?Long.MIN_VALUE:record.optLong("at");}
  private static String text(String value,int maximum){if(value==null||value.isBlank()||value.length()>maximum||value.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid notification text");return value;}
  private static String hash(String value)throws Exception{byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}
  private static String identity(String id,String binding,String title,String body)throws Exception{
   if(id==null||!id.matches("[A-Za-z0-9_-]{1,128}")||binding==null||!binding.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid notification binding");
   return hash(new JSONArray().put(text(title,200)).put(text(body,2000)).toString());
  }
- private JSONObject ledger()throws Exception{String raw=storage.read(config.noticeSlot);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>512)throw new IllegalStateException("Notification receipt capacity exceeded");return ledger;}
+ private JSONObject ledger()throws Exception{String raw=storage.read(config.noticeSlot);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>MAX_RECEIPTS)throw new IllegalStateException("Notification receipt capacity exceeded");return ledger;}
  private String retained(JSONObject ledger,JSONObject record,String id,String binding,String digest,String title,String body)throws Exception{
-  if(record.length()!=3||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Notification receipt mismatch");
+  if(!stepReceipt(record)||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Notification receipt mismatch");
   if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,title,body)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(config.noticeSlot,ledger.toString());}}
   return record.getString("status");
  }
@@ -51,8 +67,17 @@ public final class NoticeDelivery {
  public String publish(String id,String binding,String title,String body)throws Exception{synchronized(LOCK){
   String digest=identity(id,binding,title,body);JSONObject ledger=ledger(),record=ledger.optJSONObject(id);
   if(record!=null)return retained(ledger,record,id,binding,digest,title,body);
-  if(ledger.has(id)||ledger.length()>=512)throw new IllegalStateException("Notification receipt history is full or unavailable");
-  record=new JSONObject().put("binding",binding).put("digest",digest).put("status",poster.allowed()?"applying":"failed");ledger.put(id,record);
+  if(ledger.has(id))throw new IllegalStateException("Notification receipt history is full or unavailable");
+  long now=clock.getAsLong();
+  if(ledger.length()>=MAX_RECEIPTS){
+   // Retire the oldest settled receipts past the recovery window in the same write as the new intent.
+   java.util.List<String> retiring=new java.util.ArrayList<>();
+   for(java.util.Iterator<String> keys=ledger.keys();keys.hasNext();){String key=keys.next();if(retirable(ledger.optJSONObject(key),now))retiring.add(key);}
+   JSONObject current=ledger;retiring.sort((a,b)->Long.compare(createdAt(current.optJSONObject(a)),createdAt(current.optJSONObject(b))));
+   for(int i=0;i<retiring.size()&&ledger.length()>=MAX_RECEIPTS;i++)ledger.remove(retiring.get(i));
+   if(ledger.length()>=MAX_RECEIPTS)throw new IllegalStateException("Notification receipt history is full or unavailable");
+  }
+  record=new JSONObject().put("binding",binding).put("digest",digest).put("status",poster.allowed()?"applying":"failed").put("at",now);ledger.put(id,record);
   storage.write(config.noticeSlot,ledger.toString()); // A committed intent precedes every OS effect.
   if(record.getString("status").equals("failed"))return "failed";
   try{poster.post(id,title,body);record.put("status",poster.matches(id,title,body)?"succeeded":"unknown");}

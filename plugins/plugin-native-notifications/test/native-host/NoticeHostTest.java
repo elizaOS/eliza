@@ -84,6 +84,30 @@ public final class NoticeHostTest {
   JSONObject recovered=NoticeRecovery.recover(entry,scope,proposal,recoveryBinding,journal::receipt);check("succeeded".equals(recovered.getString("status"))&&journalPoster.posts==1);
   JSONObject changed=new JSONObject(entry.toString());changed.getJSONObject("record").put("sessionId","other");rejects(()->NoticeRecovery.recover(changed,scope,proposal,recoveryBinding,journal::receipt));
   JSONObject reserved=new JSONObject(entry.toString()).put("phase","reserved");rejects(()->NoticeRecovery.recover(reserved,scope,proposal,recoveryBinding,journal::receipt));
+  // Retention: at the cap, the oldest receipts and routes settled past the recovery window retire in the
+  // write that adds the new notice; a receipt inside the window, a pending tap and an applying post stay.
+  Store kept=new Store();Poster keptPoster=new Poster();long[] clock={now};
+  NoticeDelivery capped=new NoticeDelivery(DELIVERY,kept,keptPoster,()->clock[0]);NoticeRoutes cappedRoutes=new NoticeRoutes(kept,ROUTES,()->clock[0]);
+  kept.values.put("host-notices:v1",new JSONObject().put("legacy",new JSONObject().put("binding",binding).put("digest","d".repeat(64)).put("status","succeeded")).toString());
+  for(int i=0;i<NoticeDelivery.MAX_RECEIPTS;i++){clock[0]+=minute;cappedRoutes.prepare("step-"+i,binding,route("owner","run-"+i));check("succeeded".equals(capped.publish("step-"+i,binding,"Result","Body")));}
+  JSONObject receipts=new JSONObject(kept.values.get("host-notices:v1"));
+  check(receipts.length()==NoticeDelivery.MAX_RECEIPTS&&!receipts.has("legacy")&&receipts.has("step-0"));
+  check(keptPoster.posts==NoticeDelivery.MAX_RECEIPTS);
+  rejects(()->cappedRoutes.prepare("step-late",binding,route("owner","run-late")));
+  // Receipts written now carry their creation time.
+  check(receipts.getJSONObject("step-0").length()==4);
+  cappedRoutes.capture(cappedRoutes.token("step-0"));check("run-0".equals(cappedRoutes.pending().getString("runId")));
+  clock[0]+=NoticeDelivery.RETENTION_MS;
+  cappedRoutes.prepare("step-new",binding,route("owner","run-new"));check("succeeded".equals(capped.publish("step-new",binding,"Result","Body")));
+  check(cappedRoutes.token("step-0")!=null&&cappedRoutes.token("step-1")==null&&cappedRoutes.token("step-new")!=null);
+  receipts=new JSONObject(kept.values.get("host-notices:v1"));check(receipts.length()==NoticeDelivery.MAX_RECEIPTS&&!receipts.has("step-0")&&receipts.has("step-1"));
+  // A route prepared for a refused publish is released; a recorded notice keeps its route.
+  cappedRoutes.prepare("step-refused",binding,route("owner","run-refused"));
+  JSONObject applying=new JSONObject(kept.values.get("host-notices:v1"));for(String id:JSONObject.getNames(applying))applying.getJSONObject(id).put("status","applying");kept.values.put("host-notices:v1",applying.toString());
+  rejects(()->capped.publish("step-refused",binding,"Result","Body"));
+  cappedRoutes.release("step-refused");check(cappedRoutes.token("step-refused")==null);
+  cappedRoutes.release("step-new");check(cappedRoutes.token("step-new")!=null);
+  rejects(()->cappedRoutes.release(approval));
   System.out.println(checks+" assertions passed");
  }
 }

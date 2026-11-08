@@ -18,6 +18,12 @@ import org.json.JSONObject;
 
 /** Metadata-only journal; provider owns event text. Unknown operations are never replayed. */
 public final class CalendarCreationStore {
+ /** Unacknowledged rows at which new creations are refused until receipts are reviewed. */
+ static final int MAX_OPEN=1000;
+ /** Acknowledged saved rows kept so a late identical retry still returns its receipt. */
+ static final int RETAINED_SETTLED=256;
+ /** A definite refusal: nothing was written and no provider effect was attempted. */
+ public static final class Full extends IllegalStateException { Full(){super("Too many calendar saves are waiting for review. Check creation receipts, then try again.");} }
  private final String journalName, creationUriPrefix;
  private final String[] bindingFields;
  private static final class State { final String identity; boolean quarantined; String prefix; State(String identity,String prefix){this.identity=identity;this.prefix=prefix;} }
@@ -40,7 +46,7 @@ public final class CalendarCreationStore {
  }
  private JSONObject read(Context context)throws Exception {
   JSONObject value=new JSONObject(preferences(context).getString("operations","{}"));
-  if(value.length()>1000)throw new IllegalStateException("Calendar operation journal full");
+  if(open(value)>MAX_OPEN)throw new IllegalStateException("Calendar operation journal full");
   return value;
  }
  private void write(Context context,JSONObject value) {
@@ -61,6 +67,25 @@ public final class CalendarCreationStore {
   JSObject result=new JSObject();result.put("creationId",id);result.put("status",record.optString("status","unknown"));
   if("saved".equals(record.optString("status"))){result.put("id",record.getString("eventId"));result.put("calendarId",record.getString("calendarId"));}
   return result;
+ }
+ private static int open(JSONObject all)throws Exception {
+  int count=0;for(Iterator<String> it=all.keys();it.hasNext();)if(!all.getJSONObject(it.next()).optBoolean("acknowledged"))count++;
+  return count;
+ }
+ /**
+  * Removes the oldest acknowledged saved rows beyond {@link #RETAINED_SETTLED}. Unknown or
+  * unacknowledged rows are never removed. Rows order by {@code seq}; legacy rows without one
+  * are oldest, in stored order. Returns the next {@code seq}.
+  */
+ static long retire(JSONObject all)throws Exception {
+  ArrayList<String> settled=new ArrayList<>();long next=0;
+  for(Iterator<String> it=all.keys();it.hasNext();){
+   String id=it.next();JSONObject record=all.getJSONObject(id);next=Math.max(next,record.optLong("seq",-1)+1);
+   if(record.optBoolean("acknowledged")&&"saved".equals(record.optString("status")))settled.add(id);
+  }
+  settled.sort((a,b)->Long.compare(all.optJSONObject(a).optLong("seq",-1),all.optJSONObject(b).optLong("seq",-1)));
+  for(int i=0;i<settled.size()-RETAINED_SETTLED;i++)all.remove(settled.get(i));
+  return next;
  }
  private static boolean pending(JSONObject all)throws Exception {
   for(Iterator<String> it=all.keys();it.hasNext();)if(!all.getJSONObject(it.next()).optBoolean("acknowledged"))return true;
@@ -102,8 +127,9 @@ public final class CalendarCreationStore {
    if(reconcile(context,id,record))write(context,all);return response(id,record);
   }
   if(pending(all)&&!separate){JSObject result=new JSObject();result.put("status","pending-creation");return result;}
-  if(all.length()>=1000)throw new IllegalStateException("Calendar operation journal full");
-  JSONObject record=new JSONObject().put("argumentHash",binding).put("calendarId",values.getAsString(CalendarContract.Events.CALENDAR_ID)).put("status","unknown").put("acknowledged",false);
+  if(open(all)>=MAX_OPEN)throw new Full();
+  long seq=retire(all); // Retired rows leave in the same commit that adds the new one.
+  JSONObject record=new JSONObject().put("argumentHash",binding).put("calendarId",values.getAsString(CalendarContract.Events.CALENDAR_ID)).put("status","unknown").put("acknowledged",false).put("seq",seq);
   all.put(id,record);write(context,all); // Durable unknown must precede the provider effect.
   ContentValues insert=new ContentValues(values);insert.put(CalendarContract.Events.CUSTOM_APP_PACKAGE,context.getPackageName());insert.put(CalendarContract.Events.CUSTOM_APP_URI,identity(id));
   try {

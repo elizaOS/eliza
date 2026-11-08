@@ -171,9 +171,10 @@ public abstract class NotificationsHostPlugin extends Plugin {
  }
  /** Records and posts one workflow notice at most once; resolves the ledger status. */
  @PluginMethod public void postWorkflow(PluginCall call){noticeWork(call,"Workflow notification could not be confirmed. It will not be repeated automatically.",()->{
-  routes().prepare(call.getString("operationId"),call.getString("bindingHash"),call.getObject("route"));
-  requireNoticeForeground();
-  String status=delivery().publish(call.getString("operationId"),call.getString("bindingHash"),call.getString("title"),call.getString("body"));
+  String operation=call.getString("operationId");routes().prepare(operation,call.getString("bindingHash"),call.getObject("route"));
+  String status;
+  try{requireNoticeForeground();status=delivery().publish(operation,call.getString("bindingHash"),call.getString("title"),call.getString("body"));}
+  catch(Exception refused){try{routes().release(operation);}catch(Exception kept){/* A retained route is retired later. */}throw refused;}
   JSObject result=new JSObject();result.put("status",status);call.resolve(result);
  });}
  /** The retained receipt for an exact notice (never posts). */

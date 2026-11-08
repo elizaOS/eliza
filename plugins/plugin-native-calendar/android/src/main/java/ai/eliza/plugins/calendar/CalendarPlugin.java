@@ -252,6 +252,7 @@ public abstract class CalendarPlugin extends Plugin {
    if(!separate&&creations.pendingCreations(getContext()).getJSONArray("creations").length()>0){status(c,"pending-creation");return;}
    c.resolve(optionCreations.create(getContext(),c.getString("creationId"),options.values(calendarId),separate,creations));
   }catch(IllegalArgumentException invalid){c.reject(invalid.getMessage()==null?"Invalid calendar event":invalid.getMessage());}
+  catch(CalendarCreationStore.Full full){c.reject(full.getMessage());}
   catch(Exception uncertain){c.reject("Calendar write could not be confirmed. Check creation receipts before retrying.");}
  }
  /** Exact provider option fields for the selected event; this does not change the row. */
@@ -307,6 +308,7 @@ public abstract class CalendarPlugin extends Plugin {
     if(row==null||!row.moveToFirst()||!title.trim().equals(row.getString(0))||begin!=row.getLong(1)||end!=row.getLong(2)||!body.equals(row.getString(3))||!location.equals(row.getString(4))||calendarId!=row.getLong(5))throw new IllegalStateException("Readback mismatch");
    }
    JSObject value=new JSObject();value.put("status","saved");value.put("id",Long.toString(ContentUris.parseId(uri)));value.put("calendarId",Long.toString(calendarId));c.resolve(value);
-  }catch(Exception e){c.reject("Calendar write could not be confirmed. Refresh before retrying.");}
+  }catch(CalendarCreationStore.Full full){c.reject(full.getMessage());}
+  catch(Exception e){c.reject("Calendar write could not be confirmed. Refresh before retrying.");}
  }
 }

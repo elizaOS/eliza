@@ -29,15 +29,17 @@ public class NoticeRoutes {
   }
  }
  private static final Object LOCK=new Object();
- private final NoticeDelivery.Storage storage;private final Config config;
- public NoticeRoutes(NoticeDelivery.Storage storage,Config config){this.storage=Objects.requireNonNull(storage);this.config=Objects.requireNonNull(config);}
+ private final NoticeDelivery.Storage storage;private final Config config;private final java.util.function.LongSupplier clock;
+ public NoticeRoutes(NoticeDelivery.Storage storage,Config config){this(storage,config,System::currentTimeMillis);}
+ public NoticeRoutes(NoticeDelivery.Storage storage,Config config,java.util.function.LongSupplier clock){this.storage=Objects.requireNonNull(storage);this.config=Objects.requireNonNull(config);this.clock=Objects.requireNonNull(clock);}
  private JSONObject ledger()throws Exception{
   String raw=storage.read(config.routeSlot);JSONObject rows=raw==null?new JSONObject():new JSONObject(raw);
-  if(rows.length()>512)throw new IllegalStateException("Notification route capacity exceeded");
+  if(rows.length()>NoticeDelivery.MAX_RECEIPTS)throw new IllegalStateException("Notification route capacity exceeded");
   Set<String> tokens=new HashSet<>();Set<Long> orders=new HashSet<>();
   for(String id:keys(rows)){
    JSONObject row=rows.getJSONObject(id);
-   if(!id.matches("[A-Za-z0-9_-]{1,128}")||!(keys(row).equals(Set.of("binding","route","token","state","order"))||keys(row).equals(Set.of("binding","route","token","state","order","question"))&&Boolean.TRUE.equals(row.opt("question")))||!row.getString("binding").matches("[a-f0-9]{64}")||!row.getString("token").matches("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")||!tokens.add(row.getString("token"))||!Set.of("new","pending","consumed").contains(row.getString("state")))throw new IllegalStateException("Invalid notification route ledger");
+   Set<String> shape=keys(row);if(shape.remove("question")&&!Boolean.TRUE.equals(row.opt("question"))||shape.remove("at")&&!(row.opt("at") instanceof Integer||row.opt("at") instanceof Long))throw new IllegalStateException("Invalid notification route ledger");
+   if(!id.matches("[A-Za-z0-9_-]{1,128}")||!shape.equals(Set.of("binding","route","token","state","order"))||!row.getString("binding").matches("[a-f0-9]{64}")||!row.getString("token").matches("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}")||!tokens.add(row.getString("token"))||!Set.of("new","pending","consumed").contains(row.getString("state")))throw new IllegalStateException("Invalid notification route ledger");
    route(row.getJSONObject("route"));Object rawOrder=row.get("order");long order=row.getLong("order");
    if(!(rawOrder instanceof Integer||rawOrder instanceof Long)||order<0||order==0&&!row.getString("state").equals("new")||order>0&&!orders.add(order))throw new IllegalStateException("Invalid notification tap order");
   }
@@ -61,8 +63,30 @@ public class NoticeRoutes {
   if(id==null||!id.matches("[A-Za-z0-9_-]{1,128}")||binding==null||!binding.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid notice route identity");
   JSONObject exact=route(input);if(!ownerMatches(exact))throw new IllegalStateException("Notification owner changed");JSONObject rows=ledger(),row=rows.optJSONObject(id);
   if(row!=null){if(!binding.equals(row.getString("binding"))||!same(exact,route(row.getJSONObject("route"))))throw new IllegalStateException("Notification route changed");return row.getString("token");}
-  if(rows.has(id)||rows.length()>=512)throw new IllegalStateException("Notification routes full");
-  String token=UUID.randomUUID().toString();rows.put(id,new JSONObject().put("binding",binding).put("route",exact).put("token",token).put("state","new").put("order",0));storage.write(config.routeSlot,rows.toString());return token;
+  if(rows.has(id))throw new IllegalStateException("Notification routes full");
+  long now=clock.getAsLong();
+  if(rows.length()>=NoticeDelivery.MAX_RECEIPTS){
+   // Retire the oldest routes whose notice is settled past the recovery window and has no pending tap.
+   String raw=storage.read(config.delivery.noticeSlot);JSONObject receipts=raw==null?new JSONObject():new JSONObject(raw);List<String> retiring=new ArrayList<>();
+   for(String key:keys(rows)){JSONObject candidate=rows.getJSONObject(key);if(retirable(key,candidate,receipts.optJSONObject(key),now))retiring.add(key);}
+   retiring.sort((a,b)->Long.compare(NoticeDelivery.createdAt(rows.optJSONObject(a)),NoticeDelivery.createdAt(rows.optJSONObject(b))));
+   for(int i=0;i<retiring.size()&&rows.length()>=NoticeDelivery.MAX_RECEIPTS;i++)rows.remove(retiring.get(i));
+   if(rows.length()>=NoticeDelivery.MAX_RECEIPTS)throw new IllegalStateException("Notification routes full");
+  }
+  String token=UUID.randomUUID().toString();rows.put(id,new JSONObject().put("binding",binding).put("route",exact).put("token",token).put("state","new").put("order",0).put("at",now));storage.write(config.routeSlot,rows.toString());return token;
+ }}
+ /** Approval routes are released by {@link #forget}. A result route goes once its receipt can go, or, with no
+  * receipt (never posted), once it is as old; a pending tap always keeps it. */
+ private static boolean retirable(String id,JSONObject row,JSONObject receipt,long now){
+  if(NoticeDelivery.approvalId(id)||"pending".equals(row.optString("state")))return false;
+  return receipt!=null?NoticeDelivery.retirable(receipt,now):!row.has("at")||now-row.optLong("at")>=NoticeDelivery.RETENTION_MS;
+ }
+ /** Frees a result route prepared for a notice that was never recorded (a refused publish). */
+ public void release(String id)throws Exception{synchronized(LOCK){
+  if(NoticeDelivery.approvalId(id))throw new IllegalArgumentException("Approval routes are released by forget");
+  JSONObject rows=ledger(),row=rows.optJSONObject(id);if(row==null||"pending".equals(row.optString("state")))return;
+  String raw=storage.read(config.delivery.noticeSlot);if(raw!=null&&new JSONObject(raw).has(id))return;
+  rows.remove(id);storage.write(config.routeSlot,rows.toString());
  }}
  public String token(String id)throws Exception{synchronized(LOCK){JSONObject row=ledger().optJSONObject(id);return row==null?null:row.getString("token");}}
  /** Persists the current owner (or explicit sign-out) before any notice is withdrawn or reposted. */
@@ -86,7 +110,7 @@ public class NoticeRoutes {
   }
   String raw=storage.read(config.delivery.noticeSlot);if(raw==null)return false;
   JSONObject receipt=new JSONObject(raw).optJSONObject(id);
-  return receipt!=null&&receipt.length()==3&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"));
+  return receipt!=null&&NoticeDelivery.stepReceipt(receipt)&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"));
  }
  public void capture(String token)throws Exception{capture(token,false);}
  /** Durably queues a tap (or an Ask) on a confirmed, current-owner route; repeated taps keep one entry. */
