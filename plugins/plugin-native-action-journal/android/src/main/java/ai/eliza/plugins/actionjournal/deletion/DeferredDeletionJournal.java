@@ -74,12 +74,27 @@ public final class DeferredDeletionJournal {
   return elapsed < expiry ? "open" : "expired";
  }
 
+ /** Acknowledgements and listed rows from one read of the journal slot. */
+ public static final class Snapshot {
+  public final Set<String> acknowledgements;
+  public final JSONArray rows;
+  Snapshot(Set<String> acknowledgements, JSONArray rows) { this.acknowledgements = acknowledgements; this.rows = rows; }
+ }
+
  // Acknowledgement hides the notice only; its unknown receipt and no-replay state remain intact.
- public synchronized Set<String> acknowledgements() throws Exception {
-  JSONObject marks = read().optJSONObject("acknowledgements");
+ public synchronized Set<String> acknowledgements() throws Exception { return acknowledgements(read()); }
+
+ private static Set<String> acknowledgements(JSONObject data) {
+  JSONObject marks = data.optJSONObject("acknowledgements");
   Set<String> keys = new HashSet<>();
   if (marks != null) for (Iterator<String> i = marks.keys(); i.hasNext();) { String key = i.next(); if (marks.optBoolean(key, false)) keys.add(key); }
   return keys;
+ }
+
+ /** {@link #acknowledgements} and {@link #list} from a single slot read (the notice poll). */
+ public synchronized Snapshot snapshot(String continuity, long elapsed) throws Exception {
+  JSONObject data = read();
+  return new Snapshot(acknowledgements(data), list(data, continuity, elapsed));
  }
 
  public synchronized boolean acknowledged(String kind, String id) throws Exception {
@@ -131,8 +146,10 @@ public final class DeferredDeletionJournal {
  }
 
  /** Every row; queued rows carry their window and a dispatching row reads as unknown. */
- public synchronized JSONArray list(String continuity, long elapsed) throws Exception {
-  JSONObject records = read().getJSONObject("records");
+ public synchronized JSONArray list(String continuity, long elapsed) throws Exception { return list(read(), continuity, elapsed); }
+
+ private static JSONArray list(JSONObject data, String continuity, long elapsed) throws Exception {
+  JSONObject records = data.getJSONObject("records");
   JSONArray rows = new JSONArray();
   for (Iterator<String> i = records.keys(); i.hasNext();) {
    JSONObject row = copy(records.getJSONObject(i.next()));
