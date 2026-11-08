@@ -1,3 +1,4 @@
+import ai.eliza.plugins.passwords.PasswordEditorPolicy;
 import ai.eliza.plugins.passwords.PasswordFormPolicy;
 import ai.eliza.plugins.passwords.PasswordFormPolicy.Node;
 import ai.eliza.plugins.passwords.PasswordFormPolicy.Target;
@@ -182,6 +183,33 @@ public final class PasswordPolicyTest {
     check(requests.takeFill(aging) != null);
     now[0]++;
     check(!requests.currentFill(aging) && !requests.claimFill(aging));
+
+    // Editor bridge input: nothing creates; an edit names an entry and a revision; a draft is refused.
+    check(!PasswordEditorPolicy.admit(List.<String>of().iterator(), null, null).editing());
+    PasswordEditorPolicy.Request edit = PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", 3);
+    check(edit.editing() && edit.entryId.equals("id-1") && edit.expectedRevision == 3);
+    check(PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", 0L).expectedRevision == 0);
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("password").iterator(), null, null));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision", "password").iterator(), "id-1", 3));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId").iterator(), "id-1", null));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("expectedRevision").iterator(), null, 3));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "", 3));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", -1));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", "3"));
+    rejects(null, () -> PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", 1.5));
+    // With bridge secrets off, a save only edits an existing entry's metadata.
+    check(PasswordEditorPolicy.metadataOnly(List.of("id", "label", "username", "websites", "keepBindings").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("id", "password").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("id", "generate").iterator(), "id-1"));
+    check(!PasswordEditorPolicy.metadataOnly(List.of("label").iterator(), null));
+    // The editor's one website field changes one web binding and never drops an app binding.
+    String appBinding = PasswordFacets.android(APP, "ab".repeat(32));
+    List<String> stored = List.of(appBinding, "https://a.example", "https://b.example");
+    check(PasswordEditorPolicy.firstWeb(stored).equals("https://a.example") && PasswordEditorPolicy.firstWeb(List.of(appBinding)).isEmpty());
+    check(PasswordEditorPolicy.editedBindings(stored, "https://c.example").equals(List.of(appBinding, "https://c.example", "https://b.example")));
+    check(PasswordEditorPolicy.editedBindings(stored, null).equals(List.of(appBinding, "https://b.example")));
+    check(PasswordEditorPolicy.editedBindings(List.of(appBinding), "https://c.example").equals(List.of(appBinding, "https://c.example")));
+    check(PasswordEditorPolicy.editedBindings(List.of(appBinding), null).equals(List.of(appBinding)));
     System.out.println(checks + " assertions passed");
   }
 }

@@ -11,6 +11,7 @@ export * from "./research-server.mjs";
 export * from "./research-statistics.mjs";
 export * from "./research-store.mjs";
 export * from "./sensitive-text.mjs";
+export * from "./task-owner-fence.mjs";
 export * from "./task-runtime-gateway.mjs";
 export { createSqlCipherTaskProvider } from "./task-sqlcipher.mjs";
 export { openTaskDatabase } from "./task-storage.mjs";

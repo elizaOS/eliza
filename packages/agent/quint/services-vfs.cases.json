@@ -1,0 +1,19 @@
+{
+  "sources": ["packages/agent/src/services/virtual-filesystem.ts"],
+  "bounds": {
+    "domain": "Two tree versions and one rollback journal.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_vfs",
+      "main": "services_vfs",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

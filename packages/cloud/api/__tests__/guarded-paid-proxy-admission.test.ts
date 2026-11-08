@@ -70,11 +70,9 @@ mock.module(`${lib}/services/usage`, () => ({
 mock.module(`${lib}/utils/logger`, () => ({
   logger: { debug() {}, info() {}, warn() {}, error() {} },
 }));
-mock.module(`${lib}/services/inference-admission-gate`, () => ({
-  isInferenceAdmissionGateWarmingError: () => false,
-}));
+mock.module(`${lib}/services/inference-admission-gate`, () => ({}));
 mock.module(`${lib}/services/inference-billing-fast-path`, () => ({
-  InferenceBalanceCacheWarmingError: class extends Error {},
+  InferenceBillingUnavailableError: class extends Error {},
 }));
 mock.module(`${lib}/services/inference-credential-revocation`, () => ({
   InferenceCredentialRevocationUnavailableError: class extends Error {},

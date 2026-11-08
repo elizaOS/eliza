@@ -43,6 +43,7 @@ import {
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
+import { OAUTH_REFRESH_HTTP_ERROR } from "./refresh-http-error.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import { getSubscriptionAuthProvider } from "./subscription-auth/registry.ts";
@@ -117,6 +118,16 @@ function tokenFailure(
   };
 }
 function classifyRefreshError(err: unknown): AccessTokenFailureKind {
+  if (err instanceof ElizaError && err.code === OAUTH_REFRESH_HTTP_ERROR) {
+    const status = err.context?.status;
+    const oauthError = err.context?.oauthError;
+    return status === 401 ||
+      status === 403 ||
+      (status === 400 &&
+        (oauthError === "invalid_grant" || oauthError === "invalid_token"))
+      ? "auth"
+      : "transient";
+  }
   const message = err instanceof Error ? err.message : String(err);
   if (
     /\b(?:401|403|invalid[_ ]?grant|invalid[_ ]?token|unauthor|forbidden|re-?auth|revoked|(?:access |refresh |oauth |jwt |session |credential )?token (?:has |is )?expired|expired[_ ]?(?:access[_ ]?|refresh[_ ]?|oauth[_ ]?|jwt[_ ]?)?token|(?:credential|jwt|session) (?:has |is )?expired)\b/i.test(

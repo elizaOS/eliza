@@ -1,0 +1,42 @@
+[
+  {
+    "id": "cloud-protocol-job-retry-budgets",
+    "model": "packages/cloud/quint/JobRetryBudgets.qnt",
+    "sources": [
+      "packages/cloud/shared/src/db/repositories/jobs.ts",
+      "packages/cloud/shared/src/db/repositories/job-timestamp-fence.ts",
+      "packages/cloud/shared/src/db/repositories/agent-lifecycle-execution-fence.ts",
+      "packages/cloud/shared/src/db/schemas/jobs.ts",
+      "packages/cloud/shared/src/db/schemas/job-execution-leases.ts",
+      "packages/cloud/shared/src/node/provisioning-worker.ts",
+      "packages/cloud/shared/src/lib/services/provisioning-job-types.ts",
+      "packages/cloud/shared/src/lib/services/admin-canary-image.ts",
+      "packages/cloud/shared/src/db/repositories/job-execution-lease.postgres.integration.test.ts"
+    ],
+    "invariants": [
+      "TypeOK",
+      "LeaseAndQuiescenceAgree",
+      "FailureWritebackAtomic",
+      "ExhaustionRequiresBudget",
+      "ExhaustedBudgetIsTerminal",
+      "BudgetSeparation",
+      "BackoffMatchesAttempt",
+      "StaleGenerationCannotCommit",
+      "FullSnapshotRequired"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One detached job, two concurrent calls and two process owners. Attempts use the default bound3, interruptions use the source bound5, and bounded requeues use source transport5 and pre-delete capture10 plus the supported zero-bound case. Each focused case reaches its terminal bound. Initial non-focused counters are retained as nonzero witnesses.",
+      "Nine cases cover ordinary failure, timeout, restart, transport requeue, capture requeue, unbounded gate requeue, durable cache timeout, canary recovery and mixed ordinary operations. Generation bounds range from2 to11. Preserving policies can repeat indefinitely in production; their finite prefixes do not prove job completion.",
+      "Quint safety proves counter separation, terminal exhaustion, generation and lease refusal, callback atomicity and full-payload snapshot refusal. Weak fairness of each pending repository completion proves call completion. Worker scheduling, provider completion and an eventual permanent job result are outside this progress claim.",
+      "JobExecutionLease.qnt separately covers claim-response failure, grace partitions, missing resources, foreign resource fences and legacy NULL generations. This budget model keeps current resource ownership and models the same live/expired/grace-elapsed lease and fresh-generation boundary. The two projections are not a mechanized refinement proof.",
+      "Payload version is an equality abstraction of the full retry tuple including tenant and target identity, storage pointers, data/result/error, counters and millisecond timestamps. Two changes are bounded. Concrete blobs, payload schemas, full lifecycle revisions, raw timestamp representation and unbounded calls are covered only by the named real PostgreSQL checks or remain separate protocols.",
+      "Canary validity abstracts hasRecoverableAdminCanaryCutover. Its inline-pointer, actor/tenant/target/image/audit identity and timestamp-window validation remains source code, exercised by valid and invalidated real PostgreSQL receipts. A selected valid canary recovery requires the unchanged full snapshot at commit.",
+      "Exhaustion preserves the stored scheduled_for value, including PostgreSQL microseconds. The model represents an unchanged due deadline; the real normal-claim regression checks raw timestamp input and exact retained SQL value.",
+      "Normal detached calls supply the exact owner and generation. Generic non-detached updates, administrative rearm/reset, provider side effects and global shared capacity are outside this model.",
+      "The PostgreSQL fixture uses production column types/defaults and the job lease foreign key. A dependent receipt table exercises callback commit and rollback. Individual app, agent and container failure-writeback business rules require their own models.",
+      "RequeueBound=-1 is a model sentinel for omitting the optional bounded argument. The implementation rejects negative maxRequeues. The restart case represents all non-canary restart policies, including durable cache jobs.",
+      "After a successful budget commit, the source status/generation CAS permanently refuses other prepared calls from that generation. Their pending phase is retained, while obsolete payload/counter locals are collapsed to one stale sentinel. Job state, counters, lease/quiescence, the last committed transition, and dependent receipts remain unchanged. Both live prepared calls remain distinct before the first commit. Real PostgreSQL tests check one winner, undefined/unchanged losers, and one durable receipt."
+    ]
+  }
+]

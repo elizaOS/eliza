@@ -37,6 +37,14 @@ unclear or you cannot find the approved plan, ask maintainers before you start.
 
 ## Pull request requirements
 
+- **Model application state in Quint.** Every feature must include or update a
+  source-linked model of its state and transitions. Cover authorization,
+  concurrency, cancellation, retries, failure and recovery. State the safety
+  invariants, progress obligations, fairness assumptions and finite bounds.
+  Run `bun run test:quint` and checks that compare the model with the real
+  implementation. Keep the model current when behavior changes. List uncovered
+  behavior explicitly. See [the state-correctness requirement](PRD.md#state-correctness)
+  and [the model workflow](packages/scripts/quint/README.md).
 - **Prove a useful improvement.** Show a failure before the fix and a successful
   result after it, a gain in accuracy or another relevant score, or a demonstrated
   improvement to an approved capability. State the test conditions and results.
@@ -139,8 +147,9 @@ guide also apply.
    ```
 
    You can also use the GitHub website, a browser agent, or computer use.
-2. **Stay in approved scope.** The PRD and MVP plan are binding. This
-   repository does not contain a PRD or MVP plan file. Before you start, a
+2. **Stay in approved scope.** The PRD and MVP plan are binding. [PRD.md](PRD.md)
+   records the application state-correctness requirement. It does not define
+   the full product scope or MVP plan. Before you start, a
    maintainer must confirm in the linked issue that the work is in approved
    scope. Do not invent scope.
 3. **Accepted work:** bugs that you reproduce first, end-to-end or live tests

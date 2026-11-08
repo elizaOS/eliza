@@ -10,11 +10,18 @@
  * documented ELIZA_* overrides. Every library is 16 KiB page aligned.
  *
  *   node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a|x86_64 \
- *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>]
+ *     [--variant cpu|vulkan] [--out <dir>] [--espeak-dir <dir>] [--ffi-exports-only]
  *
  * --espeak-dir holds the eSpeak NG build (reused when it matches the pin in
  * the fork's tools/misaki-g2p/pins.json): <abi>/include, <abi>/lib and the
  * compiled English data in data/espeak-ng-data.
+ *
+ * --ffi-exports-only (CPU variant) exports only the eliza_inference_* FFI and
+ * lets the linker drop the code nothing reaches from it: per-function and
+ * per-data sections, --gc-sections and a version script. It is for hosts whose
+ * only caller is the JNI bridge (elizavoice-jni.cpp), which binds
+ * eliza_inference_* alone. Callers that dlsym llama_*, ggml_*, mtmd_* or ov_*
+ * from this library need the default build.
  */
 
 import { execFileSync } from "node:child_process";
@@ -38,6 +45,11 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_LLAMA_CPP_CACHE_DIR } from "./aosp/compile-libllama.ts";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.ts";
 import {
+  elizaVoiceBuildFlags,
+  FFI_EXPORTS_VERSION_SCRIPT,
+  parseStageElizaVoiceArgs,
+} from "./build-helpers/elizavoice-build-flags.ts";
+import {
   assertAndroidVoiceLibrary,
   assertVulkanMaliMitigation,
 } from "./build-helpers/verify-fused-symbols.ts";
@@ -53,22 +65,6 @@ function log(msg) {
 function die(msg) {
   process.stderr.write(`[stage-elizavoice-lib] ERROR: ${msg}\n`);
   process.exit(1);
-}
-
-function parseArgs(argv) {
-  const out = { abi: "arm64-v8a", variant: "cpu", out: "", espeakDir: "" };
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--abi") out.abi = argv[++i];
-    else if (argv[i] === "--variant") out.variant = argv[++i];
-    else if (argv[i] === "--out") out.out = path.resolve(argv[++i]);
-    else if (argv[i] === "--espeak-dir")
-      out.espeakDir = path.resolve(argv[++i]);
-    else die(`unknown argument ${argv[i]}`);
-  }
-  if (out.variant !== "cpu" && out.variant !== "vulkan") {
-    die(`unsupported --variant ${out.variant} (cpu | vulkan)`);
-  }
-  return out;
 }
 
 // The vulkan variant cross-compiles ggml's GLSL compute shaders to SPIR-V with
@@ -356,10 +352,17 @@ const {
   variant,
   out: outDir,
   espeakDir: espeakArg,
-} = parseArgs(process.argv.slice(2));
+  ffiExportsOnly,
+} = (() => {
+  try {
+    return parseStageElizaVoiceArgs(process.argv.slice(2));
+  } catch (error) {
+    return die(error.message);
+  }
+})();
 const platform = ABI_TO_PLATFORM[abi];
 if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
-log(`variant: ${variant}`);
+log(`variant: ${variant}${ffiExportsOnly ? " (FFI exports only)" : ""}`);
 
 const sdk = resolveSdk();
 const ndk = resolveNdk(sdk);
@@ -377,13 +380,16 @@ if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
   );
 }
 
-const buildDir = path.join(
-  repoRoot,
-  ".cache",
-  "elizavoice-android",
-  variant === "vulkan" ? `${abi}-vulkan` : abi,
-);
+const { buildDir, versionScript, configureFlags } = elizaVoiceBuildFlags({
+  abi,
+  variant,
+  ffiExportsOnly,
+  cacheRoot: path.join(repoRoot, ".cache", "elizavoice-android"),
+});
 mkdirSync(buildDir, { recursive: true });
+// --ffi-exports-only: the version script keeps eliza_inference_* global and
+// makes every other symbol local, so --gc-sections can drop the rest.
+if (versionScript) writeFileSync(versionScript, FFI_EXPORTS_VERSION_SCRIPT);
 
 // arm64 SIMD floor: GGML_NATIVE=OFF cross-builds to bare armv8-a, which leaves
 // the LLM + ASR matmul/dot kernels (ggml dotprod/i8mm/fp16) AND the eliza QJL
@@ -446,8 +452,7 @@ const baseConfigure = [
   "-DGGML_NATIVE=OFF",
   "-DGGML_OPENMP=OFF",
   ...arm64SimdFlags,
-  // 16 KiB page alignment for Android 15+ devices.
-  "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
+  ...configureFlags,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_KOKORO=ON",
   "-DKOKORO_ENABLE_ESPEAK=OFF",

@@ -39,21 +39,15 @@ export function isTransientModelError(error: unknown): boolean {
 	);
 }
 
-/** A failed funded operation must retain its payer and original intent across wrappers and retries. */
+/**
+ * A failed funded operation must retain its payer and original intent across
+ * wrappers and retries, so this walks the whole error graph: a funding denial
+ * anywhere in it blocks provider fallback and retry.
+ */
 export function isModelFundingAuthorityError(error: unknown): boolean {
-	const pending: unknown[] = [error];
-	const seen = new Set<object>();
-	while (pending.length) {
-		const value = pending.pop();
-		if (typeof value !== "object" || value === null || seen.has(value))
-			continue;
-		seen.add(value);
-		if ("code" in value && value.code === "MODEL_FUNDING_AUTHORITY_FAILED")
+	for (const node of modelErrorChain(error, Number.POSITIVE_INFINITY)) {
+		if ((node as { code?: unknown }).code === "MODEL_FUNDING_AUTHORITY_FAILED")
 			return true;
-		if ("cause" in value) pending.push(value.cause);
-		if ("lastError" in value) pending.push(value.lastError);
-		if ("errors" in value && Array.isArray(value.errors))
-			pending.push(...value.errors);
 	}
 	return false;
 }
@@ -75,15 +69,29 @@ const INCOMPLETE_FINISH_REASONS = new Set([
 	"error",
 ]);
 
-/** True only for provider terminal reasons that explicitly mean output exhaustion. */
-export function isModelOutputLimitFinishReason(reason: unknown): boolean {
-	if (typeof reason !== "string") return false;
-	const normalized = reason
+function normalizeFinishReason(reason: string): string {
+	return reason
 		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "_");
-	return OUTPUT_LIMIT_FINISH_REASONS.has(normalized);
 }
+
+/** True only for provider terminal reasons that explicitly mean output exhaustion. */
+export function isModelOutputLimitFinishReason(reason: unknown): boolean {
+	return (
+		typeof reason === "string" &&
+		OUTPUT_LIMIT_FINISH_REASONS.has(normalizeFinishReason(reason))
+	);
+}
+
+const TOKEN_USAGE_KEYS = [
+	"promptTokens",
+	"completionTokens",
+	"totalTokens",
+	"cacheReadInputTokens",
+	"cacheCreationInputTokens",
+	"reasoningTokens",
+] as const;
 
 /** Safe accounting evidence for a rejected model output. */
 export interface ModelOutputEvidence {
@@ -110,24 +118,12 @@ export function modelOutputIncompleteEvidence(error: unknown):
 		const c = value.context;
 		if (
 			typeof c.finishReason !== "string" ||
-			!INCOMPLETE_FINISH_REASONS.has(
-				c.finishReason
-					.trim()
-					.toLowerCase()
-					.replace(/[^a-z0-9]+/g, "_"),
-			)
+			!INCOMPLETE_FINISH_REASONS.has(normalizeFinishReason(c.finishReason))
 		)
 			continue;
 		const usage: Partial<TokenUsage> = {};
 		if (c.usage && typeof c.usage === "object") {
-			for (const key of [
-				"promptTokens",
-				"completionTokens",
-				"totalTokens",
-				"cacheReadInputTokens",
-				"cacheCreationInputTokens",
-				"reasoningTokens",
-			] as const) {
+			for (const key of TOKEN_USAGE_KEYS) {
 				const count = (c.usage as Record<string, unknown>)[key];
 				if (typeof count === "number" && Number.isFinite(count) && count >= 0)
 					usage[key] = count;
@@ -168,18 +164,17 @@ export function assertModelOutputComplete(
 		model?: string;
 	} & ModelOutputEvidence,
 ): void {
-	if (typeof options.finishReason !== "string") return;
-	const normalized = options.finishReason
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "_");
-	if (!INCOMPLETE_FINISH_REASONS.has(normalized)) return;
+	if (
+		typeof options.finishReason !== "string" ||
+		!INCOMPLETE_FINISH_REASONS.has(normalizeFinishReason(options.finishReason))
+	)
+		return;
 	const evidence = modelOutputIncompleteEvidence({
 		code: "MODEL_OUTPUT_INCOMPLETE",
 		context: options,
 	});
 	throw new ElizaError(
-		`[${options.provider}] Model output did not complete successfully (${String(options.finishReason)}).`,
+		`[${options.provider}] Model output did not complete successfully (${options.finishReason}).`,
 		{
 			code: "MODEL_OUTPUT_INCOMPLETE",
 			context: { ...evidence },
@@ -212,11 +207,12 @@ const NETWORK_ERROR_CODES = new Set([
 // `RetryError` envelope (`.lastError` / `.errors[]`, populated once retries
 // exhaust). Only OBJECT nodes are traversed — `SchemaValidationFailedError`
 // carries an `errors: string[]` of validation messages, and those strings must
-// not be mistaken for wrapped provider errors.
-function* modelErrorChain(error: unknown): Generator<object> {
+// not be mistaken for wrapped provider errors. The classifiers stop after
+// `limit` nodes; the funding-authority check walks every node.
+function* modelErrorChain(error: unknown, limit = 12): Generator<object> {
 	const seen = new Set<unknown>();
 	const stack: unknown[] = [error];
-	while (stack.length > 0 && seen.size < 12) {
+	while (stack.length > 0 && seen.size < limit) {
 		const node = stack.pop();
 		if (typeof node !== "object" || node === null || seen.has(node)) continue;
 		seen.add(node);
@@ -234,16 +230,20 @@ function* modelErrorChain(error: unknown): Generator<object> {
 	}
 }
 
-function readHttpStatus(node: object): number | undefined {
-	const raw =
-		(node as { statusCode?: unknown; status?: unknown }).statusCode ??
-		(node as { status?: unknown }).status;
-	if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-	if (typeof raw === "string") {
-		const n = Number(raw);
-		if (Number.isFinite(n) && n > 0) return n;
-	}
-	return undefined;
+function httpStatusValue(raw: unknown): number | undefined {
+	if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+	if (typeof raw !== "string") return undefined;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** Structural HTTP status of one provider-error node: `statusCode`, then `status`. */
+export function readHttpStatus(node: object): number | undefined {
+	const { statusCode, status } = node as {
+		statusCode?: unknown;
+		status?: unknown;
+	};
+	return httpStatusValue(statusCode) ?? httpStatusValue(status);
 }
 
 /** Reads provider HTTP status through cause and retry envelopes, accepting statusCode and status. Returns undefined when no status is present. */
@@ -369,6 +369,9 @@ export function isModelProviderError(error: unknown): boolean {
 	return false;
 }
 
+const SCHEMA_REJECTION_RE =
+	/failed to compile the JSON schema grammar|invalid schema for (?:response_format|function)|unsupported JSON schema/i;
+
 /** A rejected output/tool schema cannot be repaired by generating an apology. */
 export function isProviderSchemaRejection(error: unknown): boolean {
 	const status = modelProviderErrorStatus(error);
@@ -387,14 +390,7 @@ export function isProviderSchemaRejection(error: unknown): boolean {
 			(status !== undefined && status !== 400 && status !== 422)
 		)
 			continue;
-		const texts = nodeOverflowTexts(node);
-		if (
-			texts.some((text) =>
-				/failed to compile the JSON schema grammar|invalid schema for (?:response_format|function)|unsupported JSON schema/i.test(
-					text,
-				),
-			)
-		)
+		if (nodeOverflowTexts(node).some((text) => SCHEMA_REJECTION_RE.test(text)))
 			return true;
 	}
 	return false;
@@ -499,34 +495,4 @@ export function isProviderContextOverflowFailure(error: unknown): boolean {
 		(error instanceof ElizaError && error.code === PROVIDER_CONTEXT_OVERFLOW) ||
 		isProviderContextOverflowError(error)
 	);
-}
-
-// Limit-token extraction from the same rejection phrases, diagnostics only —
-// used to word the typed tool-failure text, never to pre-reject a request.
-const PROVIDER_CONTEXT_LIMIT_PATTERNS: readonly RegExp[] = [
-	/limit is (\d{2,9})/i, // Cerebras "...while limit is 131072"
-	/maximum context length is (\d{2,9})/i, // OpenAI
-	/(\d{2,9})\s+maximum/i, // Anthropic "> 204698 maximum"
-	/context limit:\s*[\d\s+]*>\s*(\d{2,9})/i, // Anthropic input-length shape
-];
-
-/**
- * Provider-reported context limit (in tokens) parsed from a length-rejection
- * error, or undefined when the provider did not state one. Diagnostic only.
- */
-export function providerContextOverflowLimitTokens(
-	error: unknown,
-): number | undefined {
-	for (const node of modelErrorChain(error)) {
-		for (const text of nodeOverflowTexts(node)) {
-			for (const pattern of PROVIDER_CONTEXT_LIMIT_PATTERNS) {
-				const match = pattern.exec(text);
-				if (match?.[1]) {
-					const parsed = Number(match[1]);
-					if (Number.isFinite(parsed) && parsed > 0) return parsed;
-				}
-			}
-		}
-	}
-	return undefined;
 }

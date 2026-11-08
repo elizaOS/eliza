@@ -23,8 +23,11 @@ final class VoiceNative {
     static int nativeParadeeSampleRate(long context) { return sampleRate; }
     static int nativeParadeeG2pKind(long context) { return 0; }
     static String nativeParadeePhonemize(long context, byte[] text) { return "test"; }
-    static float[] nativeParadeeSynthesize(long context, byte[] text, float speed) { return synthesized.clone(); }
-    static float[] nativeParadeeSynthesizePhonemes(long context, byte[] text, float speed) { return new float[]{1}; }
+    /** Runs as a batch call enters, before the library would clear its cancel flag. */
+    static volatile Runnable entering;
+    static void enter() { Runnable hook = entering; if (hook != null) hook.run(); }
+    static float[] nativeParadeeSynthesize(long context, byte[] text, float speed) { enter(); return synthesized.clone(); }
+    static float[] nativeParadeeSynthesizePhonemes(long context, byte[] text, float speed) { enter(); return new float[]{1}; }
     static int nativeParadeeVoicesSupported() { return 1; }
     static volatile String loadedVoice;
     static int nativeParadeeLoadVoice(long context, String voiceId, String model, String lexicon, String espeak, String modelVoice) {
@@ -32,6 +35,8 @@ final class VoiceNative {
         return 0;
     }
     static int nativeParadeeUnloadVoice(long context, String voiceId) { loadedVoice = null; return 0; }
+    static volatile int speechThreads;
+    static void setSpeechThreads(int threads) { speechThreads = threads; }
     static volatile String rangedVoice;
     static volatile float rangeMin, rangeMax;
     static int nativeParadeeSetVoiceSpeedRange(long context, String voiceId, float min, float max) {
@@ -42,7 +47,7 @@ final class VoiceNative {
         return "{\"voice_id\":\"" + voiceId + "\",\"family\":\"delibes\",\"language\":\"es\",\"sample_rate\":24000,\"g2p_kind\":2}";
     }
     static String nativeParadeePhonemizeVoice(long context, String voiceId, byte[] text) { return "test"; }
-    static float[] nativeParadeeSynthesizeVoice(long context, String voiceId, byte[] text, float speed) { return synthesized.clone(); }
+    static float[] nativeParadeeSynthesizeVoice(long context, String voiceId, byte[] text, float speed) { enter(); return synthesized.clone(); }
     static void nativeParadeeSynthesizeVoiceStream(long context, String voiceId, byte[] text, float speed, Object sink) {
         nativeParadeeSynthesizeStream(context, text, speed, sink);
     }
@@ -62,7 +67,7 @@ final class VoiceNative {
     }
     static int nativeAsrSupported() { return 1; }
     static int nativeMmapAcquire(long context, String region) { asrContext = context; return 0; }
-    static String nativeAsrTranscribe(long context, float[] pcm, int rate) { asrContext = context; return heard; }
+    static String nativeAsrTranscribe(long context, float[] pcm, int rate) { enter(); asrContext = context; return heard; }
     static int nativeAsrCancel(long context) { asrCancels++; return 0; }
     static int nativeAsrStreamSupported() { return 1; }
     static long nativeAsrStreamOpen(long context, int rate) { return 100; }

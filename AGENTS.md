@@ -47,6 +47,11 @@ nested `AGENTS.md` files.
 - Preserve authorization, tenant isolation, cancellation, and effect receipts.
   Throw typed errors; never fabricate success or hide failures as empty data.
   Use the structured logger and `runtime.reportError` for runtime diagnostics.
+- Strongly model every feature's application state in Quint. Keep source-linked
+  states, transitions, safety invariants, concurrency, cancellation, failure and
+  recovery paths current. Check progress under explicit fairness assumptions.
+  Run `bun run test:quint` and the implementation conformance checks before merge.
+  Record bounds and coverage gaps. Follow [PRD.md](PRD.md#state-correctness).
 - Keep model-facing context and recorded training data complete. Preserve the
   existing authorized source-selection/restoration contract; do not add silent
   truncation, summaries, or recency limits. Reject hard size limits explicitly.

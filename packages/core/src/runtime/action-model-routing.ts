@@ -141,7 +141,7 @@ export function isLocalHandler(candidate: ModelCapabilityView): boolean {
  * `types/components.ts` and add its entry here. Do not add `if (modelClass ===...)`
  * branches at call sites — extend this table instead.
  */
-export const ACTION_MODEL_STRATEGIES: Readonly<
+const ACTION_MODEL_STRATEGIES: Readonly<
 	Record<ActionModelClass, ActionModelRoutingStrategy>
 > = {
 	LOCAL: {
@@ -168,7 +168,7 @@ export const ACTION_MODEL_STRATEGIES: Readonly<
  * the runtime's default resolution unchanged because they don't have a
  * meaningful small/large/local trichotomy at the action level.
  */
-export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
+const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TEXT_NANO,
 	ModelType.TEXT_SMALL,
 	ModelType.TEXT_MEDIUM,
@@ -180,16 +180,6 @@ export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ]);
-
-/** Returns the registered model-routing strategy, or undefined when no class is declared or recognized. */
-export function getActionModelStrategy(
-	modelClass: ActionModelClass | undefined,
-): ActionModelRoutingStrategy | undefined {
-	if (!modelClass) {
-		return undefined;
-	}
-	return ACTION_MODEL_STRATEGIES[modelClass];
-}
 
 /**
  * Should the runtime re-route this `useModel` call based on the action's
@@ -203,10 +193,10 @@ export function maybeReroute(
 	modelClass: ActionModelClass | undefined,
 	requestedModelType: string,
 ): ActionModelRoutingStrategy | undefined {
-	if (!ROUTABLE_TEXT_MODEL_TYPES.has(requestedModelType)) {
+	if (!modelClass || !ROUTABLE_TEXT_MODEL_TYPES.has(requestedModelType)) {
 		return undefined;
 	}
-	return getActionModelStrategy(modelClass);
+	return ACTION_MODEL_STRATEGIES[modelClass];
 }
 
 /**
@@ -221,37 +211,6 @@ export interface ResolvedActionModel {
 	readonly handler: ModelHandler["handler"];
 	readonly modelType: string;
 	readonly provider: string;
-}
-
-/**
- * Locate a handler matching one routing step against an `(modelType → handlers)`
- * registry. Honors `providerFilter` if set; otherwise picks the highest-priority
- * registered handler for `modelType`.
- *
- * Caller-supplied `lookup` is the runtime's `models` map (or an equivalent
- * read-only view). This indirection lets the resolver be unit-tested without
- * a full {@link AgentRuntime} instance.
- */
-export function resolveStep(
-	step: ActionModelRoutingStep,
-	lookup: (modelType: string) => readonly ModelHandler[] | undefined,
-): ResolvedActionModel | undefined {
-	const handlers = lookup(step.modelType);
-	if (!handlers || handlers.length === 0) {
-		return undefined;
-	}
-	const providerFilter = step.providerFilter;
-	const match = providerFilter
-		? handlers.find((h) => providerFilter(h))
-		: handlers[0];
-	if (!match) {
-		return undefined;
-	}
-	return {
-		handler: match.handler,
-		modelType: step.modelType,
-		provider: match.provider,
-	};
 }
 
 /**
@@ -299,7 +258,7 @@ export function resolveChain(
  * accepted as-is — i.e., the absence of a confidence signal is never treated
  * as low confidence (false negatives would cause unnecessary escalation).
  */
-export function isLowConfidence(
+function isLowConfidence(
 	result: unknown,
 	threshold: number | undefined,
 ): boolean {
@@ -340,41 +299,27 @@ export async function executeChainWithFallback<TResult>(
 			"executeChainWithFallback: chain is empty — no handlers resolved",
 		);
 	}
+	let attempted = 0;
 	let lastError: unknown;
-	let sawFailure = false;
-	for (let i = 0; i < chain.length; i++) {
-		const resolved = chain[i];
-		if (!resolved) {
-			continue;
-		}
+	for (const resolved of chain) {
+		attempted += 1;
 		try {
 			const result = await invoke(resolved);
-			const isLast = i === chain.length - 1;
-			if (!isLast && isLowConfidence(result, threshold)) {
-				// Don't return yet — escalate.
-				lastError = new Error(
-					`Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
-				);
-				sawFailure = true;
-				continue;
+			if (attempted === chain.length || !isLowConfidence(result, threshold)) {
+				return result;
 			}
-			return result;
+			lastError = new Error(
+				`Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
+			);
 		} catch (err) {
 			// error-policy:J4 Only provider availability failures permit another
 			// attempt. Cancellation, admission and invalid results stay terminal.
 			if (!isModelProviderFallbackError(err, resolved.modelType)) throw err;
 			lastError = err;
-			sawFailure = true;
-			// Continue to the next step in the chain.
 		}
 	}
-	// Providers throw a mix of Error instances and bare { status, error }
-	// objects: re-raise whatever the terminal step threw. Only a chain with no
-	// failure at all (empty or all-unresolved slots) reaches the generic error.
-	if (sawFailure) {
-		throw lastError;
-	}
-	throw new Error(
-		`executeChainWithFallback: all ${chain.length} step(s) failed without a thrown error`,
-	);
+	// Every step failed or escalated. Providers throw a mix of Error instances
+	// and bare { status, error } objects: re-raise whatever the terminal step
+	// threw.
+	throw lastError;
 }

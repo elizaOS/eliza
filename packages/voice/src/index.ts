@@ -130,6 +130,7 @@ export type {
   AssistantPorts,
   AssistantReply,
   AssistantState,
+  AssistantTextFrame,
   AssistantTiming,
   EndpointDecision,
   EndpointOutcome,

@@ -51,8 +51,7 @@ import { compareMemoryIds } from "./database.ts";
 /**
  * In-memory keyword search for optional retrieval consumers: a vendored Porter2 (Snowball
  * English) stemmer, a Unicode-aware {@link Tokenizer}, an Okapi {@link BM25}
- * ranker, and the hybrid-search utilities (`buildFtsQuery`, `bm25RankToScore`,
- * `mergeHybridResults`) that fuse BM25 keyword hits with vector-similarity hits.
+ * ranker, and the in-memory twin of the SQL message search ({@link rankMessageSearch}).
  * The stemmer helpers work on raw char codes for speed and stay faithful to the
  * upstream Snowball spec — treat that section as vendored, not hand-tunable. The
  * porter2.js / fast-bm25 MIT license above governs this file; keep it intact.
@@ -771,7 +770,6 @@ const stem = (word: string): string => {
 
 // #endregion Porter2 Stemmer Algorithm
 
-// src/constants.ts
 const DEFAULT_OPTIONS = {
 	k1: 1.2,
 	b: 0.75,
@@ -804,7 +802,6 @@ const DEFAULT_OPTIONS = {
 		"with",
 	]),
 	stemming: false,
-	stemWords: (word: string): string => word,
 };
 
 /**
@@ -931,17 +928,17 @@ export class Tokenizer {
 				: { tokens: [] };
 		}
 		const startTime = includeStats ? Date.now() : 0;
-		const cleaned = this.cleanText(text);
-		const tokens = cleaned
-			.split(/\s+/)
-			.filter((token) => this.isValidToken(token))
-			.map((token) => (this.stemming ? this.stemWord(token) : token));
+		const tokens: string[] = [];
+		for (const token of this.cleanText(text).split(/\s+/)) {
+			if (!this.isValidToken(token)) continue;
+			tokens.push(this.stemming ? this.stemWord(token) : token);
+		}
 		let stats: TokenizationStats | undefined;
 		if (includeStats) {
 			const originalWords = text.split(/\s+/).filter((word) => word.length > 0);
 			stats = {
 				originalWordCount: originalWords.length,
-				stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
+				stopWordsRemoved: originalWords.length - tokens.length,
 				stemmedWords: this.stemming ? tokens.length : 0,
 				processingTimeMs: Date.now() - startTime,
 			};
@@ -999,9 +996,8 @@ export class Tokenizer {
 	 * @returns `true` if the token is valid, `false` otherwise.
 	 */
 	isValidToken(token: string): boolean {
-		const isNumeric = /^\d+$/.test(token);
 		return (
-			(token.length >= this.minLength || isNumeric) &&
+			(token.length >= this.minLength || /^\d+$/.test(token)) &&
 			!this.stopWords.has(token)
 		);
 	}
@@ -1025,27 +1021,18 @@ export class Tokenizer {
 					!rule.minMeasure ||
 					this.measure(stemmed.substring(0, match.index)) >= rule.minMeasure
 				) {
-					// Apply replacement
-					if (typeof rule.replacement === "string") {
-						stemmed = stemmed.replace(rule.pattern, rule.replacement);
-					} else {
-						// If replacement is a function, it might need more specific arguments based on its definition.
-						// Assuming it takes the matched substring and potentially other match groups.
-						stemmed = stemmed.replace(rule.pattern, (...args: string[]) =>
-							(rule.replacement as (...args: string[]) => string)(...args),
-						);
-					}
-					customRuleApplied = true; // Mark that a custom rule was (potentially) applied
-					// Depending on stemming strategy, might want to break or continue applying rules
+					// Narrowed per branch: `replace` has no overload for the union.
+					stemmed =
+						typeof rule.replacement === "string"
+							? stemmed.replace(rule.pattern, rule.replacement)
+							: stemmed.replace(rule.pattern, rule.replacement);
+					customRuleApplied = true;
 				}
 			}
 		}
-		// If a custom rule was applied and modified the word, return it.
-		// Otherwise, or if custom rules are meant to precede default stemming, apply Porter2.
-		if (customRuleApplied && stemmed !== word) return stemmed; // Return if custom rule changed the word
-
-		// Fallback to Porter2 if no custom rule applied or if custom rules are pre-processing
-		return stem(stemmed); // Apply Porter2 to the (potentially already custom-stemmed) word
+		// A custom rule that changed the word wins; otherwise apply Porter2.
+		if (customRuleApplied && stemmed !== word) return stemmed;
+		return stem(stemmed);
 	}
 
 	/**
@@ -1221,7 +1208,6 @@ export class BM25 {
 		const numDocs = docs.length;
 		const documentLengths = new Uint32Array(numDocs);
 		const termToIndex = new Map<string, number>();
-		const termDocs = new Map<string, Set<number>>(); // Temp map: Term -> Set<DocIndex>
 		const termFrequencies = new Map<number, Map<number, number>>(); // TermIndex -> { DocIndex -> TF }
 		let totalDocLength = 0;
 		let nextTermIndex = 0;
@@ -1241,25 +1227,16 @@ export class BM25 {
 				currentDocLength += fieldLength;
 
 				// Calculate term frequencies within this field/doc
-				tokens.forEach((term) => {
-					// Assign index to new terms
-					if (!termToIndex.has(term)) {
-						termToIndex.set(term, nextTermIndex++);
+				for (const term of tokens) {
+					let termIndexVal = termToIndex.get(term);
+					if (termIndexVal === undefined) {
+						termIndexVal = nextTermIndex++;
+						termToIndex.set(term, termIndexVal);
 					}
-					const termIndexVal = termToIndex.get(term) as number;
-
-					// Track which documents contain the term
-					let termDocsTerm = termDocs.get(term);
-					if (!termDocsTerm) {
-						termDocsTerm = new Set<number>();
-						termDocs.set(term, termDocsTerm);
-					}
-					termDocsTerm.add(docIndex);
-
-					// Increment frequency for this term in this document
+					// TF weighted by the field boost.
 					const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
-					docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost); // TF weighted by boost
-				});
+					docTermFrequencies.set(termIndexVal, currentFreq + fieldBoost);
+				}
 			}
 
 			// Store the calculated length for this document
@@ -1268,23 +1245,20 @@ export class BM25 {
 
 			// Merge this document's term frequencies into the main structure
 			docTermFrequencies.forEach((freq, termIndexVal) => {
-				if (!termFrequencies.has(termIndexVal)) {
-					termFrequencies.set(termIndexVal, new Map<number, number>());
+				let docsForTerm = termFrequencies.get(termIndexVal);
+				if (!docsForTerm) {
+					docsForTerm = new Map<number, number>();
+					termFrequencies.set(termIndexVal, docsForTerm);
 				}
-				const termFrequenciesTermIndexVal = termFrequencies.get(termIndexVal);
-				if (termFrequenciesTermIndexVal) {
-					termFrequenciesTermIndexVal.set(docIndex, freq);
-				}
+				docsForTerm.set(docIndex, freq);
 			});
 		});
 
-		// Calculate document frequency (DF) for each term
+		// Document frequency (DF): each term's per-document TF map has one entry
+		// per document containing it.
 		const documentFrequency = new Uint32Array(termToIndex.size);
-		termDocs.forEach((docsSet, term) => {
-			const termIndexVal = termToIndex.get(term);
-			if (termIndexVal !== undefined) {
-				documentFrequency[termIndexVal] = docsSet.size;
-			}
+		termFrequencies.forEach((docsForTerm, termIndexVal) => {
+			documentFrequency[termIndexVal] = docsForTerm.size;
 		});
 
 		return {
@@ -1320,7 +1294,7 @@ export class BM25 {
 	search(query: string, topK = 10): SearchResult[] {
 		if (topK <= 0) return [];
 		const { tokens: queryTokens } = this.tokenizer.tokenize(query); // Tokenize the query
-		const scores = new Float32Array(this.documentLengths.length).fill(0); // Initialize scores to 0
+		const scores = new Float32Array(this.documentLengths.length);
 
 		// Accumulate scores for each document based on query terms
 		queryTokens.forEach((term) => {
@@ -1688,160 +1662,6 @@ export class BM25 {
 	}
 }
 
-// Hybrid Search Utilities
-
-// Utilities for combining vector similarity search with keyword (BM25) search.
-
-/** Source identifier for hybrid search results */
-export type HybridSource = string;
-
-/** Result from vector similarity search */
-export type HybridVectorResult = {
-	id: string;
-	path: string;
-	startLine: number;
-	endLine: number;
-	source: HybridSource;
-	snippet: string;
-	vectorScore: number;
-};
-
-/** Result from keyword (BM25) search */
-export type HybridKeywordResult = {
-	id: string;
-	path: string;
-	startLine: number;
-	endLine: number;
-	source: HybridSource;
-	snippet: string;
-	textScore: number;
-};
-
-/**
- * Build an FTS (Full-Text Search) query from a raw search string.
- * Extracts alphanumeric tokens and joins them with AND for strict matching.
- *
- * @param raw - The raw search query string.
- * @returns The FTS query string, or null if no valid tokens found.
- */
-export function buildFtsQuery(raw: string): string | null {
-	const tokens =
-		raw
-			.match(/[A-Za-z0-9_]+/g)
-			?.map((t) => t.trim())
-			.filter(Boolean) ?? [];
-	if (tokens.length === 0) return null;
-	const quoted = tokens.map((t) => `"${t.replaceAll('"', "")}"`);
-	return quoted.join(" AND ");
-}
-
-/**
- * Convert BM25 rank to a normalized score between 0 and 1.
- * Lower rank = higher score.
- *
- * @param rank - The BM25 rank value.
- * @returns A normalized score where 1 is best and 0 is worst.
- */
-export function bm25RankToScore(rank: number): number {
-	const normalized = Number.isFinite(rank) ? Math.max(0, rank) : 999;
-	return 1 / (1 + normalized);
-}
-
-/**
- * Merge vector similarity and keyword search results using weighted scoring.
- *
- * This implements a hybrid search approach where results from both vector
- * similarity search and keyword (BM25) search are combined. Results that
- * appear in both searches get boosted scores.
- *
- * @param params.vector - Results from vector similarity search.
- * @param params.keyword - Results from keyword (BM25) search.
- * @param params.vectorWeight - Weight for vector similarity scores (default: 0.7).
- * @param params.textWeight - Weight for keyword/text scores (default: 0.3).
- * @returns Merged and sorted results with combined scores.
- */
-export function mergeHybridResults(params: {
-	vector: HybridVectorResult[];
-	keyword: HybridKeywordResult[];
-	vectorWeight: number;
-	textWeight: number;
-}): Array<{
-	path: string;
-	startLine: number;
-	endLine: number;
-	score: number;
-	snippet: string;
-	source: HybridSource;
-}> {
-	const byId = new Map<
-		string,
-		{
-			id: string;
-			path: string;
-			startLine: number;
-			endLine: number;
-			source: HybridSource;
-			snippet: string;
-			vectorScore: number;
-			textScore: number;
-		}
-	>();
-
-	// Add vector search results
-	for (const r of params.vector) {
-		byId.set(r.id, {
-			id: r.id,
-			path: r.path,
-			startLine: r.startLine,
-			endLine: r.endLine,
-			source: r.source,
-			snippet: r.snippet,
-			vectorScore: r.vectorScore,
-			textScore: 0,
-		});
-	}
-
-	// Merge keyword search results
-	for (const r of params.keyword) {
-		const existing = byId.get(r.id);
-		if (existing) {
-			existing.textScore = r.textScore;
-			// Prefer keyword snippet if available (may have highlights)
-			if (r.snippet && r.snippet.length > 0) {
-				existing.snippet = r.snippet;
-			}
-		} else {
-			byId.set(r.id, {
-				id: r.id,
-				path: r.path,
-				startLine: r.startLine,
-				endLine: r.endLine,
-				source: r.source,
-				snippet: r.snippet,
-				vectorScore: 0,
-				textScore: r.textScore,
-			});
-		}
-	}
-
-	// Calculate weighted scores and sort
-	const merged = Array.from(byId.values()).map((entry) => {
-		const score =
-			params.vectorWeight * entry.vectorScore +
-			params.textWeight * entry.textScore;
-		return {
-			path: entry.path,
-			startLine: entry.startLine,
-			endLine: entry.endLine,
-			score,
-			snippet: entry.snippet,
-			source: entry.source,
-		};
-	});
-
-	return [...merged].sort((a, b) => b.score - a.score);
-}
-
 /**
  * Normalize text for keyword matching: NFC-normalize, lowercase, strip
  * combining accents (café → cafe), and drop in-word apostrophes/backticks
@@ -1917,18 +1737,33 @@ function messageSearchTokens(text: string): string[] {
 	return text.split(/[^\p{L}\p{N}_:/.-]+/u).filter((t) => t.length > 0);
 }
 
-function termTrigramSimilarity(queryTerms: string[], document: string): number {
+/**
+ * Mean over query terms of each term's best trigram similarity to a document
+ * token (1 when the term is a substring), or 0 when any term falls below the
+ * threshold. `queryTermGrams[i]` is the trigram set of `queryTerms[i]`.
+ */
+function termTrigramSimilarity(
+	queryTerms: readonly string[],
+	queryTermGrams: readonly Set<string>[],
+	document: string,
+): number {
+	if (queryTerms.length === 0) return 0;
 	const documentTokens = messageSearchTokens(document);
-	if (queryTerms.length === 0 || documentTokens.length === 0) return 0;
+	if (documentTokens.length === 0) return 0;
+	// Built lazily, once per document, only for terms that are not substrings.
+	let documentTokenGrams: Set<string>[] | undefined;
 	let total = 0;
-	for (const queryTerm of queryTerms) {
-		let bestForTerm = document.includes(queryTerm) ? 1 : 0;
-		const queryGrams = toTrigramSet(queryTerm);
-		for (const documentToken of documentTokens) {
-			bestForTerm = Math.max(
-				bestForTerm,
-				trigramSetSimilarity(queryGrams, toTrigramSet(documentToken)),
-			);
+	for (let i = 0; i < queryTerms.length; i++) {
+		let bestForTerm = 0;
+		if (document.includes(queryTerms[i])) {
+			// Similarity never exceeds 1, so no token can beat a substring hit.
+			bestForTerm = 1;
+		} else {
+			documentTokenGrams ??= documentTokens.map((token) => toTrigramSet(token));
+			for (const tokenGrams of documentTokenGrams) {
+				const similarity = trigramSetSimilarity(queryTermGrams[i], tokenGrams);
+				if (similarity > bestForTerm) bestForTerm = similarity;
+			}
 		}
 		if (bestForTerm < MESSAGE_SEARCH_TRIGRAM_THRESHOLD) return 0;
 		total += bestForTerm;
@@ -2068,6 +1903,7 @@ export function rankMessageSearch<T extends SearchableMessage>(
 	if (foldedQuery.length === 0) return [];
 	const queryTerms = foldedQuery.split(/\s+/).filter((t) => t.length > 0);
 	const queryTrigrams = toTrigramSet(foldedQuery);
+	const queryTermGrams = queryTerms.map((term) => toTrigramSet(term));
 	const websearchGroups = usesWebsearchSyntax(query)
 		? parseWebsearchQuery(foldedQuery)
 		: null;
@@ -2082,7 +1918,7 @@ export function rankMessageSearch<T extends SearchableMessage>(
 		const doc = foldForSearch(messageSearchDocument(item.content));
 		const trigramSimilarity = Math.max(
 			trigramSetSimilarity(queryTrigrams, toTrigramSet(doc)),
-			termTrigramSimilarity(queryTerms, doc),
+			termTrigramSimilarity(queryTerms, queryTermGrams, doc),
 		);
 		if (websearchGroups) {
 			const ftsRank = websearchRank(websearchGroups, doc);
@@ -2113,7 +1949,7 @@ export function rankMessageSearch<T extends SearchableMessage>(
 		const ta = typeof a.item.createdAt === "number" ? a.item.createdAt : 0;
 		const tb = typeof b.item.createdAt === "number" ? b.item.createdAt : 0;
 		if (tb !== ta) return tb - ta;
-		return compareMemoryIds(String(a.item.id ?? ""), String(b.item.id ?? ""));
+		return compareMemoryIds(a.item.id ?? "", b.item.id ?? "");
 	});
 	return hits;
 }

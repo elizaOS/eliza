@@ -6,6 +6,8 @@
 # exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
+# Source and formal-model changes also run the source-linked Quint cases and
+# implementation conformance checks before merge.
 name: PR Validation
 
 on:
@@ -50,6 +52,7 @@ jobs:
       # the separately capped 2 GiB lint process on the 16 GiB runner.
       NODE_OPTIONS: "--max-old-space-size=8192"
       RUN_TURBO_CONCURRENCY: "1"
+      CLOUD_FORMAL_POSTGRES_IMAGE: postgres:16-alpine
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -164,6 +167,7 @@ jobs:
           bun packages/scripts/patch-punycode-deprecation.ts
           bun packages/scripts/patch-llama-cpp-capacitor.ts
           bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+
 
       - name: Validate CI Bun version pin contract
         if: steps.affected.outputs.source == 'true'
@@ -856,6 +860,105 @@ jobs:
           wait "$lint_pid" || status=$?
           wait "$types_pid" || status=$?
           exit "$status"
+
+  quint:
+    name: Quint state and implementation checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      quint-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa_quint
+          POSTGRES_DB: quint_protocol
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U qa_quint -d quint_protocol"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RUN_TURBO_CONCURRENCY: "1"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Select source and model changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          status=0
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            packages plugins package.json bun.lock \
+            .github/workflows/pr-validation.yml .github/workflows/ci.yml \
+            ':(icase,glob)**/*.qnt' ':(icase,glob)**/*.tla' ':(icase,glob)**/*.pcal' || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Quint change selection failed with exit $status."
+            exit "$status"
+          fi
+      - if: steps.changes.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Apply dependency compatibility patches
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+      - name: Setup Java
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Setup Go
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - name: Build core conformance dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: bun run build:core
+      - name: Verify Quint models and real transitions
+        if: steps.changes.outputs.run == 'true'
+        env:
+          INFERENCE_POLICY_TEST_POSTGRES_URL: postgresql://qa_quint@127.0.0.1:5432/quint_protocol
+        run: bun run test:quint
+      - name: Upload Quint evidence
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: quint-verification-pr
+          path: |
+            test-results/quint/
+            test-results/quint-*/
+          if-no-files-found: warn
+          retention-days: 7
 
   sdk-owning:
     name: SDK owning (${{ matrix.lane }})

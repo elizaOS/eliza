@@ -1,0 +1,21 @@
+{
+  "sources": [
+    "packages/agent/src/services/agent-backup-restore-v3-candidate-fs-control.ts"
+  ],
+  "bounds": {
+    "domain": "One lease and two active use identities.",
+    "scope": "Finite protocol safety; no temporal/fairness claim."
+  },
+  "cases": [
+    {
+      "name": "services_fs_lease",
+      "main": "services_fs_lease",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": [],
+      "maxSteps": 50,
+      "samples": 1000
+    }
+  ]
+}

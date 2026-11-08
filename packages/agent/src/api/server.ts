@@ -57,7 +57,7 @@ import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/plugin-wallet/transactions";
+} from "@elizaos/plugin-wallet/lib/trade-safety";
 import { WebSocket, WebSocketServer } from "ws";
 import {
   loadElizaConfig,
@@ -2173,6 +2173,16 @@ async function handleRequestForViewClient(
   }
   if (
     await handleHealthRoutes({
+      ownerDiagnostics:
+        method === "GET" &&
+        pathname === "/api/status" &&
+        isTrajectoryOwnerRequest(
+          req,
+          method,
+          pathname,
+          hostSessionAuthorization,
+          false,
+        ),
       composeStatus: ctx?.composeStatus,
       req,
       res,

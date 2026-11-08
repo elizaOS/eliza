@@ -119,7 +119,11 @@ import {
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
 import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  productUserChatEntityId,
+  resolveClientChatAdminEntityId,
+  resolveOwnerChatCallerRole,
+} from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -137,6 +141,7 @@ import {
   type LocalInferenceRouteApi,
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
+import { captureNativeInferenceTiming } from "./native-inference-timing.ts";
 import {
   decodePathComponent,
   getErrorMessage,
@@ -497,18 +502,30 @@ export interface ChatActionResultSummary {
 }
 /**
  * Where a streamed text emission originated. `"model"` text is (or extends)
- * the turn's final reply; `"action_callback"` text is an in-flight action
- * status delivery that the turn's final reply may replace entirely. Voice
- * clients must not synthesize `"action_callback"` text until the terminal
- * frame confirms it — speech, unlike a chat bubble, cannot be retracted
- * (the "double-speak" defect: ack spoken, then the reply spoken again).
+ * the turn's final reply; `"model_draft"` text is a structured model field
+ * (the Stage-1 reply) streamed before validation, which the final reply
+ * confirms, revises or retracts; `"action_callback"` text is an in-flight
+ * action status delivery that the turn's final reply may replace entirely.
+ * Voice clients must not synthesize `"model_draft"` or `"action_callback"`
+ * text until a `"model"` frame or the terminal frame confirms it — speech,
+ * unlike a chat bubble, cannot be retracted (the "double-speak" defect: ack
+ * spoken, then the reply spoken again).
  */
-export type ChatStreamTextOrigin = "model" | "action_callback";
+export type ChatStreamTextOrigin = "model" | "model_draft" | "action_callback";
 export interface ChatGenerateOptions {
   /** Internal host timer begun before room admission; never read from a request body. */
   inferenceTimer?: InferenceTurnTimer;
   onChunk?: (chunk: string, origin?: ChatStreamTextOrigin) => void;
-  onSnapshot?: (text: string, origin?: ChatStreamTextOrigin) => void;
+  /**
+   * Replaces the streamed text. `revision` marks a new model attempt (retry,
+   * repair or failover) or the validated final reply rewriting what streamed:
+   * consumers must replace even a strict prefix of what they already hold.
+   */
+  onSnapshot?: (
+    text: string,
+    origin?: ChatStreamTextOrigin,
+    revision?: boolean,
+  ) => void;
   /**
    * Called once the authoritative generation result is settled, before the
    * room's post-delivery bookkeeping is drained. Realtime transports can use
@@ -2600,6 +2617,7 @@ async function generateChatResponseWithTiming(
     const emitSnapshot = (
       text: string,
       origin: ChatStreamTextOrigin = "model",
+      revision = false,
     ): void => {
       if (!text) return;
       // Skip when the snapshot matches the current responseText exactly:
@@ -2609,7 +2627,7 @@ async function generateChatResponseWithTiming(
       responseText = text;
       if (opts?.onSnapshot) {
         markFirstVisibleReply();
-        opts.onSnapshot(text, origin);
+        opts.onSnapshot(text, origin, revision);
       }
     };
     const claimStreamSource = (
@@ -2625,10 +2643,16 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
+    // The model attempt whose accumulation the stream currently carries.
+    let activeStreamRevision: number | undefined;
+    // A structured draft reached the client; finalization must confirm,
+    // revise or retract it from the authoritative result.
+    let draftStreamed = false;
     const appendIncomingText = (
       chunk: string,
       accumulated?: string,
       origin: ChatStreamTextOrigin = "model",
+      streamRevision?: number,
     ): void => {
       // StreamChunkCallback defines `chunk` as a delta. Structured extractors
       // additionally provide their authoritative accumulation, which lets this
@@ -2639,12 +2663,27 @@ async function generateChatResponseWithTiming(
         emitChunk(chunk, origin);
         return;
       }
+      draftStreamed = true;
+      // A new revision is a new model attempt (retry, repair, failover): its
+      // accumulation restarts the reply. An older one is a superseded attempt.
+      let revised = false;
+      if (streamRevision !== undefined) {
+        if (
+          activeStreamRevision !== undefined &&
+          streamRevision < activeStreamRevision
+        )
+          return;
+        revised =
+          activeStreamRevision !== undefined &&
+          streamRevision !== activeStreamRevision;
+        activeStreamRevision = streamRevision;
+      }
       if (accumulated === responseText) return;
       if (accumulated.startsWith(responseText)) {
         emitChunk(accumulated.slice(responseText.length), origin);
         return;
       }
-      emitSnapshot(accumulated, origin);
+      emitSnapshot(accumulated, origin, revised);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -2923,6 +2962,7 @@ async function generateChatResponseWithTiming(
                           chunk: string,
                           _messageId?: string,
                           accumulated?: string,
+                          streamRevision?: number,
                         ) => {
                           if (!chunk) return;
                           if (isInternalStructuredStreamText(chunk)) {
@@ -2937,8 +2977,18 @@ async function generateChatResponseWithTiming(
                             }
                             return;
                           }
+                          // A structured accumulation is a revisable draft. A
+                          // transport that cannot replace text gets the
+                          // validated reply whole at finalization instead.
+                          if (accumulated !== undefined && !opts.onSnapshot)
+                            return;
                           if (!claimStreamSource("onStreamChunk")) return;
-                          appendIncomingText(chunk, accumulated);
+                          appendIncomingText(
+                            chunk,
+                            accumulated,
+                            accumulated === undefined ? "model" : "model_draft",
+                            streamRevision,
+                          );
                         }
                       : undefined,
                   },
@@ -3012,7 +3062,7 @@ async function generateChatResponseWithTiming(
                   )
                 : terminalFailure.message;
             if (opts?.onSnapshot && !replyFailure) {
-              emitSnapshot(failureText);
+              emitSnapshot(failureText, "model", draftStreamed);
             } else {
               responseText = failureText;
             }
@@ -3263,6 +3313,15 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
+    // A streamed draft is not the reply: only the authoritative result is.
+    // Clear it so the fallback below re-sends the result as a confirming
+    // revision, or retract it when the turn produced no visible reply.
+    if (draftStreamed && !terminalFailure) {
+      responseText = "";
+      if (!resultText || resultTextVisibility === "internal") {
+        opts?.onSnapshot?.("", "model", true);
+      }
+    }
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (
       !terminalFailure &&
@@ -3271,7 +3330,7 @@ async function generateChatResponseWithTiming(
       resultTextVisibility !== "internal"
     ) {
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", draftStreamed);
       } else {
         emitChunk(resultText);
       }
@@ -3293,8 +3352,11 @@ async function generateChatResponseWithTiming(
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
     ) {
+      // The validated reply rewrote the streamed text (a planner reroute,
+      // cleanup of raw model tokens). It is a revision: clients replace their
+      // buffer even when the final text is a prefix of it.
       if (opts?.onSnapshot) {
-        emitSnapshot(resultText);
+        emitSnapshot(resultText, "model", true);
       } else {
         responseText = resultText;
       }
@@ -3575,6 +3637,10 @@ async function generateOwnedChatResponse(
       label: "chat-request",
       roomId: message.roomId,
     });
+  const recordNativeTiming = captureNativeInferenceTiming(
+    runtime,
+    message.entityId,
+  );
   return runWithInferenceTiming(timer, async () => {
     try {
       const result = await runWithGenerationTimeout(
@@ -3594,6 +3660,7 @@ async function generateOwnedChatResponse(
     } finally {
       const summary = emitInferenceTiming(timer);
       if (summary) {
+        recordNativeTiming?.(summary);
         void persistInferenceTimingSummary(runtime, message, summary).catch(
           (error) => {
             // error-policy:J7 latency persistence must not turn a completed
@@ -3740,14 +3807,22 @@ export async function ensureCompatChatConnection(
   roomId: UUID;
   worldId: UUID;
 }> {
-  const ownerPrincipal =
+  const ownerAuthenticated =
     principal.kind === "owner_session" || principal.kind === "owner_api_token";
-  const userId = ownerPrincipal
-    ? ensureAdminEntityIdForChat(state)
-    : (stringToUuid(
-        `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
-      ) as UUID);
-  const principalScopedRoomKey = ownerPrincipal
+  // ELIZA_CONVERSATION_CALLER_ROLE=USER: the owner credential carries an end
+  // user's chat, so the turn speaks as the product user at role USER (the same
+  // mapping as resolveConversationCaller in conversation-routes.ts).
+  const productUser =
+    ownerAuthenticated && resolveOwnerChatCallerRole() === "USER";
+  const ownerPrincipal = ownerAuthenticated && !productUser;
+  const userId = productUser
+    ? productUserChatEntityId()
+    : ownerPrincipal
+      ? ensureAdminEntityIdForChat(state)
+      : (stringToUuid(
+          `${identityName}:${channelIdPrefix}:external:${principal.principalId}`,
+        ) as UUID);
+  const principalScopedRoomKey = ownerAuthenticated
     ? roomKey
     : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
@@ -3767,7 +3842,10 @@ export async function ensureCompatChatConnection(
     metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
   if (!ownerPrincipal) {
-    if (principal.kind === "service_gateway" && principal.sessionRole) {
+    if (
+      productUser ||
+      (principal.kind === "service_gateway" && principal.sessionRole)
+    ) {
       await grantSessionUserWorldRole(runtime, worldId, userId);
     }
     return { userId, roomId, worldId };
@@ -3805,7 +3883,8 @@ export async function ensureCompatChatConnection(
 }
 /**
  * Grant-on-first-contact USER world membership for an authenticated
- * machine-session (paired-device) principal's minted external entity, so its
+ * machine-session (paired-device) principal's minted external entity, or for
+ * the product user under `ELIZA_CONVERSATION_CALLER_ROLE=USER`, so its
  * turns resolve at least the session's boundary role through
  * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
  *

@@ -510,7 +510,7 @@ try {
   decision = await workflow.refresh();
   assert.equal(decision.kind, "person-check", JSON.stringify(decision));
   assert.equal(await record("ask-before-renew", decision), false);
-  workflow.acknowledge(decision.key);
+  workflow.acknowledge(decision.key, { epoch: decision.epoch });
   decision = await workflow.refresh();
   assert.equal(decision.kind, "human-review", JSON.stringify(decision));
   assert.equal(element(decision).label, "");

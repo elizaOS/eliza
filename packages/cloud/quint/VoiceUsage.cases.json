@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "VoiceUsage",
+      "init": "init",
+      "step": "step",
+      "invariants": ["invariant"],
+      "temporal": [],
+      "maxSteps": 60,
+      "samples": 1000
+    }
+  ],
+  "sources": ["packages/cloud/api/src/voice-usage-state.ts"],
+  "bounds": "One organization/user pair, time 0..4, org limit 3, user limit 2, imports 0/1/2, amounts 1/2."
+}

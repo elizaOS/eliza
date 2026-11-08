@@ -10,6 +10,7 @@
  */
 import {
   deterministicOwnerEntityId,
+  ElizaError,
   type IAgentRuntime,
   logger,
   resolveCanonicalOwnerId,
@@ -82,4 +83,45 @@ export function resolveClientChatAdminEntityId<
   state.adminEntityId = nextAdminEntityId;
   state.chatUserId = nextAdminEntityId;
   return nextAdminEntityId;
+}
+
+export type OwnerChatCallerRole = "OWNER" | "USER";
+
+/**
+ * The role an owner-authenticated chat turn (owner session or owner API token)
+ * runs as, from the host setting `ELIZA_CONVERSATION_CALLER_ROLE`.
+ *
+ * `OWNER` (the default) is the operator chatting with their own agent. `USER`
+ * is for a host whose owner credential only carries an end user's chat (a
+ * consumer app's gateway): the turn then speaks as
+ * {@link productUserChatEntityId} with a session-sourced USER grant, so
+ * OWNER- and ADMIN-gated actions are refused in those turns. Any other value
+ * throws, so a misspelled setting can never fall back to OWNER.
+ *
+ * This covers chat turns only (conversation messages and compat chat). Plugin
+ * routes, the context inspector and the other admin APIs still treat the owner
+ * credential as OWNER, so the host must keep that credential off every
+ * non-chat route.
+ */
+export function resolveOwnerChatCallerRole(
+  env: NodeJS.ProcessEnv = process.env,
+): OwnerChatCallerRole {
+  const value = env.ELIZA_CONVERSATION_CALLER_ROLE;
+  if (value === undefined || value === "OWNER") return "OWNER";
+  if (value === "USER") return "USER";
+  throw new ElizaError("ELIZA_CONVERSATION_CALLER_ROLE must be OWNER or USER", {
+    code: "INVALID_CONVERSATION_CALLER_ROLE",
+    context: { value },
+  });
+}
+
+/**
+ * The entity an owner-authenticated chat turn speaks as under
+ * `ELIZA_CONVERSATION_CALLER_ROLE=USER`. It is never the admin entity, so the
+ * admin entity's stored OWNER world grant is not reused for these turns. Its
+ * seed has no `conversation-external:` prefix, so no external principal id can
+ * derive the same entity and inherit its USER grant.
+ */
+export function productUserChatEntityId(): UUID {
+  return stringToUuid("owner-chat-product-user:v1") as UUID;
 }

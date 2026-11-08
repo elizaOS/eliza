@@ -386,3 +386,15 @@ configuration explicitly retains the existing audience for installed clients.
 Other deployments must configure their clients to verify their chosen audience
 and issuer. Change these together during a client migration. This token presents
 plan state; it does not grant API access or replace per-request authorization.
+
+Direct EVM sweeps retain one signed transaction per chain and sender until its
+successful receipt is observed. Other sweeps from that wallet wait; pending nonce
+ambiguity or legacy identity conflicts require reconciliation without replacing
+signed bytes. Different senders proceed independently.
+Legacy EVM delivery rows require a matching receipt before releasing their nonce;
+recovery of those rows and terminal attempts performs provider reads without
+issuing another transfer, including after a worker loses its lease. Account
+deletion retains unconfirmed signed sweeps until their original receipt is
+recorded. Legacy identity recovery pages through the complete candidate history.
+Matching original EVM receipts remain recoverable after receive-wallet rotation.
+Resubmission still requires the configured wallet to match the original signer.

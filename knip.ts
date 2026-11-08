@@ -34,6 +34,7 @@ const config = {
     "vite",
     "vitest",
     "make",
+    "java",
   ],
   ignoreDependencies: ["vitest", "vitest/config"],
   ignoreUnresolved: ["bun-types", "node:sqlite"],

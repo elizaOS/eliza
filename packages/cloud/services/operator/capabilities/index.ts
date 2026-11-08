@@ -25,16 +25,21 @@ When(Server)
   .IsCreatedOrUpdated()
   .InNamespace("eliza-agents")
   .Reconcile(async (instance) => {
-    await reconciler(instance);
+    const name = instance.metadata?.name;
+    if (!name) return reconciler(instance);
+    const namespace = instance.metadata?.namespace ?? "eliza-agents";
+    await deploymentStatus.coordinate(name, namespace, () =>
+      reconciler(instance, () => deploymentStatus.activate(name, namespace)),
+    );
   })
   .Finalize(async (instance) => {
-    await finalizer(instance);
-    if (instance.metadata?.name) {
-      deploymentStatus.forget(
-        instance.metadata.name,
-        instance.metadata.namespace ?? "eliza-agents",
-      );
-    }
+    const name = instance.metadata?.name;
+    if (!name) return finalizer(instance);
+    await deploymentStatus.finalize(
+      name,
+      instance.metadata?.namespace ?? "eliza-agents",
+      () => finalizer(instance),
+    );
   });
 
 const deploymentStatus = new DeploymentStatusTracker(
