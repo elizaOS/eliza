@@ -82,7 +82,10 @@ module JobSharedCapacity {
       .with("leaseOwner", Jobs.mapBy(j => if (s.calls.get(c).selected.contains(j)) c else s.leaseOwner.get(j)))
       .with("claimBy", Jobs.mapBy(j => if (s.calls.get(c).selected.contains(j)) c else s.claimBy.get(j)))
       .with("lockOwner", 0)
-      .with("calls", s.calls.set(c, {...s.calls.get(c), phase: 5}))
+      // After commit the source uses only the returned rows for hydration.
+      // Keep those rows while projecting the completed query arguments away.
+      .with("calls", s.calls.set(c, {...emptyCall, phase: 5,
+        selected: s.calls.get(c).selected}))
       // Sticky evidence checks the commit that added occupancy, including
       // after an initially overfull state has drained below its initial size.
       .with("capacityViolation", s.capacityViolation or
@@ -93,8 +96,8 @@ module JobSharedCapacity {
     s' = s.with("lockOwner", if (s.lockOwner == c) 0 else s.lockOwner)
       .with("calls", s.calls.set(c, {...emptyCall, phase: 7}))
   }
-  // Caller arguments have no further source uses after the return. Project
-  // them away, retaining the exact returned IDs and durable claim identity.
+  // Return hydration clears its pending rows and retains the exact returned
+  // IDs. A failure retains the durable database claim without a success reply.
   action hydrate(c: int, succeeds: bool): bool = all {
     s.calls.get(c).phase == 5,
     s' = s.with("calls", s.calls.set(c, {...emptyCall,
