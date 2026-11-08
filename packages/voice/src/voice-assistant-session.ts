@@ -1263,7 +1263,10 @@ export class VoiceAssistantSession {
     } catch (error) {
       if (!this.owned(session, turn, response)) return; // Interrupted or stopped: already accounted.
       if ((error as { name?: unknown })?.name === "AbortError") return;
-      if (response.replyId) this.reportInterrupted(response, true);
+      // A reply that failed after streamed speech started still reports what
+      // was heard; before confirmation the host finds it by turnId.
+      if (response.replyId || response.started)
+        this.reportInterrupted(response, true);
       this.response = undefined;
       // Streamed speech may still be playing: the failed turn stops it now.
       response.controller.abort(stopped());
