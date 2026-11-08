@@ -96,14 +96,21 @@ async function withScope<T>(
   }
 }
 
-async function remainingDelay(control: Client, id: string) {
-  const {
-    rows: [row],
-  } = await control.query(
-    "SELECT extract(epoch FROM (scheduled_for-localtimestamp))::float8 AS seconds FROM jobs WHERE id=$1",
-    [id],
+async function sampleDatabaseTime(control: Client): Promise<string> {
+  const result = await control.query<{ observed_at: string }>(
+    "SELECT clock_timestamp()::timestamp::text AS observed_at",
   );
-  return Number(row.seconds);
+  return result.rows[0].observed_at;
+}
+
+async function expectRetryWindow(control: Client, id: string, before: string) {
+  const result = await control.query<{ within_window: boolean }>(
+    `SELECT scheduled_for BETWEEN $2::timestamp + interval '30 seconds'
+      AND clock_timestamp()::timestamp + interval '30 seconds' AS within_window
+      FROM jobs WHERE id=$1`,
+    [id, before],
+  );
+  expect(result.rows[0].within_window).toBe(true);
 }
 
 (url ? describe : describe.skip)("durable job database-time authority", () => {
@@ -156,6 +163,7 @@ async function remainingDelay(control: Client, id: string) {
     test(`${zone}: failed execution waits for its database backoff`, () =>
       withScope(zone, async ({ run, claim, control }) => {
         const { job, id, owner, organizationId } = await claim();
+        const before = await sampleDatabaseTime(control);
         const retried = await run(() =>
           repository.jobsRepository.incrementAttempt(
             id,
@@ -168,9 +176,7 @@ async function remainingDelay(control: Client, id: string) {
         );
         expect(retried?.status).toBe("pending");
         expect(retried?.attempts).toBe(1);
-        const delay = await remainingDelay(control, id);
-        expect(delay).toBeGreaterThan(29);
-        expect(delay).toBeLessThanOrEqual(30);
+        await expectRetryWindow(control, id, before);
         expect(
           await run(() =>
             repository.jobsRepository.claimPendingJobs({
@@ -186,6 +192,7 @@ async function remainingDelay(control: Client, id: string) {
       withScope(zone, async ({ run, claim, control }) => {
         for (const bounded of [undefined, { maxRequeues: 2 }]) {
           const { job, id, owner } = await claim();
+          const before = await sampleDatabaseTime(control);
           const retried = await run(() =>
             repository.jobsRepository.retryLaterWithoutIncrementingAttempts(
               job,
@@ -198,9 +205,7 @@ async function remainingDelay(control: Client, id: string) {
           expect(retried?.status).toBe("pending");
           expect(retried?.attempts).toBe(0);
           expect(retried?.retryable_requeues).toBe(bounded ? 1 : 0);
-          const delay = await remainingDelay(control, id);
-          expect(delay).toBeGreaterThan(29);
-          expect(delay).toBeLessThanOrEqual(30);
+          await expectRetryWindow(control, id, before);
         }
       }));
   }
@@ -211,6 +216,7 @@ async function remainingDelay(control: Client, id: string) {
       for (const hours of [-5, 5]) {
         const { job, id, owner } = await claim();
         setSystemTime(realNow + hours * 3_600_000);
+        const before = await sampleDatabaseTime(control);
         const retried = await run(() =>
           repository.jobsRepository.incrementAttempt(
             id,
@@ -222,9 +228,7 @@ async function remainingDelay(control: Client, id: string) {
           ),
         );
         expect(retried?.status).toBe("pending");
-        const delay = await remainingDelay(control, id);
-        expect(delay).toBeGreaterThan(29);
-        expect(delay).toBeLessThanOrEqual(30);
+        await expectRetryWindow(control, id, before);
         setSystemTime();
       }
     }));
@@ -244,7 +248,8 @@ async function remainingDelay(control: Client, id: string) {
           const deadline = Date.now() + 10_000;
           let ready = false;
           while (Date.now() < deadline) {
-            // The lock-holding transaction otherwise retains old activity data.
+            // This control connection holds a transaction. Refresh its statistics
+            // snapshot so a poll before renewal starts cannot stay stale.
             await control.query("SELECT pg_stat_clear_snapshot()");
             const {
               rows: [{ waited }],
