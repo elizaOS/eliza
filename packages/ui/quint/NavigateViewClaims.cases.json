@@ -18,13 +18,14 @@
         "queuedClaimsLive",
         "distinctQueue"
       ],
-      "temporal": ["AtMostOnePartialEffect", "RetiredPromiseDoesNotBlock"],
+      "temporal": ["EventuallySingleEffect", "RetiredPromiseDoesNotBlock"],
       "temporalChecks": [
         {
-          "property": "AtMostOnePartialEffect",
+          "property": "EventuallySingleEffect",
           "expect": "counterexample",
           "assumptions": [
-            "No exactly-once effect contract is assumed for arbitrary callbacks. A listener can apply a partial effect and retire before its returned promise settles. The real helper suite reproduces effect repetition."
+            "No exactly-once effect contract is assumed for arbitrary callbacks. A listener can apply a partial effect and retire before its returned promise settles. The real helper suite reproduces effect repetition.",
+            "Each per-request effect count is monotone. An eventual suffix with at most one effect is therefore impossible once the duplicated-effect witness occurs. This formulation retains an explicit loop for the negative temporal checker."
           ]
         },
         {

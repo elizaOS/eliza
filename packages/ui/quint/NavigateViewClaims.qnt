@@ -249,7 +249,10 @@ module NavigateViewClaims {
   val invariant = queueBound and oneResolution and queuedClaimsLive and distinctQueue
   // This is intentionally false in the current source: an active handler can
   // perform a partial effect, retire, then leave the request available to replay.
-  temporal AtMostOnePartialEffect = always(requestIds.forall(id => s.claims.get(id).effects <= 1))
+  val AtMostOnePartialEffect = requestIds.forall(id => s.claims.get(id).effects <= 1)
+  // Counts never decrease. Once a duplicate is observed, this eventual safe
+  // suffix is impossible. TLC retains an explicit looping counterexample.
+  temporal EventuallySingleEffect = eventually(always(AtMostOnePartialEffect))
   // A stalled retired promise can retain applying forever even with a new
   // listener. No fairness of that retired external promise is assumed.
   temporal RetiredPromiseDoesNotBlock = always(

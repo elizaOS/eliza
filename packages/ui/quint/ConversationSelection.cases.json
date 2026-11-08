@@ -20,7 +20,10 @@
         "knownOwner",
         "terminalCallsStayFinite"
       ],
-      "temporal": ["SettlesUnderFairReplies", "NoRetiredSelectionWrites"],
+      "temporal": [
+        "SettlesUnderFairReplies",
+        "EventuallyNoRetiredWriteWitness"
+      ],
       "temporalChecks": [
         {
           "property": "SettlesUnderFairReplies",
@@ -31,11 +34,12 @@
           ]
         },
         {
-          "property": "NoRetiredSelectionWrites",
+          "property": "EventuallyNoRetiredWriteWitness",
           "expect": "counterexample",
           "assumptions": [
             "The source callback has no surface-mounted predicate. Unmount leaves the shared selection epoch current, so failure can restore the previous selection and publish a notice.",
-            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe."
+            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe.",
+            "The retired-write witness never clears. An eventual suffix without that witness is equivalent to avoiding the bad event, and its violation includes a loop. The real mounted callback test independently observes the write."
           ]
         }
       ],
@@ -53,7 +57,10 @@
         "knownOwner",
         "terminalCallsStayFinite"
       ],
-      "temporal": ["SettlesUnderFairReplies", "NoRetiredSelectionWrites"],
+      "temporal": [
+        "SettlesUnderFairReplies",
+        "EventuallyNoRetiredWriteWitness"
+      ],
       "temporalChecks": [
         {
           "property": "SettlesUnderFairReplies",
@@ -64,11 +71,12 @@
           ]
         },
         {
-          "property": "NoRetiredSelectionWrites",
+          "property": "EventuallyNoRetiredWriteWitness",
           "expect": "counterexample",
           "assumptions": [
             "The source callback has no surface-mounted predicate. Unmount leaves the shared selection epoch current, so failure can restore the previous selection and publish a notice.",
-            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe."
+            "Each per-call unmount is an over-approximation of the actual overlay lifetime, which may retire multiple calls together. The one-call counterexample matches the real callback probe.",
+            "The retired-write witness never clears. An eventual suffix without that witness is equivalent to avoiding the bad event, and its violation includes a loop. The real mounted callback test independently observes the write."
           ]
         }
       ],
