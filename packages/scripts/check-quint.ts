@@ -94,9 +94,10 @@ export function classifyTemporalOutcome(
   error?: string,
 ): TemporalOutcome {
   if (error) return "checker-error";
+  // TLC checks always-state and always-action properties during reachability.
+  // Those successful runs do not print a separate temporal-checking phase.
   if (
     status === 0 &&
-    /Checking (?:\d+ branches of )?temporal properties/.test(output) &&
     output.includes("Model checking completed. No error has been found.")
   )
     return "holds";
