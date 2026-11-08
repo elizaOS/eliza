@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  RESIDENT_HELPER_DEPENDENCIES,
   RESIDENT_HOST_CLASSES,
   RESIDENT_HOST_HELPERS,
   RESIDENT_NOTIFICATION_CLASSES,
@@ -422,4 +423,48 @@ test("a host selects shared plugin helpers as data: reviewed rewrites apply, oth
     undefined,
   ])
     assert.throws(() => residentHelperKind(relative), ResidentHostSourceError);
+});
+
+test("a helper is staged only with the helpers it compiles against", (t) => {
+  const browser =
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface";
+  const connection = `${browser}/ChromiumBrowserConnection.java`;
+  const needs = RESIDENT_HELPER_DEPENDENCIES[connection];
+  assert.deepEqual(needs, [
+    `${browser}/ChromiumBindingDemand.java`,
+    `${browser}/ChromiumBrowserIdentity.java`,
+  ]);
+  // Every declared dependency is a real helper source the connection refers to.
+  const source = fs.readFileSync(path.join(upstreamRoot, connection), "utf8");
+  for (const dependency of needs) {
+    assert.ok(fs.existsSync(path.join(upstreamRoot, dependency)));
+    assert.match(
+      source,
+      new RegExp(`\\b${path.basename(dependency, ".java")}\\b`),
+    );
+  }
+  const root = temporary(t);
+  for (const missing of needs) {
+    const output = path.join(root, path.basename(missing, ".java"));
+    assert.throws(
+      () =>
+        stageResidentHostSources({
+          sourceRoot: upstreamRoot,
+          output,
+          identity: identity(),
+          helpers: [connection, ...needs.filter((name) => name !== missing)],
+        }),
+      (error) =>
+        error instanceof ResidentHostSourceError &&
+        error.message.includes(missing),
+    );
+    assert.equal(fs.existsSync(output), false);
+  }
+  const result = stageResidentHostSources({
+    sourceRoot: upstreamRoot,
+    output: path.join(root, "complete"),
+    identity: identity(),
+    helpers: [connection, ...needs],
+  });
+  assert.equal(result.files.length, RESIDENT_HOST_CLASSES.length + 3);
 });
